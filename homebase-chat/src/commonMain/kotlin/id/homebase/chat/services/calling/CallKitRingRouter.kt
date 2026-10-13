@@ -29,3 +29,15 @@ class CallKitRingRouter(
 
     override fun onHangup(callId: String, from: String) = target.onPushHangup(callId)
 }
+
+/**
+ * The iOS [CallRingSink]: Swift has already put the ring on CallKit, so the shared [CallRingCoordinator] only names the caller
+ * on it, and only while it still rings. The call's lifecycle reaches CallKit through [CallKitMirror].
+ */
+class CallKitRingSink(private val bridge: () -> CallKitBridge?) : CallRingSink {
+    override fun ring(callId: String, label: String) { bridge()?.reportCaller(callId, label) }
+    override fun stopRinging(callId: String) = Unit
+    override fun connected(callId: String) = Unit
+    override fun ended(callId: String, reason: CallEndReason) = Unit
+    override fun setLive(live: Boolean, video: Boolean, callId: String?) = Unit
+}

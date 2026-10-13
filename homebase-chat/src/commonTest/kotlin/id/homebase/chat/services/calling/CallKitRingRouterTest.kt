@@ -16,10 +16,11 @@ class CallKitRingRouterTest {
     private class Bridge : CallKitBridge {
         override val hostsOutgoingCalls = true
         val ended = mutableListOf<String>()
+        val callers = mutableListOf<String>()
         override fun reportOutgoing(callId: String, handle: String, video: Boolean) = Unit
         override fun reportConnected(callId: String) = Unit
         override fun reportVideo(callId: String, video: Boolean) = Unit
-        override fun reportCaller(callId: String, label: String) = Unit
+        override fun reportCaller(callId: String, label: String) { callers += "$callId:$label" }
         override fun reportEnded(callId: String, remoteEnded: Boolean) { ended += callId }
         override fun reportEndedElsewhere(callId: String, declined: Boolean) { ended += callId }
         override fun requestAnswer(callId: String) = Unit
@@ -90,4 +91,26 @@ class CallKitRingRouterTest {
 
         assertEquals(listOf("c3"), rig.bridge.ended)
     }
+
+    @Test
+    fun theSharedRingCoordinatorNamesTheCallerOnCallKitOnlyWhileItRings() = runTest {
+        val rig = Rig(this)
+        val lookup = kotlinx.coroutines.CompletableDeferred<String?>()
+        CallRingCoordinator(
+            target = object : CallPushTarget {
+                override fun pushRing(callId: String, from: String, sentAtMs: Long) = rig.controller.pushRing(callId, from, sentAtMs)
+                override fun onPushHangup(callId: String) = rig.controller.onPushHangup(callId)
+            },
+            transitions = rig.controller.transitions,
+            sink = CallKitRingSink { rig.bridge },
+            labelFor = { if (it == sam) lookup.await() else null },
+            scope = backgroundScope,
+        ).start()
+        rig.router.onRing("c1", sam, 0)
+        runCurrent()
+        lookup.complete("Sam")
+        runCurrent()
+        assertEquals(listOf("c1:$sam", "c1:Sam"), rig.bridge.callers)
+    }
 }
+

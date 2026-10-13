@@ -6,6 +6,9 @@ import id.homebase.chat.services.calling.CallKitMirror
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.CallKitActionsAdapter
 import id.homebase.chat.services.calling.CallKitRingRouter
+import id.homebase.chat.services.calling.CallKitRingSink
+import id.homebase.chat.services.calling.CallRingCoordinator
+import id.homebase.chat.services.calling.RING_TIMEOUT_MS
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.VoipTokenRelay
 import id.homebase.core.notifications.CallKitBridgeHolder
@@ -29,17 +32,17 @@ fun startAppleCallCoordinator() {
     val service = koin.get<CallService>()
     if (!service.available) return
 
-    val router = CallKitRingRouter(service, { CallKitBridgeHolder.bridge }, scope)
+    CallPushRouter.handler = CallKitRingRouter(service, { CallKitBridgeHolder.bridge }, scope)
     val contacts = koin.get<ContactInfoGateway>()
-    CallPushRouter.handler = object : CallPushRouter.Handler by router {
-        override fun onRing(callId: String, from: String, sentAtMs: Long) {
-            router.onRing(callId, from, sentAtMs)
-            scope.launch {
-                val label = contacts.displayName(OdinId(from))
-                if (!label.isNullOrBlank() && label != from) CallKitBridgeHolder.bridge?.reportCaller(callId, label)
-            }
-        }
-    }
+    CallRingCoordinator(
+        target = service,
+        transitions = service.transitions,
+        sink = CallKitRingSink { CallKitBridgeHolder.bridge },
+        labelFor = { contacts.displayName(OdinId(it)) },
+        scope = scope,
+        // CallKit takes a new name at any point while it rings, and a cold PushKit wake resolves contacts slowly.
+        labelTimeoutMs = RING_TIMEOUT_MS,
+    ).start()
     CallKitBridgeHolder.actions = CallKitActionsAdapter(service)
 
     scope.launch { CallKitMirror(service) { CallKitBridgeHolder.bridge }.run() }
