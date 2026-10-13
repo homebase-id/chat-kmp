@@ -9,10 +9,6 @@ import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.path
 
-// Native PlatformFile carries a real path / content:// URI; the path-based pipelines (and
-// resolveToFilePath for content URIs) already handle it. No copy needed at send time.
-actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): String = toString()
-
 // Copy WHILE the picker's security scope is still live (this runs in the picker-callback
 // launch before any further suspension). FileKit's copyTo opens the source through its NSURL —
 // which still holds the scope grant here — and writes a plain sandbox file, so the later

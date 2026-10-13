@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
@@ -90,6 +91,8 @@ import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_label
+import id.homebase.resources.settings_filesync_icon_desc
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
 import id.homebase.resources.settings_data_storage
@@ -385,6 +388,18 @@ fun SettingsUi(
                     action = SettingsRowAction.Toggle(
                         checked = uiState.useNativeFeed,
                         onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
+                    ),
+                )
+            }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("filesyncIconToggle"),
+                    icon = Icons.Outlined.Folder,
+                    title = stringResource(MR.string.filesync_label),
+                    supportingText = stringResource(MR.string.settings_filesync_icon_desc),
+                    action = SettingsRowAction.Toggle(
+                        checked = uiState.filesyncIconVisible,
+                        onCheckedChange = { onAction(SettingsUiAction.SetFilesyncIconVisible(it)) },
                     ),
                 )
             }

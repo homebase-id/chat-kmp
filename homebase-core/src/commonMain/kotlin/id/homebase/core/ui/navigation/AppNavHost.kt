@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.People
@@ -195,6 +196,14 @@ import id.homebase.core.ui.screens.webdrop.WebDropScreen
 import id.homebase.core.ui.screens.webdrop.WebDropUiEvent
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
+import id.homebase.core.filesync.FilesyncPreferences
+import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
+import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
+import id.homebase.core.ui.screens.filesync.FilesyncScreen
+import id.homebase.core.ui.screens.filesync.FilesyncTrashScreen
+import id.homebase.core.ui.screens.filesync.FilesyncUiAction
+import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.ui.screens.filesync.onboarding.FilesyncOnboardingScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
@@ -227,6 +236,7 @@ import id.homebase.resources.location_label
 import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
+import id.homebase.resources.filesync_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
@@ -332,6 +342,7 @@ fun AppNavHost(
     val vaultPreferences = koinInject<VaultPreferences>()
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
     val vaultViewModel: VaultViewModel = koinViewModel()
+    val filesyncIconVisible by koinInject<FilesyncPreferences>().iconVisible.collectAsStateWithLifecycle()
     val locationPreferences = koinInject<LocationPreferences>()
     val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
     val locationViewModel: LocationViewModel = koinViewModel()
@@ -355,6 +366,7 @@ fun AppNavHost(
     val topLevelRoutes = remember(
         momentsIconVisible,
         vaultIconVisible,
+        filesyncIconVisible,
         locationIconVisible,
         contactBookIconVisible,
         emailIconVisible,
@@ -365,6 +377,7 @@ fun AppNavHost(
             add(TopLevelRoute.Feed)
             if (momentsIconVisible) add(TopLevelRoute.Moments)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
+            if (filesyncIconVisible) add(TopLevelRoute.Filesync)
             if (locationIconVisible) add(TopLevelRoute.Location)
             if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
             if (emailIconVisible && serverSupportsMail == true) add(TopLevelRoute.Email)
@@ -600,6 +613,7 @@ fun AppNavHost(
 
     val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
+    val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
 
     // Handle notification tap navigation (needs navController, stays in composable)
     LaunchedEffect(Unit) {
@@ -983,6 +997,7 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateToVault = openVault,
                                     onNavigateToWebDrop = openWebDrop,
+                                    onNavigateToFilesync = openFilesync,
                                     onNavigateToMoments = openMoments,
                                     onNavigateToLocation = openLocation,
                                     onNavigateToContacts = openContactBook,
@@ -2084,6 +2099,46 @@ fun AppNavHost(
                             }
                         }
 
+                        tab<Route.Filesync>(tabRoot) {
+                            if (isAuthenticated) {
+                                val filesyncViewModel: FilesyncViewModel = koinViewModel()
+                                val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
+                                Crossfade(
+                                    targetState = filesyncUiState.installed,
+                                    animationSpec = chromeMotion.defaultEffectsSpec(),
+                                ) { installed ->
+                                    when (installed) {
+                                        null -> FilesyncCheckingScreen(
+                                            failed = filesyncUiState.checkFailed,
+                                            onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
+                                        )
+                                        false -> FilesyncOnboardingScreen(
+                                            viewModel = filesyncViewModel,
+                                            setupInitiated = filesyncUiState.setupInitiated,
+                                            onDismiss = { navController.popBackStack() },
+                                        )
+                                        true -> FilesyncScreen(
+                                            viewModel = filesyncViewModel,
+                                            onOpenTrash = { navController.navigate(Route.FilesyncTrash) },
+                                            onOpenRecent = { navController.navigate(Route.FilesyncRecent) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        composable<Route.FilesyncTrash> {
+                            if (isAuthenticated) {
+                                FilesyncTrashScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.FilesyncRecent> {
+                            if (isAuthenticated) {
+                                FilesyncRecentScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                            }
+                        }
+
                         tab<Route.Email>(tabRoot) {
                             if (isAuthenticated) {
                                 EmailScreen(
@@ -2389,6 +2444,7 @@ sealed class TopLevelRoute(
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+    data object Filesync : TopLevelRoute(Route.Filesync, MR.string.filesync_label, Icons.Outlined.Folder)
     data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Outlined.MailOutline)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
     data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
