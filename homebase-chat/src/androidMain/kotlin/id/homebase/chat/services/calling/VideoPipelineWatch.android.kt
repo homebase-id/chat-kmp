@@ -11,7 +11,7 @@ import org.koin.mp.KoinPlatformTools
 import org.webrtc.Logging
 
 // Camera2 and MediaCodec already report freezes and codec errors to logcat with the WebRTC tags; what homebase.log
-// lacks is whether this device's H.264 decoders claim to sustain the 1080p30 a peer may send.
+// lacks is whether this device's H.264 decoders claim to sustain the 720p30 a peer may send.
 internal actual fun watchVideoPipeline(): () -> Unit {
     avcDecoderCapabilities.forEach { Logger.i("WebRtcKmp") { it } }
     webRtcLogcat

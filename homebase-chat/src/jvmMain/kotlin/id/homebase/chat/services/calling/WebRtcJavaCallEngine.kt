@@ -206,7 +206,8 @@ class WebRtcJavaCallEngine(
                 override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
             })
         }
-        return setLocalRaised(description)
+        setLocal(description)
+        return description.sdp
     }
 
     private suspend fun createAnswer(): String {
@@ -217,11 +218,6 @@ class WebRtcJavaCallEngine(
                 override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
             })
         }
-        return setLocalRaised(description)
-    }
-
-    private suspend fun setLocalRaised(created: RTCSessionDescription): String {
-        val description = RTCSessionDescription(created.sdpType, withH264SendLevel(created.sdp))
         setLocal(description)
         return description.sdp
     }

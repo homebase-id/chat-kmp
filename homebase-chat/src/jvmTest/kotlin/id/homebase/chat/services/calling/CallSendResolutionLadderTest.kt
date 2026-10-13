@@ -16,19 +16,18 @@ import kotlin.time.TestTimeSource
 class CallSendResolutionLadderTest {
     private fun stats(target: Double?, sourceWidth: Int = 1080, sourceHeight: Int = 1920) = listOf(
         StatsEntry("media-source", mapOf("kind" to "video", "width" to sourceWidth, "height" to sourceHeight)),
-        StatsEntry("outbound-rtp", mapOf("kind" to "video", "targetBitrate" to target, "frameWidth" to 1920, "frameHeight" to 1080)),
+        StatsEntry("outbound-rtp", mapOf("kind" to "video", "targetBitrate" to target, "frameWidth" to 1280, "frameHeight" to 720)),
     )
 
     @Test
     fun rungsStepStraightDownAndBackUpOneAtATimeWithHeadroom() {
-        assertEquals(1080, nextSendHeight(1080, 2_500_000.0))
-        assertEquals(540, nextSendHeight(1080, 527_743.0))
+        assertEquals(720, nextSendHeight(720, 2_500_000.0))
+        assertEquals(540, nextSendHeight(720, 527_743.0))
         assertEquals(360, nextSendHeight(540, 300_000.0))
         assertEquals(360, nextSendHeight(360, 579_000.0))
         assertEquals(540, nextSendHeight(360, 881_000.0))
         assertEquals(720, nextSendHeight(540, 1_100_000.0))
         assertEquals(720, nextSendHeight(720, 1_600_000.0))
-        assertEquals(1080, nextSendHeight(720, 2_500_000.0))
         assertEquals(270, nextSendHeight(360, 200_000.0))
         assertEquals(180, nextSendHeight(270, 100_000.0))
         assertEquals(270, nextSendHeight(180, 190_000.0))
@@ -46,7 +45,7 @@ class CallSendResolutionLadderTest {
         var applied: Double? = null
         val hd = SendResolutionLadder { applied = it }
         hd.onStats(stats(100_000.0))
-        assertEquals(6.0, applied)
+        assertEquals(4.0, applied)
         val small = SendResolutionLadder { applied = it }
         small.onStats(stats(100_000.0, sourceWidth = 1280, sourceHeight = 720))
         assertEquals(4.0, applied)
@@ -55,7 +54,7 @@ class CallSendResolutionLadderTest {
     // mobile2-r1 Redmi under NLC 3G: target 2.5M -> 527k -> 300k, then 361k..881k..2.5M once NLC was off, while
     // libwebrtc kept 1920x1080 with resChanges=0 because the encoder's QP (25-26) never crossed the scaler's 37.
     @Test
-    fun theDeviceRunsTargetsDriveTheRealSendersScaleBetween1080pAnd360p() {
+    fun theDeviceRunsTargetsDriveTheRealSendersScaleBetween720pAnd360p() {
         val factory = PeerConnectionFactory(HeadlessAudioDeviceModule())
         val source = CustomVideoSource()
         val peer = factory.createPeerConnection(RTCConfiguration(), object : PeerConnectionObserver {
@@ -68,11 +67,10 @@ class CallSendResolutionLadderTest {
             fun scale(target: Double) = ladder.onStats(stats(target)).let { sender.scale() }
 
             assertNull(ladder.onStats(stats(2_500_000.0)))
-            assertEquals(2.0, scale(527_743.0))
-            assertEquals(3.0, scale(300_000.0))
-            assertEquals(3.0, scale(579_000.0))
-            assertEquals(2.0, scale(881_000.0))
-            assertEquals(1.5, scale(2_500_000.0))
+            assertEquals(720.0 / 540, scale(527_743.0))
+            assertEquals(2.0, scale(300_000.0))
+            assertEquals(2.0, scale(579_000.0))
+            assertEquals(720.0 / 540, scale(881_000.0))
             assertEquals(1.0, scale(2_500_000.0))
             assertNull(ladder.onStats(stats(null)))
         } finally {
@@ -87,7 +85,7 @@ class CallSendResolutionLadderTest {
         var applied: Double? = null
         val ladder = SendResolutionLadder { applied = it }
         ladder.onStats(stats(300_000.0, sourceWidth = 3840, sourceHeight = 2160))
-        assertEquals(3.0, applied)
+        assertEquals(2.0, applied)
         ladder.onStats(stats(2_500_000.0, sourceWidth = 1280, sourceHeight = 720))
         assertEquals(720.0 / 540, applied)
     }
@@ -112,7 +110,7 @@ class CallSendResolutionLadderTest {
     fun aSenderThatCannotEncode30FpsStepsDownARungEveryTwoSlowTicks() {
         val rung = SendLoadRung()
         val encoder = Encoder(1280, 720)
-        assertEquals(1080, rung.onStats(encoder.tick(19.0, 79.3)))
+        assertEquals(720, rung.onStats(encoder.tick(19.0, 79.3)))
         assertEquals(540, rung.onStats(encoder.tick(22.0, 88.7)))
         encoder.width = 960; encoder.height = 540
         assertEquals(540, rung.onStats(encoder.tick(18.0, 90.7)))
@@ -124,7 +122,7 @@ class CallSendResolutionLadderTest {
     fun aCameraSlowedByLowLightIsNotAnOverloadedEncoder() {
         val rung = SendLoadRung()
         val encoder = Encoder(480, 270)
-        repeat(6) { assertEquals(1080, rung.onStats(encoder.tick(15.0, 13.5))) }
+        repeat(6) { assertEquals(720, rung.onStats(encoder.tick(15.0, 13.5))) }
     }
 
     @Test
@@ -137,7 +135,6 @@ class CallSendResolutionLadderTest {
         repeat(5) { assertEquals(540, rung.onStats(encoder.tick(30.0, 15.0))) }
         assertEquals(720, rung.onStats(encoder.tick(30.0, 15.0)))
         encoder.width = 1280; encoder.height = 720
-        // 1080p would need 25 ms x 2.25 = 56 ms a frame: stay.
         repeat(12) { assertEquals(720, rung.onStats(encoder.tick(30.0, 25.0))) }
     }
 
@@ -151,10 +148,10 @@ class CallSendResolutionLadderTest {
             StatsEntry("outbound-rtp", encoder.tick(fps, ms) + ("targetBitrate" to 300_000.0)),
         )
         ladder.onStats(stats(14.0, 80.0))
-        assertEquals(3.0, applied)
+        assertEquals(2.0, applied)
         encoder.width = 640; encoder.height = 360
         ladder.onStats(stats(14.0, 80.0))
-        assertEquals(4.0, applied)
+        assertEquals(720.0 / 270, applied)
     }
 
     private fun RTCRtpSender.scale() = parameters.encodings.single().scaleResolutionDownBy
@@ -164,14 +161,14 @@ class CallSendResolutionLadderTest {
         var applied: Double? = null
         val ladder = SendResolutionLadder(clock) { applied = it }
         private var bytes = 0.0
-        val rung get() = applied?.let { (1080 / it).toInt() } ?: 1080
+        val rung get() = applied?.let { (720 / it).toInt() } ?: 720
 
         fun tick(target: Double, sentBps: Double, rtt: Double, frameShort: Int = rung, limit: String = "none"): Int {
             clock += 5.seconds
             bytes += sentBps * 5 / 8
             ladder.onStats(
                 listOf(
-                    StatsEntry("media-source", mapOf("kind" to "video", "width" to 1920, "height" to 1080)),
+                    StatsEntry("media-source", mapOf("kind" to "video", "width" to 1280, "height" to 720)),
                     StatsEntry(
                         "outbound-rtp",
                         mapOf(
@@ -196,8 +193,8 @@ class CallSendResolutionLadderTest {
     @Test
     fun afterEdgeTheLadderClimbsBackFrom360pThoughTheTargetNeverReachesTheNextRung() {
         val iphone = Sender()
-        assertEquals(1080, iphone.tick(2_500_000.0, 2_143_000.0, 0.02))
-        assertEquals(1080, iphone.tick(2_500_000.0, 2_051_000.0, 0.013))
+        assertEquals(720, iphone.tick(2_000_000.0, 1_900_000.0, 0.02))
+        assertEquals(720, iphone.tick(2_000_000.0, 1_850_000.0, 0.013))
         assertEquals(180, iphone.tick(142_064.0, 1_400_000.0, 0.014))
         assertEquals(180, iphone.tick(142_064.0, 543_000.0, 2.517))
         assertEquals(180, iphone.tick(142_064.0, 219_000.0, 2.627))
@@ -214,8 +211,7 @@ class CallSendResolutionLadderTest {
         // Beyond tonight's log: goog-cc follows what is sent, about 2.6x it as it did at 360p.
         repeat(2) { assertEquals(540, iphone.tick(780_000.0, 300_000.0, 0.015)) }
         assertEquals(720, iphone.tick(780_000.0, 300_000.0, 0.015))
-        repeat(2) { assertEquals(720, iphone.tick(1_170_000.0, 450_000.0, 0.015)) }
-        assertEquals(1080, iphone.tick(1_170_000.0, 450_000.0, 0.015))
+        repeat(6) { assertEquals(720, iphone.tick(1_170_000.0, 450_000.0, 0.015)) }
     }
 
     @Test
@@ -244,8 +240,8 @@ class CallSendResolutionLadderTest {
     @Test
     fun aSenderUnderTargetHoldsItsRungWhenTheTargetDipsBelowIt() {
         val sender = Sender()
-        sender.tick(2_500_000.0, 900_000.0, 0.015)
-        assertEquals(1080, sender.tick(1_100_000.0, 600_000.0, 0.015))
-        assertEquals(720, sender.tick(1_100_000.0, 1_000_000.0, 0.015))
+        sender.tick(2_000_000.0, 900_000.0, 0.015)
+        assertEquals(720, sender.tick(700_000.0, 300_000.0, 0.015))
+        assertEquals(540, sender.tick(700_000.0, 600_000.0, 0.015))
     }
 }

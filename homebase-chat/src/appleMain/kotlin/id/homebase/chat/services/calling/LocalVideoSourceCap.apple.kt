@@ -16,7 +16,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 private val configured = AtomicBoolean(false)
 
 // webrtc-kmp 0.125.11 reads each camera format's size through a freed struct (copyContents), so it opens the iPhone
-// camera at 4K and the adapter lets the encoder climb past 1080p. The source itself stays the capturer's delegate, so
+// camera at 4K and the adapter lets the encoder climb past 720p. The source itself stays the capturer's delegate, so
 // no Kotlin runs per frame.
 @OptIn(ExperimentalForeignApi::class, ExperimentalAtomicApi::class)
 internal actual fun capLocalVideoSource() {

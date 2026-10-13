@@ -208,9 +208,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private suspend fun createAnswer(): String = setLocal(peer.createAnswer(OfferAnswerOptions()))
 
     private suspend fun setLocal(created: SessionDescription): String {
-        val description = SessionDescription(created.type, withH264SendLevel(created.sdp))
-        peer.setLocalDescription(description)
-        return description.sdp
+        peer.setLocalDescription(created)
+        return created.sdp
     }
 
     override fun setMuted(muted: Boolean) {

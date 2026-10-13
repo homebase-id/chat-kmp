@@ -4,40 +4,20 @@ import kotlin.math.roundToInt
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
-/**
- * What a sender may put on the wire: at most 1080p30, adapted down by WebRTC's bandwidth estimate. libwebrtc offers
- * H.264 at level 3.1 (profile-level-id 42e01f, at most 3600 macroblocks a frame) and each side encodes at the level
- * the peer advertised, so every SDP we hand out is raised to level 4.0 first: VideoToolbox rejects a 1080p frame at
- * 3.1 with -12902 and, with no fallback codec, the stream stops for good.
- */
+// At most 720p30, adapted down by WebRTC's bandwidth estimate. It must fit H.264 level 3.1, which libwebrtc offers and
+// each side encodes at (3600 macroblocks a frame, 108000 a second): VideoToolbox rejects a larger frame with -12902.
 internal object SendVideoCap {
-    const val WIDTH = 1920
-    const val HEIGHT = 1080
+    const val WIDTH = 1280
+    const val HEIGHT = 720
     const val FPS = 30
-    const val MAX_BITRATE_BPS = 2_500_000
+    const val MAX_BITRATE_BPS = 2_000_000
 
     // libwebrtc has no resolution floor; a floor bitrate keeps the quality scaler from dropping below ~480p for long.
     const val MIN_BITRATE_BPS = 300_000
-
-    // Level 4.0: 8192 macroblocks a frame, 245760 a second; 1080p30 needs 8160 and 244800.
-    const val H264_MIN_LEVEL = 0x28
 }
-
-internal fun h264MacroblocksPerFrame(width: Int, height: Int): Int = ((width + 15) / 16) * ((height + 15) / 16)
-
-private val profileLevelId = Regex("(profile-level-id=)([0-9a-fA-F]{4})([0-9a-fA-F]{2})")
-
-/** Raises every H.264 profile-level-id in [sdp] below [SendVideoCap.H264_MIN_LEVEL] to it; profiles are untouched. */
-internal fun withH264SendLevel(sdp: String): String = profileLevelId.replace(sdp) { m ->
-    val (key, profile, level) = m.destructured
-    if (level.toInt(16) >= SendVideoCap.H264_MIN_LEVEL) m.value
-    else key + profile + SendVideoCap.H264_MIN_LEVEL.toString(16).padStart(2, '0')
-}
-
-internal fun h264Levels(sdp: String): List<Int> = profileLevelId.findAll(sdp).map { it.groupValues[3].toInt(16) }.toList()
 
 // Short side of each rung and the target bitrate it needs; no floor.
-private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 360 to 250_000, 270 to 150_000, 180 to 0)
+private val sendRungs = listOf(720 to 800_000, 540 to 500_000, 360 to 250_000, 270 to 150_000, 180 to 0)
 
 private const val STEP_UP_HEADROOM = 1.25
 
@@ -51,7 +31,7 @@ internal fun nextSendHeight(currentHeight: Int, targetBps: Double): Int {
 
 /**
  * The largest short side up to [target] at which both sides of a [short]x[long] input scale to even integers: an Android
- * hardware encoder fails on an odd width (1920x1080 at 480 is 853 wide) and libwebrtc then drops H.264 for software VP8.
+ * hardware encoder fails on an odd width (1280x720 at 480 is 853 wide) and libwebrtc then drops H.264 for software VP8.
  */
 internal fun evenShortSide(target: Int, short: Int, long: Int): Int = (target downTo 2).firstOrNull { t ->
     t % 2 == 0 && long.toLong() * t % short == 0L && long.toLong() * t / short % 2 == 0L
@@ -70,7 +50,7 @@ private const val MAX_CLIMB_TICKS = 24
 
 /**
  * Caps the sender's resolution to the network: libwebrtc's quality scaler only reacts to encoder QP and frame drops,
- * so a cheap-to-encode picture keeps 1080p at any target bitrate. It steps down only when the network sets the rate.
+ * so a cheap-to-encode picture keeps the top rung at any target bitrate. It steps down only when the network sets the rate.
  * A static picture sends far under target and goog-cc never raises the target to the next rung, so the ladder also
  * climbs a rung after [CLIMB_TICKS] stats ticks of that on a clean link (no loss, RTT near the call's best); a climb
  * the network then refuses doubles that wait. [SendLoadRung] lowers the cap further when the device cannot encode
@@ -97,7 +77,7 @@ internal class SendResolutionLadder(
         val source = stats.video("media-source")
         val sides = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble()).filter { it > 0 }.sorted()
         val (sourceShort, sourceLong) = if (sides.size == 2) sides[0] to sides[1] else SendVideoCap.HEIGHT.toDouble() to SendVideoCap.WIDTH.toDouble()
-        // iOS reports the camera's 4K before its adapter caps the encoder input at 1080p.
+        // iOS reports the camera's 4K before its adapter caps the encoder input at 720p.
         val inputShortSide = minOf(sourceShort, SendVideoCap.HEIGHT.toDouble())
         val inputLongSide = (sourceLong * inputShortSide / sourceShort).roundToInt()
         val loadBefore = load.height
@@ -165,7 +145,7 @@ internal class SendResolutionLadder(
 }
 
 // Short sides to step through when the encoder, not the network, cannot keep up; no floor.
-private val loadRungs = listOf(1080, 720, 540, 360, 270, 180)
+private val loadRungs = listOf(720, 540, 360, 270, 180)
 
 private const val SLOW_FPS = SendVideoCap.FPS * 0.8
 private const val FAST_FPS = SendVideoCap.FPS * 0.9

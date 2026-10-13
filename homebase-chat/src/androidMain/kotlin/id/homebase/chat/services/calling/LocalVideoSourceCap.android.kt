@@ -7,7 +7,7 @@ import org.webrtc.RtpParameters
 
 internal actual fun capLocalVideoSource() = Unit
 
-// Camera2 picks the closest format the device lists, so asking for 1080p is safe here.
+// Camera2 picks the closest format the device lists, so asking for 720p is safe here.
 internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
     width(SendVideoCap.WIDTH)
     height(SendVideoCap.HEIGHT)
