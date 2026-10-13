@@ -2815,6 +2815,8 @@
     <string name="call_minimize">Minimize call</string>
     <string name="call_pill_description">Return to call with %1$s</string>
     <string name="call_pill_text">%1$s · %2$s</string>
+    <string name="call_bar_return">Return to call</string>
+    <string name="call_bar_end">End call with %1$s</string>
     <string name="call_end_confirm_title">End call?</string>
     <string name="call_end_confirm_body">You are still connected. End the call now?</string>
     <string name="call_end_keep">Keep talking</string>

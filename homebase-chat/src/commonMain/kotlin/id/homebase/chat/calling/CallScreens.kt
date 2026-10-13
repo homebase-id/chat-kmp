@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package id.homebase.chat.calling
 
@@ -84,6 +84,13 @@ import androidx.compose.material3.IconToggleButtonShapes
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -204,6 +211,8 @@ import id.homebase.resources.call_route_wired
 import id.homebase.resources.call_state_camera_on
 import id.homebase.resources.call_state_mic_on
 import id.homebase.resources.call_state_muted
+import id.homebase.resources.call_bar_end
+import id.homebase.resources.call_bar_return
 import id.homebase.resources.call_status_calling
 import id.homebase.resources.call_status_connecting
 import id.homebase.resources.call_status_reconnecting
@@ -276,6 +285,8 @@ fun CallScreen(
     avatar: @Composable (size: Dp) -> Unit,
     actions: CallScreenActions,
     modifier: Modifier = Modifier,
+    fillsWindow: Boolean = false,
+    topInset: Dp = 0.dp,
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -289,7 +300,11 @@ fun CallScreen(
     ) {
         CallBackdrop()
         val compact = isCompactHeight(maxWidth, maxHeight)
-        if (!compact && maxWidth >= LargeWidth) {
+        val chromeInsets = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset)
+        // A dedicated call window is already the frame: a card inside it would read as a window in a window.
+        if (fillsWindow && !compact && maxWidth >= LargeWidth) {
+            CallStage(ui, large = true, peerName, avatar, actions, chromeInsets)
+        } else if (!compact && maxWidth >= LargeWidth) {
             Box(
                 Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
                 contentAlignment = Alignment.Center,
@@ -306,7 +321,7 @@ fun CallScreen(
             }
         } else {
             CompositionLocalProvider(LocalCompactHeight provides compact) {
-                CallStage(ui, large = false, peerName, avatar, actions, Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
+                CallStage(ui, large = false, peerName, avatar, actions, chromeInsets)
             }
         }
     }
@@ -1278,29 +1293,113 @@ fun OngoingCallPill(ui: CallUiState, peerName: String, onClick: () -> Unit, modi
 }
 
 @Composable
-fun OngoingCallBar(ui: CallUiState, peerName: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun OngoingCallBar(
+    ui: CallUiState,
+    peerName: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onToggleMute: (() -> Unit)? = null,
+    onHangup: (() -> Unit)? = null,
+) {
     val elapsed = rememberElapsedText(ui.connectedAtMs)
     val description = stringResource(MR.string.call_pill_description, peerName)
+    val status = when (ui.phase) {
+        CallPhase.Outgoing -> stringResource(if (ui.peerRinging) MR.string.call_status_ringing else MR.string.call_status_calling)
+        CallPhase.Connecting -> stringResource(MR.string.call_status_connecting)
+        CallPhase.Reconnecting -> stringResource(MR.string.call_status_reconnecting)
+        else -> elapsed
+    }
+    val warn = ui.phase == CallPhase.Reconnecting
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().heightIn(min = 40.dp).testTag(OngoingCallBarTag).semantics { contentDescription = description; role = Role.Button },
+        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(OngoingCallBarTag).semantics { contentDescription = description; role = Role.Button },
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     ) {
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(Icons.Default.Call, null, Modifier.size(18.dp))
+            LiveCallDot(warn)
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    peerName,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Text(MiddleDot, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    status,
+                    style = MaterialTheme.typography.labelLarge.tabular(),
+                    color = if (warn) MaterialTheme.colorScheme.tertiary else LocalContentColor.current,
+                    maxLines = 1,
+                )
+                if (ui.muted) Icon(Icons.Default.MicOff, stringResource(MR.string.call_you_are_muted), Modifier.size(16.dp))
+            }
             Text(
-                stringResource(MR.string.call_pill_text, peerName, elapsed),
-                style = MaterialTheme.typography.labelLarge.tabular(),
+                stringResource(MR.string.call_bar_return),
+                style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clearAndSetSemantics { },
             )
+            if (onToggleMute != null) {
+                val label = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
+                val stateText = stringResource(if (ui.muted) MR.string.call_state_muted else MR.string.call_state_mic_on)
+                BarTooltip(label) {
+                    FilledTonalIconToggleButton(
+                        checked = ui.muted,
+                        onCheckedChange = { onToggleMute() },
+                        colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.7f),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            checkedContainerColor = MaterialTheme.colorScheme.inverseSurface,
+                            checkedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        ),
+                        modifier = Modifier.size(36.dp).semantics { contentDescription = label; stateDescription = stateText },
+                    ) {
+                        Icon(if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic, null, Modifier.size(20.dp))
+                    }
+                }
+            }
+            if (onHangup != null) {
+                val label = stringResource(MR.string.call_bar_end, peerName)
+                BarTooltip(stringResource(MR.string.call_hang_up)) {
+                    Surface(
+                        onClick = onHangup,
+                        shape = CircleShape,
+                        color = HomebaseTheme.extendedColors.cameraRecord,
+                        contentColor = HomebaseTheme.extendedColors.onCameraRecord,
+                        modifier = Modifier.size(width = 52.dp, height = 36.dp).semantics { contentDescription = label; role = Role.Button },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.CallEnd, null, Modifier.size(20.dp)) }
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun LiveCallDot(warn: Boolean) {
+    val transition = rememberInfiniteTransition()
+    val pulse by transition.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse))
+    val color = if (warn) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+    Box(Modifier.size(28.dp).background(color.copy(alpha = 0.16f), CircleShape), contentAlignment = Alignment.Center) {
+        Icon(Icons.Default.PhoneInTalk, null, Modifier.size(16.dp).alpha(pulse), tint = color)
+    }
+}
+
+@Composable
+private fun BarTooltip(text: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
+        tooltip = { PlainTooltip { Text(text) } },
+        state = rememberTooltipState(),
+        content = content,
+    )
 }
 
 const val OngoingCallBarTag = "ongoing-call-bar"

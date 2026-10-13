@@ -21,6 +21,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -441,6 +442,21 @@ class CallWindowTest {
                     assertEquals(hostOverlay, hosted)
                     assertEquals(!hostOverlay, onAllNodesWithTag(OngoingCallBarTag).fetchSemanticsNodes().isNotEmpty())
                 }
+            }
+        }
+    }
+
+    @Test
+    fun barShowsWhileRingingOutAndItsMuteAndEndControlsActOnTheCallWithoutFocusingTheWindow() {
+        withModel(connectedState(false).copy(phase = CallPhase.Outgoing, connectedAtMs = null)) { model, session, focused ->
+            runDesktopComposeUiTest(900, 200) {
+                setContent { HomebaseTheme(darkTheme = false, followsSystemTheme = false) { OngoingCallBarHost(model) } }
+                waitForIdle()
+                onNodeWithTag(OngoingCallBarTag).assertExists()
+                onAllNodes(hasContentDescription("Mute microphone"), useUnmergedTree = true).onFirst().performClick()
+                onAllNodes(hasContentDescription("End call with Samwise Gamgee"), useUnmergedTree = true).onFirst().performClick()
+                assertEquals(listOf("mute", "hangup"), session.calls)
+                assertTrue(focused.isEmpty(), "the bar's controls act in place")
             }
         }
     }

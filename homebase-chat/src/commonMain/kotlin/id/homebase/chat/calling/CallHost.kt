@@ -71,6 +71,8 @@ fun CallOverlay(
     avatar: @Composable (Dp) -> Unit,
     modifier: Modifier = Modifier,
     onMinimize: () -> Unit = viewModel::minimize,
+    fillsWindow: Boolean = false,
+    topInset: Dp = 0.dp,
 ) {
     val gate = rememberCallPermissionGate()
     val inPip = rememberInPictureInPicture()
@@ -118,7 +120,7 @@ fun CallOverlay(
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions)
+                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset)
             }
         }
         if (ui.pillVisible && !inPip) {

@@ -42,6 +42,9 @@ fun callWindowCloseAction(phase: CallPhase): CallWindowCloseAction = when (phase
 
 fun callWindowVisible(ui: CallUiState): Boolean = ui.visible
 
+/** Ringing out counts: the main window should already offer the way back to a call it just placed. */
+fun ongoingCallBarVisible(ui: CallUiState): Boolean = ui.inProgress || ui.phase == CallPhase.Outgoing
+
 fun callWindowElapsed(ui: CallUiState, nowMs: Long): String? {
     val connectedAt = ui.connectedAtMs
     if (connectedAt == null || !ui.inProgress) return null
@@ -79,16 +82,17 @@ class CallWindowModel(
 fun CallWindowContent(model: CallWindowModel, onMinimize: () -> Unit, topInset: Dp, modifier: Modifier = Modifier) {
     val ui by model.uiState.collectAsStateWithLifecycle()
     val name = model.peerName(ui.peer)
+    // The stage runs under the transparent title bar; only the chrome steps down by topInset.
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        Box(Modifier.fillMaxSize().padding(top = topInset)) {
-            CallOverlay(
-                viewModel = model.viewModel,
-                ui = ui,
-                peerName = name,
-                avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
-                onMinimize = onMinimize,
-            )
-        }
+        CallOverlay(
+            viewModel = model.viewModel,
+            ui = ui,
+            peerName = name,
+            avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
+            onMinimize = onMinimize,
+            fillsWindow = true,
+            topInset = topInset,
+        )
     }
 }
 
@@ -115,10 +119,16 @@ fun OngoingCallBarHost(
     peerName: @Composable (String?) -> String = model::peerName,
 ) {
     val ui by model.uiState.collectAsStateWithLifecycle()
-    if (!ui.inProgress) return
+    if (!ongoingCallBarVisible(ui)) return
     val name = peerName(ui.peer)
     Box(modifier.background(MaterialTheme.colorScheme.primaryContainer).padding(top = topInset)) {
-        OngoingCallBar(ui = ui, peerName = name, onClick = model::focusCallWindow)
+        OngoingCallBar(
+            ui = ui,
+            peerName = name,
+            onClick = model::focusCallWindow,
+            onToggleMute = model.viewModel::toggleMute,
+            onHangup = model.viewModel::hangup,
+        )
     }
 }
 
@@ -131,7 +141,7 @@ fun CallChrome(
     callHost: @Composable () -> Unit,
     content: @Composable (topInset: Dp) -> Unit,
 ) {
-    val barShown = !hostCallOverlay && callWindow != null && callWindow.uiState.collectAsStateWithLifecycle().value.inProgress
+    val barShown = !hostCallOverlay && callWindow != null && ongoingCallBarVisible(callWindow.uiState.collectAsStateWithLifecycle().value)
     Column(Modifier.fillMaxSize()) {
         if (!hostCallOverlay && callWindow != null) OngoingCallBarHost(callWindow, topInset = topInset)
         Box(Modifier.weight(1f).fillMaxWidth()) {
