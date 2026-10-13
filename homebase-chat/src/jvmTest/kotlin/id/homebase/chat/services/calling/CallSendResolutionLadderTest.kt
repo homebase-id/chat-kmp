@@ -7,6 +7,7 @@ import dev.onvoid.webrtc.RTCIceCandidate
 import dev.onvoid.webrtc.RTCRtpSender
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule
 import dev.onvoid.webrtc.media.video.CustomVideoSource
+import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -70,4 +71,15 @@ class CallSendResolutionLadderTest {
     }
 
     private fun RTCRtpSender.scale() = parameters.encodings.single().scaleResolutionDownBy
+
+    // encoder-stall Redmi: the quality scaler's 960x540 at the 480 rung's 2.25 became 427x240, which MediaCodec refused.
+    @Test
+    fun theOddSizesLibwebrtcDerivesFromTheLaddersScalesAreRoundedDownToEven() {
+        val scaled = (960 / 2.25).roundToInt()
+
+        assertEquals(427, scaled)
+        assertEquals(426, evenFloor(scaled))
+        assertEquals(240, evenFloor(240))
+        assertEquals(852, evenFloor((1920 / 2.25).roundToInt()))
+    }
 }

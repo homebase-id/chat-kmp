@@ -32,6 +32,9 @@ internal fun withH264SendLevel(sdp: String): String = profileLevelId.replace(sdp
 
 internal fun h264Levels(sdp: String): List<Int> = profileLevelId.findAll(sdp).map { it.groupValues[3].toInt(16) }.toList()
 
+/** The largest even value not above [n]: Android's MediaCodec encoders reject an odd frame dimension. */
+internal fun evenFloor(n: Int): Int = n and 1.inv()
+
 // Short side of each rung and the target bitrate it needs; the last rung is the 480p floor.
 private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 480 to 0)
 
