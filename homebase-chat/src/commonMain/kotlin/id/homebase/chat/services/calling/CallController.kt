@@ -28,7 +28,6 @@ class CallController(
     private val signaling: CallSignaling,
     private val engineFactory: CallEngineFactory,
     private val scope: CoroutineScope,
-    private val selfLabel: String = selfOdinId,
     private val stunUrls: () -> List<String> = { emptyList() },
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
@@ -124,24 +123,20 @@ class CallController(
     fun startCall(peer: String, video: Boolean, callId: String) = post(CallEvent.UserCall(callId, peer, video))
 
     override fun accept() = post(CallEvent.UserAccept)
-    override fun decline() {
-        log.i(Throwable("decline() requested")) { "decline requested in ${_state.value.phase} call=${_state.value.callId}" }
-        post(CallEvent.UserDecline)
-    }
-
-    override fun hangup() {
-        log.i(Throwable("hangup() requested")) { "hangup requested in ${_state.value.phase} call=${_state.value.callId}" }
-        post(CallEvent.UserHangup)
-    }
+    override fun decline() = post(CallEvent.UserDecline)
+    override fun hangup() = post(CallEvent.UserHangup)
     override fun setMuted(muted: Boolean) = post(CallEvent.SetMuted(muted))
     override fun setVideo(on: Boolean) = post(CallEvent.SetVideo(on))
     override fun switchCamera() = post(CallEvent.SwitchCamera)
     override fun setAudioRoute(route: AudioRoute) = post(CallEvent.SetRoute(route))
     fun onPermissionDenied() = post(CallEvent.EngineError(FailReason.Permission))
 
-    fun onPushRing(callId: String, from: String) = post(CallEvent.PushRing(callId, from))
-    fun pushRing(callId: String, from: String): Deferred<CallState> =
-        CompletableDeferred<CallState>().also { inbox.trySend(Command.Event(CallEvent.PushRing(callId, from), it)) }
+    /** Completes once the ring is processed; cancelled if this controller is closed first. */
+    fun pushRing(callId: String, from: String, sentAtMs: Long = 0): Deferred<CallState> {
+        val processed = CompletableDeferred<CallState>()
+        if (!enqueue(CallEvent.PushRing(callId, from, sentAtMs), processed)) processed.cancel()
+        return processed
+    }
 
     fun onPushHangup(callId: String) = post(CallEvent.PushHangup(callId))
 
@@ -179,31 +174,31 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
-        val outbound = CallChannel.outbound(peer, signal, selfLabel)
+        val outbound = CallChannel.outbound(peer, signal)
         log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
         signaling.send(outbound)
     }
 
-    // While reconnecting the lost network is the expected cause; the next Reconnect tick resends and its timeout ends the call.
-    private suspend fun sendUnlessOffline(peer: String, signal: CallSignal, state: CallState) {
-        if (state.phase != CallPhase.Reconnecting) return send(peer, signal)
+    // Only the offer and the answer are load-bearing: every other signal is resent, superseded or covered by a timeout
+    // (ring, connect, reconnect), and a cold push wake often posts before the network is up.
+    private suspend fun sendBestEffort(peer: String, signal: CallSignal) {
         try {
             send(peer, signal)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            log.w(e) { "${describe(signal)} call=${signal.callId} not sent while reconnecting; next tick retries" }
+            log.w(e) { "${describe(signal)} call=${signal.callId} not sent" }
         }
     }
 
-    // Telling the callee's other devices to stop ringing must never fail the call this device just took or declined.
-    private suspend fun sendToSiblings(peer: String, signal: CallSignal, state: CallState) {
+    // A single unusable remote candidate (unresolvable mDNS, a transport the engine lacks) is routine; ICE uses the rest.
+    private suspend fun addIce(engine: CallEngine, ice: CallEffect.AddIce) {
         try {
-            send(peer, signal)
+            engine.addIce(ice.candidate, ice.sdpMid, ice.sdpMLineIndex)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            log.w(e) { "${describe(signal)} call=${signal.callId} not delivered to sibling devices" }
+            log.w(e) { "remote candidate rejected: ${ice.candidate}" }
         }
     }
 
@@ -253,9 +248,7 @@ class CallController(
     private suspend fun run(effect: CallEffect, state: CallState) {
         try {
             when (effect) {
-                is CallEffect.SendSignal ->
-                    if ((effect.signal as? CallSignal.Hangup)?.reason?.isElsewhere == true) sendToSiblings(effect.peer, effect.signal, state)
-                    else sendUnlessOffline(effect.peer, effect.signal, state)
+                is CallEffect.SendSignal -> sendBestEffort(effect.peer, effect.signal)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
                     offerSdp = sdp
@@ -289,15 +282,16 @@ class CallController(
                 CallEffect.RestartIce -> {
                     // Resend the unanswered offer: a fresh one would orphan an answer already in flight for it.
                     val sdp = restartOfferSdp ?: engine().restartIce().also { restartOfferSdp = it }
-                    sendUnlessOffline(state.peer!!, CallSignal.Restart(state.callId!!, sdp), state)
+                    sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
                 }
                 is CallEffect.AnswerRestart -> {
                     val sdp = engine().answerRestart(effect.offerSdp)
-                    sendUnlessOffline(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp), state)
+                    sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
-                is CallEffect.AddIce ->
-                    if (remoteReady) engine?.addIce(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
-                    else bufferedIce += effect
+                is CallEffect.AddIce -> {
+                    val current = engine
+                    if (!remoteReady) bufferedIce += effect else if (current != null) addIce(current, effect)
+                }
                 is CallEffect.SetMuted -> engine?.setMuted(effect.muted)
                 is CallEffect.SetVideo -> engine?.setVideo(effect.on)
                 CallEffect.SwitchCamera -> engine?.switchCamera()
@@ -337,14 +331,8 @@ class CallController(
         if (sdp == publishedOfferSdp) return
         publishedOfferSdp = sdp
         offerSeq++
-        try {
-            log.i { "republishing offer call=$callId seq=$offerSeq candidates=${held.size}" }
-            send(s.peer!!, CallSignal.Offer(callId, sdp, offerVideo, offerSeq))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log.w(e) { "offer republish call=$callId seq=$offerSeq failed" }
-        }
+        log.i { "republishing offer call=$callId seq=$offerSeq candidates=${held.size}" }
+        sendBestEffort(s.peer!!, CallSignal.Offer(callId, sdp, offerVideo, offerSeq))
         if (heldIce.size > publishedIce) scheduleOfferRepublish(callId)
     }
 
@@ -356,7 +344,7 @@ class CallController(
         publishedIce = 0
         if (pending.isEmpty()) return
         log.i { "answer selected a device: trickling ${pending.size} held candidates call=${state.callId}" }
-        for (c in pending) send(state.peer!!, CallSignal.Ice(state.callId!!, c.candidate, c.sdpMid, c.sdpMLineIndex))
+        for (c in pending) sendBestEffort(state.peer!!, CallSignal.Ice(state.callId!!, c.candidate, c.sdpMid, c.sdpMLineIndex))
     }
 
     private fun announceVerification(callId: String) {
@@ -368,7 +356,8 @@ class CallController(
         remoteReady = true
         val pending = bufferedIce.toList()
         bufferedIce.clear()
-        pending.forEach { engine?.addIce(it.candidate, it.sdpMid, it.sdpMLineIndex) }
+        val current = engine ?: return
+        pending.forEach { addIce(current, it) }
     }
 
     private fun startTimer(timer: CallTimer, callId: String) {

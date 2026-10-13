@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver
 import dev.onvoid.webrtc.PeerConnectionFactory
@@ -28,11 +31,8 @@ import java.util.Timer
 import kotlin.concurrent.timerTask
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 
@@ -41,8 +41,8 @@ class WebRtcJavaCallEngine(
     stunUrls: List<String>,
     audioDevice: AudioDeviceModuleBase? = null,
 ) : CallEngine {
-    private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
-    override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
+    private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
+    override val events: Flow<MediaEvent> = _events.receiveAsFlow()
 
     private val _local = MutableStateFlow<VideoHandle?>(null)
     private val _remote = MutableStateFlow<VideoHandle?>(null)
@@ -63,7 +63,7 @@ class WebRtcJavaCallEngine(
     private var remoteFrames: JvmVideoHandle? = null
     private var remoteTrack: VideoTrack? = null
     private var cameraIndex = 0
-    private val mapper = PeerEventMapper { _events.tryEmit(it) }
+    private val mapper = PeerEventMapper { _events.trySend(it) }
 
     // Native callbacks arrive on WebRTC threads; the lock keeps close() from disposing the connection under a live call.
     internal val lock = Any()

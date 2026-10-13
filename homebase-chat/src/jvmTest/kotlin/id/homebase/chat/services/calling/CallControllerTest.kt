@@ -134,7 +134,7 @@ class CallControllerTest {
         b.controller.accept()
         advanceTimeBy(1_001)
 
-        net.endpoint(sam).send(CallChannel.outbound(frodo, CallSignal.Hangup("another-call", HangupReason.Normal), sam))
+        net.endpoint(sam).send(CallChannel.outbound(frodo, CallSignal.Hangup("another-call", HangupReason.Normal)))
         runCurrent()
 
         assertEquals(CallPhase.Connecting, a.phase)
@@ -657,7 +657,7 @@ class CallControllerTest {
     @Test
     fun pushRingAndSocketOfferCollapseIntoOneIncomingCall() = runTest {
         val (net, a, b) = pair()
-        b.controller.onPushRing("pushed", frodo)
+        b.controller.pushRing("pushed", frodo)
         runCurrent()
         assertEquals(CallPhase.Incoming, b.phase)
         a.controller.startCall(sam, video = false, callId = "pushed")

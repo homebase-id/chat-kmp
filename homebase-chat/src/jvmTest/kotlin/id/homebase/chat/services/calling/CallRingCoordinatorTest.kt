@@ -30,7 +30,7 @@ class CallRingCoordinatorTest {
         override fun ring(callId: String, label: String) { events += "ring:$callId:$label" }
         override fun stopRinging(callId: String) { events += "stop:$callId" }
         override fun connected(callId: String) { events += "connected:$callId" }
-        override fun ended(callId: String) { events += "ended:$callId" }
+        override fun ended(callId: String, reason: CallEndReason) { events += "ended:$callId" }
         override fun setLive(live: Boolean, video: Boolean, callId: String?) { events += "live:$live:$callId" }
         val ringing: Boolean
             get() = events.lastOrNull { it.startsWith("ring:") || it.startsWith("stop:") }?.startsWith("ring:") == true
@@ -49,7 +49,7 @@ class CallRingCoordinatorTest {
         )
         val coordinator = CallRingCoordinator(
             target = object : CallPushTarget {
-                override fun onPushRing(callId: String, from: String) = controller.onPushRing(callId, from)
+                override fun pushRing(callId: String, from: String, sentAtMs: Long) = controller.pushRing(callId, from, sentAtMs)
                 override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
             },
             state = controller.state,

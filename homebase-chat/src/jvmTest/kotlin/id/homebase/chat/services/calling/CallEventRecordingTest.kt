@@ -30,7 +30,7 @@ class CallEventRecordingTest {
 
         init {
             scope.backgroundScope.launch {
-                recordCallEvents(controller.state, { scope.testScheduler.currentTime }) { peer, event -> recorded += peer to event }
+                recordCallEvents(controller.state) { peer, event -> recorded += peer to event }
             }
         }
     }
@@ -139,7 +139,7 @@ class CallEventRecordingTest {
         )
         val states = MutableStateFlow(ended)
         val recorded = mutableListOf<CallEventDescriptor>()
-        backgroundScope.launch { recordCallEvents(states, { 0L }) { _, e -> recorded += e } }
+        backgroundScope.launch { recordCallEvents(states) { _, e -> recorded += e } }
         runCurrent()
         states.value = ended.copy(quality = CallQuality.Poor)
         runCurrent()
@@ -154,7 +154,7 @@ class CallEventRecordingTest {
         val states = MutableStateFlow(CallState())
         val recorded = mutableListOf<String>()
         backgroundScope.launch {
-            recordCallEvents(states, { 0L }) { _, e -> if (recorded.isEmpty()) { recorded += "boom"; error("send failed") } else recorded += e.outcome.name }
+            recordCallEvents(states) { _, e -> if (recorded.isEmpty()) { recorded += "boom"; error("send failed") } else recorded += e.outcome.name }
         }
         val base = CallState(callId = "c1", peer = sam, direction = CallDirection.Outgoing)
         states.value = base.copy(phase = CallPhase.Ended(CallEndReason.Declined))

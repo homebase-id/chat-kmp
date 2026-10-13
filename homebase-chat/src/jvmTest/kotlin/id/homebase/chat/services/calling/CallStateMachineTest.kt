@@ -34,9 +34,9 @@ class CallStateMachineTest {
 
     private fun hangupEffects(reason: HangupReason?, self: HangupReason? = null) = buildList {
         add(CallEffect.CancelTimers)
+        add(CallEffect.ReleaseEngine)
         if (reason != null) add(CallEffect.SendSignal(sam, CallSignal.Hangup(c, reason)))
         if (self != null) add(CallEffect.SendSignal(frodo, CallSignal.Hangup(c, self)))
-        add(CallEffect.ReleaseEngine)
     }
 
     private fun assertEnds(t: CallTransition, reason: CallEndReason, notify: HangupReason?, self: HangupReason? = null) {
@@ -124,8 +124,8 @@ class CallStateMachineTest {
         assertEquals(
             listOf(
                 CallEffect.CancelTimers,
-                CallEffect.SendSignal(frodo, CallSignal.Hangup("c-sam", HangupReason.Normal)),
                 CallEffect.ReleaseEngine,
+                CallEffect.SendSignal(frodo, CallSignal.Hangup("c-sam", HangupReason.Cancelled)),
                 CallEffect.CreateAnswer("sdp", false),
                 CallEffect.StartTimer(CallTimer.Connect, c),
             ),
@@ -160,7 +160,7 @@ class CallStateMachineTest {
         assertEquals(CallPhase.Ended(CallEndReason.Declined), t.state.phase)
         assertTrue(CallEffect.SendSignal(sam, CallSignal.Hangup(c, HangupReason.DeclinedElsewhere)) in t.effects)
         val busy = machine.step(outgoing, CallEvent.Signal(InboundSignal(sam, CallSignal.Hangup(c, HangupReason.Busy), 1_000)))
-        assertTrue(busy.effects.none { it is CallEffect.SendSignal })
+        assertTrue(CallEffect.SendSignal(sam, CallSignal.Hangup(c, HangupReason.Cancelled)) in busy.effects)
     }
 
     @Test
@@ -186,7 +186,7 @@ class CallStateMachineTest {
     fun remoteHangupInEveryPhase() {
         fun hang(reason: HangupReason = HangupReason.Normal) = fromSam(CallSignal.Hangup(c, reason))
         assertEnds(machine.step(outgoing, hang(HangupReason.Declined)), CallEndReason.Declined, HangupReason.DeclinedElsewhere)
-        assertEnds(machine.step(outgoing, hang(HangupReason.Busy)), CallEndReason.Busy, null)
+        assertEnds(machine.step(outgoing, hang(HangupReason.Busy)), CallEndReason.Busy, HangupReason.Cancelled)
         assertEnds(machine.step(incoming, hang(HangupReason.Cancelled)), CallEndReason.Cancelled, null)
         assertEnds(machine.step(incoming, hang(HangupReason.Missed)), CallEndReason.Missed, null)
         listOf(connecting, connected, reconnecting).forEach {
@@ -411,13 +411,59 @@ class CallStateMachineTest {
     }
 
     @Test
-    fun glareYieldNeverTriggersAMissedCallPush() {
+    fun glareYieldRetractsTheRingOnThePeersOtherDevices() {
         val samMachine = CallStateMachine(sam)
         val out = samMachine.step(idle, CallEvent.UserCall("c-sam", frodo, false)).state
         val yielded = samMachine.step(out, signal(frodo, CallSignal.Offer(c, "sdp", true)))
         val hangup = yielded.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().single()
-        assertNull(CallChannel.outbound(frodo, hangup, "sam").push)
-        assertNull(CallChannel.outbound(frodo, CallSignal.Hangup("c-sam", HangupReason.Busy), "sam").push)
+        assertEquals(CallPushKind.Hangup, CallChannel.outbound(frodo, hangup).push?.kind)
+        assertNull(CallChannel.outbound(frodo, CallSignal.Hangup("c-sam", HangupReason.Busy)).push)
+    }
+
+    @Test
+    fun glareYieldCarriesMuteCameraAndRouteOntoTheAnsweringEngine() {
+        val samMachine = CallStateMachine(sam)
+        var out = samMachine.step(idle, CallEvent.UserCall("c-sam", frodo, true)).state
+        out = samMachine.step(out, CallEvent.SetMuted(true)).state
+        out = samMachine.step(out, CallEvent.SwitchCamera).state
+        out = samMachine.step(out, CallEvent.SetRoute(AudioRoute.Speaker)).state
+        val effects = samMachine.step(out, signal(frodo, CallSignal.Offer(c, "sdp", true))).effects
+        val answerAt = effects.indexOf(CallEffect.CreateAnswer("sdp", true))
+        assertTrue(answerAt >= 0)
+        assertEquals(
+            listOf(CallEffect.SetMuted(true), CallEffect.SwitchCamera, CallEffect.SetRoute(AudioRoute.Speaker)),
+            effects.subList(answerAt + 1, answerAt + 4),
+        )
+    }
+
+    @Test
+    fun endingReleasesCameraAndMicBeforeTheHangupIsSent() {
+        val effects = machine.step(connected, CallEvent.UserHangup).effects
+        assertTrue(effects.indexOf(CallEffect.ReleaseEngine) < effects.indexOfFirst { it is CallEffect.SendSignal })
+    }
+
+    @Test
+    fun anAcceptBeforeTheOfferAnswersWithTheCameraOff() {
+        val pushed = machine.step(idle, CallEvent.PushRing(c, sam)).state
+        val accepted = machine.step(pushed, CallEvent.UserAccept).state
+        val t = machine.step(accepted, fromSam(CallSignal.Offer(c, "video-offer", true)), now = 0)
+        assertEquals(false, t.state.media.localVideo)
+        assertTrue(CallEffect.CreateAnswer("video-offer", false) in t.effects)
+    }
+
+    @Test
+    fun aRingPushOlderThanTheRingTimeoutIsDropped() {
+        val sentAt = 1_000L
+        assertNoOp(idle, CallEvent.PushRing(c, sam, sentAt), now = sentAt + RING_TIMEOUT_MS + 1)
+        assertEquals(CallPhase.Incoming, machine.step(idle, CallEvent.PushRing(c, sam, sentAt), now = sentAt + 5_000).state.phase)
+        assertEquals(CallPhase.Incoming, machine.step(idle, CallEvent.PushRing(c, sam), now = 10 * RING_TIMEOUT_MS).state.phase)
+    }
+
+    @Test
+    fun theEndTimeIsStampedOnceWhenTheCallEnds() {
+        val endedAt = machine.step(connected, CallEvent.UserHangup, now = 9_000).state
+        assertEquals(9_000, endedAt.endedAtMs)
+        assertEquals(9_000, machine.step(endedAt, CallEvent.UserHangup, now = 12_000).state.endedAtMs)
     }
 
     @Test

@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
 import com.shepeliev.webrtckmp.IceCandidate
 import com.shepeliev.webrtckmp.FacingMode
@@ -29,11 +32,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
@@ -53,8 +53,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val router = CallAudioRouter()
 
-    private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
-    override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
+    private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
+    override val events: Flow<MediaEvent> = _events.receiveAsFlow()
 
     private val _local = MutableStateFlow<VideoHandle?>(null)
     private val _remote = MutableStateFlow<VideoHandle?>(null)
@@ -75,7 +75,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private var videoTrack: VideoTrack? = null
     private var videoSender: RtpSender? = null
     private val closed = AtomicBoolean(false)
-    private val mapper = PeerEventMapper { _events.tryEmit(it) }
+    private val mapper = PeerEventMapper { _events.trySend(it) }
     private val stopPipelineWatch = watchVideoPipeline()
 
     init {
@@ -128,7 +128,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private suspend fun addLocalMedia(video: Boolean) {
         if (closed.load()) throw CallEngineException(FailReason.Other, "engine closed")
         if (stream != null) return
-        _events.tryEmit(MediaEvent.RouteChanged(router.start(video)))
+        _events.trySend(MediaEvent.RouteChanged(router.start(video)))
         val media = try {
             MediaDevices.getUserMedia {
                 audio(true)
