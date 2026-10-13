@@ -69,6 +69,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
@@ -157,7 +158,8 @@ import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
 import id.homebase.resources.profile_card_design_links
 import id.homebase.resources.profile_card_design_poster
-import id.homebase.resources.profile_card_edit
+import id.homebase.resources.edit
+import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
@@ -233,10 +235,11 @@ fun ProfileCardScreen(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
 ) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
     IntroViewerSwitch(viewModel = viewModel, onBack = onBack) { onClose ->
-        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit)
+        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
     }
 }
 
@@ -279,6 +282,7 @@ private fun ProfileCardViewer(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
@@ -437,6 +441,7 @@ private fun ProfileCardViewer(
                     canReset = uiState.canReset,
                     onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
                     onEdit = onEdit,
+                    onChangeDesign = onChangeDesign,
                     onReset = viewModel::onResetCardConfirmed,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
                 )
@@ -500,6 +505,7 @@ internal fun BoxScope.CardBottomChrome(
     canReset: Boolean,
     onShare: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
     onReset: () -> Unit,
     extraActions: @Composable () -> Unit,
 ) {
@@ -518,7 +524,7 @@ internal fun BoxScope.CardBottomChrome(
             .height(TOOLBAR_BAND_HEIGHT),
         contentAlignment = Alignment.Center,
     ) {
-        // One toolbar: the quick actions as icons, Edit as its labelled, filled lead action.
+        // One toolbar: the quick actions as icons, Edit and Change design as its labelled lead actions.
         HorizontalFloatingToolbar(
             expanded = true,
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
@@ -549,11 +555,13 @@ internal fun BoxScope.CardBottomChrome(
             }
             Spacer(Modifier.width(4.dp))
             // Read-only keeps the slot but turns quiet, so nothing promises an edit that can't be kept.
+            // Weighted without fill, a narrow screen or large text ellipsises the labels instead of clipping them.
             AnimatedContent(
                 targetState = readOnly,
                 transitionSpec = {
                     fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
                 },
+                modifier = Modifier.weight(1f, fill = false),
             ) { locked ->
                 if (locked) {
                     FilledTonalButton(
@@ -572,14 +580,26 @@ internal fun BoxScope.CardBottomChrome(
                         )
                     }
                 } else {
-                    Button(
-                        onClick = onEdit,
-                        shapes = ButtonDefaults.shapes(),
-                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
-                    ) {
-                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(MR.string.profile_card_edit), maxLines = 1)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onEdit,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                        ) {
+                            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                            Text(stringResource(MR.string.edit), maxLines = 1)
+                        }
+                        FilledTonalButton(
+                            onClick = onChangeDesign,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                            modifier = Modifier.weight(1f, fill = false),
+                        ) {
+                            Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                            Text(stringResource(MR.string.profile_card_design_action), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 }
             }

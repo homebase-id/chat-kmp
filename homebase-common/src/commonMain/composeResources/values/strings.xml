@@ -2370,8 +2370,7 @@
     <string name="profile_card_error">Couldn't show your card.</string>
     <string name="profile_card_share_failed">Couldn't create the card image.</string>
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
-    <string name="profile_card_edit">Edit card</string>
-    <string name="profile_card_change_design">Change design</string>
+    <string name="profile_card_design_action">Design</string>
     <string name="profile_card_content_on_card">On this card</string>
     <string name="profile_card_content_could_add">Also on your profile</string>
     <string name="profile_card_content_every_card">On every card</string>

@@ -1637,7 +1637,7 @@ fun AppNavHost(
                                             navController.navigate(Route.ContactBookSettings)
                                         },
                                         onProfileEdit = {
-                                            navController.navigate(Route.ProfileCardEditor)
+                                            navController.navigate(Route.ProfileCardEditor())
                                         },
                                         onProfileAvatarEdit = {
                                             navController.navigate(Route.ProfileAvatarEdit)
@@ -1657,7 +1657,8 @@ fun AppNavHost(
                                         viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                     ),
                                     onBack = { navController.popBackStack() },
-                                    onEdit = { navController.navigate(Route.ProfileCardEditor) },
+                                    onEdit = { navController.navigate(Route.ProfileCardEditor()) },
+                                    onChangeDesign = { navController.navigate(Route.ProfileCardEditor(design = true)) },
                                 )
                             }
                         }
@@ -1674,6 +1675,7 @@ fun AppNavHost(
                                         navController.navigate(Route.Crop(requestId.toString(), lockedAspect = "square"))
                                     },
                                     cardsEnabled = profileCardEnabled,
+                                    openDesign = entry.toRoute<Route.ProfileCardEditor>().design,
                                 )
                             }
                         }

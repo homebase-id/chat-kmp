@@ -414,6 +414,7 @@ class ProfileCardEditorShotsTest {
                         canReset = state.canReset,
                         onShare = {},
                         onEdit = {},
+                        onChangeDesign = {},
                         onReset = {},
                         extraActions = {},
                     )
@@ -475,7 +476,6 @@ class ProfileCardEditorShotsTest {
                             mode = shot.mode,
                             photo = shot.photo,
                             showCard = shot.showCard,
-                            onChangeDesign = if (shot.showCard) ({}) else null,
                             step = step,
                             onStep = { step = it },
                             onBack = { step = EditorStep.Design },

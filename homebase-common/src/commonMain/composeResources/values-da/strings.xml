@@ -1792,8 +1792,7 @@
     <string name="profile_card_error">Kunne ikke vise dit kort.</string>
     <string name="profile_card_share_failed">Kunne ikke lave kortbilledet.</string>
     <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
-    <string name="profile_card_edit">Rediger kort</string>
-    <string name="profile_card_change_design">Skift design</string>
+    <string name="profile_card_design_action">Design</string>
     <string name="profile_card_content_on_card">På dette kort</string>
     <string name="profile_card_content_could_add">Også på din profil</string>
     <string name="profile_card_content_every_card">På alle kort</string>

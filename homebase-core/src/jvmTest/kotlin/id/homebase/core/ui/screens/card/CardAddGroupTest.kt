@@ -48,7 +48,6 @@ class CardAddGroupTest {
                     onChangePhoto = {},
                     onRemovePhoto = {},
                     onImport = {},
-                    onChangeDesign = {},
                 )
             }
         }

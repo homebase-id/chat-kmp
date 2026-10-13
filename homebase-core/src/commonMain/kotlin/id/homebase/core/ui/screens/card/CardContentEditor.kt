@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,11 +23,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,7 +65,6 @@ import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_remove
-import id.homebase.resources.profile_card_change_design
 import id.homebase.resources.profile_card_content_could_add
 import id.homebase.resources.profile_card_content_name_required
 import id.homebase.resources.profile_card_content_required_hint
@@ -134,7 +130,6 @@ internal fun CardContentEditor(
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
-    onChangeDesign: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     var editingId by remember { mutableStateOf<Uuid?>(null) }
@@ -170,23 +165,12 @@ internal fun CardContentEditor(
         AudienceHeading(card)
         Spacer(Modifier.height(16.dp))
         PhotoRow(card = card, photo = photo, onChange = onChangePhoto, onRemove = onRemovePhoto)
-        if (onChangeDesign != null || importSources.isNotEmpty()) {
+        if (importSources.isNotEmpty()) {
             Spacer(Modifier.height(16.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (onChangeDesign != null) {
-                    FilledTonalButton(onClick = onChangeDesign, shapes = ButtonDefaults.shapes()) {
-                        Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(MR.string.profile_card_change_design), maxLines = 1)
-                    }
-                }
-                if (importSources.isNotEmpty()) {
-                    OutlinedButton(onClick = { copying = true }, enabled = enabled, shapes = ButtonDefaults.shapes()) {
-                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
-                    }
-                }
+            OutlinedButton(onClick = { copying = true }, enabled = enabled, shapes = ButtonDefaults.shapes()) {
+                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
             }
         }
         if (everyCard.isNotEmpty()) {

@@ -83,6 +83,7 @@ internal fun SettingsPaneHost(
     var category by remember { mutableStateOf(SettingsCategory.General) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
     var editorOpenedFromCard by remember { mutableStateOf(false) }
+    var editorOpensDesign by remember { mutableStateOf(false) }
     // Pre-warms the card page; its host lives as long as the Settings entry.
     val cardViewModel = if (profileCardEnabled) koinViewModel<ProfileCardViewModel>() else null
     cardViewModel?.let { StartCardHostWhenSettled(it) }
@@ -147,6 +148,7 @@ internal fun SettingsPaneHost(
                             onSelectCategory = { category = it },
                             onProfileEdit = {
                                 editorOpenedFromCard = false
+                                editorOpensDesign = false
                                 profilePage = ProfilePage.CardEditor
                             },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
@@ -172,6 +174,12 @@ internal fun SettingsPaneHost(
                                     onBack = { profilePage = null },
                                     onEdit = {
                                         editorOpenedFromCard = true
+                                        editorOpensDesign = false
+                                        profilePage = ProfilePage.CardEditor
+                                    },
+                                    onChangeDesign = {
+                                        editorOpenedFromCard = true
+                                        editorOpensDesign = true
                                         profilePage = ProfilePage.CardEditor
                                     },
                                 )
@@ -184,6 +192,7 @@ internal fun SettingsPaneHost(
                                 onBack = { profilePage = if (editorOpenedFromCard) ProfilePage.Card else null },
                                 onNavigateToCropper = actions.onNavigateToCropper,
                                 cardsEnabled = profileCardEnabled,
+                                openDesign = editorOpensDesign,
                             )
                         }
                     }

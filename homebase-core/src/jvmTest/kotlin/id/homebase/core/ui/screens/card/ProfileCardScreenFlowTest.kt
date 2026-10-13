@@ -126,7 +126,7 @@ class ProfileCardScreenFlowTest {
     }
 
     @Test
-    fun editOnTheFriendsCardOpensTheContentEditorAndChangeDesignReachesTheFivePicker() {
+    fun editOpensTheContentEditorAndChangeDesignOpensThePickerForTheSelectedCard() {
         val fixtures = ProfileCardViewModelTest()
         val wire = CardWireHarness()
         wire.seed(
@@ -152,25 +152,22 @@ class ProfileCardScreenFlowTest {
             val viewModel = ProfileCardViewModel(source) { error("the JVM WebView slot is not part of this flow") }
             setContent {
                 HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
-                    var editing by remember { mutableStateOf(false) }
+                    var opened by remember { mutableStateOf<EditorMode?>(null) }
                     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                     Box(Modifier.fillMaxSize()) {
-                        if (editing) {
-                            val editorState by viewModel.uiState.collectAsStateWithLifecycle()
-                            var mode by remember { mutableStateOf(EditorMode.Content) }
-                            var step by remember { mutableStateOf(EditorStep.Design) }
+                        val mode = opened
+                        if (mode != null) {
                             LaunchedEffect(mode) { if (mode == EditorMode.Design) viewModel.onEditorOpened() }
                             ProfileCardEditorContent(
-                                uiState = editorState,
+                                uiState = uiState,
                                 mode = mode,
-                                step = step,
-                                onStep = { step = it },
-                                onBack = { if (mode == EditorMode.Design) mode = EditorMode.Content else editing = false },
+                                step = EditorStep.Design,
+                                onStep = {},
+                                onBack = { opened = null },
                                 onSelect = viewModel::onDesignPicked,
                                 onOption = viewModel::onOptionSelected,
                                 onBlockOrder = viewModel::onBlockOrderChanged,
                                 onSave = viewModel::onSaveDesign,
-                                onChangeDesign = { mode = EditorMode.Design },
                                 onContentToggle = viewModel::onContentToggled,
                                 onContentEdit = viewModel::onContentEdited,
                                 onContentAdd = viewModel::onContentAdded,
@@ -186,7 +183,8 @@ class ProfileCardScreenFlowTest {
                                 showsReset = false,
                                 canReset = false,
                                 onShare = {},
-                                onEdit = { editing = true },
+                                onEdit = { opened = EditorMode.Content },
+                                onChangeDesign = { opened = EditorMode.Design },
                                 onReset = {},
                                 extraActions = {},
                             )
@@ -198,22 +196,26 @@ class ProfileCardScreenFlowTest {
             viewModel.onCardOpened(friends)
             waitUntil(timeoutMillis = 10_000) { viewModel.uiState.value.selectedAudience == friends }
 
-            onNodeWithText("Edit card").performClick()
+            onNodeWithText("Edit").performClick()
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Shown to Friends").fetchSemanticsNodes().isNotEmpty() }
             onAllNodesWithText("Choose a design").assertCountEquals(0)
-            onNodeWithText("Change design").assertExists()
+            onAllNodesWithText("Design").assertCountEquals(0)
             onNodeWithText("Edit profile").assertExists()
             onNodeWithContentDescription("Card to edit").assertExists()
             assertTrue(onAllNodes(hasContentDescription("Hide ", substring = true)).fetchSemanticsNodes().isNotEmpty())
             onNodeWithContentDescription("Show frodo@shire.me on this card").assertExists()
 
-            onNodeWithText("Change design").performClick()
+            onNodeWithContentDescription("Back").performClick()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Design").fetchSemanticsNodes().isNotEmpty() }
+
+            onNodeWithText("Design").performClick()
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Choose a design").fetchSemanticsNodes().isNotEmpty() }
             onAllNodesWithText("Shown to Friends").assertCountEquals(0)
             onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)).assertCountEquals(5)
+            assertEquals(friends, viewModel.uiState.value.selectedAudience)
 
             onNodeWithContentDescription("Back").performClick()
-            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Shown to Friends").fetchSemanticsNodes().isNotEmpty() }
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Design").fetchSemanticsNodes().isNotEmpty() }
             onAllNodesWithText("Choose a design").assertCountEquals(0)
         }
     }

@@ -201,6 +201,8 @@ fun ProfileCardEditorScreen(
     onNavigateToCropper: (Uuid) -> Unit,
     // Off, it edits the profile behind the cards without drawing or designing one.
     cardsEnabled: Boolean = true,
+    // Opened straight on the design picker, back leaves the editor instead of stepping to the content list.
+    openDesign: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
@@ -232,7 +234,7 @@ fun ProfileCardEditorScreen(
         viewModel.onPreviewDiscarded()
         onBack()
     }
-    var mode by rememberSaveable { mutableStateOf(EditorMode.Content) }
+    var mode by rememberSaveable { mutableStateOf(if (openDesign && cardsEnabled) EditorMode.Design else EditorMode.Content) }
     var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
     var designOpened by remember { mutableStateOf(false) }
     LaunchedEffect(mode) {
@@ -250,17 +252,18 @@ fun ProfileCardEditorScreen(
         step = EditorStep.Design
         mode = EditorMode.Content
     }
+    val closeDesign = if (openDesign) leave else backToContent
     val requestBack = {
         when {
             mode == EditorMode.Content -> leave()
             step == EditorStep.Customise -> step = EditorStep.Design
             uiState.hasUnsavedChanges && !uiState.isSavingDesign -> confirmDiscard = true
-            else -> backToContent()
+            else -> closeDesign()
         }
     }
     @Suppress("DEPRECATION") BackHandler { requestBack() }
     if (confirmDiscard) {
-        DiscardDialog(onKeep = { confirmDiscard = false }, onDiscard = { confirmDiscard = false; backToContent() })
+        DiscardDialog(onKeep = { confirmDiscard = false }, onDiscard = { confirmDiscard = false; closeDesign() })
     }
 
     LaunchedEffect(viewModel) {
@@ -336,10 +339,6 @@ fun ProfileCardEditorScreen(
             onBlockOrder = viewModel::onBlockOrderChanged,
             onSave = viewModel::onSaveDesign,
             photo = photoUi,
-            onChangeDesign = {
-                step = EditorStep.Design
-                mode = EditorMode.Design
-            }.takeIf { cardsEnabled },
             showCard = cardsEnabled,
             onSelectCard = viewModel::onCardSelected,
             onRetryLoad = viewModel::onRetry,
@@ -411,7 +410,6 @@ internal fun ProfileCardEditorContent(
     snackbarHostState: SnackbarHostState,
     mode: EditorMode = EditorMode.Design,
     photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
-    onChangeDesign: (() -> Unit)? = {},
     showCard: Boolean = true,
     onSelectCard: (CardAudience) -> Unit = {},
     onRetryLoad: () -> Unit = {},
@@ -474,7 +472,6 @@ internal fun ProfileCardEditorContent(
                     onContentAdd = onContentAdd,
                     mode = mode,
                     photo = photo,
-                    onChangeDesign = onChangeDesign,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
                     onImport = onImport,
@@ -732,7 +729,6 @@ private fun EditorPanel(
     onContentAdd: (String, Map<String, String>) -> Unit,
     mode: EditorMode,
     photo: CardPhotoUi,
-    onChangeDesign: (() -> Unit)?,
     onChangePhoto: () -> Unit,
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
@@ -781,7 +777,6 @@ private fun EditorPanel(
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
                     onImport = onImport,
-                    onChangeDesign = onChangeDesign,
                 )
                 return@Column
             }

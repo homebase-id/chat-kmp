@@ -32,7 +32,7 @@ sealed class Route {
 
     @Serializable
     @SerialName("profile-card-editor")
-    data object ProfileCardEditor : Route()
+    data class ProfileCardEditor(val design: Boolean = false) : Route()
 
     @Serializable
     @SerialName("create-conversation")
