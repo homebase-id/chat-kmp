@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.card
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -157,7 +156,6 @@ class ProfileCardScreenFlowTest {
                     Box(Modifier.fillMaxSize()) {
                         val mode = opened
                         if (mode != null) {
-                            LaunchedEffect(mode) { if (mode == EditorMode.Design) viewModel.onEditorOpened() }
                             ProfileCardEditorContent(
                                 uiState = uiState,
                                 mode = mode,

@@ -64,12 +64,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,12 +88,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -137,8 +134,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.close
 import id.homebase.resources.profile_card_preview
-import id.homebase.resources.profile_card_access_allow_description
-import id.homebase.resources.profile_card_app_only
 import id.homebase.resources.profile_card_change_design_to
 import id.homebase.resources.profile_card_audience_editing
 import id.homebase.resources.profile_card_design_save_failed
@@ -169,7 +164,6 @@ import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
-private val APP_ONLY_LABEL_MIN_ROOM = 216.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val WIDE_PANEL_WIDTH = 440.dp
@@ -242,7 +236,6 @@ fun ProfileCardEditorScreen(
     LaunchedEffect(mode) {
         if (mode == EditorMode.Design) {
             designOpened = true
-            viewModel.onEditorOpened()
         } else if (designOpened) {
             designOpened = false
             viewModel.onEditorClosed()
@@ -353,7 +346,6 @@ fun ProfileCardEditorScreen(
             },
             onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
-            onRequestDesignAccess = viewModel::onPublishRetry,
             onContentToggle = viewModel::onContentToggled,
             onContentEdit = viewModel::onContentEdited,
             onContentDelete = viewModel::onContentDeleted,
@@ -374,7 +366,6 @@ fun ProfileCardEditorScreen(
                 skeleton = true,
             )
         }
-        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
         PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
         if (uiState.pendingImport != null) {
             ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
@@ -418,7 +409,6 @@ internal fun ProfileCardEditorContent(
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: () -> Unit = {},
     onImport: (CardAudience) -> Unit = {},
-    onRequestDesignAccess: () -> Unit = {},
     onContentToggle: (Uuid, Boolean) -> Unit = { _, _ -> },
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
     onContentDelete: (Uuid) -> Unit = {},
@@ -465,7 +455,6 @@ internal fun ProfileCardEditorContent(
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
-                    onAppOnly = onRequestDesignAccess,
                     onContentToggle = onContentToggle,
                     onContentEdit = onContentEdit,
                     onContentDelete = onContentDelete,
@@ -737,7 +726,6 @@ private fun EditorPanel(
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
-    onAppOnly: () -> Unit,
     onContentToggle: (Uuid, Boolean) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
     onContentDelete: (Uuid) -> Unit,
@@ -805,8 +793,6 @@ private fun EditorPanel(
                 design = design,
                 isSaving = isSaving,
                 canCustomise = !uiState.loadFailed,
-                showsAppOnly = uiState.showsAppOnlyTag,
-                onAppOnly = onAppOnly,
                 onStep = onStep,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
@@ -850,8 +836,6 @@ private fun StepHeader(
     design: String,
     isSaving: Boolean,
     canCustomise: Boolean,
-    showsAppOnly: Boolean,
-    onAppOnly: () -> Unit,
     onStep: (EditorStep) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -886,9 +870,7 @@ private fun StepHeader(
                 // The design's name is the way back to step one, so the step reads as "this design, adjusted".
                 EditorStep.Customise -> {
                     val description = stringResource(MR.string.profile_card_change_design_to, designName)
-                    BoxWithConstraints(Modifier.weight(1f)) {
-                        // Below this the label would squeeze the design's name, so the tag keeps only its icon.
-                        val tagLabelled = maxWidth >= APP_ONLY_LABEL_MIN_ROOM * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    Box(Modifier.weight(1f)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -914,13 +896,6 @@ private fun StepHeader(
                                 )
                                 Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
                                 ActionLabel(designName)
-                            }
-                            if (showsAppOnly) {
-                                AppOnlyTag(
-                                    labelled = tagLabelled,
-                                    onClick = { if (!isSaving) onAppOnly() },
-                                    modifier = Modifier.padding(start = 8.dp),
-                                )
                             }
                         }
                     }
@@ -1028,42 +1003,6 @@ private fun ReadOnlyCard(designName: String, modifier: Modifier = Modifier) {
             }
         }
     }
-}
-
-// Quiet on purpose: the app-only card is a choice the owner made, not an error, and the tag is the way back to the grant.
-@Composable
-private fun AppOnlyTag(labelled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val label = stringResource(MR.string.profile_card_app_only)
-    val action = stringResource(MR.string.profile_card_access_allow_description)
-    val colors = MaterialTheme.colorScheme
-    val semantics = Modifier.semantics {
-        contentDescription = label
-        onClick(label = action) { onClick(); true }
-    }
-    if (!labelled) {
-        IconButton(onClick = onClick, modifier = modifier.then(semantics)) {
-            Icon(
-                Icons.Outlined.Info,
-                contentDescription = null,
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(AssistChipDefaults.IconSize),
-            )
-        }
-        return
-    }
-    AssistChip(
-        onClick = onClick,
-        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = {
-            Icon(Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize))
-        },
-        colors = AssistChipDefaults.assistChipColors(
-            labelColor = colors.onSurfaceVariant,
-            leadingIconContentColor = colors.onSurfaceVariant,
-        ),
-        border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = colors.outlineVariant),
-        modifier = modifier.then(semantics),
-    )
 }
 
 // The glyph and the indicator share one slot, so saving never changes the button's width.

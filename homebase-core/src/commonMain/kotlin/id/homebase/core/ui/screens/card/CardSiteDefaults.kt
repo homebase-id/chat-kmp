@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 private const val TAG = "CardSiteDefaults"
+internal const val CARD_DESIGN_KEY = "cardDesign"
 
 data class CardSiteDefaults(
     val design: String? = null,
