@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The one [CallController] per signed-in identity. UI, push receivers and the CallKit/Telecom glue
@@ -105,7 +106,7 @@ class CallService(
             signaling = LiveRelayCallSignaling(selfOdinId, relay, eventBus),
             engineFactory = engineFactory,
             scope = CoroutineScope(scope.coroutineContext + job),
-            stunUrls = { stunUrls.urls.value },
+            stunUrls = { stunUrls.urls.awaitStunUrls() },
         )
     }
 
@@ -162,5 +163,11 @@ internal fun callEventFor(reason: CallEndReason, state: CallState): CallEventDes
         else -> null
     }
 }
+
+/** The URLs arrive with the websocket handshake, which a call placed or answered right after a cold push wake can beat. */
+internal suspend fun StateFlow<List<String>>.awaitStunUrls(timeoutMs: Long = STUN_WAIT_MS): List<String> =
+    value.ifEmpty { withTimeoutOrNull(timeoutMs) { first { it.isNotEmpty() } } ?: emptyList() }
+
+private const val STUN_WAIT_MS = 3_000L
 
 internal fun Flow<CallState>.callActiveChanges(): Flow<Boolean> = map { it.isActive }.distinctUntilChanged()

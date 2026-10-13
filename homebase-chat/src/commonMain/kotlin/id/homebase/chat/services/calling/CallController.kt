@@ -31,7 +31,7 @@ class CallController(
     private val signaling: CallSignaling,
     private val engineFactory: CallEngineFactory,
     private val scope: CoroutineScope,
-    private val stunUrls: () -> List<String> = { emptyList() },
+    private val stunUrls: suspend () -> List<String> = { emptyList() },
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
@@ -245,7 +245,7 @@ class CallController(
         if (endedCalls.size > ENDED_CALLS_REMEMBERED) endedCalls.removeFirst()
     }
 
-    private fun engine(): CallEngine = engine ?: engineFactory.create(stunUrls()).also { created ->
+    private suspend fun engine(): CallEngine = engine ?: engineFactory.create(stunUrls()).also { created ->
         engine = created
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {
