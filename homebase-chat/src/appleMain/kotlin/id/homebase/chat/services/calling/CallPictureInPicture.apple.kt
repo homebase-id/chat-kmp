@@ -17,16 +17,11 @@ actual fun rememberInPictureInPicture(): Boolean = false
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit) {
-    val handle = remote as? KmpVideoHandle
-    val native = handle?.receiver?.native?.track
-    val track = native as? RTCVideoTrack
+    val track = (remote as? KmpVideoHandle)?.receiver?.native?.track as? RTCVideoTrack
     DisposableEffect(eligible, track) {
         val bridge = CallPictureInPictureBridgeHolder.bridge
         if (!eligible || track == null || bridge == null) {
-            Logger.i("CallPiP") {
-                "pip not armed eligible=$eligible track=${track != null} remote=${remote?.let { it::class.simpleName }} " +
-                    "receiver=${handle?.receiver != null} nativeTrack=${native?.let { it::class.simpleName }} bridge=${bridge != null}"
-            }
+            Logger.i("CallPiP") { "pip not armed eligible=$eligible track=${track != null} bridge=${bridge != null}" }
             return@DisposableEffect onDispose { }
         }
         Logger.i("CallPiP") { "pip arming bridge.start" }

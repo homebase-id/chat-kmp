@@ -257,31 +257,14 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVideoViewDelegate, AVPictureInPictureControllerDelegate {
     static let shared = PictureInPictureManager()
 
-    private var captureObservers: [NSObjectProtocol] = []
-
     private override init() {
         super.init()
-        let center = NotificationCenter.default
-        captureObservers = [
-            center.addObserver(forName: .AVCaptureSessionWasInterrupted, object: nil, queue: .main) { [weak self] n in
-                guard let self, self.controller != nil else { return }
-                let reason = (n.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)
-                    .flatMap { AVCaptureSession.InterruptionReason(rawValue: $0.intValue) }
-                self.log("pip camera interrupted reason=\(reason.map { String(describing: $0.rawValue) } ?? "nil") \(self.cameraState(n.object as? AVCaptureSession))")
-            },
-        ]
-    }
-
-    private func cameraState(_ session: AVCaptureSession?) -> String {
-        guard let session else { return "session=nil" }
-        return "multitaskingSupported=\(session.isMultitaskingCameraAccessSupported) multitaskingEnabled=\(session.isMultitaskingCameraAccessEnabled) running=\(session.isRunning)"
     }
 
     private var controller: AVPictureInPictureController?
     private var content: AVPictureInPictureVideoCallViewController?
     private var renderer: RTCMTLVideoView?
     private var track: RTCVideoTrack?
-    private var possibleObservation: NSKeyValueObservation?
     private var lifecycleObservers: [NSObjectProtocol] = []
     // A controller released while its window is up leaves that window on screen with nothing to close it.
     private var stopping: [(AVPictureInPictureController, AVPictureInPictureVideoCallViewController?)] = []
@@ -322,28 +305,18 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
                     activeVideoCallSourceView: source, contentViewController: vc))
             pip.canStartPictureInPictureAutomaticallyFromInline = true
             pip.delegate = self
-            possibleObservation = pip.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] c, _ in
-                self?.log("pip possible=\(c.isPictureInPicturePossible)")
-            }
             controller = pip
             content = vc
             renderer = view
             track = remote
             firstFrameLogged = false
             log("pip armed: \(state(source: source))")
-            let center = NotificationCenter.default
-            lifecycleObservers = [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification].map { name in
-                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                    guard let self else { return }
-                    self.log("pip at \(name.rawValue): \(self.state(source: source))")
-                }
-            }
             // iOS does not always end an automatically started PiP when the app comes back, so the window would cover the call screen.
-            lifecycleObservers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            lifecycleObservers = [NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 guard let self, let controller = self.controller else { return }
                 self.log("pip at \(UIApplication.didBecomeActiveNotification.rawValue): \(self.state(source: source))")
                 if controller.isPictureInPictureActive { controller.stopPictureInPicture() }
-            })
+            }]
         }
     }
 
@@ -366,7 +339,6 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     private func teardown() {
         lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
         lifecycleObservers = []
-        possibleObservation = nil
         controller?.canStartPictureInPictureAutomaticallyFromInline = false
         if let controller, controller.isPictureInPictureActive {
             stopping.append((controller, content))

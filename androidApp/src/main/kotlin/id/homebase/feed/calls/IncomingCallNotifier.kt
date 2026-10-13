@@ -17,7 +17,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.chat.services.calling.RING_TIMEOUT_MS
 import id.homebase.feed.MainActivity
 import id.homebase.feed.R
-import java.util.concurrent.ConcurrentHashMap
 
 /** Heads-up / full-screen "incoming call" notification, replaced or cancelled by callId. */
 class IncomingCallNotifier(private val context: Context) {
@@ -78,22 +77,9 @@ class IncomingCallNotifier(private val context: Context) {
             )
             builder.addAction(0, context.getString(R.string.allow_full_screen_calls), settings)
         }
-        val repeat = previousRingFrom(callerLabel, callId)
         manager.notify(notificationId(callId), builder.build())
-        Logger.i(tag = TAG) { "ring notification posted call=$callId $repeat ${interruptionState()}" }
+        Logger.i(tag = TAG) { "ring notification posted call=$callId ${interruptionState()}" }
     }
-
-    // DND's repeat-caller rule keys a URI-less Person as "name:<label>" and lets a second call within 15 min through.
-    private fun previousRingFrom(callerLabel: String, callId: String): String {
-        val now = System.currentTimeMillis()
-        val ring = lastRings.compute(callerLabel) { _, last ->
-            if (last?.callId == callId) last else CallerRing(callId, now, previousAt = last?.at)
-        }!!
-        val ago = ring.previousAt?.let { "${(ring.at - it) / 1000}s" } ?: "none"
-        return "repeatKey=\"name:$callerLabel\" previousRingFromCaller=$ago"
-    }
-
-    private data class CallerRing(val callId: String, val at: Long, val previousAt: Long?)
 
     // The app cannot read whether DND intercepted its own notification, so log every input the system's call filter decides from.
     fun interruptionState(): String {
@@ -132,7 +118,6 @@ class IncomingCallNotifier(private val context: Context) {
         const val EXTRA_ACCEPT = "id.homebase.feed.CALL_ACCEPT"
         const val ACTION_DECLINE = "id.homebase.feed.CALL_DECLINE"
         const val ACTION_HANGUP = "id.homebase.feed.CALL_HANGUP"
-        private val lastRings = ConcurrentHashMap<String, CallerRing>()
 
         // Explicit: the launcher filter has no CATEGORY_DEFAULT, so an implicit MAIN/LAUNCHER start resolves to nothing.
         fun openIntent(context: Context, callId: String, accept: Boolean): Intent = Intent(context, MainActivity::class.java).apply {

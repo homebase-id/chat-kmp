@@ -80,11 +80,6 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
         onDispose { activity.unregisterReceiver(receiver) }
     }
 
-    DisposableEffect(activity) {
-        val listener = Consumer<Intent> { Logger.i("CallPiP") { "new intent inPip=${activity.isInPictureInPictureMode} action=${it.action}" } }
-        activity.addOnNewIntentListener(listener)
-        onDispose { activity.removeOnNewIntentListener(listener) }
-    }
     val inPip = rememberInPictureInPicture()
     LaunchedEffect(inPip, eligible) {
         if (shouldLeavePictureInPicture(inPip, eligible)) {
