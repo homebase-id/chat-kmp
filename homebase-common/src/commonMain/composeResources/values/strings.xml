@@ -2838,6 +2838,7 @@
     <string name="call_device_dismiss">Dismiss</string>
     <string name="call_device_menu_audio">Microphone and speaker settings</string>
     <string name="call_device_menu_camera">Camera settings</string>
+    <string name="call_window_title">%1$s: %2$s</string>
     <string name="call_device_input_level">Input level</string>
     <string name="call_state_mic_on_device">Microphone on, %1$s</string>
     <string name="call_tooltip_shortcut">%1$s (%2$s)</string>
@@ -2854,6 +2855,7 @@
     <string name="call_shortcuts_mute">Mute or unmute</string>
     <string name="call_shortcuts_camera">Camera on or off</string>
     <string name="call_shortcuts_mini">Mini window</string>
+    <string name="call_shortcuts_hang_up">Hang up</string>
     <string name="call_shortcuts_end">End the call or close the window</string>
     <string name="call_shortcuts_help">Show this list</string>
     <string name="call_shortcuts_done">Done</string>

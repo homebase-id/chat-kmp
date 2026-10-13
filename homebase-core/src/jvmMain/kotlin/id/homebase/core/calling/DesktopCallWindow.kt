@@ -30,6 +30,8 @@ interface DesktopCallWindow {
     fun menuToggleMute()
     fun menuToggleVideo()
     fun menuToggleMini(toggle: () -> Unit)
+    fun menuHangup()
+    fun setMiniWindowOpen(open: Boolean)
 
     @Composable
     fun title(): String
@@ -53,6 +55,10 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
     override fun menuToggleMute() = model.menuToggleMute()
     override fun menuToggleVideo() = model.menuToggleVideo()
     override fun menuToggleMini(toggle: () -> Unit) = model.menuToggleMini(toggle)
+    override fun menuHangup() = model.menuHangup()
+    override fun setMiniWindowOpen(open: Boolean) {
+        model.miniWindowOpen.value = open
+    }
 
     @Composable
     override fun title() = rememberCallWindowTitle(model)

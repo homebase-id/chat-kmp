@@ -105,6 +105,14 @@ class CallShortcutsTest {
     }
 
     @Test
+    fun commandShiftHHangsUpOnlyWhileTheCallIsLive() {
+        assertEquals(CallShortcut.HangUp, press(Key.H, connected, command = true, shift = true))
+        assertEquals(CallShortcut.HangUp, press(Key.H, connected, command = true, shift = true, textFocused = true))
+        assertNull(press(Key.H, connected, command = true))
+        assertNull(press(Key.H, ui(CallPhase.Incoming), command = true, shift = true))
+    }
+
+    @Test
     fun onlyKeyDownFires() {
         for (type in listOf(KeyEventType.KeyUp, KeyEventType.Unknown)) {
             assertNull(press(Key.D, connected, command = true, type = type))

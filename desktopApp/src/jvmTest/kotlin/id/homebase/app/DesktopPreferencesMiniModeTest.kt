@@ -25,7 +25,7 @@ class DesktopPreferencesMiniModeTest {
     fun firstMiniWindowSitsInTheScreenCornerAndLaterOnesWhereItWasLeft() {
         val size = miniCallSize(true)
         val first = miniCallPosition(null, size, screen)
-        assertEquals(WindowPosition.Absolute(1440.dp - 320.dp - 24.dp, 900.dp - 180.dp - 72.dp), first)
+        assertEquals(WindowPosition.Absolute(1440.dp - 320.dp - 24.dp, 72.dp), first)
         val dragged = WindowPosition.Absolute(10.dp, 20.dp)
         assertEquals(dragged, miniCallPosition(dragged, size, screen))
     }

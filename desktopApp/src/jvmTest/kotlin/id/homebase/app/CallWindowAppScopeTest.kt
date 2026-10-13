@@ -104,7 +104,7 @@ class CallWindowAppScopeTest {
 
         failure?.let { throw it }
         assertNotNull(openTitle, "the call window must open")
-        assertTrue(Regex("Samwise Gamgee · 01:\\d\\d").matches(openTitle!!), "title was $openTitle")
+        assertTrue(Regex("Samwise Gamgee: (Voice|Video) call · 01:\\d\\d").matches(openTitle!!), "title was $openTitle")
         assertTrue(registered)
         assertEquals(0, framesAfterEnd)
     }

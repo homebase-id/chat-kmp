@@ -40,6 +40,7 @@ import id.homebase.resources.call_shortcuts_camera
 import id.homebase.resources.call_shortcuts_done
 import id.homebase.resources.call_shortcuts_either
 import id.homebase.resources.call_shortcuts_end
+import id.homebase.resources.call_shortcuts_hang_up
 import id.homebase.resources.call_shortcuts_help
 import id.homebase.resources.call_shortcuts_mini
 import id.homebase.resources.call_shortcuts_mute
@@ -47,7 +48,7 @@ import id.homebase.resources.call_shortcuts_title
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
-enum class CallShortcut { ToggleMute, ToggleCamera, ToggleMini, Close, ShowShortcuts }
+enum class CallShortcut { ToggleMute, ToggleCamera, ToggleMini, HangUp, Close, ShowShortcuts }
 
 data class CallKeyInput(
     val key: Key,
@@ -75,6 +76,7 @@ fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean =
         if (input.alt) return null
         return when {
             key == Key.W -> CallShortcut.Close
+            key == Key.H && input.shift && live -> CallShortcut.HangUp
             key == Key.D && !input.shift && live -> CallShortcut.ToggleMute
             key == Key.E && !input.shift && live && cameraAvailable -> CallShortcut.ToggleCamera
             key == Key.M && input.shift && live -> CallShortcut.ToggleMini
@@ -148,6 +150,7 @@ internal fun CallShortcutsDialog(onDismiss: () -> Unit) {
         stringResource(MR.string.call_shortcuts_mute) to stringResource(MR.string.call_shortcuts_either, callShortcutKeys("D"), "M"),
         stringResource(MR.string.call_shortcuts_camera) to stringResource(MR.string.call_shortcuts_either, callShortcutKeys("E"), "V"),
         stringResource(MR.string.call_shortcuts_mini) to callShortcutKeys("M", shift = true),
+        stringResource(MR.string.call_shortcuts_hang_up) to callShortcutKeys("H", shift = true),
         stringResource(MR.string.call_shortcuts_end) to stringResource(MR.string.call_shortcuts_either, stringResource(MR.string.call_key_escape), callShortcutKeys("W")),
         stringResource(MR.string.call_shortcuts_help) to stringResource(MR.string.call_key_help),
     )

@@ -10,7 +10,7 @@ class DesktopPreferencesCallWindowTest {
     fun defaultsDifferForVideoAndVoice() {
         val prefs = DesktopPreferences(InMemorySettings())
         assertEquals(CallWindowGeometry(960.dp, 640.dp, WindowPosition.PlatformDefault), prefs.callWindowGeometry(video = true))
-        assertEquals(CallWindowGeometry(420.dp, 560.dp, WindowPosition.PlatformDefault), prefs.callWindowGeometry(video = false))
+        assertEquals(CallWindowGeometry(640.dp, 480.dp, WindowPosition.PlatformDefault), prefs.callWindowGeometry(video = false))
     }
 
     @Test

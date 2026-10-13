@@ -99,17 +99,31 @@ class CallDesktopErgonomicsTest {
         connectedAtMs = System.currentTimeMillis() - 83_000,
     )
 
+    private fun CallUiState.withDevices() = copy(
+        devices = listOf(
+            id.homebase.chat.services.calling.MediaDevice("mic-a", "MacBook Pro Microphone", id.homebase.chat.services.calling.MediaDeviceKind.Mic, isDefault = true),
+            id.homebase.chat.services.calling.MediaDevice("spk-a", "MacBook Pro Speakers", id.homebase.chat.services.calling.MediaDeviceKind.Speaker, isDefault = true),
+            id.homebase.chat.services.calling.MediaDevice("cam-a", "FaceTime HD Camera", id.homebase.chat.services.calling.MediaDeviceKind.Camera, isDefault = true),
+        ),
+        selectedDevices = mapOf(
+            id.homebase.chat.services.calling.MediaDeviceKind.Mic to "mic-a",
+            id.homebase.chat.services.calling.MediaDeviceKind.Speaker to "spk-a",
+            id.homebase.chat.services.calling.MediaDeviceKind.Camera to "cam-a",
+        ),
+    )
+
     private val avatar: @androidx.compose.runtime.Composable (androidx.compose.ui.unit.Dp) -> Unit = { size ->
         Box(Modifier.size(size).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape), contentAlignment = Alignment.Center) {
             Text("SG", color = MaterialTheme.colorScheme.onSecondaryContainer)
         }
     }
 
-    private fun ComposeUiTest.showScreen(ui: CallUiState, recorder: Recorder, dark: Boolean = false, mac: Boolean = false, overlay: (@androidx.compose.runtime.Composable () -> Unit)? = null) {
+    private fun ComposeUiTest.showScreen(ui: CallUiState, recorder: Recorder, dark: Boolean = false, mac: Boolean = false, fontScale: Float = 1f, overlay: (@androidx.compose.runtime.Composable () -> Unit)? = null) {
         mainClock.autoAdvance = false
         setContent {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
-                CompositionLocalProvider(LocalMacShortcuts provides mac) {
+                val density = LocalDensity.current
+                CompositionLocalProvider(LocalMacShortcuts provides mac, LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
                     Box(Modifier.fillMaxSize()) {
                         CallScreen(ui = ui, peerName = "Samwise Gamgee", avatar = avatar, actions = recorder.actions(), fillsWindow = true)
                         overlay?.invoke()
@@ -296,10 +310,65 @@ class CallDesktopErgonomicsTest {
     }
 
     @Test
+    fun aVideoCallRingingOutShowsYourOwnCameraFullBleedAndNoSelfTile() {
+        runDesktopComposeUiTest(960, 640) {
+            showScreen(call(video = true, phase = CallPhase.Outgoing), Recorder())
+            onNodeWithTag(SelfStageTag).assertExists()
+            assertTrue(onAllNodesWithContentDescription("Your camera preview", substring = true).fetchSemanticsNodes().isEmpty())
+        }
+        runDesktopComposeUiTest(960, 640) {
+            showScreen(call(video = true), Recorder())
+            assertTrue(onAllNodes(androidx.compose.ui.test.hasTestTag(SelfStageTag)).fetchSemanticsNodes().isEmpty())
+        }
+    }
+
+    @Test
+    fun screenshotsOfTheCallStates() {
+        val states = listOf(
+            "outgoing-video" to call(video = true, phase = CallPhase.Outgoing).copy(connectedAtMs = null, peerRinging = true),
+            "connected-muted-voice" to call(video = false, muted = true),
+            "reconnecting-video" to call(video = true, phase = CallPhase.Reconnecting),
+            "remote-camera-off" to call(video = true).copy(remoteVideo = false),
+            "failed" to call(video = true, phase = CallPhase.Ended(id.homebase.chat.services.calling.CallEndReason.Failed(id.homebase.chat.services.calling.FailReason.NoRoute))),
+            "ended" to call(video = false, phase = CallPhase.Ended(id.homebase.chat.services.calling.CallEndReason.Hangup(remote = true))),
+        )
+        for (dark in listOf(false, true)) {
+            for ((name, ui) in states) {
+                runDesktopComposeUiTest(960, 640) {
+                    showScreen(ui.withDevices(), Recorder(), dark = dark, mac = true)
+                    shoot("state-$name-960x640", dark)
+                }
+            }
+            runDesktopComposeUiTest(1280, 800) {
+                showScreen(call(video = false).withDevices(), Recorder(), dark = dark, mac = true)
+                shoot("state-connected-voice-1280x800", dark)
+            }
+            runDesktopComposeUiTest(640, 480) {
+                showScreen(call(video = false).withDevices(), Recorder(), dark = dark, mac = true)
+                shoot("state-connected-voice-640x480", dark)
+            }
+            runDesktopComposeUiTest(960, 640) {
+                showScreen(call(video = true).withDevices(), Recorder(), dark = dark, mac = true)
+                onNodeWithContentDescription("Microphone").performMouseInput { moveTo(center) }
+                mainClock.advanceTimeBy(2_000)
+                shoot("state-tooltip-mic-chevron", dark)
+            }
+            runDesktopComposeUiTest(400, 300) {
+                showScreen(call(video = true), Recorder(), dark = dark, mac = true, fontScale = 2f)
+                shoot("state-compact-400x300-font200", dark)
+            }
+            runDesktopComposeUiTest(400, 300) {
+                showScreen(call(video = true, phase = CallPhase.Outgoing).copy(connectedAtMs = null, peerRinging = true), Recorder(), dark = dark, mac = true)
+                shoot("state-outgoing-video-400x300", dark)
+            }
+        }
+    }
+
+    @Test
     fun screenshotsOfTheDesktopErgonomicsSurfaces() {
         for (dark in listOf(false, true)) {
             runDesktopComposeUiTest(960, 640) {
-                showScreen(call(video = true), Recorder(), dark = dark)
+                showScreen(call(video = true), Recorder(), dark = dark, mac = true)
                 onNodeWithContentDescription("Mute microphone").performMouseInput { moveTo(center) }
                 mainClock.advanceTimeBy(2_000)
                 shoot("tooltip-mute", dark)

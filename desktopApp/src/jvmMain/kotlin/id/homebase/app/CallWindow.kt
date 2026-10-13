@@ -92,6 +92,10 @@ private fun ApplicationScope.CallWindowFrame(call: DesktopCallWindow, config: De
     val live by call.live.collectAsStateWithLifecycle()
     LaunchedEffect(live) { if (!live) modes.exitMini() }
     val mini = modes.mini
+    DisposableEffect(mini != null) {
+        call.setMiniWindowOpen(mini != null)
+        onDispose { call.setMiniWindowOpen(false) }
+    }
     key(mini) {
         if (mini != null) MiniCallWindow(call, config, theme, mini, modes::exitMini)
         else FullCallWindow(call, config, theme, video, full, modes::enterMini)
@@ -131,7 +135,12 @@ private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: Deskto
                 enabled = live,
                 onClick = { call.menuToggleMini(toggleMini) },
             )
-            Item(text = stringResource(MR.string.desktop_menu_call_hang_up), enabled = live, onClick = call::hangup)
+            Item(
+                text = stringResource(MR.string.desktop_menu_call_hang_up),
+                shortcut = KeyShortcut(Key.H, ctrl = !isMacOs, meta = isMacOs, shift = true),
+                enabled = live,
+                onClick = call::menuHangup,
+            )
             Separator()
             CheckboxItem(
                 text = stringResource(MR.string.desktop_menu_call_auto_mini),

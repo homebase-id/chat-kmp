@@ -241,7 +241,7 @@ class CallDevicesScreenshotTest {
     @Test
     fun devicesButtonAndChevronsOpenRealMenusAndReportTheChoice() = runDesktopComposeUiTest(960, 640) {
         show(false, state())
-        onNode(hasContentDescription("Devices") and hasClickAction()).performClick()
+        onNode(hasContentDescription("Microphone") and hasClickAction()).performClick()
         mainClock.advanceTimeBy(400)
         onNode(hasText("AirPods Pro")).performClick()
         assertEquals(listOf(MediaDeviceKind.Speaker to "spk-b"), picked)

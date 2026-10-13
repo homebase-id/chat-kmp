@@ -24,10 +24,14 @@ import id.homebase.api.browser.WindowKeys
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.resources.MR
+import id.homebase.resources.call_button_video
+import id.homebase.resources.call_button_voice
 import id.homebase.resources.call_pill_text
+import id.homebase.resources.call_window_title
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -101,6 +105,13 @@ class CallWindowModel(
     fun menuToggleVideo() {
         if (canToggleCamera.value && shortcutGate.accept(CallShortcut.ToggleCamera)) toggleVideo()
     }
+
+    fun menuHangup() {
+        if (live.value && shortcutGate.accept(CallShortcut.HangUp)) hangup()
+    }
+
+    /** One set of call controls at a time: while the always-on-top mini window is up, the main window's bar stands down. */
+    val miniWindowOpen = MutableStateFlow(false)
 
     fun menuToggleMini(toggle: () -> Unit) {
         if (live.value && shortcutGate.accept(CallShortcut.ToggleMini)) toggle()
@@ -177,8 +188,10 @@ fun rememberCallWindowTitle(model: CallWindowModel): String {
             delay(1_000)
         }
     }
-    val elapsed = callWindowElapsed(ui, now) ?: return name
-    return stringResource(MR.string.call_pill_text, name, elapsed)
+    // Mission Control, the taskbar and screen readers announce the window by this.
+    val base = if (name.isEmpty()) name else stringResource(MR.string.call_window_title, name, stringResource(if (ui.isVideoCall) MR.string.call_button_video else MR.string.call_button_voice))
+    val elapsed = callWindowElapsed(ui, now) ?: return base
+    return stringResource(MR.string.call_pill_text, base, elapsed)
 }
 
 @Composable
@@ -189,7 +202,8 @@ fun OngoingCallBarHost(
     peerName: @Composable (String?) -> String = model::peerName,
 ) {
     val ui by model.uiState.collectAsStateWithLifecycle()
-    if (!ongoingCallBarVisible(ui)) return
+    val miniOpen by model.miniWindowOpen.collectAsStateWithLifecycle()
+    if (!ongoingCallBarVisible(ui) || miniOpen) return
     val name = peerName(ui.peer)
     Box(modifier.background(MaterialTheme.colorScheme.primaryContainer).padding(top = topInset)) {
         OngoingCallBar(
@@ -211,7 +225,9 @@ fun CallChrome(
     callHost: @Composable () -> Unit,
     content: @Composable (topInset: Dp) -> Unit,
 ) {
-    val barShown = !hostCallOverlay && callWindow != null && ongoingCallBarVisible(callWindow.uiState.collectAsStateWithLifecycle().value)
+    val barShown = !hostCallOverlay && callWindow != null &&
+        ongoingCallBarVisible(callWindow.uiState.collectAsStateWithLifecycle().value) &&
+        !callWindow.miniWindowOpen.collectAsStateWithLifecycle().value
     Column(Modifier.fillMaxSize()) {
         if (!hostCallOverlay && callWindow != null) OngoingCallBarHost(callWindow, topInset = topInset)
         Box(Modifier.weight(1f).fillMaxWidth()) {

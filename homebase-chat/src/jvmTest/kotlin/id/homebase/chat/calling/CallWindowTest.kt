@@ -114,14 +114,14 @@ class CallWindowTest {
         withModel(connectedState(false).copy(connectedAtMs = System.currentTimeMillis() - 83_000)) { model, _, _ ->
             runDesktopComposeUiTest(400, 100) {
                 setContent { Text(rememberCallWindowTitle(model), Modifier.testTag("title")) }
-                waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Samwise Gamgee · 01:", substring = true).fetchSemanticsNodes().isNotEmpty() }
+                waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Samwise Gamgee: Voice call · 01:", substring = true).fetchSemanticsNodes().isNotEmpty() }
             }
         }
         withModel(connectedState(false).copy(phase = CallPhase.Outgoing, connectedAtMs = null)) { model, _, _ ->
             runDesktopComposeUiTest(400, 100) {
                 setContent { Text(rememberCallWindowTitle(model), Modifier.testTag("title")) }
-                waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Samwise Gamgee").fetchSemanticsNodes().isNotEmpty() }
-                onNodeWithTag("title").assertTextEquals("Samwise Gamgee")
+                waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Samwise Gamgee: Voice call").fetchSemanticsNodes().isNotEmpty() }
+                onNodeWithTag("title").assertTextEquals("Samwise Gamgee: Voice call")
             }
         }
     }

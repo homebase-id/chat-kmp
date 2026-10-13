@@ -133,7 +133,7 @@ class DesktopPreferences(settings: Settings? = null) {
 const val CALL_WINDOW_MIN_WIDTH = 320f
 const val CALL_WINDOW_MIN_HEIGHT = 240f
 private val VIDEO_CALL_SIZE = 960f to 640f
-private val VOICE_CALL_SIZE = 420f to 560f
+private val VOICE_CALL_SIZE = 640f to 480f
 
 val MINI_VIDEO_SIZE = DpSize(320.dp, 180.dp)
 val MINI_VOICE_SIZE = DpSize(360.dp, 88.dp)
@@ -154,8 +154,9 @@ fun miniCallPosition(saved: WindowPosition.Absolute?, size: DpSize, screens: Lis
         )
     }
     val primary = screens.firstOrNull() ?: DpRect(0.dp, 0.dp, 1440.dp, 900.dp)
+    // Top end, clear of the menu bar: the bottom corner is where a chat window keeps its composer and send button.
     return WindowPosition.Absolute(
         maxOf(primary.left, primary.right - size.width - MINI_SCREEN_MARGIN),
-        maxOf(primary.top, primary.bottom - size.height - MINI_SCREEN_MARGIN * 3),
+        minOf(primary.top + MINI_SCREEN_MARGIN * 3, maxOf(primary.top, primary.bottom - size.height)),
     )
 }
