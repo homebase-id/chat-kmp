@@ -119,7 +119,7 @@ class CallDevicesViewModelTest {
             settle()
 
             assertEquals("mic-builtin", rig.ui.selectedDevices[MediaDeviceKind.Mic])
-            assertEquals(listOf<CallUiEvent>(CallUiEvent.DeviceDisconnected("USB Mic", "MacBook Microphone")), events)
+            assertEquals(listOf<CallUiEvent>(CallUiEvent.DeviceDisconnected("USB Mic", "MacBook Microphone", MediaDeviceKind.Mic)), events)
         }
     }
 

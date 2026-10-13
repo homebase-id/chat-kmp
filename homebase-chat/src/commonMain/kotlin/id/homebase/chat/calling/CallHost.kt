@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +44,10 @@ import id.homebase.resources.MR
 import id.homebase.resources.call_end_confirm_body
 import id.homebase.resources.call_end_confirm_title
 import id.homebase.resources.call_device_disconnected
+import id.homebase.resources.call_device_change
+import id.homebase.resources.call_device_returned
+import id.homebase.resources.call_device_switch_back
+import id.homebase.chat.services.calling.MediaDeviceKind
 import id.homebase.resources.call_end_keep
 import id.homebase.resources.call_hang_up
 import id.homebase.resources.call_verification_body
@@ -93,14 +98,24 @@ fun CallOverlay(
     var showVerification by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+    val deviceMenu = remember { mutableStateOf<MediaDeviceKind?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 CallUiEvent.ShowVerification -> showVerification = true
                 CallUiEvent.ConfirmEnd -> confirmEnd = true
-                is CallUiEvent.DeviceDisconnected ->
-                    scope.launch { snackbar.showSnackbar(getString(MR.string.call_device_disconnected, event.name, event.fallbackName)) }
+                is CallUiEvent.DeviceDisconnected -> scope.launch {
+                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_disconnected, event.name, event.fallbackName), getString(MR.string.call_device_change), event.kind)
+                    // The speaker list lives in the mic's audio menu, so both open at the mic chevron.
+                    if (snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) {
+                        deviceMenu.value = if (event.kind == MediaDeviceKind.Camera) MediaDeviceKind.Camera else MediaDeviceKind.Mic
+                    }
+                }
+                is CallUiEvent.DeviceReturned -> scope.launch {
+                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_returned, event.name), getString(MR.string.call_device_switch_back), event.kind)
+                    if (snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) viewModel.selectDevice(event.kind, event.id)
+                }
             }
         }
     }
@@ -130,11 +145,11 @@ fun CallOverlay(
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset)
+                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset, deviceMenu = deviceMenu)
             }
         }
         if (ui.visible && !inPip) {
-            CallDeviceSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(bottom = SnackbarAboveDock))
+            CallDeviceSnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset + SnackbarBelowNamePill))
         }
         if (ui.pillVisible && !inPip) {
             OngoingCallPill(
@@ -195,4 +210,5 @@ internal fun PeerAvatar(odinId: String, name: String, size: Dp) {
     )
 }
 
-private val SnackbarAboveDock = 120.dp
+/** Under the name pill, clear of the dock: a notice there never sits on the controls it asks the user to use. */
+private val SnackbarBelowNamePill = 80.dp

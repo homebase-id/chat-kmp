@@ -14,6 +14,9 @@ data class MediaDevice(val id: String, val name: String, val kind: MediaDeviceKi
 
 sealed interface MediaDeviceNotice {
     data class Disconnected(val kind: MediaDeviceKind, val name: String, val fallbackName: String) : MediaDeviceNotice
+
+    /** The user's remembered device was plugged back in while the call runs on a fallback; switching back is their call. */
+    data class Returned(val kind: MediaDeviceKind, val id: String, val name: String) : MediaDeviceNotice
 }
 
 /** Live input/output choice for a call; [select] may block on native audio or capture, so call it off the main thread. */
@@ -76,7 +79,14 @@ class ManagedCallMediaDevices(
         for (kind in MediaDeviceKind.entries) {
             val ofKind = current.filter { it.kind == kind }
             val chosenId = _selected.value[kind]
-            if (chosenId != null && ofKind.any { it.id == chosenId }) continue
+            if (chosenId != null && ofKind.any { it.id == chosenId }) {
+                val wanted = preferences.get(kind)
+                val back = ofKind.firstOrNull { it.id == wanted && it.id != chosenId }
+                if (back != null && previous.isNotEmpty() && previous.none { it.kind == kind && it.id == back.id }) {
+                    _events.tryEmit(MediaDeviceNotice.Returned(kind, back.id, back.name))
+                }
+                continue
+            }
             val fallback = fallbackFor(ofKind)
             _selected.update { it + (kind to fallback?.id) }
             if (chosenId == null || fallback == null) continue

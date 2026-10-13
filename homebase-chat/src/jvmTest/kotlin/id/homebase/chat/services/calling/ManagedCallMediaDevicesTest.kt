@@ -87,6 +87,28 @@ class ManagedCallMediaDevicesTest {
         job.cancel()
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun repluggingTheRememberedDeviceOffersItBackWithoutSwitching() = runTest(UnconfinedTestDispatcher()) {
+        val hw = everything()
+        val devices = managed(hw)
+        devices.select(MediaDeviceKind.Mic, "mic-usb")
+        hw.present = hw.present - usbMic
+        devices.refresh()
+        val notices = mutableListOf<MediaDeviceNotice>()
+        val job = devices.events.onEach { notices += it }.launchIn(this)
+        val appliedBefore = hw.applied.size
+
+        hw.present = hw.present + usbMic
+        devices.refresh()
+        devices.refresh()
+
+        assertEquals(listOf<MediaDeviceNotice>(MediaDeviceNotice.Returned(MediaDeviceKind.Mic, "mic-usb", "USB Mic")), notices)
+        assertEquals("mic-builtin", devices.selected.value[MediaDeviceKind.Mic])
+        assertEquals(appliedBefore, hw.applied.size)
+        job.cancel()
+    }
+
     @Test
     fun unpluggingTheSelectedCameraMovesToTheNextOne() {
         val hw = everything()

@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toAwtImage
@@ -25,7 +29,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -73,7 +77,16 @@ class CallDevicesScreenshotTest {
     private val picked = mutableListOf<Pair<MediaDeviceKind, String>>()
 
     // A popup window is not part of the captured root, so the open menu is drawn inline over the stage.
-    private fun ComposeUiTest.show(dark: Boolean, ui: CallUiState, snackbar: SnackbarHostState? = null, menu: List<MediaDeviceKind>? = null, menuAlign: Alignment = Alignment.TopEnd, menuPadding: PaddingValues = PaddingValues(top = 64.dp, end = 12.dp)) {
+    private fun ComposeUiTest.show(
+        dark: Boolean,
+        ui: CallUiState,
+        snackbar: SnackbarHostState? = null,
+        menu: List<MediaDeviceKind>? = null,
+        menuAlign: Alignment = Alignment.TopEnd,
+        menuPadding: PaddingValues = PaddingValues(top = 64.dp, end = 12.dp),
+        notice: DeviceSnackbarVisuals = DeviceSnackbarVisuals("USB Podcast Mic disconnected, using MacBook Pro Microphone", "Change", MediaDeviceKind.Mic),
+        deviceMenu: MutableState<MediaDeviceKind?>? = null,
+    ) {
         mainClock.autoAdvance = false
         setContent {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
@@ -88,11 +101,12 @@ class CallDevicesScreenshotTest {
                             endFromKeyboard = {}, selectDevice = { kind, id -> picked += kind to id },
                         ),
                         fillsWindow = true,
+                        deviceMenu = deviceMenu ?: remember { mutableStateOf(null) },
                     )
                     if (menu != null) {
                         Surface(
                             modifier = Modifier.align(menuAlign).padding(menuPadding).width(IntrinsicSize.Max).widthIn(min = 260.dp),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surfaceContainer,
                             shadowElevation = 8.dp,
                         ) {
@@ -100,8 +114,8 @@ class CallDevicesScreenshotTest {
                         }
                     }
                     if (snackbar != null) {
-                        CallDeviceSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 120.dp))
-                        LaunchedEffect(Unit) { snackbar.showSnackbar("USB Podcast Mic disconnected, using MacBook Pro Microphone") }
+                        CallDeviceSnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).padding(top = 80.dp))
+                        LaunchedEffect(Unit) { snackbar.showSnackbar(notice) }
                     }
                 }
             }
@@ -111,7 +125,7 @@ class CallDevicesScreenshotTest {
 
     private fun ComposeUiTest.save(name: String, dark: Boolean) {
         mainClock.advanceTimeBy(400)
-        val image = onRoot().captureToImage().toAwtImage()
+        val image = onAllNodes(isRoot())[0].captureToImage().toAwtImage()
         ImageIO.write(image, "png", File(outDir, "$name-${if (dark) "dark" else "light"}.png"))
     }
 
@@ -171,8 +185,51 @@ class CallDevicesScreenshotTest {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(960, 640) {
             show(dark, state(), SnackbarHostState())
             assertTrue(onAllNodes(hasText("disconnected, using", substring = true)).fetchSemanticsNodes().isNotEmpty())
+            assertTrue(onAllNodes(hasText("Change") and hasClickAction()).fetchSemanticsNodes().isNotEmpty())
             save("device-disconnected-snackbar", dark)
         }
+    }
+
+    @Test
+    fun aReturningDeviceOffersToSwitchBack() {
+        for (dark in listOf(false, true)) runDesktopComposeUiTest(960, 640) {
+            show(dark, state(), SnackbarHostState(), notice = DeviceSnackbarVisuals("USB Podcast Mic is connected again", "Switch", MediaDeviceKind.Mic))
+            assertTrue(onAllNodes(hasText("Switch") and hasClickAction()).fetchSemanticsNodes().isNotEmpty())
+            save("device-returned-snackbar", dark)
+        }
+    }
+
+    @Test
+    fun aMenuRequestOpensTheAudioMenuAtTheMicSegment() = runDesktopComposeUiTest(960, 640) {
+        val request = mutableStateOf<MediaDeviceKind?>(null)
+        show(false, state(), deviceMenu = request)
+        assertEquals(0, onAllNodes(hasText("AirPods Pro"), useUnmergedTree = true).fetchSemanticsNodes().size)
+        request.value = MediaDeviceKind.Mic
+        mainClock.advanceTimeBy(400)
+        assertTrue(onAllNodes(hasText("AirPods Pro"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(onAllNodes(hasText("Input level"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
+    fun mutedWithTheCameraOffAndAFocusedMenuSegment() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(960, 640) {
+                show(dark, state().copy(muted = true, localVideo = false))
+                onNode(hasContentDescription("Unmute microphone")).assertExists()
+                onAllNodes(hasContentDescription("Microphone") and hasClickAction())[0].performSemanticsAction(SemanticsActions.RequestFocus)
+                save("muted-camera-off-focus", dark)
+            }
+            runDesktopComposeUiTest(480, 560) {
+                show(dark, state(micLevel = 0.7f))
+                save("dock-compact", dark)
+            }
+        }
+    }
+
+    @Test
+    fun theMicAnnouncesItsDevice() = runDesktopComposeUiTest(960, 640) {
+        show(false, state())
+        assertTrue(onAllNodes(hasContentDescription("Mute microphone") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Microphone on, USB Podcast Mic")).fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test

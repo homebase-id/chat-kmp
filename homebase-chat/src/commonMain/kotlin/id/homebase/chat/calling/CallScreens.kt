@@ -72,7 +72,7 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
@@ -108,6 +108,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -129,6 +130,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -178,7 +180,9 @@ import id.homebase.chat.services.calling.MediaDeviceKind
 import id.homebase.chat.services.calling.VideoHandle
 import id.homebase.resources.MR
 import id.homebase.resources.call_devices
-import id.homebase.resources.call_device_current
+import id.homebase.resources.call_device_menu_audio
+import id.homebase.resources.call_device_menu_camera
+import id.homebase.resources.call_state_mic_on_device
 import id.homebase.resources.call_accept
 import id.homebase.resources.call_accept_audio_from
 import id.homebase.resources.call_accept_audio_label
@@ -294,6 +298,9 @@ internal enum class DesktopTier { Compact, Medium, Expanded }
 /** Set only inside a dedicated desktop call window; null on phones and in the in-app overlay. */
 private val LocalDesktopTier = staticCompositionLocalOf<DesktopTier?> { null }
 
+/** Which dock device menu is open, hoisted so a snackbar's "Change" can open the mic menu at its own chevron. */
+private val LocalDeviceMenuRequest = staticCompositionLocalOf<MutableState<MediaDeviceKind?>> { error("provided by CallScreen") }
+
 internal fun desktopTier(width: Dp, height: Dp): DesktopTier = when {
     width < 600.dp || height < CompactHeight -> DesktopTier.Compact
     width < LargeWidth -> DesktopTier.Medium
@@ -328,10 +335,12 @@ fun CallScreen(
     modifier: Modifier = Modifier,
     fillsWindow: Boolean = false,
     topInset: Dp = 0.dp,
+    deviceMenu: MutableState<MediaDeviceKind?> = remember { mutableStateOf(null) },
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
+    CompositionLocalProvider(LocalDeviceMenuRequest provides deviceMenu) {
     BoxWithConstraints(
         modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
@@ -368,6 +377,7 @@ fun CallScreen(
                 CallStage(ui, large = false, peerName, avatar, actions, chromeInsets)
             }
         }
+    }
     }
 }
 
@@ -427,10 +437,10 @@ private fun CallStage(
 private fun CallBackdrop() {
     Box(
         Modifier.fillMaxSize().background(
+            // Two tonal stops from one palette: a third stop drew a visible band where the slopes met.
             Brush.verticalGradient(
-                0f to MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                0.5f to MaterialTheme.colorScheme.surfaceContainer,
-                1f to MaterialTheme.colorScheme.surfaceContainerLowest,
+                0f to MaterialTheme.colorScheme.surfaceContainerHigh,
+                1f to MaterialTheme.colorScheme.surfaceContainerLow,
             ),
         ),
     )
@@ -554,8 +564,8 @@ private fun BoxScope.IncomingLayout(
             icon = Icons.Default.CallEnd,
             label = stringResource(MR.string.call_decline),
             description = stringResource(MR.string.call_decline_from, peerName),
-            container = MaterialTheme.colorScheme.error,
-            content = MaterialTheme.colorScheme.onError,
+            container = endCallContainer(),
+            content = endCallContent(),
             onClick = actions.decline,
         )
         if (video) {
@@ -986,10 +996,13 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
     val showCamera = ui.videos.local != null
     // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
     val showFlip = ui.localVideo && !large && !placing && !pickers
-    val count = 1 + listOf(showRoute, showCamera, showFlip).count { it }
-    val routeSlot = 1
-    val cameraSlot = if (showRoute) 2 else 1
-    val flipSlot = cameraSlot + if (showCamera) 1 else 0
+    // With pickers each of mic and camera is a split button: a toggle segment and its own menu segment in the same group.
+    val split = if (pickers) 1 else 0
+    val count = 1 + split + listOf(showRoute, showCamera, showFlip).count { it } + (if (showCamera) split else 0)
+    val routeSlot = 1 + split
+    val cameraSlot = routeSlot + if (showRoute) 1 else 0
+    val flipSlot = cameraSlot + if (showCamera) 1 + split else 0
+    val micDevice = currentDeviceName(ui, MediaDeviceKind.Mic)
     val muteTip = shortcutTip(stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute), MuteKey)
     val cameraTip = shortcutTip(stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on), VideoKey)
     val toggles: @Composable ButtonGroupScope.() -> Unit = {
@@ -1001,13 +1014,17 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
             label = stringResource(MR.string.call_label_mute).takeIf { showLabels },
             description = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute),
-            state = stringResource(if (ui.muted) MR.string.call_state_muted else MR.string.call_state_mic_on),
+            state = when {
+                ui.muted -> stringResource(MR.string.call_state_muted)
+                micDevice != null -> stringResource(MR.string.call_state_mic_on_device, micDevice)
+                else -> stringResource(MR.string.call_state_mic_on)
+            },
             shapes = segmentShapes(0, count),
             interaction = muteInteraction,
             modifier = Modifier.animateWidth(muteInteraction),
             level = ui.micLevel.takeIf { pickers && !ui.muted },
-            chevron = if (pickers) ({ DeviceChevron(ui, MediaDeviceKind.Mic, actions) }) else null,
         )
+        if (pickers) DeviceMenuSegment(ui, MediaDeviceKind.Mic, actions, segmentShapes(1, count))
         if (showRoute) {
             val routeInteraction = remember { MutableInteractionSource() }
             RouteToggle(ui, actions, showLabels, segmentShapes(routeSlot, count), routeInteraction, Modifier.animateWidth(routeInteraction))
@@ -1026,8 +1043,8 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
                 shapes = segmentShapes(cameraSlot, count),
                 interaction = cameraInteraction,
                 modifier = Modifier.animateWidth(cameraInteraction),
-                chevron = if (pickers) ({ DeviceChevron(ui, MediaDeviceKind.Camera, actions) }) else null,
             )
+            if (pickers) DeviceMenuSegment(ui, MediaDeviceKind.Camera, actions, segmentShapes(cameraSlot + 1, count))
         }
         if (showFlip) {
             val flipInteraction = remember { MutableInteractionSource() }
@@ -1118,82 +1135,82 @@ private fun CallToggle(
     interaction: MutableInteractionSource,
     modifier: Modifier,
     level: Float? = null,
-    chevron: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     ToggleColumn(label, modifier) {
-        // The chevron sits beside the tooltip anchor, not inside it, so hovering it shows only its own tip.
-        Box(Modifier.fillMaxWidth()) {
         DesktopTooltip(tooltip ?: description) {
-        FilledTonalIconToggleButton(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            shapes = shapes,
-            colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                checkedContainerColor = MaterialTheme.colorScheme.inverseSurface,
-                checkedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
-            ),
-            interactionSource = interaction,
-            modifier = Modifier.fillMaxWidth().height(toggleSize()).focusRing(shapes.shape).semantics {
-                contentDescription = description
-                stateDescription = state
-            },
-        ) {
-            val ring = MaterialTheme.colorScheme.primary
-            val shown by animateFloatAsState(level ?: 0f, tween(100), label = "micLevel")
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size(26.dp).then(
-                    if (level == null) Modifier else Modifier.drawBehind {
-                        val radius = 22.dp.toPx()
-                        val stroke = 3.dp.toPx()
-                        val topLeft = Offset(center.x - radius, center.y - radius)
-                        val box = Size(radius * 2, radius * 2)
-                        drawArc(ring.copy(alpha = 0.2f), 0f, 360f, false, topLeft, box, style = Stroke(stroke))
-                        drawArc(ring, -90f, 360f * shown, false, topLeft, box, style = Stroke(stroke, cap = StrokeCap.Round))
-                    },
+            FilledTonalIconToggleButton(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                shapes = shapes,
+                colors = IconButtonDefaults.filledTonalIconToggleButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    checkedContainerColor = MaterialTheme.colorScheme.inverseSurface,
+                    checkedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
                 ),
-            )
-        }
-        }
-        chevron?.invoke(this)
+                interactionSource = interaction,
+                modifier = Modifier.fillMaxWidth().height(toggleSize()).focusRing(shapes.shape).semantics {
+                    contentDescription = description
+                    stateDescription = state
+                },
+            ) {
+                val halo = MaterialTheme.colorScheme.primary
+                val shown by animateFloatAsState(level ?: 0f, tween(90), label = "micLevel")
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(26.dp).then(
+                        if (level == null) Modifier else Modifier.drawBehind {
+                            // A halo that swells with the voice: an arc read as a loading spinner, and "connecting" is a real call state.
+                            if (shown > 0.02f) {
+                                val radius = (15.dp + 9.dp * shown).toPx()
+                                drawCircle(halo.copy(alpha = 0.22f + 0.33f * shown), radius = radius)
+                                drawCircle(halo.copy(alpha = 0.5f + 0.5f * shown), radius = radius, style = Stroke(1.5.dp.toPx()))
+                            }
+                        },
+                    ),
+                )
+            }
         }
     }
 }
 
+/** The menu half of a split button: its own hit target, hover, press and focus, so it can never be mistaken for mute. */
 @Composable
-private fun BoxScope.DeviceChevron(ui: CallUiState, kind: MediaDeviceKind, actions: CallScreenActions) {
-    var open by remember { mutableStateOf(false) }
+private fun DeviceMenuSegment(ui: CallUiState, kind: MediaDeviceKind, actions: CallScreenActions, shapes: IconToggleButtonShapes) {
+    val request = LocalDeviceMenuRequest.current
+    val open = request.value == kind
     // Mic and speaker share one audio menu, as Meet and Zoom do, so the output is one click from the dock too.
     val kinds = if (kind == MediaDeviceKind.Mic) listOf(MediaDeviceKind.Mic, MediaDeviceKind.Speaker) else listOf(kind)
     val description = stringResource(kind.label())
     val current = currentDeviceName(ui, kind)
-    val tip = kinds.mapNotNull { k -> currentDeviceName(ui, k)?.let { k to it } }
-        .map { (k, name) -> stringResource(MR.string.call_device_current, stringResource(k.label()), name) }
-        .joinToString("\n")
-        .ifEmpty { description }
-    val container = if (open) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.9f)
-    val content = if (open) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-    Box(Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp)) {
+    val tip = stringResource(if (kind == MediaDeviceKind.Mic) MR.string.call_device_menu_audio else MR.string.call_device_menu_camera)
+    val interaction = remember { MutableInteractionSource() }
+    Box {
         DesktopTooltip(tip) {
-            Box(
-                Modifier.size(24.dp)
-                    .clip(CircleShape)
-                    .background(container)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                    .clickable(role = Role.Button, onClickLabel = description) { open = true }
-                    .focusRing(CircleShape)
-                    .semantics { if (current != null) stateDescription = current },
-                contentAlignment = Alignment.Center,
+            FilledTonalIconButton(
+                onClick = { request.value = kind },
+                shapes = IconButtonDefaults.shapes(shape = shapes.shape, pressedShape = shapes.pressedShape),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (open) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = if (open) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+                interactionSource = interaction,
+                modifier = Modifier.size(width = MenuSegmentWidth, height = toggleSize()).focusRing(shapes.shape).semantics {
+                    contentDescription = description
+                    role = Role.DropdownList
+                    if (current != null) stateDescription = current
+                },
             ) {
-                Icon(Icons.Default.ArrowDropDown, contentDescription = description, tint = content, modifier = Modifier.size(20.dp))
+                val turn by animateFloatAsState(if (open) 180f else 0f, label = "menuChevron")
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = null, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = turn })
             }
         }
-        CallDeviceMenu(open, { open = false }, ui, kinds, actions.selectDevice)
+        CallDeviceMenu(open, { if (request.value == kind) request.value = null }, ui, kinds, actions.selectDevice)
     }
 }
+
+private val MenuSegmentWidth = 32.dp
 
 @Composable
 private fun CallAction(
@@ -1822,6 +1839,15 @@ private fun AcceptPulse(size: Dp, color: Color) {
     )
 }
 
+/** Dark M3 `error` is a pale salmon that reads as disabled; its errorContainer is the saturated red, so ending looks as final in both themes. */
+@Composable
+private fun endCallContainer(): Color =
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.error
+
+@Composable
+private fun endCallContent(): Color =
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onError
+
 @Composable
 private fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
     val interaction = remember { MutableInteractionSource() }
@@ -1833,8 +1859,8 @@ private fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
         Surface(
             onClick = onClick,
             shape = shape,
-            color = MaterialTheme.colorScheme.error,
-            contentColor = MaterialTheme.colorScheme.onError,
+            color = endCallContainer(),
+            contentColor = endCallContent(),
             interactionSource = interaction,
             modifier = modifier.focusRing(shape).semantics { contentDescription = description; role = Role.Button },
         ) {

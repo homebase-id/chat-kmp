@@ -78,7 +78,8 @@ data class CallUiState(
 sealed interface CallUiEvent {
     data object ShowVerification : CallUiEvent
     data object ConfirmEnd : CallUiEvent
-    data class DeviceDisconnected(val name: String, val fallbackName: String) : CallUiEvent
+    data class DeviceDisconnected(val name: String, val fallbackName: String, val kind: MediaDeviceKind) : CallUiEvent
+    data class DeviceReturned(val kind: MediaDeviceKind, val id: String, val name: String) : CallUiEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -112,7 +113,10 @@ class CallViewModel(
         }
         viewModelScope.launch {
             session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { notice ->
-                if (notice is MediaDeviceNotice.Disconnected) _events.tryEmit(CallUiEvent.DeviceDisconnected(notice.name, notice.fallbackName))
+                when (notice) {
+                    is MediaDeviceNotice.Disconnected -> _events.tryEmit(CallUiEvent.DeviceDisconnected(notice.name, notice.fallbackName, notice.kind))
+                    is MediaDeviceNotice.Returned -> _events.tryEmit(CallUiEvent.DeviceReturned(notice.kind, notice.id, notice.name))
+                }
             }
         }
         viewModelScope.launch {
