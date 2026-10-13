@@ -1,6 +1,8 @@
 package id.homebase.chat.services.calling
 
 import kotlin.math.roundToInt
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * What a sender may put on the wire: at most 1080p30, adapted down by WebRTC's bandwidth estimate. libwebrtc offers
@@ -55,19 +57,43 @@ internal fun evenShortSide(target: Int, short: Int, long: Int): Int = (target do
     t % 2 == 0 && long.toLong() * t % short == 0L && long.toLong() * t / short % 2 == 0L
 } ?: target
 
+// goog-cc raises its estimate only to ~1.5x what is acked, so a sender this far under target holds the target down.
+private const val ENCODER_LIMITED_RATIO = 1.5
+
+// Sending this close to target means the network, not the encoder, sets the rate.
+private const val NETWORK_BOUND_RATIO = 1.25
+private const val CLEAN_LOSS = 0.02
+private const val CLEAN_RTT_SLACK_S = 0.05
+private const val CLIMB_TICKS = 3
+private const val CLIMB_PROBATION_TICKS = CLIMB_TICKS + 1
+private const val MAX_CLIMB_TICKS = 24
+
 /**
  * Caps the sender's resolution to the network: libwebrtc's quality scaler only reacts to encoder QP and frame drops,
- * so a cheap-to-encode picture keeps 1080p at any target bitrate. [SendLoadRung] lowers the cap further when the
- * device cannot encode 30 fps. [apply] receives scaleResolutionDownBy.
+ * so a cheap-to-encode picture keeps 1080p at any target bitrate. It steps down only when the network sets the rate.
+ * A static picture sends far under target and goog-cc never raises the target to the next rung, so the ladder also
+ * climbs a rung after [CLIMB_TICKS] stats ticks of that on a clean link (no loss, RTT near the call's best); a climb
+ * the network then refuses doubles that wait. [SendLoadRung] lowers the cap further when the device cannot encode
+ * 30 fps. [apply] receives scaleResolutionDownBy.
  */
-internal class SendResolutionLadder(private val apply: (Double) -> Unit) {
+internal class SendResolutionLadder(
+    private val clock: TimeSource = TimeSource.Monotonic,
+    private val apply: (Double) -> Unit,
+) {
     private var height = SendVideoCap.HEIGHT
     private var scale = 1.0
     private val load = SendLoadRung()
+    private var lastBytesSent: Pair<Double, TimeMark>? = null
+    private var minRtt = Double.MAX_VALUE
+    private var climbTicksNeeded = CLIMB_TICKS
+    private var encoderLimitedTicks = 0
+    private var ticksSinceEncoderClimb: Int? = null
 
     fun onStats(stats: Collection<StatsEntry>): String? {
         val outbound = stats.video("outbound-rtp") ?: return null
         val target = outbound["targetBitrate"].asDouble() ?: return null
+        val sent = sentBps(outbound["bytesSent"].asDouble())
+        val clean = linkIsClean(stats)
         val source = stats.video("media-source")
         val sides = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble()).filter { it > 0 }.sorted()
         val (sourceShort, sourceLong) = if (sides.size == 2) sides[0] to sides[1] else SendVideoCap.HEIGHT.toDouble() to SendVideoCap.WIDTH.toDouble()
@@ -76,13 +102,65 @@ internal class SendResolutionLadder(private val apply: (Double) -> Unit) {
         val inputLongSide = (sourceLong * inputShortSide / sourceShort).roundToInt()
         val loadBefore = load.height
         val loadHeight = load.onStats(outbound)
-        val next = nextSendHeight(height, target)
+        val next = nextHeight(target, sent, clean, outbound, minOf(height, loadHeight))
         val nextScale = maxOf(1.0, inputShortSide / evenShortSide(minOf(next, loadHeight), inputShortSide.roundToInt(), inputLongSide))
         if (next == height && nextScale == scale && loadHeight == loadBefore) return null
         height = next
         if (nextScale != scale) apply(nextScale)
         scale = nextScale
-        return "send ladder target=${target.toLong()} height=$next load=$loadHeight scaleDownBy=$nextScale"
+        return "send ladder target=${target.toLong()} sent=${sent?.toLong()} clean=$clean height=$next load=$loadHeight " +
+            "climbTicks=$climbTicksNeeded scaleDownBy=$nextScale"
+    }
+
+    private fun nextHeight(target: Double, sent: Double?, clean: Boolean, outbound: Map<String, Any?>, sending: Int): Int {
+        ticksSinceEncoderClimb = ticksSinceEncoderClimb?.plus(1)
+        val byTarget = nextSendHeight(height, target)
+        val networkBound = sent == null || !clean || sent * NETWORK_BOUND_RATIO >= target
+        if (byTarget < height && networkBound) {
+            encoderLimitedTicks = 0
+            // The rung an encoder-limited climb reached was more than the link carries: wait longer before the next try.
+            if (ticksSinceEncoderClimb.let { it != null && it <= CLIMB_PROBATION_TICKS }) {
+                climbTicksNeeded = minOf(climbTicksNeeded * 2, MAX_CLIMB_TICKS)
+            }
+            ticksSinceEncoderClimb = null
+            return byTarget
+        }
+        if (byTarget > height) {
+            encoderLimitedTicks = 0
+            return byTarget
+        }
+        val up = sendRungs.lastOrNull { (h, _) -> h > height }?.first ?: return height
+        val encoderLimited = sent != null && clean && sent * ENCODER_LIMITED_RATIO <= target &&
+            outbound["qualityLimitationReason"] == "none" && sendsFullRung(outbound, sending)
+        encoderLimitedTicks = if (encoderLimited) encoderLimitedTicks + 1 else 0
+        if (encoderLimitedTicks < climbTicksNeeded) return height
+        encoderLimitedTicks = 0
+        if (ticksSinceEncoderClimb.let { it != null && it > CLIMB_PROBATION_TICKS }) climbTicksNeeded = CLIMB_TICKS
+        ticksSinceEncoderClimb = 0
+        return up
+    }
+
+    // libwebrtc shedding resolution on its own (BALANCED, bandwidth) also sends under target; climbing then flaps.
+    private fun sendsFullRung(outbound: Map<String, Any?>, sending: Int): Boolean {
+        val short = listOfNotNull(outbound["frameWidth"].asDouble(), outbound["frameHeight"].asDouble()).minOrNull() ?: return false
+        return short >= sending * 0.9
+    }
+
+    private fun linkIsClean(stats: Collection<StatsEntry>): Boolean {
+        val remote = stats.video("remote-inbound-rtp")
+        val pair = stats.firstOrNull { it.type == "candidate-pair" && it.members["nominated"] == true && it.members["state"] == "succeeded" }?.members
+        val rtt = remote?.get("roundTripTime").asDouble() ?: pair?.get("currentRoundTripTime").asDouble() ?: return false
+        minRtt = minOf(minRtt, rtt)
+        val loss = remote?.get("fractionLost").asDouble() ?: 0.0
+        return loss <= CLEAN_LOSS && rtt <= minRtt * 2 + CLEAN_RTT_SLACK_S
+    }
+
+    private fun sentBps(bytesSent: Double?): Double? {
+        val previous = lastBytesSent
+        lastBytesSent = bytesSent?.let { it to clock.markNow() }
+        if (bytesSent == null || previous == null) return null
+        val seconds = previous.second.elapsedNow().inWholeMilliseconds / 1000.0
+        return if (seconds > 0) (bytesSent - previous.first) * 8 / seconds else null
     }
 }
 
