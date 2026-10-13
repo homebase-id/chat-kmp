@@ -26,12 +26,13 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.resources.MR
-import id.homebase.resources.close
+import id.homebase.resources.menu_back
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_card_intro_hint
 import id.homebase.resources.profile_card_intro_open
@@ -104,66 +105,68 @@ internal fun CardIntro(
     }
     val fontScale = LocalDensity.current.fontScale
     CardExpressiveTheme {
-        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
-            // Occluded by the opaque content below: it only has to be attached and laid out for the snapshot.
-            if (capturing && host != null) {
-                CardHostView(
-                    host = host,
-                    modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
-                    layoutWidth = CAPTURE_LAYOUT_WIDTH,
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .widthIn(max = INTRO_MAX_WIDTH)
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceContainer),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 8.dp),
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(MR.string.profile_card_intro_title),
-                            style = MaterialTheme.typography.headlineMediumEmphasized,
-                            modifier = Modifier.semantics { heading() },
-                        )
-                        Text(
-                            text = stringResource(MR.string.profile_card_intro_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    IconButton(onClick = onClose) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(MR.string.close))
-                    }
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainer) {
+            Box {
+                // Occluded by the opaque content below: it only has to be attached and laid out for the snapshot.
+                if (capturing && host != null) {
+                    CardHostView(
+                        host = host,
+                        modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
+                        layoutWidth = CAPTURE_LAYOUT_WIDTH,
+                    )
                 }
-                when {
-                    uiState.loadFailed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CardErrorPlate(message = MR.string.profile_edit_load_failed, onRetry = onRetry)
-                    }
-                    uiState.cards.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        ContainedLoadingIndicator()
-                    }
-                    else -> LazyVerticalGrid(
-                        // Large type needs a wider tile, or a circle name breaks mid-word.
-                        columns = GridCells.Adaptive(INTRO_MIN_TILE_WIDTH * max(1f, fontScale)),
-                        contentPadding = PaddingValues(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .windowInsetsPadding(WindowInsets.navigationBars),
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .widthIn(max = INTRO_MAX_WIDTH)
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceContainer),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 8.dp),
                     ) {
-                        items(uiState.cards, key = { audienceKey(it.audience) }) { card ->
-                            IntroTile(
-                                card = card,
-                                still = tiles[audienceKey(card.audience)],
-                                onClick = { onOpen(card.audience) },
-                                onPainted = { onTilePainted(card.audience) },
+                        IconButton(onClick = onClose) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(MR.string.profile_card_intro_title),
+                                style = MaterialTheme.typography.headlineMediumEmphasized,
+                                modifier = Modifier.semantics { heading() },
                             )
+                            Text(
+                                text = stringResource(MR.string.profile_card_intro_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    when {
+                        uiState.loadFailed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CardErrorPlate(message = MR.string.profile_edit_load_failed, onRetry = onRetry)
+                        }
+                        uiState.cards.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            ContainedLoadingIndicator()
+                        }
+                        else -> LazyVerticalGrid(
+                            // Large type needs a wider tile, or a circle name breaks mid-word.
+                            columns = GridCells.Adaptive(INTRO_MIN_TILE_WIDTH * max(1f, fontScale)),
+                            contentPadding = PaddingValues(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets.navigationBars),
+                        ) {
+                            items(uiState.cards, key = { audienceKey(it.audience) }) { card ->
+                                IntroTile(
+                                    card = card,
+                                    still = tiles[audienceKey(card.audience)],
+                                    onClick = { onOpen(card.audience) },
+                                    onPainted = { onTilePainted(card.audience) },
+                                )
+                            }
                         }
                     }
                 }

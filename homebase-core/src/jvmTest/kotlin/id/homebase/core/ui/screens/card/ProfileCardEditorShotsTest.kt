@@ -60,7 +60,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import javax.imageio.ImageIO
+import androidx.compose.ui.test.assertCountEquals
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -129,6 +131,7 @@ class ProfileCardEditorShotsTest {
         Shot("03-design-saving", base.copy(previewDesign = CardDesign.COLLAGE, isSavingDesign = true)),
         Shot("03b-customise-saving", edited.copy(isSavingDesign = true), EditorStep.Customise),
         Shot("04-customise-accent", edited, EditorStep.Customise),
+        Shot("04b-customise-unedited", base, EditorStep.Customise),
         Shot("05-customise-heading-font", edited, EditorStep.Customise, act = tool("Heading font")),
         Shot("06-customise-portrait", edited, EditorStep.Customise, act = tool("Portrait shape")),
         Shot("07-customise-socials", edited, EditorStep.Customise, act = tool("Social links style")),
@@ -447,6 +450,41 @@ class ProfileCardEditorShotsTest {
         assertTrue(image.width > 0 && image.height > 0)
         outDir?.let { dir ->
             ImageIO.write(image.toAwtImage(), "png", File(dir, "$name-${if (dark) "dark" else "light"}.png"))
+        }
+    }
+
+    @Test
+    fun saveIsACheckInTheTopBarOnlyOnTheCustomiseStep() {
+        for ((step, expected) in listOf(EditorStep.Design to 0, EditorStep.Customise to 1)) {
+            var saved = 0
+            runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
+                setContent {
+                    CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+                        HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                            CardExpressiveTheme {
+                                ProfileCardEditorContent(
+                                    uiState = edited.copy(previewDesign = CardDesign.POSTER),
+                                    step = step,
+                                    onStep = {},
+                                    onBack = {},
+                                    onSelect = {},
+                                    onOption = { _, _ -> },
+                                    onBlockOrder = {},
+                                    onSave = { saved++ },
+                                    snackbarHostState = remember { SnackbarHostState() },
+                                ) { Box(Modifier.fillMaxSize()) }
+                            }
+                        }
+                    }
+                }
+                waitForIdle()
+                onAllNodesWithContentDescription("Save").assertCountEquals(expected)
+                onAllNodesWithText("Save").assertCountEquals(0)
+                if (expected == 1) {
+                    onNodeWithContentDescription("Save").performClick()
+                    assertEquals(1, saved)
+                }
+            }
         }
     }
 

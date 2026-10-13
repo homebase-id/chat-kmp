@@ -76,7 +76,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -463,7 +465,6 @@ internal fun ProfileCardEditorContent(
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
-                    onSave = onSave,
                     onAppOnly = onRequestDesignAccess,
                     onContentToggle = onContentToggle,
                     onContentEdit = onContentEdit,
@@ -515,6 +516,9 @@ internal fun ProfileCardEditorContent(
                     onBack = onBack,
                     title = if (contentOpen) stringResource(MR.string.profile_edit_title) else null,
                     onPreview = { previewOpen = true }.takeIf { contentOpen && showCard },
+                    onSave = onSave.takeIf { !contentOpen && step == EditorStep.Customise && !uiState.isCircleReadOnly },
+                    canSave = uiState.canSaveDesign,
+                    isSaving = uiState.isSavingDesign,
                 )
                 if (contentOpen && uiState.cards.size > 1) {
                     CardSwitcher(
@@ -659,10 +663,14 @@ private fun EditorTopBar(
     onBack: () -> Unit,
     title: String? = null,
     onPreview: (() -> Unit)? = null,
+    onSave: (() -> Unit)? = null,
+    canSave: Boolean = false,
+    isSaving: Boolean = false,
 ) {
     val editing = stringResource(MR.string.profile_card_audience_editing, audienceLabel(audience))
     val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
     val unsavedLabel = stringResource(MR.string.profile_card_not_saved)
+    val saveLabel = stringResource(MR.string.save)
     val chipDescription = when {
         readOnly -> "$editing. $readOnlyLabel"
         unsaved -> "$editing. $unsavedLabel"
@@ -704,6 +712,15 @@ private fun EditorTopBar(
                 IconButton(onClick = onPreview) {
                     Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
                 }
+            } else if (onSave != null) {
+                FilledIconButton(
+                    onClick = { if (!isSaving) onSave() },
+                    enabled = canSave || isSaving,
+                    shapes = IconButtonDefaults.shapes(),
+                    modifier = Modifier.semantics { contentDescription = saveLabel },
+                ) {
+                    SaveGlyph(isSaving = isSaving, size = 24.dp)
+                }
             } else {
                 // Balances the back button so the audience chip sits centred.
                 Spacer(Modifier.size(48.dp))
@@ -720,7 +737,6 @@ private fun EditorPanel(
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
-    onSave: () -> Unit,
     onAppOnly: () -> Unit,
     onContentToggle: (Uuid, Boolean) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
@@ -788,11 +804,9 @@ private fun EditorPanel(
                 step = step,
                 design = design,
                 isSaving = isSaving,
-                canSave = uiState.canSaveDesign,
                 canCustomise = !uiState.loadFailed,
                 showsAppOnly = uiState.showsAppOnlyTag,
                 onAppOnly = onAppOnly,
-                onSave = onSave,
                 onStep = onStep,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
@@ -829,24 +843,21 @@ private fun EditorPanel(
     }
 }
 
-// One filled action per step: Customise on the first, Save on the second; Save on the first is the quiet way out.
+// One filled action per step: Customise on the first; the second swaps designs, and Save lives in the top bar.
 @Composable
 private fun StepHeader(
     step: EditorStep,
     design: String,
     isSaving: Boolean,
-    canSave: Boolean,
     canCustomise: Boolean,
     showsAppOnly: Boolean,
     onAppOnly: () -> Unit,
-    onSave: () -> Unit,
     onStep: (EditorStep) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val motion = MaterialTheme.motionScheme
     val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
     val designName = stringResource(designLabel(design))
-    val save: () -> Unit = { if (!isSaving) onSave() }
     AnimatedContent(
         targetState = step,
         transitionSpec = {
@@ -912,17 +923,6 @@ private fun StepHeader(
                                 )
                             }
                         }
-                    }
-                    Button(
-                        onClick = save,
-                        enabled = canSave || isSaving,
-                        shapes = ButtonDefaults.shapes(),
-                        contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                        modifier = Modifier.heightIn(min = ACTION_HEIGHT),
-                    ) {
-                        SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
-                        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                        ActionLabel(stringResource(MR.string.save))
                     }
                 }
             }
