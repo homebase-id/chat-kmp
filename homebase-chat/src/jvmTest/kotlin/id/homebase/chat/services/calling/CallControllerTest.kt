@@ -110,6 +110,60 @@ class CallControllerTest {
         assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
     }
 
+    // Redmi: closing the engine took 1.7-2.0 s and the hangup waited behind it, so the iPhone ended 2.8-8.3 s late.
+    @Test
+    fun theHangupIsSentBeforeTheEngineFinishesClosing() = runTest {
+        val timeline = mutableListOf<String>()
+        lateinit var net: LoopbackSignaling
+        val recordClose: (FakeCallEngine) -> CallEngine = { fake ->
+            object : CallEngine by fake {
+                override fun close() {
+                    val hungUp = net.sent.any { it.from == frodo && it.signal is CallSignal.Hangup }
+                    timeline += if (hungUp) "closed after hangup" else "closed before hangup"
+                    fake.close()
+                }
+            }
+        }
+        val (loopback, a, b) = pair(wrapA = recordClose)
+        net = loopback
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        a.controller.hangup()
+        runCurrent()
+
+        assertEquals(listOf("closed after hangup"), timeline)
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
+    }
+
+    @Test
+    fun aCallPlacedRightAfterHangingUpOpensItsEngineOnlyOnceTheLastOneHasClosed() = runTest {
+        val timeline = mutableListOf<String>()
+        val record: (FakeCallEngine) -> CallEngine = { fake ->
+            val n = timeline.count { it.startsWith("created") } + 1
+            timeline += "created $n"
+            object : CallEngine by fake {
+                override fun close() {
+                    timeline += "closed $n"
+                    fake.close()
+                }
+            }
+        }
+        val (_, a, b) = pair(wrapA = record)
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        a.controller.hangup()
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+
+        assertEquals(listOf("created 1", "closed 1", "created 2"), timeline)
+    }
+
     @Test
     fun remoteHangupEndsTheCallWhileApplyingTheAnswerHangs() = runTest {
         val (_, a, b) = pair(wrapA = applyRemoteHangs)

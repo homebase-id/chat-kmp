@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 class CallController(
     selfOdinId: String,
@@ -32,6 +34,7 @@ class CallController(
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
+    private val engineCloseContext: CoroutineContext = EmptyCoroutineContext,
 ) : CallSession {
     private val log = Logger.withTag(TAG)
     private val machine = CallStateMachine(selfOdinId)
@@ -50,6 +53,7 @@ class CallController(
 
     private val inbox = Channel<Command>(Channel.UNLIMITED)
     private var engine: CallEngine? = null
+    private var closingEngine: Job? = null
     private var engineEvents: Job? = null
     private var engineVideos: Job? = null
     private var remoteReady = false
@@ -88,7 +92,10 @@ class CallController(
                     }
                 }
             } finally {
-                withContext(NonCancellable) { teardown() }
+                withContext(NonCancellable) {
+                    teardown()
+                    closingEngine?.join()
+                }
             }
         }
         collectors = listOf(signals, inboxLoop)
@@ -234,7 +241,11 @@ class CallController(
         if (endedCalls.size > ENDED_CALLS_REMEMBERED) endedCalls.removeFirst()
     }
 
-    private fun engine(): CallEngine = engine ?: engineFactory.create(stunUrls()).also { created ->
+    private suspend fun engine(): CallEngine = engine ?: run {
+        // The next call's camera, mic and audio mode must not race the last call's release of them.
+        closingEngine?.join()
+        engineFactory.create(stunUrls())
+    }.also { created ->
         engine = created
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -391,7 +402,10 @@ class CallController(
         engineVideos?.cancel()
         engineVideos = null
         _videos.value = CallVideos()
-        engine?.close()
+        // Closing takes ~2 s on a Redmi (camera stop, peer close); the hangup that follows must not wait for it.
+        engine?.let { released ->
+            closingEngine = scope.launch(engineCloseContext, start = CoroutineStart.ATOMIC) { released.close() }
+        }
         engine = null
         remoteReady = false
         bufferedIce.clear()
