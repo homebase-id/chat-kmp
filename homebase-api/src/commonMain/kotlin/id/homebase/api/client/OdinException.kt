@@ -135,13 +135,17 @@ enum class OdinClientErrorCode(val value: Int) {
      *  (POST /connections/circles/add), unlike every other 403 cause on that endpoint (missing
      *  ManageCircleMembership, contact not connected), which stay codeless. */
     CannotSourceDriveStorageKeyForGrant(4173),
-    IdentityIsNotBlocked(4175),
+    PayloadVersionGone(4174),
+    PayloadHashMismatch(4175),
+    InvalidPayloadHash(4176),
+    PayloadHashRequired(4177),
 
     // Connection errors 50xx
     NotAnAutoConnection(5001),
     IdentityMustBeConnected(5002),
     ConnectionRequestToYourself(5003),
     BlockedConnection(5004),
+    IdentityIsNotBlocked(5010),
     CannotSendConnectionRequestToValidConnection(5005),
     RemoteServerMissingOutgoingRequest(5006),
     ConnectionRequestAlreadySent(5007),

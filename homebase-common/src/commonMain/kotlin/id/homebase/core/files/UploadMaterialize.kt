@@ -51,6 +51,13 @@ expect suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
  */
 expect suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile
 
+/**
+ * The picked file's own modification time in epoch milliseconds, or null when the platform can't
+ * tell (some Android providers, an inaccessible URL). Read it before [materializeForUpload]: the
+ * sandbox copy is dated now.
+ */
+expect fun PlatformFile.modifiedAtMs(): Long?
+
 internal fun isUnderDir(dir: String, path: String): Boolean = path.startsWith(dir.trimEnd('/') + "/")
 
 /**

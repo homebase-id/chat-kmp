@@ -21,7 +21,8 @@ data class PayloadDescriptor(
     val lastModified: Long? = null,
     val descriptorContent: String? = null,
     val previewThumbnail: ThumbnailDescriptor? = null,
-    val uid: Long? = null
+    val uid: Long? = null,
+    val hash: PayloadHash? = null,
     // Add fields as needed
 ) {
     fun isInternalDescriptor(): Boolean =

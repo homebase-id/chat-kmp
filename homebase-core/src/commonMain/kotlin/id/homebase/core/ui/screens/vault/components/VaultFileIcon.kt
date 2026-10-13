@@ -72,7 +72,11 @@ import androidx.compose.material.icons.outlined.Redeem
 // Vault notes are text/markdown, a distinction fileKindOf doesn't draw.
 fun fileTypeIcon(contentType: String?, fileName: String?): ImageVector {
     if (contentType == CONTENT_TYPE_MARKDOWN) return Icons.AutoMirrored.Outlined.NoteAdd
-    return when (fileKindOf(contentType, fileName)) {
+    return fileKindIcon(fileKindOf(contentType, fileName))
+}
+
+fun fileKindIcon(kind: FileKind): ImageVector =
+    when (kind) {
         FileKind.Image -> Icons.Outlined.Image
         FileKind.Video -> Icons.Outlined.VideoFile
         FileKind.Audio -> Icons.Outlined.AudioFile
@@ -85,7 +89,6 @@ fun fileTypeIcon(contentType: String?, fileName: String?): ImageVector {
         FileKind.Text -> Icons.Outlined.Description
         FileKind.Apk, FileKind.Generic -> Icons.AutoMirrored.Outlined.InsertDriveFile
     }
-}
 
 // The entry is named after its first payload, so later pages must not borrow that extension.
 fun VaultEntry.pageTypeIcon(page: PayloadDescriptor): ImageVector =

@@ -8,6 +8,8 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.encryptedPayloadHash
+import id.homebase.api.crypto.newHasher
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -17,6 +19,10 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import io.ktor.utils.io.writeFully
+import io.ktor.utils.io.writer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -46,9 +52,16 @@ class PayloadDownloadServiceTest {
     private var nextStatus = HttpStatusCode.OK
     private var nextBody: ByteArray = ByteArray(0)
     private var nextHeaders: Headers = headersOf()
+    private var bodyDelayMs = 0L
 
     private val mockEngine = MockEngine { _ ->
-        respond(nextBody, nextStatus, nextHeaders)
+        if (bodyDelayMs == 0L) return@MockEngine respond(nextBody, nextStatus, nextHeaders)
+        val body = nextBody
+        val late = CoroutineScope(Dispatchers.IO).writer {
+            Thread.sleep(bodyDelayMs)
+            channel.writeFully(body)
+        }.channel
+        respond(late, nextStatus, nextHeaders)
     }
     private val httpClient = HttpClient(mockEngine)
     private val credentialsManager = CredentialsManager()
@@ -92,6 +105,7 @@ class PayloadDownloadServiceTest {
         nextStatus = HttpStatusCode.OK
         nextBody = ByteArray(0)
         nextHeaders = headersOf()
+        bodyDelayMs = 0L
     }
 
     @AfterTest
@@ -108,6 +122,17 @@ class PayloadDownloadServiceTest {
         val plaintext = ByteArray(size).also { Random.nextBytes(it) }
         nextBody = keyHeader.encryptDataAes(plaintext)
         return keyHeader to plaintext
+    }
+
+    @Test
+    fun `a body that arrives late in real time isn't a stall under a test's virtual time`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(4_096)
+        bodyDelayMs = 300
+
+        val path = service.exportToTemp(driveId, fileId, key, keyHeader, ExportDestination.ShareOutbound(".bin"))
+
+        assertNotNull(path)
+        assertContentEquals(plaintext, File(path).readBytes())
     }
 
     @Test
@@ -213,6 +238,60 @@ class PayloadDownloadServiceTest {
             requestsAfterWarmup, mockEngine.requestHistory.size,
             "a prefetch-warmed payload must play with zero network requests",
         )
+    }
+
+    private suspend fun hashOf(algorithm: PayloadHashAlgorithm, plaintext: ByteArray, keyHeader: KeyHeader): PayloadHash {
+        val contentDigest = algorithm.newHasher().apply { update(plaintext) }.digest()
+        return encryptedPayloadHash(algorithm, ByteArray(32), contentDigest, keyHeader)
+    }
+
+    @Test
+    fun `exportVerified accepts a payload that matches its hash, with either algorithm`() = runTest {
+        for (algorithm in listOf(PayloadHashAlgorithm.Blake3, PayloadHashAlgorithm.Sha256)) {
+            val (keyHeader, plaintext) = encryptedFixture(150_000)
+            val path = service.exportVerified(
+                driveId, fileId, key, keyHeader, hashOf(algorithm, plaintext, keyHeader),
+                ExportDestination.UploadTemp("fs_", ".bin"),
+            )
+            assertNotNull(path, "$algorithm")
+            assertContentEquals(plaintext, File(path).readBytes(), "$algorithm")
+        }
+    }
+
+    @Test
+    fun `exportVerified refuses a damaged payload and leaves no file behind`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(10_000)
+        val otherContent = plaintext.copyOf().also { it[0] = (it[0] + 1).toByte() }
+
+        assertFailsWith<PayloadDamagedException> {
+            service.exportVerified(
+                driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, otherContent, keyHeader),
+                ExportDestination.UploadTemp("fs_", ".bin"),
+            )
+        }
+        assertTrue(File(tempDir, "hb-scratch/upload-temp").listFiles().isNullOrEmpty())
+    }
+
+    @Test
+    fun `exportVerified refuses an unknown hash algorithm before downloading`() = runTest {
+        val (keyHeader, _) = encryptedFixture(1_000)
+        val unknown = PayloadHash("sha3", "", "")
+
+        assertFailsWith<PayloadDamagedException> {
+            service.exportVerified(driveId, fileId, key, keyHeader, unknown, ExportDestination.UploadTemp("fs_", ".bin"))
+        }
+        assertTrue(mockEngine.requestHistory.isEmpty())
+    }
+
+    @Test
+    fun `an export that fails mid-stream leaves no partial file behind`() = runTest {
+        // Not a multiple of the AES block size, so the final chunk always fails to decrypt.
+        nextBody = ByteArray(200_001).also { Random.nextBytes(it) }
+
+        assertTrue(runCatching {
+            service.exportToTemp(driveId, fileId, key, KeyHeader.newRandom16(), ExportDestination.UploadTemp("fs_", ".bin"))
+        }.isFailure)
+        assertTrue(File(tempDir, "hb-scratch/upload-temp").listFiles().isNullOrEmpty())
     }
 
     @Test
