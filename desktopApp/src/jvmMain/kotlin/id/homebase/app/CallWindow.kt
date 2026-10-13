@@ -146,8 +146,7 @@ private fun activeScreenArea(): DpRect {
 
 @Composable
 private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: DesktopPreferences, close: () -> Unit, toggleMini: () -> Unit) {
-    val trayItems by call.trayItems.collectAsStateWithLifecycle()
-    val status = rememberCallMenuEntries(rememberSettledCallItems(trayItems)).firstOrNull { it.action == CallMenuAction.OpenCall }
+    val status = collectSettledCallEntries(call.trayItems, LocalLifecycleOwner.current).firstOrNull { it.action == CallMenuAction.OpenCall }
     val live by call.live.collectAsStateWithLifecycle()
     val muted by call.muted.collectAsStateWithLifecycle()
     val canToggleCamera by call.canToggleCamera.collectAsStateWithLifecycle()

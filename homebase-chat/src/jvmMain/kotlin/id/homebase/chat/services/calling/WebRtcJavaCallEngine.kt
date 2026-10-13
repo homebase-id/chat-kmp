@@ -150,9 +150,11 @@ class WebRtcJavaCallEngine(
 
     init {
         devices.refresh()
+        // Hot-plug needs the platform device monitor (PulseAudio on Linux, which webrtc-java reports as java.lang.Error); without it the call still runs on the devices enumerated above.
         if (!closed) {
-            MediaDevices.addDeviceChangeListener(deviceListener)
-            listenerRegistered.set(true)
+            runCatching { MediaDevices.addDeviceChangeListener(deviceListener) }
+                .onSuccess { listenerRegistered.set(true) }
+                .onFailure { Logger.w(it, "WebRtcJava") { "device hot-plug unavailable, the pickers will not follow device changes" } }
         }
     }
 
@@ -531,6 +533,7 @@ internal class FrameCounter : dev.onvoid.webrtc.media.video.VideoTrackSink {
     val count = java.util.concurrent.atomic.AtomicLong()
     override fun onVideoFrame(frame: dev.onvoid.webrtc.media.video.VideoFrame) {
         count.incrementAndGet()
+        frame.release()
     }
 }
 

@@ -2,15 +2,20 @@ package id.homebase.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.app.lifecycle.DesktopLifecycleOwner
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.sample
 import id.homebase.core.calling.DesktopCallTrayItem
 import id.homebase.core.calling.DesktopCallWindow
 import id.homebase.resources.MR
@@ -74,19 +79,17 @@ fun rememberCallMenuEntries(items: List<DesktopCallTrayItem>): List<CallMenuEntr
 
 private const val MENU_REFRESH_MS = 15_000L
 
-/** A native menu rebuilt every second closes or flickers under the pointer; the timer text only catches up every [MENU_REFRESH_MS]. */
+/** A native menu rebuilt every second closes or flickers under the pointer; the timer text only catches up every [periodMs]. */
+@OptIn(FlowPreview::class)
+fun Flow<List<DesktopCallTrayItem>>.settledForMenu(periodMs: Long = MENU_REFRESH_MS): Flow<List<DesktopCallTrayItem>> =
+    merge(distinctUntilChangedBy { items -> items.map(::withoutTimer) }, sample(periodMs)).distinctUntilChanged()
+
+/** Settles before collecting, so the per-second call timer never recomposes the caller (application{} and the tray). */
 @Composable
-fun rememberSettledCallItems(items: List<DesktopCallTrayItem>): List<DesktopCallTrayItem> {
-    var settled by remember { mutableStateOf(items) }
-    val latest by rememberUpdatedState(items)
-    LaunchedEffect(items.map(::withoutTimer)) { settled = latest }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(MENU_REFRESH_MS)
-            settled = latest
-        }
-    }
-    return settled
+fun collectSettledCallEntries(items: StateFlow<List<DesktopCallTrayItem>>, lifecycleOwner: LifecycleOwner): List<CallMenuEntry> {
+    val settledFlow = remember(items) { items.settledForMenu() }
+    val settled by settledFlow.collectAsStateWithLifecycle(initialValue = items.value, lifecycleOwner = lifecycleOwner)
+    return rememberCallMenuEntries(settled)
 }
 
 internal fun withoutTimer(item: DesktopCallTrayItem): DesktopCallTrayItem =
