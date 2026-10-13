@@ -57,8 +57,7 @@ private data class PhotoSlot(val visibility: ProfileVisibility, val circleId: St
 
 private const val TAG = "ProfileAvatarEditViewModel"
 
-// Until the server takes circleIds on the photo request, a circle photo would be stored visible to every connection.
-const val SERVER_STORES_CIRCLE_PHOTOS = false
+const val SERVER_STORES_CIRCLE_PHOTOS = true
 
 /**
  * These are profile-photo-sized images, not general media — the API contract calls out a
