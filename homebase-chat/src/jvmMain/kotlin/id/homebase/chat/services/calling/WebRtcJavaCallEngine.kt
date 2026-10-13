@@ -111,7 +111,7 @@ class WebRtcJavaCallEngine(
         synchronized(lock) {
             if (closed) return
             peer.getStats { report ->
-                val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes) }
+                val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes, it.id) }
                 videoStatsLines(entries, localTrack = videoTrack?.let { if (it.isEnabled) "enabled" else "disabled" }, previous = previousStats)
                     .forEach { line -> Logger.i("WebRtcJava") { line } }
                 if (!closed) sendLadder.onStats(entries)?.let { line -> Logger.i("WebRtcJava") { line } }

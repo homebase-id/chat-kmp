@@ -3,14 +3,16 @@ package id.homebase.chat.services.calling
 import kotlin.math.roundToLong
 
 /** One entry of a WebRTC stats report, with its W3C type name ("inbound-rtp", "media-source", ...). */
-internal class StatsEntry(val type: String, val members: Map<String, Any?>)
+internal class StatsEntry(val type: String, val members: Map<String, Any?>, val id: String = "")
 
 /**
  * The periodic call-health lines every engine logs. The media-source line counts frames the camera handed to the
  * sender, so a stalled outbound counter reads as a stopped camera (source frozen) or a failing encoder (source moving).
  * The per-frame averages (qp, encodeMs, decodeMs, jbMs) cover the interval since [previous]: a QP above the quality
  * scaler's threshold with limit=none means the sender is not adapting, and decodeMs above 1000/fps means the receiver's
- * decoder cannot keep up.
+ * decoder cannot keep up. inFlight (decodeMs x fps) counts frames inside the decoder: a steady count near a picture
+ * buffer's size is a decoder holding frames, not one short of compute. A/V sync holds audio back to the video's delay,
+ * which the audio line's jbMs shows.
  */
 internal fun videoStatsLines(
     stats: Collection<StatsEntry>,
@@ -19,12 +21,13 @@ internal fun videoStatsLines(
 ): List<String> = buildList {
     stats.video("inbound-rtp")?.let { m ->
         val before = previous.video("inbound-rtp").orEmpty()
+        val decodeMs = perFrame(m, before, "totalDecodeTime", "framesDecoded", 1000.0)
         add(
-            "inbound video packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
+            "inbound video codec=${stats.codecOf(m)} packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
                 "received=${m["framesReceived"]} decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} " +
                 "fps=${m["framesPerSecond"]} freezes=${m["freezeCount"]} size=${m["frameWidth"]}x${m["frameHeight"]} plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]} " +
                 "qp=${perFrame(m, before, "qpSum", "framesDecoded")} " +
-                "decodeMs=${perFrame(m, before, "totalDecodeTime", "framesDecoded", 1000.0)} " +
+                "decodeMs=$decodeMs inFlight=${framesInFlight(decodeMs, m["framesPerSecond"].asDouble())} " +
                 "jbMs=${perFrame(m, before, "jitterBufferDelay", "jitterBufferEmittedCount", 1000.0)} " +
                 "powerEfficient=${m["powerEfficientDecoder"]}",
         )
@@ -35,7 +38,7 @@ internal fun videoStatsLines(
     stats.video("outbound-rtp")?.let { m ->
         val before = previous.video("outbound-rtp").orEmpty()
         add(
-            "outbound video packets=${m["packetsSent"]} bytes=${m["bytesSent"]} encoded=${m["framesEncoded"]} " +
+            "outbound video codec=${stats.codecOf(m)} packets=${m["packetsSent"]} bytes=${m["bytesSent"]} encoded=${m["framesEncoded"]} " +
                 "encodedDelta=${delta(m, before, "framesEncoded")} " +
                 "sent=${m["framesSent"]} keyframes=${m["keyFramesEncoded"]} size=${m["frameWidth"]}x${m["frameHeight"]} " +
                 "fps=${m["framesPerSecond"]} target=${m["targetBitrate"]} limit=${m["qualityLimitationReason"]} " +
@@ -44,6 +47,14 @@ internal fun videoStatsLines(
                 "qp=${perFrame(m, before, "qpSum", "framesEncoded")} " +
                 "encodeMs=${perFrame(m, before, "totalEncodeTime", "framesEncoded", 1000.0)} " +
                 "limitDurations=${m["qualityLimitationDurations"]}",
+        )
+    }
+    stats.media("inbound-rtp", "audio")?.let { m ->
+        val before = previous.media("inbound-rtp", "audio").orEmpty()
+        add(
+            "inbound audio codec=${stats.codecOf(m)} jbMs=${perFrame(m, before, "jitterBufferDelay", "jitterBufferEmittedCount", 1000.0)} " +
+                "jbTargetMs=${perFrame(m, before, "jitterBufferTargetDelay", "jitterBufferEmittedCount", 1000.0)} " +
+                "concealed=${delta(m, before, "concealedSamples")}",
         )
     }
     stats.firstOrNull { it.type == "candidate-pair" && it.members["nominated"] == true && it.members["state"] == "succeeded" }
@@ -55,7 +66,17 @@ internal fun videoStatsLines(
         }
 }
 
-internal fun Collection<StatsEntry>.video(type: String) = firstOrNull { it.type == type && it.members["kind"] == "video" }?.members
+internal fun Collection<StatsEntry>.video(type: String) = media(type, "video")
+
+private fun Collection<StatsEntry>.media(type: String, kind: String) = firstOrNull { it.type == type && it.members["kind"] == kind }?.members
+
+private fun Collection<StatsEntry>.codecOf(rtp: Map<String, Any?>): Any? =
+    firstOrNull { it.type == "codec" && it.id == rtp["codecId"] }?.members?.get("mimeType")
+
+private fun framesInFlight(decodeMs: Double?, fps: Double?): Double? {
+    if (decodeMs == null || fps == null) return null
+    return (decodeMs * fps / 100).roundToLong() / 10.0
+}
 
 // Android reports uint64 counters as BigInteger and iOS as NSNumber; both read through toString.
 internal fun Any?.asDouble(): Double? = when (this) {

@@ -6,7 +6,7 @@ import android.media.MediaFormat
 import android.os.Build
 import co.touchlab.kermit.Logger
 
-// libwebrtc's warnings reach homebase.log through configureWebRtc; what it lacks is whether this device's H.264 decoders claim to sustain the 1080p30 a peer may send.
+// libwebrtc's warnings reach homebase.log through configureWebRtc; what it lacks is whether this device's H.264 decoders claim to sustain the 1080p30 a peer may send, and whether they offer a low-latency mode.
 internal actual fun watchVideoPipeline(): () -> Unit {
     avcDecoderCapabilities.forEach { Logger.i("WebRtcKmp") { it } }
     return {}
@@ -27,7 +27,12 @@ private fun describeDecoder(info: MediaCodecInfo): String {
     val hardware = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) info.isHardwareAccelerated.toString() else "unknown"
     val achievable = runCatching { video.getAchievableFrameRatesFor(w, h) }.getOrNull()
     val points = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) video.supportedPerformancePoints else null
-    return "avc decoder ${info.name} hardware=$hardware max=${video.supportedWidths.upper}x${video.supportedHeights.upper} " +
+    val lowLatency = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency).toString()
+    } else {
+        "unknown"
+    }
+    return "avc decoder ${info.name} sdk=${Build.VERSION.SDK_INT} hardware=$hardware lowLatency=$lowLatency max=${video.supportedWidths.upper}x${video.supportedHeights.upper} " +
         "${w}x${h}@${SendVideoCap.FPS}=${video.areSizeAndRateSupported(w, h, SendVideoCap.FPS.toDouble())} " +
         "achievableFps@${h}p=$achievable performancePoints=$points"
 }
