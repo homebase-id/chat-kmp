@@ -524,7 +524,7 @@ internal fun BoxScope.CardBottomChrome(
             .height(TOOLBAR_BAND_HEIGHT),
         contentAlignment = Alignment.Center,
     ) {
-        // One toolbar: the quick actions as icons, Edit and Change design as its labelled lead actions.
+        // One toolbar: the quick actions as icons, Edit and Design as its labelled lead actions.
         HorizontalFloatingToolbar(
             expanded = true,
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(

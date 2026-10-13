@@ -84,6 +84,11 @@ internal fun SettingsPaneHost(
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
     var editorOpenedFromCard by remember { mutableStateOf(false) }
     var editorOpensDesign by remember { mutableStateOf(false) }
+    val openEditor = { fromCard: Boolean, design: Boolean ->
+        editorOpenedFromCard = fromCard
+        editorOpensDesign = design
+        profilePage = ProfilePage.CardEditor
+    }
     // Pre-warms the card page; its host lives as long as the Settings entry.
     val cardViewModel = if (profileCardEnabled) koinViewModel<ProfileCardViewModel>() else null
     cardViewModel?.let { StartCardHostWhenSettled(it) }
@@ -146,11 +151,7 @@ internal fun SettingsPaneHost(
                             category = shownCategory,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
-                            onProfileEdit = {
-                                editorOpenedFromCard = false
-                                editorOpensDesign = false
-                                profilePage = ProfilePage.CardEditor
-                            },
+                            onProfileEdit = { openEditor(false, false) },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
                             onProfileCard = { profilePage = ProfilePage.Card }.takeIf { cardViewModel != null },
                             actions = actions,
@@ -172,16 +173,8 @@ internal fun SettingsPaneHost(
                                 ProfileCardScreen(
                                     viewModel = it,
                                     onBack = { profilePage = null },
-                                    onEdit = {
-                                        editorOpenedFromCard = true
-                                        editorOpensDesign = false
-                                        profilePage = ProfilePage.CardEditor
-                                    },
-                                    onChangeDesign = {
-                                        editorOpenedFromCard = true
-                                        editorOpensDesign = true
-                                        profilePage = ProfilePage.CardEditor
-                                    },
+                                    onEdit = { openEditor(true, false) },
+                                    onChangeDesign = { openEditor(true, true) },
                                 )
                             }
 
