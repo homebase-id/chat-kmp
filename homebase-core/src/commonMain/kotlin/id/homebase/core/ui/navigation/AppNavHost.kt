@@ -442,13 +442,10 @@ fun AppNavHost(
     val isViewOnceViewerOpen = chromeEntry != null && entryShowsViewOnceViewer(chromeEntry)
     // The Call lab drives the real call screen, which must be edge-to-edge like CallHost to show its insets truthfully.
     val isCallLabOpen = chromeDestination?.hasRoute(Route.DevCallLab::class) == true
-    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen || isViewOnceViewerOpen || isCallLabOpen
+    val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen || isViewOnceViewerOpen
     val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
     val railVisible = isOnTopLevelScreen && showNavigationRail
-    val contentInsets = ScaffoldDefaults.contentWindowInsets.only(
-        if (paintsUnderNavigationBar) WindowInsetsSides.Horizontal
-        else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-    )
+    val contentInsets = navContentInsets(ScaffoldDefaults.contentWindowInsets, paintsUnderNavigationBar, edgeToEdge = isCallLabOpen)
     // Tab roots pad for the bar themselves, so a push or pop never re-measures the screen under it.
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -2331,6 +2328,12 @@ private fun NavHostController.selectConversationOnChatList(
 }
 
 private const val OWNS_WINDOW_KEY = "ownsWindow"
+
+internal fun navContentInsets(base: WindowInsets, paintsUnderNavigationBar: Boolean, edgeToEdge: Boolean): WindowInsets = when {
+    edgeToEdge -> WindowInsets(0)
+    paintsUnderNavigationBar -> base.only(WindowInsetsSides.Horizontal)
+    else -> base.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+}
 
 // A screen whose own full-screen state (open conversation, media viewer) needs the whole window,
 // read from the entry itself so it cannot outlive the screen that raised it.
