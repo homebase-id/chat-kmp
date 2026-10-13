@@ -10,3 +10,6 @@ actual fun platformCallEngineFactory(): CallEngineFactory? = null
 actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) = Unit
 
 actual fun platformAudioRoutes(): List<AudioRoute> = emptyList()
+
+@Composable
+actual fun rememberScreenReaderOn(): Boolean = false

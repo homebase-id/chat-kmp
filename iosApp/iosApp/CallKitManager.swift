@@ -251,9 +251,9 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 }
 
 
-/// Remote call video in the system PiP window. AVPictureInPictureVideoCallViewController (iOS 15+) hosts a Metal view fed
-/// by the remote track; PiP starts by itself when the app backgrounds. Outgoing video keeps flowing because the call's
-/// capture session gets multitasking camera access in VideoPipelineWatch.apple.kt.
+/// The call in the system PiP window. AVPictureInPictureVideoCallViewController (iOS 15+) hosts a Metal view fed by the
+/// remote track, with the camera view Kotlin renders as an inset; PiP starts by itself when the app backgrounds.
+/// Outgoing video keeps flowing because the call's capture session gets multitasking camera access in VideoPipelineWatch.apple.kt.
 final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVideoViewDelegate, AVPictureInPictureControllerDelegate {
     static let shared = PictureInPictureManager()
 
@@ -264,6 +264,8 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     private var controller: AVPictureInPictureController?
     private var content: AVPictureInPictureVideoCallViewController?
     private var renderer: RTCMTLVideoView?
+    private var selfView: UIView?
+    private var onRestore: () -> Void = {}
     private var track: RTCVideoTrack?
     private var lifecycleObservers: [NSObjectProtocol] = []
     // A controller released while its window is up leaves that window on screen with nothing to close it.
@@ -271,7 +273,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     private var firstFrameLogged = false
     private var log: (String) -> Void = { NSLog("%@", $0) }
 
-    func start(remoteTrack: Any, log: @escaping (String) -> Void) {
+    func start(remoteTrack: Any, selfView: Any?, onRestore: @escaping () -> Void, log: @escaping (String) -> Void) {
         guard let remote = remoteTrack as? RTCVideoTrack else {
             log("pip start skipped: remote track is \(type(of: remoteTrack))")
             return
@@ -279,6 +281,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
         DispatchQueue.main.async { [self] in
             teardown()
             self.log = log
+            self.onRestore = onRestore
             guard AVPictureInPictureController.isPictureInPictureSupported() else {
                 log("pip start skipped: isPictureInPictureSupported=false")
                 return
@@ -299,6 +302,20 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
             view.delegate = self
             vc.view.addSubview(view)
             remote.add(view)
+            if let inset = selfView as? UIView {
+                vc.view.addSubview(inset)
+                inset.layer.cornerRadius = 8
+                inset.clipsToBounds = true
+                self.selfView = inset
+                // Constraints, not frames: the PiP window resizes the content view after this.
+                inset.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    inset.widthAnchor.constraint(equalTo: vc.view.widthAnchor, multiplier: 0.28),
+                    inset.heightAnchor.constraint(equalTo: inset.widthAnchor, multiplier: 4.0 / 3.0),
+                    inset.trailingAnchor.constraint(equalTo: vc.view.trailingAnchor, constant: -6),
+                    inset.bottomAnchor.constraint(equalTo: vc.view.bottomAnchor, constant: -6),
+                ])
+            }
 
             let pip = AVPictureInPictureController(
                 contentSource: AVPictureInPictureController.ContentSource(
@@ -345,6 +362,8 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
             controller.stopPictureInPicture()
         }
         if let renderer { track?.remove(renderer); renderer.delegate = nil; renderer.removeFromSuperview() }
+        selfView?.removeFromSuperview()
+        selfView = nil
         controller = nil
         content = nil
         renderer = nil
@@ -356,6 +375,15 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         log("pip failed to start: \(error)")
     }
+    func pictureInPictureController(
+        _ c: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+    ) {
+        log("pip restore requested")
+        onRestore()
+        completionHandler(true)
+    }
+
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
         let wasStopping = stopping.contains { $0.0 === c }
         stopping.removeAll { $0.0 === c }

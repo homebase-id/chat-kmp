@@ -92,6 +92,7 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -119,6 +120,9 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -149,6 +153,7 @@ import id.homebase.chat.services.calling.CallVideoView
 import id.homebase.chat.services.calling.FailReason
 import id.homebase.chat.services.calling.FakeVideo
 import id.homebase.chat.services.calling.VideoHandle
+import id.homebase.chat.services.calling.rememberScreenReaderOn
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.call_accept
@@ -240,13 +245,8 @@ private val ContentMaxWidth = 480.dp
 private val LargeWidth = 840.dp
 private val StageMaxWidth = 1040.dp
 private val StageMaxHeight = 720.dp
-private val PipTop = 84.dp
 internal const val RemoteVideoTag = "call-remote-video"
-private val PhoneDockReserve = 236.dp
-private val DesktopDockReserve = 128.dp
 private val CompactHeight = 480.dp
-private val CompactDockReserve = 112.dp
-private val CompactPipTop = 72.dp
 
 /** A phone on its side: too short for the stacked phone layout, and its width must not pass it off as a desktop. */
 private val LocalCompactHeight = staticCompositionLocalOf { false }
@@ -276,20 +276,33 @@ fun CallScreen(
     avatar: @Composable (size: Dp) -> Unit,
     actions: CallScreenActions,
     modifier: Modifier = Modifier,
+    chromeHeld: Boolean = false,
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val chrome = remember { CallChrome() }
+    val screenReader = rememberScreenReaderOn()
 
     BoxWithConstraints(
         modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
+            .pointerInput(chrome) {
+                awaitPointerEventScope {
+                    while (true) {
+                        if (awaitPointerEvent(PointerEventPass.Initial).changes.any { it.changedToDown() }) chrome.onTouch()
+                    }
+                }
+            }
             .focusRequester(focus)
             .focusable()
             .onPreviewKeyEvent { handleCallKey(it, ui, actions) },
     ) {
         CallBackdrop()
         val compact = isCompactHeight(maxWidth, maxHeight)
-        if (!compact && maxWidth >= LargeWidth) {
+        val large = !compact && maxWidth >= LargeWidth
+        val autoHide = chromeAutoHideEligible(ui, large, held = chromeHeld || chrome.holds > 0, screenReader = screenReader)
+        LaunchedEffect(autoHide) { chrome.run(autoHide) }
+        if (large) {
             Box(
                 Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
                 contentAlignment = Alignment.Center,
@@ -305,7 +318,7 @@ fun CallScreen(
                 }
             }
         } else {
-            CompositionLocalProvider(LocalCompactHeight provides compact) {
+            CompositionLocalProvider(LocalCompactHeight provides compact, LocalCallChrome provides chrome) {
                 CallStage(ui, large = false, peerName, avatar, actions, Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
             }
         }
@@ -343,8 +356,14 @@ private fun CallStage(
     contentInsets: Modifier,
 ) {
     val videoMode = ui.isVideoCall && ui.inProgress
-    Box(Modifier.fillMaxSize()) {
-        if (videoMode) VideoStage(ui, large, avatar)
+    val chrome = LocalCallChrome.current
+    val chromeVisible = chrome?.visible ?: true
+    Box(
+        Modifier.fillMaxSize().then(
+            if (videoMode && chrome != null) Modifier.pointerInput(chrome) { detectTapGestures(onTap = { chrome.onTapVideo() }) } else Modifier,
+        ),
+    ) {
+        if (videoMode) VideoStage(ui, large, avatar, chromeVisible)
         Box(contentInsets.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Box(Modifier.then(if (large || LocalCompactHeight.current) Modifier else Modifier.widthIn(max = ContentMaxWidth)).fillMaxSize()) {
                 when (val phase = ui.phase) {
@@ -358,7 +377,7 @@ private fun CallStage(
                 }
             }
         }
-        if (videoMode) ui.videos.local?.let { LocalPreview(it, ui.localVideo, large) }
+        if (videoMode) ui.videos.local?.let { LocalPreview(it, ui.localVideo, large, chromeVisible) }
     }
 }
 
@@ -380,10 +399,27 @@ private fun CallUiState.remoteShowing(): Boolean =
 
 @Composable
 internal fun CallPipLayout(ui: CallUiState, avatar: @Composable (Dp) -> Unit) {
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest), contentAlignment = Alignment.Center) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest), contentAlignment = Alignment.Center) {
         if (ui.remoteShowing()) RemoteVideo(ui.videos.remote) else avatar(48.dp)
+        val local = ui.videos.local
+        if (local != null && ui.localVideo) {
+            val width = minOf(maxWidth, maxHeight) * PipSelfFraction
+            val description = stringResource(MR.string.call_local_preview)
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(PipSelfMargin)
+                    .size(width, width * 4 / 3)
+                    .clip(RoundedCornerShape(PipSelfCorner))
+                    .semantics { contentDescription = description },
+            ) {
+                CallVideoSurface(local, Modifier.fillMaxSize(), local = true, cornerRadius = PipSelfCorner)
+            }
+        }
     }
 }
+
+private const val PipSelfFraction = 0.3f
+private val PipSelfMargin = 6.dp
+private val PipSelfCorner = 8.dp
 
 @Composable
 private fun RemoteVideo(handle: VideoHandle?) {
@@ -395,13 +431,15 @@ private fun RemoteVideo(handle: VideoHandle?) {
 }
 
 @Composable
-private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp) -> Unit) {
+private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp) -> Unit, chromeVisible: Boolean) {
     val reconnecting = ui.phase == CallPhase.Reconnecting
+    val scrimAlpha by animateFloatAsState(if (chromeVisible) 1f else 0f, MaterialTheme.motionScheme.slowEffectsSpec())
     Box(Modifier.fillMaxSize()) {
         if (ui.remoteShowing()) {
             RemoteVideo(ui.videos.remote)
+            // Only backs the chrome, so it leaves with it.
             Box(
-                Modifier.fillMaxSize().background(
+                Modifier.fillMaxSize().graphicsLayer { alpha = scrimAlpha }.background(
                     Brush.verticalGradient(
                         0f to MaterialTheme.colorScheme.scrim.copy(alpha = 0.36f),
                         0.2f to Color.Transparent,
@@ -564,14 +602,20 @@ private fun BoxScope.InCallLayout(
         }
     }
 
-    CallTopBar(
-        ui = ui,
-        center = if (videoMode) ({ NamePill(ui, peerName, elapsed) }) else null,
-        actions = actions,
-        modifier = Modifier.align(Alignment.TopCenter),
-    )
-
-    ControlDock(ui, large, actions, Modifier.align(Alignment.BottomCenter), placing = false)
+    val chromeVisible = !videoMode || LocalCallChrome.current?.visible ?: true
+    val enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec())
+    val exit = fadeOut(MaterialTheme.motionScheme.slowEffectsSpec())
+    AnimatedVisibility(chromeVisible, Modifier.align(Alignment.TopCenter), enter = enter, exit = exit) {
+        CallTopBar(
+            ui = ui,
+            center = if (videoMode) ({ NamePill(ui, peerName, elapsed) }) else null,
+            actions = actions,
+            modifier = Modifier,
+        )
+    }
+    AnimatedVisibility(chromeVisible, Modifier.align(Alignment.BottomCenter), enter = enter, exit = exit) {
+        ControlDock(ui, large, actions, Modifier, placing = false)
+    }
 }
 
 @Composable
@@ -616,6 +660,7 @@ private fun AudioCallStatus(ui: CallUiState, elapsed: String) {
 @Composable
 private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actions: CallScreenActions, modifier: Modifier) {
     var codeOpen by remember(ui.callId) { mutableStateOf(false) }
+    HoldCallChrome(codeOpen)
     Box(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         ChromeIconButton(Icons.Default.KeyboardArrowDown, stringResource(MR.string.call_minimize), actions.minimize, Modifier.align(Alignment.TopStart))
         if (center != null) Box(Modifier.align(Alignment.TopCenter).padding(horizontal = 60.dp)) { center() }
@@ -752,7 +797,7 @@ private fun MutedChip(muted: Boolean) {
 }
 
 @Composable
-private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large: Boolean) {
+private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large: Boolean, chromeVisible: Boolean) {
     val density = LocalDensity.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val scope = rememberCoroutineScope()
@@ -766,13 +811,16 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val height = with(density) { maxHeight.toPx() }
         val pipW = with(density) { pipWidth.toPx() }
         val pipH = with(density) { pipHeight.toPx() }
-        val margin = with(density) { 16.dp.toPx() }
-        val top = with(density) { (if (large) 80.dp else if (compact) CompactPipTop else PipTop).toPx() }
-        val bottom = with(density) { (if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
+        val reserve = previewReserve(chromeVisible, large, compact)
+        val margin = with(density) { PreviewMargin.toPx() }
+        val top = with(density) { reserve.top.toPx() }
+        val bottom = with(density) { reserve.bottom.toPx() }
         val previewDescription = stringResource(MR.string.call_local_preview)
         val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
-        val anchor = remember(width, height, compact) { Animatable(corners[1], Offset.VectorConverter) }
+        var corner by remember(compact) { mutableIntStateOf(1) }
+        val anchor = remember(width, height, compact) { Animatable(corners[corner], Offset.VectorConverter) }
         var drag by remember(width, height, compact) { mutableStateOf(Offset.Zero) }
+        LaunchedEffect(corners[corner]) { anchor.animateTo(corners[corner], springSpec) }
         val shape = RoundedCornerShape(PreviewCorner)
         Surface(
             modifier = Modifier
@@ -788,8 +836,9 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                         onDragEnd = {
                             val landed = anchor.value + drag
                             val center = landed + Offset(pipW / 2, pipH / 2)
-                            val target = corners.minBy { (it + Offset(pipW / 2, pipH / 2) - center).getDistance() }
+                            corner = corners.indices.minBy { (corners[it] + Offset(pipW / 2, pipH / 2) - center).getDistance() }
                             drag = Offset.Zero
+                            val target = corners[corner]
                             scope.launch {
                                 anchor.snapTo(landed)
                                 anchor.animateTo(target, springSpec)
@@ -1045,6 +1094,7 @@ private fun RouteToggle(
         return
     }
     var expanded by remember { mutableStateOf(false) }
+    HoldCallChrome(expanded)
     Box(modifier) {
         CallToggle(
             checked = ui.route != AudioRoute.Earpiece,

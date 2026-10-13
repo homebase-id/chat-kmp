@@ -36,3 +36,6 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius:
 }
 
 actual fun platformAudioRoutes(): List<AudioRoute> = emptyList()
+
+@Composable
+actual fun rememberScreenReaderOn(): Boolean = false

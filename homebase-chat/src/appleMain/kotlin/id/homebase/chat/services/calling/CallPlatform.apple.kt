@@ -9,6 +9,12 @@ import platform.CoreGraphics.CGSize
 import platform.darwin.NSObject
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import platform.Foundation.NSNotificationCenter
+import platform.UIKit.UIAccessibilityIsVoiceOverRunning
+import platform.UIKit.UIAccessibilityVoiceOverStatusDidChangeNotification
 import androidx.compose.runtime.remember
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -56,4 +62,16 @@ private class RemoteSizeReporter : NSObject(), RTCVideoViewDelegateProtocol {
             if (width > 0 && height > 0) RemoteVideoSize.current.value = width.toInt() to height.toInt()
         }
     }
+}
+
+@Composable
+actual fun rememberScreenReaderOn(): Boolean {
+    var on by remember { mutableStateOf(UIAccessibilityIsVoiceOverRunning()) }
+    DisposableEffect(Unit) {
+        val observer = NSNotificationCenter.defaultCenter.addObserverForName(
+            UIAccessibilityVoiceOverStatusDidChangeNotification, null, null,
+        ) { _ -> on = UIAccessibilityIsVoiceOverRunning() }
+        onDispose { NSNotificationCenter.defaultCenter.removeObserver(observer) }
+    }
+    return on
 }

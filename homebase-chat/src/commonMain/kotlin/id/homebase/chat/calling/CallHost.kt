@@ -47,6 +47,7 @@ import id.homebase.resources.call_verification_ok
 import id.homebase.resources.call_verification_title
 import id.homebase.core.util.KeepScreenOn
 import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 
 @Composable
@@ -77,9 +78,11 @@ fun CallOverlay(
     CallPictureInPictureEffect(
         eligible = ui.pipEligible,
         remote = ui.videos.remote,
+        local = ui.videos.local.takeIf { ui.localVideo },
         muted = ui.muted,
         onToggleMute = viewModel::toggleMute,
         onHangup = viewModel::hangup,
+        onRestore = viewModel::restore,
     )
     LaunchedEffect(ui.inProgress) { if (!ui.inProgress) RemoteVideoSize.current.value = null }
     var showVerification by remember { mutableStateOf(false) }
@@ -110,16 +113,22 @@ fun CallOverlay(
         )
     }
 
+    val shown = ui.visible && (!ui.minimized || inPip)
     Box(modifier) {
         AnimatedVisibility(
-            visible = ui.visible && (!ui.minimized || inPip),
+            visible = shown,
             enter = fadeIn() + slideInVertically { it / 8 },
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions)
+                if (inPip) {
+                    CallPipLayout(ui, avatar)
+                } else {
+                    CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, chromeHeld = showVerification || confirmEnd)
+                }
             }
         }
+        DismissTapShield(ui.visible)
         if (ui.pillVisible && !inPip) {
             OngoingCallPill(
                 ui = ui,
@@ -151,6 +160,24 @@ fun CallOverlay(
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text(stringResource(MR.string.call_end_keep)) } },
         )
     }
+}
+
+internal const val TapShieldMs = 600L
+
+/** The ended screen leaves on a timer, so a tap aimed at its buttons can land just after it has gone: swallow taps for a beat once it does. */
+@Composable
+internal fun DismissTapShield(visible: Boolean) {
+    var shielded by remember { mutableStateOf(false) }
+    var wasVisible by remember { mutableStateOf(visible) }
+    LaunchedEffect(visible) {
+        val dismissed = wasVisible && !visible
+        wasVisible = visible
+        if (!dismissed) return@LaunchedEffect
+        shielded = true
+        delay(TapShieldMs)
+        shielded = false
+    }
+    if (shielded) Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } })
 }
 
 @Composable

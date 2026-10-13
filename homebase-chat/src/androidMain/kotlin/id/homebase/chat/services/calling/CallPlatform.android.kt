@@ -1,7 +1,12 @@
 package id.homebase.chat.services.calling
 
 import androidx.compose.runtime.Composable
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -91,4 +96,17 @@ actual fun platformAudioRoutes(): List<AudioRoute> {
         routes += AudioRoute.Wired
     }
     return routes
+}
+
+@Composable
+actual fun rememberScreenReaderOn(): Boolean {
+    val manager = LocalContext.current.getSystemService(AccessibilityManager::class.java)
+        ?: return false
+    var on by remember(manager) { mutableStateOf(manager.isTouchExplorationEnabled) }
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { on = it }
+        manager.addTouchExplorationStateChangeListener(listener)
+        onDispose { manager.removeTouchExplorationStateChangeListener(listener) }
+    }
+    return on
 }

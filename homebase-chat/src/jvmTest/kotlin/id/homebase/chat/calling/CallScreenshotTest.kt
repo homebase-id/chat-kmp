@@ -1,6 +1,10 @@
 package id.homebase.chat.calling
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.click
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -271,6 +275,156 @@ class CallScreenshotTest {
         val buttons = onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
         val endRect = androidx.compose.ui.geometry.Rect(end.left.value, end.top.value, end.right.value, end.bottom.value)
         for (b in buttons) assertTrue(!endRect.overlaps(b), "snapped self-view $endRect covers control $b")
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.clickables() =
+        onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.previewBounds() =
+        onNodeWithContentDescription("Your camera preview", substring = true).getBoundsInRoot()
+
+    private fun androidx.compose.ui.test.ComposeUiTest.controlsShown() =
+        onAllNodes(hasContentDescription("Mute microphone"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
+    @Test
+    fun videoControlsFadeAfterIdleAndATapOnTheVideoBringsThemBack() {
+        for (dark in listOf(false, true)) runDesktopComposeUiTest(390, 844) {
+            show(dark, shots.first { it.name == "connected" }.state(base(true, Size.Phone)))
+            val theme = if (dark) "dark" else "light"
+            assertTrue(controlsShown())
+            val shownTop = previewBounds().top.value
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "chrome-shown-$theme-video-phone.png"))
+
+            mainClock.advanceTimeBy(ChromeIdleMs + 1_500)
+            assertTrue(!controlsShown(), "controls fade after ${ChromeIdleMs}ms")
+            assertTrue(clickables().isEmpty(), "nothing hidden is still tappable: ${clickables()}")
+            val hiddenTop = previewBounds().top.value
+            assertEquals(16f, hiddenTop, 1f, "self-view rises into the freed top")
+            assertTrue(hiddenTop < shownTop)
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "chrome-hidden-$theme-video-phone.png"))
+
+            onRoot().performTouchInput { click(Offset(195f, 500f)) }
+            mainClock.advanceTimeBy(1_000)
+            assertTrue(controlsShown(), "a tap brings them back")
+            assertEquals(shownTop, previewBounds().top.value, 1f, "and the self-view steps back below the top bar")
+        }
+    }
+
+    @Test
+    fun tappingAControlKeepsTheControlsAndRestartsTheirTimer() = runDesktopComposeUiTest(390, 844) {
+        val recorder = Recorder()
+        show(false, shots.first { it.name == "connected" }.state(base(true, Size.Phone)), recorder)
+        mainClock.advanceTimeBy(ChromeIdleMs - 1_000)
+        onNodeWithContentDescription("Mute microphone").performClick()
+        mainClock.advanceTimeBy(ChromeIdleMs - 500)
+        assertTrue(controlsShown(), "the press pushed the fade back and did not toggle the controls away")
+        assertEquals(listOf("mute"), recorder.calls)
+    }
+
+    @Test
+    fun anOpenMenuOrDialogHoldsTheControls() {
+        runDesktopComposeUiTest(390, 844) {
+            show(false, shots.first { it.name == "connected" }.state(base(true, Size.Phone)))
+            onNodeWithContentDescription("Choose audio output").performClick()
+            mainClock.advanceTimeBy(ChromeIdleMs * 3)
+            assertTrue(controlsShown(), "route menu holds the controls")
+            assertTrue(onAllNodes(hasText("Speaker"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        }
+        runDesktopComposeUiTest(390, 844) {
+            mainClock.autoAdvance = false
+            setContent {
+                HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
+                    CallScreen(
+                        ui = shots.first { it.name == "connected" }.state(base(true, Size.Phone)),
+                        peerName = "Samwise Gamgee",
+                        avatar = {},
+                        actions = Recorder().actions(),
+                        chromeHeld = true,
+                    )
+                }
+            }
+            mainClock.advanceTimeBy(ChromeIdleMs * 3)
+            assertTrue(controlsShown(), "a dialog over the call holds the controls")
+        }
+    }
+
+    @Test
+    fun voiceAndRingingCallsNeverHideTheirControls() {
+        val cases = listOf(
+            shots.first { it.name == "connected" }.state(base(false, Size.Phone)),
+            shots.first { it.name == "reconnecting" }.state(base(true, Size.Phone)),
+            shots.first { it.name == "connecting" }.state(base(true, Size.Phone)),
+        )
+        for (state in cases) runDesktopComposeUiTest(390, 844) {
+            show(false, state)
+            mainClock.advanceTimeBy(ChromeIdleMs * 2)
+            assertShown("End call")
+        }
+    }
+
+    @Test
+    fun selfViewSitsAboveTheDockAndDropsToTheEdgeWhenTheControlsHide() = runDesktopComposeUiTest(390, 844) {
+        show(false, shots.first { it.name == "connected" }.state(base(true, Size.Phone)))
+        onNodeWithContentDescription("Your camera preview", substring = true).performTouchInput { swipe(center, center + Offset(0f, 600f), durationMillis = 200) }
+        mainClock.advanceTimeBy(1_500)
+        val shown = previewBounds()
+        val rect = androidx.compose.ui.geometry.Rect(shown.left.value, shown.top.value, shown.right.value, shown.bottom.value)
+        for (b in clickables()) assertTrue(!rect.overlaps(b), "self-view $rect covers control $b")
+        assertTrue(844f - shown.bottom.value >= 214f, "self-view clears the dock: $shown")
+        ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "selfview-bottom-shown-light-video-phone.png"))
+
+        mainClock.advanceTimeBy(ChromeIdleMs + 1_500)
+        val hidden = previewBounds()
+        assertEquals(844f - 16f, hidden.bottom.value, 1f, "self-view drops into the freed space")
+        assertEquals(390f - 16f, hidden.right.value, 1f)
+        ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "selfview-bottom-hidden-light-video-phone.png"))
+    }
+
+    @Test
+    fun pictureInPictureShowsTheRemoteVideoWithASelfInset() {
+        for ((w, h) in listOf(180 to 320, 320 to 180)) runDesktopComposeUiTest(w, h) {
+            val state = shots.first { it.name == "connected" }.state(base(true, Size.Phone))
+            setContent {
+                HomebaseTheme(darkTheme = true, followsSystemTheme = false) {
+                    CallPipLayout(state) {}
+                }
+            }
+            val self = onNodeWithContentDescription("Your camera preview", substring = true).getBoundsInRoot()
+            assertTrue(self.right.value <= w && self.bottom.value <= h && self.left.value > w / 2f && self.top.value > h / 3f, "inset bottom-end: $self")
+            assertTrue(self.right.value - self.left.value < w / 2f, "inset stays small: $self")
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "pip-${w}x$h.png"))
+        }
+        runDesktopComposeUiTest(180, 320) {
+            setContent {
+                HomebaseTheme(darkTheme = true, followsSystemTheme = false) {
+                    CallPipLayout(shots.first { it.name == "selfcamoff" }.state(base(true, Size.Phone))) {}
+                }
+            }
+            assertTrue(onAllNodes(hasContentDescription("Your camera preview", substring = true)).fetchSemanticsNodes().isEmpty(), "no inset with the camera off")
+        }
+    }
+
+    @Test
+    fun aTapJustAfterTheCallScreenLeavesDoesNotReachTheAppUnderneath() = runDesktopComposeUiTest(390, 844) {
+        var under = 0
+        var visible by androidx.compose.runtime.mutableStateOf(true)
+        mainClock.autoAdvance = false
+        setContent {
+            Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().clickable { under++ })
+                DismissTapShield(visible)
+            }
+        }
+        mainClock.advanceTimeBy(100)
+        onRoot().performTouchInput { click(center) }
+        assertEquals(1, under, "nothing shields while the call screen is up")
+        visible = false
+        mainClock.advanceTimeBy(100)
+        onRoot().performTouchInput { click(center) }
+        assertEquals(1, under, "a tap right after it left is swallowed")
+        mainClock.advanceTimeBy(TapShieldMs)
+        onRoot().performTouchInput { click(center) }
+        assertEquals(2, under, "and the app answers again after the beat")
     }
 
     @Test

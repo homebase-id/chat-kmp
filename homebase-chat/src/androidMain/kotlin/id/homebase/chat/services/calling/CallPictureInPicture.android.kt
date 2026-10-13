@@ -57,7 +57,15 @@ actual fun rememberInPictureInPicture(): Boolean {
 }
 
 @Composable
-actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit) {
+actual fun CallPictureInPictureEffect(
+    eligible: Boolean,
+    remote: VideoHandle?,
+    local: VideoHandle?,
+    muted: Boolean,
+    onToggleMute: () -> Unit,
+    onHangup: () -> Unit,
+    onRestore: () -> Unit,
+) {
     val activity = LocalContext.current.findActivity() ?: return
     val size by RemoteVideoSize.current.collectAsState()
     val muteLabel = stringResource(if (muted) MR.string.call_unmute else MR.string.call_mute)
@@ -81,6 +89,9 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
     }
 
     val inPip = rememberInPictureInPicture()
+    val restore by rememberUpdatedState(onRestore)
+    // The expand control and a dismissal look the same from here, so the call is un-minimized on the way in.
+    LaunchedEffect(inPip) { if (inPip) restore() }
     LaunchedEffect(inPip, eligible) {
         if (shouldLeavePictureInPicture(inPip, eligible)) {
             Logger.i("CallPiP") { "leaving pip: call no longer pip-eligible" }
