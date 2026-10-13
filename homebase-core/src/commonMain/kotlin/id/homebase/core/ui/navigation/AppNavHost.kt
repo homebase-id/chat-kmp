@@ -632,9 +632,7 @@ fun AppNavHost(
                     // ConversationListViewModel via the PendingNotificationTap
                     // singleton (TTL-retried until drive sync lands the
                     // conversation) — here we only manage the back stack.
-                    val stack = navController.currentBackStack.firstContaining {
-                        it.destination.hasRoute(Route.ChatList::class)
-                    }
+                    val stack = navController.awaitChatList()
                     Logger.i(tag = "AppNavHost") {
                         "ChatList present in stack (size=${stack.size}), popping to it"
                     }
@@ -662,9 +660,7 @@ fun AppNavHost(
                     // still on Route.AppLoading, whose ChatList navigation pops (inclusive) —
                     // anything pushed before that would go with it. Gate on ChatList being in the
                     // stack (immediate when warm).
-                    navController.currentBackStack.firstContaining {
-                        it.destination.hasRoute(Route.ChatList::class)
-                    }
+                    navController.awaitChatList()
                     // Push the contact book first so back-press from the request lands on the
                     // contacts tab rather than dropping straight out to chat.
                     openContactBook()
@@ -697,9 +693,7 @@ fun AppNavHost(
                         // resolves the instant AppLoading→ChatList completes, by which
                         // point AppLoading is already gone) before pushing. Mirrors the
                         // OpenConversation gate above.
-                        navController.currentBackStack.firstContaining {
-                            it.destination.hasRoute(Route.ChatList::class)
-                        }
+                        navController.awaitChatList()
                         // Push Moments first so back-press from the reels detail lands
                         // on the feed, then open the detail pager on the tapped moment.
                         // The pager resolves the moment from MomentsFeedService's live
@@ -725,9 +719,7 @@ fun AppNavHost(
                     // handling: push Moments first so back-press from the composer
                     // lands on the feed, then open the composer.
                     if (momentsViewModel.isActivated.value) {
-                        navController.currentBackStack.firstContaining {
-                            it.destination.hasRoute(Route.ChatList::class)
-                        }
+                        navController.awaitChatList()
                         openMoments()
                         navController.navigate(Route.MomentCompose)
                     }
@@ -745,12 +737,7 @@ fun AppNavHost(
 
                 is NotificationNavigationEvent.OpenApp -> {
                     Logger.i(tag = "AppNavHost") { "OpenApp received: ${event.route}" }
-                    // Loading ends with popUpTo(AppLoading, inclusive): anything opened before ChatList would be popped.
-                    navController.currentBackStack.firstContaining {
-                        it.destination.hasRoute(Route.ChatList::class)
-                    }
-                    // The bar only offers Email when this host runs mail; a typed link mustn't bypass that.
-                    if (event.route == Route.Email && serverSupportsMail != true) return@collect
+                    navController.awaitChatList()
                     navController.openApp(event.route, tabRoutes)
                 }
             }

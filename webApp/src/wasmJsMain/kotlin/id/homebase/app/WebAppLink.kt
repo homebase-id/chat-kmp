@@ -9,10 +9,7 @@ import org.w3c.dom.PopStateEvent
 object WebAppLink {
     private const val PENDING_KEY = "homebase_app_link"
 
-    /**
-     * Call before any sign-in redirect: the authorize round-trip drops the hash, sessionStorage survives it.
-     * Any other boot drops a leftover link, so an abandoned sign-in can't hijack a later load.
-     */
+    /** Call before any sign-in redirect: it drops the hash, sessionStorage survives it. */
     fun captureFromUrl() {
         val link = AppLink.fromSlug(window.location.hash)
         if (link != null) {
