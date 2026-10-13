@@ -62,7 +62,7 @@ import id.homebase.chat.calling.CallLogDirection
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.calling.callEventVisual
 import id.homebase.chat.calling.imageVector
-import id.homebase.chat.calling.spokenCallDuration
+import id.homebase.chat.calling.formatCallDuration
 import id.homebase.chat.calling.stringRes
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
@@ -79,6 +79,8 @@ import id.homebase.resources.calls_menu_delete
 import id.homebase.resources.calls_menu_open_chat
 import id.homebase.resources.chat_error_delete_message_me
 import id.homebase.resources.calls_empty_body
+import id.homebase.resources.calls_kind_video
+import id.homebase.resources.calls_kind_voice
 import id.homebase.resources.calls_empty_title
 import id.homebase.resources.calls_more_options
 import id.homebase.resources.calls_new_call
@@ -264,11 +266,11 @@ private fun CallRow(
     val visual = callEventVisual(CallEventDescriptor(entry.outcome, entry.video, entry.durationSeconds), entry.direction == CallLogDirection.Outgoing)
     var menuOpen by remember { mutableStateOf(false) }
     val subdued = if (visual.missed) colors.error else colors.onSurfaceVariant
-    val kind = stringResource(if (entry.video) MR.string.call_button_video else MR.string.call_button_voice)
+    val kind = stringResource(if (entry.video) MR.string.calls_kind_video else MR.string.calls_kind_voice)
     val title = stringResource(visual.title.stringRes())
     val withKind = stringResource(MR.string.call_event_duration, title, kind)
     val subtitle = if (entry.outcome == CallOutcome.Completed && entry.durationSeconds > 0) {
-        stringResource(MR.string.call_event_duration, withKind, spokenCallDuration(entry.durationSeconds))
+        stringResource(MR.string.call_event_duration, withKind, formatCallDuration(entry.durationSeconds))
     } else withKind
     Box {
         Row(
@@ -308,9 +310,9 @@ private fun CallRow(
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
-                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(visual.icon.imageVector(), contentDescription = null, tint = subdued, modifier = Modifier.padding(top = 2.dp).size(16.dp))
-                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = subdued, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(visual.icon.imageVector(), contentDescription = null, tint = subdued, modifier = Modifier.size(16.dp))
+                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = subdued, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             IconButton(enabled = row.canCall, onClick = { onAction(CallsAction.CallBack(entry, entry.video)) }) {
@@ -319,6 +321,7 @@ private fun CallRow(
                     contentDescription = stringResource(if (entry.video) MR.string.call_button_video else MR.string.call_button_voice),
                 )
             }
+            Spacer(Modifier.width(12.dp))
             IconButton(onClick = { menuOpen = true }) {
                 Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.calls_more_options))
             }

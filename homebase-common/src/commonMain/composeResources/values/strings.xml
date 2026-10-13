@@ -1681,6 +1681,8 @@
     <string name="calls_new_call_title">New call</string>
     <string name="calls_missed_badge_cd">Missed calls</string>
     <string name="calls_contact_not_connected">Not connected</string>
+    <string name="calls_kind_voice">Voice</string>
+    <string name="calls_kind_video">Video</string>
     <string name="nav_home">Home</string>
 
     <!-- Developer menu -->

@@ -114,9 +114,9 @@ class CallsScreenScreenshotTest {
         onNodeWithText("Today").assertExists()
         onNodeWithText("Yesterday").assertExists()
         onNodeWithText("Samwise Gamgee").assertExists()
-        onNodeWithText("Missed call · Voice call").assertExists()
-        onNodeWithText("Outgoing call · Video call · 3 min 3 s").assertExists()
-        onNodeWithText("Call declined · Video call").assertExists()
+        onNodeWithText("Missed call · Voice").assertExists()
+        onNodeWithText("Outgoing call · Video · 03:03").assertExists()
+        onNodeWithText("Call declined · Video").assertExists()
         save("phone-light")
     }
 
