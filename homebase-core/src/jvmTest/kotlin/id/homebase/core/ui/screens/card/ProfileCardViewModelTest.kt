@@ -2078,6 +2078,23 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun aLegacyPostsFirstOrderIsNormalisedOnTheNextSave() = runTest(dispatcher) {
+        val legacy = CardOverrides(blocks = listOf("posts", "chat", "links", "moments").map { CardBlock(it) })
+        val attribute = cardAttribute(
+            ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Public, CardDesign.BOARD, legacy),
+            ProfileVisibility.ANONYMOUS,
+        )
+        val (vm, _, store) = boardVm(FakeCardStore(listOf(attribute)))
+        vm.onOptionSelected(CardOption.ACCENT, "#8B7CF6")
+
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        val overrides = CardOverrides.fromJson(store.writes.single().data["overrides"]!!.jsonObject)
+        assertEquals(listOf("chat", "links", "moments", "posts"), overrides.blocks?.map { it.kind })
+    }
+
+    @Test
     fun everyDesignTheEditorListsHasASpecSoStepTwoNeverRendersBlank() {
         CardDesign.all.forEach { assertNotNull(CardDesignSpecs.of(it), it) }
     }

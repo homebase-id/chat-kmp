@@ -198,12 +198,12 @@ private val INK_DOT_SIZE = 12.dp
 private val SHAPE_SEGMENT_MIN_WIDTH = 56.dp
 private val GLYPH_SIZE = 20.dp
 private val TOOL_SIZE = 48.dp
+private val TOOL_MIN_WIDTH = 42.dp
 private val TOOL_LABEL_GAP = 8.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
 // Seven tools fit a 360dp phone at this inset.
 private val TOOLBAR_SIDE_INSET = 4.dp
-// Without room for its name, the picked tool still reads wider than the rest.
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
@@ -322,9 +322,9 @@ private fun OptionToolbar(
     val labelStyle = MaterialTheme.typography.labelLarge
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
-        val iconsRow = TOOL_SIZE * count + ButtonGroupDefaults.ConnectedSpaceBetween * (count - 1)
-        val labelRoom = with(density) { measurer.measure(labels[pickedIndex], labelStyle).size.width.toDp() } + TOOL_LABEL_GAP
-        val fits = iconsRow + labelRoom <= maxWidth
+        val widestLabel = with(density) { labels.maxOf { measurer.measure(it, labelStyle).size.width }.toDp() }
+        val iconsRow = TOOL_MIN_WIDTH * count + ButtonGroupDefaults.ConnectedSpaceBetween * (count - 1)
+        val fits = iconsRow + widestLabel + TOOL_LABEL_GAP <= maxWidth
         val tools: @Composable RowScope.() -> Unit = {
             for (index in 0 until count) {
                 ToolItem(
@@ -379,11 +379,11 @@ private fun ToolItem(
                 checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                 checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             ),
-            contentPadding = PaddingValues(horizontal = 14.dp),
+            contentPadding = PaddingValues(horizontal = 11.dp),
             modifier = Modifier
                 .revealWhenSelected(selected)
                 .height(TOOL_SIZE)
-                .widthIn(min = TOOL_SIZE)
+                .widthIn(min = TOOL_MIN_WIDTH)
                 .clearAndSetSemantics {
                     contentDescription = description
                     role = Role.Tab
