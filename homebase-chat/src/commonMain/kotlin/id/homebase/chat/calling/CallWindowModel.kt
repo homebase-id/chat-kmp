@@ -65,7 +65,7 @@ internal fun CallUiState.unansweredRingEnded(): Boolean {
 }
 
 /** Ringing out counts: the main window should already offer the way back to a call it just placed. */
-fun ongoingCallBarVisible(ui: CallUiState): Boolean = ui.inProgress || ui.phase == CallPhase.Outgoing
+fun ongoingCallBarVisible(ui: CallUiState): Boolean = callIsLive(ui)
 
 fun callWindowElapsed(ui: CallUiState, nowMs: Long): String? {
     val connectedAt = ui.connectedAtMs
