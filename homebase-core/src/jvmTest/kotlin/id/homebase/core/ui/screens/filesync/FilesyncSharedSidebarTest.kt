@@ -1,7 +1,5 @@
 package id.homebase.core.ui.screens.filesync
 
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
@@ -18,13 +16,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import id.homebase.core.ui.navigation.LocalNavAnimatedVisibilityScope
-import id.homebase.core.ui.navigation.LocalSharedTransitionScope
+import id.homebase.core.ui.navigation.SharedTransitionHost
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 // The routes slide here on purpose: an unshared sidebar would slide with them.
-@OptIn(ExperimentalTestApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalTestApi::class)
 class FilesyncSharedSidebarTest {
 
     @Test
@@ -35,23 +33,21 @@ class FilesyncSharedSidebarTest {
             nav = rememberNavController()
             val snackbar = remember { SnackbarHostState() }
             MaterialTheme {
-                SharedTransitionLayout {
-                    CompositionLocalProvider(LocalSharedTransitionScope provides this) {
-                        NavHost(
-                            navController = nav,
-                            startDestination = "files",
-                            enterTransition = { slideInHorizontally(tween(1000)) { it } },
-                            exitTransition = { slideOutHorizontally(tween(1000)) { -it } },
-                        ) {
-                            composable("files") {
-                                CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
-                                    FilesyncShell(FilesyncPlace.Files, places, snackbar, title = { Text("Files body") }) { Text("files") }
-                                }
+                SharedTransitionHost {
+                    NavHost(
+                        navController = nav,
+                        startDestination = "files",
+                        enterTransition = { slideInHorizontally(tween(1000)) { it } },
+                        exitTransition = { slideOutHorizontally(tween(1000)) { -it } },
+                    ) {
+                        composable("files") {
+                            CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                                FilesyncShell(FilesyncPlace.Files, places, snackbar, title = { Text("Files title") }) { Text("files") }
                             }
-                            composable("recent") {
-                                CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
-                                    FilesyncShell(FilesyncPlace.Recent, places, snackbar, title = { Text("Recent body") }) { Text("recent") }
-                                }
+                        }
+                        composable("recent") {
+                            CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
+                                FilesyncShell(FilesyncPlace.Recent, places, snackbar, title = { Text("Recent title") }) { Text("recent") }
                             }
                         }
                     }

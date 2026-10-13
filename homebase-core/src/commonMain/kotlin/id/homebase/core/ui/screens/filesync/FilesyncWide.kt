@@ -1,6 +1,5 @@
 package id.homebase.core.ui.screens.filesync
 
-import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -180,7 +179,6 @@ internal fun FilesyncShell(
 }
 
 // Each place draws its own sidebar; across a transition Compose draws only the target's, in place.
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun Modifier.sharedSidebar(): Modifier {
     val shared = LocalSharedTransitionScope.current ?: return this
