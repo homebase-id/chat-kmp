@@ -111,7 +111,7 @@ private fun ApplicationScope.CallWindowFrame(call: DesktopCallWindow, config: De
                 updatesSystemChrome = false,
             ) {
                 call.Content(
-                    onMinimize = { window.extendedState = window.extendedState or java.awt.Frame.ICONIFIED },
+                    onMinimize = { DesktopAppFocusManager.requestFocus("call-back-to-chat") },
                     topInset = if (isMacOs) MAC_CALL_TITLE_BAR_HEIGHT else 0.dp,
                 )
             }
