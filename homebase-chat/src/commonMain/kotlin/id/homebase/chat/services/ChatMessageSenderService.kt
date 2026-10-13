@@ -208,6 +208,7 @@ class ChatMessageSenderService(
         // displayLabel; Event overrides it to a sentinel + start time so
         // the title never leaves the sender). See MessageContent.kt.
         notificationText = content.notificationLabel,
+        pushNotification = content.pushesToRecipient,
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
         dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
@@ -259,6 +260,7 @@ class ChatMessageSenderService(
         notificationText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
+        pushNotification: Boolean = true,
         dataType: Int = 0,
         isStatusMessage: Boolean = false,
         additionalRecipients: List<OdinId> = emptyList(),
@@ -354,7 +356,7 @@ class ChatMessageSenderService(
                 transit = TransitOptions(
                     recipients = recipients,
                     sendContents = SendContents.All,
-                    useAppNotification = !isStatusMessage && !isLocalOnly,
+                    useAppNotification = pushNotification && !isStatusMessage && !isLocalOnly,
                     appNotificationOptions = PushNotificationOptions(
                         appId = ChatProtocol.ChatAppId.toString(),
                         typeId = conversationId.toString(),
@@ -768,13 +770,13 @@ class ChatMessageSenderService(
             transitOptions = TransitOptions(
                 recipients = recipients,
                 sendContents = SendContents.All,
-                useAppNotification = !isLocalOnly,
+                useAppNotification = !isLocalOnly && msg.messageContent?.pushesToRecipient != false,
                 appNotificationOptions = PushNotificationOptions(
                     appId = ChatProtocol.ChatAppId.toString(),
                     typeId = msg.conversationId.toString(),
                     tagId = messageId.toString(),
                     silent = false,
-                    unEncryptedMessage = "You have a new message",
+                    unEncryptedMessage = msg.messageContent?.notificationLabel ?: "You have a new message",
                 ),
             ),
             payloads = recovered.payloads + encryptedOverflow,
@@ -911,6 +913,7 @@ class ChatMessageSenderService(
                 conversationId = conversationId,
                 content = built.headerContent,
                 notificationText = typed?.notificationLabel ?: "You have a new message",
+                pushNotification = typed?.pushesToRecipient ?: true,
                 previousMessageUniqueId = null,
                 payloadBundle = built.payloadBundle,
                 dataType = forwardedDataType,

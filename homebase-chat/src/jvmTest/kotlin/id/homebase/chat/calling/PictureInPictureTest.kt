@@ -31,11 +31,13 @@ class PictureInPictureTest {
     }
 
     @Test
-    fun screenStaysAwakeOnlyWhileCallIsInProgress() {
+    fun screenStaysAwakeWhileTheCallIsActive() {
+        assertTrue(CallUiState(phase = CallPhase.Outgoing).keepScreenAwake)
+        assertTrue(CallUiState(phase = CallPhase.Incoming).keepScreenAwake)
         assertTrue(CallUiState(phase = CallPhase.Connecting).keepScreenAwake)
         assertTrue(CallUiState(phase = CallPhase.Connected).keepScreenAwake)
         assertTrue(CallUiState(phase = CallPhase.Reconnecting).keepScreenAwake)
-        assertFalse(CallUiState(phase = CallPhase.Incoming).keepScreenAwake)
+        assertFalse(CallUiState(phase = CallPhase.Ended(CallEndReason.Missed)).keepScreenAwake)
         assertFalse(CallUiState().keepScreenAwake)
     }
 

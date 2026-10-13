@@ -1,7 +1,6 @@
 package id.homebase.core
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import id.homebase.chat.calling.CallHost
@@ -54,30 +53,29 @@ fun App(
         // scope that comes and goes buys nothing and risks the duplicate-instance problem the
         // comment below describes.
         val appViewModel = koinViewModel<AppViewModel>()
-        // Everything below resolves from the open identity session, so per-identity services and
-        // the ViewModels that consume them are destroyed at logout rather than reset.
-        Box(Modifier.fillMaxSize()) {
-        IdentityScopeProvider {
-            AppNavHost(
-                // koinViewModel(), NOT koinInject(). AppViewModel is registered with
-                // viewModelOf(), which is a *factory* definition — koinInject() resolves
-                // it outside any ViewModelStore, so every Activity recreation minted a
-                // fresh AppViewModel whose onCleared() was never called. Each orphan kept
-                // its collectNotificationEvents() coroutine alive on
-                // NotificationService.navigationEvents, which is a single-consumer
-                // Channel.receiveAsFlow(): N live collectors round-robin the events, and
-                // an orphan that wins a turn forwards into its own channel that nothing
-                // reads. Result — notification taps and share deep links silently went
-                // nowhere (build 1788 log: three consecutive events "forwarded" by
-                // AppViewModel with no matching AppNavHost receipt, after four Activity
-                // onCreates in one process).
-                viewModel = appViewModel,
-                navController = navController,
-                youAuthFlowManager = youAuthFlowManager,
-                topInset = topInset,
-            )
-        }
-        CallHost(viewModel = koinViewModel())
+        CallHost(viewModel = koinViewModel(), modifier = Modifier.fillMaxSize()) {
+            // Everything below resolves from the open identity session, so per-identity services and
+            // the ViewModels that consume them are destroyed at logout rather than reset.
+            IdentityScopeProvider {
+                AppNavHost(
+                    // koinViewModel(), NOT koinInject(). AppViewModel is registered with
+                    // viewModelOf(), which is a *factory* definition — koinInject() resolves
+                    // it outside any ViewModelStore, so every Activity recreation minted a
+                    // fresh AppViewModel whose onCleared() was never called. Each orphan kept
+                    // its collectNotificationEvents() coroutine alive on
+                    // NotificationService.navigationEvents, which is a single-consumer
+                    // Channel.receiveAsFlow(): N live collectors round-robin the events, and
+                    // an orphan that wins a turn forwards into its own channel that nothing
+                    // reads. Result — notification taps and share deep links silently went
+                    // nowhere (build 1788 log: three consecutive events "forwarded" by
+                    // AppViewModel with no matching AppNavHost receipt, after four Activity
+                    // onCreates in one process).
+                    viewModel = appViewModel,
+                    navController = navController,
+                    youAuthFlowManager = youAuthFlowManager,
+                    topInset = topInset,
+                )
+            }
         }
         LaunchedEffect(navController) {
             onNavigatorReady { route -> navController.navigate(route) { launchSingleTop = true } }

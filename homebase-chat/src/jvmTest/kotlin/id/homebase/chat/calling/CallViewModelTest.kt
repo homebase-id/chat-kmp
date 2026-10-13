@@ -155,11 +155,11 @@ class CallViewModelTest {
         settle(1_001)
         assertTrue(rig.ui.localVideo)
 
-        rig.vm.toggleVideo()
+        rig.vm.setVideo(false)
         settle()
         assertFalse(rig.ui.localVideo)
 
-        rig.vm.toggleVideo()
+        rig.vm.setVideo(true)
         settle()
         assertTrue(rig.ui.localVideo)
         assertTrue(rig.ui.videos.local != null)
@@ -190,7 +190,6 @@ class CallViewModelTest {
         rig.peer.accept()
         settle(1_001)
         assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), rig.ui.phase)
-        assertTrue(rig.ui.failed)
 
         settle(ENDED_LINGER_MS * 10)
         assertTrue(rig.ui.visible, "a failed call waits for Retry or Close")
@@ -214,15 +213,23 @@ class CallViewModelTest {
         settle()
         rig.peer.accept()
         settle(1_001)
-        assertTrue(rig.ui.failed)
+        assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), rig.ui.phase)
         rig.vm.close()
         assertFalse(rig.ui.visible)
     }
 
     @Test
-    fun keyboardEndAsksOnlyWhenConnected() = rigTest { rig ->
+    fun keyboardEndAsksOnceTheCallIsAnswered() = rigTest { rig ->
         val events = mutableListOf<CallUiEvent>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { rig.vm.events.toList(events) }
+
+        rig.me.startCall(sam, video = false)
+        settle()
+        assertEquals(CallPhase.Outgoing, rig.ui.phase)
+        rig.vm.endFromKeyboard()
+        settle()
+        assertEquals(emptyList(), events)
+        assertEquals(CallPhase.Ended(CallEndReason.Cancelled), rig.ui.phase)
 
         rig.me.startCall(sam, video = false)
         settle()
@@ -231,12 +238,11 @@ class CallViewModelTest {
         assertEquals(CallPhase.Connecting, rig.ui.phase)
         rig.vm.endFromKeyboard()
         settle()
-        assertEquals(emptyList(), events)
-        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = false)), rig.ui.phase)
+        assertEquals(listOf<CallUiEvent>(CallUiEvent.ConfirmEnd), events)
+        assertEquals(CallPhase.Connecting, rig.ui.phase)
+        events.clear()
 
-        rig.me.startCall(sam, video = false)
-        settle()
-        rig.peer.accept()
+        settle(1_001)
         settle(1_001)
         assertEquals(CallPhase.Connected, rig.ui.phase)
         rig.vm.endFromKeyboard()
@@ -258,5 +264,34 @@ class CallViewModelTest {
         assertTrue(rig.ui.pillVisible)
         rig.vm.restore()
         assertFalse(rig.ui.pillVisible)
+    }
+
+    @Test
+    fun callBackKeepsTheKindTheCallWasPlacedAs() = rigTest(FakeCallScript(failConnect = true)) { rig ->
+        rig.me.startCall(sam, video = true)
+        settle()
+        rig.vm.setVideo(false)
+        settle()
+        rig.peer.accept()
+        settle(1_001)
+        assertTrue(rig.ui.phase is CallPhase.Ended)
+        assertFalse(rig.ui.localVideo)
+        assertTrue(rig.ui.placedWithVideo)
+    }
+
+    @Test
+    fun aMinimizedCallThatFailsShowsTheFailedScreen() = rigTest { rig ->
+        rig.me.startCall(sam, video = false)
+        settle()
+        rig.peer.accept()
+        settle(1_001)
+        rig.vm.minimize()
+        assertTrue(rig.ui.minimized)
+
+        rig.myEngines.single().simulateFail()
+        settle()
+        assertEquals(CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), rig.ui.phase)
+        assertFalse(rig.ui.minimized)
+        assertTrue(rig.ui.visible)
     }
 }
