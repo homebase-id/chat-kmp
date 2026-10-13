@@ -31,6 +31,8 @@ object DesktopAppFocusManager {
         if (System.currentTimeMillis() - pending.atMs <= PENDING_RAISE_TTL_MS) requestFocus(pending.reason, key)
     }
 
+    fun windowFor(key: String): Window? = windowProviders[key]?.invoke()
+
     fun unregisterWindowProvider(key: String) {
         windowProviders.remove(key)
     }

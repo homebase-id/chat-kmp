@@ -2,6 +2,7 @@ package id.homebase.app
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
@@ -49,6 +50,22 @@ class DesktopPreferences(settings: Settings? = null) {
             is WindowPosition.PlatformDefault -> preferences["callWindowPosition$suffix"] = "PlatformDefault"
         }
     }
+
+    fun miniWindowPosition(): WindowPosition.Absolute? {
+        if (!preferences.hasKey("callMiniPositionX")) return null
+        return WindowPosition.Absolute(preferences.getFloat("callMiniPositionX", 0f).dp, preferences.getFloat("callMiniPositionY", 0f).dp)
+    }
+
+    fun saveMiniWindowPosition(position: WindowPosition.Absolute) {
+        preferences["callMiniPositionX"] = position.x.value
+        preferences["callMiniPositionY"] = position.y.value
+    }
+
+    var callAutoMini: Boolean
+        get() = preferences.getBoolean("callAutoMini", false)
+        set(value) {
+            preferences["callAutoMini"] = value
+        }
 
     private fun callWindowSuffix(video: Boolean) = if (video) "Video" else "Voice"
 
@@ -116,3 +133,16 @@ const val CALL_WINDOW_MIN_WIDTH = 320f
 const val CALL_WINDOW_MIN_HEIGHT = 240f
 private val VIDEO_CALL_SIZE = 960f to 640f
 private val VOICE_CALL_SIZE = 420f to 560f
+
+val MINI_VIDEO_SIZE = DpSize(320.dp, 180.dp)
+val MINI_VOICE_SIZE = DpSize(280.dp, 88.dp)
+private val MINI_SCREEN_MARGIN = 24.dp
+
+fun miniCallSize(video: Boolean): DpSize = if (video) MINI_VIDEO_SIZE else MINI_VOICE_SIZE
+
+/** The last place the user dragged the mini window to, or the screen's bottom-end corner the first time. */
+fun miniCallPosition(saved: WindowPosition.Absolute?, size: DpSize, screen: DpSize): WindowPosition.Absolute =
+    saved ?: WindowPosition.Absolute(
+        (screen.width - size.width - MINI_SCREEN_MARGIN).coerceAtLeast(0.dp),
+        (screen.height - size.height - MINI_SCREEN_MARGIN * 3).coerceAtLeast(0.dp),
+    )

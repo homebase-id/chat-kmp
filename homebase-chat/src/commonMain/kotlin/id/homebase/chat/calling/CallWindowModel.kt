@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -65,6 +66,9 @@ class CallWindowModel(
     val windowKey: StateFlow<String?> =
         viewModel.uiState.map { it.callId }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, null)
 
+    val live: StateFlow<Boolean> =
+        viewModel.uiState.map { it.inProgress || it.phase == CallPhase.Outgoing }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
+
     val ringing: StateFlow<Boolean> =
         viewModel.uiState.map { it.phase == CallPhase.Incoming }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
 
@@ -75,24 +79,57 @@ class CallWindowModel(
 
     fun requestClose() = viewModel.requestClose()
 
+    fun toggleMute() = viewModel.toggleMute()
+
+    fun toggleVideo() = viewModel.toggleVideo()
+
+    fun hangup() = viewModel.hangup()
+
     fun focusCallWindow() = focus(WindowKeys.CALL)
 }
 
 @Composable
-fun CallWindowContent(model: CallWindowModel, onMinimize: () -> Unit, topInset: Dp, modifier: Modifier = Modifier) {
+fun CallWindowContent(
+    model: CallWindowModel,
+    onMinimize: () -> Unit,
+    topInset: Dp,
+    modifier: Modifier = Modifier,
+    mini: Boolean = false,
+    onToggleMini: (() -> Unit)? = null,
+    macShortcuts: Boolean = false,
+) {
     val ui by model.uiState.collectAsStateWithLifecycle()
     val name = model.peerName(ui.peer)
-    // The stage runs under the transparent title bar; only the chrome steps down by topInset.
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        CallOverlay(
-            viewModel = model.viewModel,
-            ui = ui,
-            peerName = name,
-            avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
-            onMinimize = onMinimize,
-            fillsWindow = true,
-            topInset = topInset,
-        )
+    val avatar: @Composable (Dp) -> Unit = { size -> ui.peer?.let { PeerAvatar(it, name, size) } }
+    CompositionLocalProvider(LocalMacShortcuts provides macShortcuts) {
+        if (mini) {
+            val actions = remember(model.viewModel, onToggleMini) {
+                val vm = model.viewModel
+                // Esc and Cmd+W only shrink the window back: the end-call confirmation lives in the full window.
+                val expand = onToggleMini ?: {}
+                CallScreenActions(
+                    acceptAudio = {}, acceptVideo = {}, decline = vm::decline, hangup = vm::hangup,
+                    toggleMute = vm::toggleMute, toggleVideo = vm::toggleVideo, switchCamera = vm::switchCamera,
+                    setRoute = vm::setRoute, onVerificationClick = vm::onVerificationClick, retry = {}, close = vm::close,
+                    minimize = onMinimize, endFromKeyboard = expand, selectDevice = vm::selectDevice, toggleMini = expand,
+                )
+            }
+            CallMiniContent(ui, name, avatar, actions, modifier)
+            return@CompositionLocalProvider
+        }
+        // The stage runs under the transparent title bar; only the chrome steps down by topInset.
+        Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+            CallOverlay(
+                viewModel = model.viewModel,
+                ui = ui,
+                peerName = name,
+                avatar = avatar,
+                onMinimize = onMinimize,
+                fillsWindow = true,
+                topInset = topInset,
+                onToggleMini = onToggleMini,
+            )
+        }
     }
 }
 

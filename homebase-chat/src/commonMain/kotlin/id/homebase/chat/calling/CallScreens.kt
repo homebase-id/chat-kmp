@@ -73,6 +73,10 @@ import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PictureInPicture
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.semantics.invisibleToUser
+import id.homebase.resources.call_mini_mode
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
@@ -140,6 +144,7 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
@@ -274,6 +279,7 @@ class CallScreenActions(
     val minimize: () -> Unit,
     val endFromKeyboard: () -> Unit,
     val selectDevice: (MediaDeviceKind, String) -> Unit = { _, _ -> },
+    val toggleMini: (() -> Unit)? = null,
 )
 
 private val ContentMaxWidth = 480.dp
@@ -285,6 +291,9 @@ internal const val RemoteVideoTag = "call-remote-video"
 private val PhoneDockReserve = 236.dp
 private val DesktopDockReserve = 128.dp
 private val CompactHeight = 480.dp
+internal val MinimalWidth = 480.dp
+internal val MinimalHeight = 360.dp
+private val PreviewHideBelowHeight = 280.dp
 private val CompactDockReserve = 112.dp
 private val CompactPipTop = 72.dp
 
@@ -293,22 +302,21 @@ private val LocalCompactHeight = staticCompositionLocalOf { false }
 
 internal fun isCompactHeight(width: Dp, height: Dp): Boolean = height < CompactHeight && width > height
 
-internal enum class DesktopTier { Compact, Medium, Expanded }
+internal enum class DesktopTier { Minimal, Compact, Medium, Expanded }
 
 /** Set only inside a dedicated desktop call window; null on phones and in the in-app overlay. */
-private val LocalDesktopTier = staticCompositionLocalOf<DesktopTier?> { null }
+internal val LocalDesktopTier = staticCompositionLocalOf<DesktopTier?> { null }
 
 /** Which dock device menu is open, hoisted so a snackbar's "Change" can open the mic menu at its own chevron. */
 private val LocalDeviceMenuRequest = staticCompositionLocalOf<MutableState<MediaDeviceKind?>> { error("provided by CallScreen") }
 
 internal fun desktopTier(width: Dp, height: Dp): DesktopTier = when {
+    width < MinimalWidth || height < MinimalHeight -> DesktopTier.Minimal
     width < 600.dp || height < CompactHeight -> DesktopTier.Compact
     width < LargeWidth -> DesktopTier.Medium
     else -> DesktopTier.Expanded
 }
 
-private const val MuteKey = "M"
-private const val VideoKey = "V"
 
 /** Self-view snap corners: top-start, top-end, bottom-start, bottom-end. A short window clamps the bottom pair to the top. */
 internal fun previewCorners(width: Float, height: Float, pipW: Float, pipH: Float, margin: Float, top: Float, bottomReserve: Float): List<Offset> {
@@ -339,15 +347,46 @@ fun CallScreen(
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    var showShortcuts by remember { mutableStateOf(false) }
+    var activity by remember { mutableIntStateOf(0) }
+    val hold = remember { ChromeHold() }
+    val textFocus = remember { mutableStateOf(false) }
+    val autoHide = fillsWindow && chromeAutoHideEligible(ui)
+    val held = hold.count > 0 || deviceMenu.value != null || showShortcuts
+    var idle by remember { mutableStateOf(false) }
+    LaunchedEffect(activity, autoHide, held) {
+        idle = false
+        if (autoHide && !held) {
+            delay(ChromeIdleMs)
+            idle = true
+        }
+    }
 
-    CompositionLocalProvider(LocalDeviceMenuRequest provides deviceMenu) {
+    CompositionLocalProvider(
+        LocalDeviceMenuRequest provides deviceMenu,
+        LocalChromeHold provides hold,
+        LocalChromeVisible provides !idle,
+        LocalCallTextFocus provides textFocus,
+    ) {
     BoxWithConstraints(
         modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                        activity++
+                    }
+                }
+            }
             .focusRequester(focus)
             .focusable()
-            .onPreviewKeyEvent { handleCallKey(it, ui, actions) },
+            .onPreviewKeyEvent {
+                activity++
+                handleCallKey(it, ui, actions, textFocus.value, if (fillsWindow) ({ showShortcuts = true }) else null)
+            },
     ) {
+        if (showShortcuts) CallShortcutsDialog { showShortcuts = false }
         CallBackdrop()
         val compact = isCompactHeight(maxWidth, maxHeight)
         val chromeInsets = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset)
@@ -381,26 +420,22 @@ fun CallScreen(
     }
 }
 
-private fun handleCallKey(event: KeyEvent, ui: CallUiState, actions: CallScreenActions): Boolean {
-    if (event.type != KeyEventType.KeyDown) return false
-    val modifier = event.isMetaPressed || event.isCtrlPressed
-    // The outgoing ring already shows mute and camera, so their keys must work there too.
-    val live = ui.inProgress || ui.phase == CallPhase.Outgoing
-    return when {
-        event.key == Key.Escape || (modifier && event.key == Key.W) -> {
-            actions.endFromKeyboard()
-            true
-        }
-        !modifier && event.key == Key.M && live -> {
-            actions.toggleMute()
-            true
-        }
-        !modifier && event.key == Key.V && live && ui.videos.local != null -> {
-            actions.toggleVideo()
-            true
-        }
-        else -> false
+internal fun handleCallKey(
+    event: KeyEvent,
+    ui: CallUiState,
+    actions: CallScreenActions,
+    textFocused: Boolean = false,
+    showShortcuts: (() -> Unit)? = null,
+): Boolean {
+    val shortcut = callShortcutFor(event.toCallKeyInput(), ui, textFocused) ?: return false
+    when (shortcut) {
+        CallShortcut.ToggleMute -> actions.toggleMute()
+        CallShortcut.ToggleCamera -> actions.toggleVideo()
+        CallShortcut.ToggleMini -> (actions.toggleMini ?: return false)()
+        CallShortcut.Close -> actions.endFromKeyboard()
+        CallShortcut.ShowShortcuts -> (showShortcuts ?: return false)()
     }
+    return true
 }
 
 /** [contentInsets] pads the controls only: video stays full-bleed under the system bars. */
@@ -446,7 +481,7 @@ private fun CallBackdrop() {
     )
 }
 
-private fun CallUiState.remoteShowing(): Boolean =
+internal fun CallUiState.remoteShowing(): Boolean =
     videos.remote != null && remoteVideo && (phase == CallPhase.Connected || phase == CallPhase.Reconnecting)
 
 @Composable
@@ -457,7 +492,7 @@ internal fun CallPipLayout(ui: CallUiState, avatar: @Composable (Dp) -> Unit) {
 }
 
 @Composable
-private fun RemoteVideo(handle: VideoHandle?) {
+internal fun RemoteVideo(handle: VideoHandle?) {
     val videoSize by RemoteVideoSize.current.collectAsState()
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim), contentAlignment = Alignment.Center) {
         val letterbox = remoteVideoLetterbox(videoSize, maxWidth.value, maxHeight.value)
@@ -605,7 +640,7 @@ private fun BoxScope.OutgoingLayout(
         avatar = avatar,
         halo = HaloMode.Ringing,
         large = large,
-        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (LocalCompactHeight.current) 104.dp else 190.dp),
+        modifier = Modifier.align(Alignment.Center).padding(bottom = if (LocalDesktopTier.current == DesktopTier.Minimal) 56.dp else if (large) 120.dp else if (LocalCompactHeight.current) 104.dp else 190.dp),
     )
     if (LocalDesktopTier.current != null) CallTopBar(ui, center = null, actions = actions, modifier = Modifier.align(Alignment.TopCenter))
     ControlDock(ui, large, actions, Modifier.align(Alignment.BottomCenter), placing = true)
@@ -626,7 +661,7 @@ private fun BoxScope.InCallLayout(
 
     if (!videoMode) {
         Column(
-            Modifier.align(Alignment.Center).padding(bottom = if (large) 110.dp else if (LocalCompactHeight.current) 104.dp else 200.dp),
+            Modifier.align(Alignment.Center).padding(bottom = if (LocalDesktopTier.current == DesktopTier.Minimal) 56.dp else if (large) 110.dp else if (LocalCompactHeight.current) 104.dp else 200.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PeerHeader(
@@ -700,19 +735,25 @@ private fun AudioCallStatusContent(ui: CallUiState, elapsed: String) {
 private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actions: CallScreenActions, modifier: Modifier) {
     var codeOpen by remember(ui.callId) { mutableStateOf(false) }
     val desktop = LocalDesktopTier.current != null
-    Box(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+    val minimal = LocalDesktopTier.current == DesktopTier.Minimal
+    val mini = actions.toggleMini
+    val mac = LocalMacShortcuts.current
+    Box(modifier.chromeFade().testTag(CallTopBarTag).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         // The window's own controls own the top-start corner (macOS traffic lights), so desktop chrome sits at the end.
         if (!desktop) ChromeIconButton(Icons.Default.KeyboardArrowDown, stringResource(MR.string.call_minimize), actions.minimize, Modifier.align(Alignment.TopStart))
-        val narrow = LocalDesktopTier.current == DesktopTier.Compact
+        val narrow = LocalDesktopTier.current == DesktopTier.Compact || minimal
+        val code = ui.verificationCode
+        val showDevices = ui.devices.isNotEmpty() && !minimal
+        // 48dp buttons with an 8dp gap, reserved at the end so the name pill never slides under them.
+        val trailing = (if (code != null) 1 else 0) + (if (showDevices) 1 else 0) + (if (mini != null) 1 else 0) + (if (desktop) 1 else 0)
+        val reserve = (trailing * 56).dp
         if (center != null) {
             Box(
-                if (narrow) Modifier.align(Alignment.TopStart).padding(end = 116.dp)
-                else Modifier.align(Alignment.TopCenter).padding(horizontal = if (desktop) 116.dp else 60.dp),
+                if (narrow) Modifier.align(Alignment.TopStart).padding(end = reserve)
+                else Modifier.align(Alignment.TopCenter).padding(horizontal = if (desktop) reserve else 60.dp),
             ) { center() }
         }
-        val code = ui.verificationCode
-        val showDevices = ui.devices.isNotEmpty()
-        if (code != null || desktop || showDevices) {
+        if (code != null || desktop || showDevices || mini != null) {
             Column(Modifier.align(Alignment.TopEnd), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (code != null) {
@@ -726,10 +767,15 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
                     }
                     if (showDevices) {
                         var devicesOpen by remember { mutableStateOf(false) }
+                        HoldChromeWhile(devicesOpen)
                         Box {
                             ChromeIconButton(Icons.Default.Tune, stringResource(MR.string.call_devices), { devicesOpen = true }, selected = devicesOpen)
                             CallDeviceMenu(devicesOpen, { devicesOpen = false }, ui, MediaDeviceKind.entries, actions.selectDevice)
                         }
+                    }
+                    if (mini != null) {
+                        val label = stringResource(MR.string.call_mini_mode)
+                        ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys(mac, "M", shift = true)))
                     }
                     if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
                 }
@@ -763,12 +809,13 @@ private fun ChromeIconButton(
     modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.onSurface,
     selected: Boolean = false,
+    tooltip: String = description,
 ) {
     Box(modifier) {
-        DesktopTooltip(description, TooltipAnchorPosition.Below) {
+        DesktopTooltip(tooltip, TooltipAnchorPosition.Below) {
             FilledTonalIconButton(
                 onClick = onClick,
-                modifier = Modifier.size(48.dp).focusRing(CircleShape),
+                modifier = Modifier.size(48.dp).buttonChrome(CircleShape),
                 shapes = IconButtonDefaults.shapes(),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else chromeColor(),
@@ -783,21 +830,23 @@ private fun ChromeIconButton(
 
 /** Desktop only: a pointer hovers there, and a touch long-press would hijack a phone's press-and-hold. */
 @Composable
-private fun DesktopTooltip(text: String, anchor: TooltipAnchorPosition = TooltipAnchorPosition.Above, content: @Composable () -> Unit) {
+internal fun DesktopTooltip(text: String, anchor: TooltipAnchorPosition = TooltipAnchorPosition.Above, content: @Composable () -> Unit) {
     if (LocalDesktopTier.current == null) content() else BarTooltip(text, anchor, content)
 }
 
 /** Compose Desktop draws no focus indicator on M3 buttons, so Tab navigation would be invisible without it. */
 @Composable
-private fun Modifier.focusRing(shape: Shape): Modifier {
+internal fun Modifier.buttonChrome(shape: Shape): Modifier {
     var focused by remember { mutableStateOf(false) }
     val ring = MaterialTheme.colorScheme.secondary
-    return onFocusChanged { focused = it.isFocused }.then(if (focused) Modifier.border(3.dp, ring, shape) else Modifier)
+    return pointerHoverIcon(PointerIcon.Hand)
+        .onFocusChanged { focused = it.isFocused }
+        .then(if (focused) Modifier.border(3.dp, ring, shape) else Modifier)
 }
 
 /** Lowest, not highest: the video-off stage is surfaceContainerHighest and chrome must stand off it. */
 @Composable
-private fun chromeColor() = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.9f)
+internal fun chromeColor() = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.9f)
 
 private const val MiddleDot = "\u00B7"
 
@@ -807,7 +856,9 @@ private data class PillStatus(val icon: ImageVector, val text: StringResource, v
 
 @Composable
 private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
+    val minimal = LocalDesktopTier.current == DesktopTier.Minimal
     val status = when {
+        minimal -> null
         ui.quality == CallQuality.Poor -> PillStatus(Icons.Default.Warning, MR.string.call_poor_connection, warn = true)
         ui.phase == CallPhase.Connected && !ui.remoteShowing() -> PillStatus(Icons.Default.VideocamOff, MR.string.call_no_video, warn = false)
         else -> null
@@ -819,7 +870,7 @@ private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Column(
-                Modifier.heightIn(min = 48.dp).padding(horizontal = 20.dp, vertical = 8.dp),
+                Modifier.heightIn(min = if (minimal) 40.dp else 48.dp).padding(horizontal = if (minimal) 14.dp else 20.dp, vertical = if (minimal) 4.dp else 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -859,7 +910,7 @@ private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
                 }
             }
         }
-        MutedChip(ui.muted)
+        if (!minimal) MutedChip(ui.muted)
     }
 }
 
@@ -892,9 +943,11 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
     val springSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Offset>()
     val tier = LocalDesktopTier.current
     BoxWithConstraints(Modifier.matchParentSize().then(insets)) {
+        if (tier == DesktopTier.Minimal && maxHeight < PreviewHideBelowHeight) return@BoxWithConstraints
         val compact = LocalCompactHeight.current
         // A phone on its side captures landscape frames, so the inset turns with it.
         val (pipWidth, pipHeight) = when {
+            tier == DesktopTier.Minimal -> 96.dp to 64.dp
             tier == DesktopTier.Compact -> 144.dp to 96.dp
             tier == DesktopTier.Medium -> 176.dp to 120.dp
             large -> 192.dp to 132.dp
@@ -906,12 +959,12 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val pipW = with(density) { pipWidth.toPx() }
         val pipH = with(density) { pipHeight.toPx() }
         val margin = with(density) { 16.dp.toPx() }
-        val top = with(density) { (if (large) 80.dp else if (compact) CompactPipTop else PipTop).toPx() }
-        val bottom = with(density) { (if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
+        val top = with(density) { (if (tier == DesktopTier.Minimal) 64.dp else if (large) 80.dp else if (compact) CompactPipTop else PipTop).toPx() }
+        val bottom = with(density) { (if (tier == DesktopTier.Minimal) 72.dp else if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
         val previewDescription = stringResource(MR.string.call_local_preview)
         val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
         // A narrow window has no top corner clear of the centred name pill.
-        val home = if (tier == DesktopTier.Compact) 3 else 1
+        val home = if (tier == DesktopTier.Compact || tier == DesktopTier.Minimal) 3 else 1
         val anchor = remember(width, height, compact) { Animatable(corners[home], Offset.VectorConverter) }
         var drag by remember(width, height, compact) { mutableStateOf(Offset.Zero) }
         var hidden by rememberSaveable { mutableStateOf(false) }
@@ -988,6 +1041,11 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
 /** [placing] is the outgoing ring: only the controls that matter before the peer answers. */
 @Composable
 private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActions, modifier: Modifier, placing: Boolean) {
+    val modifier = modifier.chromeFade().testTag(CallDockTag)
+    if (LocalDesktopTier.current == DesktopTier.Minimal) {
+        MinimalDock(ui, actions, modifier)
+        return
+    }
     val compact = LocalCompactHeight.current
     val showLabels = !large && !compact
     // Desktop pickers choose the real output and camera, so the phone route and flip toggles would only duplicate them.
@@ -1003,8 +1061,9 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
     val cameraSlot = routeSlot + if (showRoute) 1 else 0
     val flipSlot = cameraSlot + if (showCamera) 1 + split else 0
     val micDevice = currentDeviceName(ui, MediaDeviceKind.Mic)
-    val muteTip = shortcutTip(stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute), MuteKey)
-    val cameraTip = shortcutTip(stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on), VideoKey)
+    val mac = LocalMacShortcuts.current
+    val muteTip = shortcutTip(stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute), callShortcutKeys(mac, "D"))
+    val cameraTip = shortcutTip(stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on), callShortcutKeys(mac, "E"))
     val toggles: @Composable ButtonGroupScope.() -> Unit = {
         val muteInteraction = remember { MutableInteractionSource() }
         CallToggle(
@@ -1105,10 +1164,89 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
 private val ToggleSize = 64.dp
 
 @Composable
-private fun toggleSize(): Dp = if (LocalDesktopTier.current == DesktopTier.Compact) 52.dp else ToggleSize
+private fun toggleSize(): Dp = when (LocalDesktopTier.current) {
+    DesktopTier.Minimal -> 44.dp
+    DesktopTier.Compact -> 52.dp
+    else -> ToggleSize
+}
+
+internal const val CallDockTag = "call-dock"
+internal const val CallTopBarTag = "call-top-bar"
 
 @Composable
-private fun shortcutTip(action: String, key: String): String = stringResource(MR.string.call_tooltip_shortcut, action, key)
+internal fun Modifier.chromeFade(): Modifier {
+    val visible = LocalChromeVisible.current
+    val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(250), label = "chromeFade")
+    return graphicsLayer { this.alpha = alpha }.semantics { if (!visible) invisibleToUser() }
+}
+
+/** Under about 480x360 only the four controls that matter in a call, as icons in one row. */
+@Composable
+private fun MinimalDock(ui: CallUiState, actions: CallScreenActions, modifier: Modifier) {
+    val mac = LocalMacShortcuts.current
+    val showCamera = ui.videos.local != null
+    val muteDescription = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
+    val cameraDescription = stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on)
+    val single = IconToggleButtonShapes(CircleShape, RoundedCornerShape(16.dp), CircleShape)
+    var devicesOpen by remember { mutableStateOf(false) }
+    HoldChromeWhile(devicesOpen)
+    Surface(
+        modifier = modifier.padding(bottom = 8.dp),
+        shape = RoundedCornerShape(32.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        shadowElevation = 6.dp,
+    ) {
+        Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            CallToggle(
+                tooltip = shortcutTip(muteDescription, callShortcutKeys(mac, "D")),
+                checked = ui.muted,
+                onCheckedChange = { actions.toggleMute() },
+                icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
+                label = null,
+                description = muteDescription,
+                state = stringResource(if (ui.muted) MR.string.call_state_muted else MR.string.call_state_mic_on),
+                shapes = single,
+                interaction = remember { MutableInteractionSource() },
+                modifier = Modifier,
+            )
+            if (showCamera) {
+                CallToggle(
+                    tooltip = shortcutTip(cameraDescription, callShortcutKeys(mac, "E")),
+                    checked = !ui.localVideo,
+                    onCheckedChange = { actions.toggleVideo() },
+                    icon = if (ui.localVideo) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                    label = null,
+                    description = cameraDescription,
+                    state = stringResource(if (ui.localVideo) MR.string.call_state_camera_on else MR.string.call_no_video),
+                    shapes = single,
+                    interaction = remember { MutableInteractionSource() },
+                    modifier = Modifier,
+                )
+            }
+            if (ui.devices.isNotEmpty()) {
+                val devices = stringResource(MR.string.call_devices)
+                Box {
+                    DesktopTooltip(devices) {
+                        FilledTonalIconButton(
+                            onClick = { devicesOpen = true },
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            modifier = Modifier.size(toggleSize()).buttonChrome(CircleShape),
+                        ) { Icon(Icons.Default.Tune, devices, Modifier.size(24.dp)) }
+                    }
+                    CallDeviceMenu(devicesOpen, { devicesOpen = false }, ui, MediaDeviceKind.entries, actions.selectDevice)
+                }
+            }
+            EndCallButton(actions.hangup, Modifier.size(width = 64.dp, height = toggleSize()))
+        }
+    }
+}
+
+@Composable
+internal fun shortcutTip(action: String, key: String): String = stringResource(MR.string.call_tooltip_shortcut, action, key)
 
 /** M3 Expressive connected group: round outer ends, tight inner joins, and a checked toggle morphs to a full pill. */
 @Composable
@@ -1149,7 +1287,7 @@ private fun CallToggle(
                     checkedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
                 ),
                 interactionSource = interaction,
-                modifier = Modifier.fillMaxWidth().height(toggleSize()).focusRing(shapes.shape).semantics {
+                modifier = Modifier.fillMaxWidth().height(toggleSize()).buttonChrome(shapes.shape).semantics {
                     contentDescription = description
                     stateDescription = state
                 },
@@ -1196,7 +1334,7 @@ private fun DeviceMenuSegment(ui: CallUiState, kind: MediaDeviceKind, actions: C
                     contentColor = if (open) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
                 interactionSource = interaction,
-                modifier = Modifier.size(width = MenuSegmentWidth, height = toggleSize()).focusRing(shapes.shape).semantics {
+                modifier = Modifier.size(width = MenuSegmentWidth, height = toggleSize()).buttonChrome(shapes.shape).semantics {
                     contentDescription = description
                     role = Role.DropdownList
                     if (current != null) stateDescription = current
@@ -1232,7 +1370,7 @@ private fun CallAction(
                 contentColor = MaterialTheme.colorScheme.onSurface,
             ),
             interactionSource = interaction,
-            modifier = Modifier.fillMaxWidth().height(toggleSize()).focusRing(shapes.shape).semantics {
+            modifier = Modifier.fillMaxWidth().height(toggleSize()).buttonChrome(shapes.shape).semantics {
                 contentDescription = description
                 this.role = role
             },
@@ -1657,11 +1795,13 @@ private fun LiveCallDot(warn: Boolean, video: Boolean) {
 }
 
 @Composable
-private fun BarTooltip(text: String, anchor: TooltipAnchorPosition = TooltipAnchorPosition.Below, content: @Composable () -> Unit) {
+internal fun BarTooltip(text: String, anchor: TooltipAnchorPosition = TooltipAnchorPosition.Below, content: @Composable () -> Unit) {
+    val state = rememberTooltipState()
+    HoldChromeWhile(state.isVisible)
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(anchor),
         tooltip = { PlainTooltip { Text(text) } },
-        state = rememberTooltipState(),
+        state = state,
         content = content,
     )
 }
@@ -1686,7 +1826,7 @@ internal fun endedText(reason: CallEndReason): String = stringResource(
     },
 )
 
-private fun TextStyle.tabular() = copy(fontFeatureSettings = "tnum")
+internal fun TextStyle.tabular() = copy(fontFeatureSettings = "tnum")
 
 @Composable
 private fun PeerHeader(
@@ -1701,6 +1841,7 @@ private fun PeerHeader(
     val compact = LocalCompactHeight.current
     val tier = LocalDesktopTier.current
     val avatarSize = when {
+        tier == DesktopTier.Minimal -> 72.dp
         compact -> 72.dp
         tier == DesktopTier.Compact -> 112.dp
         tier == DesktopTier.Medium -> 136.dp
@@ -1717,6 +1858,7 @@ private fun PeerHeader(
         Text(
             name,
             style = when {
+                tier == DesktopTier.Minimal -> MaterialTheme.typography.titleLargeEmphasized
                 compact || tier == DesktopTier.Compact -> MaterialTheme.typography.headlineMediumEmphasized
                 tier == DesktopTier.Medium -> MaterialTheme.typography.headlineLargeEmphasized
                 tier == DesktopTier.Expanded -> MaterialTheme.typography.displaySmallEmphasized
@@ -1813,7 +1955,7 @@ private fun RoundCallButton(
                 color = container,
                 contentColor = content,
                 interactionSource = interaction,
-                modifier = Modifier.size(size).focusRing(RoundedCornerShape(corner)).semantics { contentDescription = description; role = Role.Button },
+                modifier = Modifier.size(size).buttonChrome(RoundedCornerShape(corner)).semantics { contentDescription = description; role = Role.Button },
             ) {
                 Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(if (size > 72.dp) 36.dp else 32.dp)) }
             }
@@ -1849,7 +1991,7 @@ private fun endCallContent(): Color =
     if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onError
 
 @Composable
-private fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
+internal fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val corner = pressMorphCorner(64.dp, pressed)
@@ -1862,7 +2004,7 @@ private fun EndCallButton(onClick: () -> Unit, modifier: Modifier) {
             color = endCallContainer(),
             contentColor = endCallContent(),
             interactionSource = interaction,
-            modifier = modifier.focusRing(shape).semantics { contentDescription = description; role = Role.Button },
+            modifier = modifier.buttonChrome(shape).semantics { contentDescription = description; role = Role.Button },
         ) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.CallEnd, null, Modifier.size(30.dp)) }
         }
@@ -1896,7 +2038,7 @@ internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun rememberElapsedText(connectedAtMs: Long?): String {
+internal fun rememberElapsedText(connectedAtMs: Long?): String {
     var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(connectedAtMs) {
         if (connectedAtMs == null) return@LaunchedEffect

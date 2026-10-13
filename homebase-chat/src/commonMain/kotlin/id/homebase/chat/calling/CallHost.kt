@@ -83,6 +83,7 @@ fun CallOverlay(
     onMinimize: () -> Unit = viewModel::minimize,
     fillsWindow: Boolean = false,
     topInset: Dp = 0.dp,
+    onToggleMini: (() -> Unit)? = null,
 ) {
     val gate = rememberCallPermissionGate()
     val inPip = rememberInPictureInPicture()
@@ -119,7 +120,7 @@ fun CallOverlay(
             }
         }
     }
-    val actions = remember(viewModel, gate, onMinimize) {
+    val actions = remember(viewModel, gate, onMinimize, onToggleMini) {
         CallScreenActions(
             acceptAudio = { gate.run(video = false) { viewModel.accept(withVideo = false) } },
             acceptVideo = { gate.run(video = true) { video -> viewModel.accept(withVideo = video) } },
@@ -135,6 +136,7 @@ fun CallOverlay(
             minimize = onMinimize,
             endFromKeyboard = viewModel::endFromKeyboard,
             selectDevice = viewModel::selectDevice,
+            toggleMini = onToggleMini,
         )
     }
 

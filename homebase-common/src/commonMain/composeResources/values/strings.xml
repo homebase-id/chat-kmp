@@ -2584,6 +2584,12 @@
     <string name="desktop_menu_file">File</string>
     <string name="desktop_menu_close_window">Close Window</string>
     <string name="desktop_menu_quit">Quit</string>
+    <string name="desktop_menu_call">Call</string>
+    <string name="desktop_menu_call_mute">Mute</string>
+    <string name="desktop_menu_call_camera">Camera</string>
+    <string name="desktop_menu_call_mini">Mini Window</string>
+    <string name="desktop_menu_call_hang_up">Hang Up</string>
+    <string name="desktop_menu_call_auto_mini">Shrink When Leaving the Call Window</string>
     <string name="desktop_tray_show_window">Show Window</string>
     <string name="desktop_tray_version">Version %1$s</string>
 
@@ -2835,6 +2841,15 @@
     <string name="call_state_mic_on_device">Microphone on, %1$s</string>
     <string name="call_tooltip_shortcut">%1$s (%2$s)</string>
     <string name="call_key_escape">Esc</string>
+    <string name="call_mini_mode">Mini window</string>
+    <string name="call_mini_expand">Expand call window</string>
+    <string name="call_shortcuts_title">Keyboard shortcuts</string>
+    <string name="call_shortcuts_mute">Mute or unmute</string>
+    <string name="call_shortcuts_camera">Camera on or off</string>
+    <string name="call_shortcuts_mini">Mini window</string>
+    <string name="call_shortcuts_end">End the call or close the window</string>
+    <string name="call_shortcuts_help">Show this list</string>
+    <string name="call_shortcuts_done">Done</string>
     <string name="call_hide_self_view">Hide self view</string>
     <string name="call_show_self_view">Show self view</string>
     <string name="call_end_confirm_title">End call?</string>
