@@ -6,12 +6,19 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.PayloadHash
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.util.FileKind
+import id.homebase.core.util.fileKindOf
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlin.io.encoding.Base64
@@ -21,6 +28,10 @@ import kotlin.uuid.Uuid
 /** A node in filesync's Recently deleted: removed at [atMs] by the delete of [root] (itself, or a folder it was in). */
 @Immutable
 data class FilesyncRemoval(val atMs: Long, val root: Uuid)
+
+/** A Finder tag; [colour] is Finder's 1 grey … 7 orange, or null for none. */
+@Immutable
+data class FilesyncTag(val name: String, val colour: Int?)
 
 @Immutable
 data class FilesyncNode(
@@ -32,7 +43,16 @@ data class FilesyncNode(
     val sizeBytes: Long?,
     val addedMs: Long = 0,
     val removal: FilesyncRemoval? = null,
-)
+    val createdMs: Long? = null,
+    val executable: Boolean = false,
+    val tags: List<FilesyncTag> = emptyList(),
+    val uploadedMs: Long? = null,
+    val hashAlgorithm: PayloadHashAlgorithm? = null,
+) {
+    // Once per node: search and sorting compare these on every keystroke, and neither is free on the web.
+    internal val nameKey: String = FilesyncNames.key(name)
+    internal val kind: FileKind? = if (isFolder) null else fileKindOf(null, name)
+}
 
 /** What a download of a file node needs. */
 class FilesyncPayload(
@@ -78,7 +98,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         else -> return null
     }
     val nodeId = appData.uniqueId ?: return null
-    if (!fileMetadata.isEncrypted) {
+    if (!serverFileIsEncrypted) {
         Logger.w(TAG) { "skipping node $nodeId: not encrypted" }
         return null
     }
@@ -91,8 +111,8 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         return null
     }
 
+    val descriptor = if (isFolder) null else fileMetadata.getPayloadDescriptor(FilesyncProtocol.PayloadKey)
     val payload = if (isFolder) null else {
-        val descriptor = fileMetadata.getPayloadDescriptor(FilesyncProtocol.PayloadKey)
         val iv = descriptor?.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
         val hash = descriptor?.hash
         if (iv == null || hash == null) {
@@ -111,6 +131,11 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         sizeBytes = content.size,
         addedMs = fileMetadata.created.milliseconds,
         removal = removalOf(appData.archivalStatus, raw, nodeId, fileMetadata.updated.milliseconds),
+        createdMs = epochMs(raw["ct"]),
+        executable = (raw["x"] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true,
+        tags = tagsOf(raw),
+        uploadedMs = descriptor?.lastModified,
+        hashAlgorithm = payload?.hash?.knownAlgorithm,
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
     return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v)
@@ -120,9 +145,24 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
 internal fun removalOf(status: ArchivalStatus?, content: JsonObject, nodeId: Uuid, updatedMs: Long): FilesyncRemoval? {
     if (status != ArchivalStatus.Removed) return null
     val rm = content[REMOVAL_KEY] as? JsonObject
-    val at = (rm?.get("at") as? JsonPrimitive)?.takeIf { !it.isString }?.let { p ->
-        p.longOrNull ?: p.doubleOrNull?.takeIf { it.isFinite() }?.roundToLong()
-    }
+    val at = epochMs(rm?.get("at"))
     val root = (rm?.get("root") as? JsonPrimitive)?.takeIf { it.isString }?.let { runCatching { Uuid.parse(it.content) }.getOrNull() }
     return if (at != null && root != null) FilesyncRemoval(at, root) else FilesyncRemoval(updatedMs, nodeId)
 }
+
+/** A time in Unix ms as filesync writes it: an int, or a finite float rounded; anything else is none. */
+private fun epochMs(element: JsonElement?): Long? =
+    (element as? JsonPrimitive)?.takeIf { !it.isString }?.let { p ->
+        p.longOrNull ?: p.doubleOrNull?.takeIf { it.isFinite() }?.roundToLong()
+    }
+
+/** Entries without a string name are skipped and an unknown colour is none, as filesync reads them; one per name, sorted by name. */
+private fun tagsOf(content: JsonObject): List<FilesyncTag> =
+    (content["tags"] as? JsonArray).orEmpty()
+        .mapNotNull { entry ->
+            val tag = entry as? JsonObject ?: return@mapNotNull null
+            val name = (tag["n"] as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotEmpty() }?.content ?: return@mapNotNull null
+            val colour = (tag["c"] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull?.takeIf { FinderTagColors.of(it) != null }
+            FilesyncTag(name, colour)
+        }
+        .distinctSorted()
