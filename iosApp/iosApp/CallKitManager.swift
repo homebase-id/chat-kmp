@@ -369,10 +369,6 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
             stopping.append((controller, release))
             controller.stopPictureInPicture()
         } else {
-            if let controller {
-                weak var released = controller
-                DispatchQueue.main.async { [self] in log("pip controller released=\(released == nil)") }
-            }
             release()
         }
         self.selfView = nil

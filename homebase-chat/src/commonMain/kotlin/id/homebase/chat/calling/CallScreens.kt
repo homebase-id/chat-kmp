@@ -568,7 +568,7 @@ private fun BoxScope.OutgoingLayout(
         large = large,
         modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (LocalCompactHeight.current) 104.dp else 190.dp),
     )
-    ControlDock(ui, large, actions, Modifier.align(Alignment.BottomCenter), placing = true)
+    ControlDock(ui, large, actions, placing = true, modifier = Modifier.align(Alignment.BottomCenter))
 }
 
 @Composable
@@ -610,11 +610,10 @@ private fun BoxScope.InCallLayout(
             ui = ui,
             center = if (videoMode) ({ NamePill(ui, peerName, elapsed) }) else null,
             actions = actions,
-            modifier = Modifier,
         )
     }
     AnimatedVisibility(chromeVisible, Modifier.align(Alignment.BottomCenter), enter = enter, exit = exit) {
-        ControlDock(ui, large, actions, Modifier, placing = false)
+        ControlDock(ui, large, actions, placing = false)
     }
 }
 
@@ -658,7 +657,7 @@ private fun AudioCallStatus(ui: CallUiState, elapsed: String) {
 }
 
 @Composable
-private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actions: CallScreenActions, modifier: Modifier) {
+private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actions: CallScreenActions, modifier: Modifier = Modifier) {
     var codeOpen by remember(ui.callId) { mutableStateOf(false) }
     HoldCallChrome(codeOpen)
     Box(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -869,7 +868,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
 
 /** [placing] is the outgoing ring: only the controls that matter before the peer answers. */
 @Composable
-private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActions, modifier: Modifier, placing: Boolean) {
+private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActions, placing: Boolean, modifier: Modifier = Modifier) {
     val compact = LocalCompactHeight.current
     val showLabels = !large && !compact
     val showRoute = ui.availableRoutes.size > 1

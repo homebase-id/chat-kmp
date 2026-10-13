@@ -119,7 +119,7 @@ fun CallOverlay(
             enter = fadeIn() + slideInVertically { it / 8 },
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {
-            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
+            Box(Modifier.fillMaxSize().swallowTaps()) {
                 if (inPip) {
                     CallPipLayout(ui, avatar)
                 } else {
@@ -176,7 +176,7 @@ internal fun DismissTapShield(visible: Boolean) {
         delay(TapShieldMs)
         shielded = false
     }
-    if (shielded) Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } })
+    if (shielded) Box(Modifier.fillMaxSize().swallowTaps())
 }
 
 @Composable
@@ -199,3 +199,5 @@ internal fun PeerAvatar(odinId: String, name: String, size: Dp) {
         options = AvatarOptions(size = size, fontSize = (size.value / 3).sp),
     )
 }
+
+private fun Modifier.swallowTaps(): Modifier = pointerInput(Unit) { detectTapGestures { } }

@@ -28,7 +28,6 @@ internal class CallChrome {
     var visible by mutableStateOf(true)
         private set
 
-    /** Open menus and popups anchored to the chrome; it stays while any is up. */
     var holds by mutableIntStateOf(0)
     private var eligible = false
     private val touches = Channel<Unit>(Channel.CONFLATED)
@@ -42,7 +41,6 @@ internal class CallChrome {
         onTouch()
     }
 
-    /** Runs for as long as [eligible] holds; restart it whenever eligibility changes. */
     suspend fun run(eligible: Boolean) {
         this.eligible = eligible
         visible = true
