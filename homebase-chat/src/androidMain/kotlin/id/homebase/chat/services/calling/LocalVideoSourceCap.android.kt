@@ -25,9 +25,6 @@ internal actual fun configureVideoSender(sender: RtpSender) {
     if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected ${describeVideoSender(sender)}" }
 }
 
-// The quality scaler already follows the bandwidth on MediaCodec, and a scaled layer skips its 2-pixel alignment.
-internal actual fun sendResolutionLadder(sender: () -> RtpSender?): SendResolutionLadder? = null
-
 internal actual fun describeVideoSender(sender: RtpSender): String {
     val params = sender.android.parameters
     val codecs = params.codecs.joinToString { "${it.name}${it.parameters}" }

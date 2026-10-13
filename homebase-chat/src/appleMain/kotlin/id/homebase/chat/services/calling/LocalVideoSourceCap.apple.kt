@@ -45,16 +45,6 @@ internal actual fun configureVideoSender(sender: RtpSender) {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-internal actual fun sendResolutionLadder(sender: () -> RtpSender?): SendResolutionLadder? = SendResolutionLadder { scaleDownBy ->
-    val native = sender()?.ios ?: return@SendResolutionLadder
-    val params = native.parameters
-    params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
-        it.scaleResolutionDownBy = NSNumber(double = scaleDownBy)
-    }
-    native.parameters = params
-}
-
-@OptIn(ExperimentalForeignApi::class)
 internal actual fun describeVideoSender(sender: RtpSender): String {
     val params = sender.ios.parameters
     val codecs = params.codecs.filterIsInstance<RTCRtpCodecParameters>().joinToString { "${it.name}${it.parameters}" }

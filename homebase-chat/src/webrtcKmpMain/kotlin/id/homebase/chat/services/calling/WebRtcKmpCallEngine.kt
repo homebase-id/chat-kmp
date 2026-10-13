@@ -77,7 +77,6 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.tryEmit(it) }
     private val stopPipelineWatch = watchVideoPipeline()
-    private val sendLadder = sendResolutionLadder { videoSender }
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -106,7 +105,6 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             val entries = stats.map { StatsEntry(it.type, it.members) }
             videoStatsLines(entries, localTrack = videoTrack?.state?.value?.toString(), previous = previous)
                 .forEach { line -> Logger.i("WebRtcKmp") { line } }
-            sendLadder?.onStats(entries)?.let { line -> Logger.i("WebRtcKmp") { line } }
             previous = entries
         }
     }
