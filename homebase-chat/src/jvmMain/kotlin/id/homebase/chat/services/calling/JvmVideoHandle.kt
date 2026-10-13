@@ -26,9 +26,7 @@ class JvmVideoHandle(val mirrored: Boolean = false) : VideoHandle {
 
     // One bitmap per frame size, written in place: the sink converts into it and a draw copies out of it under this lock.
     private val pixels = Any()
-    private var bitmap: Bitmap? = null
-    private var image: ImageBitmap? = null
-    private var target: ByteBuffer? = null
+    private var surface: Surface? = null
     private var closed = false
     private var lastDrawNs = 0L
 
@@ -49,23 +47,23 @@ class JvmVideoHandle(val mirrored: Boolean = false) : VideoHandle {
         synchronized(pixels) {
             if (closed) return
             val buffer = videoFrame.buffer
-            val out = targetFor(buffer)
-            if (runCatching { VideoBufferConverter.convertFromI420(buffer, out.rewind(), FourCC.ARGB) }.isFailure) return
-            val bitmap = bitmap!!.notifyPixelsChanged()
-            _frame.value = VideoFrameImage(bitmap, image!!, videoFrame.rotation)
+            val target = surfaceFor(buffer)
+            if (runCatching { VideoBufferConverter.convertFromI420(buffer, target.pixels.rewind(), FourCC.ARGB) }.isFailure) return
+            target.bitmap.notifyPixelsChanged()
+            _frame.value = VideoFrameImage(target.bitmap, target.image, videoFrame.rotation)
         }
     }
 
-    private fun targetFor(buffer: VideoFrameBuffer): ByteBuffer {
-        val current = bitmap
-        if (current != null && current.width == buffer.width && current.height == buffer.height) return target!!
-        current?.close()
-        val next = Bitmap().apply { allocPixels(ImageInfo(buffer.width, buffer.height, ColorType.BGRA_8888, ColorAlphaType.PREMUL)) }
-        val out = next.peekPixels()!!.use { BufferUtil.getByteBufferFromPointer(it.addr, it.rowBytes * buffer.height) }
-        bitmap = next
-        image = next.asComposeImageBitmap()
-        target = out
-        return out
+    private fun surfaceFor(buffer: VideoFrameBuffer): Surface {
+        surface?.takeIf { it.bitmap.width == buffer.width && it.bitmap.height == buffer.height }?.let { return it }
+        surface?.bitmap?.close()
+        return Surface(buffer.width, buffer.height).also { surface = it }
+    }
+
+    private class Surface(width: Int, height: Int) {
+        val bitmap = Bitmap().apply { allocPixels(ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.PREMUL)) }
+        val image = bitmap.asComposeImageBitmap()
+        val pixels: ByteBuffer = bitmap.peekPixels()!!.use { BufferUtil.getByteBufferFromPointer(it.addr, it.rowBytes * height) }
     }
 
     /** Runs [block] while [frame]'s pixels hold still; a frame whose bitmap was resized away or closed is skipped. */
@@ -76,10 +74,8 @@ class JvmVideoHandle(val mirrored: Boolean = false) : VideoHandle {
     fun close() = synchronized(pixels) {
         closed = true
         _frame.value = null
-        bitmap?.close()
-        bitmap = null
-        image = null
-        target = null
+        surface?.bitmap?.close()
+        surface = null
     }
 
     companion object {
