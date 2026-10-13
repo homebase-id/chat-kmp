@@ -1,5 +1,6 @@
 package id.homebase.feed.calls
 
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.Manifest
 import android.content.Context
@@ -155,6 +156,8 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
         }
 
         /** Returns false when Telecom refused; the call then runs without it. */
+        // placeCall is anyOf(CALL_PHONE, MANAGE_OWN_CALLS); lint counts the revocable CALL_PHONE although the install-time MANAGE_OWN_CALLS covers a self-managed account.
+        @SuppressLint("MissingPermission")
         fun reportOutgoing(context: Context, callId: String, label: String): Boolean = try {
             context.getSystemService(TelecomManager::class.java).placeCall(
                 Uri.fromParts("homebase", label.ifBlank { "callee" }, null),
