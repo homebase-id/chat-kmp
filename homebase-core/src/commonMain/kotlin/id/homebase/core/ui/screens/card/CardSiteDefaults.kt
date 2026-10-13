@@ -23,12 +23,12 @@ data class CardSiteDefaults(
     val header: HomebaseImageData? = null,
 )
 
-internal fun cardDesignForTheme(themeId: String?): String = when (themeId) {
+internal fun cardDesignForTheme(themeId: String?): String? = when (themeId) {
     "555" -> CardDesign.POSTER
     "777" -> CardDesign.COLLAGE
     "888" -> CardDesign.DOSSIER
     "666" -> CardDesign.BOARD
-    else -> CardDesign.LINKS
+    else -> null
 }
 
 /** The homepage Theme attribute from a `sitedata.json` root; null when it has none. */
