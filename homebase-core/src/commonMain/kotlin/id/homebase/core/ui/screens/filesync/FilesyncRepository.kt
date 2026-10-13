@@ -26,17 +26,12 @@ class FilesyncRepository(
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
 
-    /** A folder's nodes, folders first; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
-    suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes {
-        val found = queryAll(
+    /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
+    suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
+        queryAll(
             nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
                 .copy(groupId = listOf(folderId))
         )
-        val sorted = found.nodes.values.sortedWith(
-            compareBy<FilesyncNode> { !it.isFolder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-        )
-        return FilesyncNodes(sorted.associateBy { it.nodeId }, found.handles)
-    }
 
     /** Everything in Recently deleted, across the whole drive. */
     suspend fun listRemoved(): FilesyncNodes = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
@@ -107,14 +102,14 @@ class FilesyncRepository(
      * A file to open goes to share_outbound, swept like every other copy handed to another app;
      * one to save goes to upload-temp and is [discard]ed once the OS has its copy.
      */
-    suspend fun download(name: String, payload: FilesyncPayload, forOpen: Boolean, onProgress: (Float) -> Unit): String? =
+    suspend fun download(name: String, payload: FilesyncPayload, toShareOutbound: Boolean, onProgress: (Float) -> Unit): String? =
         payloadDownloadService.exportVerified(
             driveId = FilesyncProtocol.DriveAlias,
             fileId = payload.fileId,
             key = FilesyncProtocol.PayloadKey,
             keyHeader = payload.payloadKey,
             hash = payload.hash,
-            destination = if (forOpen) {
+            destination = if (toShareOutbound) {
                 ExportDestination.ShareOutbound(extensionOf(name))
             } else {
                 ExportDestination.UploadTemp("fs_", extensionOf(name))

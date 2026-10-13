@@ -684,8 +684,8 @@ class ProfileCardViewModel(
                 if (saved == null) {
                     plan.forEach { audiencesBeforePublic.remove(it.attribute.id) }
                     val rolledBack = restoreAcls(written, kept).attributes
-                    applyAttributes(rolledBack, saved = false)
-                    contentSaveFailed()
+                    _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
+                    applyAttributes(rolledBack, saved = false, failed = true)
                     return@launch
                 }
                 written += step.attribute to saved
@@ -707,8 +707,8 @@ class ProfileCardViewModel(
             val kept = existingCircles(previous.flatMap { it.acl.circleIdList.orEmpty() })
             val restored = restoreAcls(previous.mapNotNull { p -> current[p.id]?.let { p to it } }, kept)
             importUndo = restored.failed.takeIf { it.isNotEmpty() }
-            applyAttributes(restored.attributes, saved = restored.failed.isEmpty())
-            if (restored.failed.isNotEmpty()) contentSaveFailed()
+            if (restored.failed.isNotEmpty()) _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
+            applyAttributes(restored.attributes, saved = restored.failed.isEmpty(), failed = restored.failed.isNotEmpty())
         }
     }
 
@@ -732,13 +732,14 @@ class ProfileCardViewModel(
         return Restored(attributes, failed)
     }
 
-    private fun applyAttributes(changed: List<ProfileAttribute>, saved: Boolean, removed: Set<Uuid> = emptySet()) {
+    private fun applyAttributes(changed: List<ProfileAttribute>, saved: Boolean, removed: Set<Uuid> = emptySet(), failed: Boolean = false) {
         val ids = changed.map { it.id }.toSet() + removed
         content = content?.let { c -> c.copy(attributes = c.attributes.filterNot { it.id in ids } + changed) }
         _uiState.update {
             it.copy(
                 isContentBusy = false,
                 contentSaves = if (saved) it.contentSaves + 1 else it.contentSaves,
+                contentFailures = if (failed) it.contentFailures + 1 else it.contentFailures,
                 attributes = it.attributes.filterNot { a -> a.id in ids } + changed,
             )
         }

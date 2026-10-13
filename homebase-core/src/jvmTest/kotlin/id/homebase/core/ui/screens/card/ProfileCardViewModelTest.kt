@@ -1920,9 +1920,11 @@ class ProfileCardViewModelTest {
 
         vm.onResetCardConfirmed()
         wire.awaitPuts(1)
-        awaitUntil { !vm.uiState.value.isCardBusy && vm.uiState.value.design == CardDesign.COLLAGE }
-
         val sage = CardDesignSpecs.of(CardDesign.COLLAGE)!!.schemes.first { it.id == "sage" }
+        awaitUntil {
+            !vm.uiState.value.isCardBusy && vm.uiState.value.design == CardDesign.COLLAGE &&
+                host.rendered.lastOrNull()?.overrides?.palette?.ground == sage.ground
+        }
         val put = wire.putBodies.single().jsonObject
         assertEquals(JsonPrimitive(circle.id.toString()), put["id"])
         assertEquals(JsonPrimitive(CardDesign.COLLAGE), put["data"]!!.jsonObject["design"])
