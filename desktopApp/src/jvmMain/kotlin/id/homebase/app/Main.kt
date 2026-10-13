@@ -61,6 +61,9 @@ import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.desktop_menu_call
+import id.homebase.resources.desktop_menu_call_answer
+import id.homebase.resources.desktop_menu_call_decline
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
@@ -289,6 +292,7 @@ fun main() {
         }
 
         val callTrayItems by collectCallTrayItems(callWindow)
+        val callRinging by collectCallRinging(callWindow)
         val callEntries = rememberCallMenuEntries(rememberSettledCallItems(callTrayItems))
         CallDockMenu(callEntries, callWindow::perform)
         val callActiveLabel = stringResource(MR.string.desktop_tray_call_indicator)
@@ -368,6 +372,20 @@ fun main() {
                         onClick = hideWindow,
                     )
                 }
+                if (callRinging) {
+                    Menu(stringResource(MR.string.desktop_menu_call)) {
+                        Item(
+                            text = stringResource(MR.string.desktop_menu_call_answer),
+                            shortcut = menuShortcut(Key.A, shift = true),
+                            onClick = callWindow::answer,
+                        )
+                        Item(
+                            text = stringResource(MR.string.desktop_menu_call_decline),
+                            shortcut = menuShortcut(Key.H, shift = true),
+                            onClick = callWindow::decline,
+                        )
+                    }
+                }
                 Menu(themeMenuLabel) {
                     ThemeState.entries.forEach { theme ->
                         RadioButtonItem(
@@ -432,8 +450,8 @@ internal val isMacOs =
 // Traffic lights float over the content once apple.awt.fullWindowContent is on.
 private val MAC_TITLE_BAR_HEIGHT = 28.dp
 
-private fun menuShortcut(key: Key) =
-    KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs)
+private fun menuShortcut(key: Key, shift: Boolean = false) =
+    KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs, shift = shift)
 
 /**
  * A failure the desktop app records and keeps running for, instead of dying: a transient network

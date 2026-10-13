@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewModelScope
 import androidx.compose.ui.unit.DpSize
 import id.homebase.chat.calling.CallRingWindowContent
-import id.homebase.chat.calling.RingWindowHeight
+import id.homebase.chat.calling.LocalMacShortcuts
 import id.homebase.chat.calling.RingWindowWidth
 import id.homebase.chat.calling.CallTrayItem
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-val DesktopRingWindowSize = DpSize(RingWindowWidth, RingWindowHeight)
+val DesktopRingWindowSize = DpSize(RingWindowWidth, Dp.Unspecified)
 
 sealed interface DesktopCallTrayItem {
     data class Status(val name: String, val elapsed: String?) : DesktopCallTrayItem
@@ -51,6 +51,8 @@ interface DesktopCallWindow {
     fun menuToggleVideo()
     fun menuToggleMini(toggle: () -> Unit)
     fun menuHangup()
+    fun answer()
+    fun decline()
     fun setMiniWindowOpen(open: Boolean)
 
     @Composable
@@ -83,6 +85,8 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
     override fun menuToggleVideo() = model.menuToggleVideo()
     override fun menuToggleMini(toggle: () -> Unit) = model.menuToggleMini(toggle)
     override fun menuHangup() = model.menuHangup()
+    override fun answer() = if (model.isVideoCall()) model.acceptVideo() else model.acceptVoice()
+    override fun decline() = model.decline()
     override fun setMiniWindowOpen(open: Boolean) {
         model.miniWindowOpen.value = open
     }
@@ -92,12 +96,14 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
 
     @Composable
     override fun RingContent(modifier: Modifier) {
-        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape()) { CallRingWindowContent(model, modifier) }
+        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape(), LocalMacShortcuts provides isMac()) {
+            CallRingWindowContent(model, modifier)
+        }
     }
 
     @Composable
     override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) {
-        val mac = System.getProperty("os.name").orEmpty().startsWith("Mac")
+        val mac = isMac()
         CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape()) {
             CallWindowContent(
                 model, onMinimize, topInset,
@@ -120,3 +126,5 @@ private fun trayItem(item: CallTrayItem): DesktopCallTrayItem = when (item) {
     is CallTrayItem.Mute -> DesktopCallTrayItem.Mute(item.muted)
     CallTrayItem.HangUp -> DesktopCallTrayItem.HangUp
 }
+
+private fun isMac() = System.getProperty("os.name").orEmpty().startsWith("Mac")

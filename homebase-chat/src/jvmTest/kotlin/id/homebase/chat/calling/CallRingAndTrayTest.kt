@@ -22,7 +22,10 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
@@ -33,6 +36,8 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
+
+private const val RingTag = "ring"
 
 @OptIn(ExperimentalTestApi::class)
 class CallRingAndTrayTest {
@@ -72,7 +77,7 @@ class CallRingAndTrayTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
-                Box(Modifier.size(RingWindowWidth, RingWindowHeight)) {
+                Box(Modifier.width(RingWindowWidth)) {
                     CallRingContent(
                         video = video,
                         name = "Samwise Gamgee",
@@ -85,6 +90,7 @@ class CallRingAndTrayTest {
                         onAcceptVideo = onVideo,
                         onDecline = onDecline,
                         shape = shape,
+                        modifier = Modifier.testTag(RingTag),
                     )
                 }
             }
@@ -94,7 +100,7 @@ class CallRingAndTrayTest {
 
     private fun ComposeUiTest.shoot(name: String, dark: Boolean) {
         mainClock.advanceTimeBy(400)
-        ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "$name-${if (dark) "dark" else "light"}.png"))
+        ImageIO.write(onNodeWithTag(RingTag).captureToImage().toAwtImage(), "png", File(outDir, "$name-${if (dark) "dark" else "light"}.png"))
     }
 
     @Test
@@ -131,12 +137,25 @@ class CallRingAndTrayTest {
     fun theRoundedRingDeclinesWithTheCallersNameForScreenReaders() {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 200) {
             showRing(video = true, dark = dark, shape = RoundedCornerShape(12.dp))
-            onNodeWithContentDescription("Decline call from Samwise Gamgee").assertExists()
+            onNodeWithContentDescription("Decline call from Samwise Gamgee (Ctrl+Shift+H)").assertExists()
+            onNodeWithContentDescription("Accept video (Ctrl+Shift+A)").assertExists()
             shoot("ring-window-rounded", dark)
         }
-        for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 200) {
-            showRing(video = false, dark = dark, shape = RoundedCornerShape(12.dp), fontScale = 1.3f)
-            shoot("ring-window-font130", dark)
+    }
+
+    @Test
+    fun atLargeFontsTheRingGrowsTallerAndEveryLabelKeepsTheSameSize() {
+        for (scale in listOf(1.3f, 2f)) for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 520) {
+            showRing(video = false, dark = dark, shape = RoundedCornerShape(12.dp), fontScale = scale)
+            shoot("ring-window-font${(scale * 100).toInt()}", dark)
+            val sizes = listOf("Decline", "Accept voice", "Accept video").map { label ->
+                val layouts = mutableListOf<TextLayoutResult>()
+                onNodeWithText(label).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+                val layout = layouts.single()
+                assertEquals(label.length, layout.getLineEnd(layout.lineCount - 1, visibleEnd = true), "$label is cut at $scale")
+                layout.layoutInput.style.fontSize
+            }
+            assertEquals(1, sizes.distinct().size, "labels differ in size at $scale: $sizes")
         }
     }
 }

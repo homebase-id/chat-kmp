@@ -125,8 +125,17 @@ fun CallDockMenu(entries: List<CallMenuEntry>, perform: (CallMenuAction) -> Unit
 }
 
 @Composable
-fun collectCallTrayItems(call: DesktopCallWindow): State<List<DesktopCallTrayItem>> {
+fun collectCallTrayItems(call: DesktopCallWindow): State<List<DesktopCallTrayItem>> =
+    call.trayItems.collectAsStateWithLifecycle(lifecycleOwner = rememberApplicationLifecycleOwner())
+
+/** The ring window never takes focus, so its answer and decline shortcuts live in the main window's menu. */
+@Composable
+fun collectCallRinging(call: DesktopCallWindow): State<Boolean> =
+    call.ringing.collectAsStateWithLifecycle(lifecycleOwner = rememberApplicationLifecycleOwner())
+
+@Composable
+private fun rememberApplicationLifecycleOwner(): DesktopLifecycleOwner {
     val owner = remember { DesktopLifecycleOwner().also { it.onWindowVisible() } }
     DisposableEffect(owner) { onDispose { owner.onWindowClosed() } }
-    return call.trayItems.collectAsStateWithLifecycle(lifecycleOwner = owner)
+    return owner
 }
