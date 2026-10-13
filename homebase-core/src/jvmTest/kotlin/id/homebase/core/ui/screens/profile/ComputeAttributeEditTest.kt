@@ -18,7 +18,7 @@ import kotlin.test.assertNull
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-class ProfileEditViewModelComputeEditTest {
+class ComputeAttributeEditTest {
 
     private val circles = listOf(
         CardCircle(FAMILY_CIRCLE_ID, "Family"),
@@ -45,7 +45,7 @@ class ProfileEditViewModelComputeEditTest {
         address: String,
         audience: ProfileAudience,
         loaded: ProfileAudience? = existing?.audience(circles),
-    ) = ProfileEditViewModel.computeAttributeEdit(
+    ) = computeAttributeEdit(
         existing = existing,
         type = ProfileAttributeTypes.EMAIL,
         updates = mapOf(ProfileAttributeTypes.KEY_EMAIL to address),

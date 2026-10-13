@@ -17,6 +17,7 @@ private fun thumbnailAccentArgb(design: String): Long = when (design) {
     CardDesign.POSTER -> 0xFFF26B5B
     CardDesign.COLLAGE -> 0xFFB4553A
     CardDesign.DOSSIER -> 0xFF4FD1C5
+    CardDesign.LINKS -> 0xFF1A66D6
     else -> 0xFFF2B84B
 }
 
@@ -32,6 +33,7 @@ internal fun CardDesignThumbnail(design: String, modifier: Modifier = Modifier, 
             CardDesign.POSTER -> poster(ink, accent)
             CardDesign.COLLAGE -> collage(ink, accent)
             CardDesign.DOSSIER -> dossier(ink, accent)
+            CardDesign.LINKS -> links(ink, accent)
             else -> board(ink, accent)
         }
     }
@@ -80,4 +82,20 @@ private fun DrawScope.dossier(ink: Color, accent: Color) {
         bar(0.12f, y, if (i % 2 == 0) 0.76f else 0.58f, 0.025f, ink.copy(alpha = 0.45f))
     }
     bar(0.12f, 0.84f, 0.22f, 0.035f, accent)
+}
+
+private fun DrawScope.links(ink: Color, accent: Color) {
+    drawCircle(accent, radius = size.width * 0.12f, center = Offset(size.width / 2, size.height * 0.17f))
+    bar(0.32f, 0.33f, 0.36f, 0.035f, ink)
+    listOf(0.44f, 0.56f, 0.68f).forEach { y ->
+        drawRoundRect(
+            color = Color.White,
+            topLeft = Offset(size.width * 0.12f, size.height * y),
+            size = Size(size.width * 0.76f, size.height * 0.085f),
+            cornerRadius = CornerRadius(size.height * 0.03f),
+        )
+        drawCircle(accent.copy(alpha = 0.8f), radius = size.height * 0.02f, center = Offset(size.width * 0.19f, size.height * (y + 0.0425f)))
+        bar(0.26f, y + 0.032f, 0.46f, 0.02f, ink.copy(alpha = 0.55f))
+    }
+    listOf(0.38f, 0.5f, 0.62f).forEach { x -> drawCircle(ink.copy(alpha = 0.6f), radius = size.width * 0.03f, center = Offset(size.width * x, size.height * 0.88f)) }
 }

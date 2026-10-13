@@ -22,23 +22,17 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.material.icons.outlined.DragIndicator
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.LineHeightStyle
-import id.homebase.core.ui.screens.profile.ProfileAudience
-import id.homebase.resources.profile_card_option_content
 import id.homebase.resources.profile_card_tool_accent
-import id.homebase.resources.profile_card_tool_content
 import id.homebase.resources.profile_card_tool_heading
 import id.homebase.resources.profile_card_tool_body
 import id.homebase.resources.profile_card_tool_portrait
@@ -69,6 +63,13 @@ import id.homebase.resources.profile_card_colours_kraft
 import id.homebase.resources.profile_card_colours_night
 import id.homebase.resources.profile_card_colours_mono
 import id.homebase.resources.profile_card_colours_ink
+import id.homebase.resources.profile_card_colours_cloud
+import id.homebase.resources.profile_card_colours_slate
+import id.homebase.resources.profile_card_colours_mint
+import id.homebase.resources.profile_card_colours_peach
+import id.homebase.resources.profile_card_colours_lavender
+import id.homebase.resources.profile_card_colours_navy
+import id.homebase.resources.profile_card_colours_lemon
 import id.homebase.resources.profile_card_colours_moss
 import id.homebase.resources.profile_card_colours_oxblood
 import id.homebase.resources.profile_card_colours_graphite
@@ -104,14 +105,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -124,10 +125,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.Matrix
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
@@ -144,7 +141,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -188,7 +184,6 @@ import id.homebase.resources.profile_card_socials_glyphs
 import id.homebase.resources.profile_card_socials_handles
 import id.homebase.resources.profile_card_socials_wordmark
 import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -217,21 +212,6 @@ private const val REVEAL_MARGIN = 0.6f
 private val BLOCK_TILE_SPACING = 6.dp
 private val BLOCK_TILE_CORNER = 12.dp
 
-internal class CardContentTool(
-    val card: CardAudience,
-    val items: List<CardContentItem>,
-    val circles: List<CardCircle>,
-    val enabled: Boolean,
-    val failures: Int,
-    val onToggle: (Uuid, Boolean) -> Unit,
-    val onAudience: (Uuid, ProfileAudience) -> Unit,
-    val onAdd: (String, Map<String, String>) -> Unit,
-    val onOpen: (Boolean) -> Unit,
-)
-
-private const val CONTENT_TOOL = "CONTENT"
-
-/** Every control comes from the design's [CardDesignSpec]; Content, which every design has, comes last. */
 @Composable
 internal fun CardOptionsPanel(
     design: String,
@@ -239,22 +219,18 @@ internal fun CardOptionsPanel(
     enabled: Boolean,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
-    content: CardContentTool,
     gap: Dp,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
     val options = CardOption.entries.filter { spec != null && it in spec.options }
-    var picked by rememberSaveable(design) { mutableStateOf(options.firstOrNull()?.name ?: CONTENT_TOOL) }
-    val current = options.firstOrNull { it.name == picked }
+    var picked by rememberSaveable(design) { mutableStateOf(options.firstOrNull()?.name.orEmpty()) }
+    val current = options.firstOrNull { it.name == picked } ?: options.firstOrNull() ?: return
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
-    val onOpen by rememberUpdatedState(content.onOpen)
-    LaunchedEffect(current == null) { onOpen(current == null) }
-    DisposableEffect(Unit) { onDispose { onOpen(false) } }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         AnimatedContent(
-            targetState = picked,
+            targetState = current.name,
             transitionSpec = {
                 (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
                     .togetherWith(fadeOut(motion.fastEffectsSpec()))
@@ -262,30 +238,16 @@ internal fun CardOptionsPanel(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
         ) { shown ->
-            val option = options.firstOrNull { it.name == shown }
-            if (option == null) {
-                CardContentPanel(
-                    card = content.card,
-                    items = content.items,
-                    circles = content.circles,
-                    enabled = content.enabled,
-                    failures = content.failures,
-                    onToggle = content.onToggle,
-                    onAudience = content.onAudience,
-                    onAdd = content.onAdd,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                // The picked tool names itself in the group below, so the control stands alone here.
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
-                }
+            val option = options.firstOrNull { it.name == shown } ?: current
+            // The picked tool names itself in the group below, so the control stands alone here.
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
             }
         }
         OptionToolbar(
             options = options,
             current = current,
-            onPick = { picked = it?.name ?: CONTENT_TOOL },
+            onPick = { picked = it.name },
             modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = TOOLBAR_SIDE_INSET),
         )
     }
@@ -345,20 +307,19 @@ private fun OptionControl(
     }
 }
 
-// A null [current] is Content.
 // When every tool fits it sits still and whole, naming the picked one only if there's room; otherwise the row scrolls.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
-    current: CardOption?,
-    onPick: (CardOption?) -> Unit,
+    current: CardOption,
+    onPick: (CardOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val count = options.size + 1
-    val labels = options.map { stringResource(toolLabel(it)) } + stringResource(MR.string.profile_card_tool_content)
-    val descriptions = options.map { stringResource(optionLabel(it)) } + stringResource(MR.string.profile_card_option_content)
-    val icons = options.map(::optionIcon) + Icons.Outlined.Dashboard
-    val pickedIndex = current?.let(options::indexOf) ?: options.size
+    val count = options.size
+    val labels = options.map { stringResource(toolLabel(it)) }
+    val descriptions = options.map { stringResource(optionLabel(it)) }
+    val icons = options.map(::optionIcon)
+    val pickedIndex = options.indexOf(current)
     val measurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelLarge
     val density = LocalDensity.current
@@ -378,7 +339,7 @@ private fun OptionToolbar(
                     named = named,
                     minWidth = if (index == pickedIndex) pickedMin else TOOL_SIZE,
                     shapes = connectedButtonShapes(index, count),
-                    onClick = { onPick(options.getOrNull(index)) },
+                    onClick = { onPick(options[index]) },
                 )
             }
         }
@@ -890,5 +851,12 @@ private fun schemeLabel(id: String): StringResource = when (id) {
     "paper" -> MR.string.profile_card_colours_paper
     "blueprint" -> MR.string.profile_card_colours_blueprint
     "sand" -> MR.string.profile_card_colours_sand
+    "cloud" -> MR.string.profile_card_colours_cloud
+    "slate" -> MR.string.profile_card_colours_slate
+    "mint" -> MR.string.profile_card_colours_mint
+    "peach" -> MR.string.profile_card_colours_peach
+    "lavender" -> MR.string.profile_card_colours_lavender
+    "navy" -> MR.string.profile_card_colours_navy
+    "lemon" -> MR.string.profile_card_colours_lemon
     else -> MR.string.profile_card_colours_midnight
 }
