@@ -18,6 +18,19 @@ val CameraFacing.mirrorsLocalPreview: Boolean get() = this == CameraFacing.Front
 
 enum class AudioRoute { Earpiece, Speaker, Bluetooth, Wired }
 
+
+/**
+ * A headset that just arrived takes the call, wired before Bluetooth; when the current route's device leaves, the call
+ * falls back to speaker for video and earpiece for voice. Null keeps the current route.
+ */
+internal fun preferredRoute(routes: List<AudioRoute>, previous: List<AudioRoute>, current: AudioRoute?, video: Boolean): AudioRoute? = when {
+    AudioRoute.Wired in routes && AudioRoute.Wired !in previous -> AudioRoute.Wired
+    AudioRoute.Bluetooth in routes && AudioRoute.Bluetooth !in previous -> AudioRoute.Bluetooth
+    current != null && current in routes -> null
+    video -> AudioRoute.Speaker
+    else -> AudioRoute.Earpiece
+}
+
 enum class CallQuality { Good, Poor, Unknown }
 
 enum class FailReason { NoRoute, Permission, Other }

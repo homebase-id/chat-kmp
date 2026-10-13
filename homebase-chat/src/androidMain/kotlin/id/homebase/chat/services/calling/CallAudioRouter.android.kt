@@ -2,10 +2,14 @@ package id.homebase.chat.services.calling
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import kotlin.concurrent.Volatile
 
 internal val BluetoothDeviceTypes = setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET)
 internal val WiredDeviceTypes = setOf(
@@ -20,9 +24,10 @@ actual class CallAudioRouter actual constructor() {
     private var previousMode = AudioManager.MODE_NORMAL
     private var focus: AudioFocusRequest? = null
     private var started = false
-    private var current = AudioRoute.Earpiece
+    @Volatile private var current = AudioRoute.Earpiece
+    private var devices: AudioDeviceCallback? = null
 
-    actual fun start(video: Boolean): AudioRoute {
+    actual fun start(video: Boolean, onRouteChanged: (AudioRoute) -> Unit): AudioRoute {
         if (started) return current
         started = true
         previousMode = audio.mode
@@ -37,14 +42,23 @@ actual class CallAudioRouter actual constructor() {
             .build()
             .also { audio.requestAudioFocus(it) }
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
-        val routes = platformAudioRoutes()
-        val route = when {
-            AudioRoute.Wired in routes -> AudioRoute.Wired
-            AudioRoute.Bluetooth in routes -> AudioRoute.Bluetooth
-            video -> AudioRoute.Speaker
-            else -> AudioRoute.Earpiece
-        }
+        var known = availableAudioRoutes()
+        val route = preferredRoute(known, previous = emptyList(), current = null, video = video)!!
         setRoute(route)
+        devices = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = changed()
+            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) = changed()
+
+            private fun changed() {
+                val routes = availableAudioRoutes()
+                val next = preferredRoute(routes, previous = known, current = current, video = video)
+                known = routes
+                if (next != null && next != current) {
+                    setRoute(next)
+                    onRouteChanged(next)
+                }
+            }
+        }.also { audio.registerAudioDeviceCallback(it, Handler(Looper.getMainLooper())) }
         return route
     }
 
@@ -68,6 +82,8 @@ actual class CallAudioRouter actual constructor() {
     actual fun stop() {
         if (!started) return
         started = false
+        devices?.let { audio.unregisterAudioDeviceCallback(it) }
+        devices = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.clearCommunicationDevice()
         @Suppress("DEPRECATION")
         audio.isSpeakerphoneOn = false

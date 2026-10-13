@@ -10,9 +10,11 @@ import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.holdsPictureInPicture
 import id.homebase.chat.services.calling.isInCall
-import id.homebase.chat.services.calling.platformAudioRoutes
+import id.homebase.chat.services.calling.audioRouteChanges
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -20,6 +22,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -62,9 +68,10 @@ sealed interface CallUiEvent {
     data object ConfirmEnd : CallUiEvent
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CallViewModel(
     private val session: CallSession,
-    private val audioRoutes: () -> List<AudioRoute> = ::platformAudioRoutes,
+    private val audioRoutes: Flow<List<AudioRoute>> = audioRouteChanges(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CallUiState())
     val uiState: StateFlow<CallUiState> = _uiState.asStateFlow()
@@ -77,8 +84,9 @@ class CallViewModel(
 
     init {
         viewModelScope.launch {
-            combine(session.state, session.videos) { state, videos -> state to videos }.collect { (state, videos) ->
-                val routes = if (state.isActive) audioRoutes() else emptyList()
+            val routes = session.state.map { it.isActive }.distinctUntilChanged()
+                .flatMapLatest { active -> if (active) audioRoutes else flowOf(emptyList()) }
+            combine(session.state, session.videos, routes, ::Triple).collect { (state, videos, routes) ->
                 _uiState.update { previous ->
                     val newCall = state.callId != previous.callId
                     previous.copy(

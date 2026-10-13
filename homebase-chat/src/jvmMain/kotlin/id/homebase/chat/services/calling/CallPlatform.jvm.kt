@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -43,4 +46,4 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius:
     }
 }
 
-actual fun platformAudioRoutes(): List<AudioRoute> = emptyList()
+actual fun audioRouteChanges(): Flow<List<AudioRoute>> = flowOf(emptyList())

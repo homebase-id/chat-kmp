@@ -128,7 +128,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private suspend fun addLocalMedia(video: Boolean) {
         if (closed.load()) throw CallEngineException(FailReason.Other, "engine closed")
         if (stream != null) return
-        _events.trySend(MediaEvent.RouteChanged(router.start(video)))
+        _events.trySend(MediaEvent.RouteChanged(router.start(video) { _events.trySend(MediaEvent.RouteChanged(it)) }))
         val media = try {
             MediaDevices.getUserMedia {
                 audio(true)

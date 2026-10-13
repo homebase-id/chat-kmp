@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.Flow
 
 /** The real engine for this target, or null where calling is not supported (the UI then hides every entry point). */
 expect fun platformCallEngineFactory(): CallEngineFactory?
@@ -15,5 +16,5 @@ expect fun platformCallEngineFactory(): CallEngineFactory?
 @Composable
 expect fun CallVideoView(handle: VideoHandle?, modifier: Modifier = Modifier, cornerRadius: Dp = 0.dp)
 
-/** Output routes the OS offers right now; fewer than two means the route picker is hidden. */
-expect fun platformAudioRoutes(): List<AudioRoute>
+/** Output routes the OS offers, again whenever a headset comes or goes; fewer than two hides the route picker. */
+expect fun audioRouteChanges(): Flow<List<AudioRoute>>

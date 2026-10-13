@@ -19,6 +19,8 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -55,7 +57,7 @@ class CallViewModelTest {
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
         )
-        val vm = CallViewModel(me, audioRoutes = { listOf(AudioRoute.Earpiece, AudioRoute.Speaker) })
+        val vm = CallViewModel(me, audioRoutes = flowOf(listOf(AudioRoute.Earpiece, AudioRoute.Speaker)))
         val ui get() = vm.uiState.value
     }
 
@@ -294,4 +296,23 @@ class CallViewModelTest {
         assertFalse(rig.ui.minimized)
         assertTrue(rig.ui.visible)
     }
+
+    @Test
+    fun aHeadsetPluggedInMidCallShowsUpInTheRoutePicker() = rigTest { rig ->
+        val routes = MutableStateFlow(listOf(AudioRoute.Earpiece, AudioRoute.Speaker))
+        val vm = CallViewModel(rig.me, audioRoutes = routes)
+        try {
+            settle()
+            assertEquals(emptyList(), vm.uiState.value.availableRoutes)
+            rig.me.startCall(sam, video = false)
+            settle()
+            assertEquals(listOf(AudioRoute.Earpiece, AudioRoute.Speaker), vm.uiState.value.availableRoutes)
+            routes.value = listOf(AudioRoute.Earpiece, AudioRoute.Speaker, AudioRoute.Wired)
+            settle()
+            assertEquals(listOf(AudioRoute.Earpiece, AudioRoute.Speaker, AudioRoute.Wired), vm.uiState.value.availableRoutes)
+        } finally {
+            vm.viewModelScope.cancel()
+        }
+    }
 }
+

@@ -19,7 +19,7 @@ import platform.AVFAudio.setActive
 actual class CallAudioRouter actual constructor() {
     private val session = AVAudioSession.sharedInstance()
 
-    actual fun start(video: Boolean): AudioRoute {
+    actual fun start(video: Boolean, onRouteChanged: (AudioRoute) -> Unit): AudioRoute {
         session.setCategory(AVAudioSessionCategoryPlayAndRecord, mode = AVAudioSessionModeVoiceChat, options = AVAudioSessionCategoryOptionAllowBluetooth, error = null)
         session.setActive(true, error = null)
         val headset = session.currentRoute.outputs.any {

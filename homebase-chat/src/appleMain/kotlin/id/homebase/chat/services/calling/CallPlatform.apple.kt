@@ -17,6 +17,8 @@ import platform.CoreGraphics.CGAffineTransformMakeScale
 import platform.UIKit.UIViewContentMode
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory { WebRtcKmpCallEngine(it) }
 
@@ -50,7 +52,8 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius:
     }
 }
 
-actual fun platformAudioRoutes(): List<AudioRoute> = listOf(AudioRoute.Earpiece, AudioRoute.Speaker)
+// The OS moves a call to a headset itself, so the picker only ever switches the built-in output.
+actual fun audioRouteChanges(): Flow<List<AudioRoute>> = flowOf(listOf(AudioRoute.Earpiece, AudioRoute.Speaker))
 
 // RTCMTLVideoView calls this on the main queue only when the rotation-applied frame size changes, not per frame.
 @OptIn(ExperimentalForeignApi::class)

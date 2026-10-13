@@ -111,6 +111,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -303,7 +304,7 @@ internal fun clusterPositions(owners: List<Boolean>): List<MessageClusterPositio
 @Composable
 private fun LiveCallLayer(lab: Lab) {
     val viewModel = viewModel(key = lab.toString()) {
-        CallViewModel(lab.me, audioRoutes = { listOf(AudioRoute.Earpiece, AudioRoute.Speaker, AudioRoute.Bluetooth) })
+        CallViewModel(lab.me, audioRoutes = flowOf(listOf(AudioRoute.Earpiece, AudioRoute.Speaker, AudioRoute.Bluetooth)))
     }
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     CallOverlay(viewModel, ui, PeerName, avatar = { size -> LabAvatar(size) })

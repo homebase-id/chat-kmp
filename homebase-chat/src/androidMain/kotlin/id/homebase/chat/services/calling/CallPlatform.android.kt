@@ -7,6 +7,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.shepeliev.webrtckmp.WebRtc
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
@@ -78,10 +87,21 @@ private fun frameSizeEvents(handle: KmpVideoHandle) = object : RendererCommon.Re
     }
 }
 
-actual fun platformAudioRoutes(): List<AudioRoute> {
+actual fun audioRouteChanges(): Flow<List<AudioRoute>> = callbackFlow {
+    val audio = callAppContext.getSystemService(AudioManager::class.java)
+    val callback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) { trySend(availableAudioRoutes()) }
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) { trySend(availableAudioRoutes()) }
+    }
+    // Registering reports every device already connected through onAudioDevicesAdded, which sends the first list.
+    audio.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
+    awaitClose { audio.unregisterAudioDeviceCallback(callback) }
+}.distinctUntilChanged()
+
+internal fun availableAudioRoutes(): List<AudioRoute> {
     val routes = mutableListOf(AudioRoute.Earpiece, AudioRoute.Speaker)
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return routes
-    val audio = callAppContext.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+    val audio = callAppContext.getSystemService(AudioManager::class.java)
     val types = audio.availableCommunicationDevices.map { it.type }
     if (types.any { it in BluetoothDeviceTypes }) {
         routes += AudioRoute.Bluetooth
