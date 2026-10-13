@@ -3,6 +3,7 @@ package id.homebase.core.ui.navigation
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
+import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
@@ -139,6 +140,12 @@ import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.chat.calling.CallLabScreen
+import id.homebase.chat.calling.history.CallsScreen
+import id.homebase.chat.calling.rememberPeerCallStarter
+import id.homebase.chat.services.calling.CallService
+import id.homebase.core.calling.CallsPreferences
+import androidx.compose.foundation.lazy.rememberLazyListState
+import org.koin.compose.getKoin
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
@@ -221,6 +228,7 @@ import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesSc
 import id.homebase.resources.chat_contact_card_saved_body
 import id.homebase.resources.chat_contact_card_saved_open
 import id.homebase.resources.contactbook_label
+import id.homebase.resources.nav_calls
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
@@ -354,7 +362,12 @@ fun AppNavHost(
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
         ?.inboxUnread ?: 0
+    val callsPreferences = koinInject<CallsPreferences>()
+    val callsIconVisible by callsPreferences.iconVisible.collectAsStateWithLifecycle()
+    val callsAvailable = getKoin().getOrNull<CallService>()?.available == true
     val topLevelRoutes = remember(
+        callsAvailable,
+        callsIconVisible,
         momentsIconVisible,
         vaultIconVisible,
         locationIconVisible,
@@ -362,16 +375,15 @@ fun AppNavHost(
         emailIconVisible,
         serverSupportsMail,
     ) {
-        buildList {
-            add(TopLevelRoute.Chat)
-            add(TopLevelRoute.Feed)
-            if (momentsIconVisible) add(TopLevelRoute.Moments)
-            if (vaultIconVisible) add(TopLevelRoute.Vault)
-            if (locationIconVisible) add(TopLevelRoute.Location)
-            if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
-            if (emailIconVisible && serverSupportsMail == true) add(TopLevelRoute.Email)
-            add(TopLevelRoute.Home)
-        }
+        topLevelRoutesFor(
+            callsAvailable = callsAvailable,
+            callsIconVisible = callsIconVisible,
+            momentsVisible = momentsIconVisible,
+            vaultVisible = vaultIconVisible,
+            locationVisible = locationIconVisible,
+            contactBookVisible = contactBookIconVisible,
+            emailVisible = emailIconVisible && serverSupportsMail == true,
+        )
     }
     // Read at call time: the event collectors below capture these lambdas once.
     val tabRoutes by rememberUpdatedState(topLevelRoutes.map { it.route })
@@ -379,6 +391,7 @@ fun AppNavHost(
     val selectedTab = backStack.currentTabRoot(tabRoutes)?.destination
     val openEmail: () -> Unit = { navController.openApp(Route.Email, tabRoutes) }
     val openContactBook: () -> Unit = { navController.openApp(Route.ContactBook, tabRoutes) }
+    val openCalls: () -> Unit = { navController.openApp(Route.Calls, tabRoutes) }
     val openMoments: () -> Unit = { navController.openApp(Route.Moments, tabRoutes) }
     val openLocation: () -> Unit = { navController.openApp(Route.Location, tabRoutes) }
     val openChats: () -> Unit = { navController.switchTab(Route.ChatList, tabRoutes) }
@@ -987,7 +1000,36 @@ fun AppNavHost(
                                     onNavigateToMoments = openMoments,
                                     onNavigateToLocation = openLocation,
                                     onNavigateToContacts = openContactBook,
+                                    onNavigateToCalls = if (callsAvailable) openCalls else null,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
+                                )
+                            }
+                        }
+
+                        tab<Route.Calls>(tabRoot) { entry ->
+                            if (isAuthenticated) {
+                                val scrollCallsToTop by entry.savedStateHandle
+                                    .getStateFlow(SCROLL_TO_TOP_KEY, false)
+                                    .collectAsStateWithLifecycle()
+                                val callsListState = rememberLazyListState()
+                                LaunchedEffect(scrollCallsToTop) {
+                                    if (scrollCallsToTop) {
+                                        callsListState.animateScrollToItem(0)
+                                        entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
+                                    }
+                                }
+                                val callStarter = rememberPeerCallStarter()
+                                val callsScope = rememberCoroutineScope()
+                                CallsScreen(
+                                    viewModel = koinViewModel(),
+                                    showInNav = callsIconVisible,
+                                    onShowInNavChange = { callsScope.launch { callsPreferences.setIconVisible(it) } },
+                                    onStartCall = { peer, video -> callStarter?.start(peer.domainName, video) },
+                                    onOpenConversation = { conversationId, messageId ->
+                                        navController.selectConversationOnChatList(conversationId, messageId = messageId)
+                                        openChats()
+                                    },
+                                    listState = callsListState,
                                 )
                             }
                         }
@@ -2410,12 +2452,33 @@ private fun UpgradeRunningStrip(modifier: Modifier = Modifier) {
 private fun NavDestination?.isCardRoute(): Boolean =
     this?.hasRoute(Route.ProfileCard::class) == true || this?.hasRoute(Route.ProfileCardEditor::class) == true
 
+internal fun topLevelRoutesFor(
+    callsAvailable: Boolean,
+    callsIconVisible: Boolean,
+    momentsVisible: Boolean,
+    vaultVisible: Boolean,
+    locationVisible: Boolean,
+    contactBookVisible: Boolean,
+    emailVisible: Boolean,
+): List<TopLevelRoute> = buildList {
+    add(TopLevelRoute.Chat)
+    if (callsAvailable && callsIconVisible) add(TopLevelRoute.Calls)
+    add(TopLevelRoute.Feed)
+    if (momentsVisible) add(TopLevelRoute.Moments)
+    if (vaultVisible) add(TopLevelRoute.Vault)
+    if (locationVisible) add(TopLevelRoute.Location)
+    if (contactBookVisible) add(TopLevelRoute.ContactBook)
+    if (emailVisible) add(TopLevelRoute.Email)
+    add(TopLevelRoute.Home)
+}
+
 sealed class TopLevelRoute(
     val route: Route,
     val labelRes: StringResource,
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
+    data object Calls : TopLevelRoute(Route.Calls, MR.string.nav_calls, Icons.Outlined.Call)
     data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)

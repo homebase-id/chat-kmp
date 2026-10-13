@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Redeem
+import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Badge
@@ -68,6 +69,8 @@ import id.homebase.resources.vault_home_subtitle
 import id.homebase.resources.vault_label
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
+import id.homebase.resources.calls_home_subtitle
+import id.homebase.resources.nav_calls
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -79,6 +82,7 @@ fun HomeScreen(
     onNavigateToMoments: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToContacts: () -> Unit,
+    onNavigateToCalls: (() -> Unit)?,
     onNavigateToExamples: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -135,6 +139,7 @@ fun HomeScreen(
         onNavigateToMoments = onNavigateToMoments,
         onNavigateToLocation = onNavigateToLocation,
         onNavigateToContacts = onNavigateToContacts,
+        onNavigateToCalls = onNavigateToCalls,
         locationAttention = locationAttention,
     )
 }
@@ -149,6 +154,7 @@ fun HomeUi(
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
+    onNavigateToCalls: (() -> Unit)? = null,
     locationAttention: Boolean = false,
 ) {
     val scrollState = rememberScrollState()
@@ -218,6 +224,17 @@ fun HomeUi(
                 subtitle = stringResource(MR.string.contactbook_home_subtitle),
                 onClick = onNavigateToContacts,
             )
+
+            if (onNavigateToCalls != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                FeatureCard(
+                    icon = Icons.Outlined.Call,
+                    label = stringResource(MR.string.nav_calls),
+                    subtitle = stringResource(MR.string.calls_home_subtitle),
+                    onClick = onNavigateToCalls,
+                )
+            }
 
             Spacer(modifier = Modifier.height(48.dp))
             NavigationButton(stringResource(MR.string.export_log)) { onAction(HomeUiAction.ExportLogClicked) }

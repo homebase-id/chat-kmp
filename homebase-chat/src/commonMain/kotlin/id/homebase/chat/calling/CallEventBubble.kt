@@ -60,6 +60,7 @@ import id.homebase.resources.call_event_missed
 import id.homebase.resources.call_event_no_answer
 import id.homebase.resources.call_event_outgoing
 import id.homebase.resources.call_event_unparseable
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** [isOwn] is true when this device's user placed the call (the author of the log message). */
@@ -86,28 +87,8 @@ fun CallEventBubble(
     }
     val visual = callEventVisual(descriptor, isOwn)
     val missedForMe = visual.missed
-    val icon: ImageVector = when (visual.icon) {
-        CallEventIcon.Missed -> Icons.AutoMirrored.Filled.CallMissed
-        CallEventIcon.NoAnswerOutgoing -> Icons.AutoMirrored.Filled.CallMissedOutgoing
-        CallEventIcon.Cancelled -> Icons.Outlined.Cancel
-        CallEventIcon.Declined -> Icons.Default.CallEnd
-        CallEventIcon.Busy -> Icons.Default.PhoneDisabled
-        CallEventIcon.Failed -> Icons.Outlined.ErrorOutline
-        CallEventIcon.Outgoing -> Icons.AutoMirrored.Filled.CallMade
-        CallEventIcon.Incoming -> Icons.AutoMirrored.Filled.CallReceived
-    }
-    val title = stringResource(
-        when (visual.title) {
-            CallEventTitle.Outgoing -> MR.string.call_event_outgoing
-            CallEventTitle.Incoming -> MR.string.call_event_incoming
-            CallEventTitle.NoAnswer -> MR.string.call_event_no_answer
-            CallEventTitle.Missed -> MR.string.call_event_missed
-            CallEventTitle.Cancelled -> MR.string.call_event_cancelled
-            CallEventTitle.Failed -> MR.string.call_event_failed
-            CallEventTitle.Declined -> MR.string.call_event_declined
-            CallEventTitle.Busy -> MR.string.call_event_busy
-        },
-    )
+    val icon = visual.icon.imageVector()
+    val title = stringResource(visual.title.stringRes())
     val kind = stringResource(if (descriptor.video) MR.string.call_button_video else MR.string.call_button_voice)
     val duration = if (descriptor.outcome == CallOutcome.Completed && descriptor.durationSeconds > 0) {
         spokenCallDuration(descriptor.durationSeconds)
@@ -252,4 +233,26 @@ internal fun spokenCallDuration(totalSeconds: Long): String {
         m > 0 -> stringResource(MR.string.call_duration_minutes, m, s)
         else -> stringResource(MR.string.call_duration_seconds, s)
     }
+}
+
+internal fun CallEventIcon.imageVector(): ImageVector = when (this) {
+    CallEventIcon.Missed -> Icons.AutoMirrored.Filled.CallMissed
+    CallEventIcon.NoAnswerOutgoing -> Icons.AutoMirrored.Filled.CallMissedOutgoing
+    CallEventIcon.Cancelled -> Icons.Outlined.Cancel
+    CallEventIcon.Declined -> Icons.Default.CallEnd
+    CallEventIcon.Busy -> Icons.Default.PhoneDisabled
+    CallEventIcon.Failed -> Icons.Outlined.ErrorOutline
+    CallEventIcon.Outgoing -> Icons.AutoMirrored.Filled.CallMade
+    CallEventIcon.Incoming -> Icons.AutoMirrored.Filled.CallReceived
+}
+
+internal fun CallEventTitle.stringRes(): StringResource = when (this) {
+    CallEventTitle.Outgoing -> MR.string.call_event_outgoing
+    CallEventTitle.Incoming -> MR.string.call_event_incoming
+    CallEventTitle.NoAnswer -> MR.string.call_event_no_answer
+    CallEventTitle.Missed -> MR.string.call_event_missed
+    CallEventTitle.Cancelled -> MR.string.call_event_cancelled
+    CallEventTitle.Failed -> MR.string.call_event_failed
+    CallEventTitle.Declined -> MR.string.call_event_declined
+    CallEventTitle.Busy -> MR.string.call_event_busy
 }

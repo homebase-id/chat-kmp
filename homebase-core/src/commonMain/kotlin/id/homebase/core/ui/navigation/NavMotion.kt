@@ -31,6 +31,7 @@ internal fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.Moments::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
             this?.hasRoute(Route.Vault::class) == true ||
+            this?.hasRoute(Route.Calls::class) == true ||
             this?.hasRoute(Route.Email::class) == true ||
             this?.hasRoute(Route.Location::class) == true ||
             this?.hasRoute(Route.ContactBook::class) == true

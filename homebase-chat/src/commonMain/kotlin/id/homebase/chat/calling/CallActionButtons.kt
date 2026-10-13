@@ -24,18 +24,26 @@ val LocalCallBack = compositionLocalOf<((video: Boolean) -> Unit)?> { null }
 
 class CallStarter(val idle: Boolean, val start: (video: Boolean) -> Unit)
 
+class PeerCallStarter(val idle: Boolean, val start: (peer: String, video: Boolean) -> Unit)
+
 @Composable
-fun rememberCallStarter(conversation: EnrichedConversationUiModel): CallStarter? {
+fun rememberPeerCallStarter(): PeerCallStarter? {
     val service = getKoin().getOrNull<CallService>()?.takeIf { it.available } ?: return null
-    val status = conversation.oneOnOneConnectionStatus as? OneOnOneConnectionStatus.Connected ?: return null
-    if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return null
     val state by service.state.collectAsStateWithLifecycle()
     val gate = rememberCallPermissionGate()
-    val peer = remember(status) { status.otherOdinId.domainName }
-    val start = remember(service, gate, peer) {
-        { video: Boolean -> gate.run(video = video) { granted -> service.startCall(peer, video = granted) } }
+    val start = remember(service, gate) {
+        { peer: String, video: Boolean -> gate.run(video = video) { granted -> service.startCall(peer, video = granted) } }
     }
-    return CallStarter(idle = !state.isActive, start = start)
+    return PeerCallStarter(idle = !state.isActive, start = start)
+}
+
+@Composable
+fun rememberCallStarter(conversation: EnrichedConversationUiModel): CallStarter? {
+    val status = conversation.oneOnOneConnectionStatus as? OneOnOneConnectionStatus.Connected ?: return null
+    if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return null
+    val starter = rememberPeerCallStarter() ?: return null
+    val peer = remember(status) { status.otherOdinId.domainName }
+    return CallStarter(idle = starter.idle, start = { video -> starter.start(peer, video) })
 }
 
 @Composable
