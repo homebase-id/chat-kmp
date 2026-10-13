@@ -14,7 +14,7 @@ class VaultPreferences(
 
     private val keyValue get() = databaseManager.keyValue
 
-    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
+    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = false))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
@@ -44,7 +44,7 @@ class VaultPreferences(
     }
 
     fun reset() {
-        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
+        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = false)
         _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
         lastAuthTimeMs = 0L
         lastBackgroundTimeMs = 0L
