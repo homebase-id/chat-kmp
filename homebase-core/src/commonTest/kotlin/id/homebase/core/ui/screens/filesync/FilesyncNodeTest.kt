@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadHash
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.filesync.FilesyncProtocol
@@ -150,6 +151,43 @@ class FilesyncNodeTest {
         val content = """{"v":1,"name":"a","rm":{"at":5,"root":"${Uuid.random()}"}}"""
         for (status in listOf(null, ArchivalStatus.None, ArchivalStatus.Archived)) {
             assertNull(row(FilesyncProtocol.FolderFileType, content, status = status).toFilesyncNode()!!.first.removal)
+        }
+    }
+
+    @Test
+    fun theInfoPaneFieldsComeFromContentHeaderAndPayload() {
+        val content = """{"v":1,"name":"run.sh","mtime":1,"size":2,"x":true,"ct":1451606400123.4}"""
+        val descriptor = syncData.copy(lastModified = 1759920007000)
+        val (node, _) = row(FilesyncProtocol.FileFileType, content, listOf(descriptor)).toFilesyncNode()!!
+        assertEquals(1451606400123, node.createdMs)
+        assertTrue(node.executable)
+        assertEquals(1759920007000, node.uploadedMs)
+        assertEquals(PayloadHashAlgorithm.Blake3, node.hashAlgorithm)
+    }
+
+    @Test
+    fun anOddCreationTimeOrExecutableFlagReadsAsNone() {
+        for (extra in listOf(""","ct":"2016"""", ""","ct":null""", ""","x":"true"""", "")) {
+            val (node, _) = row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"a"$extra}""").toFilesyncNode()!!
+            assertNull(node.createdMs, extra)
+            assertFalse(node.executable, extra)
+        }
+    }
+
+    @Test
+    fun tagsAreReadLenientlyOnePerNameAndSortedByName() {
+        val tags = """[{"n":"work","c":4},{"n":"Red","c":6},{"n":"Odd","c":9},{"n":"Plain"},{"c":2},{"n":""},{"n":"Red","c":1},"x"]"""
+        val (node, _) = row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"a","tags":$tags}""").toFilesyncNode()!!
+        assertEquals(
+            listOf(FilesyncTag("Odd", null), FilesyncTag("Plain", null), FilesyncTag("Red", 6), FilesyncTag("work", 4)),
+            node.tags,
+        )
+    }
+
+    @Test
+    fun noTagsKeyOrABadOneMeansNoTags() {
+        for (tags in listOf("", ""","tags":{}""", ""","tags":"Red"""")) {
+            assertEquals(emptyList(), row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"a"$tags}""").toFilesyncNode()!!.first.tags, tags)
         }
     }
 

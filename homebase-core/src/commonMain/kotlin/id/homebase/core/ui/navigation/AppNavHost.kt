@@ -198,6 +198,7 @@ import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
+import id.homebase.core.ui.screens.filesync.FilesyncPlaces
 import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
 import id.homebase.core.ui.screens.filesync.FilesyncScreen
 import id.homebase.core.ui.screens.filesync.FilesyncTrashScreen
@@ -614,6 +615,14 @@ fun AppNavHost(
     val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
+    // Sidebar hops between the three Filesync screens stay one deep above the browser.
+    val filesyncPlaces = remember(navController) {
+        FilesyncPlaces(
+            onFiles = { navController.popBackStack(Route.Filesync, inclusive = false) },
+            onRecent = { navController.navigate(Route.FilesyncRecent) { popUpTo(Route.Filesync); launchSingleTop = true } },
+            onTrash = { navController.navigate(Route.FilesyncTrash) { popUpTo(Route.Filesync); launchSingleTop = true } },
+        )
+    }
 
     // Handle notification tap navigation (needs navController, stays in composable)
     LaunchedEffect(Unit) {
@@ -2119,8 +2128,8 @@ fun AppNavHost(
                                         )
                                         true -> FilesyncScreen(
                                             viewModel = filesyncViewModel,
-                                            onOpenTrash = { navController.navigate(Route.FilesyncTrash) },
-                                            onOpenRecent = { navController.navigate(Route.FilesyncRecent) },
+                                            places = filesyncPlaces,
+                                            onOpenWebDrop = openWebDrop,
                                         )
                                     }
                                 }
@@ -2129,13 +2138,13 @@ fun AppNavHost(
 
                         composable<Route.FilesyncTrash> {
                             if (isAuthenticated) {
-                                FilesyncTrashScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                                FilesyncTrashScreen(viewModel = koinViewModel(), places = filesyncPlaces, onBack = { navController.popBackStack() })
                             }
                         }
 
                         composable<Route.FilesyncRecent> {
                             if (isAuthenticated) {
-                                FilesyncRecentScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                                FilesyncRecentScreen(viewModel = koinViewModel(), places = filesyncPlaces, onBack = { navController.popBackStack() })
                             }
                         }
 

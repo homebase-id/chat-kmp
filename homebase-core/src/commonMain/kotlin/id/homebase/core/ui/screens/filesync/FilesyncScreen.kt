@@ -1,6 +1,9 @@
 package id.homebase.core.ui.screens.filesync
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,12 +17,18 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
@@ -32,9 +41,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +59,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,11 +69,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.fileDropTarget
 import id.homebase.core.ui.screens.filesync.components.FilesyncDownloadButtons
+import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.close
@@ -68,37 +88,74 @@ import id.homebase.resources.filesync_check_failed
 import id.homebase.resources.filesync_desktop_download
 import id.homebase.resources.filesync_desktop_title
 import id.homebase.resources.filesync_dismiss
+import id.homebase.resources.filesync_files
 import id.homebase.resources.filesync_folder_deleted
 import id.homebase.resources.filesync_folder_empty
+import id.homebase.resources.filesync_folders
 import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_load_failed
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_new_folder
 import id.homebase.resources.filesync_new_folder_name
+import id.homebase.resources.filesync_no_matches
 import id.homebase.resources.filesync_recent
 import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_confirm
 import id.homebase.resources.filesync_retry
+import id.homebase.resources.filesync_search
 import id.homebase.resources.filesync_show_deleted
+import id.homebase.resources.filesync_sort_ascending
+import id.homebase.resources.filesync_sort_descending
 import id.homebase.resources.filesync_trash
 import id.homebase.resources.filesync_upload
 import id.homebase.resources.filesync_upload_failed_row
 import id.homebase.resources.filesync_uploading
+import id.homebase.resources.filesync_uploads_queued
 import id.homebase.resources.menu_back
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
-@Composable
-fun FilesyncScreen(viewModel: FilesyncViewModel, onOpenTrash: () -> Unit, onOpenRecent: () -> Unit) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val currentRemoved = uiState.path.last().removed
+// Remembered once per screen so rows that get it can skip recomposing.
+@Stable
+internal class FilesyncBrowserActions(val onAction: (FilesyncUiAction) -> Unit, private val onAskRestore: (FilesyncNode) -> Unit) {
+    fun click(node: FilesyncNode) {
+        if (node.removal != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
+    }
+}
 
-    FilesyncEventsEffect(viewModel.events, snackbarHostState) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
+internal class FilesyncBrowserScope(
+    val uiState: FilesyncUiState,
+    val uploads: List<FilesyncUpload>,
+    val search: TextFieldState,
+    val snackbarHostState: SnackbarHostState,
+    val actions: FilesyncBrowserActions,
+    val onUpload: () -> Unit,
+    val onFilesDropped: (List<PlatformFile>) -> Unit,
+    val onNewFolder: () -> Unit,
+    val places: FilesyncPlaces,
+) {
+    val onAction get() = actions.onAction
+    val currentRemoved get() = uiState.path.last().removed
+}
+
+// Whatever lands in a deleted folder is out of sight on every device.
+@Composable
+internal fun Modifier.browserDropTarget(scope: FilesyncBrowserScope): Modifier =
+    fileDropTarget(enabled = !scope.currentRemoved, onDragPreviewChanged = {}, onFilesDropped = scope.onFilesDropped)
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenWebDrop: () -> Unit) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uploads by viewModel.uploads.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
     BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
 
@@ -129,119 +186,149 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, onOpenTrash: () -> Unit, onOpen
         )
     }
 
+    val currentFolder = uiState.path.last().nodeId
+
+    val actions = remember(viewModel) { FilesyncBrowserActions(viewModel::onAction) { askRestore = it } }
+    val scope = FilesyncBrowserScope(
+        uiState = uiState,
+        uploads = uploads.filter { it.parentId == currentFolder },
+        search = viewModel.search,
+        snackbarHostState = snackbarHostState,
+        actions = actions,
+        onUpload = { filePicker.launch() },
+        onFilesDropped = onFilesChosen,
+        onNewFolder = { showNewFolder = true },
+        places = places,
+    )
+    if (isExpandedLayout()) {
+        FilesyncWideBrowser(scope)
+    } else {
+        FilesyncCompactBrowser(scope)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@Composable
+private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
+    val uiState = scope.uiState
+    // Open already when the wide layout left a search behind, so it's never applied out of sight.
+    var searching by remember(uiState.path.last().nodeId) { mutableStateOf(uiState.query.isNotEmpty()) }
+    val searchFocus = remember { FocusRequester() }
+    val closeSearch = {
+        searching = false
+        scope.search.clearText()
+    }
+    BackHandler(enabled = searching, onBack = closeSearch)
+    LaunchedEffect(searching) { if (searching) searchFocus.requestFocus() }
+    var infoFor by remember { mutableStateOf<FilesyncNode?>(null) }
+    infoFor?.let { node ->
+        AdaptiveSheet(onDismiss = { infoFor = null }) {
+            FilesyncInfoContent(
+                node = node,
+                where = crumbNames(uiState.path),
+                onAction = {
+                    dismiss()
+                    scope.onAction(it)
+                },
+                modifier = Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            )
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_label),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (searching) {
+                        MinimalSearchTextField(
+                            modifier = Modifier.focusRequester(searchFocus),
+                            textFieldState = scope.search,
+                            showBackButton = true,
+                            placeHolderText = stringResource(MR.string.filesync_search),
+                            onBackButtonClick = closeSearch,
+                        )
+                    } else {
+                        Text(
+                            text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_label),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 },
                 navigationIcon = {
-                    if (uiState.path.size > 1) {
-                        IconButton(onClick = { viewModel.onAction(FilesyncUiAction.NavigateUp) }) {
+                    if (uiState.path.size > 1 && !searching) {
+                        IconButton(onClick = { scope.onAction(FilesyncUiAction.NavigateUp) }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
                         }
                     }
                 },
                 actions = {
-                    if (uiState.path.size == 1) {
-                        IconButton(onClick = onOpenTrash) {
-                            Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.string.filesync_trash))
+                    if (!searching) {
+                        IconButton(onClick = { searching = true }) {
+                            Icon(Icons.Default.Search, contentDescription = stringResource(MR.string.filesync_search))
                         }
-                    }
-                    if (!currentRemoved) {
-                        IconButton(onClick = { showNewFolder = true }) {
-                            Icon(Icons.Outlined.CreateNewFolder, contentDescription = stringResource(MR.string.filesync_new_folder))
+                        if (!scope.currentRemoved) {
+                            IconButton(onClick = scope.onNewFolder) {
+                                Icon(Icons.Outlined.CreateNewFolder, contentDescription = stringResource(MR.string.filesync_new_folder))
+                            }
                         }
+                        OverflowMenu(
+                            showDeleted = uiState.showDeleted,
+                            onToggleShowDeleted = { scope.onAction(FilesyncUiAction.ToggleShowDeleted) },
+                            places = scope.places,
+                        )
                     }
-                    OverflowMenu(
-                        showDeleted = uiState.showDeleted,
-                        onToggleShowDeleted = { viewModel.onAction(FilesyncUiAction.ToggleShowDeleted) },
-                        onOpenTrash = onOpenTrash,
-                        onOpenRecent = onOpenRecent,
-                    )
                 },
             )
         },
         floatingActionButton = {
             // Whatever lands in a deleted folder is out of sight on every device.
-            if (!currentRemoved) {
-                FloatingActionButton(onClick = { filePicker.launch() }) {
-                    Icon(Icons.Outlined.UploadFile, contentDescription = stringResource(MR.string.filesync_upload))
-                }
+            if (!scope.currentRemoved) {
+                ExtendedFloatingActionButton(
+                    onClick = scope.onUpload,
+                    icon = { Icon(Icons.Outlined.UploadFile, contentDescription = null) },
+                    text = { Text(stringResource(MR.string.filesync_upload)) },
+                )
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SnackbarHost(scope.snackbarHostState) },
     ) { innerPadding ->
-        val uploads by viewModel.uploads.collectAsStateWithLifecycle()
-        val currentFolder = uiState.path.last().nodeId
-        val uploadsHere = uploads.filter { it.parentId == currentFolder }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .fileDropTarget(enabled = !currentRemoved, onDragPreviewChanged = {}, onFilesDropped = onFilesChosen),
+                .browserDropTarget(scope),
         ) {
             if (uiState.path.size > 1) {
-                Breadcrumbs(path = uiState.path, onCrumb = { viewModel.onAction(FilesyncUiAction.NavigateToCrumb(it)) })
+                Breadcrumbs(path = uiState.path, onCrumb = { scope.onAction(FilesyncUiAction.NavigateToCrumb(it)) })
             }
-            if (currentRemoved) {
-                ListItem(
-                    headlineContent = { Text(stringResource(MR.string.filesync_folder_deleted)) },
-                    trailingContent = {
-                        TextButton(onClick = { viewModel.onAction(FilesyncUiAction.Restore(uiState.path.last().nodeId)) }) {
-                            Text(stringResource(MR.string.filesync_restore))
-                        }
-                    },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                )
-            }
+            SortChips(
+                sort = uiState.sort,
+                tagFilter = uiState.tagFilter,
+                onSort = { scope.onAction(FilesyncUiAction.SortBy(it)) },
+                onClearTag = { name -> scope.onAction(FilesyncUiAction.FilterTag(name)) },
+            )
+            if (scope.currentRemoved) DeletedFolderBanner(scope)
             PullToRefreshBox(
                 isRefreshing = uiState.isLoading && uiState.nodes.isNotEmpty(),
-                onRefresh = { viewModel.onAction(FilesyncUiAction.Refresh) },
+                onRefresh = { scope.onAction(FilesyncUiAction.Refresh) },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                FilesyncListBody(
-                    isEmpty = uiState.nodes.isEmpty() && uploadsHere.isEmpty(),
-                    isLoading = uiState.isLoading,
-                    loadFailed = uiState.loadFailed,
-                    failedMessage = MR.string.filesync_load_failed,
-                    emptyMessage = MR.string.filesync_folder_empty,
-                    onRetry = { viewModel.onAction(FilesyncUiAction.Refresh) },
-                ) {
+                BrowserListBody(scope) {
                     // Bottom padding keeps the last row's buttons clear of the upload button.
                     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
-                        items(uploadsHere, key = { "upload-${it.id}" }) { upload ->
-                            UploadRow(
-                                upload = upload,
-                                onRetry = { viewModel.onAction(FilesyncUiAction.RetryUpload(upload.id)) },
-                                onDismiss = { viewModel.onAction(FilesyncUiAction.DismissUpload(upload.id)) },
-                            )
+                        if (scope.uploads.isNotEmpty()) {
+                            item(key = "uploads") {
+                                UploadStrip(scope.uploads, scope.onAction, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                            }
                         }
-                        items(uiState.nodes, key = { it.nodeId.toString() }) { node ->
-                            val removed = node.removal != null
-                            FilesyncNodeRow(
-                                node = node,
-                                details = nodeDetails(node),
-                                modifier = Modifier.clickable {
-                                    if (removed && !node.isFolder) askRestore = node else viewModel.onAction(FilesyncUiAction.NodeClicked(node))
-                                },
-                                trailing = {
-                                    when {
-                                        removed -> RestoreButton { viewModel.onAction(FilesyncUiAction.Restore(node.nodeId)) }
-                                        node.isFolder -> Unit
-                                        else -> SaveButton(
-                                            progress = uiState.transfer?.takeIf { it.nodeId == node.nodeId }?.progress,
-                                            onSave = { viewModel.onAction(FilesyncUiAction.SaveClicked(node)) },
-                                            onCancel = { viewModel.onAction(FilesyncUiAction.CancelTransfer) },
-                                        )
-                                    }
-                                },
-                            )
-                        }
+                        // arranged() puts folders first, so the split is a view, not a copy.
+                        val folders = uiState.visible.subList(0, uiState.totals.folders)
+                        val files = uiState.visible.subList(uiState.totals.folders, uiState.visible.size)
+                        if (folders.isNotEmpty()) item(key = "folders") { SectionHeader(MR.string.filesync_folders) }
+                        items(folders, key = { it.nodeId.toString() }) { CompactRow(it, uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        if (files.isNotEmpty()) item(key = "files") { SectionHeader(MR.string.filesync_files) }
+                        items(files, key = { it.nodeId.toString() }) { CompactRow(it, uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
                     }
                 }
             }
@@ -250,40 +337,165 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, onOpenTrash: () -> Unit, onOpen
 }
 
 @Composable
-private fun UploadRow(
-    upload: FilesyncUpload,
-    onRetry: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    ListItem(
-        headlineContent = { Text(upload.file.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
-            Text(
-                stringResource(if (upload.failed) MR.string.filesync_upload_failed_row else MR.string.filesync_uploading),
-                color = if (upload.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        leadingContent = {
-            Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        },
-        trailingContent = {
-            if (upload.failed) {
-                Row {
-                    TextButton(onClick = onRetry) { Text(stringResource(MR.string.filesync_retry)) }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_dismiss))
-                    }
-                }
+private fun CompactRow(node: FilesyncNode, progress: Float?, actions: FilesyncBrowserActions, onInfo: (FilesyncNode) -> Unit) {
+    FilesyncNodeRow(
+        node = node,
+        details = nodeDetails(node),
+        modifier = Modifier.clickable { actions.click(node) },
+        trailing = {
+            if (progress != null) {
+                CancelTransferButton(progress) { actions.onAction(FilesyncUiAction.CancelTransfer) }
             } else {
-                val fraction = upload.progress
-                if (fraction == null) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                } else {
-                    CircularProgressIndicator(progress = { fraction }, modifier = Modifier.size(24.dp))
+                var expanded by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { expanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.filesync_more))
+                    }
+                    FilesyncNodeMenu(
+                        node = node,
+                        expanded = expanded,
+                        onDismiss = { expanded = false },
+                        onAction = actions.onAction,
+                        onInfo = { onInfo(node) },
+                    )
                 }
             }
         },
     )
+}
+
+@Composable
+internal fun BrowserListBody(scope: FilesyncBrowserScope, content: @Composable () -> Unit) {
+    val uiState = scope.uiState
+    FilesyncListBody(
+        isEmpty = uiState.visible.isEmpty() && scope.uploads.isEmpty(),
+        isLoading = uiState.isLoading,
+        loadFailed = uiState.loadFailed,
+        failedMessage = MR.string.filesync_load_failed,
+        emptyMessage = if (uiState.nodes.isEmpty()) MR.string.filesync_folder_empty else MR.string.filesync_no_matches,
+        onRetry = { scope.onAction(FilesyncUiAction.Refresh) },
+        content = content,
+    )
+}
+
+@Composable
+internal fun DeletedFolderBanner(scope: FilesyncBrowserScope) {
+    ListItem(
+        headlineContent = { Text(stringResource(MR.string.filesync_folder_deleted)) },
+        trailingContent = {
+            TextButton(onClick = { scope.onAction(FilesyncUiAction.Restore(scope.uiState.path.last().nodeId)) }) {
+                Text(stringResource(MR.string.filesync_restore))
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    )
+}
+
+@Composable
+private fun SectionHeader(label: StringResource) {
+    Text(
+        text = stringResource(label),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+    )
+}
+
+// A tag filter set in the wide layout shows here too, so it can be cleared.
+@Composable
+private fun SortChips(sort: FilesyncSort, tagFilter: String?, onSort: (FilesyncSortKey) -> Unit, onClearTag: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        tagFilter?.let { name ->
+            InputChip(
+                selected = true,
+                onClick = { onClearTag(name) },
+                label = { Text(name) },
+                trailingIcon = { Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_dismiss), modifier = Modifier.size(16.dp)) },
+            )
+        }
+        FilesyncSortKey.entries.forEach { key ->
+            val active = sort.key == key
+            FilterChip(
+                selected = active,
+                onClick = { onSort(key) },
+                label = { Text(stringResource(key.label)) },
+                leadingIcon = if (active) {
+                    { SortArrow(sort.ascending, Modifier.size(16.dp)) }
+                } else {
+                    null
+                },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SortArrow(ascending: Boolean, modifier: Modifier = Modifier) {
+    Icon(
+        imageVector = if (ascending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+        contentDescription = stringResource(if (ascending) MR.string.filesync_sort_ascending else MR.string.filesync_sort_descending),
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun UploadStrip(uploads: List<FilesyncUpload>, onAction: (FilesyncUiAction) -> Unit, modifier: Modifier = Modifier) {
+    val (failed, pending) = uploads.partition { it.failed }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        failed.forEach { upload ->
+            UploadCard {
+                Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(upload.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(MR.string.filesync_upload_failed_row), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = { onAction(FilesyncUiAction.RetryUpload(upload.id)) }) { Text(stringResource(MR.string.filesync_retry)) }
+                IconButton(onClick = { onAction(FilesyncUiAction.DismissUpload(upload.id)) }) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_dismiss))
+                }
+            }
+        }
+        pending.firstOrNull()?.let { upload ->
+            UploadCard {
+                Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(upload.file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
+                        Text(
+                            text = if (pending.size > 1) pluralStringResource(MR.plurals.filesync_uploads_queued, pending.size - 1, pending.size - 1) else stringResource(MR.string.filesync_uploading),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    val fraction = upload.progress
+                    if (fraction == null) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    else LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UploadCard(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        content = content,
+    )
+}
+
+@Composable
+internal fun crumbNames(path: List<FilesyncCrumb>): List<String> {
+    val root = stringResource(MR.string.filesync_label)
+    return path.map { it.name ?: root }
 }
 
 @Composable
@@ -312,11 +524,11 @@ private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun OverflowMenu(
+internal fun OverflowMenu(
     showDeleted: Boolean,
     onToggleShowDeleted: () -> Unit,
-    onOpenTrash: () -> Unit,
-    onOpenRecent: () -> Unit,
+    // Null in the wide layout, whose sidebar already has Recent and Trash.
+    places: FilesyncPlaces?,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
@@ -334,22 +546,24 @@ private fun OverflowMenu(
                     onToggleShowDeleted()
                 },
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.filesync_recent)) },
-                leadingIcon = { Icon(Icons.Outlined.History, contentDescription = null) },
-                onClick = {
-                    expanded = false
-                    onOpenRecent()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.filesync_trash)) },
-                leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                onClick = {
-                    expanded = false
-                    onOpenTrash()
-                },
-            )
+            if (places != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.filesync_recent)) },
+                    leadingIcon = { Icon(Icons.Outlined.History, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        places.onRecent()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.filesync_trash)) },
+                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        places.onTrash()
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(MR.string.filesync_desktop_download)) },
                 leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = null) },
@@ -371,10 +585,10 @@ private fun OverflowMenu(
 }
 
 @Composable
-private fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
-    val rootLabel = stringResource(MR.string.filesync_label)
+internal fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
+    val names = crumbNames(path)
     LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        modifier = Modifier.padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         itemsIndexed(path, key = { _, crumb -> crumb.nodeId.toString() }) { index, crumb ->
@@ -386,8 +600,15 @@ private fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
                     modifier = Modifier.size(16.dp),
                 )
             }
-            TextButton(onClick = { onCrumb(index) }, enabled = index < path.lastIndex) {
-                Text(crumb.name ?: rootLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val last = index == path.lastIndex
+            TextButton(onClick = { onCrumb(index) }, enabled = !last) {
+                Text(
+                    text = names[index],
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (last) FontWeight.Bold else null,
+                    color = if (last) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

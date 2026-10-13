@@ -3,9 +3,9 @@ package id.homebase.core.ui.screens.filesync
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -22,8 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,7 +58,7 @@ import kotlin.uuid.Uuid
 /** Recently deleted as a trash can: what each delete took, newest first, to restore or delete for good. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
-fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, onBack: () -> Unit) {
+fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlaces, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     FilesyncEventsEffect(viewModel.events, snackbarHostState, onSaveHandedOff = {})
@@ -101,54 +99,33 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, onBack: () -> Unit) {
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (selecting) {
-                            pluralStringResource(MR.plurals.filesync_selected, uiState.selected.size, uiState.selected.size)
-                        } else {
-                            stringResource(MR.string.filesync_trash)
-                        }
-                    )
-                },
-                navigationIcon = {
-                    if (selecting) {
-                        IconButton(onClick = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.menu_back))
-                        }
-                    } else {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
-                        }
-                    }
-                },
-                actions = {
-                    if (selecting) {
-                        RestoreButton(enabled = !uiState.busy) { viewModel.onAction(FilesyncTrashAction.Restore(uiState.selected)) }
-                        IconButton(onClick = { askDelete = uiState.selected }, enabled = !uiState.busy) {
-                            Icon(
-                                Icons.Outlined.DeleteForever,
-                                contentDescription = stringResource(MR.string.filesync_delete_forever),
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    } else {
-                        TextButton(
-                            onClick = { askEmpty = true },
-                            enabled = uiState.items.isNotEmpty() && !uiState.busy,
-                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        ) {
-                            Text(stringResource(MR.string.filesync_empty_trash))
-                        }
-                    }
-                },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    val title = if (selecting) {
+        pluralStringResource(MR.plurals.filesync_selected, uiState.selected.size, uiState.selected.size)
+    } else {
+        stringResource(MR.string.filesync_trash)
+    }
+    val actions: @Composable RowScope.() -> Unit = {
+        if (selecting) {
+            RestoreButton(enabled = !uiState.busy) { viewModel.onAction(FilesyncTrashAction.Restore(uiState.selected)) }
+            IconButton(onClick = { askDelete = uiState.selected }, enabled = !uiState.busy) {
+                Icon(
+                    Icons.Outlined.DeleteForever,
+                    contentDescription = stringResource(MR.string.filesync_delete_forever),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+        } else {
+            TextButton(
+                onClick = { askEmpty = true },
+                enabled = uiState.items.isNotEmpty() && !uiState.busy,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Text(stringResource(MR.string.filesync_empty_trash))
+            }
+        }
+    }
+    val body: @Composable () -> Unit = {
+        Column(modifier = Modifier.fillMaxSize()) {
             if (uiState.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             PullToRefreshBox(
                 isRefreshing = uiState.isLoading && uiState.items.isNotEmpty(),
@@ -180,6 +157,32 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, onBack: () -> Unit) {
             }
         }
     }
+
+    FilesyncPlaceScaffold(
+        place = FilesyncPlace.Trash,
+        places = places,
+        snackbarHostState = snackbarHostState,
+        title = title,
+        compactTopBar = {
+            TopAppBar(
+                title = { Text(title) },
+                navigationIcon = {
+                    if (selecting) {
+                        IconButton(onClick = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }) {
+                            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.menu_back))
+                        }
+                    } else {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
+                        }
+                    }
+                },
+                actions = actions,
+            )
+        },
+        actions = actions,
+        content = body,
+    )
 }
 
 @Composable
