@@ -45,7 +45,9 @@ class KmpVideoHandle(
     val mirrored: Boolean,
     val local: Boolean = false,
     val receiver: RtpReceiver? = null,
-) : VideoHandle
+) : VideoHandle {
+    override val frameSize = MutableStateFlow<Pair<Int, Int>?>(null)
+}
 
 /** Android and iOS engine over webrtc-kmp. Platform audio routing is delegated to [CallAudioRouter]. */
 @OptIn(ExperimentalAtomicApi::class)
@@ -88,8 +90,6 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             peer.onTrack.collect { event ->
                 val track = event.track as? VideoTrack ?: return@collect
-                // A previous call's frame size would size this call's letterbox and PiP until the first frame lands.
-                RemoteVideoSize.current.value = null
                 _remote.value = KmpVideoHandle(track, mirrored = false, receiver = event.receiver)
                 mapper.remoteVideo(true)
             }

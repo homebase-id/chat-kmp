@@ -33,7 +33,6 @@ import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallPictureInPictureEffect
 import id.homebase.chat.services.calling.CallService
-import id.homebase.chat.services.calling.RemoteVideoSize
 import id.homebase.chat.services.calling.rememberInPictureInPicture
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
@@ -89,7 +88,6 @@ fun CallOverlay(
         onToggleMute = viewModel::toggleMute,
         onHangup = viewModel::hangup,
     )
-    LaunchedEffect(ui.inProgress) { if (!ui.inProgress) RemoteVideoSize.current.value = null }
     var showVerification by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
     LaunchedEffect(viewModel) {

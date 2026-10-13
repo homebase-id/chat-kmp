@@ -137,7 +137,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
-import id.homebase.chat.services.calling.RemoteVideoSize
+import id.homebase.chat.services.calling.collectFrameSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
@@ -215,7 +215,6 @@ import id.homebase.resources.call_verification_show
 import id.homebase.resources.call_you
 import id.homebase.resources.call_you_are_muted
 import id.homebase.core.util.formatHms
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.time.Clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -391,7 +390,7 @@ internal fun CallPipLayout(ui: CallUiState, avatar: @Composable (Dp) -> Unit) {
 
 @Composable
 private fun RemoteVideo(handle: VideoHandle?) {
-    val videoSize by RemoteVideoSize.current.collectAsStateWithLifecycle()
+    val videoSize = handle.collectFrameSize()
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim), contentAlignment = Alignment.Center) {
         val letterbox = remoteVideoLetterbox(videoSize, maxWidth.value, maxHeight.value)
         CallVideoSurface(handle, (if (letterbox != null) Modifier.aspectRatio(letterbox) else Modifier.fillMaxSize()).testTag(RemoteVideoTag))

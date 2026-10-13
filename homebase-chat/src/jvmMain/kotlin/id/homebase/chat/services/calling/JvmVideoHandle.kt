@@ -21,6 +21,7 @@ import org.jetbrains.skia.impl.BufferUtil
 class VideoFrameImage internal constructor(internal val bitmap: Bitmap, val image: ImageBitmap, val rotation: Int)
 
 class JvmVideoHandle(val mirrored: Boolean = false) : VideoHandle {
+    override val frameSize: StateFlow<Pair<Int, Int>?> = MutableStateFlow(null)
     private val _frame = MutableStateFlow<VideoFrameImage?>(null)
     val frame: StateFlow<VideoFrameImage?> = _frame.asStateFlow()
 

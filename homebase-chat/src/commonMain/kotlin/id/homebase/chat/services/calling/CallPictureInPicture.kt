@@ -1,11 +1,17 @@
 package id.homebase.chat.services.calling
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
 
-/** Pixel size of the latest remote video frame, reported by the platform renderer; null until a frame arrives. */
-object RemoteVideoSize {
-    val current = MutableStateFlow<Pair<Int, Int>?>(null)
+private val noFrame = MutableStateFlow<Pair<Int, Int>?>(null)
+
+/** [VideoHandle.frameSize] of this call's video, or null without one. */
+@Composable
+fun VideoHandle?.collectFrameSize(): Pair<Int, Int>? {
+    val size by (this?.frameSize ?: noFrame).collectAsStateWithLifecycle()
+    return size
 }
 
 private const val MAX_PIP_RATIO = 2.39
@@ -27,7 +33,7 @@ fun pipAspectRatio(size: Pair<Int, Int>?): Pair<Int, Int> {
 expect fun rememberInPictureInPicture(): Boolean
 
 /**
- * While [eligible], leaving the app keeps the call in a system PiP window sized from [RemoteVideoSize] with mute
+ * While [eligible], leaving the app keeps the call in a system PiP window sized from [remote]'s frames with mute
  * and end-call controls. Does nothing where the platform has no PiP.
  */
 @Composable

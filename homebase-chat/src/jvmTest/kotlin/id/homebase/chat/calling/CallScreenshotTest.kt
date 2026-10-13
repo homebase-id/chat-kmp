@@ -51,7 +51,6 @@ import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.FailReason
 import id.homebase.chat.services.calling.FakeVideo
-import id.homebase.chat.services.calling.RemoteVideoSize
 import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File
 import javax.imageio.ImageIO
@@ -275,14 +274,10 @@ class CallScreenshotTest {
     fun remoteVideoLetterboxesOnlyWhenItsOrientationDiffersFromTheScreen() {
         fun remoteBounds(width: Int, height: Int, video: Pair<Int, Int>?): androidx.compose.ui.geometry.Rect {
             var rect = androidx.compose.ui.geometry.Rect.Zero
-            RemoteVideoSize.current.value = video
-            try {
-                runDesktopComposeUiTest(width, height) {
-                    show(false, shots.first { it.name == "connected" }.state(base(true, Size.Phone)))
-                    rect = onAllNodes(hasTestTag(RemoteVideoTag), useUnmergedTree = true).fetchSemanticsNodes().single().boundsInRoot
-                }
-            } finally {
-                RemoteVideoSize.current.value = null
+            runDesktopComposeUiTest(width, height) {
+                val connected = shots.first { it.name == "connected" }.state(base(true, Size.Phone))
+                show(false, connected.copy(videos = connected.videos.copy(remote = FakeVideo("SG", video))))
+                rect = onAllNodes(hasTestTag(RemoteVideoTag), useUnmergedTree = true).fetchSemanticsNodes().single().boundsInRoot
             }
             return rect
         }

@@ -29,7 +29,7 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius:
     key(track) {
         val view = remember { RTCMTLVideoView().apply { videoContentMode = UIViewContentMode.UIViewContentModeScaleAspectFill } }
         // The view holds its delegate weakly, so the composition keeps it alive.
-        val sizeReporter = remember { if (kmp.local) null else RemoteSizeReporter() }
+        val sizeReporter = remember { if (kmp.local) null else FrameSizeReporter(kmp) }
         DisposableEffect(track) {
             view.delegate = sizeReporter
             track.addRenderer(view)
@@ -54,10 +54,10 @@ actual fun platformAudioRoutes(): List<AudioRoute> = listOf(AudioRoute.Earpiece,
 
 // RTCMTLVideoView calls this on the main queue only when the rotation-applied frame size changes, not per frame.
 @OptIn(ExperimentalForeignApi::class)
-private class RemoteSizeReporter : NSObject(), RTCVideoViewDelegateProtocol {
+private class FrameSizeReporter(private val handle: KmpVideoHandle) : NSObject(), RTCVideoViewDelegateProtocol {
     override fun videoView(videoView: RTCVideoRendererProtocol, didChangeVideoSize: CValue<CGSize>) {
         didChangeVideoSize.useContents {
-            if (width > 0 && height > 0) RemoteVideoSize.current.value = width.toInt() to height.toInt()
+            if (width > 0 && height > 0) handle.frameSize.value = width.toInt() to height.toInt()
         }
     }
 }

@@ -20,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PendingIntentCompat
@@ -59,7 +58,7 @@ actual fun rememberInPictureInPicture(): Boolean {
 @Composable
 actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit) {
     val activity = LocalContext.current.findActivity() ?: return
-    val size by RemoteVideoSize.current.collectAsState()
+    val size = remote.collectFrameSize()
     val muteLabel = stringResource(if (muted) MR.string.call_unmute else MR.string.call_mute)
     val hangupLabel = stringResource(MR.string.call_hang_up)
     val toggleMute by rememberUpdatedState(onToggleMute)

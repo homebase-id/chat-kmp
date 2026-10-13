@@ -6,7 +6,10 @@ import kotlinx.coroutines.flow.StateFlow
 class CallEngineException(val reason: FailReason, message: String? = null) : Exception(message)
 
 /** Opaque per-platform video source; only the matching [CallVideoView] actual can render it. */
-interface VideoHandle
+interface VideoHandle {
+    /** Pixel size of the latest frame shown upright, as its renderer reports it; null until the first frame. */
+    val frameSize: StateFlow<Pair<Int, Int>?>
+}
 
 data class CallVideos(val local: VideoHandle? = null, val remote: VideoHandle? = null)
 

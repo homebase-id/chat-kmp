@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import id.homebase.core.util.initials
 
-data class FakeVideo(val initials: String) : VideoHandle
+data class FakeVideo(val initials: String, val size: Pair<Int, Int>? = null) : VideoHandle {
+    override val frameSize: StateFlow<Pair<Int, Int>?> = MutableStateFlow(size)
+}
 
 data class FakeCallScript(
     val connectAfterMs: Long = 1_000,
