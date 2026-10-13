@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.stateIn
 
 val DesktopRingWindowSize = DpSize(RingWindowWidth, Dp.Unspecified)
 
+private val isMac = System.getProperty("os.name").orEmpty().startsWith("Mac")
+
 sealed interface DesktopCallTrayItem {
     data class Status(val name: String, val elapsed: String?) : DesktopCallTrayItem
     data class Mute(val muted: Boolean) : DesktopCallTrayItem
@@ -45,7 +47,6 @@ interface DesktopCallWindow {
     fun isVideoCall(): Boolean
     fun requestClose()
     fun toggleMute()
-    fun toggleVideo()
     fun hangup()
     fun menuToggleMute()
     fun menuToggleVideo()
@@ -79,7 +80,6 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
     override fun isVideoCall() = model.isVideoCall()
     override fun requestClose() = model.requestClose()
     override fun toggleMute() = model.toggleMute()
-    override fun toggleVideo() = model.toggleVideo()
     override fun hangup() = model.hangup()
     override fun menuToggleMute() = model.menuToggleMute()
     override fun menuToggleVideo() = model.menuToggleVideo()
@@ -96,30 +96,28 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
 
     @Composable
     override fun RingContent(modifier: Modifier) {
-        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape(), LocalMacShortcuts provides isMac()) {
+        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape, LocalMacShortcuts provides isMac) {
             CallRingWindowContent(model, modifier)
         }
     }
 
     @Composable
     override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) {
-        val mac = isMac()
-        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape()) {
+        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape) {
             CallWindowContent(
                 model, onMinimize, topInset,
                 mini = mini,
                 onToggleMini = onToggleMini,
                 onMiniDragStart = onMiniDragStart,
                 onMiniDrag = onMiniDrag,
-                macShortcuts = mac,
+                macShortcuts = isMac,
             )
         }
     }
 }
 
 // desktopApp makes the mini and ring frames transparent on macOS only, so only there can the corners round.
-private fun floatingWindowShape() =
-    if (System.getProperty("os.name").orEmpty().startsWith("Mac")) RoundedCornerShape(12.dp) else RectangleShape
+private val floatingWindowShape = if (isMac) RoundedCornerShape(12.dp) else RectangleShape
 
 private fun trayItem(item: CallTrayItem): DesktopCallTrayItem = when (item) {
     is CallTrayItem.Status -> DesktopCallTrayItem.Status(item.name, item.elapsed)
@@ -127,4 +125,3 @@ private fun trayItem(item: CallTrayItem): DesktopCallTrayItem = when (item) {
     CallTrayItem.HangUp -> DesktopCallTrayItem.HangUp
 }
 
-private fun isMac() = System.getProperty("os.name").orEmpty().startsWith("Mac")

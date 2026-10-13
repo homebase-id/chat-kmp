@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
@@ -291,8 +292,10 @@ fun main() {
             }
         }
 
-        val callTrayItems by collectCallTrayItems(callWindow)
-        val callRinging by collectCallRinging(callWindow)
+        val appLifecycleOwner = rememberApplicationLifecycleOwner()
+        val callTrayItems by callWindow.trayItems.collectAsStateWithLifecycle(lifecycleOwner = appLifecycleOwner)
+        // The ring window never takes focus, so its answer and decline shortcuts live in this menu.
+        val callRinging by callWindow.ringing.collectAsStateWithLifecycle(lifecycleOwner = appLifecycleOwner)
         val callEntries = rememberCallMenuEntries(rememberSettledCallItems(callTrayItems))
         CallDockMenu(callEntries, callWindow::perform)
         val callActiveLabel = stringResource(MR.string.desktop_tray_call_indicator)
@@ -450,7 +453,7 @@ internal val isMacOs =
 // Traffic lights float over the content once apple.awt.fullWindowContent is on.
 private val MAC_TITLE_BAR_HEIGHT = 28.dp
 
-private fun menuShortcut(key: Key, shift: Boolean = false) =
+internal fun menuShortcut(key: Key, shift: Boolean = false) =
     KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs, shift = shift)
 
 /**

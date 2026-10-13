@@ -50,7 +50,5 @@ class JvmVideoHandle(mirrored: Boolean = false) : VideoHandle {
 
     companion object {
         private const val MIN_FRAME_GAP_NS = 50_000_000L
-
-        fun localPreview(facing: CameraFacing) = JvmVideoHandle(mirrored = facing.mirrorsLocalPreview)
     }
 }

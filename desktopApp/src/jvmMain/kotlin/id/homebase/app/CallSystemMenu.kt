@@ -4,13 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.app.lifecycle.DesktopLifecycleOwner
 import kotlinx.coroutines.delay
 import id.homebase.core.calling.DesktopCallTrayItem
@@ -125,16 +123,7 @@ fun CallDockMenu(entries: List<CallMenuEntry>, perform: (CallMenuAction) -> Unit
 }
 
 @Composable
-fun collectCallTrayItems(call: DesktopCallWindow): State<List<DesktopCallTrayItem>> =
-    call.trayItems.collectAsStateWithLifecycle(lifecycleOwner = rememberApplicationLifecycleOwner())
-
-/** The ring window never takes focus, so its answer and decline shortcuts live in the main window's menu. */
-@Composable
-fun collectCallRinging(call: DesktopCallWindow): State<Boolean> =
-    call.ringing.collectAsStateWithLifecycle(lifecycleOwner = rememberApplicationLifecycleOwner())
-
-@Composable
-private fun rememberApplicationLifecycleOwner(): DesktopLifecycleOwner {
+internal fun rememberApplicationLifecycleOwner(): DesktopLifecycleOwner {
     val owner = remember { DesktopLifecycleOwner().also { it.onWindowVisible() } }
     DisposableEffect(owner) { onDispose { owner.onWindowClosed() } }
     return owner

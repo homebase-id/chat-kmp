@@ -11,6 +11,7 @@ import id.homebase.chat.services.calling.LoopbackSignaling
 import id.homebase.chat.services.calling.ManagedCallMediaDevices
 import id.homebase.chat.services.calling.MediaDevice
 import id.homebase.chat.services.calling.MediaDeviceKind
+import id.homebase.chat.services.calling.MediaDeviceNotice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -119,7 +120,7 @@ class CallDevicesViewModelTest {
             settle()
 
             assertEquals("mic-builtin", rig.ui.selectedDevices[MediaDeviceKind.Mic])
-            assertEquals(listOf<CallUiEvent>(CallUiEvent.DeviceDisconnected("USB Mic", "MacBook Microphone", MediaDeviceKind.Mic)), events)
+            assertEquals(listOf<CallUiEvent>(CallUiEvent.Device(MediaDeviceNotice.Disconnected(MediaDeviceKind.Mic, "USB Mic", "MacBook Microphone"))), events)
         }
     }
 

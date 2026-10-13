@@ -411,8 +411,7 @@ fun CallScreen(
         CallBackdrop()
         val compact = isCompactHeight(maxWidth, maxHeight)
         val chromeInsets = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset)
-        // A dedicated call window is already the frame: a card inside it would read as a window in a window,
-        // and a phone layout stretched to it would read as a phone.
+        // A dedicated call window is already the frame, so no card inside it.
         if (fillsWindow) {
             CompositionLocalProvider(LocalDesktopTier provides desktopTier(maxWidth, maxHeight), LocalCompactHeight provides compact) {
                 CallStage(ui, large = true, peerName, avatar, actions, chromeInsets)
@@ -491,7 +490,6 @@ private fun CallStage(
 }
 
 // Eased stops: two linear ramps ending at hard stops read as bands across a flat video frame.
-// It only backs the chrome, so it leaves with the chrome and the picture is clean while idle.
 @Composable
 private fun ChromeScrim() {
     val scrim = MaterialTheme.colorScheme.scrim
@@ -1246,17 +1244,10 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             )
         }
     }
-    val dockColor = MaterialTheme.colorScheme.surfaceContainerLowest
     if (large || compact) {
-        Surface(
-            modifier = modifier.padding(bottom = if (compact) 12.dp else 28.dp),
-            shape = RoundedCornerShape(40.dp),
-            color = dockColor,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            shadowElevation = 6.dp,
-        ) {
+        DockSurface(modifier.padding(bottom = if (compact) 12.dp else 28.dp), 40.dp) {
             Row(
-                Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                Modifier.padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1268,13 +1259,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
         }
         return
     }
-    Surface(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
-        shape = RoundedCornerShape(40.dp),
-        color = dockColor,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        shadowElevation = 6.dp,
-    ) {
+    DockSurface(modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp), 40.dp) {
         Column(
             Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1288,6 +1273,16 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
         }
     }
 }
+
+@Composable
+private fun DockSurface(modifier: Modifier, radius: Dp, content: @Composable () -> Unit) = Surface(
+    modifier = modifier,
+    shape = RoundedCornerShape(radius),
+    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    shadowElevation = 6.dp,
+    content = content,
+)
 
 private val ToggleSize = 64.dp
 
@@ -1323,13 +1318,7 @@ private fun MinimalDock(ui: CallUiState, actions: CallScreenActions, modifier: M
     val single = IconToggleButtonShapes(CircleShape, RoundedCornerShape(16.dp), CircleShape)
     var devicesOpen by remember { mutableStateOf(false) }
     HoldChromeWhile(devicesOpen)
-    Surface(
-        modifier = modifier.padding(bottom = 8.dp),
-        shape = RoundedCornerShape(32.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        shadowElevation = 6.dp,
-    ) {
+    DockSurface(modifier.padding(bottom = 8.dp), 32.dp) {
         Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             CallToggle(
                 tooltip = shortcutTip(muteDescription, callShortcutKeys("D")),
@@ -1845,12 +1834,7 @@ fun OngoingCallBar(
 ) {
     val elapsed = rememberElapsedText(ui.connectedAtMs)
     val description = stringResource(MR.string.call_pill_description, peerName)
-    val status = when (ui.phase) {
-        CallPhase.Outgoing -> stringResource(if (ui.peerRinging) MR.string.call_status_ringing else MR.string.call_status_calling)
-        CallPhase.Connecting -> stringResource(MR.string.call_status_connecting)
-        CallPhase.Reconnecting -> stringResource(MR.string.call_status_reconnecting)
-        else -> elapsed
-    }
+    val status = callStatusLabel(ui, elapsed)
     val warn = ui.phase == CallPhase.Reconnecting
     Surface(
         onClick = onClick,

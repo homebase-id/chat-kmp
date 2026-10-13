@@ -79,9 +79,7 @@ data class CallUiState(
 sealed interface CallUiEvent {
     data object ShowVerification : CallUiEvent
     data object ConfirmEnd : CallUiEvent
-    data class DeviceSwitchFailed(val kind: MediaDeviceKind, val name: String, val stillUsingName: String?) : CallUiEvent
-    data class DeviceDisconnected(val name: String, val fallbackName: String, val kind: MediaDeviceKind) : CallUiEvent
-    data class DeviceReturned(val kind: MediaDeviceKind, val id: String, val name: String) : CallUiEvent
+    data class Device(val notice: MediaDeviceNotice) : CallUiEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -115,13 +113,7 @@ class CallViewModel(
                 }
         }
         viewModelScope.launch {
-            session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { notice ->
-                when (notice) {
-                    is MediaDeviceNotice.Disconnected -> _events.tryEmit(CallUiEvent.DeviceDisconnected(notice.name, notice.fallbackName, notice.kind))
-                    is MediaDeviceNotice.SwitchFailed -> _events.tryEmit(CallUiEvent.DeviceSwitchFailed(notice.kind, notice.name, notice.stillUsingName))
-                    is MediaDeviceNotice.Returned -> _events.tryEmit(CallUiEvent.DeviceReturned(notice.kind, notice.id, notice.name))
-                }
-            }
+            session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { _events.tryEmit(CallUiEvent.Device(it)) }
         }
         viewModelScope.launch {
             combine(session.state, session.videos) { state, videos -> state to videos }.collect { (state, videos) ->

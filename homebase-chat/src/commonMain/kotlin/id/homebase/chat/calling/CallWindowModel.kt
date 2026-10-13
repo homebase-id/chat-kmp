@@ -55,17 +55,12 @@ fun callWindowCloseAction(phase: CallPhase): CallWindowCloseAction = when (phase
     CallPhase.Idle, is CallPhase.Ended -> CallWindowCloseAction.Dismiss
 }
 
-fun callWindowVisible(ui: CallUiState): Boolean = ui.visible
-
 /** A ring the user never answered has nothing left to show once it ends; the ring window just goes away. */
 internal fun CallUiState.unansweredRingEnded(): Boolean {
     val reason = endReason ?: return false
     return direction == CallDirection.Incoming && connectedAtMs == null &&
         (reason == CallEndReason.Missed || reason == CallEndReason.Cancelled || reason == CallEndReason.Declined)
 }
-
-/** Ringing out counts: the main window should already offer the way back to a call it just placed. */
-fun ongoingCallBarVisible(ui: CallUiState): Boolean = callIsLive(ui)
 
 fun callWindowElapsed(ui: CallUiState, nowMs: Long): String? {
     val connectedAt = ui.connectedAtMs
@@ -82,7 +77,7 @@ class CallWindowModel(
     val uiState: StateFlow<CallUiState> get() = viewModel.uiState
 
     val windowVisible: StateFlow<Boolean> =
-        viewModel.uiState.map { callWindowVisible(it) && !it.unansweredRingEnded() }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
+        viewModel.uiState.map { it.visible && !it.unansweredRingEnded() }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
 
     val windowKey: StateFlow<String?> =
         viewModel.uiState.map { it.callId }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, null)
@@ -111,7 +106,7 @@ class CallWindowModel(
                         delay(1_000)
                     }
                 }
-            }.distinctUntilChanged().stateIn(viewModel.viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+            }.stateIn(viewModel.viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
 
     private data class TrayKey(val inProgress: Boolean, val peer: String?, val connectedAtMs: Long?, val muted: Boolean)
 
@@ -148,24 +143,20 @@ class CallWindowModel(
 
     fun hangup() = viewModel.hangup()
 
-    fun menuToggleMute() {
-        if (live.value && shortcutGate.accept(CallShortcut.ToggleMute)) toggleMute()
+    private fun gated(enabled: StateFlow<Boolean>, shortcut: CallShortcut, action: () -> Unit) {
+        if (enabled.value && shortcutGate.accept(shortcut)) action()
     }
 
-    fun menuToggleVideo() {
-        if (canToggleCamera.value && shortcutGate.accept(CallShortcut.ToggleCamera)) toggleVideo()
-    }
+    fun menuToggleMute() = gated(live, CallShortcut.ToggleMute, ::toggleMute)
 
-    fun menuHangup() {
-        if (live.value && shortcutGate.accept(CallShortcut.HangUp)) hangup()
-    }
+    fun menuToggleVideo() = gated(canToggleCamera, CallShortcut.ToggleCamera, ::toggleVideo)
+
+    fun menuHangup() = gated(live, CallShortcut.HangUp, ::hangup)
 
     /** One set of call controls at a time: while the always-on-top mini window is up, the main window's bar stands down. */
     val miniWindowOpen = MutableStateFlow(false)
 
-    fun menuToggleMini(toggle: () -> Unit) {
-        if (live.value && shortcutGate.accept(CallShortcut.ToggleMini)) toggle()
-    }
+    fun menuToggleMini(toggle: () -> Unit) = gated(live, CallShortcut.ToggleMini, toggle)
 
     fun focusCallWindow() = focus(WindowKeys.CALL)
 }
@@ -249,12 +240,12 @@ fun OngoingCallBarHost(
     model: CallWindowModel,
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
-    peerName: @Composable (String?) -> String = model::peerName,
 ) {
     val ui by model.uiState.collectAsStateWithLifecycle()
     val miniOpen by model.miniWindowOpen.collectAsStateWithLifecycle()
-    if (!ongoingCallBarVisible(ui) || miniOpen) return
-    val name = peerName(ui.peer)
+    // Ringing out counts: the main window should already offer the way back to a call it just placed.
+    if (!callIsLive(ui) || miniOpen) return
+    val name = model.peerName(ui.peer)
     Box(modifier.background(MaterialTheme.colorScheme.primaryContainer).padding(top = topInset)) {
         OngoingCallBar(
             ui = ui,
@@ -266,23 +257,22 @@ fun OngoingCallBarHost(
     }
 }
 
-/** Lays the app content out under the desktop ongoing-call bar, or hosts the call overlay where the platform has no call window. */
+/** Lays the app content out under the desktop ongoing-call bar; with no [callWindow] the platform hosts the call overlay instead. */
 @Composable
 fun CallChrome(
-    hostCallOverlay: Boolean,
     callWindow: CallWindowModel?,
     topInset: Dp,
     callHost: @Composable () -> Unit,
     content: @Composable (topInset: Dp) -> Unit,
 ) {
-    val barShown = !hostCallOverlay && callWindow != null &&
-        ongoingCallBarVisible(callWindow.uiState.collectAsStateWithLifecycle().value) &&
+    val barShown = callWindow != null &&
+        callWindow.live.collectAsStateWithLifecycle().value &&
         !callWindow.miniWindowOpen.collectAsStateWithLifecycle().value
     Column(Modifier.fillMaxSize()) {
-        if (!hostCallOverlay && callWindow != null) OngoingCallBarHost(callWindow, topInset = topInset)
+        if (callWindow != null) OngoingCallBarHost(callWindow, topInset = topInset)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             content(if (barShown) 0.dp else topInset)
-            if (hostCallOverlay) callHost()
+            if (callWindow == null) callHost()
         }
     }
 }

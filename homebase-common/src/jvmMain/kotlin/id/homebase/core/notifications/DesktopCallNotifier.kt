@@ -15,10 +15,7 @@ interface CallNotifier {
     fun retract(callId: String)
 }
 
-/**
- * Nucleus with Accept and Decline buttons; KMPNotifier without buttons otherwise, where a click opens the ring window.
- * Nucleus's macOS dispatcher registers each button as a UNNotificationAction and routes the "btn_" response to its callback.
- */
+/** Nucleus with Accept and Decline buttons; KMPNotifier without buttons otherwise, where a click opens the ring window. */
 class DesktopCallNotifier : CallNotifier {
     private val disabled = isMacOsRunningUnbundled()
     private val nucleus: NucleusNotificationAdapter? = if (disabled) null else NucleusNotificationAdapter.createOrNull()

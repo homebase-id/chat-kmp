@@ -54,6 +54,7 @@ import id.homebase.resources.call_device_switch_failed
 import id.homebase.resources.call_device_switch_failed_using
 import id.homebase.resources.call_device_switch_back
 import id.homebase.chat.services.calling.MediaDeviceKind
+import id.homebase.chat.services.calling.MediaDeviceNotice
 import id.homebase.resources.call_end_keep
 import id.homebase.resources.call_hang_up
 import id.homebase.resources.call_verification_body
@@ -170,26 +171,32 @@ internal fun rememberCallEvents(viewModel: CallViewModel): CallEventState {
             when (event) {
                 CallUiEvent.ShowVerification -> state.verification = true
                 CallUiEvent.ConfirmEnd -> { state.deviceMenu.value = null; state.confirmEnd = true }
-                is CallUiEvent.DeviceDisconnected -> scope.launch {
-                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_disconnected, event.name, event.fallbackName), getString(MR.string.call_device_change), event.kind)
-                    // The speaker list lives in the mic's audio menu, so both open at the mic chevron.
-                    if (state.snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) {
-                        state.deviceMenu.value = if (event.kind == MediaDeviceKind.Camera) MediaDeviceKind.Camera else MediaDeviceKind.Mic
-                    }
-                }
-                is CallUiEvent.DeviceSwitchFailed -> scope.launch {
-                    val message = event.stillUsingName?.let { getString(MR.string.call_device_switch_failed_using, event.name, it) }
-                        ?: getString(MR.string.call_device_switch_failed, event.name)
-                    state.snackbar.showSnackbar(DeviceSnackbarVisuals(message, null, event.kind))
-                }
-                is CallUiEvent.DeviceReturned -> scope.launch {
-                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_returned, event.name), getString(MR.string.call_device_switch_back), event.kind)
-                    if (state.snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) viewModel.selectDevice(event.kind, event.id)
-                }
+                is CallUiEvent.Device -> scope.launch { showDeviceNotice(state, event.notice, viewModel) }
             }
         }
     }
     return state
+}
+
+private suspend fun showDeviceNotice(state: CallEventState, event: MediaDeviceNotice, viewModel: CallViewModel) {
+    when (event) {
+        is MediaDeviceNotice.Disconnected -> {
+            val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_disconnected, event.name, event.fallbackName), getString(MR.string.call_device_change), event.kind)
+            // The speaker list lives in the mic's audio menu, so both open at the mic chevron.
+            if (state.snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) {
+                state.deviceMenu.value = if (event.kind == MediaDeviceKind.Camera) MediaDeviceKind.Camera else MediaDeviceKind.Mic
+            }
+        }
+        is MediaDeviceNotice.SwitchFailed -> {
+            val message = event.stillUsingName?.let { getString(MR.string.call_device_switch_failed_using, event.name, it) }
+                ?: getString(MR.string.call_device_switch_failed, event.name)
+            state.snackbar.showSnackbar(DeviceSnackbarVisuals(message, null, event.kind))
+        }
+        is MediaDeviceNotice.Returned -> {
+            val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_returned, event.name), getString(MR.string.call_device_switch_back), event.kind)
+            if (state.snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) viewModel.selectDevice(event.kind, event.id)
+        }
+    }
 }
 
 @Composable

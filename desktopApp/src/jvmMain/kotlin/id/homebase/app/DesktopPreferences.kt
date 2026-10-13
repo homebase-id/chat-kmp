@@ -22,18 +22,10 @@ class DesktopPreferences(settings: Settings? = null) {
     fun callWindowGeometry(video: Boolean): CallWindowGeometry {
         val suffix = callWindowSuffix(video)
         val defaultSize = if (video) VIDEO_CALL_SIZE else VOICE_CALL_SIZE
-        val position = when (preferences.getString("callWindowPosition$suffix", "")) {
-            "Absolute" -> WindowPosition.Absolute(
-                preferences.getFloat("callWindowPositionX$suffix", 0f).dp,
-                preferences.getFloat("callWindowPositionY$suffix", 0f).dp,
-            )
-            "Aligned" -> WindowPosition.Aligned(Alignment.Center)
-            else -> WindowPosition.PlatformDefault
-        }
         return CallWindowGeometry(
             width = maxOf(preferences.getFloat("callWindowWidthDp$suffix", defaultSize.first).dp, CALL_WINDOW_MIN_WIDTH.dp),
             height = maxOf(preferences.getFloat("callWindowHeightDp$suffix", defaultSize.second).dp, CALL_WINDOW_MIN_HEIGHT.dp),
-            position = position,
+            position = readPosition("callWindowPosition", suffix),
         )
     }
 
@@ -41,15 +33,7 @@ class DesktopPreferences(settings: Settings? = null) {
         val suffix = callWindowSuffix(video)
         preferences["callWindowWidthDp$suffix"] = geometry.width.value
         preferences["callWindowHeightDp$suffix"] = geometry.height.value
-        when (val position = geometry.position) {
-            is WindowPosition.Absolute -> {
-                preferences["callWindowPosition$suffix"] = "Absolute"
-                preferences["callWindowPositionX$suffix"] = position.x.value
-                preferences["callWindowPositionY$suffix"] = position.y.value
-            }
-            is WindowPosition.Aligned -> preferences["callWindowPosition$suffix"] = "Aligned"
-            is WindowPosition.PlatformDefault -> preferences["callWindowPosition$suffix"] = "PlatformDefault"
-        }
+        writePosition("callWindowPosition", suffix, geometry.position)
     }
 
     fun miniWindowPosition(): WindowPosition.Absolute? {
@@ -70,6 +54,24 @@ class DesktopPreferences(settings: Settings? = null) {
 
     private fun callWindowSuffix(video: Boolean) = if (video) "Video" else "Voice"
 
+    private fun readPosition(key: String, suffix: String): WindowPosition = when (preferences.getString("$key$suffix", "")) {
+        "Absolute" -> WindowPosition.Absolute(preferences.getFloat("${key}X$suffix", 0f).dp, preferences.getFloat("${key}Y$suffix", 0f).dp)
+        "Aligned" -> WindowPosition.Aligned(Alignment.Center)
+        else -> WindowPosition.PlatformDefault
+    }
+
+    private fun writePosition(key: String, suffix: String, position: WindowPosition) {
+        when (position) {
+            is WindowPosition.Absolute -> {
+                preferences["$key$suffix"] = "Absolute"
+                preferences["${key}X$suffix"] = position.x.value
+                preferences["${key}Y$suffix"] = position.y.value
+            }
+            is WindowPosition.Aligned -> preferences["$key$suffix"] = "Aligned"
+            is WindowPosition.PlatformDefault -> preferences["$key$suffix"] = "PlatformDefault"
+        }
+    }
+
     var windowWidthDp: Dp
         get() {
             return preferences.getFloat("windowWidthDp", 1200f).dp
@@ -87,38 +89,13 @@ class DesktopPreferences(settings: Settings? = null) {
     var windowPosition: WindowPosition
         get() {
             try {
-                val position = preferences.getString("windowPosition", "PlatformDefault")
-                return when (position) {
-                    "Absolute" -> {
-                        WindowPosition.Absolute(Dp(preferences.getFloat("windowPositionX", 0f)), Dp(preferences.getFloat("windowPositionY", 0f)))
-                    }
-
-                    "Aligned" -> {
-                        WindowPosition.Aligned(Alignment.Center)
-                    }
-
-                    else -> {
-                        WindowPosition.PlatformDefault
-                    }
-                }
+                return readPosition("windowPosition", "")
             } catch (_: Exception) {
                 return WindowPosition.PlatformDefault
             }
         }
         set(value) {
-            when (value) {
-                is WindowPosition.Absolute -> {
-                    preferences["windowPosition"] = "Absolute"
-                    preferences["windowPositionX"] = value.x.value
-                    preferences["windowPositionY"] = value.y.value
-                }
-                is WindowPosition.Aligned -> {
-                    preferences["windowPosition"] = "Aligned"
-                }
-                is WindowPosition.PlatformDefault -> {
-                    preferences["windowPosition"] = "PlatformDefault"
-                }
-            }
+            writePosition("windowPosition", "", value)
         }
     var windowPlacement: WindowPlacement
         get() {

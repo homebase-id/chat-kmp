@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -159,7 +160,7 @@ private fun ExpandButton(onClick: () -> Unit, modifier: Modifier, container: Col
 }
 
 @Composable
-private fun miniStatus(ui: CallUiState, elapsed: String): String = when (ui.phase) {
+internal fun callStatusLabel(ui: CallUiState, elapsed: String): String = when (ui.phase) {
     CallPhase.Outgoing -> stringResource(if (ui.peerRinging) MR.string.call_status_ringing else MR.string.call_status_calling)
     CallPhase.Connecting -> stringResource(MR.string.call_status_connecting)
     CallPhase.Reconnecting -> stringResource(MR.string.call_status_reconnecting)
@@ -168,7 +169,7 @@ private fun miniStatus(ui: CallUiState, elapsed: String): String = when (ui.phas
 
 @Composable
 private fun MiniVoice(ui: CallUiState, peerName: String, avatar: @Composable (Dp) -> Unit, actions: CallScreenActions, expand: () -> Unit) {
-    val status = miniStatus(ui, rememberElapsedText(ui.connectedAtMs))
+    val status = callStatusLabel(ui, rememberElapsedText(ui.connectedAtMs))
     Row(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -187,7 +188,7 @@ private fun MiniVoice(ui: CallUiState, peerName: String, avatar: @Composable (Dp
 
 @Composable
 private fun MiniVideo(ui: CallUiState, peerName: String, avatar: @Composable (Dp) -> Unit, actions: CallScreenActions) {
-    val status = miniStatus(ui, rememberElapsedText(ui.connectedAtMs))
+    val status = callStatusLabel(ui, rememberElapsedText(ui.connectedAtMs))
     Box(Modifier.fillMaxSize()) {
         if (ui.remoteShowing()) {
             RemoteVideo(ui.videos.remote)
@@ -201,7 +202,7 @@ private fun MiniVideo(ui: CallUiState, peerName: String, avatar: @Composable (Dp
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(peerName, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 0.dp))
+                Text(peerName, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(status, style = MaterialTheme.typography.labelLarge.tabular(), color = MaterialTheme.colorScheme.primary, maxLines = 1)
             }
         }
@@ -220,31 +221,37 @@ private fun MiniVideo(ui: CallUiState, peerName: String, avatar: @Composable (Dp
 }
 
 @Composable
-private fun MiniMute(ui: CallUiState, actions: CallScreenActions) {
-    val label = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
-    val state = stringResource(if (ui.muted) MR.string.call_state_muted else MR.string.call_state_mic_on)
-    DesktopTooltip(shortcutTip(label, callShortcutKeys("D"))) {
-        FilledTonalIconToggleButton(
-            checked = ui.muted,
-            onCheckedChange = { actions.toggleMute() },
-            colors = miniToggleColors(),
-            modifier = Modifier.size(40.dp).buttonChrome(CircleShape).semantics { contentDescription = label; stateDescription = state },
-        ) { Icon(if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic, null, Modifier.size(22.dp)) }
-    }
-}
+private fun MiniMute(ui: CallUiState, actions: CallScreenActions) = MiniToggle(
+    checked = ui.muted,
+    label = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute),
+    state = stringResource(if (ui.muted) MR.string.call_state_muted else MR.string.call_state_mic_on),
+    shortcutKey = "D",
+    icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
+    onToggle = actions.toggleMute,
+)
 
 @Composable
 private fun MiniCamera(ui: CallUiState, actions: CallScreenActions) {
     val off = !ui.localVideo
-    val label = stringResource(if (off) MR.string.call_camera_on else MR.string.call_camera_off)
-    val state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on)
-    DesktopTooltip(shortcutTip(label, callShortcutKeys("E"))) {
+    MiniToggle(
+        checked = off,
+        label = stringResource(if (off) MR.string.call_camera_on else MR.string.call_camera_off),
+        state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on),
+        shortcutKey = "E",
+        icon = if (off) Icons.Default.VideocamOff else Icons.Default.Videocam,
+        onToggle = actions.toggleVideo,
+    )
+}
+
+@Composable
+private fun MiniToggle(checked: Boolean, label: String, state: String, shortcutKey: String, icon: ImageVector, onToggle: () -> Unit) {
+    DesktopTooltip(shortcutTip(label, callShortcutKeys(shortcutKey))) {
         FilledTonalIconToggleButton(
-            checked = off,
-            onCheckedChange = { actions.toggleVideo() },
+            checked = checked,
+            onCheckedChange = { onToggle() },
             colors = miniToggleColors(),
             modifier = Modifier.size(40.dp).buttonChrome(CircleShape).semantics { contentDescription = label; stateDescription = state },
-        ) { Icon(if (off) Icons.Default.VideocamOff else Icons.Default.Videocam, null, Modifier.size(22.dp)) }
+        ) { Icon(icon, null, Modifier.size(22.dp)) }
     }
 }
 

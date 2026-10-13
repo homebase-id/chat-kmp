@@ -208,19 +208,17 @@ class WebRtcJavaCallEngine(
     private fun applyDeviceLocked(device: MediaDevice) {
         if (closed) return
         val native = nativeDevices[device.kind to device.id] ?: error("${device.name} is no longer present")
+        // Before the first pick the call is still on the system default, so that is what a failed switch restores.
         when (device.kind) {
-            MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic ?: systemDefault { MediaDevices.getDefaultAudioCaptureDevice() }, { activeMic = it }) {
+            MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic ?: runCatching { MediaDevices.getDefaultAudioCaptureDevice() }.getOrNull(), { activeMic = it }) {
                 adm.stopRecording(); adm.setRecordingDevice(it); adm.initRecording(); adm.startRecording()
             }
-            MediaDeviceKind.Speaker -> switchAudio(native as AudioDevice, activeSpeaker ?: systemDefault { MediaDevices.getDefaultAudioRenderDevice() }, { activeSpeaker = it }) {
+            MediaDeviceKind.Speaker -> switchAudio(native as AudioDevice, activeSpeaker ?: runCatching { MediaDevices.getDefaultAudioRenderDevice() }.getOrNull(), { activeSpeaker = it }) {
                 adm.stopPlayout(); adm.setPlayoutDevice(it); adm.initPlayout(); adm.startPlayout()
             }
             MediaDeviceKind.Camera -> switchCaptureDevice(native as VideoDevice)
         }
     }
-
-    // Nothing has been picked yet on the first switch, so the call is still on the system default and that is what to restore.
-    private fun systemDefault(find: () -> AudioDevice?): AudioDevice? = runCatching(find).getOrNull()
 
     private var activeMic: AudioDevice? = null
     private var activeSpeaker: AudioDevice? = null
@@ -236,14 +234,15 @@ class WebRtcJavaCallEngine(
         }
     }
 
-    private fun switchCaptureDevice(device: VideoDevice) {
+    private fun switchCaptureDevice(device: VideoDevice, tried: List<String> = listOf(device.descriptor), fallback: Boolean = false) {
         val source = videoSource ?: return
         source.stop()
         source.setVideoCaptureDevice(device)
         captureCapability(device)?.let { source.setVideoCaptureCapability(it) }
         source.start()
         localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
-        watchForSilentCamera(listOf(device.descriptor))
+        watchForSilentCamera(tried)
+        if (fallback) devices.markApplied(MediaDeviceKind.Camera, device.descriptor)
     }
 
     private fun captureCapability(device: VideoDevice): VideoCaptureCapability? =
@@ -256,25 +255,15 @@ class WebRtcJavaCallEngine(
         cameraWatch.schedule(timerTask {
             synchronized(lock) {
                 if (closed || capturedFrames.count.get() != seen) return@synchronized
-                val next = nextCameraAfterSilence(cameras().map { it.descriptor }, tried)
+                val available = cameras()
+                val next = nextCameraAfterSilence(available.map { it.descriptor }, tried)
                     ?: return@synchronized Logger.w("WebRtcJava") { "camera delivered no frames and no other camera is left" }
-                val device = cameras().first { it.descriptor == next }
+                val device = available.first { it.descriptor == next }
                 Logger.w("WebRtcJava") { "camera delivered no frames in ${CAMERA_SILENCE_MS}ms, switching to ${device.name}" }
-                runCatching { switchCaptureDeviceTracking(device, tried + next) }
+                runCatching { switchCaptureDevice(device, tried + next, fallback = true) }
                     .onFailure { Logger.w(it, "WebRtcJava") { "fallback camera ${device.name} failed" } }
             }
         }, CAMERA_SILENCE_MS)
-    }
-
-    private fun switchCaptureDeviceTracking(device: VideoDevice, tried: List<String>) {
-        val source = videoSource ?: return
-        source.stop()
-        source.setVideoCaptureDevice(device)
-        captureCapability(device)?.let { source.setVideoCaptureCapability(it) }
-        source.start()
-        localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
-        watchForSilentCamera(tried)
-        devices.markApplied(MediaDeviceKind.Camera, device.descriptor)
     }
 
     private fun logVideoStats() {

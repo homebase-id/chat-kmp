@@ -130,12 +130,12 @@ class CallWindowTest {
     fun windowIsVisibleUnlessIdleOrADismissedEnd() {
         val ended = CallUiState(phase = CallPhase.Ended(CallEndReason.Cancelled), callId = "c")
         val failed = CallUiState(phase = CallPhase.Ended(CallEndReason.Failed(FailReason.NoRoute)), callId = "c")
-        assertFalse(callWindowVisible(CallUiState()))
-        assertTrue(callWindowVisible(CallUiState(phase = CallPhase.Incoming, callId = "c")))
-        assertTrue(callWindowVisible(ended))
-        assertFalse(callWindowVisible(ended.copy(dismissedCallId = "c")))
-        assertTrue(callWindowVisible(failed))
-        assertFalse(callWindowVisible(failed.copy(dismissedCallId = "c")))
+        assertFalse(CallUiState().visible)
+        assertTrue(CallUiState(phase = CallPhase.Incoming, callId = "c").visible)
+        assertTrue(ended.visible)
+        assertFalse(ended.copy(dismissedCallId = "c").visible)
+        assertTrue(failed.visible)
+        assertFalse(failed.copy(dismissedCallId = "c").visible)
     }
 
     private val frodo = "frodo.baggins.demo.rocks"
@@ -208,7 +208,6 @@ class CallWindowTest {
                 setContent {
                     HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
                         CallChrome(
-                            hostCallOverlay = false,
                             callWindow = rig.model,
                             topInset = 0.dp,
                             callHost = { hostedOverlay = true },
@@ -409,7 +408,7 @@ class CallWindowTest {
                     setContent {
                         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                                CallChrome(hostCallOverlay = false, callWindow = model, topInset = 0.dp, callHost = {}) { _ ->
+                                CallChrome(callWindow = model, topInset = 0.dp, callHost = {}) { _ ->
                                     LazyColumn(Modifier.fillMaxWidth()) {
                                         items(12) { i -> ListItem(headlineContent = { Text("Conversation $i") }, supportingContent = { Text("Last message preview") }) }
                                     }
@@ -435,7 +434,7 @@ class CallWindowTest {
                     var hosted = false
                     setContent {
                         HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
-                            CallChrome(hostCallOverlay = hostOverlay, callWindow = if (hostOverlay) null else model, topInset = 0.dp, callHost = { hosted = true }) { _ -> Text("content") }
+                            CallChrome(callWindow = if (hostOverlay) null else model, topInset = 0.dp, callHost = { hosted = true }) { _ -> Text("content") }
                         }
                     }
                     waitForIdle()

@@ -27,7 +27,6 @@ import javax.swing.SwingUtilities
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
@@ -36,7 +35,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.WindowKeys
-import id.homebase.app.lifecycle.DesktopLifecycleOwner
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.calling.DesktopCallWindow
 import id.homebase.core.settings.ThemeState
@@ -59,11 +57,8 @@ private val MAC_CALL_TITLE_BAR_HEIGHT = 28.dp
 
 @Composable
 fun ApplicationScope.CallWindow(call: DesktopCallWindow, config: DesktopPreferences, theme: ThemeState) {
-    // application{} provides no LocalLifecycleOwner, and the call flows and the window title are
-    // collected here, above any Window, so this scope needs an owner of its own.
-    val applicationOwner = remember { DesktopLifecycleOwner().also { it.onWindowVisible() } }
-    DisposableEffect(applicationOwner) { onDispose { applicationOwner.onWindowClosed() } }
-    CompositionLocalProvider(LocalLifecycleOwner provides applicationOwner) {
+    // application{} provides no LocalLifecycleOwner, and this scope sits above any Window.
+    CompositionLocalProvider(LocalLifecycleOwner provides rememberApplicationLifecycleOwner()) {
         val visible by call.visible.collectAsStateWithLifecycle()
         val callKey by call.windowKey.collectAsStateWithLifecycle()
         if (visible) {
@@ -106,7 +101,7 @@ private fun ApplicationScope.CallWindowFrame(call: DesktopCallWindow, config: De
         return
     }
     key(mini) {
-        if (mini != null) MiniCallWindow(call, config, theme, mini, modes::exitMini)
+        if (mini != null) MiniCallWindow(call, config, theme, video, mini, modes::exitMini)
         else FullCallWindow(call, config, theme, video, full, modes::enterMini)
     }
 }
@@ -131,10 +126,7 @@ private fun ApplicationScope.RingCallWindow(call: DesktopCallWindow, theme: Them
         focusable = false,
         alwaysOnTop = true,
     ) {
-        DisposableEffect(window) {
-            DesktopAppFocusManager.registerWindowProvider(WindowKeys.CALL) { window }
-            onDispose { DesktopAppFocusManager.unregisterWindowProvider(WindowKeys.CALL) }
-        }
+        RegisterCallWindow()
         CallWindowTheme(theme) { call.RingContent(Modifier) }
     }
 }
@@ -164,7 +156,7 @@ private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: Deskto
         Menu(stringResource(MR.string.desktop_menu_file)) {
             Item(
                 text = stringResource(MR.string.desktop_menu_close_window),
-                shortcut = KeyShortcut(Key.W, ctrl = !isMacOs, meta = isMacOs),
+                shortcut = menuShortcut(Key.W),
                 onClick = close,
             )
         }
@@ -175,25 +167,25 @@ private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: Deskto
             }
             Item(
                 text = stringResource(if (muted) MR.string.desktop_menu_call_unmute else MR.string.desktop_menu_call_mute),
-                shortcut = KeyShortcut(Key.D, ctrl = !isMacOs, meta = isMacOs),
+                shortcut = menuShortcut(Key.D),
                 enabled = live,
                 onClick = call::menuToggleMute,
             )
             Item(
                 text = stringResource(MR.string.desktop_menu_call_camera),
-                shortcut = KeyShortcut(Key.E, ctrl = !isMacOs, meta = isMacOs),
+                shortcut = menuShortcut(Key.E),
                 enabled = canToggleCamera,
                 onClick = call::menuToggleVideo,
             )
             Item(
                 text = stringResource(MR.string.desktop_menu_call_mini),
-                shortcut = KeyShortcut(Key.M, ctrl = !isMacOs, meta = isMacOs, shift = true),
+                shortcut = menuShortcut(Key.M, shift = true),
                 enabled = live,
                 onClick = { call.menuToggleMini(toggleMini) },
             )
             Item(
                 text = stringResource(MR.string.desktop_menu_call_hang_up),
-                shortcut = KeyShortcut(Key.H, ctrl = !isMacOs, meta = isMacOs, shift = true),
+                shortcut = menuShortcut(Key.H, shift = true),
                 enabled = live,
                 onClick = call::menuHangup,
             )
@@ -245,10 +237,7 @@ private fun ApplicationScope.FullCallWindow(
         icon = painterResource(MR.drawable.homebase_icon_round),
     ) {
         window.minimumSize = java.awt.Dimension(CALL_WINDOW_MIN_WIDTH.toInt(), CALL_WINDOW_MIN_HEIGHT.toInt())
-        DisposableEffect(window) {
-            DesktopAppFocusManager.registerWindowProvider(WindowKeys.CALL) { window }
-            onDispose { DesktopAppFocusManager.unregisterWindowProvider(WindowKeys.CALL) }
-        }
+        RegisterCallWindow()
         DisposableEffect(window) {
             val listener = object : WindowFocusListener {
                 override fun windowGainedFocus(e: WindowEvent) = Unit
@@ -273,7 +262,7 @@ private fun ApplicationScope.FullCallWindow(
         }
         CallWindowTheme(theme) {
             call.Content(
-                onMinimize = { DesktopAppFocusManager.requestFocus("call-back-to-chat") },
+                onMinimize = ::focusChat,
                 topInset = if (isMacOs) MAC_CALL_TITLE_BAR_HEIGHT else 0.dp,
                 mini = false,
                 onToggleMini = { enterMini(true) },
@@ -285,8 +274,14 @@ private fun ApplicationScope.FullCallWindow(
 }
 
 @Composable
-private fun ApplicationScope.MiniCallWindow(call: DesktopCallWindow, config: DesktopPreferences, theme: ThemeState, entry: MiniEntry, exitMini: () -> Unit) {
-    val video = remember { call.isVideoCall() }
+private fun ApplicationScope.MiniCallWindow(
+    call: DesktopCallWindow,
+    config: DesktopPreferences,
+    theme: ThemeState,
+    video: Boolean,
+    entry: MiniEntry,
+    exitMini: () -> Unit,
+) {
     val size = remember { miniCallSize(video) }
     val state = rememberWindowState(
         position = remember { miniCallPosition(config.miniWindowPosition(), size, screenBounds()) },
@@ -304,19 +299,16 @@ private fun ApplicationScope.MiniCallWindow(call: DesktopCallWindow, config: Des
         focusable = entry.focusable,
         alwaysOnTop = true,
     ) {
+        RegisterCallWindow()
         DisposableEffect(window) {
-            DesktopAppFocusManager.registerWindowProvider(WindowKeys.CALL) { window }
-            onDispose {
-                DesktopAppFocusManager.unregisterWindowProvider(WindowKeys.CALL)
-                runCatching { config.saveMiniWindowPosition(WindowPosition.Absolute(window.x.dp, window.y.dp)) }
-            }
+            onDispose { runCatching { config.saveMiniWindowPosition(WindowPosition.Absolute(window.x.dp, window.y.dp)) } }
         }
         // A JMenuBar would be drawn inside this undecorated frame on Windows and Linux.
         if (isMacOs) CallMenuBar(call, config, close = call::requestClose, toggleMini = exitMini)
         var dragOrigin by remember { mutableStateOf<Pair<Point, Point>?>(null) }
         CallWindowTheme(theme) {
             call.Content(
-                onMinimize = { DesktopAppFocusManager.requestFocus("call-back-to-chat") },
+                onMinimize = ::focusChat,
                 topInset = 0.dp,
                 mini = true,
                 onToggleMini = exitMini,
@@ -329,6 +321,16 @@ private fun ApplicationScope.MiniCallWindow(call: DesktopCallWindow, config: Des
                 },
             )
         }
+    }
+}
+
+private fun focusChat() = DesktopAppFocusManager.requestFocus("call-back-to-chat")
+
+@Composable
+private fun FrameWindowScope.RegisterCallWindow() {
+    DisposableEffect(window) {
+        DesktopAppFocusManager.registerWindowProvider(WindowKeys.CALL) { window }
+        onDispose { DesktopAppFocusManager.unregisterWindowProvider(WindowKeys.CALL) }
     }
 }
 

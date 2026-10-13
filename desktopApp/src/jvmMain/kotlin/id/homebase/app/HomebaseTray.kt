@@ -48,6 +48,5 @@ fun ApplicationScope.HomebaseTray(
     )
 }
 
-// The menu bar sits outside MaterialTheme, so the live-call dot is a fixed recording red.
 // The menu bar is drawn by the OS outside MaterialTheme, so the recording-red dot and the white/black glyph follow the system bar, not our scheme.
 private val CALL_INDICATOR = Color(0xFFE53935)
