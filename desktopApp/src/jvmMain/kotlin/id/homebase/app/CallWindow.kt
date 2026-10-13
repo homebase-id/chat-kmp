@@ -126,6 +126,7 @@ private fun ApplicationScope.RingCallWindow(call: DesktopCallWindow, theme: Them
         title = call.title(),
         icon = painterResource(MR.drawable.homebase_icon_round),
         undecorated = true,
+        transparent = isMacOs,
         resizable = false,
         focusable = false,
         alwaysOnTop = true,

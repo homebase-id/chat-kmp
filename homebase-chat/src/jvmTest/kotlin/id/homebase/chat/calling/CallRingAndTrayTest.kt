@@ -8,6 +8,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.semantics.SemanticsActions
@@ -51,8 +59,18 @@ class CallRingAndTrayTest {
         assertEquals(CallTrayItem.Status("Sam", null), items[0])
     }
 
-    private fun ComposeUiTest.showRing(video: Boolean, dark: Boolean, onVoice: () -> Unit = {}, onVideo: () -> Unit = {}, onDecline: () -> Unit = {}) {
+    private fun ComposeUiTest.showRing(
+        video: Boolean,
+        dark: Boolean,
+        onVoice: () -> Unit = {},
+        onVideo: () -> Unit = {},
+        onDecline: () -> Unit = {},
+        shape: Shape = RectangleShape,
+        fontScale: Float = 1f,
+    ) {
         setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                 Box(Modifier.size(RingWindowWidth, RingWindowHeight)) {
                     CallRingContent(
@@ -66,8 +84,10 @@ class CallRingAndTrayTest {
                         onAcceptVoice = onVoice,
                         onAcceptVideo = onVideo,
                         onDecline = onDecline,
+                        shape = shape,
                     )
                 }
+            }
             }
         }
     }
@@ -104,6 +124,19 @@ class CallRingAndTrayTest {
                 assertEquals(label.length, layout.getLineEnd(0, visibleEnd = true), "$label is truncated")
             }
             shoot("ring-window-voice", dark)
+        }
+    }
+
+    @Test
+    fun theRoundedRingDeclinesWithTheCallersNameForScreenReaders() {
+        for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 200) {
+            showRing(video = true, dark = dark, shape = RoundedCornerShape(12.dp))
+            onNodeWithContentDescription("Decline call from Samwise Gamgee").assertExists()
+            shoot("ring-window-rounded", dark)
+        }
+        for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 200) {
+            showRing(video = false, dark = dark, shape = RoundedCornerShape(12.dp), fontScale = 1.3f)
+            shoot("ring-window-font130", dark)
         }
     }
 }

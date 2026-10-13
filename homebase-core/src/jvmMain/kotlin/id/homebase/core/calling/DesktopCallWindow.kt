@@ -91,13 +91,14 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
     override fun title() = rememberCallWindowTitle(model)
 
     @Composable
-    override fun RingContent(modifier: Modifier) = CallRingWindowContent(model, modifier)
+    override fun RingContent(modifier: Modifier) {
+        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape()) { CallRingWindowContent(model, modifier) }
+    }
 
     @Composable
     override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) {
         val mac = System.getProperty("os.name").orEmpty().startsWith("Mac")
-        // desktopApp makes the mini frame transparent on macOS only, so only there can the corners round.
-        CompositionLocalProvider(LocalMiniWindowShape provides if (mac) RoundedCornerShape(12.dp) else RectangleShape) {
+        CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape()) {
             CallWindowContent(
                 model, onMinimize, topInset,
                 mini = mini,
@@ -109,6 +110,10 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
         }
     }
 }
+
+// desktopApp makes the mini and ring frames transparent on macOS only, so only there can the corners round.
+private fun floatingWindowShape() =
+    if (System.getProperty("os.name").orEmpty().startsWith("Mac")) RoundedCornerShape(12.dp) else RectangleShape
 
 private fun trayItem(item: CallTrayItem): DesktopCallTrayItem = when (item) {
     is CallTrayItem.Status -> DesktopCallTrayItem.Status(item.name, item.elapsed)

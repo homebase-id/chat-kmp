@@ -341,7 +341,7 @@ internal fun remoteVideoLetterbox(video: Pair<Int, Int>?, viewWidth: Float, view
     return if ((w > h) != (viewWidth > viewHeight)) w.toFloat() / h else null
 }
 
-private enum class HaloMode { None, Still, Ringing, Waiting }
+internal enum class HaloMode { None, Still, Ringing, Waiting }
 
 @Composable
 fun CallScreen(
@@ -2024,7 +2024,7 @@ private fun PeerHeader(
 }
 
 @Composable
-private fun AvatarHalo(avatarSize: Dp, mode: HaloMode) {
+internal fun AvatarHalo(avatarSize: Dp, mode: HaloMode) {
     val transition = rememberInfiniteTransition(label = "halo")
     val rotation by transition.animateFloat(
         initialValue = 0f,
