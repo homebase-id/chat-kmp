@@ -742,6 +742,15 @@ fun AppNavHost(
                     // activation, the WebDrop screen itself shows onboarding.
                     openWebDrop()
                 }
+
+                is NotificationNavigationEvent.OpenApp -> {
+                    Logger.i(tag = "AppNavHost") { "OpenApp received: ${event.route}" }
+                    // Loading ends with popUpTo(AppLoading, inclusive): anything opened before ChatList would be popped.
+                    navController.currentBackStack.firstContaining {
+                        it.destination.hasRoute(Route.ChatList::class)
+                    }
+                    navController.openApp(event.route, tabRoutes)
+                }
             }
         }
     }
