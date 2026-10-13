@@ -10,8 +10,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.calling.CallViewModel
 import id.homebase.chat.calling.CallWindowModel
 import id.homebase.chat.services.calling.CallService
-import id.homebase.core.calling.DesktopCallWindow
-import id.homebase.core.calling.ModelDesktopCallWindow
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
@@ -59,7 +57,6 @@ actual fun platformModule(): Module = module {
             displayName = get<ContactInfoGateway>()::displayName,
         )
     }
-    single<DesktopCallWindow> { ModelDesktopCallWindow(get()) }
     single { ShareCacheStorage() }
     single<AlbumSaver> { JvmAlbumSaver() }
     // Desktop is assumed to be on a wired/Wi-Fi link; there is no metered signal to read.

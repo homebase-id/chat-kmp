@@ -1,6 +1,7 @@
 package id.homebase.app
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -9,10 +10,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
-import id.homebase.core.calling.DesktopRingWindowSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.WindowPlacement
@@ -36,7 +37,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.WindowKeys
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
-import id.homebase.core.calling.DesktopCallWindow
+import id.homebase.chat.calling.CallRingWindowContent
+import id.homebase.chat.calling.CallWindowContent
+import id.homebase.chat.calling.CallWindowModel
+import id.homebase.chat.calling.LocalMacShortcuts
+import id.homebase.chat.calling.LocalMiniWindowShape
+import id.homebase.chat.calling.RingWindowWidth
+import id.homebase.chat.calling.rememberCallWindowTitle
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
@@ -55,14 +62,47 @@ import org.jetbrains.compose.resources.stringResource
 
 private val MAC_CALL_TITLE_BAR_HEIGHT = 28.dp
 
+private val RingWindowSize = DpSize(RingWindowWidth, Dp.Unspecified)
+
+// The mini and ring frames are transparent on macOS only, so only there can the corners round.
+private val floatingWindowShape = if (isMacOs) RoundedCornerShape(12.dp) else RectangleShape
+
+internal class CallBodySpec(
+    val onMinimize: () -> Unit,
+    val topInset: Dp,
+    val mini: Boolean,
+    val onToggleMini: () -> Unit,
+    val onMiniDragStart: () -> Unit = {},
+    val onMiniDrag: () -> Unit = {},
+)
+
+internal typealias CallBody = @Composable (CallWindowModel, CallBodySpec) -> Unit
+
+private val defaultCallBody: CallBody = { call, spec ->
+    CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape) {
+        CallWindowContent(
+            call, spec.onMinimize, spec.topInset,
+            mini = spec.mini,
+            onToggleMini = spec.onToggleMini,
+            onMiniDragStart = spec.onMiniDragStart,
+            onMiniDrag = spec.onMiniDrag,
+            macShortcuts = isMacOs,
+        )
+    }
+}
+
 @Composable
-fun ApplicationScope.CallWindow(call: DesktopCallWindow, config: DesktopPreferences, theme: ThemeState) {
+fun ApplicationScope.CallWindow(call: CallWindowModel, config: DesktopPreferences, theme: ThemeState) =
+    CallWindow(call, config, theme, defaultCallBody)
+
+@Composable
+internal fun ApplicationScope.CallWindow(call: CallWindowModel, config: DesktopPreferences, theme: ThemeState, body: CallBody) {
     // application{} provides no LocalLifecycleOwner, and this scope sits above any Window.
     CompositionLocalProvider(LocalLifecycleOwner provides rememberApplicationLifecycleOwner()) {
-        val visible by call.visible.collectAsStateWithLifecycle()
+        val visible by call.windowVisible.collectAsStateWithLifecycle()
         val callKey by call.windowKey.collectAsStateWithLifecycle()
         if (visible) {
-            key(callKey) { CallWindowFrame(call, config, theme) }
+            key(callKey) { CallWindowFrame(call, config, theme, body) }
         }
     }
 }
@@ -83,7 +123,7 @@ internal class CallWindowModes(val full: WindowState) {
 internal data class MiniEntry(val focusable: Boolean)
 
 @Composable
-private fun ApplicationScope.CallWindowFrame(call: DesktopCallWindow, config: DesktopPreferences, theme: ThemeState) {
+private fun ApplicationScope.CallWindowFrame(call: CallWindowModel, config: DesktopPreferences, theme: ThemeState, body: CallBody) {
     val video = remember { call.isVideoCall() }
     val geometry = remember { config.callWindowGeometry(video) }
     val full = rememberWindowState(position = geometry.position, width = geometry.width, height = geometry.height)
@@ -92,8 +132,8 @@ private fun ApplicationScope.CallWindowFrame(call: DesktopCallWindow, config: De
     LaunchedEffect(live) { if (!live) modes.exitMini() }
     val mini = modes.mini
     DisposableEffect(mini != null) {
-        call.setMiniWindowOpen(mini != null)
-        onDispose { call.setMiniWindowOpen(false) }
+        call.miniWindowOpen.value = mini != null
+        onDispose { call.miniWindowOpen.value = false }
     }
     val ringing by call.ringing.collectAsStateWithLifecycle()
     if (ringing) {
@@ -101,8 +141,8 @@ private fun ApplicationScope.CallWindowFrame(call: DesktopCallWindow, config: De
         return
     }
     key(mini) {
-        if (mini != null) MiniCallWindow(call, config, theme, video, mini, modes::exitMini)
-        else FullCallWindow(call, config, theme, video, full, modes::enterMini)
+        if (mini != null) MiniCallWindow(call, config, theme, video, mini, modes::exitMini, body)
+        else FullCallWindow(call, config, theme, video, full, modes::enterMini, body)
     }
 }
 
@@ -112,13 +152,13 @@ internal fun ringWindowPosition(area: DpRect, size: DpSize, margin: Dp = RING_WI
     WindowPosition.Absolute(area.right - size.width - margin, area.top + margin)
 
 @Composable
-private fun ApplicationScope.RingCallWindow(call: DesktopCallWindow, theme: ThemeState) {
-    val size = DesktopRingWindowSize
+private fun ApplicationScope.RingCallWindow(call: CallWindowModel, theme: ThemeState) {
+    val size = RingWindowSize
     val state = rememberWindowState(position = remember { ringWindowPosition(activeScreenArea(), size) }, size = size)
     Window(
         onCloseRequest = call::requestClose,
         state = state,
-        title = call.title(),
+        title = rememberCallWindowTitle(call),
         icon = painterResource(MR.drawable.homebase_icon_round),
         undecorated = true,
         transparent = isMacOs,
@@ -127,7 +167,11 @@ private fun ApplicationScope.RingCallWindow(call: DesktopCallWindow, theme: Them
         alwaysOnTop = true,
     ) {
         RegisterCallWindow()
-        CallWindowTheme(theme) { call.RingContent(Modifier) }
+        CallWindowTheme(theme) {
+            CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape, LocalMacShortcuts provides isMacOs) {
+                CallRingWindowContent(call, Modifier)
+            }
+        }
     }
 }
 
@@ -145,7 +189,7 @@ private fun activeScreenArea(): DpRect {
 }
 
 @Composable
-private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: DesktopPreferences, close: () -> Unit, toggleMini: () -> Unit) {
+private fun FrameWindowScope.CallMenuBar(call: CallWindowModel, config: DesktopPreferences, close: () -> Unit, toggleMini: () -> Unit) {
     val status = collectSettledCallEntries(call.trayItems, LocalLifecycleOwner.current).firstOrNull { it.action == CallMenuAction.OpenCall }
     val live by call.live.collectAsStateWithLifecycle()
     val muted by call.muted.collectAsStateWithLifecycle()
@@ -203,12 +247,13 @@ private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: Deskto
 
 @Composable
 private fun ApplicationScope.FullCallWindow(
-    call: DesktopCallWindow,
+    call: CallWindowModel,
     config: DesktopPreferences,
     theme: ThemeState,
     video: Boolean,
     state: WindowState,
     enterMini: (focusable: Boolean) -> Unit,
+    body: CallBody,
 ) {
     val saveGeometry = {
         if (state.placement == WindowPlacement.Floating) {
@@ -232,7 +277,7 @@ private fun ApplicationScope.FullCallWindow(
             call.requestClose()
         },
         state = state,
-        title = call.title(),
+        title = rememberCallWindowTitle(call),
         icon = painterResource(MR.drawable.homebase_icon_round),
     ) {
         window.minimumSize = java.awt.Dimension(CALL_WINDOW_MIN_WIDTH.toInt(), CALL_WINDOW_MIN_HEIGHT.toInt())
@@ -260,13 +305,14 @@ private fun ApplicationScope.FullCallWindow(
             }
         }
         CallWindowTheme(theme) {
-            call.Content(
-                onMinimize = ::focusChat,
-                topInset = if (isMacOs) MAC_CALL_TITLE_BAR_HEIGHT else 0.dp,
-                mini = false,
-                onToggleMini = { enterMini(true) },
-                onMiniDragStart = {},
-                onMiniDrag = {},
+            body(
+                call,
+                CallBodySpec(
+                    onMinimize = ::focusChat,
+                    topInset = if (isMacOs) MAC_CALL_TITLE_BAR_HEIGHT else 0.dp,
+                    mini = false,
+                    onToggleMini = { enterMini(true) },
+                ),
             )
         }
     }
@@ -274,12 +320,13 @@ private fun ApplicationScope.FullCallWindow(
 
 @Composable
 private fun ApplicationScope.MiniCallWindow(
-    call: DesktopCallWindow,
+    call: CallWindowModel,
     config: DesktopPreferences,
     theme: ThemeState,
     video: Boolean,
     entry: MiniEntry,
     exitMini: () -> Unit,
+    body: CallBody,
 ) {
     val size = remember { miniCallSize(video) }
     val state = rememberWindowState(
@@ -289,7 +336,7 @@ private fun ApplicationScope.MiniCallWindow(
     Window(
         onCloseRequest = exitMini,
         state = state,
-        title = call.title(),
+        title = rememberCallWindowTitle(call),
         icon = painterResource(MR.drawable.homebase_icon_round),
         undecorated = true,
         // The mini content draws its own rounded corners on macOS; elsewhere the frame stays square and opaque.
@@ -306,18 +353,21 @@ private fun ApplicationScope.MiniCallWindow(
         if (isMacOs) CallMenuBar(call, config, close = call::requestClose, toggleMini = exitMini)
         var dragOrigin by remember { mutableStateOf<Pair<Point, Point>?>(null) }
         CallWindowTheme(theme) {
-            call.Content(
-                onMinimize = ::focusChat,
-                topInset = 0.dp,
-                mini = true,
-                onToggleMini = exitMini,
-                onMiniDragStart = { dragOrigin = MouseInfo.getPointerInfo().location to window.location },
-                onMiniDrag = {
-                    dragOrigin?.let { (pointer, origin) ->
-                        val now = MouseInfo.getPointerInfo().location
-                        window.setLocation(origin.x + now.x - pointer.x, origin.y + now.y - pointer.y)
-                    }
-                },
+            body(
+                call,
+                CallBodySpec(
+                    onMinimize = ::focusChat,
+                    topInset = 0.dp,
+                    mini = true,
+                    onToggleMini = exitMini,
+                    onMiniDragStart = { dragOrigin = MouseInfo.getPointerInfo().location to window.location },
+                    onMiniDrag = {
+                        dragOrigin?.let { (pointer, origin) ->
+                            val now = MouseInfo.getPointerInfo().location
+                            window.setLocation(origin.x + now.x - pointer.x, origin.y + now.y - pointer.y)
+                        }
+                    },
+                ),
             )
         }
     }

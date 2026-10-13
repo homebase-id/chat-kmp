@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPosition
-import id.homebase.core.calling.DesktopCallTrayItem
+import id.homebase.chat.calling.CallTrayItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,7 +38,7 @@ class CallSystemMenuTest {
     @Test
     fun entriesCarryTheLabelAndTheActionTheyPerform() {
         val entries = callMenuEntries(
-            listOf(DesktopCallTrayItem.Status("Sam", "01:05"), DesktopCallTrayItem.Mute(true), DesktopCallTrayItem.HangUp),
+            listOf(CallTrayItem.Status("Sam", "01:05"), CallTrayItem.Mute(true), CallTrayItem.HangUp),
             labels,
         )
         assertEquals(
@@ -53,7 +53,7 @@ class CallSystemMenuTest {
 
     @Test
     fun aCallNotYetConnectedShowsNoTimer() {
-        assertEquals("In call with Sam", callMenuEntries(listOf(DesktopCallTrayItem.Status("Sam", null)), labels).single().label)
+        assertEquals("In call with Sam", callMenuEntries(listOf(CallTrayItem.Status("Sam", null)), labels).single().label)
     }
 
     @Test
@@ -69,11 +69,11 @@ class CallSystemMenuTest {
         assertEquals(WindowPosition.Absolute(2984.dp, 16.dp), ringWindowPosition(second, DpSize(360.dp, 200.dp)))
     }
 
-    private val connected = listOf(DesktopCallTrayItem.Status("Samwise Gamgee", "01:23"), DesktopCallTrayItem.Mute(true), DesktopCallTrayItem.HangUp)
+    private val connected = listOf(CallTrayItem.Status("Samwise Gamgee", "01:23"), CallTrayItem.Mute(true), CallTrayItem.HangUp)
 
     @Test
     fun theMenuFollowsTheTimerOnlyEveryFewSecondsButAMuteChangeLandsAtOnceWithoutRecomposingTheCaller() = runDesktopComposeUiTest(300, 150) {
-        fun items(elapsed: String, muted: Boolean) = listOf(DesktopCallTrayItem.Status("Sam", elapsed), DesktopCallTrayItem.Mute(muted), DesktopCallTrayItem.HangUp)
+        fun items(elapsed: String, muted: Boolean) = listOf(CallTrayItem.Status("Sam", elapsed), CallTrayItem.Mute(muted), CallTrayItem.HangUp)
         val flow = MutableStateFlow(items("00:01", muted = false))
         val passes = mutableListOf<List<CallMenuEntry>>()
         setContent {
@@ -104,9 +104,9 @@ class CallSystemMenuTest {
 
     @Test
     fun theTimerAloneNeverChangesTheMenuStructure() {
-        assertEquals(withoutTimer(DesktopCallTrayItem.Status("Sam", "00:01")), withoutTimer(DesktopCallTrayItem.Status("Sam", "09:59")))
-        assertEquals(false, withoutTimer(DesktopCallTrayItem.Status("Sam", "00:01")) == withoutTimer(DesktopCallTrayItem.Status("Frodo", "00:01")))
-        assertEquals(DesktopCallTrayItem.Mute(true), withoutTimer(DesktopCallTrayItem.Mute(true)))
+        assertEquals(withoutTimer(CallTrayItem.Status("Sam", "00:01")), withoutTimer(CallTrayItem.Status("Sam", "09:59")))
+        assertEquals(false, withoutTimer(CallTrayItem.Status("Sam", "00:01")) == withoutTimer(CallTrayItem.Status("Frodo", "00:01")))
+        assertEquals(CallTrayItem.Mute(true), withoutTimer(CallTrayItem.Mute(true)))
     }
 
     @Test

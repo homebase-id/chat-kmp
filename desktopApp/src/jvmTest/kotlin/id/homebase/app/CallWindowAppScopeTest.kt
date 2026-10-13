@@ -1,9 +1,7 @@
 package id.homebase.app
 
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.awaitApplication
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.WindowKeys
@@ -16,8 +14,6 @@ import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallState
 import id.homebase.chat.services.calling.CallVideos
-import id.homebase.core.calling.DesktopCallWindow
-import id.homebase.core.calling.ModelDesktopCallWindow
 import id.homebase.core.settings.ThemeState
 import java.awt.Frame
 import java.awt.GraphicsEnvironment
@@ -45,12 +41,6 @@ class CallWindowAppScopeTest {
         override fun setVideo(on: Boolean) = Unit
         override fun switchCamera() = Unit
         override fun setAudioRoute(route: AudioRoute) = Unit
-    }
-
-    // The real bridge except for the body: PeerAvatar needs the production Koin graph, which is not what is under test.
-    private class BridgeWithPlainBody(real: ModelDesktopCallWindow) : DesktopCallWindow by real {
-        @Composable
-        override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) = Text("in call")
     }
 
     private fun callFrames(): List<Frame> = Window.getWindows().filterIsInstance<Frame>().filter { it.isDisplayable && it.title.startsWith("Samwise") }
@@ -97,7 +87,8 @@ class CallWindowAppScopeTest {
                         }
                         exitApplication()
                     }
-                    CallWindow(BridgeWithPlainBody(ModelDesktopCallWindow(model)), DesktopPreferences(InMemorySettings()), ThemeState.Light)
+                    // A plain body: PeerAvatar needs the production Koin graph, which is not what is under test.
+                    CallWindow(model, DesktopPreferences(InMemorySettings()), ThemeState.Light) { _, _ -> Text("in call") }
                 }
             }
         }

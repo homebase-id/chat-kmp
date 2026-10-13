@@ -90,6 +90,8 @@ kotlin {
         }
 
         jvmMain.dependencies {
+            // Types only: at runtime homebase-chat comes from the per-platform JAR wired in below.
+            compileOnly(project(":homebase-chat"))
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(libs.sqldelight.sqlite.driver.get().toString()) {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")

@@ -203,7 +203,7 @@ fun main() {
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
     id.homebase.core.calling.startDesktopCallCoordinator()
-    val callWindow = koin.get<id.homebase.core.calling.DesktopCallWindow>()
+    val callWindow = koin.get<id.homebase.chat.calling.CallWindowModel>()
 
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }

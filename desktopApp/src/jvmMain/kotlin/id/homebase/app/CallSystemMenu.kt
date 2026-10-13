@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.sample
-import id.homebase.core.calling.DesktopCallTrayItem
-import id.homebase.core.calling.DesktopCallWindow
+import id.homebase.chat.calling.CallTrayItem
+import id.homebase.chat.calling.CallWindowModel
 import id.homebase.resources.MR
 import id.homebase.resources.desktop_menu_call_hang_up
 import id.homebase.resources.desktop_menu_call_mute
@@ -41,25 +41,25 @@ class CallMenuLabels(
     val hangUp: String,
 )
 
-fun callMenuEntries(items: List<DesktopCallTrayItem>, labels: CallMenuLabels): List<CallMenuEntry> = items.map { item ->
+fun callMenuEntries(items: List<CallTrayItem>, labels: CallMenuLabels): List<CallMenuEntry> = items.map { item ->
     when (item) {
-        is DesktopCallTrayItem.Status -> CallMenuEntry(
+        is CallTrayItem.Status -> CallMenuEntry(
             CallMenuAction.OpenCall,
             item.elapsed?.let { labels.inCallTimed(item.name, it) } ?: labels.inCall(item.name),
         )
-        is DesktopCallTrayItem.Mute -> CallMenuEntry(CallMenuAction.ToggleMute, if (item.muted) labels.unmute else labels.mute)
-        DesktopCallTrayItem.HangUp -> CallMenuEntry(CallMenuAction.HangUp, labels.hangUp)
+        is CallTrayItem.Mute -> CallMenuEntry(CallMenuAction.ToggleMute, if (item.muted) labels.unmute else labels.mute)
+        CallTrayItem.HangUp -> CallMenuEntry(CallMenuAction.HangUp, labels.hangUp)
     }
 }
 
-fun DesktopCallWindow.perform(action: CallMenuAction) = when (action) {
+fun CallWindowModel.perform(action: CallMenuAction) = when (action) {
     CallMenuAction.OpenCall -> focusCallWindow()
     CallMenuAction.ToggleMute -> toggleMute()
     CallMenuAction.HangUp -> hangup()
 }
 
 @Composable
-fun rememberCallMenuEntries(items: List<DesktopCallTrayItem>): List<CallMenuEntry> {
+fun rememberCallMenuEntries(items: List<CallTrayItem>): List<CallMenuEntry> {
     val inCall = stringResource(MR.string.desktop_tray_in_call, "%1\$s")
     val inCallTimed = stringResource(MR.string.desktop_tray_in_call_timed, "%1\$s", "%2\$s")
     val mute = stringResource(MR.string.desktop_menu_call_mute)
@@ -81,19 +81,19 @@ private const val MENU_REFRESH_MS = 15_000L
 
 /** A native menu rebuilt every second closes or flickers under the pointer; the timer text only catches up every [periodMs]. */
 @OptIn(FlowPreview::class)
-fun Flow<List<DesktopCallTrayItem>>.settledForMenu(periodMs: Long = MENU_REFRESH_MS): Flow<List<DesktopCallTrayItem>> =
+fun Flow<List<CallTrayItem>>.settledForMenu(periodMs: Long = MENU_REFRESH_MS): Flow<List<CallTrayItem>> =
     merge(distinctUntilChangedBy { items -> items.map(::withoutTimer) }, sample(periodMs)).distinctUntilChanged()
 
 /** Settles before collecting, so the per-second call timer never recomposes the caller (application{} and the tray). */
 @Composable
-fun collectSettledCallEntries(items: StateFlow<List<DesktopCallTrayItem>>, lifecycleOwner: LifecycleOwner): List<CallMenuEntry> {
+fun collectSettledCallEntries(items: StateFlow<List<CallTrayItem>>, lifecycleOwner: LifecycleOwner): List<CallMenuEntry> {
     val settledFlow = remember(items) { items.settledForMenu() }
     val settled by settledFlow.collectAsStateWithLifecycle(initialValue = items.value, lifecycleOwner = lifecycleOwner)
     return rememberCallMenuEntries(settled)
 }
 
-internal fun withoutTimer(item: DesktopCallTrayItem): DesktopCallTrayItem =
-    if (item is DesktopCallTrayItem.Status) item.copy(elapsed = null) else item
+internal fun withoutTimer(item: CallTrayItem): CallTrayItem =
+    if (item is CallTrayItem.Status) item.copy(elapsed = null) else item
 
 /** macOS has no tray icon, so the in-call controls live on the Dock icon. */
 @Composable

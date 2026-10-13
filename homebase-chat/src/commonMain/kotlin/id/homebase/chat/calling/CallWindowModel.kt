@@ -135,6 +135,8 @@ class CallWindowModel(
 
     fun acceptVideo() = viewModel.accept(withVideo = true)
 
+    fun answer() = if (isVideoCall()) acceptVideo() else acceptVoice()
+
     fun decline() = viewModel.decline()
 
     fun toggleMute() = viewModel.toggleMute()
