@@ -95,7 +95,7 @@ class CallScreenshotTest {
         localVideo = video,
         remoteVideo = video,
         availableRoutes = size.routes,
-        videos = if (video) CallVideos(FakeVideo(0xFF5C6BC0, "FB"), FakeVideo(0xFF26A69A, "SG")) else CallVideos(),
+        videos = if (video) CallVideos(FakeVideo("FB"), FakeVideo("SG")) else CallVideos(),
         connectedAtMs = System.currentTimeMillis() - 83_000,
         verificationCode = "123 456",
     )

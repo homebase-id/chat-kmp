@@ -12,36 +12,46 @@ class CallKitMirror(
     private var reported: String? = null
     private var answered: String? = null
 
-    private data class Key(val callId: String?, val phase: CallPhase, val direction: CallDirection?, val video: Boolean, val answeredInApp: Boolean)
+    private data class Key(
+        val callId: String?,
+        val phase: CallPhase,
+        val direction: CallDirection?,
+        val video: Boolean,
+        val answeredInApp: Boolean,
+        val peer: String?,
+        val localVideo: Boolean,
+    )
 
     suspend fun run() {
-        session.state.map { Key(it.callId, it.phase, it.direction, it.placedWithVideo, it.answeredInApp) }.distinctUntilChanged().collect { (callId, phase, direction, video, answeredInApp) ->
-            val bridge = bridge() ?: return@collect
-            val id = callId ?: return@collect
-            if (direction == CallDirection.Outgoing && !bridge.hostsOutgoingCalls) return@collect
-            val state = session.state.value
-            if (answeredInApp && answered != id) {
-                answered = id
-                bridge.requestAnswer(id)
-            }
-            when (phase) {
-                CallPhase.Outgoing -> if (reported != id) {
-                    reported = id
-                    bridge.reportOutgoing(id, state.peer.orEmpty(), state.media.localVideo)
+        session.state.map { Key(it.callId, it.phase, it.direction, it.placedWithVideo, it.answeredInApp, it.peer, it.media.localVideo) }
+            // localVideo is only read when the outgoing call is first reported; a later camera toggle is not a lifecycle change.
+            .distinctUntilChanged { old, new -> old.copy(localVideo = new.localVideo) == new }
+            .collect { (callId, phase, direction, video, answeredInApp, peer, localVideo) ->
+                val bridge = bridge() ?: return@collect
+                val id = callId ?: return@collect
+                if (direction == CallDirection.Outgoing && !bridge.hostsOutgoingCalls) return@collect
+                if (answeredInApp && answered != id) {
+                    answered = id
+                    bridge.requestAnswer(id)
                 }
-                CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video) bridge.reportVideo(id, true)
-                CallPhase.Connected -> if (direction == CallDirection.Outgoing) bridge.reportConnected(id)
-                is CallPhase.Ended -> {
-                    val reason = phase.reason
-                    if (reason == CallEndReason.AnsweredElsewhere || reason == CallEndReason.DeclinedElsewhere) {
-                        bridge.reportEndedElsewhere(id, declined = reason == CallEndReason.DeclinedElsewhere)
-                    } else if (phase.reason.endedLocally(direction)) bridge.requestEnd(id) else bridge.reportEnded(id, remoteEnded = phase.reason !is CallEndReason.Failed)
-                    if (reported == id) reported = null
-                    if (answered == id) answered = null
+                when (phase) {
+                    CallPhase.Outgoing -> if (reported != id) {
+                        reported = id
+                        bridge.reportOutgoing(id, peer.orEmpty(), localVideo)
+                    }
+                    CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video) bridge.reportVideo(id, true)
+                    CallPhase.Connected -> if (direction == CallDirection.Outgoing) bridge.reportConnected(id)
+                    is CallPhase.Ended -> {
+                        val reason = phase.reason
+                        if (reason == CallEndReason.AnsweredElsewhere || reason == CallEndReason.DeclinedElsewhere) {
+                            bridge.reportEndedElsewhere(id, declined = reason == CallEndReason.DeclinedElsewhere)
+                        } else if (phase.reason.endedLocally(direction)) bridge.requestEnd(id) else bridge.reportEnded(id, remoteEnded = phase.reason !is CallEndReason.Failed)
+                        if (reported == id) reported = null
+                        if (answered == id) answered = null
+                    }
+                    else -> Unit
                 }
-                else -> Unit
             }
-        }
     }
 }
 

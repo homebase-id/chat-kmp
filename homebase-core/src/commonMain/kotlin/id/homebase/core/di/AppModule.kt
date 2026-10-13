@@ -2,6 +2,7 @@
 
 package id.homebase.core.di
 
+import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.core.ui.screens.email.EmailService
@@ -380,20 +381,12 @@ val appModule = module {
         CallService(
             credentialsManager = get(),
             eventBus = get(),
-            relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push) },
+            relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push, wakeCause = null) },
             engineFactory = platformCallEngineFactory(),
             stunUrls = get(),
             scope = get(),
             onCallActiveChanged = { get<AuthConnectionCoordinator>().setCallActive(it) },
-            recordEvent = { peer, event ->
-                val self = get<CredentialsManager>().getActiveDomain()?.domainName ?: return@CallService
-                get<ChatMessageSenderService>().sendNewTypedMessage(
-                    messageUniqueId = Uuid.random(),
-                    conversationId = XorIdUtil.getNewXorId(self, peer),
-                    content = MessageContent.CallEvent(event),
-                    previousMessageUniqueId = null,
-                )
-            },
+            recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
         )
     }
     single { EmergencyLocateStore(eventBus = get(), scope = get()) }
@@ -1381,3 +1374,18 @@ val allModules = listOf(
     appModule,
     id.homebase.imageeditor.ui.di.imageEditorModule,
 )
+
+private suspend fun recordCallEvent(
+    credentials: CredentialsManager,
+    sender: ChatMessageSenderService,
+    peer: String,
+    event: CallEventDescriptor,
+) {
+    val self = credentials.getActiveDomain()?.domainName ?: return
+    sender.sendNewTypedMessage(
+        messageUniqueId = Uuid.random(),
+        conversationId = XorIdUtil.getNewXorId(self, peer),
+        content = MessageContent.CallEvent(event),
+        previousMessageUniqueId = null,
+    )
+}

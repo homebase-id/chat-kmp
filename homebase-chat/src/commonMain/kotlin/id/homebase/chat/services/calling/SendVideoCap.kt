@@ -16,8 +16,6 @@ internal object SendVideoCap {
     const val H264_MIN_LEVEL = 0x28
 }
 
-internal fun h264MacroblocksPerFrame(width: Int, height: Int): Int = ((width + 15) / 16) * ((height + 15) / 16)
-
 private val profileLevelId = Regex("(profile-level-id=)([0-9a-fA-F]{4})([0-9a-fA-F]{2})")
 
 /** Raises every H.264 profile-level-id in [sdp] below [SendVideoCap.H264_MIN_LEVEL] to it; profiles are untouched. */
@@ -26,8 +24,6 @@ internal fun withH264SendLevel(sdp: String): String = profileLevelId.replace(sdp
     if (level.toInt(16) >= SendVideoCap.H264_MIN_LEVEL) m.value
     else key + profile + SendVideoCap.H264_MIN_LEVEL.toString(16).padStart(2, '0')
 }
-
-internal fun h264Levels(sdp: String): List<Int> = profileLevelId.findAll(sdp).map { it.groupValues[3].toInt(16) }.toList()
 
 // Short side of each rung and the target bitrate it needs.
 private val sendRungs = listOf(

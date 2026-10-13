@@ -17,16 +17,16 @@ import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
 import id.homebase.resources.call_button_voice
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.getKoin
+import org.koin.compose.koinInject
 
-/** Starts a call to the open conversation's peer, or null where calling it isn't possible right now. */
-val LocalCallBack = compositionLocalOf<((video: Boolean) -> Unit)?> { null }
+/** The open conversation's [CallStarter], or null where its peer can't be called. */
+val LocalCallStarter = compositionLocalOf<CallStarter?> { null }
 
-class CallStarter(val idle: Boolean, val start: (video: Boolean) -> Unit)
+data class CallStarter(val idle: Boolean, val start: (video: Boolean) -> Unit)
 
 @Composable
 fun rememberCallStarter(conversation: EnrichedConversationUiModel): CallStarter? {
-    val service = getKoin().getOrNull<CallService>()?.takeIf { it.available } ?: return null
+    val service = koinInject<CallService>().takeIf { it.available } ?: return null
     val status = conversation.oneOnOneConnectionStatus as? OneOnOneConnectionStatus.Connected ?: return null
     if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return null
     val state by service.state.collectAsStateWithLifecycle()

@@ -4,6 +4,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+internal fun h264MacroblocksPerFrame(width: Int, height: Int): Int = ((width + 15) / 16) * ((height + 15) / 16)
+
+internal fun h264Levels(sdp: String): List<Int> =
+    Regex("profile-level-id=[0-9a-fA-F]{4}([0-9a-fA-F]{2})").findAll(sdp).map { it.groupValues[1].toInt(16) }.toList()
+
 class CallSendVideoCapTest {
     private val level31MaxMacroblocks = 3600
     private val level40MaxMacroblocks = 8192
