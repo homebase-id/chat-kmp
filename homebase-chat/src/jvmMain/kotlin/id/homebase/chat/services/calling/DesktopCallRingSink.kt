@@ -2,7 +2,6 @@ package id.homebase.chat.services.calling
 
 import id.homebase.core.notifications.CallNotificationActions
 import id.homebase.core.notifications.CallNotifier
-import id.homebase.core.notifications.RichNotificationData
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -18,9 +17,6 @@ class DesktopCallRingSink(
     private val declineLabel: suspend () -> String,
     private val onAccept: (callId: String) -> Unit,
     private val onDecline: (callId: String) -> Unit,
-    private val appInBackground: () -> Boolean = { false },
-    private val missedNotification: suspend (peerId: String, label: String) -> RichNotificationData? = { _, _ -> null },
-    private val showMissed: (RichNotificationData) -> Unit = {},
 ) : CallRingSink {
     private val ringing = ConcurrentHashMap.newKeySet<String>()
     private val lock = Any()
@@ -51,11 +47,6 @@ class DesktopCallRingSink(
             if (ringing.isEmpty()) tone.stop()
             notifier.retract(callId)
         }
-    }
-
-    override fun missed(peerId: String, label: String) {
-        if (!appInBackground()) return
-        scope.launch { missedNotification(peerId, label)?.let(showMissed) }
     }
 
     override fun connected(callId: String) = Unit

@@ -20,7 +20,6 @@ interface CallRingSink {
     fun ring(callId: String, label: String)
     fun stopRinging(callId: String)
     fun connected(callId: String)
-    fun missed(peerId: String, label: String) = Unit
     fun ended(callId: String)
     fun setLive(live: Boolean, video: Boolean, callId: String?)
 }
@@ -42,7 +41,6 @@ class CallRingCoordinator(
             var live = false
             var liveVideo = false
             var established: String? = null
-            var missedFor: String? = null
             state.collect { s ->
                 val callId = s.callId
                 val nowRinging = callId.takeIf { s.isRinging }
@@ -71,14 +69,6 @@ class CallRingCoordinator(
                     sink.connected(callId)
                 }
                 if (callId != null && s.phase is CallPhase.Ended) sink.ended(callId)
-                val peer = s.peer
-                if (callId != null && peer != null && missedFor != callId && s.isMissedIncoming()) {
-                    missedFor = callId
-                    scope.launch {
-                        val label = withTimeoutOrNull(labelTimeoutMs) { runCatching { labelFor(peer) }.getOrNull() }
-                        sink.missed(peer, label?.takeIf { it.isNotBlank() } ?: peer)
-                    }
-                }
             }
         }
     }
@@ -110,10 +100,6 @@ class CallRingCoordinator(
     private val CallPhase.isLive: Boolean
         get() = isInCall || this == CallPhase.Outgoing
 }
-
-private fun CallState.isMissedIncoming(): Boolean =
-    direction == CallDirection.Incoming && connectedAtMs == null &&
-        (phase as? CallPhase.Ended)?.reason.let { it == CallEndReason.Missed || it == CallEndReason.Cancelled }
 
 fun CallState.isRingingFor(callId: String): Boolean =
     this.callId == callId && phase == CallPhase.Incoming && direction == CallDirection.Incoming && !acceptPending

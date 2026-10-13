@@ -3,7 +3,6 @@ package id.homebase.chat.services.calling
 import id.homebase.core.notifications.CallNotificationActions
 import id.homebase.core.notifications.CallNotifier
 import id.homebase.core.notifications.CallPushRouter
-import id.homebase.core.notifications.RichNotificationData
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,10 +46,9 @@ class DesktopCallRingSinkTest {
         override fun stop() { stops++; playing = false }
     }
 
-    private class Rig(scope: TestScope, selfId: String, backgrounded: Boolean = false) {
+    private class Rig(scope: TestScope, selfId: String) {
         val notifier = FakeNotifier()
         val tone = FakeTone()
-        val missed = mutableListOf<RichNotificationData>()
         var callWindowFocused = 0
         val controller = CallController(
             selfOdinId = selfId,
@@ -72,9 +70,6 @@ class DesktopCallRingSinkTest {
             declineLabel = { "Decline" },
             onAccept = { coordinator.accept(it) },
             onDecline = { coordinator.decline(it) },
-            appInBackground = { backgrounded },
-            missedNotification = { peer, label -> notification(peer, label) },
-            showMissed = { missed += it },
         )
 
         init {
@@ -91,11 +86,6 @@ class DesktopCallRingSinkTest {
                 scope = scope.backgroundScope,
             ).also { it.start(); CallPushRouter.handler = it }
         }
-
-        private fun notification(peer: String, label: String) = RichNotificationData(
-            notificationId = 7, channelId = "messages", conversationId = "convo", title = "Missed call from $label", body = "",
-            senderName = label, senderId = peer, senderImageBytes = null, timestamp = 0, payloadData = emptyMap(),
-        )
     }
 
     @AfterTest
@@ -199,37 +189,6 @@ class DesktopCallRingSinkTest {
         actions.onAccept()
         runCurrent()
         assertFalse(rig.controller.state.value.phase == CallPhase.Connecting)
-    }
-
-    @Test
-    fun aRingThatExpiresWhileTheAppIsInTheBackgroundPostsOneMissedCallNotification() = runTest {
-        val rig = Rig(this, frodo, backgrounded = true)
-        ring("c1")
-        runCurrent()
-        advanceTimeBy(RING_TIMEOUT_MS + 1_000)
-        runCurrent()
-        assertEquals(listOf("Missed call from Sam"), rig.missed.map { it.title })
-        assertTrue(rig.notifier.live.isEmpty())
-    }
-
-    @Test
-    fun aMissedRingWithTheAppInTheForegroundPostsNoNotification() = runTest {
-        val rig = Rig(this, frodo, backgrounded = false)
-        ring("c1")
-        runCurrent()
-        advanceTimeBy(RING_TIMEOUT_MS + 1_000)
-        runCurrent()
-        assertTrue(rig.missed.isEmpty())
-    }
-
-    @Test
-    fun aDeclinedRingIsNotAMissedCall() = runTest {
-        val rig = Rig(this, frodo, backgrounded = true)
-        ring("c1")
-        runCurrent()
-        rig.notifier.actions!!.onDecline()
-        runCurrent()
-        assertTrue(rig.missed.isEmpty())
     }
 
     @Test
