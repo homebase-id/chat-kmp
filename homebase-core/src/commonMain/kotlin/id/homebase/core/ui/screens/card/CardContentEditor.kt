@@ -51,7 +51,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,7 +66,6 @@ import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_remove
 import id.homebase.resources.profile_card_content_could_add
 import id.homebase.resources.profile_card_content_name_required
-import id.homebase.resources.profile_card_content_required_hint
 import id.homebase.resources.profile_card_content_on_card
 import id.homebase.resources.profile_card_import_action
 import id.homebase.resources.profile_card_import_count
@@ -347,7 +345,6 @@ private fun EditorRow(
     val hide = stringResource(MR.string.profile_card_content_hide_this, item.text)
     val show = stringResource(MR.string.profile_card_content_show_this, item.text)
     val edit = stringResource(MR.string.profile_card_content_edit_this, label)
-    val required = stringResource(MR.string.profile_card_content_name_required)
     Surface(
         onClick = onOpen,
         enabled = enabled,
@@ -355,7 +352,6 @@ private fun EditorRow(
         shape = shape,
         modifier = Modifier.fillMaxWidth().semantics {
             onClick(label = edit) { onOpen(); true }
-            if (item.required) stateDescription = required
         },
     ) {
         Row(
@@ -382,7 +378,7 @@ private fun EditorRow(
                 )
                 if (item.required) {
                     Text(
-                        text = stringResource(MR.string.profile_card_content_required_hint),
+                        text = stringResource(MR.string.profile_card_content_name_required),
                         style = MaterialTheme.typography.labelSmall,
                         color = colors.onSurfaceVariant,
                     )
