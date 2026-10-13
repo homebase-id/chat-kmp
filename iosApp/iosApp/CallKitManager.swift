@@ -305,6 +305,8 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     private var track: RTCVideoTrack?
     private var possibleObservation: NSKeyValueObservation?
     private var lifecycleObservers: [NSObjectProtocol] = []
+    // A controller released while its window is up leaves that window on screen with nothing to close it.
+    private var stopping: [(AVPictureInPictureController, AVPictureInPictureVideoCallViewController?)] = []
     private var firstFrameLogged = false
     private var log: (String) -> Void = { NSLog("%@", $0) }
 
@@ -360,6 +362,12 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
                     self.log("pip at \(name.rawValue): \(self.state(source: source))")
                 }
             }
+            // iOS does not always end an automatically started PiP when the app comes back, so the window would cover the call screen.
+            lifecycleObservers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self, let controller = self.controller else { return }
+                self.log("pip at \(UIApplication.didBecomeActiveNotification.rawValue): \(self.state(source: source))")
+                if controller.isPictureInPictureActive { controller.stopPictureInPicture() }
+            })
         }
     }
 
@@ -384,7 +392,10 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
         lifecycleObservers = []
         possibleObservation = nil
         controller?.canStartPictureInPictureAutomaticallyFromInline = false
-        if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
+        if let controller, controller.isPictureInPictureActive {
+            stopping.append((controller, content))
+            controller.stopPictureInPicture()
+        }
         if let renderer { track?.remove(renderer); renderer.delegate = nil; renderer.removeFromSuperview() }
         controller = nil
         content = nil
@@ -397,7 +408,11 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         log("pip failed to start: \(error)")
     }
-    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) { log("pip stopped") }
+    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
+        let wasStopping = stopping.contains { $0.0 === c }
+        stopping.removeAll { $0.0 === c }
+        log("pip stopped\(wasStopping ? " after teardown" : "")")
+    }
 
     func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
