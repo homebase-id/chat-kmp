@@ -97,13 +97,11 @@ fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean =
 @Composable
 fun callShortcutKeys(key: String, shift: Boolean = false): String {
     val res = when {
-        LocalMacShortcuts.current -> if (shift) MR.string.call_key_cmd_shift_combo else MR.string.call_key_cmd_combo
+        LocalCallHost.current.macShortcuts -> if (shift) MR.string.call_key_cmd_shift_combo else MR.string.call_key_cmd_combo
         else -> if (shift) MR.string.call_key_ctrl_shift_combo else MR.string.call_key_ctrl_combo
     }
     return stringResource(res, key)
 }
-
-val LocalMacShortcuts = staticCompositionLocalOf { false }
 
 class ShortcutGate(private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() }) {
     private var last: CallShortcut? = null

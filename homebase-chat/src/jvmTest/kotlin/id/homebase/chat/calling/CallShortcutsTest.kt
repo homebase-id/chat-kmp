@@ -144,14 +144,14 @@ class CallShortcutsTest {
 
     @Test
     fun layoutClassFollowsTheWindowSize() {
-        assertEquals(DesktopTier.Minimal, desktopTier(400.dp, 300.dp))
-        assertEquals(DesktopTier.Minimal, desktopTier(320.dp, 240.dp))
-        assertEquals(DesktopTier.Minimal, desktopTier(479.dp, 700.dp))
-        assertEquals(DesktopTier.Minimal, desktopTier(900.dp, 359.dp))
-        assertEquals(DesktopTier.Compact, desktopTier(480.dp, 360.dp))
-        assertEquals(DesktopTier.Compact, desktopTier(599.dp, 700.dp))
-        assertEquals(DesktopTier.Compact, desktopTier(900.dp, 400.dp))
-        assertEquals(DesktopTier.Medium, desktopTier(700.dp, 500.dp))
-        assertEquals(DesktopTier.Expanded, desktopTier(960.dp, 640.dp))
+        assertEquals(CallTier.Minimal, desktopTier(400.dp, 300.dp))
+        assertEquals(CallTier.Minimal, desktopTier(320.dp, 240.dp))
+        assertEquals(CallTier.Minimal, desktopTier(479.dp, 700.dp))
+        assertEquals(CallTier.Minimal, desktopTier(900.dp, 359.dp))
+        assertEquals(CallTier.Compact, desktopTier(480.dp, 360.dp))
+        assertEquals(CallTier.Compact, desktopTier(599.dp, 700.dp))
+        assertEquals(CallTier.Compact, desktopTier(900.dp, 400.dp))
+        assertEquals(CallTier.Medium, desktopTier(700.dp, 500.dp))
+        assertEquals(CallTier.Expanded, desktopTier(960.dp, 640.dp))
     }
 }

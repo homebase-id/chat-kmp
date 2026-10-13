@@ -308,24 +308,16 @@ internal val MinimalHeight = 360.dp
 private val CompactDockReserve = 112.dp
 private val CompactPipTop = 72.dp
 
-/** A phone on its side: too short for the stacked phone layout, and its width must not pass it off as a desktop. */
-private val LocalCompactHeight = staticCompositionLocalOf { false }
-
 internal fun isCompactHeight(width: Dp, height: Dp): Boolean = height < CompactHeight && width > height
-
-internal enum class DesktopTier { Minimal, Compact, Medium, Expanded }
-
-/** Set only inside a dedicated desktop call window; null on phones and in the in-app overlay. */
-internal val LocalDesktopTier = staticCompositionLocalOf<DesktopTier?> { null }
 
 /** Which dock device menu is open, hoisted so a snackbar's "Change" can open the mic menu at its own chevron. */
 private val LocalDeviceMenuRequest = staticCompositionLocalOf<MutableState<MediaDeviceKind?>> { error("provided by CallScreen") }
 
-internal fun desktopTier(width: Dp, height: Dp): DesktopTier = when {
-    width < MinimalWidth || height < MinimalHeight -> DesktopTier.Minimal
-    width < 600.dp || height < CompactHeight -> DesktopTier.Compact
-    width < LargeWidth -> DesktopTier.Medium
-    else -> DesktopTier.Expanded
+internal fun desktopTier(width: Dp, height: Dp): CallTier = when {
+    width < MinimalWidth || height < MinimalHeight -> CallTier.Minimal
+    width < 600.dp || height < CompactHeight -> CallTier.Compact
+    width < LargeWidth -> CallTier.Medium
+    else -> CallTier.Expanded
 }
 
 
@@ -354,11 +346,11 @@ fun CallScreen(
     avatar: @Composable (size: Dp) -> Unit,
     actions: CallScreenActions,
     modifier: Modifier = Modifier,
-    fillsWindow: Boolean = false,
     topInset: Dp = 0.dp,
     deviceMenu: MutableState<MediaDeviceKind?> = remember { mutableStateOf(null) },
     hold: ChromeHold = remember { ChromeHold() },
 ) {
+    val fillsWindow = LocalCallHost.current.ownsWindow
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     var showShortcuts by remember { mutableStateOf(false) }
@@ -412,14 +404,9 @@ fun CallScreen(
         val compact = isCompactHeight(maxWidth, maxHeight)
         val chromeInsets = Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset)
         // A dedicated call window is already the frame, so no card inside it.
-        if (fillsWindow) {
-            CompositionLocalProvider(LocalDesktopTier provides desktopTier(maxWidth, maxHeight), LocalCompactHeight provides compact) {
-                CallStage(ui, large = true, peerName, avatar, actions, chromeInsets)
-            }
-        } else {
-            CompositionLocalProvider(LocalCompactHeight provides compact) {
-                CallStage(ui, large = !compact && maxWidth >= LargeWidth, peerName, avatar, actions, chromeInsets)
-            }
+        val tier = if (fillsWindow) desktopTier(maxWidth, maxHeight) else CallTier.Embedded
+        CompositionLocalProvider(LocalCallLayout provides CallLayoutMetrics(tier, compact)) {
+            CallStage(ui, large = fillsWindow || (!compact && maxWidth >= LargeWidth), peerName, avatar, actions, chromeInsets)
         }
     }
     }
@@ -473,7 +460,7 @@ private fun CallStage(
                 scaleOut(MaterialTheme.motionScheme.defaultSpatialSpec(), targetScale = 0.2f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.95f, 0.12f)),
         ) { ui.videos.local?.let { SelfStage(it) } }
         Box(contentInsets.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            Box(Modifier.then(if (large || LocalCompactHeight.current) Modifier else Modifier.widthIn(max = ContentMaxWidth)).fillMaxSize()) {
+            Box(Modifier.then(if (large || LocalCallLayout.current.compactHeight) Modifier else Modifier.widthIn(max = ContentMaxWidth)).fillMaxSize()) {
                 when (val phase = ui.phase) {
                     CallPhase.Incoming -> IncomingLayout(ui, large, peerName, avatar, actions)
                     CallPhase.Outgoing -> OutgoingLayout(ui, large, peerName, avatar, actions, onVideo = selfStage)
@@ -586,22 +573,22 @@ private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp)
                     avatar(backdrop)
                 }
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f)))
-                val tier = LocalDesktopTier.current
+                val tier = LocalCallLayout.current.tier
                 val size = when (tier) {
-                    DesktopTier.Minimal -> 88.dp
-                    DesktopTier.Compact -> 128.dp
-                    DesktopTier.Medium -> 168.dp
+                    CallTier.Minimal -> 88.dp
+                    CallTier.Compact -> 128.dp
+                    CallTier.Medium -> 168.dp
                     else -> if (large) 208.dp else 152.dp
                 }
                 Column(
-                    Modifier.padding(bottom = if (tier == DesktopTier.Minimal) 48.dp else if (large) 40.dp else 64.dp),
+                    Modifier.padding(bottom = if (tier == CallTier.Minimal) 48.dp else if (large) 40.dp else 64.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(Modifier.size(size * 1.3f), contentAlignment = Alignment.Center) {
                         AvatarHalo(size, if (ui.phase == CallPhase.Connecting) HaloMode.Waiting else HaloMode.Still)
                         avatar(size)
                     }
-                    if (ui.phase == CallPhase.Connected && tier != DesktopTier.Minimal) {
+                    if (ui.phase == CallPhase.Connected && tier != CallTier.Minimal) {
                         Spacer(Modifier.height(12.dp))
                         Surface(shape = CircleShape, color = chromeColor(), contentColor = MaterialTheme.colorScheme.onSurface) {
                             Row(
@@ -623,7 +610,7 @@ private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp)
                 contentAlignment = Alignment.Center,
             ) {
                 // A desktop window says it in the name pill instead, clear of the avatar and the self view.
-                if (LocalDesktopTier.current == null) Surface(
+                if (!LocalCallLayout.current.windowed) Surface(
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     shape = RoundedCornerShape(28.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -652,7 +639,7 @@ private fun BoxScope.IncomingLayout(
     actions: CallScreenActions,
 ) {
     val video = ui.isVideoCall
-    val compact = LocalCompactHeight.current
+    val compact = LocalCallLayout.current.compactHeight
     PeerHeader(
         name = peerName,
         status = stringResource(if (video) MR.string.call_incoming_video else MR.string.call_incoming_voice),
@@ -670,7 +657,7 @@ private fun BoxScope.IncomingLayout(
             },
         ),
         horizontalArrangement = when {
-            LocalDesktopTier.current == DesktopTier.Compact -> Arrangement.spacedBy(16.dp)
+            LocalCallLayout.current.tier == CallTier.Compact -> Arrangement.spacedBy(16.dp)
             large || compact -> Arrangement.spacedBy(64.dp)
             else -> Arrangement.SpaceEvenly
         },
@@ -701,7 +688,7 @@ private fun BoxScope.IncomingLayout(
             container = MaterialTheme.colorScheme.primary,
             content = MaterialTheme.colorScheme.onPrimary,
             onClick = if (video) actions.acceptVideo else actions.acceptAudio,
-            size = if (LocalDesktopTier.current != null) 72.dp else 84.dp,
+            size = if (LocalCallLayout.current.windowed) 72.dp else 84.dp,
             pulse = true,
         )
     }
@@ -719,7 +706,7 @@ private fun BoxScope.OutgoingLayout(
     val status = stringResource(if (ui.peerRinging) MR.string.call_status_ringing else MR.string.call_status_calling)
     if (onVideo) {
         // A narrow window has no room beside the top-end buttons for a centred card.
-        val narrow = LocalDesktopTier.current.let { it == DesktopTier.Minimal || it == DesktopTier.Compact }
+        val narrow = LocalCallLayout.current.tier.let { it == CallTier.Minimal || it == CallTier.Compact }
         RingingCard(
             peerName, status, avatar,
             if (narrow) Modifier.align(Alignment.TopStart).padding(top = 4.dp, end = 104.dp)
@@ -731,16 +718,16 @@ private fun BoxScope.OutgoingLayout(
         avatar = avatar,
         halo = HaloMode.Ringing,
         large = large,
-        modifier = Modifier.align(Alignment.Center).padding(bottom = if (LocalDesktopTier.current == DesktopTier.Minimal) 56.dp else if (large) 120.dp else if (LocalCompactHeight.current) 104.dp else 190.dp),
+        modifier = Modifier.align(Alignment.Center).padding(bottom = if (LocalCallLayout.current.tier == CallTier.Minimal) 56.dp else if (large) 120.dp else if (LocalCallLayout.current.compactHeight) 104.dp else 190.dp),
     )
-    if (LocalDesktopTier.current != null) CallTopBar(ui, center = null, actions = actions, modifier = Modifier.align(Alignment.TopCenter))
+    if (LocalCallLayout.current.windowed) CallTopBar(ui, center = null, actions = actions, modifier = Modifier.align(Alignment.TopCenter))
     ControlDock(ui, large, actions, Modifier.align(Alignment.BottomCenter), placing = true)
 }
 
 /** Who you are calling, kept compact and on a card so your own camera stays the stage while it rings. */
 @Composable
 private fun RingingCard(peerName: String, status: String, avatar: @Composable (Dp) -> Unit, modifier: Modifier) {
-    val minimal = LocalDesktopTier.current == DesktopTier.Minimal
+    val minimal = LocalCallLayout.current.tier == CallTier.Minimal
     Surface(
         modifier = modifier.padding(horizontal = 12.dp).semantics(mergeDescendants = true) {},
         shape = RoundedCornerShape(32.dp),
@@ -791,7 +778,7 @@ private fun BoxScope.InCallLayout(
 
     if (!videoMode) {
         Column(
-            Modifier.align(Alignment.Center).padding(bottom = if (LocalDesktopTier.current == DesktopTier.Minimal) 56.dp else if (large) 110.dp else if (LocalCompactHeight.current) 104.dp else 200.dp),
+            Modifier.align(Alignment.Center).padding(bottom = if (LocalCallLayout.current.tier == CallTier.Minimal) 56.dp else if (large) 110.dp else if (LocalCallLayout.current.compactHeight) 104.dp else 200.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PeerHeader(
@@ -841,7 +828,7 @@ private fun AudioCallStatusContent(ui: CallUiState, elapsed: String) {
         else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 elapsed,
-                style = (if (LocalDesktopTier.current == DesktopTier.Expanded) MaterialTheme.typography.headlineSmallEmphasized else MaterialTheme.typography.titleLargeEmphasized)
+                style = (if (LocalCallLayout.current.tier == CallTier.Expanded) MaterialTheme.typography.headlineSmallEmphasized else MaterialTheme.typography.titleLargeEmphasized)
                     .copy(fontWeight = FontWeight.SemiBold).tabular(),
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -866,13 +853,13 @@ private fun AudioCallStatusContent(ui: CallUiState, elapsed: String) {
 private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actions: CallScreenActions, modifier: Modifier) {
     var codeOpen by remember(ui.callId) { mutableStateOf(false) }
     HoldChromeWhile(codeOpen)
-    val desktop = LocalDesktopTier.current != null
-    val minimal = LocalDesktopTier.current == DesktopTier.Minimal
+    val desktop = LocalCallLayout.current.windowed
+    val minimal = LocalCallLayout.current.tier == CallTier.Minimal
     val mini = actions.toggleMini
     Box(modifier.chromeFade().testTag(CallTopBarTag).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         // The window's own controls own the top-start corner (macOS traffic lights), so desktop chrome sits at the end.
         if (!desktop) ChromeIconButton(Icons.Default.KeyboardArrowDown, stringResource(MR.string.call_minimize), actions.minimize, Modifier.align(Alignment.TopStart))
-        val narrow = LocalDesktopTier.current == DesktopTier.Compact || minimal
+        val narrow = LocalCallLayout.current.tier == CallTier.Compact || minimal
         val code = ui.verificationCode
         val trailing = (if (code != null) 1 else 0) + (if (mini != null) 1 else 0) + (if (desktop) 1 else 0)
         val reserve = (trailing * 48).dp
@@ -952,7 +939,7 @@ private fun ChromeIconButton(
 /** Desktop only: a pointer hovers there, and a touch long-press would hijack a phone's press-and-hold. */
 @Composable
 internal fun DesktopTooltip(text: String, anchor: TooltipAnchorPosition = TooltipAnchorPosition.Above, content: @Composable () -> Unit) {
-    if (LocalDesktopTier.current == null) content() else BarTooltip(text, anchor, content)
+    if (!LocalCallLayout.current.windowed) content() else BarTooltip(text, anchor, content)
 }
 
 /** Compose Desktop draws no focus indicator on M3 buttons, so Tab navigation would be invisible without it. */
@@ -977,7 +964,7 @@ private data class PillStatus(val icon: ImageVector, val text: StringResource, v
 
 @Composable
 private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
-    val minimal = LocalDesktopTier.current == DesktopTier.Minimal
+    val minimal = LocalCallLayout.current.tier == CallTier.Minimal
     val status = when {
         minimal -> null
         ui.quality == CallQuality.Poor -> PillStatus(Icons.Default.Warning, MR.string.call_poor_connection, warn = true)
@@ -1000,7 +987,7 @@ private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val reconnecting = ui.phase == CallPhase.Reconnecting && LocalDesktopTier.current != null
+                val reconnecting = ui.phase == CallPhase.Reconnecting && LocalCallLayout.current.windowed
                 Row(
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     verticalAlignment = Alignment.CenterVertically,
@@ -1061,15 +1048,15 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val scope = rememberCoroutineScope()
     val springSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Offset>()
-    val tier = LocalDesktopTier.current
+    val tier = LocalCallLayout.current.tier
     BoxWithConstraints(Modifier.matchParentSize().then(insets)) {
-        if (tier == DesktopTier.Minimal) return@BoxWithConstraints
-        val compact = LocalCompactHeight.current
+        if (tier == CallTier.Minimal) return@BoxWithConstraints
+        val compact = LocalCallLayout.current.compactHeight
         // A phone on its side captures landscape frames, so the inset turns with it.
         val (pipWidth, pipHeight) = when {
-            tier == DesktopTier.Minimal -> 96.dp to 64.dp
-            tier == DesktopTier.Compact -> 144.dp to 96.dp
-            tier == DesktopTier.Medium -> 176.dp to 120.dp
+            tier == CallTier.Minimal -> 96.dp to 64.dp
+            tier == CallTier.Compact -> 144.dp to 96.dp
+            tier == CallTier.Medium -> 176.dp to 120.dp
             large -> 192.dp to 132.dp
             compact -> 156.dp to 108.dp
             else -> 108.dp to 156.dp
@@ -1079,13 +1066,13 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val pipW = with(density) { pipWidth.toPx() }
         val pipH = with(density) { pipHeight.toPx() }
         val margin = with(density) { 16.dp.toPx() }
-        val top = with(density) { (if (tier == DesktopTier.Minimal) 64.dp else if (large) 80.dp else if (compact) CompactPipTop else PipTop).toPx() }
-        val bottom = with(density) { (if (tier == DesktopTier.Minimal) 72.dp else if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
+        val top = with(density) { (if (tier == CallTier.Minimal) 64.dp else if (large) 80.dp else if (compact) CompactPipTop else PipTop).toPx() }
+        val bottom = with(density) { (if (tier == CallTier.Minimal) 72.dp else if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
         val previewDescription = stringResource(MR.string.call_local_preview)
         val swapLabel = stringResource(MR.string.call_swap_views)
         val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
         // A narrow window has no top corner clear of the centred name pill.
-        val home = if (tier == DesktopTier.Compact || tier == DesktopTier.Minimal) 3 else 1
+        val home = if (tier == CallTier.Compact || tier == CallTier.Minimal) 3 else 1
         val anchor = remember(width, height, compact) { Animatable(corners[home], Offset.VectorConverter) }
         var drag by remember(width, height, compact) { mutableStateOf(Offset.Zero) }
         var hidden by rememberSaveable { mutableStateOf(false) }
@@ -1168,17 +1155,17 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
 @Composable
 private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActions, modifier: Modifier, placing: Boolean) {
     val modifier = modifier.chromeFade().testTag(CallDockTag)
-    if (LocalDesktopTier.current == DesktopTier.Minimal) {
+    if (LocalCallLayout.current.tier == CallTier.Minimal) {
         MinimalDock(ui, actions, modifier)
         return
     }
-    val compact = LocalCompactHeight.current
+    val compact = LocalCallLayout.current.compactHeight
     val showLabels = !large && !compact
     // Desktop pickers choose the real output and camera, so the phone route and flip toggles would only duplicate them.
     val pickers = ui.devices.isNotEmpty()
     val showRoute = ui.availableRoutes.size > 1 && !pickers
     // A desktop voice call can turn the camera on mid-call; the engine renegotiates when there is no video track yet.
-    val showCamera = ui.videos.local != null || (LocalDesktopTier.current != null && ui.inProgress && !placing)
+    val showCamera = ui.videos.local != null || (LocalCallLayout.current.windowed && ui.inProgress && !placing)
     // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
     val showFlip = ui.localVideo && !large && !placing && !pickers
     // With pickers each of mic and camera is a split button: a toggle segment and its own menu segment in the same group.
@@ -1253,7 +1240,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             ) {
                 ButtonGroup(horizontalArrangement = Arrangement.spacedBy(SegmentGap)) { toggles() }
                 VerticalDivider(Modifier.height(40.dp).padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                val tight = LocalDesktopTier.current == DesktopTier.Compact
+                val tight = LocalCallLayout.current.tier == CallTier.Compact
                 EndCallButton(actions.hangup, Modifier.size(width = if (tight) 76.dp else 96.dp, height = if (tight) 52.dp else 56.dp))
             }
         }
@@ -1287,9 +1274,9 @@ private fun DockSurface(modifier: Modifier, radius: Dp, content: @Composable () 
 private val ToggleSize = 64.dp
 
 @Composable
-private fun toggleSize(): Dp = when (LocalDesktopTier.current) {
-    DesktopTier.Minimal -> 44.dp
-    DesktopTier.Compact -> 52.dp
+private fun toggleSize(): Dp = when (LocalCallLayout.current.tier) {
+    CallTier.Minimal -> 44.dp
+    CallTier.Compact -> 52.dp
     else -> ToggleSize
 }
 
@@ -1626,7 +1613,7 @@ private fun BoxScope.EndedLayout(
     } else reasonText
     EndScaffold(
         large = large,
-        headerBottom = if (large) 120.dp else if (LocalCompactHeight.current) 80.dp else 170.dp,
+        headerBottom = if (large) 120.dp else if (LocalCallLayout.current.compactHeight) 80.dp else 170.dp,
         spacing = 12.dp,
         header = { modifier -> PeerHeader(name = peerName, status = status, avatar = avatar, halo = HaloMode.None, dimmed = true, large = large, modifier = modifier) },
     ) { slot ->
@@ -1662,7 +1649,7 @@ private fun BoxScope.EndScaffold(
     header: @Composable (Modifier) -> Unit,
     buttons: @Composable (slot: Modifier) -> Unit,
 ) {
-    if (LocalDesktopTier.current == null) {
+    if (!LocalCallLayout.current.windowed) {
         header(Modifier.align(Alignment.Center).padding(bottom = headerBottom))
         EndActions(large, spacing, buttons)
         return
@@ -1684,7 +1671,7 @@ private fun BoxScope.EndScaffold(
 /** Stacked under the header in portrait; side by side on a phone in landscape, where a stack would not fit. */
 @Composable
 private fun BoxScope.EndActions(large: Boolean, spacing: Dp, content: @Composable (slot: Modifier) -> Unit) {
-    if (LocalCompactHeight.current) {
+    if (LocalCallLayout.current.compactHeight) {
         Row(
             Modifier.align(Alignment.BottomCenter).widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(spacing),
@@ -1732,7 +1719,7 @@ private fun BoxScope.FailedLayout(
             FailReason.Other -> MR.string.call_failed_other_body
         },
     )
-    val compact = LocalCompactHeight.current
+    val compact = LocalCallLayout.current.compactHeight
     EndScaffold(
         large = large,
         headerBottom = if (large) 72.dp else if (compact) 80.dp else 120.dp,
@@ -1752,7 +1739,7 @@ private fun BoxScope.FailedLayout(
 
 @Composable
 private fun FailedHeader(reason: FailReason, title: String, body: String, peerName: String, avatar: @Composable (Dp) -> Unit, modifier: Modifier) {
-    val compact = LocalCompactHeight.current
+    val compact = LocalCallLayout.current.compactHeight
     val badge = when (reason) {
         FailReason.NoRoute -> Icons.Default.WifiOff
         FailReason.Permission -> Icons.Default.MicOff
@@ -1962,14 +1949,14 @@ private fun PeerHeader(
     modifier: Modifier = Modifier,
     dimmed: Boolean = false,
 ) {
-    val compact = LocalCompactHeight.current
-    val tier = LocalDesktopTier.current
+    val compact = LocalCallLayout.current.compactHeight
+    val tier = LocalCallLayout.current.tier
     val avatarSize = when {
-        tier == DesktopTier.Minimal -> 72.dp
+        tier == CallTier.Minimal -> 72.dp
         compact -> 72.dp
-        tier == DesktopTier.Compact -> 112.dp
-        tier == DesktopTier.Medium -> 136.dp
-        tier == DesktopTier.Expanded -> 184.dp
+        tier == CallTier.Compact -> 112.dp
+        tier == CallTier.Medium -> 136.dp
+        tier == CallTier.Expanded -> 184.dp
         large -> 152.dp
         else -> 136.dp
     }
@@ -1983,10 +1970,10 @@ private fun PeerHeader(
         Text(
             name,
             style = when {
-                tier == DesktopTier.Minimal -> MaterialTheme.typography.titleLargeEmphasized
-                compact || tier == DesktopTier.Compact -> MaterialTheme.typography.headlineMediumEmphasized
-                tier == DesktopTier.Medium -> MaterialTheme.typography.headlineLargeEmphasized
-                tier == DesktopTier.Expanded -> MaterialTheme.typography.displaySmallEmphasized
+                tier == CallTier.Minimal -> MaterialTheme.typography.titleLargeEmphasized
+                compact || tier == CallTier.Compact -> MaterialTheme.typography.headlineMediumEmphasized
+                tier == CallTier.Medium -> MaterialTheme.typography.headlineLargeEmphasized
+                tier == CallTier.Expanded -> MaterialTheme.typography.displaySmallEmphasized
                 large -> MaterialTheme.typography.displayMediumEmphasized
                 else -> MaterialTheme.typography.displaySmallEmphasized
             }.copy(fontWeight = FontWeight.SemiBold),

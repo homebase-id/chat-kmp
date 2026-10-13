@@ -12,6 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.MutableState
@@ -92,7 +93,7 @@ class CallDevicesScreenshotTest {
         setContent {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                 Box(Modifier.fillMaxSize()) {
-                    CallScreen(
+                    CompositionLocalProvider(LocalCallHost provides CallHostCapabilities(ownsWindow = true)) { CallScreen(
                         ui = ui,
                         peerName = "Samwise Gamgee",
                         avatar = { },
@@ -101,9 +102,8 @@ class CallDevicesScreenshotTest {
                             switchCamera = {}, setRoute = {}, onVerificationClick = {}, retry = {}, close = {}, minimize = {},
                             endFromKeyboard = {}, selectDevice = { kind, id -> picked += kind to id },
                         ),
-                        fillsWindow = true,
                         deviceMenu = deviceMenu ?: remember { mutableStateOf(null) },
-                    )
+                    ) }
                     if (menu != null) {
                         Surface(
                             modifier = Modifier.align(menuAlign).padding(menuPadding).width(IntrinsicSize.Max).widthIn(min = 260.dp),

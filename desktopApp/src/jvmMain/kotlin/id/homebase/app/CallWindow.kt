@@ -40,8 +40,8 @@ import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.chat.calling.CallRingWindowContent
 import id.homebase.chat.calling.CallWindowContent
 import id.homebase.chat.calling.CallWindowModel
-import id.homebase.chat.calling.LocalMacShortcuts
-import id.homebase.chat.calling.LocalMiniWindowShape
+import id.homebase.chat.calling.CallHostCapabilities
+import id.homebase.chat.calling.LocalCallHost
 import id.homebase.chat.calling.RingWindowWidth
 import id.homebase.chat.calling.rememberCallWindowTitle
 import id.homebase.core.settings.ThemeState
@@ -64,8 +64,11 @@ private val MAC_CALL_TITLE_BAR_HEIGHT = 28.dp
 
 private val RingWindowSize = DpSize(RingWindowWidth, Dp.Unspecified)
 
-// The mini and ring frames are transparent on macOS only, so only there can the corners round.
-private val floatingWindowShape = if (isMacOs) RoundedCornerShape(12.dp) else RectangleShape
+private val desktopCallHost = CallHostCapabilities(
+    macShortcuts = isMacOs,
+    // The mini and ring frames are transparent on macOS only, so only there can the corners round.
+    floatingWindowShape = if (isMacOs) RoundedCornerShape(12.dp) else RectangleShape,
+)
 
 internal class CallBodySpec(
     val onMinimize: () -> Unit,
@@ -79,14 +82,13 @@ internal class CallBodySpec(
 internal typealias CallBody = @Composable (CallWindowModel, CallBodySpec) -> Unit
 
 private val defaultCallBody: CallBody = { call, spec ->
-    CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape) {
+    CompositionLocalProvider(LocalCallHost provides desktopCallHost) {
         CallWindowContent(
             call, spec.onMinimize, spec.topInset,
             mini = spec.mini,
             onToggleMini = spec.onToggleMini,
             onMiniDragStart = spec.onMiniDragStart,
             onMiniDrag = spec.onMiniDrag,
-            macShortcuts = isMacOs,
         )
     }
 }
@@ -168,7 +170,7 @@ private fun ApplicationScope.RingCallWindow(call: CallWindowModel, theme: ThemeS
     ) {
         RegisterCallWindow()
         CallWindowTheme(theme) {
-            CompositionLocalProvider(LocalMiniWindowShape provides floatingWindowShape, LocalMacShortcuts provides isMacOs) {
+            CompositionLocalProvider(LocalCallHost provides desktopCallHost) {
                 CallRingWindowContent(call, Modifier)
             }
         }

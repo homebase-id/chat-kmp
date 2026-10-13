@@ -88,7 +88,6 @@ fun CallOverlay(
     avatar: @Composable (Dp) -> Unit,
     modifier: Modifier = Modifier,
     onMinimize: () -> Unit = viewModel::minimize,
-    fillsWindow: Boolean = false,
     topInset: Dp = 0.dp,
     onToggleMini: (() -> Unit)? = null,
 ) {
@@ -135,7 +134,7 @@ fun CallOverlay(
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset, deviceMenu = deviceMenu, hold = hold)
+                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, topInset = topInset, deviceMenu = deviceMenu, hold = hold)
             }
         }
         if (ui.visible && !inPip) {

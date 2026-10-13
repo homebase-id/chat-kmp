@@ -123,9 +123,9 @@ class CallDesktopErgonomicsTest {
         setContent {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                 val density = LocalDensity.current
-                CompositionLocalProvider(LocalMacShortcuts provides mac, LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
+                CompositionLocalProvider(LocalCallHost provides CallHostCapabilities(ownsWindow = true, macShortcuts = mac), LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
                     Box(Modifier.fillMaxSize()) {
-                        CallScreen(ui = ui, peerName = "Samwise Gamgee", avatar = avatar, actions = recorder.actions(), fillsWindow = true)
+                        CallScreen(ui = ui, peerName = "Samwise Gamgee", avatar = avatar, actions = recorder.actions())
                         overlay?.invoke()
                     }
                 }

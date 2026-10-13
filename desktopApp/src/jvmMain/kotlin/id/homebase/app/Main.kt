@@ -26,6 +26,8 @@ import com.kdroid.composetray.utils.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
+import id.homebase.core.util.HostOs
+import id.homebase.core.util.hostOs
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
@@ -446,8 +448,7 @@ fun main() {
     }
 }
 
-internal val isMacOs =
-    System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
+internal val isMacOs = hostOs == HostOs.Mac
 
 // Traffic lights float over the content once apple.awt.fullWindowContent is on.
 private val MAC_TITLE_BAR_HEIGHT = 28.dp

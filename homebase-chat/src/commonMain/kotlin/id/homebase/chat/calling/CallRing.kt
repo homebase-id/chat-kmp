@@ -76,7 +76,7 @@ fun CallRingWindowContent(model: CallWindowModel, modifier: Modifier = Modifier)
         onAcceptVideo = model::acceptVideo,
         onDecline = model::decline,
         modifier = modifier,
-        shape = LocalMiniWindowShape.current,
+        shape = LocalCallHost.current.floatingWindowShape,
     )
 }
 

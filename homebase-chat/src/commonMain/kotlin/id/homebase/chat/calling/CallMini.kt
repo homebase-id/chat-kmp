@@ -36,14 +36,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -76,9 +73,6 @@ import org.jetbrains.compose.resources.stringResource
 val MiniVideoSize = 320.dp to 180.dp
 val MiniVoiceSize = 360.dp to 88.dp
 
-// Clips the mini content where the host window can show rounded corners (a transparent macOS frame).
-val LocalMiniWindowShape = staticCompositionLocalOf<Shape> { RectangleShape }
-
 internal const val CallMiniTag = "call-mini"
 
 @Composable
@@ -96,8 +90,8 @@ fun CallMiniContent(
     val expand = actions.toggleMini ?: {}
     val gate = LocalShortcutGate.current
     // A bare background provides no content colour, so text would fall back to black on the dark mini.
-    CompositionLocalProvider(LocalDesktopTier provides DesktopTier.Minimal, LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-        val shape = LocalMiniWindowShape.current
+    CompositionLocalProvider(LocalCallLayout provides CallLayoutMetrics(CallTier.Minimal), LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+        val shape = LocalCallHost.current.floatingWindowShape
         Box(
             modifier.fillMaxSize()
                 .testTag(CallMiniTag)

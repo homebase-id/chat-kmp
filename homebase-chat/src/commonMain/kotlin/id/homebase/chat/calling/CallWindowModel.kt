@@ -171,14 +171,13 @@ fun CallWindowContent(
     modifier: Modifier = Modifier,
     mini: Boolean = false,
     onToggleMini: (() -> Unit)? = null,
-    macShortcuts: Boolean = false,
     onMiniDragStart: () -> Unit = {},
     onMiniDrag: () -> Unit = {},
 ) {
     val ui by model.uiState.collectAsStateWithLifecycle()
     val name = model.peerName(ui.peer)
     val avatar: @Composable (Dp) -> Unit = { size -> ui.peer?.let { PeerAvatar(it, name, size) } }
-    CompositionLocalProvider(LocalMacShortcuts provides macShortcuts, LocalShortcutGate provides model.shortcutGate) {
+    CompositionLocalProvider(LocalCallHost provides LocalCallHost.current.copy(ownsWindow = true), LocalShortcutGate provides model.shortcutGate) {
         if (mini) {
             val events = rememberCallEvents(model.viewModel)
             val expand = onToggleMini ?: {}
@@ -212,7 +211,6 @@ fun CallWindowContent(
                 peerName = name,
                 avatar = avatar,
                 onMinimize = onMinimize,
-                fillsWindow = true,
                 topInset = topInset,
                 onToggleMini = onToggleMini,
             )
