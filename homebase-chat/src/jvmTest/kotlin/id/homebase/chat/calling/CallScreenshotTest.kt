@@ -504,6 +504,41 @@ class CallScreenshotTest {
     }
 
     @Test
+    fun aSecondTapAfterCloseReachesTheAppOnlyOnceTheCallScreenHasFullyLeft() {
+        val seen = mutableListOf<Boolean>()
+        for (gap in 0L..600L step 50L) runDesktopComposeUiTest(390, 844) {
+            var under = 0
+            var state by androidx.compose.runtime.mutableStateOf(shots.first { it.name == "ended" }.state(base(false, Size.Phone)))
+            mainClock.autoAdvance = false
+            val recorder = Recorder()
+            val actions = recorder.actions()
+            setContent {
+                HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
+                    Box(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxSize().clickable { under++ })
+                        CallLayer(visible = state.visible, surface = CallSurface.Full) {
+                            CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = {}, actions = actions)
+                        }
+                    }
+                }
+            }
+            mainClock.advanceTimeBy(1_000)
+            val close = onNodeWithText("Close").getBoundsInRoot()
+            val at = Offset(((close.left + close.right) / 2).value, ((close.top + close.bottom) / 2).value)
+            onRoot().performTouchInput { click(at) }
+            assertEquals(listOf("close"), recorder.calls)
+            state = state.copy(dismissedCallId = state.callId)
+            mainClock.advanceTimeBy(gap)
+            val onScreen = onAllNodes(hasText("Close")).fetchSemanticsNodes().isNotEmpty()
+            onRoot().performTouchInput { click(at) }
+            mainClock.advanceTimeBy(1_000)
+            assertEquals(if (onScreen) 0 else 1, under, "${gap} ms after Close, call screen on screen=$onScreen")
+            seen += onScreen
+        }
+        assertTrue(seen.first() && !seen.last(), "the gaps span the exit transition")
+    }
+
+    @Test
     fun floatingTileRestsOverAChatListInBothThemesAndExpandsOnTap() {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(390, 844) {
             var expanded = 0
