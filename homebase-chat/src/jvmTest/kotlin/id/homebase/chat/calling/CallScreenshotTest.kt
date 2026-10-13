@@ -389,7 +389,7 @@ class CallScreenshotTest {
                     CallPipLayout(state) {}
                 }
             }
-            val self = onNodeWithContentDescription("Your camera preview", substring = true).getBoundsInRoot()
+            val self = onNodeWithContentDescription("You").getBoundsInRoot()
             assertTrue(self.right.value <= w && self.bottom.value <= h && self.left.value > w / 2f && self.top.value > h / 3f, "inset bottom-end: $self")
             assertTrue(self.right.value - self.left.value < w / 2f, "inset stays small: $self")
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "pip-${w}x$h.png"))
@@ -400,7 +400,7 @@ class CallScreenshotTest {
                     CallPipLayout(shots.first { it.name == "selfcamoff" }.state(base(true, Size.Phone))) {}
                 }
             }
-            assertTrue(onAllNodes(hasContentDescription("Your camera preview", substring = true)).fetchSemanticsNodes().isEmpty(), "no inset with the camera off")
+            assertTrue(onAllNodes(hasContentDescription("You")).fetchSemanticsNodes().isEmpty(), "no inset with the camera off")
         }
     }
 

@@ -404,7 +404,7 @@ internal fun CallPipLayout(ui: CallUiState, avatar: @Composable (Dp) -> Unit) {
         val local = ui.videos.local
         if (local != null && ui.localVideo) {
             val width = minOf(maxWidth, maxHeight) * PipSelfFraction
-            val description = stringResource(MR.string.call_local_preview)
+            val description = stringResource(MR.string.call_you)
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(PipSelfMargin)
                     .size(width, width * 4 / 3)

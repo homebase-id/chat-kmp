@@ -16,6 +16,7 @@ import platform.Foundation.NSNotificationCenter
 import platform.UIKit.UIAccessibilityIsVoiceOverRunning
 import platform.UIKit.UIAccessibilityVoiceOverStatusDidChangeNotification
 import androidx.compose.runtime.remember
+import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGAffineTransformMakeScale
@@ -44,6 +45,8 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius:
     UIKitView(
         factory = { view },
         modifier = modifier,
+        // A cooperative interop view eats the tap that brings the hidden controls back.
+        properties = UIKitInteropProperties(interactionMode = null),
         update = {
             it.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0)
             it.layer.cornerRadius = cornerRadius.value.toDouble()
