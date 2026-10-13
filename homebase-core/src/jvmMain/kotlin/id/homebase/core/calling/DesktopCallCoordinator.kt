@@ -30,6 +30,7 @@ fun startDesktopCallCoordinator() {
         sink = DesktopCallRingSink(
             scope = scope,
             notify = displayer::show,
+            cancelNotification = displayer::cancel,
             bringToFront = { DesktopAppFocusManager.requestFocus("incoming-call") },
             ringTone = { java.awt.Toolkit.getDefaultToolkit().beep() },
             incomingCallText = { TranslationUtil.getString(MR.string.call_incoming_generic) },

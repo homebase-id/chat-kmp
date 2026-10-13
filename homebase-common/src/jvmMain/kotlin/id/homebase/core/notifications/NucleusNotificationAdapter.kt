@@ -3,6 +3,7 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.file.JvmFileSystemUtil
+import io.github.kdroidfilter.nucleus.notification.common.NotificationHandle
 import io.github.kdroidfilter.nucleus.notification.common.NotificationManager
 import io.github.kdroidfilter.nucleus.notification.common.NotificationResult
 import io.github.kdroidfilter.nucleus.notification.common.notification
@@ -21,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 internal class NucleusNotificationAdapter private constructor() {
 
     private val avatarCache = ConcurrentHashMap<String, String>()
+    private val handles = ConcurrentHashMap<Int, NotificationHandle>()
     private val cacheDir: File = File(JvmFileSystemUtil.getAppDataDirectory(), "notification-cache").apply {
         if (!exists()) mkdirs()
     }
@@ -48,6 +50,7 @@ internal class NucleusNotificationAdapter private constructor() {
                     }
                 },
             ).send()
+            if (result is NotificationResult.Success) handles[data.notificationId] = result.handle
             if (result is NotificationResult.Failure) {
                 Logger.w(tag = "NucleusNotificationAdapter") {
                     "Send failed: ${result.reason}"
@@ -58,6 +61,10 @@ internal class NucleusNotificationAdapter private constructor() {
                 "Failed to show notification: ${e.message}"
             }
         }
+    }
+
+    fun dismiss(notificationId: Int) {
+        handles.remove(notificationId)?.dismiss()
     }
 
     private fun cachedAvatarPath(bytes: ByteArray): String? {

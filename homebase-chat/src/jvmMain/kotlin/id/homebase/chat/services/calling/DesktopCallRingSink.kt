@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 class DesktopCallRingSink(
     private val scope: CoroutineScope,
     private val notify: (RichNotificationData) -> Unit,
+    private val cancelNotification: (Int) -> Unit,
     private val bringToFront: () -> Unit,
     private val ringTone: () -> Unit,
     private val incomingCallText: suspend () -> String,
@@ -20,28 +21,38 @@ class DesktopCallRingSink(
 
     override fun ring(callId: String, label: String) {
         val first = callId !in tones
-        scope.launch { notify(notification(callId, label, incomingCallText())) }
-        if (!first) return
-        bringToFront()
-        tones[callId] = scope.launch {
-            while (true) {
-                ringTone()
-                delay(ringIntervalMs)
+        if (first) {
+            bringToFront()
+            tones[callId] = scope.launch {
+                while (true) {
+                    ringTone()
+                    delay(ringIntervalMs)
+                }
             }
+        }
+        scope.launch {
+            val text = incomingCallText()
+            if (callId !in tones) return@launch
+            // A label upgrade re-posts; a desktop toast is not replaced by id, so the first one would stay up.
+            if (!first) cancelNotification(notificationId(callId))
+            notify(notification(callId, label, text))
         }
     }
 
     override fun stopRinging(callId: String) {
         tones.remove(callId)?.cancel()
+        cancelNotification(notificationId(callId))
     }
 
     override fun connected(callId: String) = Unit
-    override fun ended(callId: String) = stopRinging(callId)
+    override fun ended(callId: String, reason: CallEndReason) = stopRinging(callId)
     override fun setLive(live: Boolean, video: Boolean, callId: String?) = Unit
 
+    private fun notificationId(callId: String) = callId.hashCode()
+
     private fun notification(callId: String, label: String, body: String) = RichNotificationData(
-        notificationId = callId.hashCode(),
-        channelId = "messages",
+        notificationId = notificationId(callId),
+        channelId = "calls",
         conversationId = null,
         title = label,
         body = body,
