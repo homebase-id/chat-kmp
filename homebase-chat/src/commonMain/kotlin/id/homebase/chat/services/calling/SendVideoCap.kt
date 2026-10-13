@@ -32,8 +32,9 @@ internal fun withH264SendLevel(sdp: String): String = profileLevelId.replace(sdp
 
 internal fun h264Levels(sdp: String): List<Int> = profileLevelId.findAll(sdp).map { it.groupValues[3].toInt(16) }.toList()
 
-// Short side of each rung and the target bitrate it needs; the last rung is the 480p floor.
-private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 480 to 0)
+// Short side of each rung and the target bitrate it needs. 480 is not a rung: 1080/480 scales a 1920 camera to 853 wide,
+// and an Android hardware encoder fails on that odd width, so libwebrtc drops H.264 for software VP8.
+private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 360 to 0)
 
 private const val STEP_UP_HEADROOM = 1.25
 

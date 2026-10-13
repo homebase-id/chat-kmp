@@ -21,9 +21,9 @@ class CallSendResolutionLadderTest {
     fun rungsStepStraightDownAndBackUpOneAtATimeWithHeadroom() {
         assertEquals(1080, nextSendHeight(1080, 2_500_000.0))
         assertEquals(540, nextSendHeight(1080, 527_743.0))
-        assertEquals(480, nextSendHeight(540, 300_000.0))
-        assertEquals(480, nextSendHeight(480, 579_000.0))
-        assertEquals(540, nextSendHeight(480, 881_000.0))
+        assertEquals(360, nextSendHeight(540, 300_000.0))
+        assertEquals(360, nextSendHeight(360, 579_000.0))
+        assertEquals(540, nextSendHeight(360, 881_000.0))
         assertEquals(720, nextSendHeight(540, 1_100_000.0))
         assertEquals(720, nextSendHeight(720, 1_600_000.0))
         assertEquals(1080, nextSendHeight(720, 2_500_000.0))
@@ -32,7 +32,7 @@ class CallSendResolutionLadderTest {
     // mobile2-r1 Redmi under NLC 3G: target 2.5M -> 527k -> 300k, then 361k..881k..2.5M once NLC was off, while
     // libwebrtc kept 1920x1080 with resChanges=0 because the encoder's QP (25-26) never crossed the scaler's 37.
     @Test
-    fun theDeviceRunsTargetsDriveTheRealSendersScaleBetween1080pAnd480p() {
+    fun theDeviceRunsTargetsDriveTheRealSendersScaleBetween1080pAnd360p() {
         val factory = PeerConnectionFactory(HeadlessAudioDeviceModule())
         val source = CustomVideoSource()
         val peer = factory.createPeerConnection(RTCConfiguration(), object : PeerConnectionObserver {
@@ -46,8 +46,8 @@ class CallSendResolutionLadderTest {
 
             assertNull(ladder.onStats(stats(2_500_000.0)))
             assertEquals(2.0, scale(527_743.0))
-            assertEquals(2.25, scale(300_000.0))
-            assertEquals(2.25, scale(579_000.0))
+            assertEquals(3.0, scale(300_000.0))
+            assertEquals(3.0, scale(579_000.0))
             assertEquals(2.0, scale(881_000.0))
             assertEquals(1.5, scale(2_500_000.0))
             assertEquals(1.0, scale(2_500_000.0))
@@ -64,7 +64,7 @@ class CallSendResolutionLadderTest {
         var applied: Double? = null
         val ladder = SendResolutionLadder { applied = it }
         ladder.onStats(stats(300_000.0, sourceWidth = 3840, sourceHeight = 2160))
-        assertEquals(2.25, applied)
+        assertEquals(3.0, applied)
         ladder.onStats(stats(2_500_000.0, sourceWidth = 1280, sourceHeight = 720))
         assertEquals(720.0 / 540, applied)
     }
@@ -128,10 +128,10 @@ class CallSendResolutionLadderTest {
             StatsEntry("outbound-rtp", encoder.tick(fps, ms) + ("targetBitrate" to 300_000.0)),
         )
         ladder.onStats(stats(14.0, 80.0))
-        assertEquals(2.25, applied)
-        encoder.width = 854; encoder.height = 480
-        ladder.onStats(stats(14.0, 80.0))
         assertEquals(3.0, applied)
+        encoder.width = 640; encoder.height = 360
+        ladder.onStats(stats(14.0, 80.0))
+        assertEquals(4.0, applied)
     }
 
     private fun RTCRtpSender.scale() = parameters.encodings.single().scaleResolutionDownBy
