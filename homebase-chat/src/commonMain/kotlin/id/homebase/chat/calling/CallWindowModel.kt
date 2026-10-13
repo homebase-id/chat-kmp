@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -67,7 +68,15 @@ class CallWindowModel(
         viewModel.uiState.map { it.callId }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, null)
 
     val live: StateFlow<Boolean> =
-        viewModel.uiState.map { it.inProgress || it.phase == CallPhase.Outgoing }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
+        viewModel.uiState.map(::callIsLive).stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
+
+    val muted: StateFlow<Boolean> =
+        viewModel.uiState.map { it.muted }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
+
+    val canToggleCamera: StateFlow<Boolean> =
+        viewModel.uiState.map(::callCameraToggleAvailable).stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
+
+    val shortcutGate = ShortcutGate()
 
     val ringing: StateFlow<Boolean> =
         viewModel.uiState.map { it.phase == CallPhase.Incoming }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
@@ -85,6 +94,18 @@ class CallWindowModel(
 
     fun hangup() = viewModel.hangup()
 
+    fun menuToggleMute() {
+        if (live.value && shortcutGate.accept(CallShortcut.ToggleMute)) toggleMute()
+    }
+
+    fun menuToggleVideo() {
+        if (canToggleCamera.value && shortcutGate.accept(CallShortcut.ToggleCamera)) toggleVideo()
+    }
+
+    fun menuToggleMini(toggle: () -> Unit) {
+        if (live.value && shortcutGate.accept(CallShortcut.ToggleMini)) toggle()
+    }
+
     fun focusCallWindow() = focus(WindowKeys.CALL)
 }
 
@@ -97,24 +118,36 @@ fun CallWindowContent(
     mini: Boolean = false,
     onToggleMini: (() -> Unit)? = null,
     macShortcuts: Boolean = false,
+    onMiniDragStart: () -> Unit = {},
+    onMiniDrag: () -> Unit = {},
 ) {
     val ui by model.uiState.collectAsStateWithLifecycle()
     val name = model.peerName(ui.peer)
     val avatar: @Composable (Dp) -> Unit = { size -> ui.peer?.let { PeerAvatar(it, name, size) } }
-    CompositionLocalProvider(LocalMacShortcuts provides macShortcuts) {
+    CompositionLocalProvider(LocalMacShortcuts provides macShortcuts, LocalShortcutGate provides model.shortcutGate) {
         if (mini) {
-            val actions = remember(model.viewModel, onToggleMini) {
+            val events = rememberCallEvents(model.viewModel)
+            val expand = onToggleMini ?: {}
+            val actions = remember(model.viewModel, expand) {
                 val vm = model.viewModel
-                // Esc and Cmd+W only shrink the window back: the end-call confirmation lives in the full window.
-                val expand = onToggleMini ?: {}
                 CallScreenActions(
                     acceptAudio = {}, acceptVideo = {}, decline = vm::decline, hangup = vm::hangup,
                     toggleMute = vm::toggleMute, toggleVideo = vm::toggleVideo, switchCamera = vm::switchCamera,
                     setRoute = vm::setRoute, onVerificationClick = vm::onVerificationClick, retry = {}, close = vm::close,
-                    minimize = onMinimize, endFromKeyboard = expand, selectDevice = vm::selectDevice, toggleMini = expand,
+                    minimize = onMinimize, endFromKeyboard = vm::endFromKeyboard, selectDevice = vm::selectDevice, toggleMini = expand,
                 )
             }
-            CallMiniContent(ui, name, avatar, actions, modifier)
+            LaunchedEffect(events.deviceMenu.value) {
+                if (events.deviceMenu.value != null) {
+                    events.deviceMenu.value = null
+                    expand()
+                }
+            }
+            Box(modifier.fillMaxSize()) {
+                CallMiniContent(ui, name, avatar, actions, Modifier, onMiniDragStart, onMiniDrag)
+                CallDeviceSnackbarHost(events.snackbar, Modifier.align(Alignment.BottomCenter))
+            }
+            CallEventDialogs(events, model.viewModel)
             return@CompositionLocalProvider
         }
         // The stage runs under the transparent title bar; only the chrome steps down by topInset.

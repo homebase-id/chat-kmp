@@ -2586,6 +2586,7 @@
     <string name="desktop_menu_quit">Quit</string>
     <string name="desktop_menu_call">Call</string>
     <string name="desktop_menu_call_mute">Mute</string>
+    <string name="desktop_menu_call_unmute">Unmute</string>
     <string name="desktop_menu_call_camera">Camera</string>
     <string name="desktop_menu_call_mini">Mini Window</string>
     <string name="desktop_menu_call_hang_up">Hang Up</string>
@@ -2841,6 +2842,12 @@
     <string name="call_state_mic_on_device">Microphone on, %1$s</string>
     <string name="call_tooltip_shortcut">%1$s (%2$s)</string>
     <string name="call_key_escape">Esc</string>
+    <string name="call_key_ctrl_combo">Ctrl+%1$s</string>
+    <string name="call_key_ctrl_shift_combo">Ctrl+Shift+%1$s</string>
+    <string name="call_key_cmd_combo">⌘%1$s</string>
+    <string name="call_key_cmd_shift_combo">⌘⇧%1$s</string>
+    <string name="call_key_help">?</string>
+    <string name="call_shortcuts_either">%1$s  /  %2$s</string>
     <string name="call_mini_mode">Mini window</string>
     <string name="call_mini_expand">Expand call window</string>
     <string name="call_shortcuts_title">Keyboard shortcuts</string>

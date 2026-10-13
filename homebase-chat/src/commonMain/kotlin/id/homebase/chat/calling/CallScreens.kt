@@ -74,7 +74,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.semantics.invisibleToUser
 import id.homebase.resources.call_mini_mode
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -259,7 +258,9 @@ import id.homebase.resources.call_verification_show
 import id.homebase.resources.call_you
 import id.homebase.resources.call_you_are_muted
 import kotlin.time.Clock
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -344,21 +345,25 @@ fun CallScreen(
     fillsWindow: Boolean = false,
     topInset: Dp = 0.dp,
     deviceMenu: MutableState<MediaDeviceKind?> = remember { mutableStateOf(null) },
+    hold: ChromeHold = remember { ChromeHold() },
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     var showShortcuts by remember { mutableStateOf(false) }
-    var activity by remember { mutableIntStateOf(0) }
-    val hold = remember { ChromeHold() }
-    val textFocus = remember { mutableStateOf(false) }
+    val activity = remember { Channel<Unit>(Channel.CONFLATED) }
+    val gate = LocalShortcutGate.current
     val autoHide = fillsWindow && chromeAutoHideEligible(ui)
     val held = hold.count > 0 || deviceMenu.value != null || showShortcuts
     var idle by remember { mutableStateOf(false) }
-    LaunchedEffect(activity, autoHide, held) {
+    LaunchedEffect(autoHide, held) {
         idle = false
-        if (autoHide && !held) {
-            delay(ChromeIdleMs)
+        if (!autoHide || held) return@LaunchedEffect
+        activity.tryReceive()
+        while (true) {
+            if (withTimeoutOrNull(ChromeIdleMs) { activity.receive() } != null) continue
             idle = true
+            activity.receive()
+            idle = false
         }
     }
 
@@ -366,7 +371,6 @@ fun CallScreen(
         LocalDeviceMenuRequest provides deviceMenu,
         LocalChromeHold provides hold,
         LocalChromeVisible provides !idle,
-        LocalCallTextFocus provides textFocus,
     ) {
     BoxWithConstraints(
         modifier.fillMaxSize()
@@ -375,15 +379,15 @@ fun CallScreen(
                 awaitPointerEventScope {
                     while (true) {
                         awaitPointerEvent(PointerEventPass.Initial)
-                        activity++
+                        activity.trySend(Unit)
                     }
                 }
             }
             .focusRequester(focus)
             .focusable()
             .onPreviewKeyEvent {
-                activity++
-                handleCallKey(it, ui, actions, textFocus.value, if (fillsWindow) ({ showShortcuts = true }) else null)
+                activity.trySend(Unit)
+                handleCallKey(it, ui, actions, showShortcuts = if (fillsWindow) ({ showShortcuts = true }) else null, gate = gate)
             },
     ) {
         if (showShortcuts) CallShortcutsDialog { showShortcuts = false }
@@ -426,8 +430,10 @@ internal fun handleCallKey(
     actions: CallScreenActions,
     textFocused: Boolean = false,
     showShortcuts: (() -> Unit)? = null,
+    gate: ShortcutGate? = null,
 ): Boolean {
     val shortcut = callShortcutFor(event.toCallKeyInput(), ui, textFocused) ?: return false
+    if (gate != null && !gate.accept(shortcut)) return true
     when (shortcut) {
         CallShortcut.ToggleMute -> actions.toggleMute()
         CallShortcut.ToggleCamera -> actions.toggleVideo()
@@ -734,17 +740,16 @@ private fun AudioCallStatusContent(ui: CallUiState, elapsed: String) {
 @Composable
 private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actions: CallScreenActions, modifier: Modifier) {
     var codeOpen by remember(ui.callId) { mutableStateOf(false) }
+    HoldChromeWhile(codeOpen)
     val desktop = LocalDesktopTier.current != null
     val minimal = LocalDesktopTier.current == DesktopTier.Minimal
     val mini = actions.toggleMini
-    val mac = LocalMacShortcuts.current
     Box(modifier.chromeFade().testTag(CallTopBarTag).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         // The window's own controls own the top-start corner (macOS traffic lights), so desktop chrome sits at the end.
         if (!desktop) ChromeIconButton(Icons.Default.KeyboardArrowDown, stringResource(MR.string.call_minimize), actions.minimize, Modifier.align(Alignment.TopStart))
         val narrow = LocalDesktopTier.current == DesktopTier.Compact || minimal
         val code = ui.verificationCode
         val showDevices = ui.devices.isNotEmpty() && !minimal
-        // 48dp buttons with an 8dp gap, reserved at the end so the name pill never slides under them.
         val trailing = (if (code != null) 1 else 0) + (if (showDevices) 1 else 0) + (if (mini != null) 1 else 0) + (if (desktop) 1 else 0)
         val reserve = (trailing * 56).dp
         if (center != null) {
@@ -775,7 +780,7 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
                     }
                     if (mini != null) {
                         val label = stringResource(MR.string.call_mini_mode)
-                        ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys(mac, "M", shift = true)))
+                        ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys("M", shift = true)))
                     }
                     if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
                 }
@@ -1061,9 +1066,8 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
     val cameraSlot = routeSlot + if (showRoute) 1 else 0
     val flipSlot = cameraSlot + if (showCamera) 1 + split else 0
     val micDevice = currentDeviceName(ui, MediaDeviceKind.Mic)
-    val mac = LocalMacShortcuts.current
-    val muteTip = shortcutTip(stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute), callShortcutKeys(mac, "D"))
-    val cameraTip = shortcutTip(stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on), callShortcutKeys(mac, "E"))
+    val muteTip = shortcutTip(stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute), callShortcutKeys("D"))
+    val cameraTip = shortcutTip(stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on), callShortcutKeys("E"))
     val toggles: @Composable ButtonGroupScope.() -> Unit = {
         val muteInteraction = remember { MutableInteractionSource() }
         CallToggle(
@@ -1177,13 +1181,18 @@ internal const val CallTopBarTag = "call-top-bar"
 internal fun Modifier.chromeFade(): Modifier {
     val visible = LocalChromeVisible.current
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(250), label = "chromeFade")
-    return graphicsLayer { this.alpha = alpha }.semantics { if (!visible) invisibleToUser() }
+    return graphicsLayer { this.alpha = alpha }
+        .pointerInput(visible) {
+            if (visible) return@pointerInput
+            awaitPointerEventScope {
+                while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+            }
+        }
+        .semantics { if (!visible) invisibleToUser() }
 }
 
-/** Under about 480x360 only the four controls that matter in a call, as icons in one row. */
 @Composable
 private fun MinimalDock(ui: CallUiState, actions: CallScreenActions, modifier: Modifier) {
-    val mac = LocalMacShortcuts.current
     val showCamera = ui.videos.local != null
     val muteDescription = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
     val cameraDescription = stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on)
@@ -1199,7 +1208,7 @@ private fun MinimalDock(ui: CallUiState, actions: CallScreenActions, modifier: M
     ) {
         Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             CallToggle(
-                tooltip = shortcutTip(muteDescription, callShortcutKeys(mac, "D")),
+                tooltip = shortcutTip(muteDescription, callShortcutKeys("D")),
                 checked = ui.muted,
                 onCheckedChange = { actions.toggleMute() },
                 icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
@@ -1212,7 +1221,7 @@ private fun MinimalDock(ui: CallUiState, actions: CallScreenActions, modifier: M
             )
             if (showCamera) {
                 CallToggle(
-                    tooltip = shortcutTip(cameraDescription, callShortcutKeys(mac, "E")),
+                    tooltip = shortcutTip(cameraDescription, callShortcutKeys("E")),
                     checked = !ui.localVideo,
                     onCheckedChange = { actions.toggleVideo() },
                     icon = if (ui.localVideo) Icons.Default.Videocam else Icons.Default.VideocamOff,

@@ -18,6 +18,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,30 +97,11 @@ fun CallOverlay(
         onHangup = viewModel::hangup,
     )
     LaunchedEffect(ui.inProgress) { if (!ui.inProgress) RemoteVideoSize.current.value = null }
-    var showVerification by remember { mutableStateOf(false) }
-    var confirmEnd by remember { mutableStateOf(false) }
-    val snackbar = remember { SnackbarHostState() }
-    val deviceMenu = remember { mutableStateOf<MediaDeviceKind?>(null) }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(viewModel) {
-        viewModel.events.collect { event ->
-            when (event) {
-                CallUiEvent.ShowVerification -> showVerification = true
-                CallUiEvent.ConfirmEnd -> confirmEnd = true
-                is CallUiEvent.DeviceDisconnected -> scope.launch {
-                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_disconnected, event.name, event.fallbackName), getString(MR.string.call_device_change), event.kind)
-                    // The speaker list lives in the mic's audio menu, so both open at the mic chevron.
-                    if (snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) {
-                        deviceMenu.value = if (event.kind == MediaDeviceKind.Camera) MediaDeviceKind.Camera else MediaDeviceKind.Mic
-                    }
-                }
-                is CallUiEvent.DeviceReturned -> scope.launch {
-                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_returned, event.name), getString(MR.string.call_device_switch_back), event.kind)
-                    if (snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) viewModel.selectDevice(event.kind, event.id)
-                }
-            }
-        }
-    }
+    val events = rememberCallEvents(viewModel)
+    val snackbar = events.snackbar
+    val deviceMenu = events.deviceMenu
+    val hold = remember { ChromeHold() }
+    CompositionLocalProvider(LocalChromeHold provides hold) { HoldChromeWhile(events.dialogOpen) }
     val actions = remember(viewModel, gate, onMinimize, onToggleMini) {
         CallScreenActions(
             acceptAudio = { gate.run(video = false) { viewModel.accept(withVideo = false) } },
@@ -147,7 +129,7 @@ fun CallOverlay(
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset, deviceMenu = deviceMenu)
+                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset, deviceMenu = deviceMenu, hold = hold)
             }
         }
         if (ui.visible && !inPip) {
@@ -163,25 +145,64 @@ fun CallOverlay(
         }
     }
 
-    if (showVerification) {
+    CallEventDialogs(events, viewModel)
+}
+
+internal class CallEventState {
+    var verification by mutableStateOf(false)
+    var confirmEnd by mutableStateOf(false)
+    val snackbar = SnackbarHostState()
+    val deviceMenu = mutableStateOf<MediaDeviceKind?>(null)
+    val dialogOpen get() = verification || confirmEnd
+}
+
+@Composable
+internal fun rememberCallEvents(viewModel: CallViewModel): CallEventState {
+    val state = remember { CallEventState() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                CallUiEvent.ShowVerification -> state.verification = true
+                CallUiEvent.ConfirmEnd -> state.confirmEnd = true
+                is CallUiEvent.DeviceDisconnected -> scope.launch {
+                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_disconnected, event.name, event.fallbackName), getString(MR.string.call_device_change), event.kind)
+                    // The speaker list lives in the mic's audio menu, so both open at the mic chevron.
+                    if (state.snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) {
+                        state.deviceMenu.value = if (event.kind == MediaDeviceKind.Camera) MediaDeviceKind.Camera else MediaDeviceKind.Mic
+                    }
+                }
+                is CallUiEvent.DeviceReturned -> scope.launch {
+                    val visuals = DeviceSnackbarVisuals(getString(MR.string.call_device_returned, event.name), getString(MR.string.call_device_switch_back), event.kind)
+                    if (state.snackbar.showSnackbar(visuals) == SnackbarResult.ActionPerformed) viewModel.selectDevice(event.kind, event.id)
+                }
+            }
+        }
+    }
+    return state
+}
+
+@Composable
+internal fun CallEventDialogs(events: CallEventState, viewModel: CallViewModel) {
+    if (events.verification) {
         AlertDialog(
-            onDismissRequest = { showVerification = false },
+            onDismissRequest = { events.verification = false },
             title = { Text(stringResource(MR.string.call_verification_title)) },
             text = { Text(stringResource(MR.string.call_verification_body)) },
             confirmButton = {
-                TextButton(onClick = { showVerification = false }) { Text(stringResource(MR.string.call_verification_ok)) }
+                TextButton(onClick = { events.verification = false }) { Text(stringResource(MR.string.call_verification_ok)) }
             },
         )
     }
-    if (confirmEnd) {
+    if (events.confirmEnd) {
         AlertDialog(
-            onDismissRequest = { confirmEnd = false },
+            onDismissRequest = { events.confirmEnd = false },
             title = { Text(stringResource(MR.string.call_end_confirm_title)) },
             text = { Text(stringResource(MR.string.call_end_confirm_body)) },
             confirmButton = {
-                TextButton(onClick = { confirmEnd = false; viewModel.hangup() }) { Text(stringResource(MR.string.call_hang_up)) }
+                TextButton(onClick = { events.confirmEnd = false; viewModel.hangup() }) { Text(stringResource(MR.string.call_hang_up)) }
             },
-            dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text(stringResource(MR.string.call_end_keep)) } },
+            dismissButton = { TextButton(onClick = { events.confirmEnd = false }) { Text(stringResource(MR.string.call_end_keep)) } },
         )
     }
 }

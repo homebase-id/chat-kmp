@@ -12,44 +12,54 @@ interface DesktopCallWindow {
     val visible: StateFlow<Boolean>
     val ringing: StateFlow<Boolean>
 
-    /** Ringing out or connected: the states the Call menu and mini mode apply to. */
     val live: StateFlow<Boolean>
+    val muted: StateFlow<Boolean>
+    val canToggleCamera: StateFlow<Boolean>
 
-    /** Changes with each call, so the window is recreated (and re-sized for its kind) rather than reused. */
     val windowKey: StateFlow<String?>
     fun isVideoCall(): Boolean
     fun requestClose()
     fun toggleMute()
     fun toggleVideo()
     fun hangup()
+    fun menuToggleMute()
+    fun menuToggleVideo()
+    fun menuToggleMini(toggle: () -> Unit)
 
     @Composable
     fun title(): String
 
     @Composable
-    fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit)
+    fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit)
 }
 
 class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWindow {
     override val visible get() = model.windowVisible
     override val ringing get() = model.ringing
     override val live get() = model.live
+    override val muted get() = model.muted
+    override val canToggleCamera get() = model.canToggleCamera
     override val windowKey get() = model.windowKey
     override fun isVideoCall() = model.isVideoCall()
     override fun requestClose() = model.requestClose()
     override fun toggleMute() = model.toggleMute()
     override fun toggleVideo() = model.toggleVideo()
     override fun hangup() = model.hangup()
+    override fun menuToggleMute() = model.menuToggleMute()
+    override fun menuToggleVideo() = model.menuToggleVideo()
+    override fun menuToggleMini(toggle: () -> Unit) = model.menuToggleMini(toggle)
 
     @Composable
     override fun title() = rememberCallWindowTitle(model)
 
     @Composable
-    override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit) =
+    override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) =
         CallWindowContent(
             model, onMinimize, topInset,
             mini = mini,
             onToggleMini = onToggleMini,
+            onMiniDragStart = onMiniDragStart,
+            onMiniDrag = onMiniDrag,
             macShortcuts = System.getProperty("os.name").orEmpty().startsWith("Mac"),
         )
 }

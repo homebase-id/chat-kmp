@@ -14,8 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -32,19 +30,25 @@ import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.resources.MR
+import id.homebase.resources.call_key_cmd_combo
+import id.homebase.resources.call_key_cmd_shift_combo
+import id.homebase.resources.call_key_ctrl_combo
+import id.homebase.resources.call_key_ctrl_shift_combo
 import id.homebase.resources.call_key_escape
+import id.homebase.resources.call_key_help
 import id.homebase.resources.call_shortcuts_camera
 import id.homebase.resources.call_shortcuts_done
+import id.homebase.resources.call_shortcuts_either
 import id.homebase.resources.call_shortcuts_end
 import id.homebase.resources.call_shortcuts_help
 import id.homebase.resources.call_shortcuts_mini
 import id.homebase.resources.call_shortcuts_mute
 import id.homebase.resources.call_shortcuts_title
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
 
 enum class CallShortcut { ToggleMute, ToggleCamera, ToggleMini, Close, ShowShortcuts }
 
-/** The slice of a key event the shortcut map reads; [command] is Cmd on macOS and Ctrl elsewhere, either is accepted. */
 data class CallKeyInput(
     val key: Key,
     val type: KeyEventType,
@@ -57,11 +61,13 @@ data class CallKeyInput(
 fun KeyEvent.toCallKeyInput() =
     CallKeyInput(key, type, command = isMetaPressed || isCtrlPressed, shift = isShiftPressed, alt = isAltPressed, codePoint = utf16CodePoint)
 
-/** [textFocused] frees the bare letter keys and `?` for typing; chorded shortcuts and Esc still fire. */
+fun callIsLive(ui: CallUiState): Boolean = ui.inProgress || ui.phase == CallPhase.Outgoing
+
+fun callCameraToggleAvailable(ui: CallUiState): Boolean = callIsLive(ui) && ui.videos.local != null
+
 fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean = false): CallShortcut? {
     if (input.type != KeyEventType.KeyDown) return null
-    // The outgoing ring already shows mute and camera, so their keys must work there too.
-    val live = ui.inProgress || ui.phase == CallPhase.Outgoing
+    val live = callIsLive(ui)
     val cameraAvailable = ui.videos.local != null
     val key = input.key
     if (key == Key.Escape) return CallShortcut.Close
@@ -86,28 +92,41 @@ fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean =
     }
 }
 
-/** "⌘⇧M" on macOS, "Ctrl+Shift+M" elsewhere. */
-fun callShortcutKeys(mac: Boolean, key: String, shift: Boolean = false): String =
-    if (mac) "⌘" + (if (shift) "⇧" else "") + key else "Ctrl+" + (if (shift) "Shift+" else "") + key
+@Composable
+fun callShortcutKeys(key: String, shift: Boolean = false): String {
+    val res = when {
+        LocalMacShortcuts.current -> if (shift) MR.string.call_key_cmd_shift_combo else MR.string.call_key_cmd_combo
+        else -> if (shift) MR.string.call_key_ctrl_shift_combo else MR.string.call_key_ctrl_combo
+    }
+    return stringResource(res, key)
+}
 
 val LocalMacShortcuts = staticCompositionLocalOf { false }
 
-internal val LocalCallTextFocus = staticCompositionLocalOf { mutableStateOf(false) }
+class ShortcutGate(private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() }) {
+    private var last: CallShortcut? = null
+    private var at = 0L
 
-/** Mark any text field added to the call window with this so the bare-letter shortcuts stay out of its way. */
-@Composable
-internal fun Modifier.callTextField(): Modifier {
-    val focus = LocalCallTextFocus.current
-    return onFocusChanged { focus.value = it.isFocused }
+    fun accept(shortcut: CallShortcut): Boolean {
+        val now = nowMs()
+        if (shortcut == last && now - at < DuplicateWindowMs) return false
+        last = shortcut
+        at = now
+        return true
+    }
+
+    private companion object {
+        const val DuplicateWindowMs = 150L
+    }
 }
+
+val LocalShortcutGate = staticCompositionLocalOf<ShortcutGate?> { null }
 
 internal const val ChromeIdleMs = 3_000L
 
-/** Video chrome only fades once the call is up; ringing, connecting, reconnecting and ended screens carry state the user must see. */
 internal fun chromeAutoHideEligible(ui: CallUiState): Boolean = ui.isVideoCall && ui.phase == CallPhase.Connected
 
-/** Counts open tooltips and menus; the chrome stays put while any is up. */
-internal class ChromeHold {
+class ChromeHold {
     var count by mutableIntStateOf(0)
 }
 
@@ -125,13 +144,12 @@ internal fun HoldChromeWhile(active: Boolean) {
 
 @Composable
 internal fun CallShortcutsDialog(onDismiss: () -> Unit) {
-    val mac = LocalMacShortcuts.current
     val rows = listOf(
-        stringResource(MR.string.call_shortcuts_mute) to "${callShortcutKeys(mac, "D")}  /  M",
-        stringResource(MR.string.call_shortcuts_camera) to "${callShortcutKeys(mac, "E")}  /  V",
-        stringResource(MR.string.call_shortcuts_mini) to callShortcutKeys(mac, "M", shift = true),
-        stringResource(MR.string.call_shortcuts_end) to "${stringResource(MR.string.call_key_escape)}  /  ${callShortcutKeys(mac, "W")}",
-        stringResource(MR.string.call_shortcuts_help) to "?",
+        stringResource(MR.string.call_shortcuts_mute) to stringResource(MR.string.call_shortcuts_either, callShortcutKeys("D"), "M"),
+        stringResource(MR.string.call_shortcuts_camera) to stringResource(MR.string.call_shortcuts_either, callShortcutKeys("E"), "V"),
+        stringResource(MR.string.call_shortcuts_mini) to callShortcutKeys("M", shift = true),
+        stringResource(MR.string.call_shortcuts_end) to stringResource(MR.string.call_shortcuts_either, stringResource(MR.string.call_key_escape), callShortcutKeys("W")),
+        stringResource(MR.string.call_shortcuts_help) to stringResource(MR.string.call_key_help),
     )
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -4,7 +4,8 @@ package id.homebase.chat.calling
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,7 +70,6 @@ val MiniVoiceSize = 280.dp to 88.dp
 
 internal const val CallMiniTag = "call-mini"
 
-/** The pinned mini window: remote video with floating controls, or an avatar row for a voice call. [CallScreenActions.toggleMini] expands it. */
 @Composable
 fun CallMiniContent(
     ui: CallUiState,
@@ -77,25 +77,54 @@ fun CallMiniContent(
     avatar: @Composable (Dp) -> Unit,
     actions: CallScreenActions,
     modifier: Modifier = Modifier,
+    onDragStart: () -> Unit = {},
+    onDrag: () -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val expand = actions.toggleMini ?: {}
+    val gate = LocalShortcutGate.current
     CompositionLocalProvider(LocalDesktopTier provides DesktopTier.Minimal) {
         Box(
             modifier.fillMaxSize()
                 .testTag(CallMiniTag)
                 .background(MaterialTheme.colorScheme.surface)
-                .pointerInput(expand) { detectTapGestures(onDoubleTap = { expand() }) }
+                .miniWindowGestures(onDragStart, onDrag, expand)
                 .focusRequester(focus)
                 .focusable()
-                .onPreviewKeyEvent { handleCallKey(it, ui, actions) },
+                .onPreviewKeyEvent { handleCallKey(it, ui, actions, textFocused = true, gate = gate) },
         ) {
             if (ui.isVideoCall) MiniVideo(ui, peerName, avatar, actions) else MiniVoice(ui, peerName, avatar, actions)
             ExpandButton(expand, Modifier.align(Alignment.TopEnd).padding(4.dp))
         }
     }
 }
+
+private fun Modifier.miniWindowGestures(onDragStart: () -> Unit, onDrag: () -> Unit, onDoubleTap: () -> Unit): Modifier =
+    pointerInput(onDragStart, onDrag, onDoubleTap) {
+        var lastTapAt = Long.MIN_VALUE
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = true)
+            var dragging = false
+            while (true) {
+                val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                if (change.isConsumed) break
+                if (!change.pressed) {
+                    if (!dragging) {
+                        val doubled = change.uptimeMillis - lastTapAt <= viewConfiguration.doubleTapTimeoutMillis
+                        lastTapAt = if (doubled) Long.MIN_VALUE else change.uptimeMillis
+                        if (doubled) onDoubleTap()
+                    }
+                    break
+                }
+                if (!dragging && (change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                    dragging = true
+                    onDragStart()
+                }
+                if (dragging) onDrag()
+            }
+        }
+    }
 
 @Composable
 private fun ExpandButton(onClick: () -> Unit, modifier: Modifier) {
@@ -104,9 +133,9 @@ private fun ExpandButton(onClick: () -> Unit, modifier: Modifier) {
         DesktopTooltip(label, androidx.compose.material3.TooltipAnchorPosition.Below) {
             FilledTonalIconButton(
                 onClick = onClick,
-                modifier = Modifier.size(28.dp).buttonChrome(CircleShape),
+                modifier = Modifier.size(24.dp).buttonChrome(CircleShape),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = chromeColor(), contentColor = MaterialTheme.colorScheme.onSurface),
-            ) { Icon(Icons.Default.OpenInFull, label, Modifier.size(16.dp)) }
+            ) { Icon(Icons.Default.OpenInFull, label, Modifier.size(14.dp)) }
         }
     }
 }
@@ -123,7 +152,7 @@ private fun miniStatus(ui: CallUiState, elapsed: String): String = when (ui.phas
 private fun MiniVoice(ui: CallUiState, peerName: String, avatar: @Composable (Dp) -> Unit, actions: CallScreenActions) {
     val status = miniStatus(ui, rememberElapsedText(ui.connectedAtMs))
     Row(
-        Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp),
+        Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -173,10 +202,9 @@ private fun MiniVideo(ui: CallUiState, peerName: String, avatar: @Composable (Dp
 
 @Composable
 private fun MiniMute(ui: CallUiState, actions: CallScreenActions) {
-    val mac = LocalMacShortcuts.current
     val label = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
     val state = stringResource(if (ui.muted) MR.string.call_state_muted else MR.string.call_state_mic_on)
-    DesktopTooltip(shortcutTip(label, callShortcutKeys(mac, "D"))) {
+    DesktopTooltip(shortcutTip(label, callShortcutKeys("D"))) {
         FilledTonalIconToggleButton(
             checked = ui.muted,
             onCheckedChange = { actions.toggleMute() },
@@ -188,11 +216,10 @@ private fun MiniMute(ui: CallUiState, actions: CallScreenActions) {
 
 @Composable
 private fun MiniCamera(ui: CallUiState, actions: CallScreenActions) {
-    val mac = LocalMacShortcuts.current
     val off = !ui.localVideo
     val label = stringResource(if (off) MR.string.call_camera_on else MR.string.call_camera_off)
     val state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on)
-    DesktopTooltip(shortcutTip(label, callShortcutKeys(mac, "E"))) {
+    DesktopTooltip(shortcutTip(label, callShortcutKeys("E"))) {
         FilledTonalIconToggleButton(
             checked = off,
             onCheckedChange = { actions.toggleVideo() },

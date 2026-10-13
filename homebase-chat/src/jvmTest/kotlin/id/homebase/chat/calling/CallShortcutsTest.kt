@@ -114,11 +114,15 @@ class CallShortcutsTest {
     }
 
     @Test
-    fun shortcutLabelsFollowThePlatform() {
-        assertEquals("⌘D", callShortcutKeys(mac = true, "D"))
-        assertEquals("⌘⇧M", callShortcutKeys(mac = true, "M", shift = true))
-        assertEquals("Ctrl+D", callShortcutKeys(mac = false, "D"))
-        assertEquals("Ctrl+Shift+M", callShortcutKeys(mac = false, "M", shift = true))
+    fun theGateSwallowsTheSameShortcutArrivingTwiceButNotADifferentOne() {
+        var now = 1_000L
+        val gate = ShortcutGate { now }
+        assertTrue(gate.accept(CallShortcut.ToggleMute))
+        now += 20
+        assertFalse(gate.accept(CallShortcut.ToggleMute))
+        assertTrue(gate.accept(CallShortcut.ToggleCamera))
+        now += 400
+        assertTrue(gate.accept(CallShortcut.ToggleCamera))
     }
 
     @Test

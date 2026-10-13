@@ -50,7 +50,7 @@ class CallWindowAppScopeTest {
     // The real bridge except for the body: PeerAvatar needs the production Koin graph, which is not what is under test.
     private class BridgeWithPlainBody(real: ModelDesktopCallWindow) : DesktopCallWindow by real {
         @Composable
-        override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit) = Text("in call")
+        override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) = Text("in call")
     }
 
     private fun callFrames(): List<Frame> = Window.getWindows().filterIsInstance<Frame>().filter { it.isDisplayable && it.title.startsWith("Samwise") }

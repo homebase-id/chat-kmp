@@ -27,7 +27,9 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
@@ -84,7 +86,8 @@ class CallDesktopErgonomicsTest {
         )
     }
 
-    private fun call(video: Boolean, phase: CallPhase = CallPhase.Connected, muted: Boolean = false) = CallUiState(
+    private fun call(video: Boolean, phase: CallPhase = CallPhase.Connected, muted: Boolean = false, code: String? = null) = CallUiState(
+        verificationCode = code,
         callId = "ergo",
         peer = "samwise.gamgee.demo.rocks",
         direction = CallDirection.Outgoing,
@@ -198,6 +201,32 @@ class CallDesktopErgonomicsTest {
     }
 
     @Test
+    fun aPressOnHiddenControlsNeverReachesTheButtonUnderneath() {
+        val recorder = Recorder()
+        runDesktopComposeUiTest(960, 640) {
+            showScreen(call(video = true), recorder)
+            mainClock.advanceTimeBy(4_000)
+            onNodeWithTag(CallDockTag).assert(hidden)
+            onNodeWithContentDescription("End call", useUnmergedTree = true).performMouseInput { click(center) }
+            mainClock.advanceTimeBy(100)
+            assertEquals(emptyList(), recorder.calls)
+            onNodeWithTag(CallDockTag).assert(!hidden)
+            onNodeWithContentDescription("End call").performMouseInput { click(center) }
+            assertEquals(listOf("hangup"), recorder.calls)
+        }
+    }
+
+    @Test
+    fun controlsStayWhileTheVerificationCodeCardIsOpen() {
+        runDesktopComposeUiTest(960, 640) {
+            showScreen(call(video = true, code = "123 456"), Recorder())
+            onNodeWithContentDescription("Show verification code").performSemanticsAction(SemanticsActions.OnClick)
+            mainClock.advanceTimeBy(6_000)
+            onNodeWithTag(CallDockTag).assert(!hidden)
+        }
+    }
+
+    @Test
     fun smallWindowShowsOneRowOfIconButtonsAndNoLabels() {
         val recorder = Recorder()
         runDesktopComposeUiTest(400, 300) {
@@ -230,6 +259,39 @@ class CallDesktopErgonomicsTest {
                 mainClock.advanceTimeBy(500)
                 assertEquals(listOf("mini", "mute", "hangup", "mini"), recorder.calls.take(4), "video=$video")
             }
+        }
+    }
+
+    @Test
+    fun draggingTheMiniWindowFromBareSurfaceStartsAndContinuesADrag() {
+        var started = 0
+        var moves = 0
+        runDesktopComposeUiTest(280, 88) {
+            mainClock.autoAdvance = false
+            setContent {
+                HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
+                    CallMiniContent(call(video = false), "Samwise Gamgee", avatar, Recorder().actions(), onDragStart = { started++ }, onDrag = { moves++ })
+                }
+            }
+            mainClock.advanceTimeBy(500)
+            onNodeWithTag(CallMiniTag).performTouchInput { swipe(Offset(120f, 70f), Offset(200f, 80f), 200) }
+            mainClock.advanceTimeBy(500)
+            assertEquals(1, started)
+            assertTrue(moves >= 1)
+        }
+    }
+
+    @Test
+    fun miniWindowIgnoresBareLettersButKeepsChordsAndEsc() {
+        val recorder = Recorder()
+        runDesktopComposeUiTest(320, 180) {
+            mainClock.autoAdvance = false
+            setContent { HomebaseTheme(darkTheme = false, followsSystemTheme = false) { CallMiniContent(call(true), "Samwise Gamgee", avatar, recorder.actions()) } }
+            mainClock.advanceTimeBy(500)
+            onRoot().performKeyInput { pressKey(Key.M); pressKey(Key.V) }
+            onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.D) } }
+            onRoot().performKeyInput { pressKey(Key.Escape) }
+            assertEquals(listOf("mute", "end"), recorder.calls)
         }
     }
 

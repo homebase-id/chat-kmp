@@ -2,6 +2,7 @@ package id.homebase.app
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
@@ -140,9 +141,21 @@ private val MINI_SCREEN_MARGIN = 24.dp
 
 fun miniCallSize(video: Boolean): DpSize = if (video) MINI_VIDEO_SIZE else MINI_VOICE_SIZE
 
-/** The last place the user dragged the mini window to, or the screen's bottom-end corner the first time. */
-fun miniCallPosition(saved: WindowPosition.Absolute?, size: DpSize, screen: DpSize): WindowPosition.Absolute =
-    saved ?: WindowPosition.Absolute(
-        (screen.width - size.width - MINI_SCREEN_MARGIN).coerceAtLeast(0.dp),
-        (screen.height - size.height - MINI_SCREEN_MARGIN * 3).coerceAtLeast(0.dp),
+fun miniCallPosition(saved: WindowPosition.Absolute?, size: DpSize, screens: List<DpRect>): WindowPosition.Absolute {
+    val home = saved?.let { at ->
+        val cx = at.x + size.width / 2
+        val cy = at.y + size.height / 2
+        screens.firstOrNull { cx >= it.left && cx < it.right && cy >= it.top && cy < it.bottom }
+    }
+    if (saved != null && home != null) {
+        return WindowPosition.Absolute(
+            saved.x.coerceIn(home.left, maxOf(home.left, home.right - size.width)),
+            saved.y.coerceIn(home.top, maxOf(home.top, home.bottom - size.height)),
+        )
+    }
+    val primary = screens.firstOrNull() ?: DpRect(0.dp, 0.dp, 1440.dp, 900.dp)
+    return WindowPosition.Absolute(
+        maxOf(primary.left, primary.right - size.width - MINI_SCREEN_MARGIN),
+        maxOf(primary.top, primary.bottom - size.height - MINI_SCREEN_MARGIN * 3),
     )
+}
