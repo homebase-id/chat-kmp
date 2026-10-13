@@ -45,7 +45,6 @@ import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.services.calling.AudioRoute
-import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallQuality
@@ -91,7 +90,6 @@ class CallScreenshotTest {
     private fun base(video: Boolean, size: Size) = CallUiState(
         callId = "shot",
         peer = "samwise.gamgee.demo.rocks",
-        direction = CallDirection.Outgoing,
         localVideo = video,
         remoteVideo = video,
         availableRoutes = size.routes,
@@ -105,7 +103,7 @@ class CallScreenshotTest {
     private val shots = listOf(
         Shot("outgoing", { "End call" }) { it.copy(phase = CallPhase.Outgoing, peerRinging = true, connectedAtMs = null, verificationCode = null) },
         Shot("incoming", { if (it) "Accept video call from" else "Accept voice call from" }) {
-            it.copy(phase = CallPhase.Incoming, direction = CallDirection.Incoming, connectedAtMs = null, verificationCode = null)
+            it.copy(phase = CallPhase.Incoming, connectedAtMs = null, verificationCode = null)
         },
         Shot("connecting", { "End call" }) { it.copy(phase = CallPhase.Connecting, connectedAtMs = null, verificationCode = null) },
         Shot("connected", { if (it) "Turn camera off" else "Mute microphone" }) { it.copy(phase = CallPhase.Connected) },

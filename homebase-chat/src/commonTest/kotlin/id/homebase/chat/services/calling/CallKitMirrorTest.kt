@@ -224,4 +224,17 @@ class CallKitMirrorTest {
 
         assertTrue(rig.callee.state.value.media.muted)
     }
+
+    @Test
+    fun aCallKitAnswerForAnEarlierCallDoesNotAnswerTheOneRingingNow() = runTest {
+        val rig = Rig(this)
+        rig.caller.startCall(sam, video = false, callId = "c-now")
+        runCurrent()
+        rig.calleeActions.accept("c-before")
+        runCurrent()
+        assertEquals(CallPhase.Incoming, rig.callee.state.value.phase)
+        rig.calleeActions.accept("c-now")
+        runCurrent()
+        assertTrue(rig.callee.state.value.phase != CallPhase.Incoming)
+    }
 }

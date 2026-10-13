@@ -235,7 +235,8 @@ class CallStateMachine(private val selfOdinId: String) {
                 buildList {
                     add(CallEffect.CancelTimers)
                     add(CallEffect.ReleaseEngine)
-                    add(CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.Cancelled)))
+                    // The peer's account is in this call now, so its other devices drop our ring as handled, not missed.
+                    add(CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.AnsweredElsewhere)))
                     add(CallEffect.CreateAnswer(sig.sdp, s.media.localVideo))
                     addAll(replayControls(s.media))
                     add(CallEffect.StartTimer(CallTimer.Connect, sig.callId))

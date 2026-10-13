@@ -89,7 +89,7 @@ class CallStateMachineTest {
 
     @Test
     fun staleOwnAndDuplicateOffersAreIgnored() {
-        assertNoOp(idle, signal(sam, CallSignal.Offer(c, "sdp", false), at = 0), now = RING_TIMEOUT_MS + 1)
+        assertNoOp(idle, signal(sam, CallSignal.Offer(c, "sdp", false), at = 1), now = RING_TIMEOUT_MS + 2)
         assertNoOp(idle, signal(frodo, CallSignal.Offer(c, "sdp", false)))
         assertNoOp(incoming, fromSam(CallSignal.Offer(c, "sdp", false)))
     }
@@ -125,7 +125,7 @@ class CallStateMachineTest {
             listOf(
                 CallEffect.CancelTimers,
                 CallEffect.ReleaseEngine,
-                CallEffect.SendSignal(frodo, CallSignal.Hangup("c-sam", HangupReason.Cancelled)),
+                CallEffect.SendSignal(frodo, CallSignal.Hangup("c-sam", HangupReason.AnsweredElsewhere)),
                 CallEffect.CreateAnswer("sdp", false),
                 CallEffect.StartTimer(CallTimer.Connect, c),
             ),

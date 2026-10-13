@@ -322,7 +322,7 @@ class CallControllerTest {
         assertEquals("call-a", b.state.callId)
         assertEquals(CallDirection.Outgoing, a.state.direction)
         assertEquals(CallDirection.Incoming, b.state.direction)
-        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.Normal) })
+        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.AnsweredElsewhere) })
         assertTrue(net.sent.none { it.signal is CallSignal.Hangup && !it.signal.reason.isElsewhere && it.push != null })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == frodo })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == sam })
@@ -417,7 +417,7 @@ class CallControllerTest {
     fun staleOrReplayedOfferDoesNotRing() = runTest {
         val (net, _, b) = pair()
         advanceTimeBy(RING_TIMEOUT_MS + 5_000)
-        net.deliver(sam, frodo, CallSignal.Offer("old", "sdp", false), receivedAtMs = 0)
+        net.deliver(sam, frodo, CallSignal.Offer("old", "sdp", false), receivedAtMs = 1)
         runCurrent()
         assertEquals(CallPhase.Idle, b.phase)
     }
@@ -682,5 +682,48 @@ class CallControllerTest {
         a.controller.close()
         runCurrent()
         assertTrue(a.engines.all { it.closed })
+    }
+
+    @Test
+    fun aRingingSignalThatFailsToSendLeavesTheIncomingCallRinging() = runTest {
+        val (_, a, b) = pair()
+        b.offline = true
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        assertEquals(CallPhase.Incoming, b.phase)
+
+        b.offline = false
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, b.phase)
+        assertEquals(CallPhase.Connected, a.phase)
+    }
+
+    @Test
+    fun aRemoteCandidateTheEngineRejectsIsDroppedWithoutEndingTheCall() = runTest {
+        val rejectsIce: (FakeCallEngine) -> CallEngine = { fake ->
+            object : CallEngine by fake {
+                override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) =
+                    throw IllegalStateException("bad candidate")
+            }
+        }
+        val (_, a, b) = pair(wrapA = rejectsIce)
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, a.phase)
+    }
+
+    @Test
+    fun aRingPushedAfterTheControllerClosedIsCancelledNotLeftPending() = runTest {
+        val (_, a, _) = pair()
+        a.controller.close()
+        runCurrent()
+        val ring = a.controller.pushRing("c1", sam)
+        runCurrent()
+        assertTrue(ring.isCancelled)
     }
 }

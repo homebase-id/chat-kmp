@@ -67,7 +67,7 @@ class CallRingCoordinatorTest {
     private fun payload(typeId: String, callId: String, from: String = sam, message: String? = null): Map<String, String> {
         val msg = message?.let { ""","unEncryptedMessage":"$it"""" }.orEmpty()
         return mapOf(
-            "data" to """{"senderId":"$from","timestamp":1,"options":{"appId":"app","typeId":"$typeId","tagId":"$callId"$msg}}""",
+            "data" to """{"senderId":"$from","timestamp":0,"options":{"appId":"app","typeId":"$typeId","tagId":"$callId"$msg}}""",
         )
     }
 
@@ -136,14 +136,14 @@ class CallRingCoordinatorTest {
     private class ServiceRig(scope: TestScope) {
         val sink = FakeSink()
         val credentials = CredentialsManager()
+        val relayed = mutableListOf<String>()
         val service = CallService(
             credentialsManager = credentials,
             eventBus = EventBus(),
-            relay = { _, _, _, _ -> true },
+            relay = { _, _, blob, _ -> relayed += blob; true },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
-            stunUrls = StunUrlStore(EventBus(), scope.backgroundScope),
+            stunUrls = StunUrlStore(EventBus(), kotlinx.coroutines.flow.flowOf(null), scope.backgroundScope),
             scope = scope.backgroundScope,
-            nowMs = { scope.testScheduler.currentTime },
         )
         val coordinator = CallRingCoordinator(service, service.state, sink, { null }, scope.backgroundScope)
             .also { it.start(); CallPushRouter.handler = it }
@@ -166,6 +166,21 @@ class CallRingCoordinatorTest {
         runCurrent()
         assertEquals(CallPhase.Ended(CallEndReason.Cancelled), rig.service.state.value.phase)
         assertFalse(rig.sink.ringing)
+    }
+
+    @Test
+    fun signingOutWhileACallRingsDeclinesItToThePeer() = runTest {
+        val rig = ServiceRig(this)
+        rig.signIn()
+        runCurrent()
+        assertTrue(ring("c1"))
+        runCurrent()
+        assertEquals(CallPhase.Incoming, rig.service.state.value.phase)
+        val before = rig.relayed.size
+
+        rig.credentials.removeAllCredentials()
+        runCurrent()
+        assertTrue(rig.relayed.size > before, "a hangup was relayed to the caller")
     }
 
     @Test
@@ -194,6 +209,13 @@ class CallRingCoordinatorTest {
         assertTrue(rig.sink.events.any { it == "ring:c1:$sam" })
         assertFalse(rig.controller.state.value.isRingingFor("c1"))
         assertFalse(rig.sink.ringing)
+    }
+
+    @Test
+    fun aCallPushWithNoHandlerYetFallsThroughToTheChatNotification() {
+        CallPushRouter.handler = null
+        assertFalse(ring("c1"))
+        assertFalse(hangup("c1"))
     }
 
     @Test
