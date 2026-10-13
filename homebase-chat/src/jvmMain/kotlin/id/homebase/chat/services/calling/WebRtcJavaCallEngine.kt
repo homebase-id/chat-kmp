@@ -531,6 +531,7 @@ internal class FrameCounter : dev.onvoid.webrtc.media.video.VideoTrackSink {
     val count = java.util.concurrent.atomic.AtomicLong()
     override fun onVideoFrame(frame: dev.onvoid.webrtc.media.video.VideoFrame) {
         count.incrementAndGet()
+        frame.release()
     }
 }
 
