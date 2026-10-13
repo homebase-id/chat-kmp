@@ -218,10 +218,12 @@ internal fun CardOptionsPanel(
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
     gap: Dp,
+    hasLinks: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
-    val options = CardOption.entries.filter { spec != null && it in spec.options }
+    val orderable = spec?.reorderable(hasLinks).orEmpty()
+    val options = CardOption.entries.filter { spec != null && it in spec.options && (it != CardOption.BLOCK_ORDER || orderable.size > 1) }
     var picked by rememberSaveable(design) { mutableStateOf(options.firstOrNull()?.name.orEmpty()) }
     val current = options.firstOrNull { it.name == picked } ?: options.firstOrNull() ?: return
     val motion = MaterialTheme.motionScheme
@@ -239,7 +241,7 @@ internal fun CardOptionsPanel(
             val option = options.firstOrNull { it.name == shown } ?: current
             // The picked tool names itself in the group below, so the control stands alone here.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                OptionControl(option, design, overrides, enabled, chipHeight, onOption, onBlockOrder)
+                OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
             }
         }
         OptionToolbar(
@@ -258,13 +260,16 @@ private fun OptionControl(
     overrides: CardOverrides,
     enabled: Boolean,
     chipHeight: Dp,
+    orderable: List<String>,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
 ) {
     when (option) {
         CardOption.COLOURS -> SchemeRow(design, overrides.valueOf(option), enabled) { onOption(option, it) }
         CardOption.ACCENT -> SwatchRow(overrides.valueOf(option), enabled) { onOption(option, it) }
-        CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder(), enabled, chipHeight, onBlockOrder)
+        CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder().filter { it in orderable }, enabled, chipHeight) {
+            onBlockOrder(overrides.withShownBlockOrder(orderable, it).blockOrder())
+        }
         // Shapes read as glyphs, so the group stays one row of icons; the name is spoken, not printed.
         CardOption.PORTRAIT_SHAPE -> SegmentedChoices(
             values = listOf(null) + CardDesignSpecs.PORTRAIT_SHAPES,
