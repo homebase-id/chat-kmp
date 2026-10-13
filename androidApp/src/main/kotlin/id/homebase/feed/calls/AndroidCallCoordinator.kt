@@ -26,7 +26,7 @@ class AndroidCallCoordinator(
         runCatching { HomebaseConnectionService.register(context) }
         val coordinator = CallRingCoordinator(
             target = callService,
-            state = callService.state,
+            transitions = callService.transitions,
             sink = AndroidCallRingSink(context),
             labelFor = { contacts.displayName(OdinId(it)) },
             scope = scope,

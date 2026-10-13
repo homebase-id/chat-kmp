@@ -52,7 +52,7 @@ class CallRingCoordinatorTest {
                 override fun pushRing(callId: String, from: String, sentAtMs: Long) = controller.pushRing(callId, from, sentAtMs)
                 override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
             },
-            state = controller.state,
+            transitions = controller.transitions,
             sink = sink,
             labelFor = labelFor,
             scope = scope.backgroundScope,
@@ -145,7 +145,7 @@ class CallRingCoordinatorTest {
             stunUrls = StunUrlStore(EventBus(), kotlinx.coroutines.flow.flowOf(null), scope.backgroundScope),
             scope = scope.backgroundScope,
         )
-        val coordinator = CallRingCoordinator(service, service.state, sink, { null }, scope.backgroundScope)
+        val coordinator = CallRingCoordinator(service, service.transitions, sink, { null }, scope.backgroundScope)
             .also { it.start(); CallPushRouter.handler = it }
 
         suspend fun signIn() = credentials.setActiveCredentials(

@@ -23,7 +23,7 @@ class CallKitMirror(
     )
 
     suspend fun run() {
-        session.state.map { Key(it.callId, it.phase, it.direction, it.placedWithVideo, it.answeredInApp, it.peer, it.media.localVideo) }
+        session.transitions.map { Key(it.callId, it.phase, it.direction, it.placedWithVideo, it.answeredInApp, it.peer, it.media.localVideo) }
             // localVideo is only read when the outgoing call is first reported; a later camera toggle is not a lifecycle change.
             .distinctUntilChanged { old, new -> old.copy(localVideo = new.localVideo) == new }
             .collect { (callId, phase, direction, video, answeredInApp, peer, localVideo) ->

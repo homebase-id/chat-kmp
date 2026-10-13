@@ -4,7 +4,7 @@ import id.homebase.core.notifications.CallPushRouter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,7 +26,7 @@ interface CallRingSink {
 
 class CallRingCoordinator(
     private val target: CallPushTarget,
-    private val state: StateFlow<CallState>,
+    private val transitions: Flow<CallState>,
     private val sink: CallRingSink,
     private val labelFor: suspend (odinId: String) -> String?,
     private val scope: CoroutineScope,
@@ -41,7 +41,7 @@ class CallRingCoordinator(
             var live = false
             var liveVideo = false
             var established: String? = null
-            state.collect { s ->
+            transitions.collect { s ->
                 val callId = s.callId
                 val nowRinging = callId.takeIf { s.isRinging }
                 lock.withLock {

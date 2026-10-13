@@ -17,7 +17,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +40,10 @@ class CallController(
     private val machine = CallStateMachine(selfOdinId)
     private val _state = MutableStateFlow(CallState())
     override val state: StateFlow<CallState> = _state.asStateFlow()
+
+    private val _transitions = MutableSharedFlow<CallState>(replay = 1, extraBufferCapacity = Channel.UNLIMITED)
+        .apply { tryEmit(CallState()) }
+    override val transitions: Flow<CallState> = _transitions.asSharedFlow()
 
     private val _videos = MutableStateFlow(CallVideos())
     override val videos: StateFlow<CallVideos> = _videos.asStateFlow()
@@ -210,8 +217,10 @@ class CallController(
 
     private suspend fun process(event: CallEvent) {
         if (isReplayOfEndedCall(event)) return
-        val transition = machine.reduce(_state.value, event, clock())
+        val before = _state.value
+        val transition = machine.reduce(before, event, clock())
         _state.value = transition.state
+        if (transition.state != before) _transitions.tryEmit(transition.state)
         if (transition.state.phase is CallPhase.Ended) transition.state.callId?.let(::rememberEnded)
         for (effect in transition.effects) run(effect, transition.state)
     }

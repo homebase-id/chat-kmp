@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -30,7 +31,7 @@ class CallEventRecordingTest {
 
         init {
             scope.backgroundScope.launch {
-                recordCallEvents(controller.state) { peer, event -> recorded += peer to event }
+                recordCallEvents(controller.transitions) { peer, event -> recorded += peer to event }
             }
         }
     }
@@ -162,5 +163,32 @@ class CallEventRecordingTest {
         states.value = base.copy(callId = "c2", phase = CallPhase.Ended(CallEndReason.Missed))
         runCurrent()
         assertEquals(listOf("boom", "NoAnswer"), recorded)
+    }
+
+    @Test
+    fun aCallThatEndsWhileTheLastOneIsStillBeingLoggedIsLoggedToo() = runTest {
+        val net = LoopbackSignaling(now = { testScheduler.currentTime })
+        val caller = CallController(
+            selfOdinId = frodo,
+            signaling = net.endpoint(frodo),
+            engineFactory = CallEngineFactory { _ -> FakeCallEngine(backgroundScope, FakeCallScript(), peerLabel = "peer", selfLabel = frodo) },
+            scope = backgroundScope,
+            clock = { testScheduler.currentTime },
+        )
+        val recorded = mutableListOf<String>()
+        backgroundScope.launch {
+            recordCallEvents(caller.transitions) { _, e -> delay(1_000); recorded += e.outcome.name }
+        }
+        for (callId in listOf("c1", "c2")) {
+            caller.startCall(sam, video = false, callId = callId)
+            runCurrent()
+            caller.hangup()
+            runCurrent()
+        }
+        caller.startCall(sam, video = false, callId = "c3")
+        runCurrent()
+        advanceTimeBy(5_000)
+
+        assertEquals(listOf("Cancelled", "Cancelled"), recorded)
     }
 }

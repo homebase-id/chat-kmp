@@ -51,6 +51,8 @@ class CallService(
         .flatMapLatest { it?.state ?: flowOf(CallState()) }
         .stateIn(scope, SharingStarted.Eagerly, CallState())
 
+    override val transitions: Flow<CallState> = controller.flatMapLatest { it?.transitions ?: flowOf(CallState()) }
+
     override val videos: StateFlow<CallVideos> = controller
         .flatMapLatest { it?.videos ?: flowOf(CallVideos()) }
         .stateIn(scope, SharingStarted.Eagerly, CallVideos())
@@ -62,8 +64,8 @@ class CallService(
 
     init {
         if (engineFactory != null) {
-            scope.launch { recordCallEvents(state, recordEvent) }
-            scope.launch { state.callActiveChanges().collect(onCallActiveChanged) }
+            scope.launch { recordCallEvents(transitions, recordEvent) }
+            scope.launch { transitions.callActiveChanges().collect(onCallActiveChanged) }
             scope.launch {
                 for (push in pushes) {
                     val target = controller.filterNotNull().first()

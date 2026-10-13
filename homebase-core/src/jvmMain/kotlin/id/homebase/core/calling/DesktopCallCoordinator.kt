@@ -26,7 +26,7 @@ fun startDesktopCallCoordinator() {
     val displayer = RichNotificationDisplayer()
     CallRingCoordinator(
         target = service,
-        state = service.state,
+        transitions = service.transitions,
         sink = DesktopCallRingSink(
             scope = scope,
             notify = displayer::show,
