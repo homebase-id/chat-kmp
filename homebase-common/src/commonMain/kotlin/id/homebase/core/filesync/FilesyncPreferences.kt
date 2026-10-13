@@ -28,7 +28,7 @@ class FilesyncPreferences(private val databaseManager: DatabaseManager) {
         val bytes = runCatching {
             keyValue.selectByKeyBootstrapSync(ICON_VISIBLE_KEY) { _, data -> data }
         }.getOrNull()
-        return if (bytes == null || bytes.isEmpty()) true else bytes[0].toInt() != 0
+        return if (bytes == null || bytes.isEmpty()) false else bytes[0].toInt() != 0
     }
 
     companion object {
