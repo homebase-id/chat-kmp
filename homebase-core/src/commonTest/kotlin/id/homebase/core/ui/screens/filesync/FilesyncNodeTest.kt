@@ -4,15 +4,19 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadHash
+import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.core.filesync.FilesyncProtocol
+import kotlinx.coroutines.test.runTest
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -33,16 +37,17 @@ class FilesyncNodeTest {
         fileType: Int?,
         content: String?,
         payloads: List<PayloadDescriptor>? = null,
-        isEncrypted: Boolean = true,
+        serverFileIsEncrypted: Boolean = true,
         status: ArchivalStatus? = null,
     ) = HomebaseFile(
         fileId = Uuid.random(),
         driveId = FilesyncProtocol.DriveAlias,
+        serverFileIsEncrypted = serverFileIsEncrypted,
         fileState = FileState.Active,
         fileSystemType = FileSystemType.Standard,
         keyHeader = KeyHeader(ByteArray(16), SecureByteArray(fileKey)),
         fileMetadata = FileMetadata(
-            isEncrypted = isEncrypted,
+            isEncrypted = false,
             updated = UnixTimeUtc(UPDATED_MS),
             appData = AppFileMetaData(
                 uniqueId = nodeId,
@@ -85,12 +90,37 @@ class FilesyncNodeTest {
     }
 
     @Test
+    fun aRowDecryptedByTheQueryIsListed() = runTest {
+        val sharedSecret = SecureByteArray(ByteArray(16) { (it + 7).toByte() })
+        val fileKeyHeader = KeyHeader.newRandom16()
+        val transportIv = ByteArray(16) { (it + 50).toByte() }
+        val serverFile = ServerFile(
+            fileId = Uuid.random(),
+            driveId = FilesyncProtocol.DriveAlias,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            sharedSecretEncryptedKeyHeader = EncryptedKeyHeader.encryptKeyHeaderAes(fileKeyHeader, transportIv, sharedSecret),
+            fileMetadata = FileMetadata(
+                isEncrypted = true,
+                appData = AppFileMetaData(
+                    uniqueId = nodeId,
+                    groupId = FilesyncProtocol.RootNodeId,
+                    fileType = FilesyncProtocol.FolderFileType,
+                    content = Base64.encode(fileKeyHeader.encryptDataAes("""{"v":1,"name":"Photos"}""".encodeToByteArray())),
+                ),
+            ),
+            serverMetadata = ServerMetadata(),
+        )
+        assertEquals("Photos", serverFile.asHomebaseFile(sharedSecret).toFilesyncNode()?.first?.name)
+    }
+
+    @Test
     fun rowsThatAreNotReadableNodesAreSkipped() {
         assertNull(row(fileType = 1, content = """{"v":1,"name":"x"}""").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FolderFileType, """{"message":"Decryption Failure"}""").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FolderFileType, "not json").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FolderFileType, """{"name":"no version"}""").toFilesyncNode())
-        assertNull(row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"plain"}""", isEncrypted = false).toFilesyncNode())
+        assertNull(row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"plain"}""", serverFileIsEncrypted = false).toFilesyncNode())
         assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-payload.txt","mtime":1,"size":5}""").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-size.txt","mtime":1}""", listOf(syncData)).toFilesyncNode())
         val unhashed = syncData.copy(hash = null)
@@ -150,6 +180,43 @@ class FilesyncNodeTest {
         val content = """{"v":1,"name":"a","rm":{"at":5,"root":"${Uuid.random()}"}}"""
         for (status in listOf(null, ArchivalStatus.None, ArchivalStatus.Archived)) {
             assertNull(row(FilesyncProtocol.FolderFileType, content, status = status).toFilesyncNode()!!.first.removal)
+        }
+    }
+
+    @Test
+    fun theInfoPaneFieldsComeFromContentHeaderAndPayload() {
+        val content = """{"v":1,"name":"run.sh","mtime":1,"size":2,"x":true,"ct":1451606400123.4}"""
+        val descriptor = syncData.copy(lastModified = 1759920007000)
+        val (node, _) = row(FilesyncProtocol.FileFileType, content, listOf(descriptor)).toFilesyncNode()!!
+        assertEquals(1451606400123, node.createdMs)
+        assertTrue(node.executable)
+        assertEquals(1759920007000, node.uploadedMs)
+        assertEquals(PayloadHashAlgorithm.Blake3, node.hashAlgorithm)
+    }
+
+    @Test
+    fun anOddCreationTimeOrExecutableFlagReadsAsNone() {
+        for (extra in listOf(""","ct":"2016"""", ""","ct":null""", ""","x":"true"""", "")) {
+            val (node, _) = row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"a"$extra}""").toFilesyncNode()!!
+            assertNull(node.createdMs, extra)
+            assertFalse(node.executable, extra)
+        }
+    }
+
+    @Test
+    fun tagsAreReadLenientlyOnePerNameAndSortedByName() {
+        val tags = """[{"n":"work","c":4},{"n":"Red","c":6},{"n":"Odd","c":9},{"n":"Plain"},{"c":2},{"n":""},{"n":"Red","c":1},"x"]"""
+        val (node, _) = row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"a","tags":$tags}""").toFilesyncNode()!!
+        assertEquals(
+            listOf(FilesyncTag("Odd", null), FilesyncTag("Plain", null), FilesyncTag("Red", 6), FilesyncTag("work", 4)),
+            node.tags,
+        )
+    }
+
+    @Test
+    fun noTagsKeyOrABadOneMeansNoTags() {
+        for (tags in listOf("", ""","tags":{}""", ""","tags":"Red"""")) {
+            assertEquals(emptyList(), row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"a"$tags}""").toFilesyncNode()!!.first.tags, tags)
         }
     }
 

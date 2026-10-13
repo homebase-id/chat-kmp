@@ -37,8 +37,16 @@ internal fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.ContactBook::class) == true
 }
 
-internal fun NavDestination.routeMotion(): RouteMotion = when {
+// Pages a top-level screen's own sidebar switches between: on a wide window the rail stays beside them.
+internal fun NavDestination?.isSidebarPlace(): Boolean {
+    return this?.hasRoute(Route.FilesyncRecent::class) == true ||
+            this?.hasRoute(Route.FilesyncTrash::class) == true
+}
+
+internal fun NavDestination.routeMotion(wide: Boolean): RouteMotion = when {
     isTopLevelRoute() -> RouteMotion.Tab
+    // Its sidebar is a shared element that stays put on a wide window; only the content fades.
+    wide && isSidebarPlace() -> RouteMotion.Fade
     hasRoute(Route.ProfileCard::class) ||
             hasRoute(Route.VaultNoteEditor::class) ||
             hasRoute(Route.Crop::class) ||
@@ -64,9 +72,9 @@ private fun NavDestination?.isCardRoute(): Boolean =
 private fun cardAwareScheme(scheme: MotionScheme, destination: NavDestination?): MotionScheme =
     if (destination.isCardRoute()) MotionScheme.expressive() else scheme
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navEnter(scheme: MotionScheme): EnterTransition {
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navEnter(scheme: MotionScheme, wide: Boolean): EnterTransition {
     val effective = cardAwareScheme(scheme, targetState.destination)
-    return when (targetState.destination.routeMotion()) {
+    return when (targetState.destination.routeMotion(wide)) {
         RouteMotion.Push -> PlatformNavMotion.push(effective)
         RouteMotion.Tab -> fadeThroughIn(effective)
         // Effects springs don't overshoot; a spatial one would pull a full-height slide past its edge.
@@ -76,9 +84,9 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navEnter(scheme: 
     }
 }
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navExit(scheme: MotionScheme): ExitTransition {
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navExit(scheme: MotionScheme, wide: Boolean): ExitTransition {
     val effective = cardAwareScheme(scheme, targetState.destination)
-    return when (targetState.destination.routeMotion()) {
+    return when (targetState.destination.routeMotion(wide)) {
         RouteMotion.Push -> PlatformNavMotion.pushExit(effective)
         RouteMotion.Tab -> fadeThroughOut(effective)
         RouteMotion.Modal -> ExitTransition.KeepUntilTransitionsFinished
@@ -87,9 +95,9 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navExit(scheme: M
     }
 }
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopEnter(scheme: MotionScheme): EnterTransition {
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopEnter(scheme: MotionScheme, wide: Boolean): EnterTransition {
     val effective = cardAwareScheme(scheme, initialState.destination)
-    return when (initialState.destination.routeMotion()) {
+    return when (initialState.destination.routeMotion(wide)) {
         RouteMotion.Push -> PlatformNavMotion.pop(effective)
         RouteMotion.Tab -> fadeThroughIn(effective)
         RouteMotion.Modal -> EnterTransition.None
@@ -98,9 +106,9 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopEnter(schem
     }
 }
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopExit(scheme: MotionScheme): ExitTransition {
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopExit(scheme: MotionScheme, wide: Boolean): ExitTransition {
     val effective = cardAwareScheme(scheme, initialState.destination)
-    return when (initialState.destination.routeMotion()) {
+    return when (initialState.destination.routeMotion(wide)) {
         RouteMotion.Push -> PlatformNavMotion.popExit(effective)
         RouteMotion.Tab -> fadeThroughOut(effective)
         RouteMotion.Modal ->

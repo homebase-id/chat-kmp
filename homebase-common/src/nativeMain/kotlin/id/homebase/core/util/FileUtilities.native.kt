@@ -3,10 +3,15 @@ package id.homebase.core.util
 import androidx.compose.runtime.Composable
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.io.files.Path
+import platform.CoreGraphics.CGRectGetMidX
+import platform.CoreGraphics.CGRectGetMidY
+import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.UIKit.UIViewController
+import platform.UIKit.popoverPresentationController
 
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
@@ -85,7 +90,7 @@ actual fun getUriHandler(): FileSystemHandler {
                     }
                 val rootVC = UIApplication.sharedApplication.keyWindow?.rootViewController
                 if (rootVC != null) {
-                    rootVC.presentViewController(activityVC, animated = true, completion = null)
+                    rootVC.presentSheet(activityVC)
                 } else {
                     onError(Exception("Unable to present share sheet"))
                 }
@@ -106,8 +111,7 @@ actual fun getUriHandler(): FileSystemHandler {
                 val activityVC = UIActivityViewController(
                     activityItems = listOf(text), applicationActivities = null
                 )
-                val rootVC = UIApplication.sharedApplication.keyWindow?.rootViewController
-                rootVC?.presentViewController(activityVC, animated = true, completion = null)
+                UIApplication.sharedApplication.keyWindow?.rootViewController?.presentSheet(activityVC)
             } catch (e: Exception) {
                 onError(e)
             }
@@ -117,4 +121,15 @@ actual fun getUriHandler(): FileSystemHandler {
             TODO("Not yet implemented")
         }
     }
+}
+
+// On iPad a share sheet is a popover, and presenting one without an anchor throws.
+@OptIn(ExperimentalForeignApi::class)
+private fun UIViewController.presentSheet(sheet: UIActivityViewController) {
+    sheet.popoverPresentationController?.let { popover ->
+        popover.sourceView = view
+        popover.sourceRect = CGRectMake(CGRectGetMidX(view.bounds), CGRectGetMidY(view.bounds), 0.0, 0.0)
+        popover.permittedArrowDirections = 0uL
+    }
+    presentViewController(sheet, animated = true, completion = null)
 }

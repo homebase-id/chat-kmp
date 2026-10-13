@@ -475,7 +475,7 @@ class ProfileCardPhotosTest {
         uploadFamilyPhoto(vm, bus, awaitStored = false)
 
         if (SERVER_STORES_CIRCLE_PHOTOS) {
-            withTimeout(10_000) { vm.state.first { it.circleSlot(FAMILY_CIRCLE_ID).existing != null || failed.isCompleted } }
+            withTimeout(10_000) { while (vm.state.value.circleSlot(FAMILY_CIRCLE_ID).existing == null && !failed.isCompleted) delay(10) }
         } else {
             withTimeout(5_000) { failed.await() }
             assertEquals(emptyList(), harness.photoPutBodies)
