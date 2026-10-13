@@ -88,15 +88,21 @@ private fun frameSizeEvents(handle: KmpVideoHandle) = object : RendererCommon.Re
 }
 
 actual fun audioRouteChanges(): Flow<List<AudioRoute>> = callbackFlow {
+    // Registering reports every device already connected, which sends the first list.
+    val unregister = onAudioDevicesChanged { trySend(availableAudioRoutes()) }
+    awaitClose(unregister)
+}.distinctUntilChanged()
+
+/** Calls [changed] on the main thread whenever an audio device is added or removed; returns the unregister. */
+internal fun onAudioDevicesChanged(changed: () -> Unit): () -> Unit {
     val audio = callAppContext.getSystemService(AudioManager::class.java)
     val callback = object : AudioDeviceCallback() {
-        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) { trySend(availableAudioRoutes()) }
-        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) { trySend(availableAudioRoutes()) }
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = changed()
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) = changed()
     }
-    // Registering reports every device already connected through onAudioDevicesAdded, which sends the first list.
     audio.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
-    awaitClose { audio.unregisterAudioDeviceCallback(callback) }
-}.distinctUntilChanged()
+    return { audio.unregisterAudioDeviceCallback(callback) }
+}
 
 internal fun availableAudioRoutes(): List<AudioRoute> {
     val routes = mutableListOf(AudioRoute.Earpiece, AudioRoute.Speaker)
