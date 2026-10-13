@@ -86,4 +86,43 @@ class VideoStatsLogTest {
         assertTrue(" qp=null " in videoStatsLines(listOf(noQp)).single())
         assertTrue(" qp=36.6 " in videoStatsLines(listOf(stalled)).single())
     }
+
+    // iPhone retest Redmi: encoded sat at 2778 for minutes while the camera kept going; the delta reads 0 at a glance.
+    @Test
+    fun encodedDeltaCountsFramesEncodedInTheInterval() {
+        val now = StatsEntry("outbound-rtp", mapOf("kind" to "video", "framesEncoded" to BigInteger.valueOf(2_778)))
+
+        assertTrue(" encodedDelta=0 " in videoStatsLines(listOf(now), previous = listOf(now)).single())
+        assertTrue(" encodedDelta=37 " in videoStatsLines(listOf(now), previous = listOf(outbound(2_741))).single())
+    }
+
+    // Redmi receiving iPhone H.264 at 360p: 584 ms a frame at 30 fps is 17.5 frames inside OMX.qcom.video.decoder.avc.
+    @Test
+    fun inboundLinesNameTheCodecAndCountFramesInFlight() {
+        fun video(decoded: Long, decodeSeconds: Double) = StatsEntry(
+            "inbound-rtp",
+            mapOf("kind" to "video", "codecId" to "CIT01_102", "framesDecoded" to decoded, "totalDecodeTime" to decodeSeconds, "framesPerSecond" to 30.0),
+        )
+        val codec = StatsEntry("codec", mapOf("mimeType" to "video/H264"), id = "CIT01_102")
+        val line = videoStatsLines(listOf(video(250, 87.6), codec), previous = listOf(video(100, 0.0))).single()
+
+        assertTrue(line.startsWith("inbound video codec=video/H264 "), line)
+        assertTrue(" decodeMs=584.0 inFlight=17.5 " in line, line)
+    }
+
+    // A/V sync holds audio back to the video's delay: 751-765 ms on the Redmi while it decoded H.264.
+    @Test
+    fun theInboundAudioLineShowsItsJitterBufferDelayOverTheInterval() {
+        fun audio(emitted: Long, jbSeconds: Double, targetSeconds: Double, concealed: Long) = StatsEntry(
+            "inbound-rtp",
+            mapOf(
+                "kind" to "audio", "codecId" to "CIT01_111", "jitterBufferEmittedCount" to BigInteger.valueOf(emitted),
+                "jitterBufferDelay" to jbSeconds, "jitterBufferTargetDelay" to targetSeconds, "concealedSamples" to concealed,
+            ),
+        )
+        val codec = StatsEntry("codec", mapOf("mimeType" to "audio/opus"), id = "CIT01_111")
+        val line = videoStatsLines(listOf(audio(480_000, 280_000.0, 230_000.0, 900), codec), previous = listOf(audio(240_000, 100_000.0, 50_000.0, 100))).single()
+
+        assertEquals("inbound audio codec=audio/opus jbMs=750.0 jbTargetMs=750.0 concealed=800", line)
+    }
 }

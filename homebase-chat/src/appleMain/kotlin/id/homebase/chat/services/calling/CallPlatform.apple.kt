@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import platform.Foundation.NSNotificationCenter
 import platform.UIKit.UIAccessibilityIsVoiceOverRunning
 import platform.UIKit.UIAccessibilityVoiceOverStatusDidChangeNotification
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
@@ -31,28 +32,31 @@ actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory {
 actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) {
     val kmp = handle as? KmpVideoHandle ?: return
     val track = kmp.track
-    val view = remember(track) { RTCMTLVideoView().apply { videoContentMode = UIViewContentMode.UIViewContentModeScaleAspectFill } }
-    // The view holds its delegate weakly, so the composition keeps it alive.
-    val sizeReporter = remember(track) { if (kmp.local) null else RemoteSizeReporter() }
-    DisposableEffect(track) {
-        view.delegate = sizeReporter
-        track.addRenderer(view)
-        onDispose {
-            runCatching { track.removeRenderer(view) }
-            view.delegate = null
+    // UIKitView runs its factory once, so a new track needs a new UIKitView, not just a new remembered view.
+    key(track) {
+        val view = remember { RTCMTLVideoView().apply { videoContentMode = UIViewContentMode.UIViewContentModeScaleAspectFill } }
+        // The view holds its delegate weakly, so the composition keeps it alive.
+        val sizeReporter = remember { if (kmp.local) null else RemoteSizeReporter() }
+        DisposableEffect(track) {
+            view.delegate = sizeReporter
+            track.addRenderer(view)
+            onDispose {
+                runCatching { track.removeRenderer(view) }
+                view.delegate = null
+            }
         }
+        UIKitView(
+            factory = { view },
+            modifier = modifier,
+            // A cooperative interop view eats the tap that brings the hidden controls back.
+            properties = UIKitInteropProperties(interactionMode = null),
+            update = {
+                it.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0)
+                it.layer.cornerRadius = cornerRadius.value.toDouble()
+                it.clipsToBounds = cornerRadius.value > 0f
+            },
+        )
     }
-    UIKitView(
-        factory = { view },
-        modifier = modifier,
-        // A cooperative interop view eats the tap that brings the hidden controls back.
-        properties = UIKitInteropProperties(interactionMode = null),
-        update = {
-            it.transform = CGAffineTransformMakeScale(if (kmp.mirrored) -1.0 else 1.0, 1.0)
-            it.layer.cornerRadius = cornerRadius.value.toDouble()
-            it.clipsToBounds = cornerRadius.value > 0f
-        },
-    )
 }
 
 actual fun platformAudioRoutes(): List<AudioRoute> = listOf(AudioRoute.Earpiece, AudioRoute.Speaker)

@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.shepeliev.webrtckmp.WebRtc
+import id.homebase.api.ActivityProvider
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoSink
@@ -86,8 +87,7 @@ private fun remoteSizeEvents() = object : RendererCommon.RendererEvents {
 actual fun platformAudioRoutes(): List<AudioRoute> {
     val routes = mutableListOf(AudioRoute.Earpiece, AudioRoute.Speaker)
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return routes
-    val audio = org.koin.mp.KoinPlatformTools.defaultContext().get().get<android.content.Context>()
-        .getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+    val audio = ActivityProvider.requireApplicationContext().getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
     val types = audio.availableCommunicationDevices.map { it.type }
     if (types.any { it in BluetoothDeviceTypes }) {
         routes += AudioRoute.Bluetooth

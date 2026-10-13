@@ -62,6 +62,7 @@ data class CallState(
     val direction: CallDirection? = null,
     val media: CallMedia = CallMedia(),
     val connectedAtMs: Long? = null,
+    val endedAtMs: Long? = null,
     val quality: CallQuality = CallQuality.Unknown,
     val reconnectAttempt: Int = 0,
     val peerRinging: Boolean = false,

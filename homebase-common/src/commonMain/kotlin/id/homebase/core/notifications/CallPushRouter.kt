@@ -12,14 +12,15 @@ object CallPushRouter {
     const val HANGUP_TYPE_ID = "b94e7a15-d2f8-4c60-a381-5e0c9d7b2f48"
 
     interface Handler {
-        fun onRing(callId: String, from: String, message: String?)
+        /** [sentAtMs] is the server's send time, 0 when the payload carries none. */
+        fun onRing(callId: String, from: String, sentAtMs: Long)
         fun onHangup(callId: String, from: String)
     }
 
     @kotlin.concurrent.Volatile
     var handler: Handler? = null
 
-    /** Parses an FCM/VoIP data map; returns true when it was a call push (and so needs no chat notification). */
+    /** Parses an FCM/VoIP data map; returns true when a handler took the call push (and so it needs no chat notification). */
     fun tryHandle(data: Map<String, String>): Boolean {
         val raw = data["data"] ?: return false
         val notification = runCatching { OdinSystemSerializer.deserialize<PushNotification>(raw) }.getOrNull() ?: return false
@@ -28,10 +29,10 @@ object CallPushRouter {
 
     fun tryHandle(notification: PushNotification): Boolean {
         val options = notification.options
-        val target = handler
+        val target = handler ?: return false
         return when (options.typeId.lowercase()) {
-            RING_TYPE_ID -> { target?.onRing(options.tagId, notification.senderId, options.unEncryptedMessage); true }
-            HANGUP_TYPE_ID -> { target?.onHangup(options.tagId, notification.senderId); true }
+            RING_TYPE_ID -> { target.onRing(options.tagId, notification.senderId, notification.created); true }
+            HANGUP_TYPE_ID -> { target.onHangup(options.tagId, notification.senderId); true }
             else -> false
         }
     }

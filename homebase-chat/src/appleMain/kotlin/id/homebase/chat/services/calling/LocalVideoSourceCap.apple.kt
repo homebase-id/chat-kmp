@@ -19,7 +19,7 @@ private val configured = AtomicBoolean(false)
 // camera at 4K and the adapter lets the encoder climb past 720p. The source itself stays the capturer's delegate, so
 // no Kotlin runs per frame.
 @OptIn(ExperimentalForeignApi::class, ExperimentalAtomicApi::class)
-internal actual fun capLocalVideoSource() {
+internal actual fun configureWebRtc() {
     if (!configured.compareAndSet(false, true)) return
     WebRtc.configure(
         VideoProcessorFactory { source ->

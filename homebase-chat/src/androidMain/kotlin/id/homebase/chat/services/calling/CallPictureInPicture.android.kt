@@ -20,11 +20,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PendingIntentCompat
 import androidx.core.util.Consumer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.resources.MR
 import id.homebase.resources.call_hang_up
@@ -67,7 +67,7 @@ actual fun CallPictureInPictureEffect(
     onRestore: () -> Unit,
 ) {
     val activity = LocalContext.current.findActivity() ?: return
-    val size by RemoteVideoSize.current.collectAsState()
+    val size by RemoteVideoSize.current.collectAsStateWithLifecycle()
     val muteLabel = stringResource(if (muted) MR.string.call_unmute else MR.string.call_mute)
     val hangupLabel = stringResource(MR.string.call_hang_up)
     val toggleMute by rememberUpdatedState(onToggleMute)
@@ -103,18 +103,18 @@ actual fun CallPictureInPictureEffect(
         buildPipParams(activity, eligible, muted, size, muteLabel, hangupLabel)
     }
     DisposableEffect(activity, params) {
-        // Pre-31 there is no auto-enter, so the user-leave-hint hook is the only way in.
+        activity.setPictureInPictureParams(params)
+        // Pre-31 there is no auto-enter, so the user-leave-hint hook is the only way in; from 31 auto-enter does it.
         val leave = Runnable {
             Logger.i("CallPiP") { "user leave hint eligible=$eligible" }
             if (eligible) {
                 val entered = activity.enterPictureInPictureMode(params)
                 Logger.i("CallPiP") { "enterPictureInPictureMode=$entered" }
             }
-        }
-        activity.setPictureInPictureParams(params)
-        activity.addOnUserLeaveHintListener(leave)
+        }.takeIf { Build.VERSION.SDK_INT < Build.VERSION_CODES.S }
+        leave?.let(activity::addOnUserLeaveHintListener)
         onDispose {
-            activity.removeOnUserLeaveHintListener(leave)
+            leave?.let(activity::removeOnUserLeaveHintListener)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 activity.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(false).build())
             }

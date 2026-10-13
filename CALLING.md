@@ -152,7 +152,7 @@ exercises a real ICE restart. It also proves the natives load on the host.
 `SendVideoCap` bounds what a sender puts on the wire: at most 720p30, 300 kbps to 2 Mbps, with MAINTAIN_FRAMERATE
 degradation on webrtc-kmp, so libwebrtc's own adaptations lower resolution and never frame rate (webrtc-java has no
 degradation preference). Android asks Camera2 for 720p; on iOS webrtc-kmp reads the
-camera formats through a freed struct and opens the camera at 4K, so `capLocalVideoSource` adapts the source output to
+camera formats through a freed struct and opens the camera at 4K, so `configureWebRtc` adapts the source output to
 720p instead.
 
 - **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame, 108000 a second)
@@ -169,8 +169,17 @@ camera formats through a freed struct and opens the camera at 4K, so `capLocalVi
   full`. `SendLoadRung` caps the ladder further: two ticks under 24 fps with frames over 50 ms to encode step it down
   one rung (720, 540, 360, 270, 180; no floor), six ticks at 27 fps whose encode time, scaled to the next rung's
   pixels, stays under 40 ms step it back up. A camera slowed by low light encodes fast and never counts as slow.
+- **Android decodes into byte buffers.** webrtc-kmp gives `DefaultVideoDecoderFactory` the root EGL context, and a
+  texture-mode `AndroidVideoDecoder` has a single output texture: every frame that finishes while the previous one is
+  still held downstream (libwebrtc's render queue keeps it until its render time) is dropped. On the Redmi that halved
+  1080p to 15 fps with `Too many frames backed up in the decoder`; `DefaultVideoDecoderFactory(null)` decodes 1080p at
+  30 fps.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
-  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log.
+  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log. A stalled
+  outbound counter with a frozen source line is a stopped camera, with a moving one a failing encoder. qp above the
+  quality scaler's threshold with `limit=none` is a sender not adapting; decodeMs above 1000/fps is a decoder that cannot
+  keep up; a steady inFlight (decodeMs x fps) near a picture buffer's size is a decoder holding frames. A/V sync holds
+  audio back to the video's delay, which the audio line's jbMs shows.
 
 ### Keep-awake and picture-in-picture
 

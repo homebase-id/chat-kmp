@@ -52,6 +52,16 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
         if !manual { rtc.isAudioEnabled = true }
     }
 
+    // Without these iOS offers "Hold & Accept" for a second call, and the hold action it then sends is one this provider never handles.
+    private static func singleCallUpdate() -> CXCallUpdate {
+        let update = CXCallUpdate()
+        update.supportsHolding = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsDTMF = false
+        return update
+    }
+
     private func uuid(for callId: String) -> UUID {
         if let existing = uuidForCall[callId] { return existing }
         let created = UUID(uuidString: callId) ?? UUID()
@@ -82,7 +92,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
             if let options = obj["options"] as? [String: Any], let tag = options["tagId"] as? String { callId = tag }
         }
 
-        let update = CXCallUpdate()
+        let update = Self.singleCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: caller)
         update.localizedCallerName = caller
         update.hasVideo = false // the ring push does not say; Kotlin calls reportVideo() once the offer arrives
@@ -139,8 +149,17 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     func reportVideo(callId: String, video: Bool) {
         onMain {
             guard let id = self.uuidForCall[callId] else { return }
-            let update = CXCallUpdate()
+            let update = Self.singleCallUpdate()
             update.hasVideo = video
+            self.provider.reportCall(with: id, updated: update)
+        }
+    }
+
+    func reportCaller(callId: String, label: String) {
+        onMain {
+            guard let id = self.uuidForCall[callId] else { return }
+            let update = Self.singleCallUpdate()
+            update.localizedCallerName = label
             self.provider.reportCall(with: id, updated: update)
         }
     }
@@ -205,6 +224,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         NSLog("[Call] CXStartCallAction call=%@", action.callUUID.uuidString)
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
+        provider.reportCall(with: action.callUUID, updated: Self.singleCallUpdate())
         action.fulfill()
     }
 

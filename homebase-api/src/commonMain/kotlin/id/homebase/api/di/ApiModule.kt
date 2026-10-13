@@ -58,6 +58,7 @@ import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.dsl.factoryOf
@@ -193,7 +194,9 @@ val apiModule = module {
     singleOf(::LocationPreviewProvider)
 
     single { EventBus() }
-    single(createdAtStart = true) { StunUrlStore(get(), get<CoroutineScope>()) }
+    single(createdAtStart = true) {
+        StunUrlStore(get(), get<CredentialsManager>().credentialsFlow.map { it?.domain?.domainName }, get<CoroutineScope>())
+    }
 
     // Eager startup task: logs a one-shot breakdown of the cache directory so an
     // `adb logcat -s CacheAudit:*` capture shows where disk usage is going. The

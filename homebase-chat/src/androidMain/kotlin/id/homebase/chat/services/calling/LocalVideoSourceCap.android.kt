@@ -5,7 +5,7 @@ import com.shepeliev.webrtckmp.MediaStreamConstraintsBuilder
 import com.shepeliev.webrtckmp.RtpSender
 import org.webrtc.RtpParameters
 
-internal actual fun capLocalVideoSource() = Unit
+internal actual fun configureWebRtc() = configureWebRtcFactory
 
 // Camera2 picks the closest format the device lists, so asking for 720p is safe here.
 internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
