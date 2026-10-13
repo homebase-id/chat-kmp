@@ -1,10 +1,12 @@
 package id.homebase.core.ui.screens.filesync
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -25,12 +27,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -88,8 +89,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import id.homebase.core.util.isExpandedLayout
 import id.homebase.common.util.formatBytes
+import id.homebase.core.ui.navigation.LocalNavAnimatedVisibilityScope
+import id.homebase.core.ui.navigation.LocalSharedTransitionScope
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_all_files
@@ -150,13 +153,15 @@ internal fun FilesyncShell(
             }
             HorizontalDivider()
             Row(modifier = Modifier.fillMaxSize()) {
-                Column(modifier = Modifier.width(216.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(12.dp)) {
-                    SidebarItem(MR.string.filesync_all_files, Icons.Outlined.Folder, place == FilesyncPlace.Files, places.onFiles)
-                    SidebarItem(MR.string.filesync_recent, Icons.Outlined.History, place == FilesyncPlace.Recent, places.onRecent)
-                    SidebarItem(MR.string.filesync_trash, Icons.Outlined.Delete, place == FilesyncPlace.Trash, places.onTrash)
-                    sidebarExtra()
+                Row(modifier = Modifier.fillMaxHeight().sharedSidebar()) {
+                    Column(modifier = Modifier.width(216.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                        SidebarItem(MR.string.filesync_all_files, Icons.Outlined.Folder, place == FilesyncPlace.Files, places.onFiles)
+                        SidebarItem(MR.string.filesync_recent, Icons.Outlined.History, place == FilesyncPlace.Recent, places.onRecent)
+                        SidebarItem(MR.string.filesync_trash, Icons.Outlined.Delete, place == FilesyncPlace.Trash, places.onTrash)
+                        sidebarExtra()
+                    }
+                    VerticalDivider()
                 }
-                VerticalDivider()
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
                 if (pane != null) {
                     VerticalDivider()
@@ -173,6 +178,17 @@ internal fun FilesyncShell(
         }
     }
 }
+
+// Each place draws its own sidebar; across a transition Compose draws only the target's, in place.
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun Modifier.sharedSidebar(): Modifier {
+    val shared = LocalSharedTransitionScope.current ?: return this
+    val visibility = LocalNavAnimatedVisibilityScope.current ?: return this
+    return with(shared) { this@sharedSidebar.sharedElement(rememberSharedContentState(SIDEBAR_KEY), visibility) }
+}
+
+private const val SIDEBAR_KEY = "filesync-sidebar"
 
 /** The wide shell on wide windows, a plain screen with [compactTopBar] otherwise; for Recent and Trash. */
 @Composable
@@ -207,7 +223,8 @@ private fun SidebarItem(label: StringResource, icon: ImageVector, selected: Bool
         label = { Text(stringResource(label)) },
         icon = { Icon(icon, contentDescription = null) },
         selected = selected,
-        onClick = { if (!selected) onClick() },
+        // No "already here" guard: on a pop the hidden outgoing copy takes clicks, and its selection is stale.
+        onClick = onClick,
         modifier = Modifier.height(44.dp),
     )
 }
