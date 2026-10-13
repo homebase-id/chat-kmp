@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -20,17 +21,24 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius:
     val video = handle as? JvmVideoHandle ?: return
     val frame = video.frame.collectAsState().value ?: return
     Canvas(modifier.clip(RoundedCornerShape(cornerRadius)).fillMaxSize()) {
-        val fill = maxOf(size.width / frame.width, size.height / frame.height)
-        val drawn = Size(frame.width * fill, frame.height * fill)
+        val width = frame.image.width
+        val height = frame.image.height
+        val sideways = frame.rotation % 180 != 0
+        val fill = maxOf(size.width / (if (sideways) height else width), size.height / (if (sideways) width else height))
+        val drawn = Size(width * fill, height * fill)
         val dx = ((size.width - drawn.width) / 2).toInt()
         val dy = ((size.height - drawn.height) / 2).toInt()
         scale(if (video.mirrored) -1f else 1f, 1f) {
-            drawImage(
-                image = frame,
-                srcSize = IntSize(frame.width, frame.height),
-                dstOffset = IntOffset(dx, dy),
-                dstSize = IntSize(drawn.width.toInt(), drawn.height.toInt()),
-            )
+            rotate(frame.rotation.toFloat()) {
+                video.draw(frame) { image ->
+                    drawImage(
+                        image = image,
+                        srcSize = IntSize(width, height),
+                        dstOffset = IntOffset(dx, dy),
+                        dstSize = IntSize(drawn.width.toInt(), drawn.height.toInt()),
+                    )
+                }
+            }
         }
     }
 }
