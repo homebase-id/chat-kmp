@@ -58,7 +58,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -78,6 +77,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
@@ -342,7 +342,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
 }
 
 @Immutable
-private data class TableColumns(val modified: Boolean, val kind: Boolean)
+internal data class TableColumns(val modified: Boolean, val kind: Boolean)
 
 // Scrolls only as far as it takes to show the row whole, so a selection made with the mouse never moves the list.
 // Rows are one height, so a row just off screen is placed from its neighbours' offsets.
@@ -423,7 +423,7 @@ private fun HeaderCell(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TableRow(
+internal fun TableRow(
     node: FilesyncNode,
     selected: Boolean,
     progress: Float?,
@@ -436,7 +436,7 @@ private fun TableRow(
     val density = LocalDensity.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     var menuAt by remember { mutableStateOf<DpOffset?>(null) }
-    var lastMousePress by remember { mutableLongStateOf(0L) }
+    var lastMousePress by remember { mutableStateOf<Long?>(null) }
     var byMouse by remember { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
     // The pointer loop below outlives recompositions; it must act on the node as it is now.
@@ -458,24 +458,27 @@ private fun TableRow(
                 .hoverable(interaction)
                 // A mouse selects on press and opens on a double-click, the way desktop file managers do; a finger opens
                 // on a tap and selects on a long press, and never on press, or every scroll would select its row.
+                // Read in the Initial pass: by the Main pass the click handler below has already consumed the press.
                 .pointerInput(node.nodeId) {
+                    val buttonsWidth = (ActionsWidth + 8.dp).toPx()
                     awaitPointerEventScope {
                         while (true) {
-                            val event = awaitPointerEvent()
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
                             if (event.type != PointerEventType.Press) continue
                             val change = event.changes.first()
-                            // A press on the row's own buttons is theirs, not a click on the row.
-                            if (change.isConsumed) continue
+                            // A press on the row's own Save and More buttons is theirs, not a click on the row.
+                            val x = change.position.x
+                            if (if (rtl) x < buttonsWidth else x > size.width - buttonsWidth) continue
                             val mouse = change.type == PointerType.Mouse
                             byMouse = mouse && !event.buttons.isSecondaryPressed
                             if (!mouse) continue
                             if (event.buttons.isSecondaryPressed) {
                                 select()
-                                val x = if (rtl) size.width - change.position.x else change.position.x
-                                menuAt = with(density) { DpOffset(x.toDp(), change.position.y.toDp() - RowHeight) }
+                                val start = if (rtl) size.width - x else x
+                                menuAt = with(density) { DpOffset(start.toDp(), change.position.y.toDp() - RowHeight) }
                                 event.changes.forEach { it.consume() }
-                            } else if (change.uptimeMillis - lastMousePress < viewConfiguration.doubleTapTimeoutMillis) {
-                                lastMousePress = 0L
+                            } else if (lastMousePress?.let { change.uptimeMillis - it < viewConfiguration.doubleTapTimeoutMillis } == true) {
+                                lastMousePress = null
                                 actions.click(current)
                             } else {
                                 lastMousePress = change.uptimeMillis
