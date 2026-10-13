@@ -9,6 +9,8 @@ interface CallKitBridge {
     fun reportConnected(callId: String)
     /** The ring push does not say whether the call is video; the offer does, so CallKit's call is updated once it lands. */
     fun reportVideo(callId: String, video: Boolean)
+    /** The ring push only carries the caller's odinId; the contact's display name replaces it once resolved. */
+    fun reportCaller(callId: String, label: String)
     fun reportEnded(callId: String, remoteEnded: Boolean)
     /** Another device of this identity took or declined the call, so CallKit records it as handled elsewhere instead of missed. */
     fun reportEndedElsewhere(callId: String, declined: Boolean)
