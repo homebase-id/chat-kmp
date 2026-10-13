@@ -1,6 +1,9 @@
 package id.homebase.chat.services.calling
 
+import android.content.Context
+import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
+import com.shepeliev.webrtckmp.VideoTrack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -8,79 +11,69 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.shepeliev.webrtckmp.WebRtc
-import org.webrtc.RendererCommon
-import org.webrtc.SurfaceViewRenderer
-import org.webrtc.VideoSink
 
 actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory { WebRtcKmpCallEngine(it) }
 
 @Composable
 actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) {
     val kmp = handle as? KmpVideoHandle ?: return
-    val track = kmp.track
-    // Same GL context the camera capturer uses; a private EglBase cannot sample its textures and renders black.
-    val eglContext = remember { WebRtc.rootEglBase.eglBaseContext }
-    // A SurfaceView composites outside the view hierarchy and ignores the caller's clip; a TextureView is drawn inside it.
-    val rounded = cornerRadius.value > 0f
-    key(track, rounded) {
-        val renderer = remember { arrayOfNulls<VideoSink>(1) }
-        DisposableEffect(Unit) {
-            onDispose {
-                renderer[0]?.let {
-                    runCatching { track.removeSink(it) }
-                    when (it) {
-                        is SurfaceViewRenderer -> it.release()
-                        is TextureVideoRenderer -> it.release()
-                    }
-                }
-                renderer[0] = null
-            }
+    val context = LocalContext.current
+    val renderers = LocalCallVideoRenderers.current
+    // A TextureView is drawn inside the hierarchy, so the caller's clip rounds it; a SurfaceView would ignore it.
+    key(kmp.track, renderers) {
+        val renderer = remember { renderers?.obtain(context, kmp) ?: newRenderer(context, kmp) }
+        if (renderers == null) {
+            DisposableEffect(Unit) { onDispose { kmp.track.detach(renderer) } }
         }
-        if (rounded) {
-            AndroidView(
-                modifier = modifier,
-                factory = { context ->
-                    TextureVideoRenderer(context, eglContext).apply {
-                        setMirror(kmp.mirrored)
-                        track.addSink(this)
-                        renderer[0] = this
-                    }
-                },
-                update = { it.setMirror(kmp.mirrored) },
-            )
-        } else {
-            AndroidView(
-                modifier = modifier,
-                factory = { context ->
-                    SurfaceViewRenderer(context).apply {
-                        init(eglContext, if (kmp.local) null else remoteSizeEvents())
-                        setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
-                        setEnableHardwareScaler(true)
-                        setMirror(kmp.mirrored)
-                        // Two SurfaceViews stack in tree order; without the overlay flag the full-screen remote covers the PiP.
-                        setZOrderMediaOverlay(kmp.local)
-                        track.addSink(this)
-                        renderer[0] = this
-                    }
-                },
-                update = { it.setMirror(kmp.mirrored) },
-            )
-        }
+        AndroidView(
+            modifier = if (cornerRadius > 0.dp) modifier.clip(RoundedCornerShape(cornerRadius)) else modifier,
+            // A pooled renderer may still sit in the view it is moving from, whose release can come after this.
+            factory = { renderer.also { (it.parent as? ViewGroup)?.removeView(it) } },
+            update = { it.setMirror(kmp.mirrored) },
+        )
     }
 }
 
-private fun remoteSizeEvents() = object : RendererCommon.RendererEvents {
-    override fun onFirstFrameRendered() = Unit
+actual class CallVideoRenderers actual constructor() {
+    private val renderers = HashMap<VideoTrack, TextureVideoRenderer>()
 
-    override fun onFrameResolutionChanged(videoWidth: Int, videoHeight: Int, rotation: Int) {
-        val rotated = rotation % 180 != 0
-        RemoteVideoSize.current.value = if (rotated) videoHeight to videoWidth else videoWidth to videoHeight
+    internal fun obtain(context: Context, handle: KmpVideoHandle): TextureVideoRenderer =
+        renderers.getOrPut(handle.track) { newRenderer(context, handle) }
+
+    actual fun keepOnly(handles: List<VideoHandle>) {
+        val live = handles.mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }
+        renderers.keys.filterNot { it in live }.forEach(::release)
     }
+
+    actual fun releaseAll() = renderers.keys.toList().forEach(::release)
+
+    private fun release(track: VideoTrack) {
+        renderers.remove(track)?.let { track.detach(it) }
+    }
+}
+
+// Same GL context the camera capturer uses; a private EglBase cannot sample its textures and renders black.
+private fun newRenderer(context: Context, handle: KmpVideoHandle) =
+    TextureVideoRenderer(context, WebRtc.rootEglBase.eglBaseContext, onFrameSize = if (handle.local) null else ::reportRemoteSize).apply {
+        setMirror(handle.mirrored)
+        handle.track.addSink(this)
+    }
+
+private fun VideoTrack.detach(renderer: TextureVideoRenderer) {
+    runCatching { removeSink(renderer) }
+    renderer.release()
+}
+
+private fun reportRemoteSize(width: Int, height: Int) {
+    RemoteVideoSize.current.value = width to height
 }
 
 actual fun platformAudioRoutes(): List<AudioRoute> {

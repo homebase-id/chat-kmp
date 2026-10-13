@@ -1,6 +1,8 @@
 package id.homebase.chat.calling
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -91,6 +93,9 @@ class CallScreenshotTest {
             endFromKeyboard = { calls += "end" },
         )
     }
+
+    private val chatNames = listOf("Merry Brandybuck", "Pippin Took", "Rosie Cotton", "Bilbo Baggins")
+    private val chatPreviews = listOf("See you at the Green Dragon", "Second breakfast?", "The garden looks lovely", "Back in time for tea")
 
     private val outDir = File("build/call-shots").apply { mkdirs() }
 
@@ -467,26 +472,94 @@ class CallScreenshotTest {
     }
 
     @Test
-    fun aTapJustAfterTheCallScreenLeavesDoesNotReachTheAppUnderneath() = runDesktopComposeUiTest(390, 844) {
+    fun aPressOnTheEndedScreenThatOutlivesItsTimerNeverReachesTheAppUnderneath() = runDesktopComposeUiTest(390, 844) {
+        val recorder = Recorder()
         var under = 0
-        var visible by androidx.compose.runtime.mutableStateOf(true)
+        var state by androidx.compose.runtime.mutableStateOf(shots.first { it.name == "ended" }.state(base(false, Size.Phone)))
         mainClock.autoAdvance = false
         setContent {
-            Box(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxSize().clickable { under++ })
-                DismissTapShield(visible)
+            HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
+                Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxSize().clickable { under++ })
+                    CallLayer(visible = state.visible, surface = CallSurface.Full) {
+                        CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = {}, actions = recorder.actions())
+                    }
+                }
             }
         }
+        mainClock.advanceTimeBy(1_000)
+        val close = onNodeWithText("Close").getBoundsInRoot()
+        val at = Offset(((close.left + close.right) / 2).value, ((close.top + close.bottom) / 2).value)
+        onRoot().performTouchInput { down(at) }
         mainClock.advanceTimeBy(100)
-        onRoot().performTouchInput { click(center) }
-        assertEquals(1, under, "nothing shields while the call screen is up")
-        visible = false
-        mainClock.advanceTimeBy(100)
-        onRoot().performTouchInput { click(center) }
-        assertEquals(1, under, "a tap right after it left is swallowed")
-        mainClock.advanceTimeBy(TapShieldMs)
-        onRoot().performTouchInput { click(center) }
-        assertEquals(2, under, "and the app answers again after the beat")
+        state = state.copy(dismissedCallId = state.callId)
+        mainClock.advanceTimeBy(2_000)
+        assertTrue(onAllNodes(hasText("Close")).fetchSemanticsNodes().isNotEmpty(), "the screen waits for the finger")
+        onRoot().performTouchInput { up() }
+        mainClock.advanceTimeBy(2_000)
+        assertEquals(0, under, "the press finished on the call screen, not the app")
+        assertTrue(onAllNodes(hasText("Close")).fetchSemanticsNodes().isEmpty(), "and the screen leaves once the finger lifts")
+        onRoot().performTouchInput { click(at) }
+        assertEquals(1, under, "a fresh tap reaches the app")
+    }
+
+    @Test
+    fun floatingTileRestsOverAChatListInBothThemesAndExpandsOnTap() {
+        for (dark in listOf(false, true)) runDesktopComposeUiTest(390, 844) {
+            var expanded = 0
+            var listTaps = 0
+            val state = shots.first { it.name == "connected" }.state(base(true, Size.Phone)).copy(minimized = true)
+            mainClock.autoAdvance = false
+            setContent {
+                HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
+                    Surface(Modifier.fillMaxSize()) {
+                        Column {
+                            repeat(12) { i ->
+                                Row(
+                                    Modifier.fillMaxWidth().clickable { listTaps++ }.padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape))
+                                    Column(Modifier.padding(start = 16.dp)) {
+                                        Text(chatNames[i % chatNames.size], style = MaterialTheme.typography.titleMedium)
+                                        Text(chatPreviews[i % chatPreviews.size], style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    CallLayer(visible = true, surface = CallSurface.Tile) {
+                        FloatingCallTile(state, "Samwise Gamgee", avatar = {}, onExpand = { expanded++ }, onToggleMute = {}, onHangup = {})
+                    }
+                }
+            }
+            mainClock.advanceTimeBy(1_000)
+            val tile = onNode(hasTestTag(FloatingTileTag)).getBoundsInRoot()
+            assertEquals(390f - 12f, tile.right.value, 1f, "rests top-end")
+            assertEquals(64f, tile.top.value, 1f, "below the top bar")
+            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "tile-over-chats-${if (dark) "dark" else "light"}.png"))
+            onRoot().performTouchInput { click(Offset(40f, 400f)) }
+            assertEquals(1, listTaps, "the app stays usable under the tile")
+            onNode(hasTestTag(FloatingTileTag)).performTouchInput { click(Offset(20f, 60f)) }
+            assertEquals(1, expanded)
+        }
+    }
+
+    @Test
+    fun floatingTileDragsAndSnapsToTheNearestCorner() = runDesktopComposeUiTest(390, 844) {
+        val state = shots.first { it.name == "connected" }.state(base(true, Size.Phone)).copy(minimized = true)
+        var expanded = 0
+        setContent {
+            HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
+                FloatingCallTile(state, "Samwise Gamgee", avatar = {}, onExpand = { expanded++ }, onToggleMute = {}, onHangup = {})
+            }
+        }
+        onNode(hasTestTag(FloatingTileTag)).performTouchInput { swipe(Offset(20f, 60f), Offset(-200f, 500f), 400L) }
+        waitForIdle()
+        val tile = onNode(hasTestTag(FloatingTileTag)).getBoundsInRoot()
+        assertEquals(12f, tile.left.value, 1f, "snapped to the start edge")
+        assertEquals(844f - 88f - 168f, tile.top.value, 1f, "and to the bottom corner, above the bottom bar")
+        assertEquals(0, expanded, "a drag is not a tap")
     }
 
     @Test

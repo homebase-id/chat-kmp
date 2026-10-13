@@ -57,7 +57,9 @@ data class CallUiState(
 
     val keepScreenAwake: Boolean get() = inProgress
 
-    val pillVisible: Boolean get() = minimized && inProgress
+    val pillVisible: Boolean get() = minimized && inProgress && !isVideoCall
+
+    val tileVisible: Boolean get() = minimized && inProgress && isVideoCall
 
     val endReason: CallEndReason? get() = (phase as? CallPhase.Ended)?.reason
 

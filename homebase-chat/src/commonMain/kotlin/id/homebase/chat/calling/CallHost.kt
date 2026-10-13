@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,13 +18,18 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -32,6 +39,8 @@ import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallPictureInPictureEffect
 import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.CallVideoRenderers
+import id.homebase.chat.services.calling.LocalCallVideoRenderers
 import id.homebase.chat.services.calling.RemoteVideoSize
 import id.homebase.chat.services.calling.rememberInPictureInPicture
 import id.homebase.core.avatars.AvatarOptions
@@ -47,7 +56,6 @@ import id.homebase.resources.call_verification_ok
 import id.homebase.resources.call_verification_title
 import id.homebase.core.util.KeepScreenOn
 import org.jetbrains.compose.resources.stringResource
-import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 
 @Composable
@@ -64,6 +72,7 @@ fun CallHost(viewModel: CallViewModel, modifier: Modifier = Modifier) {
     )
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun CallOverlay(
     viewModel: CallViewModel,
@@ -113,28 +122,42 @@ fun CallOverlay(
         )
     }
 
-    Box(modifier) {
-        AnimatedVisibility(
-            visible = ui.visible && (!ui.minimized || inPip),
-            enter = fadeIn() + slideInVertically { it / 8 },
-            exit = fadeOut() + slideOutVertically { it / 8 },
-        ) {
-            Box(Modifier.fillMaxSize().swallowTaps()) {
-                if (inPip) {
-                    CallPipLayout(ui, avatar)
-                } else {
-                    CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, chromeHeld = showVerification || confirmEnd)
+    val renderers = remember { CallVideoRenderers() }
+    DisposableEffect(renderers) { onDispose { renderers.releaseAll() } }
+    LaunchedEffect(ui.videos) { renderers.keepOnly(listOfNotNull(ui.videos.remote, ui.videos.local)) }
+    @Suppress("DEPRECATION")
+    BackHandler(enabled = ui.visible && ui.inProgress && !ui.minimized && !inPip, onBack = viewModel::minimize)
+
+    val tile = ui.tileVisible && !inPip
+    val surface = when {
+        inPip -> CallSurface.PictureInPicture
+        tile -> CallSurface.Tile
+        else -> CallSurface.Full
+    }
+    CompositionLocalProvider(LocalCallVideoRenderers provides renderers) {
+        Box(modifier) {
+            CallLayer(visible = ui.visible && (!ui.minimized || inPip || tile), surface = surface) { shown ->
+                when (shown) {
+                    CallSurface.Tile -> FloatingCallTile(
+                        ui = ui,
+                        peerName = peerName,
+                        avatar = avatar,
+                        onExpand = viewModel::restore,
+                        onToggleMute = viewModel::toggleMute,
+                        onHangup = viewModel::hangup,
+                    )
+                    CallSurface.PictureInPicture -> CallPipLayout(ui, avatar)
+                    CallSurface.Full -> CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, chromeHeld = showVerification || confirmEnd)
                 }
             }
-        }
-        DismissTapShield(ui.visible)
-        if (ui.pillVisible && !inPip) {
-            OngoingCallPill(
-                ui = ui,
-                peerName = peerName,
-                onClick = viewModel::restore,
-                modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 8.dp),
-            )
+            if (ui.pillVisible && !inPip) {
+                OngoingCallPill(
+                    ui = ui,
+                    peerName = peerName,
+                    onClick = viewModel::restore,
+                    modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 8.dp),
+                )
+            }
         }
     }
 
@@ -161,22 +184,44 @@ fun CallOverlay(
     }
 }
 
-internal const val TapShieldMs = 600L
+internal enum class CallSurface { Full, PictureInPicture, Tile }
 
-/** The ended screen leaves on a timer, so a tap aimed at its buttons can land just after it has gone: swallow taps for a beat once it does. */
+/**
+ * Shows the call over the app. A full-screen surface swallows every touch, and stays until a finger already on it
+ * lifts: the ended screen leaves on a timer, and a press it had received must not finish on the app underneath.
+ * While leaving, it keeps the surface it last showed. The tile covers only itself.
+ */
 @Composable
-internal fun DismissTapShield(visible: Boolean) {
-    var shielded by remember { mutableStateOf(false) }
-    var wasVisible by remember { mutableStateOf(visible) }
-    LaunchedEffect(visible) {
-        val dismissed = wasVisible && !visible
-        wasVisible = visible
-        if (!dismissed) return@LaunchedEffect
-        shielded = true
-        delay(TapShieldMs)
-        shielded = false
+internal fun CallLayer(visible: Boolean, surface: CallSurface, content: @Composable (CallSurface) -> Unit) {
+    var pressed by remember { mutableStateOf(false) }
+    val last = remember { arrayOf(surface) }
+    if (visible) last[0] = surface
+    val shown = last[0]
+    AnimatedVisibility(
+        visible = visible || pressed,
+        enter = fadeIn() + slideInVertically { it / 8 },
+        exit = fadeOut() + slideOutVertically { it / 8 },
+    ) {
+        if (shown == CallSurface.Tile) {
+            content(shown)
+        } else {
+            Box(Modifier.fillMaxSize().holdWhilePressed { pressed = it }.swallowTaps()) { content(shown) }
+        }
     }
-    if (shielded) Box(Modifier.fillMaxSize().swallowTaps())
+}
+
+private fun Modifier.holdWhilePressed(onPressed: (Boolean) -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        onPressed(true)
+        try {
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+            } while (event.changes.any { it.pressed })
+        } finally {
+            onPressed(false)
+        }
+    }
 }
 
 @Composable

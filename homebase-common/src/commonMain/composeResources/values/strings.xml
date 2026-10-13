@@ -2808,6 +2808,7 @@
     <string name="call_failed_other_body">Something went wrong setting up the call. Try again.</string>
     <string name="call_retry">Retry</string>
     <string name="call_close">Close</string>
+    <string name="call_tile_description">Video call with %1$s. Tap to return to the call</string>
     <string name="call_label_audio_output">Audio</string>
     <string name="call_route_picker">Choose audio output</string>
     <string name="call_route_bluetooth">Use Bluetooth</string>

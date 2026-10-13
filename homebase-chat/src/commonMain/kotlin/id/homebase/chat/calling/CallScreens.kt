@@ -421,7 +421,7 @@ private fun CallBackdrop() {
     )
 }
 
-private fun CallUiState.remoteShowing(): Boolean =
+internal fun CallUiState.remoteShowing(): Boolean =
     videos.remote != null && remoteVideo && (phase == CallPhase.Connected || phase == CallPhase.Reconnecting)
 
 @Composable
@@ -449,7 +449,7 @@ private val PipSelfMargin = 6.dp
 private val PipSelfCorner = 8.dp
 
 @Composable
-private fun RemoteVideo(handle: VideoHandle?) {
+internal fun RemoteVideo(handle: VideoHandle?) {
     val videoSize by RemoteVideoSize.current.collectAsState()
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim), contentAlignment = Alignment.Center) {
         val letterbox = remoteVideoLetterbox(videoSize, maxWidth.value, maxHeight.value)

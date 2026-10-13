@@ -39,3 +39,9 @@ actual fun platformAudioRoutes(): List<AudioRoute> = emptyList()
 
 @Composable
 actual fun rememberScreenReaderOn(): Boolean = false
+
+actual class CallVideoRenderers actual constructor() {
+    actual fun keepOnly(handles: List<VideoHandle>) = Unit
+
+    actual fun releaseAll() = Unit
+}
