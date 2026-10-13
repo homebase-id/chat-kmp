@@ -98,7 +98,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         else -> return null
     }
     val nodeId = appData.uniqueId ?: return null
-    if (!fileMetadata.isEncrypted) {
+    if (!serverFileIsEncrypted) {
         Logger.w(TAG) { "skipping node $nodeId: not encrypted" }
         return null
     }

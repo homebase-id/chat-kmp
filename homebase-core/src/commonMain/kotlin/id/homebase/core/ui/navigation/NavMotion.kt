@@ -37,6 +37,12 @@ internal fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.ContactBook::class) == true
 }
 
+// Pages a top-level screen's own sidebar switches between: on a wide window the rail stays beside them.
+internal fun NavDestination?.isSidebarPlace(): Boolean {
+    return this?.hasRoute(Route.FilesyncRecent::class) == true ||
+            this?.hasRoute(Route.FilesyncTrash::class) == true
+}
+
 internal fun NavDestination.routeMotion(): RouteMotion = when {
     isTopLevelRoute() -> RouteMotion.Tab
     hasRoute(Route.ProfileCard::class) ||

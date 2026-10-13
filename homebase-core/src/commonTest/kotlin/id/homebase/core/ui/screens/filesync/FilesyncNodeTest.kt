@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -13,7 +14,10 @@ import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.core.filesync.FilesyncProtocol
+import kotlinx.coroutines.test.runTest
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -39,11 +43,12 @@ class FilesyncNodeTest {
     ) = HomebaseFile(
         fileId = Uuid.random(),
         driveId = FilesyncProtocol.DriveAlias,
+        serverFileIsEncrypted = isEncrypted,
         fileState = FileState.Active,
         fileSystemType = FileSystemType.Standard,
         keyHeader = KeyHeader(ByteArray(16), SecureByteArray(fileKey)),
         fileMetadata = FileMetadata(
-            isEncrypted = isEncrypted,
+            isEncrypted = false,
             updated = UnixTimeUtc(UPDATED_MS),
             appData = AppFileMetaData(
                 uniqueId = nodeId,
@@ -83,6 +88,34 @@ class FilesyncNodeTest {
         assertContentEquals(payloadIv, payload!!.payloadKey.iv)
         assertContentEquals(fileKey, payload.payloadKey.aesKey.unsafeBytes)
         assertEquals(hash, payload.hash)
+    }
+
+    @Test
+    fun aRowDecryptedByTheQueryIsListed() = runTest {
+        val sharedSecret = SecureByteArray(ByteArray(16) { (it + 7).toByte() })
+        val fileKeyHeader = KeyHeader.newRandom16()
+        val transportIv = ByteArray(16) { (it + 50).toByte() }
+        val serverFile = ServerFile(
+            fileId = Uuid.random(),
+            driveId = FilesyncProtocol.DriveAlias,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            sharedSecretEncryptedKeyHeader = EncryptedKeyHeader(
+                iv = transportIv,
+                encryptedAesKey = AesCbc.encrypt(fileKeyHeader.combine().unsafeBytes, sharedSecret, transportIv),
+            ),
+            fileMetadata = FileMetadata(
+                isEncrypted = true,
+                appData = AppFileMetaData(
+                    uniqueId = nodeId,
+                    groupId = FilesyncProtocol.RootNodeId,
+                    fileType = FilesyncProtocol.FolderFileType,
+                    content = Base64.encode(fileKeyHeader.encryptDataAes("""{"v":1,"name":"Photos"}""".encodeToByteArray())),
+                ),
+            ),
+            serverMetadata = ServerMetadata(),
+        )
+        assertEquals("Photos", serverFile.asHomebaseFile(sharedSecret).toFilesyncNode()?.first?.name)
     }
 
     @Test

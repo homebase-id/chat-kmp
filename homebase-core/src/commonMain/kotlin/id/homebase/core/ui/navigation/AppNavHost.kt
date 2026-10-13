@@ -454,7 +454,8 @@ fun AppNavHost(
     val isViewOnceViewerOpen = chromeEntry != null && entryShowsViewOnceViewer(chromeEntry)
     val paintsUnderNavigationBar = chromeDestination.isCardRoute() || isVaultOverlayOpen || isViewOnceViewerOpen
     val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
-    val railVisible = isOnTopLevelScreen && showNavigationRail
+    val railVisible = showNavigationRail && (isOnTopLevelScreen ||
+        (isAuthenticated && !chromeOwnedByScreen && chromeDestination.isSidebarPlace()))
     val contentInsets = ScaffoldDefaults.contentWindowInsets.only(
         if (paintsUnderNavigationBar) WindowInsetsSides.Horizontal
         else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
