@@ -327,6 +327,7 @@ class NotificationService(
     /** PushKit token from iOS; re-registers the subscription so the server learns it next to the FCM token. */
     fun onVoipToken(token: String) {
         voipToken = token
+        Logger.i(tag = "NotificationService") { "VoIP token received (${token.length} chars)" }
         scope.launch { notificationBackend.getPushToken()?.let { registerToken(it) } }
     }
 
@@ -386,7 +387,7 @@ class NotificationService(
         val friendlyName = "${Platform.osName} | ${Platform.osVersion}"
 
         Logger.i(tag = "NotificationService") {
-            "Registering token with server... ($friendlyName)"
+            "Registering token with server... ($friendlyName, voip=${voipToken != null})"
         }
         api.subscribe(
             deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName, voipDeviceToken = voipToken
