@@ -125,8 +125,11 @@ fun CallOverlay(
     val renderers = remember { CallVideoRenderers() }
     DisposableEffect(renderers) { onDispose { renderers.keepOnly(emptyList()) } }
     LaunchedEffect(ui.videos) { renderers.keepOnly(listOfNotNull(ui.videos.remote, ui.videos.local)) }
-    @Suppress("DEPRECATION")
-    BackHandler(enabled = ui.visible && ui.inProgress && !ui.minimized && !inPip, onBack = viewModel::minimize)
+    // Composed only while needed so it registers after the NavHost's handler and wins the back gesture.
+    if (ui.visible && ui.inProgress && !ui.minimized && !inPip) {
+        @Suppress("DEPRECATION")
+        BackHandler(onBack = viewModel::minimize)
+    }
 
     val surface = when {
         inPip -> CallSurface.PictureInPicture
