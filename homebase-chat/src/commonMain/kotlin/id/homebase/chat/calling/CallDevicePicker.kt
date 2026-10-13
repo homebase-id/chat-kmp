@@ -1,6 +1,5 @@
 package id.homebase.chat.calling
 
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -54,6 +53,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.services.calling.MediaDeviceKind
 import id.homebase.resources.MR
 import id.homebase.resources.call_device_camera

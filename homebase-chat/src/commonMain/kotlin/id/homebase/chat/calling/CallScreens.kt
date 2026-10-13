@@ -2,8 +2,6 @@
 
 package id.homebase.chat.calling
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -273,6 +271,8 @@ import id.homebase.resources.call_you_are_muted
 import kotlin.time.Clock
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -320,11 +320,11 @@ internal enum class DesktopTier { Minimal, Compact, Medium, Expanded }
 /** Set only inside a dedicated desktop call window; null on phones and in the in-app overlay. */
 internal val LocalDesktopTier = staticCompositionLocalOf<DesktopTier?> { null }
 
-/** Which dock device menu is open, hoisted so a snackbar's "Change" can open the mic menu at its own chevron. */
 internal val LocalMicLevel = staticCompositionLocalOf<StateFlow<Float>> { NoMicLevel }
 
 private val NoMicLevel: StateFlow<Float> = MutableStateFlow(0f)
 
+/** Which dock device menu is open, hoisted so a snackbar's "Change" can open the mic menu at its own chevron. */
 private val LocalDeviceMenuRequest = staticCompositionLocalOf<MutableState<MediaDeviceKind?>> { error("provided by CallScreen") }
 
 internal fun desktopTier(width: Dp, height: Dp): DesktopTier = when {
