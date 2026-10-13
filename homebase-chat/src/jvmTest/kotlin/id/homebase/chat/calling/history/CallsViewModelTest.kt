@@ -51,6 +51,7 @@ class CallsViewModelTest {
         override val entries = MutableStateFlow(initial)
         override val hasMore = MutableStateFlow(false)
         override val isLoading = MutableStateFlow(false)
+        override val missedCount = MutableStateFlow(0)
         var seen = 0
         var loadedMore = 0
         override suspend fun refresh() {}
@@ -139,6 +140,35 @@ class CallsViewModelTest {
         r.vm.onAction(CallsAction.Delete(e.messageId))
         assertEquals(listOf(e.messageId to false), r.deleted)
         r.vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun openChatEmitsConversationWithoutMessageTarget() = runTest {
+        val e = entry("2026-10-13T18:45:00Z")
+        val r = rig(listOf(e))
+        val events = mutableListOf<CallsEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { r.vm.events.collect { events += it } }
+        r.vm.onAction(CallsAction.OpenChat(e.conversationId))
+        assertEquals(listOf<CallsEvent>(CallsEvent.OpenConversation(e.conversationId, null)), events)
+        r.vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun deleteFailureSurfacesAsEventAndKeepsTheRow() = runTest {
+        val e = entry("2026-10-13T18:45:00Z")
+        val history = FakeHistory(listOf(e))
+        val vm = CallsViewModel(
+            history = history, contacts = flowOf(listOf(contact)), conversations = SeedableConversationLookup("owner.test"),
+            session = FakeSession(), callsAvailable = true,
+            deleter = CallLogDeleter { _, _ -> error("boom") },
+            clock = { Instant.parse("2026-10-13T20:00:00Z") }, timeZone = { ist },
+        )
+        val events = mutableListOf<CallsEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.events.collect { events += it } }
+        vm.onAction(CallsAction.Delete(e.messageId))
+        assertEquals(listOf<CallsEvent>(CallsEvent.DeleteFailed("boom")), events)
+        assertEquals(1, vm.uiState.value.sections.sumOf { it.rows.size })
+        vm.viewModelScope.cancel()
     }
 
     @Test

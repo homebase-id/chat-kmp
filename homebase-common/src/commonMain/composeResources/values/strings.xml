@@ -1668,14 +1668,19 @@
     <string name="calls_title">Calls</string>
     <string name="calls_empty_title">No calls yet</string>
     <string name="calls_empty_body">Voice and video calls you make or receive will show up here.</string>
-    <string name="calls_open_chat">Open chat</string>
-    <string name="calls_delete">Delete from history</string>
-    <string name="calls_delete_confirm">Delete this call from your history? It stays in the chat for the other person.</string>
+    <string name="calls_menu_open_chat">Open chat</string>
+    <string name="calls_menu_delete">Delete from history</string>
+    <string name="calls_delete_confirm_title">Delete from history</string>
+    <string name="calls_delete_confirm_body">Delete this call from your history? It is removed from this chat on your devices; %1$s keeps theirs.</string>
     <string name="calls_today">Today</string>
     <string name="calls_yesterday">Yesterday</string>
     <string name="calls_show_in_nav">Show in navigation bar</string>
     <string name="calls_more_options">More options</string>
     <string name="calls_home_subtitle">Your voice and video call history</string>
+    <string name="calls_new_call">New call</string>
+    <string name="calls_new_call_title">New call</string>
+    <string name="calls_missed_badge_cd">Missed calls</string>
+    <string name="calls_contact_not_connected">Not connected</string>
     <string name="nav_home">Home</string>
 
     <!-- Developer menu -->

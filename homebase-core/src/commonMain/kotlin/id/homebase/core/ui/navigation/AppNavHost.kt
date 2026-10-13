@@ -141,6 +141,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.chat.calling.CallLabScreen
 import id.homebase.chat.calling.history.CallsScreen
+import id.homebase.chat.calling.history.NewCallScreen
 import id.homebase.chat.calling.rememberPeerCallStarter
 import id.homebase.chat.services.calling.CallService
 import id.homebase.core.calling.CallsPreferences
@@ -232,7 +233,11 @@ import id.homebase.resources.nav_calls
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
+import id.homebase.resources.calls_missed_badge_cd
 import id.homebase.resources.location_attention_cd
+import id.homebase.chat.services.calling.history.CallHistoryService
+import id.homebase.chat.services.calling.history.callsBadgeVisible
+import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.resources.location_label
 import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
@@ -365,6 +370,10 @@ fun AppNavHost(
     val callsPreferences = koinInject<CallsPreferences>()
     val callsIconVisible by callsPreferences.iconVisible.collectAsStateWithLifecycle()
     val callsAvailable = getKoin().getOrNull<CallService>()?.available == true
+    val callHistory = getKoin().getOrNull<CallHistoryService>()
+    val callsMissedCount by remember(callHistory) { callHistory?.missedCount ?: MutableStateFlow(0) }
+        .collectAsStateWithLifecycle()
+    val callsBadge = callsAvailable && callsBadgeVisible(callsMissedCount)
     val topLevelRoutes = remember(
         callsAvailable,
         callsIconVisible,
@@ -817,6 +826,7 @@ fun AppNavHost(
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
                                     showMomentsBadge = momentsUnseenCount > 0,
+                                    showCallsBadge = callsBadge,
                                     showEmailBadge = emailUnreadCount > 0,
                                     showLocationBadge = locationAttention,
                                 )
@@ -868,6 +878,7 @@ fun AppNavHost(
                                     topLevelRoute = topLevelRoute,
                                     selected = isSelected,
                                     showMomentsBadge = momentsUnseenCount > 0,
+                                    showCallsBadge = callsBadge,
                                     showEmailBadge = emailUnreadCount > 0,
                                     showLocationBadge = locationAttention,
                                     onClick = {
@@ -1025,6 +1036,7 @@ fun AppNavHost(
                                     showInNav = callsIconVisible,
                                     onShowInNavChange = { callsScope.launch { callsPreferences.setIconVisible(it) } },
                                     onStartCall = { peer, video -> callStarter?.start(peer.domainName, video) },
+                                    onNewCall = { navController.navigate(Route.NewCall) },
                                     onOpenConversation = { conversationId, messageId ->
                                         navController.selectConversationOnChatList(conversationId, messageId = messageId)
                                         openChats()
@@ -1385,6 +1397,17 @@ fun AppNavHost(
                                             },
                                         )
                                     },
+                                )
+                            }
+                        }
+
+                        composable<Route.NewCall> {
+                            if (isAuthenticated) {
+                                val callStarter = rememberPeerCallStarter()
+                                NewCallScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onStartCall = { peer, video -> callStarter?.start(peer.domainName, video) },
                                 )
                             }
                         }
@@ -2496,10 +2519,11 @@ sealed class TopLevelRoute(
  * `%1$d` resource if a number is wanted later).
  */
 @Composable
-private fun RailItem(
+internal fun RailItem(
     topLevelRoute: TopLevelRoute,
     selected: Boolean,
     showMomentsBadge: Boolean,
+    showCallsBadge: Boolean,
     showEmailBadge: Boolean,
     showLocationBadge: Boolean,
     onClick: () -> Unit,
@@ -2517,6 +2541,7 @@ private fun RailItem(
         TopLevelNavIcon(
             topLevelRoute = topLevelRoute,
             showMomentsBadge = showMomentsBadge,
+            showCallsBadge = showCallsBadge,
             showEmailBadge = showEmailBadge,
             showLocationBadge = showLocationBadge,
             size = RailIconSize,
@@ -2549,9 +2574,10 @@ private fun RailActionItem(
 }
 
 @Composable
-private fun TopLevelNavIcon(
+internal fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
+    showCallsBadge: Boolean = false,
     showEmailBadge: Boolean = false,
     showLocationBadge: Boolean = false,
     size: Dp = 24.dp,
@@ -2566,6 +2592,7 @@ private fun TopLevelNavIcon(
         )
     }
     val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||
+        (topLevelRoute is TopLevelRoute.Calls && showCallsBadge) ||
         // Count-less like Moments: the dot says "there is mail", and the number itself lives on
         // the Email setup screen where there is room to say what it means.
         (topLevelRoute is TopLevelRoute.Email && showEmailBadge) ||
@@ -2573,9 +2600,11 @@ private fun TopLevelNavIcon(
         (topLevelRoute is TopLevelRoute.Location && showLocationBadge)
 
     if (badged) {
-        val badgeDescription = if (topLevelRoute is TopLevelRoute.Location) {
-            stringResource(MR.string.location_attention_cd)
-        } else null
+        val badgeDescription = when (topLevelRoute) {
+            is TopLevelRoute.Location -> stringResource(MR.string.location_attention_cd)
+            is TopLevelRoute.Calls -> stringResource(MR.string.calls_missed_badge_cd)
+            else -> null
+        }
         BadgedBox(
             badge = {
                 Badge(

@@ -19,6 +19,8 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.rightClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.LayoutDirection
@@ -151,6 +153,35 @@ class CallsScreenScreenshotTest {
         onNodeWithText("Delete").performClick()
         assertEquals(1, actions.size)
         assertTrue(actions.single() is CallsAction.Delete)
+    }
+
+    @Test
+    fun menuAndConfirmDialogRenderInDarkAndRtl() {
+        for ((dark, rtl) in listOf(true to false, false to true)) {
+            runDesktopComposeUiTest(411, 900) {
+                val actions = mutableListOf<CallsAction>()
+                show(mixed, dark = dark, rtl = rtl, actions = actions)
+                val tag = (if (dark) "dark" else "light") + (if (rtl) "-rtl" else "")
+                onNodeWithText("Frodo Baggins").performTouchInput { longClick() }
+                save("menu-open-$tag")
+                onNodeWithText("Delete from history").performClick()
+                onNodeWithText("Delete this call from your history?", substring = true).assertExists()
+                onNodeWithText("Samwise Gamgee keeps theirs", substring = true).assertDoesNotExist()
+                onNodeWithText("Frodo Baggins keeps theirs", substring = true).assertExists()
+                save("confirm-$tag")
+            }
+        }
+    }
+
+    @Test
+    fun rightClickOpensMenuAndOpenChatHasNoMessageTarget() = runDesktopComposeUiTest(411, 900) {
+        val actions = mutableListOf<CallsAction>()
+        show(mixed, actions = actions)
+        onNodeWithText("Frodo Baggins").performMouseInput { rightClick() }
+        onNodeWithText("Delete from history").assertExists()
+        onNodeWithText("Open chat").performClick()
+        val open = actions.single() as CallsAction.OpenChat
+        assertEquals(null, open.messageId)
     }
 
     @Test

@@ -60,7 +60,7 @@ data class CallsUiState(
 
 sealed interface CallsAction {
     data class CallBack(val entry: CallHistoryEntry, val video: Boolean) : CallsAction
-    data class OpenChat(val conversationId: Uuid, val messageId: Uuid) : CallsAction
+    data class OpenChat(val conversationId: Uuid, val messageId: Uuid? = null) : CallsAction
     data class Delete(val messageId: Uuid) : CallsAction
     data object TabOpened : CallsAction
     data object LoadMore : CallsAction
@@ -68,7 +68,8 @@ sealed interface CallsAction {
 
 sealed interface CallsEvent {
     data class StartCall(val peer: OdinId, val video: Boolean) : CallsEvent
-    data class OpenConversation(val conversationId: Uuid, val messageId: Uuid) : CallsEvent
+    data class OpenConversation(val conversationId: Uuid, val messageId: Uuid? = null) : CallsEvent
+    data class DeleteFailed(val reason: String?) : CallsEvent
 }
 
 class CallsViewModel(
@@ -86,6 +87,8 @@ class CallsViewModel(
 
     private val _events = MutableSharedFlow<CallsEvent>(extraBufferCapacity = 16)
     val events: SharedFlow<CallsEvent> = _events.asSharedFlow()
+
+    val missedCount: StateFlow<Int> = history.missedCount
 
     private var contactsByOdinId: Map<OdinId, ContactUiModel> = emptyMap()
     private var callActive = false
@@ -118,7 +121,16 @@ class CallsViewModel(
                 _events.tryEmit(CallsEvent.StartCall(action.entry.peer, action.video))
             }
             is CallsAction.OpenChat -> _events.tryEmit(CallsEvent.OpenConversation(action.conversationId, action.messageId))
-            is CallsAction.Delete -> launchLogged { deleter.delete(action.messageId, deleteForEveryone = false) }
+            is CallsAction.Delete -> viewModelScope.launch {
+                try {
+                    deleter.delete(action.messageId, deleteForEveryone = false)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    Logger.w(t, tag = "CallsViewModel") { "Delete call failed" }
+                    _events.tryEmit(CallsEvent.DeleteFailed(t.message))
+                }
+            }
             CallsAction.TabOpened -> launchLogged { history.markSeen() }
             CallsAction.LoadMore -> launchLogged { history.loadMore() }
         }

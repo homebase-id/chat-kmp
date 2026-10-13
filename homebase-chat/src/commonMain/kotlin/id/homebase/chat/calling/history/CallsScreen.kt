@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddIcCall
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Videocam
@@ -26,11 +27,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,6 +49,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -65,12 +73,15 @@ import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
 import id.homebase.resources.call_button_voice
 import id.homebase.resources.call_event_duration
-import id.homebase.resources.calls_delete
-import id.homebase.resources.calls_delete_confirm
+import id.homebase.resources.calls_delete_confirm_body
+import id.homebase.resources.calls_delete_confirm_title
+import id.homebase.resources.calls_menu_delete
+import id.homebase.resources.calls_menu_open_chat
+import id.homebase.resources.chat_error_delete_message_me
 import id.homebase.resources.calls_empty_body
 import id.homebase.resources.calls_empty_title
 import id.homebase.resources.calls_more_options
-import id.homebase.resources.calls_open_chat
+import id.homebase.resources.calls_new_call
 import id.homebase.resources.calls_show_in_nav
 import id.homebase.resources.calls_title
 import id.homebase.resources.calls_today
@@ -79,6 +90,7 @@ import id.homebase.resources.cancel
 import id.homebase.resources.delete
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -90,18 +102,23 @@ fun CallsScreen(
     showInNav: Boolean,
     onShowInNavChange: (Boolean) -> Unit,
     onStartCall: (peer: OdinId, video: Boolean) -> Unit,
-    onOpenConversation: (conversationId: Uuid, messageId: Uuid) -> Unit,
+    onOpenConversation: (conversationId: Uuid, messageId: Uuid?) -> Unit,
+    onNewCall: () -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    LifecycleResumeEffect(viewModel) {
+    val missedCount by viewModel.missedCount.collectAsStateWithLifecycle()
+    LifecycleResumeEffect(viewModel, missedCount) {
         viewModel.onAction(CallsAction.TabOpened)
         onPauseOrDispose {}
     }
+    val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
+                is CallsEvent.DeleteFailed ->
+                    snackbarHostState.showSnackbar(getString(MR.string.chat_error_delete_message_me, event.reason.orEmpty()))
                 is CallsEvent.StartCall -> onStartCall(event.peer, event.video)
                 is CallsEvent.OpenConversation -> onOpenConversation(event.conversationId, event.messageId)
             }
@@ -112,8 +129,10 @@ fun CallsScreen(
         onAction = viewModel::onAction,
         showInNav = showInNav,
         onShowInNavChange = onShowInNavChange,
+        onNewCall = onNewCall,
         modifier = modifier,
         listState = listState,
+        snackbarHostState = snackbarHostState,
     )
 }
 
@@ -124,10 +143,12 @@ fun CallsContent(
     showInNav: Boolean,
     onShowInNavChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onNewCall: () -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     avatar: @Composable (CallRowUi) -> Unit = { row -> CallRowAvatar(row) },
 ) {
-    var pendingDelete by remember { mutableStateOf<Uuid?>(null) }
+    var pendingDelete by remember { mutableStateOf<CallRowUi?>(null) }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -136,23 +157,30 @@ fun CallsContent(
                 actions = { NavVisibilityMenu(showInNav, onShowInNavChange) },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onNewCall) {
+                Icon(Icons.Default.AddIcCall, contentDescription = stringResource(MR.string.calls_new_call))
+            }
+        },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             if (state.isEmpty) {
-                EmptyCalls()
+                EmptyCalls(onNewCall)
             } else {
                 CallList(state, onAction, listState, avatar, onDelete = { pendingDelete = it })
             }
         }
     }
-    pendingDelete?.let { messageId ->
+    pendingDelete?.let { row ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            text = { Text(stringResource(MR.string.calls_delete_confirm)) },
+            title = { Text(stringResource(MR.string.calls_delete_confirm_title)) },
+            text = { Text(stringResource(MR.string.calls_delete_confirm_body, row.displayName)) },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = null
-                    onAction(CallsAction.Delete(messageId))
+                    onAction(CallsAction.Delete(row.entry.messageId))
                 }) { Text(stringResource(MR.string.delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text(stringResource(MR.string.cancel)) } },
@@ -186,7 +214,7 @@ private fun CallList(
     onAction: (CallsAction) -> Unit,
     listState: LazyListState,
     avatar: @Composable (CallRowUi) -> Unit,
-    onDelete: (Uuid) -> Unit,
+    onDelete: (CallRowUi) -> Unit,
 ) {
     val rowCount = state.sections.sumOf { it.rows.size }
     LaunchedEffect(listState, state.hasMore, rowCount) {
@@ -228,7 +256,7 @@ private fun DayHeader(day: CallDay) {
 private fun CallRow(
     row: CallRowUi,
     onAction: (CallsAction) -> Unit,
-    onDelete: (Uuid) -> Unit,
+    onDelete: (CallRowUi) -> Unit,
     avatar: @Composable (CallRowUi) -> Unit,
 ) {
     val entry = row.entry
@@ -246,6 +274,14 @@ private fun CallRow(
         Row(
             Modifier
                 .fillMaxWidth()
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) menuOpen = true
+                        }
+                    }
+                }
                 .combinedClickable(
                     onClick = { onAction(CallsAction.OpenChat(entry.conversationId, entry.messageId)) },
                     onLongClick = { menuOpen = true },
@@ -289,17 +325,17 @@ private fun CallRow(
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             DropdownMenuItem(
-                text = { Text(stringResource(MR.string.calls_open_chat)) },
+                text = { Text(stringResource(MR.string.calls_menu_open_chat)) },
                 onClick = {
                     menuOpen = false
-                    onAction(CallsAction.OpenChat(entry.conversationId, entry.messageId))
+                    onAction(CallsAction.OpenChat(entry.conversationId))
                 },
             )
             DropdownMenuItem(
-                text = { Text(stringResource(MR.string.calls_delete)) },
+                text = { Text(stringResource(MR.string.calls_menu_delete)) },
                 onClick = {
                     menuOpen = false
-                    onDelete(entry.messageId)
+                    onDelete(row)
                 },
             )
         }
@@ -317,7 +353,7 @@ private fun CallRowAvatar(row: CallRowUi) {
 }
 
 @Composable
-private fun EmptyCalls() {
+private fun EmptyCalls(onNewCall: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -337,5 +373,7 @@ private fun EmptyCalls() {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.size(16.dp))
+        FilledTonalButton(onClick = onNewCall) { Text(stringResource(MR.string.calls_new_call)) }
     }
 }

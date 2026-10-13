@@ -268,6 +268,42 @@ class CallHistoryServiceTest {
     }
 
     @Test
+    fun callsBadge_followsMissedCount_clearsOnTabOpened_andOnMissedArrivingWhileOpen() = runTest {
+        ChatMessageSenderServiceTestFixture().use { f ->
+            f.build(backgroundScope)
+            val convo = f.seedConversation(others = listOf("alice.test"))
+            var now = base + 100_000
+            val svc = service(f, nowMs = { now })
+            svc.refresh()
+            assertFalse(callsBadgeVisible(svc.missedCount.value))
+
+            f.eventBus.emit(BackendEvent.DataEvent.BatchReceived(f.chatDriveId, listOf(
+                header(f, convo, base + 1_000, descriptor(CallOutcome.NoAnswer), f.testDomain),
+            )))
+            runCurrent()
+            assertEquals(0, svc.missedCount.value)
+
+            f.eventBus.emit(BackendEvent.DataEvent.BatchReceived(f.chatDriveId, listOf(
+                header(f, convo, base + 2_000, descriptor(CallOutcome.NoAnswer), "alice.test"),
+            )))
+            assertEquals(1, svc.missedCount.first { it == 1 })
+            assertTrue(callsBadgeVisible(svc.missedCount.value))
+
+            svc.markSeen()
+            assertEquals(0, svc.missedCount.first { it == 0 })
+            assertFalse(callsBadgeVisible(svc.missedCount.value))
+
+            now = base + 300_000
+            f.eventBus.emit(BackendEvent.DataEvent.BatchReceived(f.chatDriveId, listOf(
+                header(f, convo, base + 250_000, descriptor(CallOutcome.NoAnswer), "alice.test"),
+            )))
+            assertEquals(1, svc.missedCount.first { it == 1 })
+            svc.markSeen()
+            assertEquals(0, svc.missedCount.first { it == 0 })
+        }
+    }
+
+    @Test
     fun silentDriveSync_stoppedRequeriesAddsMissedAndDropsSoftDeleted() = runTest {
         ChatMessageSenderServiceTestFixture().use { f ->
             f.build(backgroundScope)

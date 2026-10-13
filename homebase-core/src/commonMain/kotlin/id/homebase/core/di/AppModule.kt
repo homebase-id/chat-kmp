@@ -43,6 +43,7 @@ import id.homebase.chat.conversationmedia.ConversationMediaViewModel
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
+import id.homebase.chat.calling.history.NewCallViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
@@ -1058,6 +1059,15 @@ val appModule = module {
             session = calls,
             callsAvailable = calls.available,
             deleter = CallLogDeleter { id, forEveryone -> get<ChatMessageActionService>().deleteMessage(id, forEveryone) },
+        )
+    }
+    viewModel {
+        val calls = get<CallService>()
+        NewCallViewModel(
+            contacts = get<ContactService>().contacts,
+            self = get<OwnerSessionRepository>().user,
+            session = calls,
+            callsAvailable = calls.available,
         )
     }
     viewModelOf(::HomeViewModel)

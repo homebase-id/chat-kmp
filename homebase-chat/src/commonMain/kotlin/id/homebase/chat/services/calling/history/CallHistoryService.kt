@@ -62,10 +62,13 @@ interface CallHistorySource {
     val entries: StateFlow<List<CallHistoryEntry>>
     val hasMore: StateFlow<Boolean>
     val isLoading: StateFlow<Boolean>
+    val missedCount: StateFlow<Int>
     suspend fun refresh()
     suspend fun loadMore()
     suspend fun markSeen()
 }
+
+fun callsBadgeVisible(missedCount: Int): Boolean = missedCount > 0
 
 /** Newest-first call log derived from the CallEvent chat messages; no storage of its own. */
 class CallHistoryService(
@@ -94,7 +97,7 @@ class CallHistoryService(
     private val _isLoading = MutableStateFlow(false)
     override val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    val missedCount: StateFlow<Int> = combine(entries, preferences.lastSeenMissedAtMs) { list, seen ->
+    override val missedCount: StateFlow<Int> = combine(entries, preferences.lastSeenMissedAtMs) { list, seen ->
         list.count { it.missed && it.at.toEpochMilliseconds() > seen }
     }.stateIn(scope, SharingStarted.Eagerly, 0)
 
