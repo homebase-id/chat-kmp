@@ -38,6 +38,7 @@ class CallControllerTest {
         scope: TestScope,
         net: LoopbackSignaling,
         script: FakeCallScript,
+        wrap: (FakeCallEngine) -> CallEngine = { it },
     ) {
         val engines = mutableListOf<FakeCallEngine>()
         var offline = false
@@ -53,7 +54,7 @@ class CallControllerTest {
                 }
             },
             engineFactory = CallEngineFactory { _ ->
-                FakeCallEngine(scope.backgroundScope, script, peerLabel = "peer", selfLabel = id).also { engines += it }
+                wrap(FakeCallEngine(scope.backgroundScope, script, peerLabel = "peer", selfLabel = id).also { engines += it })
             },
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
@@ -65,9 +66,79 @@ class CallControllerTest {
     private fun TestScope.pair(
         script: FakeCallScript = FakeCallScript(),
         scriptB: FakeCallScript = script,
+        wrapA: (FakeCallEngine) -> CallEngine = { it },
     ): Triple<LoopbackSignaling, Side, Side> {
         val net = LoopbackSignaling(now = { testScheduler.currentTime })
-        return Triple(net, Side(frodo, this, net, script), Side(sam, this, net, scriptB))
+        return Triple(net, Side(frodo, this, net, script, wrapA), Side(sam, this, net, scriptB))
+    }
+
+    private val applyRemoteHangs: (FakeCallEngine) -> CallEngine = { fake ->
+        object : CallEngine by fake {
+            override suspend fun applyRemote(answerSdp: String) = awaitCancellation()
+        }
+    }
+
+    @Test
+    fun callerRelaysAnsweredElsewhereToTheCalleeAndBothStillConnect() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+
+        assertTrue(net.sent.any { it.from == frodo && it.to == sam && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.AnsweredElsewhere) })
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, b.phase)
+    }
+
+    @Test
+    fun localHangupEndsTheCallWhileApplyingTheAnswerHangs() = runTest {
+        val (net, a, b) = pair(wrapA = applyRemoteHangs)
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connecting, a.phase)
+
+        a.controller.hangup()
+        runCurrent()
+
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = false)), a.phase)
+        assertTrue(a.engines.single().closed)
+        assertTrue(net.sent.any { it.from == frodo && it.signal == CallSignal.Hangup(a.state.callId!!, HangupReason.Normal) })
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
+    }
+
+    @Test
+    fun remoteHangupEndsTheCallWhileApplyingTheAnswerHangs() = runTest {
+        val (_, a, b) = pair(wrapA = applyRemoteHangs)
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connecting, a.phase)
+
+        b.controller.hangup()
+        runCurrent()
+
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), a.phase)
+        assertTrue(a.engines.single().closed)
+    }
+
+    @Test
+    fun aStaleHangupForAnotherCallDoesNotInterruptTheLiveOne() = runTest {
+        val (net, a, b) = pair(wrapA = applyRemoteHangs)
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        net.endpoint(sam).send(CallChannel.outbound(frodo, CallSignal.Hangup("another-call", HangupReason.Normal), sam))
+        runCurrent()
+
+        assertEquals(CallPhase.Connecting, a.phase)
+        assertTrue(!a.engines.single().closed)
     }
 
     @Test

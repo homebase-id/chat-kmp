@@ -66,7 +66,10 @@ class WebRtcJavaCallEngine(
     private val mapper = PeerEventMapper { _events.tryEmit(it) }
 
     // Native callbacks arrive on WebRTC threads; the lock keeps close() from disposing the connection under a live call.
-    private val lock = Any()
+    internal val lock = Any()
+
+    // Held by the signaling thread in onTrack, so never across a peer call: getStats and addIceCandidate block on that thread.
+    private val remoteLock = Any()
     @Volatile private var closed = false
 
     private val peer: RTCPeerConnection = factory.createPeerConnection(
@@ -85,7 +88,7 @@ class WebRtcJavaCallEngine(
 
             override fun onTrack(transceiver: RTCRtpTransceiver) {
                 val track = transceiver.receiver.track as? VideoTrack ?: return
-                synchronized(lock) {
+                synchronized(remoteLock) {
                     if (closed) return
                     val handle = JvmVideoHandle().also { remoteFrames = it }
                     track.addSink(handle.sink)
@@ -269,16 +272,18 @@ class WebRtcJavaCallEngine(
             closed = true
             statsTimer.cancel()
             localFrames?.let { sink -> videoTrack?.let { runCatching { it.removeSink(sink.sink) } } }
-            remoteFrames?.let { sink -> remoteTrack?.let { runCatching { it.removeSink(sink.sink) } } }
+            synchronized(remoteLock) {
+                remoteFrames?.let { sink -> remoteTrack?.let { runCatching { it.removeSink(sink.sink) } } }
+                remoteFrames?.close()
+                _remote.value = null
+            }
             runCatching { peer.close() }
             runCatching { videoSource?.stop() }
             runCatching { audioTrack?.dispose() }
             runCatching { videoTrack?.dispose() }
             runCatching { videoSource?.dispose() }
             localFrames?.close()
-            remoteFrames?.close()
             _local.value = null
-            _remote.value = null
             runCatching { factory.dispose() }
         }
     }

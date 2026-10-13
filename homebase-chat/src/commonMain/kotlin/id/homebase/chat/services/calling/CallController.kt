@@ -10,7 +10,9 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
@@ -64,6 +66,7 @@ class CallController(
     private var republishJob: Job? = null
     private var restartOfferSdp: String? = null
     private val endedCalls = ArrayDeque<String>()
+    @Volatile private var inFlight: Job? = null
 
     private val collectors: List<Job>
     private val inboxLoop: Job
@@ -77,7 +80,7 @@ class CallController(
                 for (command in inbox) {
                     when (command) {
                         is Command.Event -> try {
-                            process(command.event)
+                            processInterruptibly(command.event)
                         } finally {
                             command.processed?.complete(_state.value)
                         }
@@ -99,7 +102,7 @@ class CallController(
     /** Hangs up any call and releases camera and mic before returning; a hangup still unsent after [hangupBudgetMs] is dropped. */
     suspend fun endForQuit(hangupBudgetMs: Long = QUIT_HANGUP_BUDGET_MS) {
         val hungUp = CompletableDeferred<CallState>()
-        if (inbox.trySend(Command.Event(CallEvent.UserHangup, hungUp)).isSuccess) {
+        if (enqueue(CallEvent.UserHangup, hungUp)) {
             withTimeoutOrNull(hangupBudgetMs) { hungUp.await() }
         }
         inboxLoop.cancelAndJoin()
@@ -143,7 +146,36 @@ class CallController(
     fun onPushHangup(callId: String) = post(CallEvent.PushHangup(callId))
 
     private fun post(event: CallEvent) {
-        inbox.trySend(Command.Event(event))
+        enqueue(event)
+    }
+
+    private fun enqueue(event: CallEvent, processed: CompletableDeferred<CallState>? = null): Boolean {
+        if (endsActiveCall(event)) inFlight?.cancel()
+        return inbox.trySend(Command.Event(event, processed)).isSuccess
+    }
+
+    // An engine call can hang (a native deadlock, a stalled setRemoteDescription); ending the call must not wait behind it.
+    private fun endsActiveCall(event: CallEvent): Boolean {
+        val s = _state.value
+        if (!s.isActive) return false
+        return when (event) {
+            CallEvent.UserHangup, CallEvent.UserDecline -> true
+            is CallEvent.Signal -> {
+                val sig = event.inbound.signal
+                sig is CallSignal.Hangup && !sig.reason.isElsewhere && sig.callId == s.callId && event.inbound.from == s.peer
+            }
+            else -> false
+        }
+    }
+
+    private suspend fun processInterruptibly(event: CallEvent) = coroutineScope {
+        val job = launch(start = CoroutineStart.LAZY) { process(event) }
+        inFlight = job
+        try {
+            job.join()
+        } finally {
+            inFlight = null
+        }
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
