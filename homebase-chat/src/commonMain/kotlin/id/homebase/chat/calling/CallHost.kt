@@ -113,10 +113,9 @@ fun CallOverlay(
         )
     }
 
-    val shown = ui.visible && (!ui.minimized || inPip)
     Box(modifier) {
         AnimatedVisibility(
-            visible = shown,
+            visible = ui.visible && (!ui.minimized || inPip),
             enter = fadeIn() + slideInVertically { it / 8 },
             exit = fadeOut() + slideOutVertically { it / 8 },
         ) {

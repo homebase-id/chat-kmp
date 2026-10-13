@@ -602,7 +602,7 @@ private fun BoxScope.InCallLayout(
         }
     }
 
-    val chromeVisible = !videoMode || LocalCallChrome.current?.visible ?: true
+    val chromeVisible = LocalCallChrome.current?.visible ?: true
     val enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec())
     val exit = fadeOut(MaterialTheme.motionScheme.slowEffectsSpec())
     AnimatedVisibility(chromeVisible, Modifier.align(Alignment.TopCenter), enter = enter, exit = exit) {
