@@ -1,11 +1,15 @@
 package id.homebase.core.ui.screens.filesync
 
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -31,12 +35,15 @@ class FilesyncViewModel(
     private val uploadQueue: FilesyncUploadQueue,
     private val editor: FilesyncEditor,
     val extendPermissionViewModel: ExtendPermissionViewModel,
+    private val webDropShareFlowState: WebDropShareFlowState,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FilesyncUiState(path = listOf(FilesyncCrumb(FilesyncProtocol.RootNodeId, null))))
     val uiState: StateFlow<FilesyncUiState> = _uiState.asStateFlow()
 
     val uploads: StateFlow<List<FilesyncUpload>> = uploadQueue.uploads
+
+    val search = TextFieldState()
 
     // Buffered so a download that finishes while the screen is away is still handed off on return.
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
@@ -48,9 +55,18 @@ class FilesyncViewModel(
         repository,
         onTransfer = { change -> _uiState.update { it.copy(transfer = change(it.transfer)) } },
         send = _events::send,
+        onWebDrop = { file ->
+            // Seeded before navigating: WebDropViewModel takes the draft when it's created.
+            webDropShareFlowState.setDraft(listOf(file))
+            _events.send(FilesyncUiEvent.OpenWebDrop)
+        },
     )
 
     init {
+        viewModelScope.launch {
+            snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
+        }
+
         viewModelScope.launch {
             combine(
                 extendPermissionViewModel.permissionsChecked,
@@ -111,16 +127,25 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.NavigateToCrumb -> openPath(_uiState.value.path.take(action.index + 1))
 
-            is FilesyncUiAction.NodeClicked -> {
-                val node = action.node
-                if (node.isFolder) {
-                    openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, removed = node.removal != null))
-                } else {
-                    transfers.open(node)
-                }
+            is FilesyncUiAction.NodeClicked -> open(action.node)
+
+            is FilesyncUiAction.SortBy -> arrange { it.copy(sort = it.sort.by(action.key)) }
+
+            is FilesyncUiAction.FilterTag -> arrange { it.copy(tagFilter = action.name.takeIf { name -> name != it.tagFilter }) }
+
+            is FilesyncUiAction.Select -> _uiState.update { it.copy(selectedId = action.nodeId) }
+
+            is FilesyncUiAction.MoveSelection -> _uiState.update { state ->
+                val index = state.visible.indexOfFirst { it.nodeId == state.selectedId }
+                val next = if (index < 0) 0 else (index + action.by).coerceIn(0, state.visible.lastIndex)
+                state.copy(selectedId = state.visible.getOrNull(next)?.nodeId)
             }
 
             is FilesyncUiAction.SaveClicked -> transfers.save(action.node)
+
+            is FilesyncUiAction.ShareClicked -> transfers.share(action.node)
+
+            is FilesyncUiAction.WebDropClicked -> transfers.webDrop(action.node)
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
@@ -138,7 +163,7 @@ class FilesyncViewModel(
                 val show = !_uiState.value.showDeleted
                 // A removed folder can only be browsed while deleted files show.
                 val path = if (show) _uiState.value.path else _uiState.value.path.takeWhile { !it.removed }
-                _uiState.update { it.copy(showDeleted = show, path = path, nodes = if (path == it.path) it.nodes else emptyList()) }
+                arrange { it.copy(showDeleted = show, path = path).withNodes(if (path == it.path) it.nodes else emptyList()) }
                 loadCurrentFolder()
             }
 
@@ -151,10 +176,21 @@ class FilesyncViewModel(
         }
     }
 
+    private fun open(node: FilesyncNode) {
+        when {
+            node.isFolder -> openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, removed = node.removal != null))
+            // A deleted file is restored, not opened; the screen asks first.
+            node.removal == null -> transfers.open(node)
+        }
+    }
+
     private fun openPath(path: List<FilesyncCrumb>) {
-        _uiState.update { it.copy(path = path, nodes = emptyList()) }
+        search.clearText()
+        arrange { it.copy(path = path, query = "", tagFilter = null, selectedId = null).withNodes(emptyList()) }
         loadCurrentFolder()
     }
+
+    private fun arrange(change: (FilesyncUiState) -> FilesyncUiState) = _uiState.update { change(it).arrange() }
 
     private fun loadCurrentFolder() {
         val folderId = _uiState.value.path.last().nodeId
@@ -164,7 +200,7 @@ class FilesyncViewModel(
             try {
                 val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
                 transfers.handles = folder.handles
-                _uiState.update { it.copy(nodes = folder.nodes.values.toList(), isLoading = false) }
+                arrange { it.copy(isLoading = false).withNodes(folder.nodes.values.toList()) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
