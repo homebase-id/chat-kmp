@@ -12,6 +12,7 @@ import id.homebase.core.vault.VaultPreferences
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,23 +44,25 @@ class BottomBarDefaultsTest {
         assertEquals(listOf(Route.ChatList, Route.Calls, Route.Feed, Route.Moments, Route.Home), routes(db))
     }
 
+    private val cursorKey = SystemDriveConstants.chatDrive.alias
+    private val cursor = "{}".encodeToByteArray()
+
     @Test
     fun migrationKeepsExistingBarAndNeverOverridesAnExplicitChoice() = runTest {
         val fresh = db()
-        assertFalse(BottomBarDefaultsMigration.run(fresh))
+        BottomBarDefaultsMigration.run(fresh)
         assertFalse(VaultPreferences(fresh).iconVisible.value)
         assertFalse(EmailPreferences(fresh).iconVisible.value)
 
         val existing = db()
-        existing.keyValue.upsertValue(SystemDriveConstants.chatDrive.alias, "{}".encodeToByteArray())
-        assertTrue(BottomBarDefaultsMigration.run(existing))
+        existing.keyValue.upsertValue(cursorKey, cursor)
+        BottomBarDefaultsMigration.run(existing)
         assertTrue(VaultPreferences(existing).iconVisible.value)
         assertTrue(EmailPreferences(existing).iconVisible.value)
 
         val chosen = db()
-        chosen.keyValue.upsertValue(SystemDriveConstants.chatDrive.alias, "{}".encodeToByteArray())
-        VaultPreferences(chosen).setIconVisible(true)
-        VaultPreferences(chosen).setIconVisible(false)
+        chosen.keyValue.upsertValue(cursorKey, cursor)
+        chosen.keyValue.upsertValue(VaultPreferences.ICON_VISIBLE_KEY, byteArrayOf(0))
         BottomBarDefaultsMigration.run(chosen)
         assertFalse(VaultPreferences(chosen).iconVisible.value)
         assertTrue(EmailPreferences(chosen).iconVisible.value)
@@ -67,10 +70,43 @@ class BottomBarDefaultsTest {
         // Done is final: a later user choice survives re-runs, and a fresh install that syncs
         // chat afterwards is not reclassified as existing.
         EmailPreferences(existing).setIconVisible(false)
-        assertFalse(BottomBarDefaultsMigration.run(existing))
+        BottomBarDefaultsMigration.run(existing)
         assertFalse(EmailPreferences(existing).iconVisible.value)
-        fresh.keyValue.upsertValue(SystemDriveConstants.chatDrive.alias, "{}".encodeToByteArray())
-        assertFalse(BottomBarDefaultsMigration.run(fresh))
+        fresh.keyValue.upsertValue(cursorKey, cursor)
+        BottomBarDefaultsMigration.run(fresh)
         assertFalse(VaultPreferences(fresh).iconVisible.value)
+    }
+
+    @Test
+    fun withoutThePostAuthHookThePrefsResolveAndPersistOnTheirFirstRead() = runTest {
+        // Existing install, warm relaunch where onPostAuthenticated never runs: visible on the
+        // very first read (no hidden flash), then frozen as explicit values.
+        val existing = db()
+        existing.keyValue.upsertValue(cursorKey, cursor)
+        val vault = VaultPreferences(existing, migrationScope = backgroundScope)
+        val email = EmailPreferences(existing, migrationScope = backgroundScope)
+        assertTrue(vault.iconVisible.value)
+        assertTrue(email.iconVisible.value)
+        runCurrent()
+        assertTrue(BottomBarDefaultsMigration.isDone(existing.keyValue))
+        assertEquals(1, existing.keyValue.selectByKey(VaultPreferences.ICON_VISIBLE_KEY)?.data_?.single()?.toInt())
+        assertEquals(1, existing.keyValue.selectByKey(EmailPreferences.ICON_VISIBLE_KEY)?.data_?.single()?.toInt())
+
+        // Fresh install: hidden on first read and stays hidden once its first chat sync lands.
+        val fresh = db()
+        assertFalse(VaultPreferences(fresh, migrationScope = backgroundScope).iconVisible.value)
+        runCurrent()
+        fresh.keyValue.upsertValue(cursorKey, cursor)
+        assertFalse(VaultPreferences(fresh, migrationScope = backgroundScope).iconVisible.value)
+        assertFalse(EmailPreferences(fresh, migrationScope = backgroundScope).iconVisible.value)
+
+        // An explicit choice made before the update is read as-is and never rewritten.
+        val chosen = db()
+        chosen.keyValue.upsertValue(cursorKey, cursor)
+        chosen.keyValue.upsertValue(EmailPreferences.ICON_VISIBLE_KEY, byteArrayOf(0))
+        assertFalse(EmailPreferences(chosen, migrationScope = backgroundScope).iconVisible.value)
+        assertTrue(VaultPreferences(chosen, migrationScope = backgroundScope).iconVisible.value)
+        runCurrent()
+        assertFalse(EmailPreferences(chosen).iconVisible.value)
     }
 }

@@ -12,10 +12,6 @@ import id.homebase.core.ui.screens.email.mode.EmailModeSwitchViewModel
 import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.email.EmailPreferences
 import co.touchlab.kermit.Logger
-import id.homebase.core.ui.navigation.BottomBarDefaultsMigration
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import coil3.ImageLoader
 import id.homebase.chat.viewonce.evictMemoryFor
 import id.homebase.api.file.scratchDir
@@ -335,8 +331,8 @@ val appModule = module {
     singleOf(::FeedPermissionService)
     singleOf(::ReportingUrlProvider)
 
-    single { VaultPreferences(get()) }
-    single { EmailPreferences(get()) }
+    single { VaultPreferences(get(), migrationScope = get()) }
+    single { EmailPreferences(get(), migrationScope = get()) }
 
     // Contact Book add-on (contact manager). Reads from the mandatory Contacts
     // drive; writes through the api-layer ContactsProvider. No optional-drive
@@ -766,20 +762,8 @@ val appModule = module {
                 }
                 // endregion
 
-                val vaultPreferences = get<VaultPreferences>().apply { reset() }
-                val emailPreferences = get<EmailPreferences>().apply { reset() }
-                get<CoroutineScope>().launch {
-                    try {
-                        if (BottomBarDefaultsMigration.run(get())) {
-                            vaultPreferences.reset()
-                            emailPreferences.reset()
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (t: Throwable) {
-                        Logger.w(t) { "Bottom bar defaults migration failed" }
-                    }
-                }
+                get<VaultPreferences>().reset()
+                get<EmailPreferences>().reset()
             get<EmailStream>().apply { reset(); start() }
                 get<VaultStream>().apply { reset(); start() }
                 get<WebDropStream>().apply { reset(); start() }
