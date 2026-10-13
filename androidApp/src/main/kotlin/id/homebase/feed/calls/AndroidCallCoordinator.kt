@@ -1,12 +1,15 @@
 package id.homebase.feed.calls
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallRingCoordinator
 import id.homebase.chat.services.calling.CallRingSink
 import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.CallState
 import id.homebase.core.notifications.CallPushRouter
 import kotlinx.coroutines.CoroutineScope
 
@@ -66,4 +69,11 @@ private class AndroidCallRingSink(private val context: Context) : CallRingSink {
             foregroundRunning = false
         }
     }
+}
+
+/** A video call is taken as voice when the camera is not allowed, so the engine never asks for it. */
+internal fun CallService.acceptRinging(context: Context, ringing: CallState = state.value) {
+    val cameraGranted = context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    if (ringing.media.localVideo && !cameraGranted) setVideo(false)
+    accept()
 }

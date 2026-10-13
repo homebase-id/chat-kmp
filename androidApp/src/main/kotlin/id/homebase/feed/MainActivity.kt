@@ -34,6 +34,7 @@ import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
 import id.homebase.core.util.CreatedIdentityRelay
 import id.homebase.feed.calls.IncomingCallNotifier
+import id.homebase.feed.calls.acceptRinging
 import id.homebase.feed.crash.NativeCrashRecovery
 import id.homebase.feed.share.ShareShortcutPublisher
 import io.github.vinceglb.filekit.FileKit
@@ -183,9 +184,7 @@ class MainActivity : AppCompatActivity() {
             val ringing = withTimeoutOrNull(10_000) {
                 callService.state.first { it.callId == callId && it.phase == CallPhase.Incoming }
             } ?: return@launch
-            val cameraGranted = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-            if (ringing.media.localVideo && !cameraGranted) callService.setVideo(false)
-            callService.accept()
+            callService.acceptRinging(this@MainActivity, ringing)
         }
     }
 

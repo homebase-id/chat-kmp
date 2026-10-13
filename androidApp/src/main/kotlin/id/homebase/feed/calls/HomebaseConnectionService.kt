@@ -91,9 +91,7 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
             applicationContext.startActivity(IncomingCallNotifier.openIntent(applicationContext, callId, accept = true))
             return
         }
-        val cameraGranted = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        if (callService.state.value.media.localVideo && !cameraGranted) callService.setVideo(false)
-        callService.accept()
+        callService.acceptRinging(this)
     }
 
     companion object {

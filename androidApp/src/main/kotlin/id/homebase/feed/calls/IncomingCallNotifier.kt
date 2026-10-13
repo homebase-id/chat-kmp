@@ -14,6 +14,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import co.touchlab.kermit.Logger
+import id.homebase.chat.services.calling.RING_TIMEOUT_MS
 import id.homebase.feed.MainActivity
 import id.homebase.feed.R
 import java.util.concurrent.ConcurrentHashMap
@@ -131,7 +132,6 @@ class IncomingCallNotifier(private val context: Context) {
         const val EXTRA_ACCEPT = "id.homebase.feed.CALL_ACCEPT"
         const val ACTION_DECLINE = "id.homebase.feed.CALL_DECLINE"
         const val ACTION_HANGUP = "id.homebase.feed.CALL_HANGUP"
-        private const val RING_TIMEOUT_MS = 45_000L
         private val lastRings = ConcurrentHashMap<String, CallerRing>()
 
         // Explicit: the launcher filter has no CATEGORY_DEFAULT, so an implicit MAIN/LAUNCHER start resolves to nothing.
