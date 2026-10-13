@@ -14,7 +14,6 @@ import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.test.runTest
@@ -38,12 +37,12 @@ class FilesyncNodeTest {
         fileType: Int?,
         content: String?,
         payloads: List<PayloadDescriptor>? = null,
-        isEncrypted: Boolean = true,
+        serverFileIsEncrypted: Boolean = true,
         status: ArchivalStatus? = null,
     ) = HomebaseFile(
         fileId = Uuid.random(),
         driveId = FilesyncProtocol.DriveAlias,
-        serverFileIsEncrypted = isEncrypted,
+        serverFileIsEncrypted = serverFileIsEncrypted,
         fileState = FileState.Active,
         fileSystemType = FileSystemType.Standard,
         keyHeader = KeyHeader(ByteArray(16), SecureByteArray(fileKey)),
@@ -100,10 +99,7 @@ class FilesyncNodeTest {
             driveId = FilesyncProtocol.DriveAlias,
             fileState = FileState.Active,
             fileSystemType = FileSystemType.Standard,
-            sharedSecretEncryptedKeyHeader = EncryptedKeyHeader(
-                iv = transportIv,
-                encryptedAesKey = AesCbc.encrypt(fileKeyHeader.combine().unsafeBytes, sharedSecret, transportIv),
-            ),
+            sharedSecretEncryptedKeyHeader = EncryptedKeyHeader.encryptKeyHeaderAes(fileKeyHeader, transportIv, sharedSecret),
             fileMetadata = FileMetadata(
                 isEncrypted = true,
                 appData = AppFileMetaData(
@@ -124,7 +120,7 @@ class FilesyncNodeTest {
         assertNull(row(FilesyncProtocol.FolderFileType, """{"message":"Decryption Failure"}""").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FolderFileType, "not json").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FolderFileType, """{"name":"no version"}""").toFilesyncNode())
-        assertNull(row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"plain"}""", isEncrypted = false).toFilesyncNode())
+        assertNull(row(FilesyncProtocol.FolderFileType, """{"v":1,"name":"plain"}""", serverFileIsEncrypted = false).toFilesyncNode())
         assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-payload.txt","mtime":1,"size":5}""").toFilesyncNode())
         assertNull(row(FilesyncProtocol.FileFileType, """{"v":1,"name":"no-size.txt","mtime":1}""", listOf(syncData)).toFilesyncNode())
         val unhashed = syncData.copy(hash = null)
