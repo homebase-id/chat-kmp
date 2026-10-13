@@ -108,14 +108,12 @@ class CallViewModel(
     // Failed stays up: it carries Retry, so only the user dismisses it.
     private fun scheduleDismissal(phase: CallPhase, callId: String?) {
         val ended = phase as? CallPhase.Ended
-        if (ended == null || ended.reason is CallEndReason.Failed || callId == null) {
-            if (ended == null) {
-                lingerJob?.cancel()
-                lingeringFor = null
-            }
+        if (ended == null) {
+            lingerJob?.cancel()
+            lingeringFor = null
             return
         }
-        if (lingeringFor == callId) return
+        if (ended.reason is CallEndReason.Failed || callId == null || lingeringFor == callId) return
         lingerJob?.cancel()
         lingeringFor = callId
         lingerJob = viewModelScope.launch {

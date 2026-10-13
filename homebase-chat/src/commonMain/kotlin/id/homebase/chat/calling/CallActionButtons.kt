@@ -7,6 +7,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -29,13 +30,15 @@ fun rememberCallStarter(conversation: EnrichedConversationUiModel): CallStarter?
     val service = koinInject<CallService>().takeIf { it.available } ?: return null
     val status = conversation.oneOnOneConnectionStatus as? OneOnOneConnectionStatus.Connected ?: return null
     if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return null
-    val state by service.state.collectAsStateWithLifecycle()
+    val state = service.state.collectAsStateWithLifecycle()
+    // Only idleness, so the conversation screen does not recompose on every call-state change.
+    val idle by remember(state) { derivedStateOf { !state.value.isActive } }
     val gate = rememberCallPermissionGate()
     val peer = remember(status) { status.otherOdinId.domainName }
     val start = remember(service, gate, peer) {
         { video: Boolean -> gate.run(video = video) { granted -> service.startCall(peer, video = granted) } }
     }
-    return CallStarter(idle = !state.isActive, start = start)
+    return CallStarter(idle = idle, start = start)
 }
 
 @Composable

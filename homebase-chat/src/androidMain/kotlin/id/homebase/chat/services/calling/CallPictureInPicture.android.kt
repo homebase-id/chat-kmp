@@ -20,11 +20,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PendingIntentCompat
 import androidx.core.util.Consumer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.resources.MR
 import id.homebase.resources.call_hang_up
@@ -59,7 +59,7 @@ actual fun rememberInPictureInPicture(): Boolean {
 @Composable
 actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit) {
     val activity = LocalContext.current.findActivity() ?: return
-    val size by RemoteVideoSize.current.collectAsState()
+    val size by RemoteVideoSize.current.collectAsStateWithLifecycle()
     val muteLabel = stringResource(if (muted) MR.string.call_unmute else MR.string.call_mute)
     val hangupLabel = stringResource(MR.string.call_hang_up)
     val toggleMute by rememberUpdatedState(onToggleMute)

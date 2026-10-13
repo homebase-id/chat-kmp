@@ -6,6 +6,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import id.homebase.api.ActivityProvider
 
 internal val BluetoothDeviceTypes = setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET)
 internal val WiredDeviceTypes = setOf(
@@ -16,7 +17,7 @@ internal val WiredDeviceTypes = setOf(
 
 actual class CallAudioRouter actual constructor() {
     private val audio: AudioManager =
-        callAppContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        ActivityProvider.requireApplicationContext().getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousMode = AudioManager.MODE_NORMAL
     private var focus: AudioFocusRequest? = null
     private var started = false

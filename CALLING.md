@@ -178,7 +178,11 @@ a freed struct and opens the camera at 4K, so `configureWebRtc` adapts the sourc
   1080p to 15 fps with `Too many frames backed up in the decoder`; `DefaultVideoDecoderFactory(null)` decodes 1080p at
   30 fps.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
-  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log.
+  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log. A stalled
+  outbound counter with a frozen source line is a stopped camera, with a moving one a failing encoder. qp above the
+  quality scaler's threshold with `limit=none` is a sender not adapting; decodeMs above 1000/fps is a decoder that cannot
+  keep up; a steady inFlight (decodeMs x fps) near a picture buffer's size is a decoder holding frames. A/V sync holds
+  audio back to the video's delay, which the audio line's jbMs shows.
 
 ### Keep-awake and picture-in-picture
 

@@ -63,6 +63,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.call_ended_declined
 import id.homebase.resources.call_ended_hangup
 import id.homebase.resources.call_failed_title
+import id.homebase.resources.call_incoming_video
+import id.homebase.resources.call_incoming_voice
 import id.homebase.resources.call_lab_busy
 import id.homebase.resources.call_lab_connected_video
 import id.homebase.resources.call_lab_connected_voice
@@ -71,8 +73,6 @@ import id.homebase.resources.call_lab_drop
 import id.homebase.resources.call_lab_fail
 import id.homebase.resources.call_lab_glare
 import id.homebase.resources.call_lab_hide
-import id.homebase.resources.call_lab_incoming_video
-import id.homebase.resources.call_lab_incoming_voice
 import id.homebase.resources.call_lab_intro
 import id.homebase.resources.call_lab_network_back
 import id.homebase.resources.call_lab_network_drop
@@ -173,8 +173,8 @@ fun CallLabScreen(onBackClick: () -> Unit) {
 
     val active = lab
     val scenarios = buildList {
-        add(LabAction(MR.string.call_lab_incoming_voice) { launch { peer.startCall(ME, video = false) } })
-        add(LabAction(MR.string.call_lab_incoming_video) { launch(FakeCallScript(remoteVideoOnConnect = true)) { peer.startCall(ME, video = true) } })
+        add(LabAction(MR.string.call_incoming_voice) { launch { peer.startCall(ME, video = false) } })
+        add(LabAction(MR.string.call_incoming_video) { launch(FakeCallScript(remoteVideoOnConnect = true)) { peer.startCall(ME, video = true) } })
         add(LabAction(MR.string.call_lab_outgoing_voice) { launch { me.startCall(PEER, false) } })
         add(LabAction(MR.string.call_lab_outgoing_video) { launch(FakeCallScript(remoteVideoOnConnect = true)) { me.startCall(PEER, true) } })
         add(
@@ -399,8 +399,8 @@ private fun labPreviewStates(): List<Pair<StringResource, CallUiState>> {
     return listOf(
         MR.string.call_status_calling to voice.copy(phase = CallPhase.Outgoing),
         MR.string.call_status_ringing to voice.copy(phase = CallPhase.Outgoing, peerRinging = true),
-        MR.string.call_lab_incoming_voice to voice.copy(phase = CallPhase.Incoming),
-        MR.string.call_lab_incoming_video to video.copy(phase = CallPhase.Incoming),
+        MR.string.call_incoming_voice to voice.copy(phase = CallPhase.Incoming),
+        MR.string.call_incoming_video to video.copy(phase = CallPhase.Incoming),
         MR.string.call_status_connecting to voice.copy(phase = CallPhase.Connecting),
         MR.string.call_lab_connected_voice to connected,
         MR.string.call_lab_connected_video to connectedVideo,

@@ -5,15 +5,7 @@ import kotlin.math.roundToLong
 /** One entry of a WebRTC stats report, with its W3C type name ("inbound-rtp", "media-source", ...). */
 internal class StatsEntry(val type: String, val members: Map<String, Any?>, val id: String = "")
 
-/**
- * The periodic call-health lines every engine logs. The media-source line counts frames the camera handed to the
- * sender, so a stalled outbound counter reads as a stopped camera (source frozen) or a failing encoder (source moving).
- * The per-frame averages (qp, encodeMs, decodeMs, jbMs) cover the interval since [previous]: a QP above the quality
- * scaler's threshold with limit=none means the sender is not adapting, and decodeMs above 1000/fps means the receiver's
- * decoder cannot keep up. inFlight (decodeMs x fps) counts frames inside the decoder: a steady count near a picture
- * buffer's size is a decoder holding frames, not one short of compute. A/V sync holds audio back to the video's delay,
- * which the audio line's jbMs shows.
- */
+/** The periodic call-health lines every engine logs; per-frame averages cover the interval since [previous]. */
 internal fun videoStatsLines(
     stats: Collection<StatsEntry>,
     localTrack: String? = null,
@@ -75,7 +67,7 @@ private fun Collection<StatsEntry>.codecOf(rtp: Map<String, Any?>): Any? =
 
 private fun framesInFlight(decodeMs: Double?, fps: Double?): Double? {
     if (decodeMs == null || fps == null) return null
-    return (decodeMs * fps / 100).roundToLong() / 10.0
+    return (decodeMs * fps / 1000).oneDecimal()
 }
 
 // Android reports uint64 counters as BigInteger and iOS as NSNumber; both read through toString.
@@ -95,5 +87,7 @@ private fun perFrame(now: Map<String, Any?>, before: Map<String, Any?>, total: S
     val frameCount = (now[frames].asDouble() ?: return null) - (before[frames].asDouble() ?: 0.0)
     if (frameCount <= 0) return null
     val average = (totalNow - (before[total].asDouble() ?: 0.0)) * scale / frameCount
-    return (average * 10).roundToLong() / 10.0
+    return average.oneDecimal()
 }
+
+private fun Double.oneDecimal() = (this * 10).roundToLong() / 10.0

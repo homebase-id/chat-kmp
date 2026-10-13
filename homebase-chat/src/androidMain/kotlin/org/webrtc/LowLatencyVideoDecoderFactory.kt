@@ -43,13 +43,14 @@ private object LowLatencyCodecs : MediaCodecWrapperFactory {
 
 private class LowLatencyCodec(private val codec: MediaCodec) : MediaCodecWrapper {
     override fun configure(format: MediaFormat, surface: Surface?, crypto: MediaCrypto?, flags: Int) {
-        val keys = lowLatencyKeys(codec.codecInfo, format.getString(MediaFormat.KEY_MIME))
+        val mime = format.getString(MediaFormat.KEY_MIME)
+        val keys = lowLatencyKeys(codec.codecInfo, mime)
         keys.forEach { (key, value) -> format.setInteger(key, value) }
         try {
             codec.configure(format, surface, crypto, flags)
-            Logger.i("WebRtcKmp") { "decoder ${codec.name} configured ${format.getString(MediaFormat.KEY_MIME)} with $keys" }
+            Logger.i("WebRtcKmp") { "decoder ${codec.name} configured $mime with $keys" }
         } catch (e: RuntimeException) {
-            if (keys.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) throw e
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) throw e
             Logger.w(e, "WebRtcKmp") { "decoder ${codec.name} refused $keys; configuring without them" }
             codec.reset()
             keys.keys.forEach(format::removeKey)
@@ -81,12 +82,13 @@ private const val QTI_PICTURE_ORDER = "vendor.qti-ext-dec-picture-order.enable"
 
 // Codecs ignore keys they do not know; the Qualcomm ones put the decoder in decode order, outputting each frame at once.
 private fun lowLatencyKeys(info: MediaCodecInfo, mime: String?): Map<String, Int> = buildMap {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mime != null &&
-        runCatching { info.getCapabilitiesForType(mime).isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency) }.getOrDefault(false)
-    ) {
-        put(MediaFormat.KEY_LOW_LATENCY, 1)
-    }
+    if (mime != null && info.supportsLowLatency(mime) == true) put(MediaFormat.KEY_LOW_LATENCY, 1)
     put(QTI_LOW_LATENCY, 1)
     put(QTI_PICTURE_ORDER, 1)
     put(MediaFormat.KEY_PRIORITY, 0)
 }
+
+/** Whether [mime] decoding offers FEATURE_LowLatency; null before Android 11, which cannot tell. */
+internal fun MediaCodecInfo.supportsLowLatency(mime: String): Boolean? =
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) null
+    else runCatching { getCapabilitiesForType(mime).isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency) }.getOrDefault(false)

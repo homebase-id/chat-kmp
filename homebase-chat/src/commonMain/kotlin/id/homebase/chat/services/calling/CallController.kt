@@ -299,10 +299,7 @@ class CallController(
                     val sdp = engine().answerRestart(effect.offerSdp)
                     sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
-                is CallEffect.AddIce -> {
-                    val current = engine
-                    if (!remoteReady) bufferedIce += effect else if (current != null) addIce(current, effect)
-                }
+                is CallEffect.AddIce -> if (!remoteReady) bufferedIce += effect else engine?.let { addIce(it, effect) }
                 is CallEffect.SetMuted -> engine?.setMuted(effect.muted)
                 is CallEffect.SetVideo -> engine?.setVideo(effect.on)
                 CallEffect.SwitchCamera -> engine?.switchCamera()
@@ -312,12 +309,12 @@ class CallController(
                 CallEffect.ReleaseEngine -> releaseEngine()
             }
         } catch (e: CallEngineException) {
-            Logger.w(tag = TAG) { "engine failed: ${e.reason} ${e.message}" }
+            log.w { "engine failed: ${e.reason} ${e.message}" }
             post(CallEvent.EngineError(e.reason))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(e, TAG) { "call effect $effect failed" }
+            log.w(e) { "call effect $effect failed" }
             post(CallEvent.EngineError(FailReason.Other))
         }
     }

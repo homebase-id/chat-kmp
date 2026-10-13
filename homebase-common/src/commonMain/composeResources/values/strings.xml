@@ -2741,7 +2741,6 @@
     <string name="call_status_connecting">Connecting…</string>
     <string name="call_status_reconnecting">Reconnecting…</string>
     <string name="call_decline">Decline</string>
-    <string name="call_cancel">Cancel</string>
     <string name="call_hang_up">End call</string>
     <string name="call_mute">Mute microphone</string>
     <string name="call_unmute">Unmute microphone</string>
@@ -2775,7 +2774,6 @@
     <string name="call_camera_denied_body">Camera access was denied, so this call continues as a voice call. You can allow the camera in Settings to use video.</string>
     <string name="call_permission_body">Calls need access to your microphone, and your camera for video.</string>
     <string name="call_no_video">Camera off</string>
-    <string name="call_you">You</string>
     <string name="call_event_missed">Missed call</string>
     <string name="call_event_declined">Call declined</string>
     <string name="call_event_cancelled">Cancelled call</string>
@@ -2788,8 +2786,6 @@
     <string name="call_event_unparseable">Unable to display this call. Please update the app.</string>
     <string name="call_lab_title">Call lab</string>
     <string name="call_lab_intro">Drives the real call screens with a scripted fake peer. No network, no microphone.</string>
-    <string name="call_lab_incoming_voice">Incoming voice call</string>
-    <string name="call_lab_incoming_video">Incoming video call</string>
     <string name="call_lab_outgoing_voice">Outgoing voice call</string>
     <string name="call_lab_outgoing_video">Outgoing video call</string>
     <string name="call_lab_drop">Connection drops and recovers</string>
@@ -2806,8 +2802,6 @@
     <string name="call_failed_title">Can't connect</string>
     <string name="call_failed_body">Your network may be blocking direct calls. Try switching between Wi-Fi and mobile data, then retry.</string>
     <string name="call_failed_other_body">Something went wrong setting up the call. Try again.</string>
-    <string name="call_retry">Retry</string>
-    <string name="call_close">Close</string>
     <string name="call_label_audio_output">Audio</string>
     <string name="call_route_picker">Choose audio output</string>
     <string name="call_route_bluetooth">Use Bluetooth</string>

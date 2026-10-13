@@ -198,21 +198,14 @@ class WebRtcJavaCallEngine(
         }
     }
 
-    private suspend fun offer(options: RTCOfferOptions): String {
-        checkOpen()
-        val description = suspendCancellableCoroutine { cont ->
-            peer.createOffer(options, object : CreateSessionDescriptionObserver {
-                override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
-                override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
-            })
-        }
-        return setLocalRaised(description)
-    }
+    private suspend fun offer(options: RTCOfferOptions) = createLocal { peer.createOffer(options, it) }
 
-    private suspend fun createAnswer(): String {
+    private suspend fun createAnswer() = createLocal { peer.createAnswer(RTCAnswerOptions(), it) }
+
+    private suspend fun createLocal(create: (CreateSessionDescriptionObserver) -> Unit): String {
         checkOpen()
         val description = suspendCancellableCoroutine { cont ->
-            peer.createAnswer(RTCAnswerOptions(), object : CreateSessionDescriptionObserver {
+            create(object : CreateSessionDescriptionObserver {
                 override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
                 override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
             })
