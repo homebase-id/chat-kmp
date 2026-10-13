@@ -19,6 +19,10 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import io.ktor.utils.io.writeFully
+import io.ktor.utils.io.writer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -48,9 +52,16 @@ class PayloadDownloadServiceTest {
     private var nextStatus = HttpStatusCode.OK
     private var nextBody: ByteArray = ByteArray(0)
     private var nextHeaders: Headers = headersOf()
+    private var bodyDelayMs = 0L
 
     private val mockEngine = MockEngine { _ ->
-        respond(nextBody, nextStatus, nextHeaders)
+        if (bodyDelayMs == 0L) return@MockEngine respond(nextBody, nextStatus, nextHeaders)
+        val body = nextBody
+        val late = CoroutineScope(Dispatchers.IO).writer {
+            Thread.sleep(bodyDelayMs)
+            channel.writeFully(body)
+        }.channel
+        respond(late, nextStatus, nextHeaders)
     }
     private val httpClient = HttpClient(mockEngine)
     private val credentialsManager = CredentialsManager()
@@ -94,6 +105,7 @@ class PayloadDownloadServiceTest {
         nextStatus = HttpStatusCode.OK
         nextBody = ByteArray(0)
         nextHeaders = headersOf()
+        bodyDelayMs = 0L
     }
 
     @AfterTest
@@ -110,6 +122,17 @@ class PayloadDownloadServiceTest {
         val plaintext = ByteArray(size).also { Random.nextBytes(it) }
         nextBody = keyHeader.encryptDataAes(plaintext)
         return keyHeader to plaintext
+    }
+
+    @Test
+    fun `a body that arrives late in real time isn't a stall under a test's virtual time`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(4_096)
+        bodyDelayMs = 300
+
+        val path = service.exportToTemp(driveId, fileId, key, keyHeader, ExportDestination.ShareOutbound(".bin"))
+
+        assertNotNull(path)
+        assertContentEquals(plaintext, File(path).readBytes())
     }
 
     @Test

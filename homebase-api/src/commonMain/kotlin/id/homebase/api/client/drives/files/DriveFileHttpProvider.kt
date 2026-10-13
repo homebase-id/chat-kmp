@@ -25,6 +25,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import io.ktor.utils.io.ByteReadChannel
@@ -32,15 +33,17 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.contentLength
 import io.ktor.utils.io.availableForRead
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.IOException
 
 // The web engine has no socket timeout, and a download has no request timeout: only this ends a stalled body.
+// Timed on Dispatchers.Default so it counts real time, not the caller's (a test's virtual time skips ahead).
 private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = 5 * 60_000L): Flow<ByteArray> = flow {
     val buffer = ByteArray(chunkSize)
 
     while (!isClosedForRead) {
-        if (availableForRead == 0 && withTimeoutOrNull(stallMillis) { awaitContent() } == null) {
+        if (availableForRead == 0 && withContext(Dispatchers.Default) { withTimeoutOrNull(stallMillis) { awaitContent() } } == null) {
             throw IOException("no data for $stallMillis ms")
         }
         val read = readAvailable(buffer)
