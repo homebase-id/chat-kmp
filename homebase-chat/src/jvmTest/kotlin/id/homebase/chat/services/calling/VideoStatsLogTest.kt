@@ -86,4 +86,13 @@ class VideoStatsLogTest {
         assertTrue(" qp=null " in videoStatsLines(listOf(noQp)).single())
         assertTrue(" qp=36.6 " in videoStatsLines(listOf(stalled)).single())
     }
+
+    // iPhone retest Redmi: encoded sat at 2778 for minutes while the camera kept going; the delta reads 0 at a glance.
+    @Test
+    fun encodedDeltaCountsFramesEncodedInTheInterval() {
+        val now = StatsEntry("outbound-rtp", mapOf("kind" to "video", "framesEncoded" to BigInteger.valueOf(2_778)))
+
+        assertTrue(" encodedDelta=0 " in videoStatsLines(listOf(now), previous = listOf(now)).single())
+        assertTrue(" encodedDelta=37 " in videoStatsLines(listOf(now), previous = listOf(outbound(2_741))).single())
+    }
 }

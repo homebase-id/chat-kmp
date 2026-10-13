@@ -62,7 +62,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override val remoteVideo: StateFlow<VideoHandle?> = _remote.asStateFlow()
 
     init {
-        capLocalVideoSource()
+        configureWebRtc()
     }
 
     // Every URL as given by the device's own server; nothing is derived or added.

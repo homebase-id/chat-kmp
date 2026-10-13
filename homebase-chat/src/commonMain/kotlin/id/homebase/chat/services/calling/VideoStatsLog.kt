@@ -36,6 +36,7 @@ internal fun videoStatsLines(
         val before = previous.video("outbound-rtp").orEmpty()
         add(
             "outbound video packets=${m["packetsSent"]} bytes=${m["bytesSent"]} encoded=${m["framesEncoded"]} " +
+                "encodedDelta=${delta(m, before, "framesEncoded")} " +
                 "sent=${m["framesSent"]} keyframes=${m["keyFramesEncoded"]} size=${m["frameWidth"]}x${m["frameHeight"]} " +
                 "fps=${m["framesPerSecond"]} target=${m["targetBitrate"]} limit=${m["qualityLimitationReason"]} " +
                 "resChanges=${m["qualityLimitationResolutionChanges"]} plisIn=${m["pliCount"]} " +
@@ -61,6 +62,11 @@ internal fun Any?.asDouble(): Double? = when (this) {
     null -> null
     is Number -> toDouble()
     else -> toString().toDoubleOrNull()
+}
+
+private fun delta(now: Map<String, Any?>, before: Map<String, Any?>, counter: String): Long? {
+    val value = now[counter].asDouble() ?: return null
+    return (value - (before[counter].asDouble() ?: 0.0)).toLong()
 }
 
 private fun perFrame(now: Map<String, Any?>, before: Map<String, Any?>, total: String, frames: String, scale: Double = 1.0): Double? {
