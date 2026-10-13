@@ -41,6 +41,7 @@ data class CardPayload(
     val data: CardData,
     val audience: CardAudiencePayload? = null,
     val overrides: CardOverrides? = null,
+    val visitorPreview: Boolean? = null,
 )
 
 @Serializable

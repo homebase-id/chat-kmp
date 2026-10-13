@@ -254,6 +254,8 @@ class ProfileCardViewModelTest {
         assertEquals("Frodo", payload.data.firstName)
         assertEquals("data:image/jpeg;base64,pub_photo", payload.data.photo?.src)
         assertEquals(listOf("pub_photo"), source.imageRequests)
+        assertEquals(true, payload.visitorPreview)
+        assertTrue("\"visitorPreview\":true" in payload.toJson())
     }
 
     @Test

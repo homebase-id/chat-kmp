@@ -1049,6 +1049,7 @@ class ProfileCardViewModel(
             posts = posts,
             audience = audience,
             overrides = card?.withDesign(design, stored)?.overrides ?: stored,
+            visitorPreview = true,
         )
     }
 
