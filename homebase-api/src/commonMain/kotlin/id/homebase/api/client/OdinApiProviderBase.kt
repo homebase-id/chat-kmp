@@ -18,7 +18,6 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.request.HttpRequestBuilder
-import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.timeout
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.contentLength
@@ -314,9 +313,10 @@ abstract class OdinApiProviderBase(
     }
 
 
-    // An upload's duration grows with its size, so only a stall should end it: the client's socket timeout still does.
-    private fun HttpRequestBuilder.unboundedUploadTimeout() {
-        timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
+    // Grows with the upload's size so a slow link can finish a large one; still bounded, as the web engine has no socket timeout.
+    private fun HttpRequestBuilder.uploadTimeout(formData: MultiPartFormDataContent) {
+        val bytes = formData.contentLength ?: return
+        timeout { requestTimeoutMillis = UPLOAD_TIMEOUT_BASE_MS + bytes / UPLOAD_MIN_BYTES_PER_MS }
     }
 
     protected suspend fun plainPostMultipart(
@@ -332,7 +332,7 @@ abstract class OdinApiProviderBase(
                 httpClient.post(url) {
                     bearerAuth(token)
                     setBody(formData)
-                    unboundedUploadTimeout()
+                    uploadTimeout(formData)
 
                     onUpload { sent, total ->
                         onProgress?.invoke(sent, total)
@@ -356,7 +356,7 @@ abstract class OdinApiProviderBase(
                 httpClient.patch(url) {
                     bearerAuth(token)
                     setBody(formData)
-                    unboundedUploadTimeout()
+                    uploadTimeout(formData)
 
                     onUpload { sent, total ->
                         onProgress?.invoke(sent, total)
@@ -628,3 +628,8 @@ abstract class OdinApiProviderBase(
     }
 
 }
+
+private const val UPLOAD_TIMEOUT_BASE_MS = 5 * 60_000L
+
+// About 16 KB/s: a 4 GiB upload gets about three days.
+private const val UPLOAD_MIN_BYTES_PER_MS = 16L

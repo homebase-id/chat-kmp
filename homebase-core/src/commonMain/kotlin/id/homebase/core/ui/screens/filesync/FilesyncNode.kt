@@ -49,7 +49,11 @@ class FilesyncHandle(
     val keyHeader: KeyHeader,
     val content: JsonObject,
     val payload: FilesyncPayload?,
-)
+    version: Int = CONTENT_VERSION,
+) {
+    /** A node from a newer content version is shown but never changed. */
+    val writable = version == CONTENT_VERSION
+}
 
 /** The typed part of a node's encrypted appData.content; [mtime] and [size] are for files only. */
 @Serializable
@@ -61,6 +65,8 @@ internal data class FilesyncNodeContent(
 )
 
 internal const val REMOVAL_KEY = "rm"
+
+internal const val CONTENT_VERSION = 1
 
 private const val TAG = "FilesyncNode"
 
@@ -107,7 +113,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         removal = removalOf(appData.archivalStatus, raw, nodeId, fileMetadata.updated.milliseconds),
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
-    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload)
+    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v)
 }
 
 /** Only status 2 removes; a node removed by another app has no readable `rm` and counts as removed at [updatedMs], on its own. */

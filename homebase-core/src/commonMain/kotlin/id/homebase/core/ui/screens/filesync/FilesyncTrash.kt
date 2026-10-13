@@ -9,8 +9,6 @@ data class FilesyncTrashItem(val node: FilesyncNode, val count: Int)
 
 /** Recently deleted the way the desktop reads it (filesync deleted.rs, tray pages.rs); every map holds removed nodes only. */
 internal object FilesyncTrash {
-    // A groupId cycle can't come from a client, but a bad row mustn't hang the screen.
-    private const val MAX_DEPTH = 256
 
     /** The items whose parent isn't removed too, newest first. */
     fun topmost(removed: Map<Uuid, FilesyncNode>): List<FilesyncTrashItem> {
@@ -31,7 +29,7 @@ internal object FilesyncTrash {
         val result = mutableListOf(top)
         val seen = mutableSetOf(top.nodeId)
         var level = listOf(top)
-        while (level.isNotEmpty() && seen.size < removed.size + 1) {
+        while (level.isNotEmpty()) {
             level = level.flatMap { children[it.nodeId].orEmpty() }
                 .filter { it.removal?.root == top.removal?.root && seen.add(it.nodeId) }
             result += level
@@ -39,11 +37,12 @@ internal object FilesyncTrash {
         return result
     }
 
-    /** The removed folders above [node], outermost first. */
+    /** The removed folders above [node], outermost first; a groupId cycle from a bad row ends where it repeats. */
     fun removedParents(node: FilesyncNode, removed: Map<Uuid, FilesyncNode>): List<FilesyncNode> {
         val chain = mutableListOf<FilesyncNode>()
+        val seen = mutableSetOf(node.nodeId)
         var parent = removed[node.parentId]
-        while (parent != null && parent.nodeId != node.nodeId && chain.size < MAX_DEPTH && chain.none { it.nodeId == parent!!.nodeId }) {
+        while (parent != null && seen.add(parent.nodeId)) {
             chain += parent
             parent = removed[parent.parentId]
         }
@@ -53,7 +52,4 @@ internal object FilesyncTrash {
     /** What restoring [top] writes, in order: its removed folders first, so each item has a folder to go back to. */
     fun restorePlan(top: FilesyncNode, removed: Map<Uuid, FilesyncNode>): List<FilesyncNode> =
         removedParents(top, removed) + group(top, removed)
-
-    /** Files before folders, as the desktop deletes them for good. */
-    fun emptyOrder(nodes: Collection<FilesyncNode>): List<FilesyncNode> = nodes.sortedBy { it.isFolder }
 }

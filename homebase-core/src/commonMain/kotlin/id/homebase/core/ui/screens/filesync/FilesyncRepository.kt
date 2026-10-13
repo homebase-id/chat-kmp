@@ -15,9 +15,9 @@ import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.uuid.Uuid
 
 /** Nodes with what writing or downloading each one needs. */
-class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>)
-
-class FilesyncFolder(val nodes: List<FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>)
+class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
+    operator fun plus(other: FilesyncNodes) = FilesyncNodes(nodes + other.nodes, handles + other.handles)
+}
 
 /** Network only: the drive is never synced, so every listing is fetched fresh. */
 class FilesyncRepository(
@@ -27,7 +27,7 @@ class FilesyncRepository(
 ) {
 
     /** A folder's nodes, folders first; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
-    suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncFolder {
+    suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes {
         val found = queryAll(
             nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
                 .copy(groupId = listOf(folderId))
@@ -35,7 +35,7 @@ class FilesyncRepository(
         val sorted = found.nodes.values.sortedWith(
             compareBy<FilesyncNode> { !it.isFolder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
         )
-        return FilesyncFolder(sorted, found.handles)
+        return FilesyncNodes(sorted.associateBy { it.nodeId }, found.handles)
     }
 
     /** Everything in Recently deleted, across the whole drive. */
@@ -54,16 +54,11 @@ class FilesyncRepository(
         ).first
 
     /** The nodes among [nodeIds] that are in [status] now; one gone for good, or in the other status, is left out. */
-    suspend fun findNodes(nodeIds: Collection<Uuid>, status: ArchivalStatus): FilesyncNodes {
-        val nodes = mutableMapOf<Uuid, FilesyncNode>()
-        val handles = mutableMapOf<Uuid, FilesyncHandle>()
-        nodeIds.distinct().filter { it != FilesyncProtocol.RootNodeId }.chunked(PAGE_SIZE).forEach { ids ->
-            val found = queryAll(nodeParams(listOf(status)).copy(clientUniqueIdAtLeastOne = ids))
-            nodes += found.nodes
-            handles += found.handles
-        }
-        return FilesyncNodes(nodes, handles)
-    }
+    suspend fun findNodes(nodeIds: Collection<Uuid>, status: ArchivalStatus): FilesyncNodes =
+        nodeIds.distinct().filter { it != FilesyncProtocol.RootNodeId }.chunked(PAGE_SIZE)
+            .fold(FilesyncNodes(emptyMap(), emptyMap())) { all, ids ->
+                all + queryAll(nodeParams(listOf(status)).copy(clientUniqueIdAtLeastOne = ids))
+            }
 
     /** Folder names for "in Photos" lines, live or removed alike; the top level is left to the caller. */
     suspend fun folderNames(folderIds: Collection<Uuid>, known: Map<Uuid, FilesyncNode>): Map<Uuid, String> {
@@ -80,19 +75,17 @@ class FilesyncRepository(
 
     private suspend fun queryAll(params: FileQueryParams): FilesyncNodes {
         // Keyed by node: a node changed between two pages comes back on both.
-        val nodes = linkedMapOf<Uuid, FilesyncNode>()
-        val handles = mutableMapOf<Uuid, FilesyncHandle>()
+        var all = FilesyncNodes(emptyMap(), emptyMap())
         var cursor: String? = null
         do {
             val (page, next) = query(
                 params,
                 QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = PAGE_SIZE, includeMetadataHeader = true),
             )
-            nodes += page.nodes
-            handles += page.handles
+            all += page
             cursor = next?.takeIf { it != cursor }
         } while (cursor != null)
-        return FilesyncNodes(nodes, handles)
+        return all
     }
 
     private suspend fun query(params: FileQueryParams, options: QueryBatchResultOptionsRequest): Pair<FilesyncNodes, String?> {

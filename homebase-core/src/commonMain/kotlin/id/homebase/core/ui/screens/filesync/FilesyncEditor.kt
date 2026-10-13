@@ -19,9 +19,13 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
+
+private const val TAG = "FilesyncEditor"
 
 /** [skipped]: items another device changed or deleted meanwhile, left as they are. */
 class FilesyncWriteResult(val done: Int, val skipped: Int)
@@ -36,18 +40,23 @@ class FilesyncEditor(
     private val _changed = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val changed: SharedFlow<Unit> = _changed.asSharedFlow()
 
-    /** Brings [nodeId] back with the items its delete took along, and the removed folders above it first. */
-    suspend fun restore(nodeId: Uuid): FilesyncWriteResult {
+    // One write at a time: a restore picks names against the folder as it is, so two at once could pick the same one.
+    private val writeLock = Mutex()
+
+    /** Brings each of [nodeIds] back with the items its delete took along, and the removed folders above it first. */
+    suspend fun restore(nodeIds: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
         val removed = repository.listRemoved()
-        val top = removed.nodes[nodeId] ?: return FilesyncWriteResult(0, 1)
-        val plan = FilesyncTrash.restorePlan(top, removed.nodes)
+        val tops = nodeIds.mapNotNull { removed.nodes[it] }
+        // One already live was restored by an earlier tap or another device: nothing to do, nothing to report.
+        val gone = (nodeIds - removed.nodes.keys).let { it.size - repository.findNodes(it, ArchivalStatus.None).nodes.size }
+        val plan = tops.flatMap { FilesyncTrash.restorePlan(it, removed.nodes) }.distinctBy { it.nodeId }
         val planned = plan.mapTo(mutableSetOf()) { it.nodeId }
         val outsideParents = plan.map { it.parentId }.filter { it !in planned }
         val liveParents = repository.findNodes(outsideParents, ArchivalStatus.None).nodes.keys
 
         val restored = mutableSetOf<Uuid>()
         val takenByFolder = mutableMapOf<Uuid, MutableSet<String>>()
-        var skipped = 0
+        var skipped = gone
         for (node in plan) {
             val target = when (node.parentId) {
                 in planned -> node.parentId.takeIf { it in restored }
@@ -60,39 +69,41 @@ class FilesyncEditor(
                 continue
             }
             val taken = takenByFolder.getOrPut(target) {
-                repository.listFolder(target).nodes.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
+                repository.listFolder(target).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
             }
             val name = FilesyncNames.restoredName(node.name, taken)
             val handle = removed.handles.getValue(node.nodeId)
-            if (name == null || !write(node.nodeId, handle, restoredContent(handle.content, name), target)) {
+            if (name == null || !handle.writable || !write(node.nodeId, handle, restoredContent(handle.content, name), target)) {
                 skipped++
                 continue
             }
             restored += node.nodeId
             taken += FilesyncNames.key(name)
         }
-        _changed.tryEmit(Unit)
-        return FilesyncWriteResult(restored.size, skipped)
+        if (restored.isNotEmpty()) _changed.tryEmit(Unit)
+        FilesyncWriteResult(restored.size, skipped)
     }
 
     /**
      * Deletes [shown] for good, files before folders. Each is read again first and left alone if it changed since
-     * the user saw it, so nothing removed or restored after they looked goes.
+     * the user saw it; the server's batch delete has no version guard, so a change in the moment between is not caught.
      */
-    suspend fun deleteForGood(shown: FilesyncNodes): FilesyncWriteResult {
+    suspend fun deleteForGood(shown: FilesyncNodes): FilesyncWriteResult = writeLock.withLock {
         val current = repository.findNodes(shown.nodes.keys, ArchivalStatus.Removed)
         val unchanged = shown.nodes.values.filter { node ->
             val now = current.handles[node.nodeId] ?: return@filter false
-            now.versionTag == shown.handles[node.nodeId]?.versionTag
+            now.writable && now.versionTag == shown.handles[node.nodeId]?.versionTag
         }
-        val (files, folders) = FilesyncTrash.emptyOrder(unchanged).partition { !it.isFolder }
+        val (files, folders) = unchanged.partition { !it.isFolder }
+        var deleted = 0
         listOf(files, folders).forEach { batch ->
             batch.chunked(DELETE_BATCH).forEach { chunk ->
-                driveFileProvider.deleteFiles(FilesyncProtocol.DriveAlias, chunk.map { current.handles.getValue(it.nodeId).fileId })
+                val result = driveFileProvider.deleteFiles(FilesyncProtocol.DriveAlias, chunk.map { current.handles.getValue(it.nodeId).fileId })
+                deleted += result.results.count { it.localFileDeleted }
             }
         }
-        _changed.tryEmit(Unit)
-        return FilesyncWriteResult(unchanged.size, shown.nodes.size - unchanged.size)
+        if (deleted > 0) _changed.tryEmit(Unit)
+        FilesyncWriteResult(deleted, shown.nodes.size - deleted)
     }
 
     /** False when the node changed or went since it was read; that's another device's newer word, not a failure. */
@@ -109,7 +120,6 @@ class FilesyncEditor(
     }
 
     private companion object {
-        const val TAG = "FilesyncEditor"
         const val DELETE_BATCH = 100
     }
 }
@@ -147,7 +157,7 @@ internal suspend fun reportWrite(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Logger.e(e, "FilesyncEditor") { "$done failed" }
+        Logger.e(e, TAG) { "$done failed" }
         null
     }
     send(

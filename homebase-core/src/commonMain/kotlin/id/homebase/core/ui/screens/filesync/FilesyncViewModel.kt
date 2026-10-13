@@ -8,6 +8,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -15,14 +16,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.uuid.Uuid
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "FilesyncViewModel"
+private val FOLDER_REFRESH_DEBOUNCE = 500.milliseconds
 
+@OptIn(FlowPreview::class)
 class FilesyncViewModel(
     private val repository: FilesyncRepository,
     private val uploadQueue: FilesyncUploadQueue,
@@ -40,7 +44,6 @@ class FilesyncViewModel(
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
     val events: Flow<FilesyncUiEvent> = _events.receiveAsFlow()
 
-    private var handles: Map<Uuid, FilesyncHandle> = emptyMap()
     private var loadJob: Job? = null
     private val transfers = FilesyncTransfers(
         viewModelScope,
@@ -71,9 +74,11 @@ class FilesyncViewModel(
         }
 
         viewModelScope.launch {
-            uploadQueue.changedFolders.collect { folderId ->
-                if (_uiState.value.path.last().nodeId == folderId) loadCurrentFolder()
-            }
+            // A batch of small files lands faster than a folder lists.
+            uploadQueue.changedFolders
+                .filter { it == _uiState.value.path.last().nodeId }
+                .debounce(FOLDER_REFRESH_DEBOUNCE)
+                .collect { loadCurrentFolder() }
         }
 
         viewModelScope.launch {
@@ -121,11 +126,11 @@ class FilesyncViewModel(
                 if (node.isFolder) {
                     openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, removed = node.removal != null))
                 } else {
-                    handles[node.nodeId]?.payload?.let { transfers.open(node, it) }
+                    transfers.open(node)
                 }
             }
 
-            is FilesyncUiAction.SaveClicked -> handles[action.node.nodeId]?.payload?.let { transfers.save(action.node, it) }
+            is FilesyncUiAction.SaveClicked -> transfers.save(action.node)
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
@@ -148,7 +153,7 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.Restore -> viewModelScope.launch {
-                if (reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeId) }) {
+                if (reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }) {
                     // Its removed folders came back with it.
                     _uiState.update { state -> state.copy(path = state.path.map { it.copy(removed = false) }) }
                 }
@@ -168,8 +173,8 @@ class FilesyncViewModel(
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
                 val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
-                handles = folder.handles
-                _uiState.update { it.copy(nodes = folder.nodes, isLoading = false) }
+                transfers.handles = folder.handles
+                _uiState.update { it.copy(nodes = folder.nodes.values.toList(), isLoading = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

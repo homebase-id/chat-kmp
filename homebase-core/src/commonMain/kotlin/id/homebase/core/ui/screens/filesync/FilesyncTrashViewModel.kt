@@ -63,10 +63,7 @@ class FilesyncTrashViewModel(
             }
             FilesyncTrashAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
             is FilesyncTrashAction.Restore -> write(FilesyncNotice.Restored, FilesyncError.RestoreFailed) {
-                action.nodeIds.fold(FilesyncWriteResult(0, 0)) { total, id ->
-                    val one = editor.restore(id)
-                    FilesyncWriteResult(total.done + one.done, total.skipped + one.skipped)
-                }
+                editor.restore(action.nodeIds)
             }
             is FilesyncTrashAction.DeleteForever -> write(FilesyncNotice.DeletedForever, FilesyncError.DeleteFailed) {
                 val group = action.nodeIds.mapNotNull { shown.nodes[it] }
@@ -106,7 +103,7 @@ class FilesyncTrashViewModel(
                         isLoading = false,
                         items = items,
                         folderNames = names,
-                        selected = state.selected.filterTo(mutableSetOf()) { id -> items.any { it.node.nodeId == id } },
+                        selected = state.selected intersect items.mapTo(mutableSetOf()) { it.node.nodeId },
                     )
                 }
             } catch (e: CancellationException) {

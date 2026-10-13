@@ -7,8 +7,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
-/** One download at a time for a screen: its progress goes to [onTransfer], the finished file out as an event. */
+/** One download at a time for a screen: its progress goes to [onTransfer], the finished file out as an event. [handles] are the listed nodes'. */
 internal class FilesyncTransfers(
     private val scope: CoroutineScope,
     private val repository: FilesyncRepository,
@@ -17,16 +18,19 @@ internal class FilesyncTransfers(
 ) {
     private var job: Job? = null
 
-    // The web can't hand a file to another app, so opening it means downloading it.
-    fun open(node: FilesyncNode, payload: FilesyncPayload) = start(node, payload, save = isWeb())
+    var handles: Map<Uuid, FilesyncHandle> = emptyMap()
 
-    fun save(node: FilesyncNode, payload: FilesyncPayload) = start(node, payload, save = true)
+    // The web can't hand a file to another app, so opening it means downloading it.
+    fun open(node: FilesyncNode) = start(node, save = isWeb())
+
+    fun save(node: FilesyncNode) = start(node, save = true)
 
     fun cancel() {
         job?.cancel()
     }
 
-    private fun start(node: FilesyncNode, payload: FilesyncPayload, save: Boolean) {
+    private fun start(node: FilesyncNode, save: Boolean) {
+        val payload = handles[node.nodeId]?.payload ?: return
         if (job?.isActive == true) return
         job = scope.launch {
             onTransfer { FilesyncTransfer(node.nodeId) }

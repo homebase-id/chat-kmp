@@ -7,12 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -21,7 +16,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.common.util.formatBytes
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.core.util.formatMomentDate
 import id.homebase.core.util.formatTime
 import id.homebase.resources.MR
@@ -41,7 +36,6 @@ import id.homebase.resources.filesync_recent_added_empty
 import id.homebase.resources.filesync_recent_deleted
 import id.homebase.resources.filesync_recent_deleted_empty
 import id.homebase.resources.filesync_recent_failed
-import id.homebase.resources.menu_back
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
@@ -57,14 +51,7 @@ fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, onBack: () -> Unit)
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.filesync_recent)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
-                    }
-                },
-            )
+            SettingsTopBar(title = stringResource(MR.string.filesync_recent), onBack = onBack)
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
@@ -94,18 +81,15 @@ fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, onBack: () -> Unit)
                 onRefresh = { viewModel.onAction(FilesyncRecentAction.Refresh) },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                when {
-                    files.isEmpty() && uiState.isLoading -> CenteredBox { CircularProgressIndicator() }
-                    files.isEmpty() && uiState.loadFailed -> RetryMessage(MR.string.filesync_recent_failed) {
-                        viewModel.onAction(FilesyncRecentAction.Refresh)
-                    }
-                    files.isEmpty() -> CenteredBox {
-                        Text(
-                            text = stringResource(if (deletedTab) MR.string.filesync_recent_deleted_empty else MR.string.filesync_recent_added_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    else -> RecentList(files, deletedTab, uiState, viewModel::onAction)
+                FilesyncListBody(
+                    isEmpty = files.isEmpty(),
+                    isLoading = uiState.isLoading,
+                    loadFailed = uiState.loadFailed,
+                    failedMessage = MR.string.filesync_recent_failed,
+                    emptyMessage = if (deletedTab) MR.string.filesync_recent_deleted_empty else MR.string.filesync_recent_added_empty,
+                    onRetry = { viewModel.onAction(FilesyncRecentAction.Refresh) },
+                ) {
+                    RecentList(files, deletedTab, uiState, viewModel::onAction)
                 }
             }
         }
@@ -136,7 +120,8 @@ private fun RecentList(
             }
             items(day, key = { it.nodeId.toString() }) { node ->
                 val folder = folderName(node.parentId, uiState.folderNames)
-                val time = formatTime(Instant.fromEpochMilliseconds(timeOf(node)))
+                val ms = timeOf(node)
+                val time = remember(ms) { formatTime(Instant.fromEpochMilliseconds(ms)) }
                 if (deletedTab) {
                     FilesyncNodeRow(
                         node = node,

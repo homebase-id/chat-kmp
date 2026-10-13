@@ -732,7 +732,6 @@ val appModule = module {
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
                 get<FilesyncPreferences>().reset()
-                get<FilesyncUploadQueue>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -939,7 +938,7 @@ val appModule = module {
     single { FilesyncPreferences(get()) }
     single { FilesyncRepository(get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
-    single { FilesyncUploadQueue(get(), get(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }

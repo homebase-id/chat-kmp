@@ -46,7 +46,7 @@ class FilesyncEditorTest {
     private val fileKey = KeyHeader(ByteArray(16) { 7 }, SecureByteArray(ByteArray(16) { it.toByte() }))
     private val versionTag = Uuid.random()
     private val removedContent = OdinSystemSerializer.json.parseToJsonElement(
-        """{"v":1,"name":"a.txt","mtime":1,"size":5,"ct":1451606400123,"later":{"k":1},"rm":{"at":5,"root":"$nodeId"}}"""
+        """{"v":1,"name":"a.txt","mtime":1,"size":5,"ct":1451606400123,"tags":[{"n":"Red","c":6},{"n":"Work"}],"later":{"k":1},"rm":{"at":5,"root":"$nodeId"}}"""
     ).jsonObject
     private val handle = FilesyncHandle(Uuid.random(), versionTag, FilesyncProtocol.FileFileType, fileKey, removedContent, payload = null)
 
@@ -91,7 +91,8 @@ class FilesyncEditorTest {
         assertFalse(fileKey.iv.contentEquals(request.keyHeader!!.iv))
 
         val content = OdinSystemSerializer.json.parseToJsonElement(request.keyHeader!!.decrypt(Base64.decode(appData.content!!)).decodeToString()) as JsonObject
-        assertEquals(setOf("v", "name", "mtime", "size", "ct", "later"), content.keys)
+        assertEquals(setOf("v", "name", "mtime", "size", "ct", "tags", "later"), content.keys)
+        assertEquals(removedContent["tags"], content["tags"])
         assertEquals("\"a (restored).txt\"", content["name"].toString())
     }
 

@@ -34,7 +34,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/** The create rules from filesync's drive/mod.rs: BLAKE3 hashes, 4105 on a retry is success, hash rejections re-encrypt once. */
+/** The create rules from filesync's drive/mod.rs: BLAKE3 hashes, 4105 is success, hash rejections re-encrypt once. */
 class FilesyncUploaderTest {
 
     private val credentials = CredentialsManager()
@@ -88,7 +88,7 @@ class FilesyncUploaderTest {
     fun aFileIsSentWithBlake3HashesOnItsSyncDataPayload() = runTest {
         responses = mutableListOf(created)
 
-        uploader.uploadFile(FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
+        uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
 
         val body = bodies.single()
         assertTrue("\"payloadKey\":\"sync_data\"" in body, body.take(600))
@@ -100,23 +100,25 @@ class FilesyncUploaderTest {
     fun aRetryAnsweredWith4105MeansTheFirstAttemptLanded() = runTest {
         responses = mutableListOf(dropped, clientError(4105))
 
-        uploader.uploadFile(FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
+        uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
 
         assertEquals(2, bodies.size)
     }
 
     @Test
-    fun a4105OnTheFirstAttemptIsAnError() = runTest {
+    fun a4105OnTheFirstAttemptMeansARetryTheUserAskedForFoundItLanded() = runTest {
         responses = mutableListOf(clientError(4105))
 
-        assertFailsWith<ClientException> { uploader.uploadFile(FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {} }
+        uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
+
+        assertEquals(1, bodies.size)
     }
 
     @Test
     fun aHashRejectionEncryptsAgainOnceThenGivesUp() = runTest {
         responses = mutableListOf(clientError(4175), clientError(4175))
 
-        assertFailsWith<ClientException> { uploader.uploadFile(FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {} }
+        assertFailsWith<ClientException> { uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {} }
         assertEquals(2, bodies.size)
     }
 
@@ -124,7 +126,7 @@ class FilesyncUploaderTest {
     fun noEncryptedCopyIsLeftBehind() = runTest {
         responses = mutableListOf(clientError(4001))
 
-        runCatching { uploader.uploadFile(FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {} }
+        runCatching { uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {} }
 
         assertTrue(File(tempDir).walk().none { it.name.startsWith("fs_up_") })
     }

@@ -28,6 +28,7 @@ Every file and folder is one Homebase file:
   - `mtime` and `ct` (creation time, optional, files and folders) are in Unix milliseconds;
     `size` is the plaintext size; `x` means executable and is left out when false. Folders have
     `v`, `name` and maybe `ct`.
+  - `tags` holds Finder tags, `[{"n": "Red", "c": 6}]`; the mini-app doesn't show them yet, and writes them back as read.
   - Ignore keys you don't know. If `v` > 1, show the item but don't change it.
 
 ## Listing a folder
@@ -69,7 +70,8 @@ Every file and folder is one Homebase file:
   would drop `ct`, `x` and later keys for every device.
 - Delete: delete a folder's contents from the bottom up, then the folder. Desktop clients move
   local copies they lose to `.hbsync/trash/`, so a deletion from the phone can be recovered there.
-- A retry that gets 4105 (`ExistingFileWithUniqueId`) means the first create already succeeded.
+- A retry keeps the node id, including one the user asks for after a failure, so a retry that gets 4105
+  (`ExistingFileWithUniqueId`) means an earlier attempt already succeeded.
 
 ## Recently deleted
 filesync's own rules are in its node schema ("Recently deleted") and `deleted.rs`; the mini-app follows them exactly.
@@ -90,7 +92,9 @@ filesync's own rules are in its node schema ("Recently deleted") and `deleted.rs
     extension.
   - A `VersionTagMismatch` or not-found skips the item: another device changed it.
 - **Delete forever:** only what the user saw.
-  - Re-read each item first, and leave it if its `versionTag` changed.
+  - Re-read each item first, and leave it if its `versionTag` changed. The batch delete itself has no
+    version guard, so a change in the moment between the re-read and the delete isn't caught.
   - Delete files before folders (`delete-batch/by-file-id`), which leaves tombstones.
   - The 30-day purge is the desktops' job; the phone never purges on its own.
+- **An item with `v` > 1** is listed, but restore and delete forever leave it as it is.
 - **Every write sends `archivalStatus`:** the server replaces the whole header and takes a missing one for 0.

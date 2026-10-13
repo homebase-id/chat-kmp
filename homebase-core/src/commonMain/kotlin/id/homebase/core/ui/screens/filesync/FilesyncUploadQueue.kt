@@ -2,6 +2,8 @@ package id.homebase.core.ui.screens.filesync
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
@@ -13,7 +15,9 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.size
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,6 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
 /** Outside any screen so leaving the Filesync tab doesn't cancel uploads; files go up one at a time. */
@@ -34,8 +39,13 @@ class FilesyncUploadQueue(
     private val repository: FilesyncRepository,
     private val uploader: FilesyncUploader,
     private val fileOps: FileOperationsProvider,
+    eventBus: EventBus,
 ) {
     private val scope = supervisedScope("filesync-upload-queue")
+
+    // Everything one identity started; cancelled and joined at sign-out before its state is cleared.
+    @Volatile
+    private var work = SupervisorJob(scope.coroutineContext.job)
 
     private val _uploads = MutableStateFlow<List<FilesyncUpload>>(emptyList())
     val uploads: StateFlow<List<FilesyncUpload>> = _uploads.asStateFlow()
@@ -55,12 +65,15 @@ class FilesyncUploadQueue(
     private val batchTakenKeys = mutableMapOf<Uuid, MutableSet<String>>()
 
     init {
+        scope.launch {
+            eventBus.events.collect { if (it is BackendEvent.SessionEnded) reset() }
+        }
         startWorker()
     }
 
     /** Each file is queued as soon as it's ready, so the first upload doesn't wait for the whole pick to be copied. */
     fun add(parentId: Uuid, files: List<PlatformFile>) {
-        scope.launch {
+        scope.launch(work) {
             for (file in files) {
                 val picked = try {
                     withContext(ioDispatcher) { prepare(file) }
@@ -87,8 +100,9 @@ class FilesyncUploadQueue(
         if (file.size() > HomebaseProtocol.MaxPlaintextPayloadBytes) return null
         // A desktop pick is a real path with no grant to lose, so it's read in place rather than copied first.
         val desktop = isDesktop()
+        val modifiedMs = file.modifiedAtMs()
         val snapshot = if (desktop) file else file.materializeForUpload(fileOps)
-        return FilesyncPickedFile(snapshot.toUploadPath(fileOps), file.name, file.modifiedAtMs(), ownedCopy = !desktop)
+        return FilesyncPickedFile(snapshot.toUploadPath(fileOps), file.name, modifiedMs, ownedCopy = !desktop)
     }
 
     fun retry(id: Uuid) {
@@ -102,7 +116,7 @@ class FilesyncUploadQueue(
     }
 
     fun createFolder(parentId: Uuid, requestedName: String) {
-        scope.launch {
+        scope.launch(work) {
             reporting(FilesyncError.FolderFailed, "creating a folder in $parentId") {
                 // Listed fresh: a folder isn't part of an upload batch.
                 val name = namingLock.withLock {
@@ -116,8 +130,9 @@ class FilesyncUploadQueue(
     }
 
     /** Drops every upload at sign-out: they belong to the identity that picked them. */
-    fun reset() {
-        scope.coroutineContext.cancelChildren()
+    private suspend fun reset() {
+        work.cancelAndJoin()
+        work = SupervisorJob(scope.coroutineContext.job)
         _uploads.value.forEach { if (it.file.ownedCopy) repository.discard(it.file.path) }
         _uploads.value = emptyList()
         batchTakenKeys.clear()
@@ -127,7 +142,7 @@ class FilesyncUploadQueue(
 
     private fun startWorker() {
         val queue = pending
-        scope.launch {
+        scope.launch(work) {
             for (id in queue) {
                 val upload = _uploads.value.firstOrNull { it.id == id } ?: continue
                 reporting(FilesyncError.UploadFailed, "upload $id", onFailure = { updateUpload(id) { it.copy(failed = true, progress = null) } }) {
@@ -141,20 +156,24 @@ class FilesyncUploadQueue(
 
     private suspend fun upload(upload: FilesyncUpload) {
         val name = upload.name ?: namingLock.withLock {
-            val taken = batchTakenKeys.getOrPut(upload.parentId) { listedKeys(upload.parentId) }
+            val taken = batchTakenKeys.getOrPut(upload.parentId) {
+                // A failed upload's name never reached the server, but its retry will still use it.
+                listedKeys(upload.parentId).apply {
+                    _uploads.value.forEach { if (it.parentId == upload.parentId) it.name?.let { name -> add(FilesyncNames.key(name)) } }
+                }
+            }
             FilesyncNames.freeName(upload.file.name, taken).also { taken += FilesyncNames.key(it) }
         }.also { chosen -> updateUpload(upload.id) { it.copy(name = chosen) } }
 
-        uploader.uploadFile(upload.parentId, upload.file.path, name, upload.file.modifiedMs) { fraction ->
+        uploader.uploadFile(upload.id, upload.parentId, upload.file.path, name, upload.file.modifiedMs) { fraction ->
             updateUpload(upload.id) { it.copy(progress = fraction) }
         }
         finish(upload)
-        // One refresh per batch for a folder, not one per file.
-        if (_uploads.value.none { it.parentId == upload.parentId && !it.failed }) _changedFolders.emit(upload.parentId)
+        _changedFolders.emit(upload.parentId)
     }
 
     private suspend fun listedKeys(folderId: Uuid): MutableSet<String> =
-        repository.listFolder(folderId).nodes.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
+        repository.listFolder(folderId).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
 
     private suspend fun reporting(error: FilesyncError, what: String, onFailure: () -> Unit = {}, block: suspend () -> Unit) {
         try {

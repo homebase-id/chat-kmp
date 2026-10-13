@@ -46,11 +46,6 @@ class FilesyncTrashTest {
     }
 
     @Test
-    fun filesAreDeletedBeforeFolders() {
-        assertEquals(listOf(a, photos), FilesyncTrash.emptyOrder(listOf(photos, a)))
-    }
-
-    @Test
     fun aParentCycleEnds() {
         val x = Uuid.random()
         val y = Uuid.random()

@@ -33,22 +33,37 @@ class FilesyncUploader(
     private val clock: Clock = Clock.System,
 ) {
 
-    suspend fun createFolder(parentId: Uuid, name: String): Uuid =
-        create(parentId, FilesyncProtocol.FolderFileType, FilesyncNodeContent(v = CONTENT_VERSION, name = name), KeyHeader.newRandom16())
+    suspend fun createFolder(parentId: Uuid, name: String) {
+        create(Uuid.random(), parentId, FilesyncProtocol.FolderFileType, FilesyncNodeContent(v = CONTENT_VERSION, name = name), KeyHeader.newRandom16())
+    }
 
-    suspend fun uploadFile(parentId: Uuid, sourcePath: String, name: String, modifiedMs: Long?, onProgress: (Float) -> Unit): Uuid {
+    suspend fun uploadFile(
+        nodeId: Uuid,
+        parentId: Uuid,
+        sourcePath: String,
+        name: String,
+        modifiedMs: Long?,
+        onProgress: (Float) -> Unit,
+    ) {
         val mtime = modifiedMs ?: clock.now().toEpochMilliseconds()
-        return try {
-            uploadOnce(parentId, sourcePath, name, mtime, onProgress)
+        try {
+            uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
         } catch (e: ClientException) {
             // A hash rejection means the bytes changed under us or a bug: start over once from the source, never resend blindly.
             if (!e.isPayloadHashRejection()) throw e
             Logger.w(TAG) { "hash rejected (${e.errorCode}); encrypting again" }
-            uploadOnce(parentId, sourcePath, name, mtime, onProgress)
+            uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
         }
     }
 
-    private suspend fun uploadOnce(parentId: Uuid, sourcePath: String, name: String, mtime: Long, onProgress: (Float) -> Unit): Uuid {
+    private suspend fun uploadOnce(
+        nodeId: Uuid,
+        parentId: Uuid,
+        sourcePath: String,
+        name: String,
+        mtime: Long,
+        onProgress: (Float) -> Unit,
+    ) {
         val keyHeader = KeyHeader.newRandom16()
         val encryptedPath = fileOperationsProvider.createUploadTempPath("fs_up_", ".bin")
         try {
@@ -62,21 +77,21 @@ class FilesyncUploader(
                 iv = hashed.iv,
                 hash = hashed.hash,
             )
-            return create(parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress)
+            create(nodeId, parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress)
         } finally {
             runCatching { fileOperationsProvider.deleteTempFile(encryptedPath) }
         }
     }
 
     private suspend fun create(
+        nodeId: Uuid,
         parentId: Uuid,
         fileType: Int,
         content: FilesyncNodeContent,
         keyHeader: KeyHeader,
         payload: PayloadFile? = null,
         onProgress: ((Float) -> Unit)? = null,
-    ): Uuid {
-        val nodeId = Uuid.random()
+    ) {
         val metadata = filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None)
             .encryptContent(keyHeader)
         val request = UploadFileRequest(
@@ -86,22 +101,20 @@ class FilesyncUploader(
             payloads = listOfNotNull(payload),
         )
 
-        // Every retry keeps the node id: if an earlier attempt landed, the server answers 4105 instead of making a duplicate.
-        withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) { attempt ->
+        // The node id is new to this upload and kept across every retry, the user's too: a 4105 can only mean an earlier attempt landed.
+        withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) {
             try {
                 driveUploadProvider.uploadFile(request, onProgress = onProgress?.let(::wholePercentBytes))
             } catch (e: ClientException) {
-                if (attempt == 0 || !e.isExistingFileWithUniqueId()) throw e
+                if (!e.isExistingFileWithUniqueId()) throw e
                 Logger.i(TAG) { "node $nodeId already landed on an earlier attempt" }
             }
             Unit
         }.getOrThrow()
-        return nodeId
     }
 
     private companion object {
         const val TAG = "FilesyncUploader"
-        const val CONTENT_VERSION = 1
     }
 }
 

@@ -15,7 +15,7 @@ data class FilesyncTransfer(val nodeId: Uuid, val progress: Float = 0f)
 @Immutable
 data class FilesyncPickedFile(val path: String, val name: String, val modifiedMs: Long?, val ownedCopy: Boolean)
 
-/** [name] is the free name chosen on the first attempt and kept for retries; [progress] is null until bytes move. */
+/** [id] is also the node's uniqueId and [name] the free name chosen on the first attempt; both are kept for retries. [progress] is null until bytes move. */
 @Immutable
 data class FilesyncUpload(
     val id: Uuid,

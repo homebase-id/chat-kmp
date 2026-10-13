@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.common.util.formatBytes
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
@@ -188,8 +189,8 @@ internal fun SaveButton(progress: Float?, onSave: () -> Unit, onCancel: () -> Un
 }
 
 @Composable
-internal fun RestoreButton(onRestore: () -> Unit) {
-    IconButton(onClick = onRestore) {
+internal fun RestoreButton(enabled: Boolean = true, onRestore: () -> Unit) {
+    IconButton(onClick = onRestore, enabled = enabled) {
         Icon(Icons.Outlined.RestoreFromTrash, contentDescription = stringResource(MR.string.filesync_restore))
     }
 }
@@ -217,6 +218,31 @@ internal fun FilesyncConfirmDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
         },
     )
+}
+
+/** A list's first load, failed load and empty states; [content] once there's something to show. */
+@Composable
+internal fun FilesyncListBody(
+    isEmpty: Boolean,
+    isLoading: Boolean,
+    loadFailed: Boolean,
+    failedMessage: StringResource,
+    emptyMessage: StringResource,
+    onRetry: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    when {
+        isEmpty && isLoading -> CenteredBox { CircularProgressIndicator() }
+        isEmpty && loadFailed -> RetryMessage(failedMessage, onRetry)
+        isEmpty -> CenteredBox {
+            Text(
+                text = stringResource(emptyMessage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        else -> content()
+    }
 }
 
 @Composable

@@ -53,7 +53,6 @@ class FilesyncRecentViewModel(
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
     val events: Flow<FilesyncUiEvent> = _events.receiveAsFlow()
 
-    private var handles: Map<Uuid, FilesyncHandle> = emptyMap()
     private var loadJob: Job? = null
     private val transfers = FilesyncTransfers(
         viewModelScope,
@@ -71,12 +70,12 @@ class FilesyncRecentViewModel(
         when (action) {
             is FilesyncRecentAction.SelectTab -> _uiState.update { it.copy(tab = action.tab) }
             FilesyncRecentAction.Refresh -> load()
-            is FilesyncRecentAction.Open -> handles[action.node.nodeId]?.payload?.let { transfers.open(action.node, it) }
-            is FilesyncRecentAction.Save -> handles[action.node.nodeId]?.payload?.let { transfers.save(action.node, it) }
+            is FilesyncRecentAction.Open -> transfers.open(action.node)
+            is FilesyncRecentAction.Save -> transfers.save(action.node)
             FilesyncRecentAction.CancelTransfer -> transfers.cancel()
             is FilesyncRecentAction.SaveHandedOff -> repository.discard(action.path)
             is FilesyncRecentAction.Restore -> viewModelScope.launch {
-                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeId) }
+                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
             }
         }
     }
@@ -91,11 +90,11 @@ class FilesyncRecentViewModel(
                     val removed = async { repository.listRemoved() }
                     added.await() to removed.await()
                 }
-                val addedFiles = added.nodes.values.sortedByDescending { it.addedMs }
+                val addedFiles = added.nodes.values.toList()
                 val deletedFiles = removed.nodes.values.filter { !it.isFolder }.sortedByDescending { it.removal?.atMs }
                 val parents = (addedFiles + deletedFiles).mapTo(mutableSetOf()) { it.parentId }
                 val names = repository.folderNames(parents, removed.nodes)
-                handles = added.handles
+                transfers.handles = added.handles
                 _uiState.update { it.copy(isLoading = false, added = addedFiles, deleted = deletedFiles, folderNames = names) }
             } catch (e: CancellationException) {
                 throw e

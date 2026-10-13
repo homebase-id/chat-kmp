@@ -53,7 +53,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -87,7 +86,6 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
@@ -203,20 +201,16 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, onOpenTrash: () -> Unit, onOpen
                 onRefresh = { viewModel.onAction(FilesyncUiAction.Refresh) },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                val nothingToShow = uiState.nodes.isEmpty() && uploadsHere.isEmpty()
-                when {
-                    nothingToShow && uiState.isLoading -> CenteredBox { CircularProgressIndicator() }
-                    nothingToShow && uiState.loadFailed -> RetryMessage(MR.string.filesync_load_failed) {
-                        viewModel.onAction(FilesyncUiAction.Refresh)
-                    }
-                    nothingToShow -> CenteredBox {
-                        Text(
-                            text = stringResource(MR.string.filesync_folder_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                FilesyncListBody(
+                    isEmpty = uiState.nodes.isEmpty() && uploadsHere.isEmpty(),
+                    isLoading = uiState.isLoading,
+                    loadFailed = uiState.loadFailed,
+                    failedMessage = MR.string.filesync_load_failed,
+                    emptyMessage = MR.string.filesync_folder_empty,
+                    onRetry = { viewModel.onAction(FilesyncUiAction.Refresh) },
+                ) {
                     // Bottom padding keeps the last row's buttons clear of the upload button.
-                    else -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
                         items(uploadsHere, key = { "upload-${it.id}" }) { upload ->
                             UploadRow(
                                 upload = upload,
