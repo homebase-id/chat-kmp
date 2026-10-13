@@ -110,17 +110,6 @@ class JvmVideoHandleMemoryTest {
         frame.release()
     }
 
-    private fun footprintMb(): Long {
-        if (!System.getProperty("os.name").orEmpty().lowercase().contains("mac")) return rssMb()
-        val out = command("footprint", "-f", "bytes", ProcessHandle.current().pid().toString())
-        return Regex("Footprint: (\\d+) B").find(out)!!.groupValues[1].toLong() shr 20
-    }
-
-    private fun rssMb(): Long = command("ps", "-o", "rss=", "-p", ProcessHandle.current().pid().toString()).trim().toLong() / 1024
-
-    private fun command(vararg argv: String): String =
-        ProcessBuilder(*argv).redirectErrorStream(true).start().inputStream.bufferedReader().readText()
-
     private companion object {
         const val WIDTH = 1920
         const val HEIGHT = 1080

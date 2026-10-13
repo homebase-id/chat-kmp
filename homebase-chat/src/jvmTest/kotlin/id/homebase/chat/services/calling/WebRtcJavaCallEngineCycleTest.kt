@@ -59,13 +59,4 @@ class WebRtcJavaCallEngineCycleTest {
             b.close()
         }
     }
-
-    private fun footprintMb(): Long {
-        val pid = ProcessHandle.current().pid().toString()
-        if (!System.getProperty("os.name").orEmpty().lowercase().contains("mac")) {
-            return ProcessBuilder("ps", "-o", "rss=", "-p", pid).start().inputStream.bufferedReader().readText().trim().toLong() / 1024
-        }
-        val out = ProcessBuilder("footprint", "-f", "bytes", pid).redirectErrorStream(true).start().inputStream.bufferedReader().readText()
-        return Regex("Footprint: (\\d+) B").find(out)!!.groupValues[1].toLong() shr 20
-    }
 }
