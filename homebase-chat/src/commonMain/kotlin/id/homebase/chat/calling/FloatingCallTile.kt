@@ -43,7 +43,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
@@ -57,6 +59,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import id.homebase.chat.services.calling.CallPhase
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.chat.services.calling.RemoteVideoSize
 import id.homebase.resources.MR
 import id.homebase.resources.call_hang_up
@@ -84,19 +87,15 @@ internal fun floatingTileSize(remote: Pair<Int, Int>?): DpSize {
     return if (landscape) DpSize(168.dp, 112.dp) else DpSize(112.dp, 168.dp)
 }
 
-/** The region a resting tile's top-left may sit in, after the system insets (status, navigation, cutout, keyboard) and the clearances. */
-internal fun floatingTileArea(width: Float, height: Float, insetLeft: Float, insetTop: Float, insetRight: Float, insetBottom: Float): Rect =
-    Rect(insetLeft, insetTop, width - insetRight, height - insetBottom)
-
-/** Top-left positions of the four resting corners: top-left, top-right, bottom-left, bottom-right on screen. A region too small for the tile pins it top-left. */
-internal fun floatingTileCorners(area: Rect, tile: Size): List<Offset> {
+/** Top-left positions of a floating [tile]'s four resting corners in [area]: top-left, top-right, bottom-left, bottom-right on screen. An area too small pins it top-left. */
+internal fun snapCorners(area: Rect, tile: Size): List<Offset> {
     val right = (area.right - tile.width).coerceAtLeast(area.left)
     val bottom = (area.bottom - tile.height).coerceAtLeast(area.top)
     return listOf(Offset(area.left, area.top), Offset(right, area.top), Offset(area.left, bottom), Offset(right, bottom))
 }
 
 /** The corner a tile let go at [position] with [velocity] (px/s) comes to rest in: the one nearest where the fling would carry it. */
-internal fun floatingTileRestingCorner(corners: List<Offset>, position: Offset, velocity: Offset): Int {
+internal fun restingCorner(corners: List<Offset>, position: Offset, velocity: Offset): Int {
     val projected = position + velocity * FlingProjectionSeconds
     return corners.indices.minBy { (corners[it] - projected).getDistance() }
 }
@@ -124,14 +123,12 @@ internal fun FloatingCallTile(
     BoxWithConstraints(modifier.fillMaxSize()) {
         val corners = with(density) {
             val margin = FloatingTileMargin.toPx()
-            floatingTileCorners(
-                floatingTileArea(
-                    width = constraints.maxWidth.toFloat(),
-                    height = constraints.maxHeight.toFloat(),
-                    insetLeft = insets.getLeft(this, LayoutDirection.Ltr) + margin,
-                    insetTop = insets.getTop(this) + FloatingTileTopClearance.toPx(),
-                    insetRight = insets.getRight(this, LayoutDirection.Ltr) + margin,
-                    insetBottom = insets.getBottom(this) + FloatingTileBottomClearance.toPx(),
+            snapCorners(
+                Rect(
+                    left = insets.getLeft(this, LayoutDirection.Ltr) + margin,
+                    top = insets.getTop(this) + FloatingTileTopClearance.toPx(),
+                    right = constraints.maxWidth - insets.getRight(this, LayoutDirection.Ltr) - margin,
+                    bottom = constraints.maxHeight - insets.getBottom(this) - FloatingTileBottomClearance.toPx(),
                 ),
                 Size(tileSize.width.toPx(), tileSize.height.toPx()),
             )
@@ -161,7 +158,7 @@ internal fun FloatingCallTile(
                     val tracker = VelocityTracker()
                     fun settle(velocity: Offset) {
                         val landed = position.value + drag
-                        val target = floatingTileRestingCorner(currentCorners, landed, velocity)
+                        val target = restingCorner(currentCorners, landed, velocity)
                         scope.launch {
                             position.snapTo(landed)
                             drag = Offset.Zero
@@ -216,39 +213,33 @@ internal fun FloatingCallTile(
                     Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    FilledIconButton(
+                    TileButton(
                         onClick = onToggleMute,
-                        modifier = Modifier.size(36.dp),
-                        colors = if (ui.muted) {
-                            IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.inverseSurface,
-                                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                            )
-                        } else {
-                            IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f),
-                                contentColor = MaterialTheme.colorScheme.onSurface,
-                            )
-                        },
-                    ) {
-                        Icon(
-                            if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
-                            stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute),
-                            Modifier.size(18.dp),
-                        )
-                    }
-                    FilledIconButton(
+                        icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
+                        description = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute),
+                        container = if (ui.muted) MaterialTheme.colorScheme.inverseSurface else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f),
+                        content = if (ui.muted) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.onSurface,
+                    )
+                    TileButton(
                         onClick = onHangup,
-                        modifier = Modifier.size(36.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
-                        ),
-                    ) {
-                        Icon(Icons.Default.CallEnd, stringResource(MR.string.call_hang_up), Modifier.size(18.dp))
-                    }
+                        icon = Icons.Default.CallEnd,
+                        description = stringResource(MR.string.call_hang_up),
+                        container = HomebaseTheme.extendedColors.cameraRecord,
+                        content = HomebaseTheme.extendedColors.onCameraRecord,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TileButton(onClick: () -> Unit, icon: ImageVector, description: String, container: Color, content: Color) {
+    FilledIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(36.dp),
+        colors = IconButtonDefaults.filledIconButtonColors(containerColor = container, contentColor = content),
+    ) {
+        Icon(icon, description, Modifier.size(18.dp))
     }
 }

@@ -114,6 +114,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -261,11 +262,8 @@ private val LocalCompactHeight = staticCompositionLocalOf { false }
 internal fun isCompactHeight(width: Dp, height: Dp): Boolean = height < CompactHeight && width > height
 
 /** Self-view snap corners: top-start, top-end, bottom-start, bottom-end. A short window clamps the bottom pair to the top. */
-internal fun previewCorners(width: Float, height: Float, pipW: Float, pipH: Float, margin: Float, top: Float, bottomReserve: Float): List<Offset> {
-    val bottom = (height - pipH - bottomReserve).coerceAtLeast(top)
-    val end = width - pipW - margin
-    return listOf(Offset(margin, top), Offset(end, top), Offset(margin, bottom), Offset(end, bottom))
-}
+internal fun previewCorners(width: Float, height: Float, pipW: Float, pipH: Float, margin: Float, top: Float, bottomReserve: Float): List<Offset> =
+    snapCorners(Rect(margin, top, width - margin, height - bottomReserve), Size(pipW, pipH))
 
 /** Width:height to fit the remote video at, or null to fill: a stream turned the other way from the screen is shown whole. */
 internal fun remoteVideoLetterbox(video: Pair<Int, Int>?, viewWidth: Float, viewHeight: Float): Float? {
@@ -904,8 +902,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                             },
                             onDragEnd = {
                                 val landed = anchor.value + drag
-                                val center = landed + Offset(pipW / 2, pipH / 2)
-                                corner = corners.indices.minBy { (corners[it] + Offset(pipW / 2, pipH / 2) - center).getDistance() }
+                                corner = restingCorner(corners, landed, Offset.Zero)
                                 drag = Offset.Zero
                                 val target = corners[corner]
                                 scope.launch {

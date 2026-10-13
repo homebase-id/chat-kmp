@@ -16,17 +16,10 @@ expect fun platformCallEngineFactory(): CallEngineFactory?
 @Composable
 expect fun CallVideoView(handle: VideoHandle?, modifier: Modifier = Modifier, cornerRadius: Dp = 0.dp)
 
-/**
- * Owns one native renderer per video track for as long as the call UI shows it, so moving a video between the full
- * call screen, the floating in-app tile and the PiP layout re-parents the same renderer instead of tearing one down
- * and starting another. [CallVideoView] uses it when provided through [LocalCallVideoRenderers]; without one, each
- * view owns its renderer. Desktop and web keep per-view renderers, so there it holds nothing.
- */
+/** One native renderer per track, re-parented as the call moves between full screen, tile and PiP; without it in [LocalCallVideoRenderers] each view owns its own. Holds nothing on desktop and web. */
 expect class CallVideoRenderers() {
     /** Releases every renderer whose track is not among [handles]. */
     fun keepOnly(handles: List<VideoHandle>)
-
-    fun releaseAll()
 }
 
 val LocalCallVideoRenderers = staticCompositionLocalOf<CallVideoRenderers?> { null }

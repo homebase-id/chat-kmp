@@ -43,7 +43,7 @@ actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius:
     }
     UIKitView(
         // A wrapper per interop view: a pooled video view moves into the new one, whatever order the old one is released in.
-        factory = { VideoContainer().apply { addSubview(attached.view) } },
+        factory = { VideoContainer() },
         modifier = modifier,
         // A cooperative interop view eats the tap that brings the hidden controls back.
         properties = UIKitInteropProperties(interactionMode = null),
@@ -78,11 +78,6 @@ actual class CallVideoRenderers actual constructor() {
     actual fun keepOnly(handles: List<VideoHandle>) {
         val live = handles.mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }
         views.keys.filterNot { it in live }.forEach { views.remove(it)?.detach() }
-    }
-
-    actual fun releaseAll() {
-        views.values.forEach { it.detach() }
-        views.clear()
     }
 }
 

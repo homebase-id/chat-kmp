@@ -123,20 +123,19 @@ fun CallOverlay(
     }
 
     val renderers = remember { CallVideoRenderers() }
-    DisposableEffect(renderers) { onDispose { renderers.releaseAll() } }
+    DisposableEffect(renderers) { onDispose { renderers.keepOnly(emptyList()) } }
     LaunchedEffect(ui.videos) { renderers.keepOnly(listOfNotNull(ui.videos.remote, ui.videos.local)) }
     @Suppress("DEPRECATION")
     BackHandler(enabled = ui.visible && ui.inProgress && !ui.minimized && !inPip, onBack = viewModel::minimize)
 
-    val tile = ui.tileVisible && !inPip
     val surface = when {
         inPip -> CallSurface.PictureInPicture
-        tile -> CallSurface.Tile
+        ui.tileVisible -> CallSurface.Tile
         else -> CallSurface.Full
     }
     CompositionLocalProvider(LocalCallVideoRenderers provides renderers) {
         Box(modifier) {
-            CallLayer(visible = ui.visible && (!ui.minimized || inPip || tile), surface = surface) { shown ->
+            CallLayer(visible = ui.visible && (!ui.minimized || surface != CallSurface.Full), surface = surface) { shown ->
                 when (shown) {
                     CallSurface.Tile -> FloatingCallTile(
                         ui = ui,
@@ -186,11 +185,7 @@ fun CallOverlay(
 
 internal enum class CallSurface { Full, PictureInPicture, Tile }
 
-/**
- * Shows the call over the app. A full-screen surface swallows every touch, and stays until a finger already on it
- * lifts: the ended screen leaves on a timer, and a press it had received must not finish on the app underneath.
- * While leaving, it keeps the surface it last showed. The tile covers only itself.
- */
+/** A full-screen surface swallows every touch and stays until a finger on it lifts, so a press that outlives the ended screen's timer never lands on the app. */
 @Composable
 internal fun CallLayer(visible: Boolean, surface: CallSurface, content: @Composable (CallSurface) -> Unit) {
     var pressed by remember { mutableStateOf(false) }

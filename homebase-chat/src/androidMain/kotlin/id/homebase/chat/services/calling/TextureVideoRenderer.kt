@@ -11,7 +11,7 @@ import org.webrtc.VideoFrame
 import org.webrtc.VideoSink
 import java.util.concurrent.CountDownLatch
 
-/** Aspect-fill WebRTC renderer on a TextureView, so a Compose clip can round it. [onFrameSize] gets each new rotated frame size, on the decoder thread. */
+/** Aspect-fill WebRTC renderer on a TextureView, so a Compose clip can round it. [onFrameSize] runs on the decoder thread. */
 internal class TextureVideoRenderer(
     context: Context,
     eglContext: EglBase.Context,

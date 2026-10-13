@@ -50,13 +50,7 @@ actual class CallVideoRenderers actual constructor() {
 
     actual fun keepOnly(handles: List<VideoHandle>) {
         val live = handles.mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }
-        renderers.keys.filterNot { it in live }.forEach(::release)
-    }
-
-    actual fun releaseAll() = renderers.keys.toList().forEach(::release)
-
-    private fun release(track: VideoTrack) {
-        renderers.remove(track)?.let { track.detach(it) }
+        renderers.keys.filterNot { it in live }.forEach { track -> renderers.remove(track)?.let { track.detach(it) } }
     }
 }
 
