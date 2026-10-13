@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+
 /**
  * What a sender may put on the wire: at most 1080p30, adapted down by WebRTC's bandwidth estimate. libwebrtc offers
  * H.264 at level 3.1 (profile-level-id 42e01f, at most 3600 macroblocks a frame) and each side encodes at the level
@@ -36,34 +39,55 @@ private val sendRungs = listOf(
 
 private const val STEP_UP_HEADROOM = 1.25
 
-/** The rung to send at next: straight down to the rung [targetBps] fits, back up one rung at a time with headroom. */
-internal fun nextSendHeight(currentHeight: Int, targetBps: Double): Int {
+// goog-cc only raises its estimate while it is within ~1.5x of the acked rate, so a sender this far under target caps it.
+private const val ENCODER_LIMITED_RATIO = 1.5
+
+/**
+ * The rung to send at next: straight down to the rung [targetBps] fits, back up one rung at a time with headroom, or
+ * without it once the encoder sends so far under target that the estimate cannot climb to the headroom.
+ */
+internal fun nextSendHeight(currentHeight: Int, targetBps: Double, sentBps: Double? = null): Int {
     val fits = sendRungs.first { (_, min) -> targetBps >= min }.first
     if (fits <= currentHeight) return fits
     val (up, upMin) = sendRungs.last { (height, _) -> height > currentHeight }
-    return if (targetBps >= upMin * STEP_UP_HEADROOM) up else currentHeight
+    val encoderLimited = sentBps != null && sentBps * ENCODER_LIMITED_RATIO <= targetBps
+    return if (encoderLimited || targetBps >= upMin * STEP_UP_HEADROOM) up else currentHeight
 }
 
 /**
  * Caps the sender's resolution to the network: libwebrtc's quality scaler only reacts to encoder QP and frame drops,
  * so a cheap-to-encode picture keeps 1080p at any target bitrate. [apply] receives scaleResolutionDownBy.
  */
-internal class SendResolutionLadder(private val apply: (Double) -> Unit) {
+internal class SendResolutionLadder(
+    private val clock: TimeSource = TimeSource.Monotonic,
+    private val apply: (Double) -> Unit,
+) {
     private var height = SendVideoCap.HEIGHT
     private var scale = 1.0
+    private var lastBytesSent: Pair<Double, TimeMark>? = null
 
     fun onStats(stats: Collection<StatsEntry>): String? {
-        val target = stats.video("outbound-rtp")?.get("targetBitrate").asDouble() ?: return null
+        val outbound = stats.video("outbound-rtp")
+        val sent = sentBps(outbound?.get("bytesSent").asDouble())
+        val target = outbound?.get("targetBitrate").asDouble() ?: return null
         val source = stats.video("media-source")
         // iOS reports the camera's 4K before its adapter caps the encoder input at 1080p.
         val inputShortSide = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble())
             .filter { it > 0 }.plus(SendVideoCap.HEIGHT.toDouble()).min()
-        val next = nextSendHeight(height, target)
+        val next = nextSendHeight(height, target, sent)
         val nextScale = maxOf(1.0, inputShortSide / next)
         if (next == height && nextScale == scale) return null
         height = next
         scale = nextScale
         apply(nextScale)
-        return "send ladder target=${target.toLong()} height=$next scaleDownBy=$nextScale"
+        return "send ladder target=${target.toLong()} sent=${sent?.toLong()} height=$next scaleDownBy=$nextScale"
+    }
+
+    private fun sentBps(bytesSent: Double?): Double? {
+        val previous = lastBytesSent
+        lastBytesSent = bytesSent?.let { it to clock.markNow() }
+        if (bytesSent == null || previous == null) return null
+        val seconds = previous.second.elapsedNow().inWholeMilliseconds / 1000.0
+        return if (seconds > 0) (bytesSent - previous.first) * 8 / seconds else null
     }
 }

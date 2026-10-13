@@ -10,11 +10,16 @@ import dev.onvoid.webrtc.media.video.CustomVideoSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 class CallSendResolutionLadderTest {
-    private fun stats(target: Double?, sourceWidth: Int = 1080, sourceHeight: Int = 1920) = listOf(
+    private fun stats(target: Double?, sourceWidth: Int = 1080, sourceHeight: Int = 1920, bytesSent: Long? = null) = listOf(
         StatsEntry("media-source", mapOf("kind" to "video", "width" to sourceWidth, "height" to sourceHeight)),
-        StatsEntry("outbound-rtp", mapOf("kind" to "video", "targetBitrate" to target, "frameWidth" to 1920, "frameHeight" to 1080)),
+        StatsEntry(
+            "outbound-rtp",
+            mapOf("kind" to "video", "targetBitrate" to target, "bytesSent" to bytesSent, "frameWidth" to 1920, "frameHeight" to 1080),
+        ),
     )
 
     @Test
@@ -30,6 +35,33 @@ class CallSendResolutionLadderTest {
         assertEquals(720, nextSendHeight(540, 1_100_000.0))
         assertEquals(720, nextSendHeight(720, 1_600_000.0))
         assertEquals(1080, nextSendHeight(720, 2_500_000.0))
+    }
+
+    @Test
+    fun anEncoderSendingFarUnderTargetStepsUpWithoutTheHeadroomItsEstimateCannotReach() {
+        assertEquals(720, nextSendHeight(720, 1_752_508.0))
+        assertEquals(1080, nextSendHeight(720, 1_752_508.0, sentBps = 800_000.0))
+        assertEquals(720, nextSendHeight(720, 1_752_508.0, sentBps = 1_400_000.0))
+        assertEquals(720, nextSendHeight(720, 1_400_000.0, sentBps = 300_000.0))
+        assertEquals(180, nextSendHeight(180, 85_580.0, sentBps = 26_000.0))
+    }
+
+    // nofloor iPhone after NLC Edge: 1280x720 at QP 25 sent 0.7-0.93 Mbps for 4.5 min while the target sat at 1.75-1.80M.
+    @Test
+    fun theStalledSevenTwentyPlateauClimbsToTenEighty() {
+        val clock = TestTimeSource()
+        var applied: Double? = null
+        val ladder = SendResolutionLadder(clock) { applied = it }
+        var bytes = 0L
+        fun tick(target: Double, sentBps: Long): String? {
+            clock += 5.seconds
+            bytes += sentBps * 5 / 8
+            return ladder.onStats(stats(target, bytesSent = bytes))
+        }
+        tick(1_048_225.0, 560_000)
+        assertEquals(1.5, applied)
+        assertEquals("send ladder target=1752508 sent=720000 height=1080 scaleDownBy=1.0", tick(1_752_508.0, 720_000))
+        assertEquals(1.0, applied)
     }
 
     // mobile2-r1 Redmi under NLC 3G: target 2.5M -> 527k -> 300k, then 361k..881k..2.5M once NLC was off, while
