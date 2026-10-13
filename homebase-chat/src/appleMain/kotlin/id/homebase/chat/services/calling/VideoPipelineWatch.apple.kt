@@ -4,6 +4,7 @@ import WebRTC.RTCCallbackLogger
 import WebRTC.RTCLoggingSeverity
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.AVFoundation.AVCaptureSession
 import platform.AVFoundation.AVCaptureSessionDidStartRunningNotification
 import platform.AVFoundation.AVCaptureSessionDidStopRunningNotification
 import platform.AVFoundation.AVCaptureSessionErrorKey
@@ -26,6 +27,18 @@ internal actual fun watchVideoPipeline(): () -> Unit {
     ).map { name ->
         center.addObserverForName(name, `object` = null, queue = null) { note ->
             val info = note?.userInfo
+            val session = note?.`object` as? AVCaptureSession
+            // Enabled the moment webrtc-kmp's private capturer starts its session, so the camera keeps running in PiP.
+            if (name == AVCaptureSessionDidStartRunningNotification && session != null) {
+                if (session.multitaskingCameraAccessSupported && !session.multitaskingCameraAccessEnabled) {
+                    session.beginConfiguration()
+                    session.multitaskingCameraAccessEnabled = true
+                    session.commitConfiguration()
+                }
+                Logger.i("WebRtcKmp") {
+                    "capture session multitaskingSupported=${session.multitaskingCameraAccessSupported} multitaskingEnabled=${session.multitaskingCameraAccessEnabled}"
+                }
+            }
             Logger.w("WebRtcKmp") {
                 "capture session $name reason=${info?.get(AVCaptureSessionInterruptionReasonKey)} error=${info?.get(AVCaptureSessionErrorKey)}"
             }

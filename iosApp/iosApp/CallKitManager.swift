@@ -252,30 +252,17 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 
 
 /// Remote call video in the system PiP window. AVPictureInPictureVideoCallViewController (iOS 15+) hosts a Metal view fed
-/// by the remote track; PiP starts by itself when the app backgrounds. While armed, running capture sessions get
-/// multitasking camera access so outgoing video keeps flowing in the background; iOS only reports it supported with the
-/// com.apple.developer.avfoundation.multitasking-camera-access entitlement (Apple-granted on request), which this app does
-/// not declare yet, so until then outgoing video freezes in PiP while the remote video and audio keep going.
+/// by the remote track; PiP starts by itself when the app backgrounds. Outgoing video keeps flowing because the call's
+/// capture session gets multitasking camera access in VideoPipelineWatch.apple.kt.
 final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVideoViewDelegate, AVPictureInPictureControllerDelegate {
     static let shared = PictureInPictureManager()
 
-    // RTCCameraVideoCapturer's session sits behind webrtc-kmp's private capturer, so sessions are found by notification.
-    private let runningSessions = NSHashTable<AVCaptureSession>.weakObjects()
     private var captureObservers: [NSObjectProtocol] = []
 
     private override init() {
         super.init()
         let center = NotificationCenter.default
         captureObservers = [
-            center.addObserver(forName: .AVCaptureSessionDidStartRunning, object: nil, queue: .main) { [weak self] n in
-                guard let self, let session = n.object as? AVCaptureSession else { return }
-                self.runningSessions.add(session)
-                if self.controller != nil { self.enableMultitaskingCamera(session) }
-            },
-            center.addObserver(forName: .AVCaptureSessionDidStopRunning, object: nil, queue: .main) { [weak self] n in
-                guard let session = n.object as? AVCaptureSession else { return }
-                self?.runningSessions.remove(session)
-            },
             center.addObserver(forName: .AVCaptureSessionWasInterrupted, object: nil, queue: .main) { [weak self] n in
                 guard let self, self.controller != nil else { return }
                 let reason = (n.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)
@@ -283,15 +270,6 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
                 self.log("pip camera interrupted reason=\(reason.map { String(describing: $0.rawValue) } ?? "nil") \(self.cameraState(n.object as? AVCaptureSession))")
             },
         ]
-    }
-
-    private func enableMultitaskingCamera(_ session: AVCaptureSession) {
-        if session.isMultitaskingCameraAccessSupported, !session.isMultitaskingCameraAccessEnabled {
-            session.beginConfiguration()
-            session.isMultitaskingCameraAccessEnabled = true
-            session.commitConfiguration()
-        }
-        log("pip camera \(cameraState(session))")
     }
 
     private func cameraState(_ session: AVCaptureSession?) -> String {
@@ -353,8 +331,6 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
             track = remote
             firstFrameLogged = false
             log("pip armed: \(state(source: source))")
-            if runningSessions.allObjects.isEmpty { log("pip camera: no running capture session") }
-            runningSessions.allObjects.forEach(enableMultitaskingCamera)
             let center = NotificationCenter.default
             lifecycleObservers = [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification].map { name in
                 center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
