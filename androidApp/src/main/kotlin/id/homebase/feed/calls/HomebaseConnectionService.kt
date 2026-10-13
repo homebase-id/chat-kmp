@@ -143,13 +143,9 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
 
         /** Returns false when Telecom refused, so the caller can post the notification itself. */
         fun reportIncoming(context: Context, callId: String, label: String): Boolean = try {
-            val extras = Bundle().apply {
-                putString(IncomingCallNotifier.EXTRA_CALL_ID, callId)
-                putString(EXTRA_LABEL, label)
-            }
             context.getSystemService(TelecomManager::class.java).addNewIncomingCall(
                 handle(context),
-                Bundle().apply { putBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS, extras) },
+                Bundle().apply { putBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS, callExtras(callId, label)) },
             )
             true
         } catch (e: RuntimeException) {
@@ -160,21 +156,22 @@ class HomebaseConnectionService : ConnectionService(), KoinComponent {
 
         /** Returns false when Telecom refused; the call then runs without it. */
         fun reportOutgoing(context: Context, callId: String, label: String): Boolean = try {
-            val extras = Bundle().apply {
-                putString(IncomingCallNotifier.EXTRA_CALL_ID, callId)
-                putString(EXTRA_LABEL, label)
-            }
             context.getSystemService(TelecomManager::class.java).placeCall(
                 Uri.fromParts("homebase", label.ifBlank { "callee" }, null),
                 Bundle().apply {
                     putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle(context))
-                    putBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, extras)
+                    putBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, callExtras(callId, label))
                 },
             )
             true
         } catch (e: RuntimeException) {
             Logger.w(e, tag = TAG) { "telecom placeCall refused call=$callId" }
             false
+        }
+
+        private fun callExtras(callId: String, label: String) = Bundle().apply {
+            putString(IncomingCallNotifier.EXTRA_CALL_ID, callId)
+            putString(EXTRA_LABEL, label)
         }
 
         fun setActive(callId: String) { connections[callId]?.setActive() }
