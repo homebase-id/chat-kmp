@@ -88,12 +88,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -870,33 +870,30 @@ private fun StepHeader(
                 // The design's name is the way back to step one, so the step reads as "this design, adjusted".
                 EditorStep.Customise -> {
                     val description = stringResource(MR.string.profile_card_change_design_to, designName)
-                    Box(Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        FilledTonalButton(
+                            onClick = { if (!isSaving) onStep(EditorStep.Design) },
+                            enabled = !isSaving,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .heightIn(min = ACTION_HEIGHT)
+                                .semantics {
+                                    heading()
+                                    contentDescription = "$description, $count"
+                                },
                         ) {
-                            FilledTonalButton(
-                                onClick = { if (!isSaving) onStep(EditorStep.Design) },
-                                enabled = !isSaving,
-                                shapes = ButtonDefaults.shapes(),
-                                contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                                modifier = Modifier
-                                    .weight(1f, fill = false)
-                                    .heightIn(min = ACTION_HEIGHT)
-                                    .semantics {
-                                        heading()
-                                        contentDescription = "$description, $count"
-                                    },
-                            ) {
-                                Icon(
-                                    Icons.Outlined.SwapHoriz,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                                )
-                                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                                ActionLabel(designName)
-                            }
+                            Icon(
+                                Icons.Outlined.SwapHoriz,
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                            )
+                            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                            ActionLabel(designName)
                         }
                     }
                 }

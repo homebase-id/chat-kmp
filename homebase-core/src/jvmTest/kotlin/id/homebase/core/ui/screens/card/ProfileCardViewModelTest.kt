@@ -2013,6 +2013,19 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun anOverridesOnlySaveWritesTheCard() = runTest(dispatcher) {
+        val store = FakeCardStore(listOf(cardAttribute(CardDesign.BOARD)))
+        val source = FakeSource(profile + store.attributes, cardRepository = CardRepository(store))
+        val vm = viewModel(FakeHost(), source)
+        vm.onOptionSelected(CardOption.TEXT_FONT, "newsreader")
+
+        vm.onSaveDesign()
+        advanceUntilIdle()
+
+        assertEquals(JsonPrimitive("board"), store.writes.single().data["design"])
+    }
+
+    @Test
     fun discardingRestoresTheSavedCardAndItsRender() = runTest(dispatcher) {
         val (vm, host, _) = boardVm()
         vm.onOptionSelected(CardOption.ACCENT, "#F26B5B")

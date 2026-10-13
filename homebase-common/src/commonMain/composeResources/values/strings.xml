@@ -2437,10 +2437,6 @@
     <string name="profile_card_save_public_title">Save your public card?</string>
     <string name="profile_card_share_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Sharing sends your public card.</string>
     <string name="profile_card_save_public_message">Your %1$s card is only shown to people in %1$s when they visit your home page. Saving gives you your public card.</string>
-    <string name="profile_card_access_title">Update your home page too?</string>
-    <string name="profile_card_access_body">Your public card follows your home page's design. To change it from the app, Homebase needs permission to edit your home page settings. You'll confirm in your browser.</string>
-    <string name="profile_card_access_continue">Continue</string>
-    <string name="profile_card_access_later">Not now</string>
     <string name="profile_card_editor_title">Card design</string>
     <string name="profile_card_design_save_failed">Couldn't save the card design.</string>
     <string name="profile_card_step_customise">Customise</string>
@@ -2483,8 +2479,6 @@
     <string name="profile_card_colours_lavender">Lavender</string>
     <string name="profile_card_colours_navy">Navy</string>
     <string name="profile_card_colours_lemon">Lemon</string>
-    <string name="profile_card_app_only">App only</string>
-    <string name="profile_card_access_allow_description">Allow publishing this design to your home page</string>
     <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
     <string name="profile_card_option_display_font">Heading font</string>
