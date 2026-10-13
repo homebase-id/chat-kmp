@@ -254,6 +254,10 @@ class CallController(
         }
     }
 
+    private fun reportMissingCamera(videoRequested: Boolean) {
+        if (videoRequested && engine?.localVideo?.value == null) post(CallEvent.NoLocalVideoTrack)
+    }
+
     private suspend fun run(effect: CallEffect, state: CallState) {
         try {
             when (effect) {
@@ -262,7 +266,7 @@ class CallController(
                     else sendUnlessOffline(effect.peer, effect.signal, state)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
-                    if (effect.video && engine().localVideo.value == null) post(CallEvent.NoLocalVideoTrack)
+                    reportMissingCamera(effect.video)
                     offerSdp = sdp
                     offerVideo = effect.video
                     offerSeq = 0
@@ -275,7 +279,7 @@ class CallController(
                 }
                 is CallEffect.CreateAnswer -> {
                     val sdp = engine().answer(effect.offerSdp, effect.video)
-                    if (effect.video && engine().localVideo.value == null) post(CallEvent.NoLocalVideoTrack)
+                    reportMissingCamera(effect.video)
                     offerSdp = effect.offerSdp
                     answerSdp = sdp
                     send(state.peer!!, CallSignal.Answer(state.callId!!, sdp))

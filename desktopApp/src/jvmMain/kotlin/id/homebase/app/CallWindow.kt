@@ -94,11 +94,7 @@ private val defaultCallBody: CallBody = { call, spec ->
 }
 
 @Composable
-fun ApplicationScope.CallWindow(call: CallWindowModel, config: DesktopPreferences, theme: ThemeState) =
-    CallWindow(call, config, theme, defaultCallBody)
-
-@Composable
-internal fun ApplicationScope.CallWindow(call: CallWindowModel, config: DesktopPreferences, theme: ThemeState, body: CallBody) {
+internal fun ApplicationScope.CallWindow(call: CallWindowModel, config: DesktopPreferences, theme: ThemeState, body: CallBody = defaultCallBody) {
     // application{} provides no LocalLifecycleOwner, and this scope sits above any Window.
     CompositionLocalProvider(LocalLifecycleOwner provides rememberApplicationLifecycleOwner()) {
         val visible by call.windowVisible.collectAsStateWithLifecycle()
