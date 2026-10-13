@@ -71,6 +71,8 @@ class WebRtcJavaCallEngine(
     private var videoSender: RTCRtpSender? = null
     private val sendLadder = SendResolutionLadder { scale -> videoSender?.let { scaleVideoSender(it, scale) } }
     private var videoSource: VideoDeviceSource? = null
+    private val capturedFrames = FrameCounter()
+    private val cameraWatch = Timer("call-camera-watch", true)
     private var localFrames: JvmVideoHandle? = null
     private var remoteFrames: JvmVideoHandle? = null
     private var remoteTrack: VideoTrack? = null
@@ -212,10 +214,40 @@ class WebRtcJavaCallEngine(
         val source = videoSource ?: return
         source.stop()
         source.setVideoCaptureDevice(device)
-        runCatching { pickCapability(MediaDevices.getVideoCaptureCapabilities(device).map { Capability(it.width, it.height, it.frameRate) }) }
-            .getOrNull()?.let { source.setVideoCaptureCapability(VideoCaptureCapability(it.width, it.height, it.frameRate)) }
+        captureCapability(device)?.let { source.setVideoCaptureCapability(it) }
         source.start()
         localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
+        watchForSilentCamera(listOf(device.descriptor))
+    }
+
+    private fun captureCapability(device: VideoDevice): VideoCaptureCapability? =
+        runCatching { pickCapability(MediaDevices.getVideoCaptureCapabilities(device).map { Capability(it.width, it.height, it.frameRate) }) }
+            .getOrNull()?.let { VideoCaptureCapability(it.width, it.height, it.frameRate) }
+
+    // A device that opens but never delivers (a virtual camera whose app is closed) is replaced by the next one.
+    private fun watchForSilentCamera(tried: List<String>) {
+        val seen = capturedFrames.count.get()
+        cameraWatch.schedule(timerTask {
+            synchronized(lock) {
+                if (closed || capturedFrames.count.get() != seen) return@synchronized
+                val next = nextCameraAfterSilence(cameras().map { it.descriptor }, tried)
+                    ?: return@synchronized Logger.w("WebRtcJava") { "camera delivered no frames and no other camera is left" }
+                val device = cameras().first { it.descriptor == next }
+                Logger.w("WebRtcJava") { "camera delivered no frames in ${CAMERA_SILENCE_MS}ms, switching to ${device.name}" }
+                runCatching { switchCaptureDeviceTracking(device, tried + next) }
+                    .onFailure { Logger.w(it, "WebRtcJava") { "fallback camera ${device.name} failed" } }
+            }
+        }, CAMERA_SILENCE_MS)
+    }
+
+    private fun switchCaptureDeviceTracking(device: VideoDevice, tried: List<String>) {
+        val source = videoSource ?: return
+        source.stop()
+        source.setVideoCaptureDevice(device)
+        captureCapability(device)?.let { source.setVideoCaptureCapability(it) }
+        source.start()
+        localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
+        watchForSilentCamera(tried)
     }
 
     private fun logVideoStats() {
@@ -270,6 +302,7 @@ class WebRtcJavaCallEngine(
             Logger.i("WebRtcJava") { "camera ${device.name} of ${available.map { it.name }}" }
             val source = VideoDeviceSource().apply {
                 setVideoCaptureDevice(device)
+                captureCapability(device)?.let { setVideoCaptureCapability(it) }
                 start()
             }
             videoSource = source
@@ -277,9 +310,11 @@ class WebRtcJavaCallEngine(
             // A webcam faces the user, so its preview is mirrored; the transmitted frames are untouched.
             val handle = JvmVideoHandle(cameraMirrored(device.name, device.deviceTransport?.name)).also { localFrames = it }
             track.addSink(handle.sink)
+            track.addSink(capturedFrames)
             videoSender = peer.addTrack(track, listOf(STREAM_ID)).also(::configureVideoSender)
             videoTrack = track
             _local.value = handle
+            watchForSilentCamera(listOf(device.descriptor))
         } catch (e: Exception) {
             Logger.w(e, "WebRtcJava") { "camera unavailable, continuing audio-only" }
         }
@@ -388,6 +423,7 @@ class WebRtcJavaCallEngine(
             if (closed) return
             closed = true
             statsTimer.cancel()
+            cameraWatch.cancel()
             localFrames?.let { sink -> videoTrack?.let { runCatching { it.removeSink(sink.sink) } } }
             synchronized(remoteLock) {
                 remoteFrames?.let { sink -> remoteTrack?.let { runCatching { it.removeSink(sink.sink) } } }
@@ -410,6 +446,7 @@ class WebRtcJavaCallEngine(
         const val STREAM_ID = "homebase-call"
         const val STATS_PERIOD_MS = 5_000L
         const val MIC_LEVEL_PERIOD_MS = 100L
+        const val CAMERA_SILENCE_MS = 3_000L
 
         // The capturer reports a failed camera start only through the native log, which otherwise goes nowhere.
         val nativeLogs: Unit by lazy {
@@ -467,3 +504,13 @@ internal fun cameraMirrored(name: String, transport: String?): Boolean {
     if (VIRTUAL_CAMERA_HINTS.any { it in label }) return false
     return transport?.uppercase() !in setOf("HDMI", "WIRELESS")
 }
+
+internal class FrameCounter : dev.onvoid.webrtc.media.video.VideoTrackSink {
+    val count = java.util.concurrent.atomic.AtomicLong()
+    override fun onVideoFrame(frame: dev.onvoid.webrtc.media.video.VideoFrame) {
+        count.incrementAndGet()
+    }
+}
+
+/** The first camera in [order] not yet [tried], or null when every camera has been given a chance. */
+internal fun nextCameraAfterSilence(order: List<String>, tried: List<String>): String? = order.firstOrNull { it !in tried }

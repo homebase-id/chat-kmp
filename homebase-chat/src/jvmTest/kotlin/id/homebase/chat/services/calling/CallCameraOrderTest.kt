@@ -19,3 +19,19 @@ class CallCameraOrderTest {
         assertEquals(listed, preferredCameraOrder(listed) { it })
     }
 }
+
+class CallCameraFallbackTest {
+    @Test
+    fun aSilentCameraFallsThroughTheListInOrderAndEndsWhenNoneIsLeft() {
+        val order = listOf("facetime", "usb", "obs")
+        assertEquals("usb", nextCameraAfterSilence(order, listOf("facetime")))
+        assertEquals("obs", nextCameraAfterSilence(order, listOf("facetime", "usb")))
+        assertEquals(null, nextCameraAfterSilence(order, order))
+    }
+
+    @Test
+    fun theCaptureModeIsTheNearest720pAtThirtyFpsNotTheDevicesDefault() {
+        val modes = listOf(Capability(1920, 1080, 30), Capability(1280, 720, 15), Capability(1280, 720, 30), Capability(640, 480, 30))
+        assertEquals(Capability(1280, 720, 30), pickCapability(modes))
+    }
+}
