@@ -56,7 +56,6 @@ data class CallUiState(
     val dismissedCallId: String? = null,
     val devices: List<MediaDevice> = emptyList(),
     val selectedDevices: Map<MediaDeviceKind, String?> = emptyMap(),
-    val micLevel: Float = 0f,
 ) {
     val visible: Boolean
         get() = phase != CallPhase.Idle && !(phase is CallPhase.Ended && callId == dismissedCallId)
@@ -92,6 +91,10 @@ class CallViewModel(
     private val _uiState = MutableStateFlow(CallUiState())
     val uiState: StateFlow<CallUiState> = _uiState.asStateFlow()
 
+    private val _micLevel = MutableStateFlow(0f)
+    /** Ticks ~10x a second; kept out of [uiState] so only the meter reads it. */
+    val micLevel: StateFlow<Float> = _micLevel.asStateFlow()
+
     private val _events = MutableSharedFlow<CallUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<CallUiEvent> = _events.asSharedFlow()
 
@@ -101,16 +104,21 @@ class CallViewModel(
     private class DeviceSnapshot(
         val devices: List<MediaDevice> = emptyList(),
         val selected: Map<MediaDeviceKind, String?> = emptyMap(),
-        val micLevel: Float = 0f,
     )
 
     init {
         viewModelScope.launch {
             session.mediaDevices
-                .flatMapLatest { d -> if (d == null) flowOf(DeviceSnapshot()) else combine(d.devices, d.selected, d.micLevel, ::DeviceSnapshot) }
+                .flatMapLatest { d -> if (d == null) flowOf(DeviceSnapshot()) else combine(d.devices, d.selected, ::DeviceSnapshot) }
                 .collect { snap ->
-                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected, micLevel = snap.micLevel, micLevelSeen = it.micLevelSeen || snap.micLevel > 0f) }
+                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected) }
                 }
+        }
+        viewModelScope.launch {
+            session.mediaDevices.flatMapLatest { it?.micLevel ?: flowOf(0f) }.collect { level ->
+                _micLevel.value = level
+                if (level > 0f) _uiState.update { it.copy(micLevelSeen = true) }
+            }
         }
         viewModelScope.launch {
             session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { _events.tryEmit(CallUiEvent.Device(it)) }

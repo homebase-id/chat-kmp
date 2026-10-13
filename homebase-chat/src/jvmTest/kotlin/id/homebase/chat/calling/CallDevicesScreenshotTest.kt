@@ -1,5 +1,7 @@
 package id.homebase.chat.calling
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -59,7 +61,14 @@ class CallDevicesScreenshotTest {
         MediaDevice("cam-b", "Studio Display Camera", MediaDeviceKind.Camera, isDefault = false),
     )
 
-    private fun state(micLevel: Float = 0f) = CallUiState(
+    private var shownLevel = 0f
+
+    private fun state(micLevel: Float = 0f): CallUiState {
+        shownLevel = micLevel
+        return stateOf(micLevel)
+    }
+
+    private fun stateOf(micLevel: Float) = CallUiState(
         callId = "shot",
         peer = "samwise.gamgee.demo.rocks",
         direction = CallDirection.Outgoing,
@@ -71,7 +80,6 @@ class CallDevicesScreenshotTest {
         verificationCode = "123 456",
         devices = devices,
         selectedDevices = mapOf(MediaDeviceKind.Mic to "mic-b", MediaDeviceKind.Speaker to "spk-a", MediaDeviceKind.Camera to "cam-a"),
-        micLevel = micLevel,
         micLevelSeen = micLevel > 0f,
     )
 
@@ -89,7 +97,9 @@ class CallDevicesScreenshotTest {
         deviceMenu: MutableState<MediaDeviceKind?>? = null,
     ) {
         mainClock.autoAdvance = false
+        val level = MutableStateFlow(shownLevel)
         setContent {
+            CompositionLocalProvider(LocalMicLevel provides level) {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                 Box(Modifier.fillMaxSize()) {
                     CallScreen(
@@ -119,6 +129,7 @@ class CallDevicesScreenshotTest {
                         LaunchedEffect(Unit) { snackbar.showSnackbar(notice) }
                     }
                 }
+            }
             }
         }
         mainClock.advanceTimeBy(900)

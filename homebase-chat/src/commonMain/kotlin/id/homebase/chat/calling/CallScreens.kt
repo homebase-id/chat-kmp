@@ -2,6 +2,8 @@
 
 package id.homebase.chat.calling
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -319,6 +321,10 @@ internal enum class DesktopTier { Minimal, Compact, Medium, Expanded }
 internal val LocalDesktopTier = staticCompositionLocalOf<DesktopTier?> { null }
 
 /** Which dock device menu is open, hoisted so a snackbar's "Change" can open the mic menu at its own chevron. */
+internal val LocalMicLevel = staticCompositionLocalOf<StateFlow<Float>> { NoMicLevel }
+
+private val NoMicLevel: StateFlow<Float> = MutableStateFlow(0f)
+
 private val LocalDeviceMenuRequest = staticCompositionLocalOf<MutableState<MediaDeviceKind?>> { error("provided by CallScreen") }
 
 internal fun desktopTier(width: Dp, height: Dp): DesktopTier = when {
@@ -1207,7 +1213,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             shapes = segmentShapes(0, count),
             interaction = muteInteraction,
             modifier = Modifier.animateWidth(muteInteraction),
-            level = ui.micLevel.takeIf { pickers && !ui.muted && ui.micLevelSeen },
+            level = LocalMicLevel.current.takeIf { pickers && !ui.muted && ui.micLevelSeen },
         )
         if (pickers) DeviceMenuSegment(ui, MediaDeviceKind.Mic, actions, segmentShapes(1, count))
         if (showRoute) {
@@ -1394,7 +1400,7 @@ private fun CallToggle(
     shapes: IconToggleButtonShapes,
     interaction: MutableInteractionSource,
     modifier: Modifier,
-    level: Float? = null,
+    level: StateFlow<Float>? = null,
 ) {
     ToggleColumn(label, modifier) {
         DesktopTooltip(tooltip ?: description) {
@@ -1415,17 +1421,21 @@ private fun CallToggle(
                 },
             ) {
                 val halo = MaterialTheme.colorScheme.primary
-                val shown by animateFloatAsState(level ?: 0f, tween(90), label = "micLevel")
+                val shown = remember { Animatable(0f) }
+                if (level != null) {
+                    LaunchedEffect(level) { level.collect { shown.animateTo(it, tween(90)) } }
+                }
                 Icon(
                     icon,
                     contentDescription = null,
                     modifier = Modifier.size(26.dp).then(
                         if (level == null) Modifier else Modifier.drawBehind {
                             // A halo that swells with the voice: an arc read as a loading spinner, and "connecting" is a real call state.
-                            if (shown > 0.02f) {
-                                val radius = (15.dp + 9.dp * shown).toPx()
-                                drawCircle(halo.copy(alpha = 0.22f + 0.33f * shown), radius = radius)
-                                drawCircle(halo.copy(alpha = 0.5f + 0.5f * shown), radius = radius, style = Stroke(1.5.dp.toPx()))
+                            val amount = shown.value
+                            if (amount > 0.02f) {
+                                val radius = (15.dp + 9.dp * amount).toPx()
+                                drawCircle(halo.copy(alpha = 0.22f + 0.33f * amount), radius = radius)
+                                drawCircle(halo.copy(alpha = 0.5f + 0.5f * amount), radius = radius, style = Stroke(1.5.dp.toPx()))
                             }
                         },
                     ),

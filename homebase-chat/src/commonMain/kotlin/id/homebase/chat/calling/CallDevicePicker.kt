@@ -1,5 +1,6 @@
 package id.homebase.chat.calling
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -144,13 +145,14 @@ internal fun ColumnScope.CallDeviceMenuItems(
                 },
             )
         }
-        if (kind == MediaDeviceKind.Mic && !ui.muted && ui.micLevelSeen) InputLevelRow(ui.micLevel)
+        if (kind == MediaDeviceKind.Mic && !ui.muted && ui.micLevelSeen) InputLevelRow()
     }
 }
 
 /** Live proof that the newly picked mic is hearing the user, before the menu closes. */
 @Composable
-private fun InputLevelRow(level: Float) {
+private fun InputLevelRow() {
+    val level by LocalMicLevel.current.collectAsStateWithLifecycle()
     val shown by animateFloatAsState(level.coerceIn(0f, 1f), tween(90), label = "menuMicLevel")
     val description = stringResource(MR.string.call_device_input_level)
     Row(

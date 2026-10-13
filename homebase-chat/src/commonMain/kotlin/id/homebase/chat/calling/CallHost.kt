@@ -128,26 +128,28 @@ fun CallOverlay(
         )
     }
 
-    Box(modifier) {
-        AnimatedVisibility(
-            visible = ui.visible && (!ui.minimized || inPip),
-            enter = fadeIn() + slideInVertically { it / 8 },
-            exit = fadeOut() + slideOutVertically { it / 8 },
-        ) {
-            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-                if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset, deviceMenu = deviceMenu, hold = hold)
+    CompositionLocalProvider(LocalMicLevel provides viewModel.micLevel) {
+        Box(modifier) {
+            AnimatedVisibility(
+                visible = ui.visible && (!ui.minimized || inPip),
+                enter = fadeIn() + slideInVertically { it / 8 },
+                exit = fadeOut() + slideOutVertically { it / 8 },
+            ) {
+                Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
+                    if (inPip) CallPipLayout(ui, avatar) else CallScreen(ui = ui, peerName = peerName, avatar = avatar, actions = actions, fillsWindow = fillsWindow, topInset = topInset, deviceMenu = deviceMenu, hold = hold)
+                }
             }
-        }
-        if (ui.visible && !inPip) {
-            CallDeviceSnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset + SnackbarBelowNamePill))
-        }
-        if (ui.pillVisible && !inPip) {
-            OngoingCallPill(
-                ui = ui,
-                peerName = peerName,
-                onClick = viewModel::restore,
-                modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 8.dp),
-            )
+            if (ui.visible && !inPip) {
+                CallDeviceSnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = topInset + SnackbarBelowNamePill))
+            }
+            if (ui.pillVisible && !inPip) {
+                OngoingCallPill(
+                    ui = ui,
+                    peerName = peerName,
+                    onClick = viewModel::restore,
+                    modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 8.dp),
+                )
+            }
         }
     }
 
