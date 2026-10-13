@@ -11,6 +11,7 @@ import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.holdsPictureInPicture
 import id.homebase.chat.services.calling.isInCall
 import id.homebase.chat.services.calling.audioRouteChanges
+import id.homebase.chat.services.calling.callActiveChanges
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,10 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -84,7 +83,7 @@ class CallViewModel(
 
     init {
         viewModelScope.launch {
-            val routes = session.state.map { it.isActive }.distinctUntilChanged()
+            val routes = session.state.callActiveChanges()
                 .flatMapLatest { active -> if (active) audioRoutes else flowOf(emptyList()) }
             combine(session.state, session.videos, routes, ::Triple).collect { (state, videos, routes) ->
                 _uiState.update { previous ->

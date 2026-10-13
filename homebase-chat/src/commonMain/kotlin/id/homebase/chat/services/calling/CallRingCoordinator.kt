@@ -67,7 +67,7 @@ class CallRingCoordinator(
                     live = nowLive
                     liveVideo = s.media.localVideo
                 }
-                if (callId != null && s.phase == CallPhase.Outgoing && s.direction == CallDirection.Outgoing && dialed != callId) {
+                if (callId != null && s.phase == CallPhase.Outgoing && dialed != callId) {
                     dialed = callId
                     sink.dialing(callId, s.peer.orEmpty())
                 }
