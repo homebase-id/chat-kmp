@@ -369,8 +369,9 @@ fun AppNavHost(
         ?.inboxUnread ?: 0
     val callsPreferences = koinInject<CallsPreferences>()
     val callsIconVisible by callsPreferences.iconVisible.collectAsStateWithLifecycle()
-    val callsAvailable = getKoin().getOrNull<CallService>()?.available == true
-    val callHistory = getKoin().getOrNull<CallHistoryService>()
+    val koin = getKoin()
+    val callsAvailable = remember(koin) { koin.getOrNull<CallService>()?.available == true }
+    val callHistory = remember(koin) { koin.getOrNull<CallHistoryService>() }
     val callsMissedCount by remember(callHistory) { callHistory?.missedCount ?: MutableStateFlow(0) }
         .collectAsStateWithLifecycle()
     val callsBadge = callsAvailable && callsBadgeVisible(callsMissedCount)

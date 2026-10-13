@@ -123,7 +123,7 @@ class CallsScreenScreenshotTest {
     @Test
     fun emptyStateExplainsAndDarkThemeRenders() {
         runDesktopComposeUiTest(411, 900) {
-            show(CallsUiState(isLoading = false, isEmpty = true))
+            show(CallsUiState(isLoading = false))
             onNodeWithText("No calls yet").assertExists()
             save("empty-light")
         }

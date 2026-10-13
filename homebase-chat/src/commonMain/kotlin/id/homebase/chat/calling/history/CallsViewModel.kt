@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
@@ -54,9 +56,10 @@ data class CallSectionUi(val day: CallDay, val rows: List<CallRowUi>)
 data class CallsUiState(
     val sections: List<CallSectionUi> = emptyList(),
     val isLoading: Boolean = true,
-    val isEmpty: Boolean = false,
     val hasMore: Boolean = false,
-)
+) {
+    val isEmpty: Boolean get() = sections.isEmpty() && !isLoading
+}
 
 sealed interface CallsAction {
     data class CallBack(val entry: CallHistoryEntry, val video: Boolean) : CallsAction
@@ -100,14 +103,13 @@ class CallsViewModel(
                 history.hasMore,
                 history.isLoading,
                 contacts,
-                session.state,
-            ) { entries, hasMore, loading, contactList, callState ->
+                session.state.map { it.isActive }.distinctUntilChanged(),
+            ) { entries, hasMore, loading, contactList, active ->
                 contactsByOdinId = contactList.associateBy { it.odinId }
-                callActive = callState.isActive
+                callActive = active
                 CallsUiState(
                     sections = sections(entries),
                     isLoading = loading,
-                    isEmpty = entries.isEmpty() && !loading,
                     hasMore = hasMore,
                 )
             }.collect { state -> _uiState.update { state } }

@@ -86,7 +86,6 @@ fun CallEventBubble(
         return
     }
     val visual = callEventVisual(descriptor, isOwn)
-    val missedForMe = visual.missed
     val icon = visual.icon.imageVector()
     val title = stringResource(visual.title.stringRes())
     val kind = stringResource(if (descriptor.video) MR.string.call_button_video else MR.string.call_button_voice)
@@ -99,10 +98,10 @@ fun CallEventBubble(
     CallEventLayout(
         modifier, shape, containerColor, contentColor,
         icon = icon,
-        iconTint = if (missedForMe) colors.error else contentColor.copy(alpha = 0.72f),
+        iconTint = if (visual.missed) colors.error else contentColor.copy(alpha = 0.72f),
         title = title,
         titleStyle = MaterialTheme.typography.titleSmall,
-        titleColor = if (missedForMe) colors.error else contentColor,
+        titleColor = if (visual.missed) colors.error else contentColor,
         subtitle = subtitle,
         footer = footer,
         trailing = if (onCallBack == null) null else {

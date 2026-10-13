@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -59,8 +61,8 @@ class NewCallViewModel(
                 contacts,
                 snapshotFlow { searchTextState.text.toString() },
                 self,
-                session.state,
-            ) { contactList, query, owner, callState ->
+                session.state.map { it.isActive }.distinctUntilChanged(),
+            ) { contactList, query, owner, active ->
                 val groups = filterAndGroup(contactList, emptyList(), query, owner)
                     .filterIsInstance<CreateConversationListItem.Contacts>()
                     .flatMap { it.contactGroups }
@@ -70,7 +72,7 @@ class NewCallViewModel(
                             group.contacts.map { NewCallRow(it, it.connectionState == ContactConnectionState.Connected) },
                         )
                     }
-                NewCallUiState(groups = groups, callable = callsAvailable && !callState.isActive)
+                NewCallUiState(groups = groups, callable = callsAvailable && !active)
             }.collect { state -> _uiState.update { state } }
         }
     }

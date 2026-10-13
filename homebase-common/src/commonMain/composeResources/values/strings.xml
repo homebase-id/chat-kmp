@@ -1672,8 +1672,6 @@
     <string name="calls_menu_delete">Delete from history</string>
     <string name="calls_delete_confirm_title">Delete from history</string>
     <string name="calls_delete_confirm_body">Delete this call from your history? It is removed from this chat on your devices; %1$s keeps theirs.</string>
-    <string name="calls_today">Today</string>
-    <string name="calls_yesterday">Yesterday</string>
     <string name="calls_show_in_nav">Show in navigation bar</string>
     <string name="calls_more_options">More options</string>
     <string name="calls_home_subtitle">Your voice and video call history</string>

@@ -86,8 +86,8 @@ import id.homebase.resources.calls_more_options
 import id.homebase.resources.calls_new_call
 import id.homebase.resources.calls_show_in_nav
 import id.homebase.resources.calls_title
-import id.homebase.resources.calls_today
-import id.homebase.resources.calls_yesterday
+import id.homebase.resources.time_today
+import id.homebase.resources.time_yesterday
 import id.homebase.resources.cancel
 import id.homebase.resources.delete
 import kotlinx.datetime.TimeZone
@@ -239,8 +239,8 @@ private fun CallList(
 @Composable
 private fun DayHeader(day: CallDay) {
     val label = when (day) {
-        CallDay.Today -> stringResource(MR.string.calls_today)
-        CallDay.Yesterday -> stringResource(MR.string.calls_yesterday)
+        CallDay.Today -> stringResource(MR.string.time_today)
+        CallDay.Yesterday -> stringResource(MR.string.time_yesterday)
         is CallDay.On -> formatMediumDate(day.date.atStartOfDayIn(TimeZone.currentSystemDefault()))
     }
     Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {

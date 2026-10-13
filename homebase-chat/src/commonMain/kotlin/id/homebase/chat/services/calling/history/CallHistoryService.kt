@@ -135,27 +135,23 @@ class CallHistoryService(
         lock.withLock {
             _isLoading.value = true
             try {
-                val page = fetchPage(null)
-                byMessageId.clear()
-                page.entries.forEach { byMessageId[it.messageId] = it }
-                cursor = page.cursor
-                _hasMore.value = page.hasMore
-                publish()
+                reloadLocked(pageSize)
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    private suspend fun resync() {
-        lock.withLock {
-            val page = fetchPage(null, maxOf(pageSize, byMessageId.size))
-            byMessageId.clear()
-            page.entries.forEach { byMessageId[it.messageId] = it }
-            cursor = page.cursor
-            _hasMore.value = page.hasMore
-            publish()
-        }
+    // Re-reads as many rows as are already shown so a resync never shortens the list.
+    private suspend fun resync() = lock.withLock { reloadLocked(maxOf(pageSize, byMessageId.size)) }
+
+    private suspend fun reloadLocked(size: Int) {
+        val page = fetchPage(null, size)
+        byMessageId.clear()
+        page.entries.forEach { byMessageId[it.messageId] = it }
+        cursor = page.cursor
+        _hasMore.value = page.hasMore
+        publish()
     }
 
     override suspend fun loadMore() {
