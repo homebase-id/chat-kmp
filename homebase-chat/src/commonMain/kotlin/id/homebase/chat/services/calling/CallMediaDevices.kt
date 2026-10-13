@@ -21,7 +21,7 @@ sealed interface MediaDeviceNotice {
     data class Returned(val kind: MediaDeviceKind, val id: String, val name: String) : MediaDeviceNotice
 }
 
-/** Live input/output choice for a call; [select] may block on native audio or capture, so call it off the main thread. */
+/** Live input/output choice for a call; [select] may block on native audio or capture for minutes, so call it on an IO dispatcher, never Main or Default. */
 interface CallMediaDevices {
     val devices: StateFlow<List<MediaDevice>>
     val selected: StateFlow<Map<MediaDeviceKind, String?>>

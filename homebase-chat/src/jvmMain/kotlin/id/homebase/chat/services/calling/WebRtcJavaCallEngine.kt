@@ -190,8 +190,23 @@ class WebRtcJavaCallEngine(
         return found
     }
 
-    private fun applyDevice(device: MediaDevice) = synchronized(lock) {
-        if (closed) return@synchronized
+    private fun applyDevice(device: MediaDevice) {
+        val asked = System.nanoTime()
+        Logger.i("WebRtcJava") { "switch ${device.kind} to ${device.name} requested" }
+        var locked = asked
+        try {
+            synchronized(lock) {
+                locked = System.nanoTime()
+                applyDeviceLocked(device)
+            }
+        } finally {
+            val now = System.nanoTime()
+            Logger.i("WebRtcJava") { "switch ${device.kind} to ${device.name} returned: lockWait=${(locked - asked) / 1_000_000}ms native=${(now - locked) / 1_000_000}ms" }
+        }
+    }
+
+    private fun applyDeviceLocked(device: MediaDevice) {
+        if (closed) return
         val native = nativeDevices[device.kind to device.id] ?: error("${device.name} is no longer present")
         when (device.kind) {
             MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic ?: systemDefault { MediaDevices.getDefaultAudioCaptureDevice() }, { activeMic = it }) {

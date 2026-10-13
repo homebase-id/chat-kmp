@@ -2,6 +2,7 @@ package id.homebase.chat.calling
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
@@ -16,7 +17,6 @@ import id.homebase.chat.services.calling.MediaDeviceNotice
 import id.homebase.chat.services.calling.platformAudioRoutes
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -88,7 +88,8 @@ sealed interface CallUiEvent {
 class CallViewModel(
     private val session: CallSession,
     private val audioRoutes: () -> List<AudioRoute> = ::platformAudioRoutes,
-    private val deviceDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    // A native audio switch can hang for minutes holding the engine's locks; on Default enough of them starve the whole app.
+    private val deviceDispatcher: CoroutineDispatcher = ioDispatcher,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CallUiState())
     val uiState: StateFlow<CallUiState> = _uiState.asStateFlow()
