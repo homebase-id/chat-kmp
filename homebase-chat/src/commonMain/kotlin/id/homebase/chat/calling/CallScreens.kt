@@ -1278,6 +1278,34 @@ fun OngoingCallPill(ui: CallUiState, peerName: String, onClick: () -> Unit, modi
 }
 
 @Composable
+fun OngoingCallBar(ui: CallUiState, peerName: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val elapsed = rememberElapsedText(ui.connectedAtMs)
+    val description = stringResource(MR.string.call_pill_description, peerName)
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().heightIn(min = 40.dp).testTag(OngoingCallBarTag).semantics { contentDescription = description; role = Role.Button },
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        ) {
+            Icon(Icons.Default.Call, null, Modifier.size(18.dp))
+            Text(
+                stringResource(MR.string.call_pill_text, peerName, elapsed),
+                style = MaterialTheme.typography.labelLarge.tabular(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+internal const val OngoingCallBarTag = "ongoing-call-bar"
+
+@Composable
 internal fun endedText(reason: CallEndReason): String = stringResource(
     when (reason) {
         is CallEndReason.Hangup -> MR.string.call_ended_hangup

@@ -3,6 +3,7 @@ package id.homebase.api.browser
 import co.touchlab.kermit.Logger
 import java.awt.Desktop
 import java.awt.EventQueue
+import java.awt.Frame
 import java.awt.Window
 
 object DesktopAppFocusManager {
@@ -12,16 +13,24 @@ object DesktopAppFocusManager {
     private val isMacOs: Boolean =
         System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
 
-    private var windowProvider: (() -> Window?)? = null
+    const val MAIN_WINDOW = "main"
 
-    fun registerWindowProvider(provider: () -> Window?) {
-        windowProvider = provider
+    private val windowProviders = java.util.concurrent.ConcurrentHashMap<String, () -> Window?>()
+
+    fun registerWindowProvider(provider: () -> Window?) = registerWindowProvider(MAIN_WINDOW, provider)
+
+    fun registerWindowProvider(key: String, provider: () -> Window?) {
+        windowProviders[key] = provider
+    }
+
+    fun unregisterWindowProvider(key: String) {
+        windowProviders.remove(key)
     }
 
     // Only legitimate in response to an explicit user action; [reason] names that action
     // so an unexpected restore is attributable from homebase.log alone.
-    fun requestFocus(reason: String) {
-        Logger.i(tag = TAG) { "requestFocus(reason=$reason)" }
+    fun requestFocus(reason: String, key: String = MAIN_WINDOW) {
+        Logger.i(tag = TAG) { "requestFocus(reason=$reason, key=$key)" }
         EventQueue.invokeLater {
             // macOS's Cocoa window server ignores Window.toFront() / isAlwaysOnTop
             // toggling from a background app — only the *application* can activate
@@ -32,8 +41,11 @@ object DesktopAppFocusManager {
             // but harmless.
             requestApplicationForeground()
 
-            val window = windowProvider?.invoke() ?: return@invokeLater
+            val window = windowProviders[key]?.invoke() ?: return@invokeLater
 
+            if (key != MAIN_WINDOW && window is Frame) {
+                window.extendedState = window.extendedState and Frame.ICONIFIED.inv()
+            }
             window.isVisible = true
             window.toFront()
             window.requestFocus()

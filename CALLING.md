@@ -7,6 +7,7 @@ signalling rides odin-core Live Relay. This file is the architecture record for 
 
 ```
 UI            calling/CallHost, CallScreens, CallActionButtons, CallLabScreen, CallEventBubble   (homebase-chat commonMain)
+Desktop UI    calling/CallWindowModel (one shared CallViewModel), core DesktopCallWindow, desktopApp CallWindow   (own OS window)
 Service       services/calling/CallService         one CallController per signed-in identity
 Controller    services/calling/CallController      single inbox loop; owns engine, timers, buffered ICE
 State machine services/calling/CallStateMachine    pure reducer: (state, event) -> (state, effects)
@@ -220,9 +221,22 @@ A video call that is `Connected` or `Reconnecting` goes into a system PiP window
   `CXCallUpdate.hasVideo` is set from the offer via `reportVideo`. **Not verified on a device.**
 - **Desktop**: the app is the receiver (socket offers). `DesktopCallRingSink` (driven by `CallRingCoordinator` from
   `CallService.state`, started in `startDesktopCallCoordinator`, so it works with the window minimised) posts the
-  incoming-call notification through `RichNotificationDisplayer`, raises the window with
-  `DesktopAppFocusManager.requestFocus("incoming-call")`, and beeps every 2 s until the call stops ringing; the in-app
-  incoming screen is `CallHost`. No background ring when the app is closed.
+  incoming-call notification through `RichNotificationDisplayer`, raises the call window with
+  `DesktopAppFocusManager.requestFocus("incoming-call", "call")`, and beeps every 2 s until the call stops ringing; the incoming
+  screen is the call window. No background ring when the app is closed.
+- **Desktop call window**: every call phase (outgoing, incoming, in-call, ended, failed) is a separate OS window; the main
+  window stays interactive and `App(hostCallOverlay = false)` does not compose `CallHost`. One `CallWindowModel`
+  (Koin `single` wrapping one `CallViewModel`) feeds both windows. desktopApp cannot see homebase-chat types, so
+  homebase-core exposes the chat-free `DesktopCallWindow` that `desktopApp/CallWindow.kt` hosts. The window shows while
+  `CallUiState.visible`, so it disposes itself after `ENDED_LINGER_MS`; Failed stays until closed. Title is
+  `<peer> · mm:ss` (`callWindowTitle`), min size 320x240, default 960x640 video / 420x560 voice, geometry saved per
+  kind in `DesktopPreferences` (`callWindowWidthDp/HeightDp/Position`). The minimise chevron iconifies the window (the
+  VM `minimized` state and pill are unused on desktop). Close, Cmd/Ctrl+W and Esc all go through `callWindowCloseAction`:
+  Incoming declines, Outgoing/Connecting hang up, Connected/Reconnecting show the `call_end_confirm` dialog in the call
+  window, Ended/Idle dismiss. While `inProgress` the main window shows `OngoingCallBar` above the nav host; clicking it
+  calls `DesktopAppFocusManager.requestFocus(.., "call")` (providers are keyed `main`/`call`; a keyed non-main focus also
+  de-iconifies). The ring window is `alwaysOnTop` only while Incoming. Raising the window also activates the app
+  (`Desktop.requestForeground`), which on macOS can bring the main window forward too.
 
 ## Known limits
 

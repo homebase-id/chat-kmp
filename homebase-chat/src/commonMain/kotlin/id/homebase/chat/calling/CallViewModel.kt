@@ -173,13 +173,14 @@ class CallViewModel(
         _events.tryEmit(CallUiEvent.ShowVerification)
     }
 
-    fun endFromKeyboard() {
-        when (_uiState.value.phase) {
-            CallPhase.Connected -> _events.tryEmit(CallUiEvent.ConfirmEnd)
-            CallPhase.Incoming -> session.decline()
-            is CallPhase.Ended -> close()
-            CallPhase.Idle -> Unit
-            else -> session.hangup()
+    fun requestClose() {
+        when (callWindowCloseAction(_uiState.value.phase)) {
+            CallWindowCloseAction.Decline -> session.decline()
+            CallWindowCloseAction.Hangup -> session.hangup()
+            CallWindowCloseAction.ConfirmEnd -> _events.tryEmit(CallUiEvent.ConfirmEnd)
+            CallWindowCloseAction.Dismiss -> close()
         }
     }
+
+    fun endFromKeyboard() = requestClose()
 }

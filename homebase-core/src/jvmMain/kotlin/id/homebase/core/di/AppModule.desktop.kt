@@ -4,7 +4,13 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.chat.calling.CallViewModel
+import id.homebase.chat.calling.CallWindowModel
+import id.homebase.chat.services.calling.CallService
+import id.homebase.core.calling.DesktopCallWindow
+import id.homebase.core.calling.ModelDesktopCallWindow
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
@@ -45,6 +51,13 @@ import org.koin.dsl.module
 
 actual fun platformModule(): Module = module {
     single<FileOperationsProvider> { JvmFileOperationsProvider() }
+    single {
+        CallWindowModel(
+            viewModel = CallViewModel(get<CallService>()),
+            focus = { DesktopAppFocusManager.requestFocus("ongoing-call-bar", it) },
+        )
+    }
+    single<DesktopCallWindow> { ModelDesktopCallWindow(get()) }
     single { ShareCacheStorage() }
     single<AlbumSaver> { JvmAlbumSaver() }
     // Desktop is assumed to be on a wired/Wi-Fi link; there is no metered signal to read.

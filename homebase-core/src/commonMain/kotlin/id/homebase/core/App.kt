@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import id.homebase.chat.calling.CallHost
+import id.homebase.chat.calling.CallWindowModel
+import id.homebase.chat.calling.OngoingCallBarHost
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +38,7 @@ fun App(
     onNavHostReady: suspend (NavController) -> Unit = {},
     onNavigatorReady: ((Route) -> Unit) -> Unit = {},
     topInset: Dp = 0.dp,
+    hostCallOverlay: Boolean = true,
 ) {
     remember { StartupLogger.checkpoint("App() first composition") }
     val navController = rememberNavController()
@@ -56,7 +61,11 @@ fun App(
         val appViewModel = koinViewModel<AppViewModel>()
         // Everything below resolves from the open identity session, so per-identity services and
         // the ViewModels that consume them are destroyed at logout rather than reset.
-        Box(Modifier.fillMaxSize()) {
+        val callBar = if (hostCallOverlay) null else koinInject<CallWindowModel>()
+        val callBarVisible = callBar?.let { it.uiState.collectAsStateWithLifecycle().value.inProgress } == true
+        Column(Modifier.fillMaxSize()) {
+        if (callBar != null) OngoingCallBarHost(callBar, topInset = topInset)
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         IdentityScopeProvider {
             AppNavHost(
                 // koinViewModel(), NOT koinInject(). AppViewModel is registered with
@@ -74,10 +83,11 @@ fun App(
                 viewModel = appViewModel,
                 navController = navController,
                 youAuthFlowManager = youAuthFlowManager,
-                topInset = topInset,
+                topInset = if (callBarVisible) 0.dp else topInset,
             )
         }
-        CallHost(viewModel = koinViewModel())
+        if (hostCallOverlay) CallHost(viewModel = koinViewModel())
+        }
         }
         LaunchedEffect(navController) {
             onNavigatorReady { route -> navController.navigate(route) { launchSingleTop = true } }

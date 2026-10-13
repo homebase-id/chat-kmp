@@ -70,6 +70,7 @@ fun CallOverlay(
     peerName: String,
     avatar: @Composable (Dp) -> Unit,
     modifier: Modifier = Modifier,
+    onMinimize: () -> Unit = viewModel::minimize,
 ) {
     val gate = rememberCallPermissionGate()
     val inPip = rememberInPictureInPicture()
@@ -92,7 +93,7 @@ fun CallOverlay(
             }
         }
     }
-    val actions = remember(viewModel, gate) {
+    val actions = remember(viewModel, gate, onMinimize) {
         CallScreenActions(
             acceptAudio = { gate.run(video = false) { viewModel.accept(withVideo = false) } },
             acceptVideo = { gate.run(video = true) { video -> viewModel.accept(withVideo = video) } },
@@ -105,7 +106,7 @@ fun CallOverlay(
             onVerificationClick = viewModel::onVerificationClick,
             retry = { gate.run(video = viewModel.uiState.value.localVideo) { video -> viewModel.retry(video) } },
             close = viewModel::close,
-            minimize = viewModel::minimize,
+            minimize = onMinimize,
             endFromKeyboard = viewModel::endFromKeyboard,
         )
     }

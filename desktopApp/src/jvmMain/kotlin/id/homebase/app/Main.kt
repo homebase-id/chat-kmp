@@ -198,6 +198,7 @@ fun main() {
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
     id.homebase.core.calling.startDesktopCallCoordinator()
+    val callWindow = koin.get<id.homebase.core.calling.DesktopCallWindow>()
 
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }
@@ -254,6 +255,8 @@ fun main() {
             exitApplication()
             return@application
         }
+
+        CallWindow(callWindow, config, uiState.theme)
 
         // Quit and Settings belong to the macOS app menu, which AppKit owns above the
         // JMenuBar — the app-menu Quit would otherwise exit without persisting geometry,
@@ -404,6 +407,7 @@ fun main() {
                 App(
                     onNavigatorReady = { navigateTo = it },
                     topInset = if (isMacOs) MAC_TITLE_BAR_HEIGHT else 0.dp,
+                    hostCallOverlay = false,
                 )
             }
         }
