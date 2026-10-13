@@ -2506,7 +2506,7 @@
     <string name="profile_card_socials_handles">Handles</string>
     <string name="profile_card_block_chat">Chat</string>
     <string name="profile_card_block_links">Links</string>
-    <string name="profile_card_block_moments">Moments</string>
+    <string name="profile_card_block_moments">Feed</string>
     <string name="profile_card_block_posts">Posts</string>
     <string name="profile_card_discard_title">Discard card changes?</string>
     <string name="profile_card_discard_message">Your changes to the card haven't been saved.</string>
