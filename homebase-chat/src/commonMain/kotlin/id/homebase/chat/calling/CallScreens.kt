@@ -1121,16 +1121,26 @@ private fun BoxScope.EndedLayout(
         modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (LocalCompactHeight.current) 80.dp else 170.dp),
     )
     EndActions(large, spacing = 12.dp) { slot ->
-        Button(
+        RetryButton(
+            icon = if (ui.isVideoCall) Icons.Default.Videocam else Icons.Default.Call,
+            text = stringResource(MR.string.call_call_back),
             onClick = actions.retry,
-            modifier = slot.heightIn(min = 56.dp),
-            contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
-        ) {
-            Icon(if (ui.isVideoCall) Icons.Default.Videocam else Icons.Default.Call, null, Modifier.size(ButtonDefaults.iconSizeFor(56.dp)))
-            Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
-            Text(stringResource(MR.string.call_call_back), style = ButtonDefaults.textStyleFor(56.dp))
-        }
+            modifier = slot,
+        )
         CloseButton(onClick = actions.close, modifier = slot)
+    }
+}
+
+@Composable
+private fun RetryButton(icon: ImageVector, text: String, onClick: () -> Unit, modifier: Modifier) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 56.dp),
+        contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
+    ) {
+        Icon(icon, null, Modifier.size(ButtonDefaults.iconSizeFor(56.dp)))
+        Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
+        Text(text, style = ButtonDefaults.textStyleFor(56.dp))
     }
 }
 
@@ -1228,15 +1238,7 @@ private fun BoxScope.FailedLayout(
         Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
     EndActions(large, spacing = 8.dp) { slot ->
-        Button(
-            onClick = actions.retry,
-            modifier = slot.heightIn(min = 56.dp),
-            contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
-        ) {
-            Icon(Icons.Default.Refresh, null, Modifier.size(ButtonDefaults.iconSizeFor(56.dp)))
-            Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(56.dp)))
-            Text(stringResource(MR.string.call_retry), style = ButtonDefaults.textStyleFor(56.dp))
-        }
+        RetryButton(Icons.Default.Refresh, stringResource(MR.string.call_retry), actions.retry, slot)
         TextButton(
             onClick = actions.close,
             modifier = slot.heightIn(min = 56.dp),
@@ -1403,17 +1405,17 @@ private fun RoundCallButton(
         verticalArrangement = Arrangement.spacedBy(PulseOverflow + 4.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
-        if (pulse) AcceptPulse(size, container)
-        Surface(
-            onClick = onClick,
-            shape = RoundedCornerShape(corner),
-            color = container,
-            contentColor = content,
-            interactionSource = interaction,
-            modifier = Modifier.size(size).semantics { contentDescription = description; role = Role.Button },
-        ) {
-            Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(if (size > 72.dp) 36.dp else 32.dp)) }
-        }
+            if (pulse) AcceptPulse(size, container)
+            Surface(
+                onClick = onClick,
+                shape = RoundedCornerShape(corner),
+                color = container,
+                contentColor = content,
+                interactionSource = interaction,
+                modifier = Modifier.size(size).semantics { contentDescription = description; role = Role.Button },
+            ) {
+                Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(if (size > 72.dp) 36.dp else 32.dp)) }
+            }
         }
         Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
     }
@@ -1482,6 +1484,7 @@ internal fun CallVideoSurface(handle: VideoHandle?, modifier: Modifier = Modifie
 private fun rememberElapsedText(connectedAtMs: Long?): String {
     var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(connectedAtMs) {
+        if (connectedAtMs == null) return@LaunchedEffect
         while (true) {
             now = Clock.System.now().toEpochMilliseconds()
             delay(1_000)
