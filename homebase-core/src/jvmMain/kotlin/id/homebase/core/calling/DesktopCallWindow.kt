@@ -1,9 +1,14 @@
 package id.homebase.core.calling
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import id.homebase.chat.calling.CallWindowContent
 import id.homebase.chat.calling.CallWindowModel
+import id.homebase.chat.calling.LocalMiniWindowShape
 import id.homebase.chat.calling.rememberCallWindowTitle
 import kotlinx.coroutines.flow.StateFlow
 
@@ -53,13 +58,18 @@ class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWi
     override fun title() = rememberCallWindowTitle(model)
 
     @Composable
-    override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) =
-        CallWindowContent(
-            model, onMinimize, topInset,
-            mini = mini,
-            onToggleMini = onToggleMini,
-            onMiniDragStart = onMiniDragStart,
-            onMiniDrag = onMiniDrag,
-            macShortcuts = System.getProperty("os.name").orEmpty().startsWith("Mac"),
-        )
+    override fun Content(onMinimize: () -> Unit, topInset: Dp, mini: Boolean, onToggleMini: () -> Unit, onMiniDragStart: () -> Unit, onMiniDrag: () -> Unit) {
+        val mac = System.getProperty("os.name").orEmpty().startsWith("Mac")
+        // desktopApp makes the mini frame transparent on macOS only, so only there can the corners round.
+        CompositionLocalProvider(LocalMiniWindowShape provides if (mac) RoundedCornerShape(12.dp) else RectangleShape) {
+            CallWindowContent(
+                model, onMinimize, topInset,
+                mini = mini,
+                onToggleMini = onToggleMini,
+                onMiniDragStart = onMiniDragStart,
+                onMiniDrag = onMiniDrag,
+                macShortcuts = mac,
+            )
+        }
+    }
 }

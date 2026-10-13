@@ -136,7 +136,7 @@ private val VIDEO_CALL_SIZE = 960f to 640f
 private val VOICE_CALL_SIZE = 420f to 560f
 
 val MINI_VIDEO_SIZE = DpSize(320.dp, 180.dp)
-val MINI_VOICE_SIZE = DpSize(280.dp, 88.dp)
+val MINI_VOICE_SIZE = DpSize(360.dp, 88.dp)
 private val MINI_SCREEN_MARGIN = 24.dp
 
 fun miniCallSize(video: Boolean): DpSize = if (video) MINI_VIDEO_SIZE else MINI_VOICE_SIZE

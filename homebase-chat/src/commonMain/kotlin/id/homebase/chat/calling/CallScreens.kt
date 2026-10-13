@@ -127,6 +127,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Brush
@@ -260,7 +261,9 @@ import id.homebase.resources.call_you_are_muted
 import kotlin.time.Clock
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -359,11 +362,11 @@ fun CallScreen(
         idle = false
         if (!autoHide || held) return@LaunchedEffect
         activity.tryReceive()
-        while (true) {
-            if (withTimeoutOrNull(ChromeIdleMs) { activity.receive() } != null) continue
-            idle = true
-            activity.receive()
+        // Not withTimeoutOrNull: its timer bypasses the test clock, so the fade could never be exercised in a test.
+        activity.receiveAsFlow().onStart { emit(Unit) }.collectLatest {
             idle = false
+            delay(ChromeIdleMs)
+            idle = true
         }
     }
 
@@ -377,9 +380,14 @@ fun CallScreen(
             .background(MaterialTheme.colorScheme.surface)
             .pointerInput(Unit) {
                 awaitPointerEventScope {
+                    var last: Offset? = null
                     while (true) {
-                        awaitPointerEvent(PointerEventPass.Initial)
-                        activity.trySend(Unit)
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val at = event.changes.firstOrNull()?.position
+                        // Compose re-sends a move at a resting pointer when the layers under it change, such as the fading scrim.
+                        val resting = event.type == PointerEventType.Move && at == last
+                        last = at
+                        if (!resting) activity.trySend(Unit)
                     }
                 }
             }
@@ -474,6 +482,28 @@ private fun CallStage(
     }
 }
 
+// Eased stops: two linear ramps ending at hard stops read as bands across a flat video frame.
+// It only backs the chrome, so it leaves with the chrome and the picture is clean while idle.
+@Composable
+private fun ChromeScrim() {
+    val scrim = MaterialTheme.colorScheme.scrim
+    val alpha by animateFloatAsState(if (LocalChromeVisible.current) 1f else 0f, tween(250), label = "chromeScrim")
+    Box(
+        Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha }.background(
+            Brush.verticalGradient(
+                0f to scrim.copy(alpha = 0.40f),
+                0.08f to scrim.copy(alpha = 0.26f),
+                0.18f to scrim.copy(alpha = 0.08f),
+                0.28f to Color.Transparent,
+                0.62f to Color.Transparent,
+                0.76f to scrim.copy(alpha = 0.10f),
+                0.9f to scrim.copy(alpha = 0.32f),
+                1f to scrim.copy(alpha = 0.46f),
+            ),
+        ),
+    )
+}
+
 @Composable
 private fun CallBackdrop() {
     Box(
@@ -512,16 +542,7 @@ private fun VideoStage(ui: CallUiState, large: Boolean, avatar: @Composable (Dp)
     Box(Modifier.fillMaxSize()) {
         if (ui.remoteShowing()) {
             RemoteVideo(ui.videos.remote)
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        0f to MaterialTheme.colorScheme.scrim.copy(alpha = 0.36f),
-                        0.2f to Color.Transparent,
-                        0.6f to Color.Transparent,
-                        1f to MaterialTheme.colorScheme.scrim.copy(alpha = 0.44f),
-                    ),
-                ),
-            )
+            ChromeScrim()
         } else {
             Box(
                 Modifier.fillMaxSize().background(

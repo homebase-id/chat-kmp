@@ -246,7 +246,7 @@ class CallDesktopErgonomicsTest {
     fun miniWindowButtonsAndDoubleClickAct() {
         for (video in listOf(true, false)) {
             val recorder = Recorder()
-            val (w, h) = if (video) 320 to 180 else 280 to 88
+            val (w, h) = if (video) 320 to 180 else 360 to 88
             runDesktopComposeUiTest(w, h) {
                 mainClock.autoAdvance = false
                 setContent { HomebaseTheme(darkTheme = false, followsSystemTheme = false) { CallMiniContent(call(video), "Samwise Gamgee", avatar, recorder.actions()) } }
@@ -266,7 +266,7 @@ class CallDesktopErgonomicsTest {
     fun draggingTheMiniWindowFromBareSurfaceStartsAndContinuesADrag() {
         var started = 0
         var moves = 0
-        runDesktopComposeUiTest(280, 88) {
+        runDesktopComposeUiTest(360, 88) {
             mainClock.autoAdvance = false
             setContent {
                 HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
@@ -317,7 +317,7 @@ class CallDesktopErgonomicsTest {
                 showScreen(call(video = false), Recorder(), dark = dark)
                 shoot("compact-400x300-voice", dark)
             }
-            for ((video, w, h) in listOf(Triple(true, 320, 180), Triple(false, 280, 88))) {
+            for ((video, w, h) in listOf(Triple(true, 320, 180), Triple(false, 360, 88))) {
                 runDesktopComposeUiTest(w, h) {
                     mainClock.autoAdvance = false
                     setContent { HomebaseTheme(darkTheme = dark, followsSystemTheme = false) { CallMiniContent(call(video), "Samwise Gamgee", avatar, Recorder().actions()) } }

@@ -3,6 +3,7 @@
 package id.homebase.chat.calling
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -26,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,8 +36,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -66,7 +73,10 @@ import id.homebase.resources.call_unmute
 import org.jetbrains.compose.resources.stringResource
 
 val MiniVideoSize = 320.dp to 180.dp
-val MiniVoiceSize = 280.dp to 88.dp
+val MiniVoiceSize = 360.dp to 88.dp
+
+// Clips the mini content where the host window can show rounded corners (a transparent macOS frame).
+val LocalMiniWindowShape = staticCompositionLocalOf<Shape> { RectangleShape }
 
 internal const val CallMiniTag = "call-mini"
 
@@ -84,18 +94,26 @@ fun CallMiniContent(
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val expand = actions.toggleMini ?: {}
     val gate = LocalShortcutGate.current
-    CompositionLocalProvider(LocalDesktopTier provides DesktopTier.Minimal) {
+    // A bare background provides no content colour, so text would fall back to black on the dark mini.
+    CompositionLocalProvider(LocalDesktopTier provides DesktopTier.Minimal, LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+        val shape = LocalMiniWindowShape.current
         Box(
             modifier.fillMaxSize()
                 .testTag(CallMiniTag)
+                .clip(shape)
                 .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                 .miniWindowGestures(onDragStart, onDrag, expand)
                 .focusRequester(focus)
                 .focusable()
                 .onPreviewKeyEvent { handleCallKey(it, ui, actions, textFocused = true, gate = gate) },
         ) {
-            if (ui.isVideoCall) MiniVideo(ui, peerName, avatar, actions) else MiniVoice(ui, peerName, avatar, actions)
-            ExpandButton(expand, Modifier.align(Alignment.TopEnd).padding(4.dp))
+            if (ui.isVideoCall) {
+                MiniVideo(ui, peerName, avatar, actions)
+                ExpandButton(expand, Modifier.align(Alignment.TopEnd).padding(8.dp))
+            } else {
+                MiniVoice(ui, peerName, avatar, actions, expand)
+            }
         }
     }
 }
@@ -127,15 +145,15 @@ private fun Modifier.miniWindowGestures(onDragStart: () -> Unit, onDrag: () -> U
     }
 
 @Composable
-private fun ExpandButton(onClick: () -> Unit, modifier: Modifier) {
+private fun ExpandButton(onClick: () -> Unit, modifier: Modifier, container: Color = chromeColor()) {
     val label = stringResource(MR.string.call_mini_expand)
     Box(modifier) {
         DesktopTooltip(label, androidx.compose.material3.TooltipAnchorPosition.Below) {
             FilledTonalIconButton(
                 onClick = onClick,
-                modifier = Modifier.size(24.dp).buttonChrome(CircleShape),
-                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = chromeColor(), contentColor = MaterialTheme.colorScheme.onSurface),
-            ) { Icon(Icons.Default.OpenInFull, label, Modifier.size(14.dp)) }
+                modifier = Modifier.size(32.dp).buttonChrome(CircleShape),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = container, contentColor = MaterialTheme.colorScheme.onSurface),
+            ) { Icon(Icons.Default.OpenInFull, label, Modifier.size(16.dp)) }
         }
     }
 }
@@ -149,18 +167,19 @@ private fun miniStatus(ui: CallUiState, elapsed: String): String = when (ui.phas
 }
 
 @Composable
-private fun MiniVoice(ui: CallUiState, peerName: String, avatar: @Composable (Dp) -> Unit, actions: CallScreenActions) {
+private fun MiniVoice(ui: CallUiState, peerName: String, avatar: @Composable (Dp) -> Unit, actions: CallScreenActions, expand: () -> Unit) {
     val status = miniStatus(ui, rememberElapsedText(ui.connectedAtMs))
     Row(
-        Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 16.dp),
+        Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) { avatar(52.dp) }
-        Column(Modifier.weight(1f)) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { avatar(40.dp) }
+        Column(Modifier.weight(1f).padding(start = 2.dp)) {
             Text(peerName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(status, style = MaterialTheme.typography.labelLarge.tabular(), color = MaterialTheme.colorScheme.primary, maxLines = 1)
         }
+        ExpandButton(expand, Modifier, MaterialTheme.colorScheme.surfaceContainerHigh)
         MiniMute(ui, actions)
         EndCallButton(actions.hangup, Modifier.size(width = 48.dp, height = 40.dp))
     }

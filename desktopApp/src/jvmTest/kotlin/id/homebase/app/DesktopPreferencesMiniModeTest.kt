@@ -18,7 +18,7 @@ class DesktopPreferencesMiniModeTest {
     @Test
     fun miniSizesAreFixedPerCallKind() {
         assertEquals(DpSize(320.dp, 180.dp), miniCallSize(video = true))
-        assertEquals(DpSize(280.dp, 88.dp), miniCallSize(video = false))
+        assertEquals(DpSize(360.dp, 88.dp), miniCallSize(video = false))
     }
 
     @Test
@@ -35,7 +35,7 @@ class DesktopPreferencesMiniModeTest {
         val size = miniCallSize(false)
         val corner = miniCallPosition(null, size, screen)
         assertEquals(corner, miniCallPosition(WindowPosition.Absolute(3000.dp, 40.dp), size, screen))
-        assertEquals(WindowPosition.Absolute(1440.dp - 280.dp, 812.dp), miniCallPosition(WindowPosition.Absolute(1250.dp, 850.dp), size, screen))
+        assertEquals(WindowPosition.Absolute(1440.dp - 360.dp, 812.dp), miniCallPosition(WindowPosition.Absolute(1250.dp, 850.dp), size, screen))
     }
 
     @Test

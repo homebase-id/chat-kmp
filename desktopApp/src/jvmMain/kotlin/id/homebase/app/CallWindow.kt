@@ -235,6 +235,8 @@ private fun ApplicationScope.MiniCallWindow(call: DesktopCallWindow, config: Des
         title = call.title(),
         icon = painterResource(MR.drawable.homebase_icon_round),
         undecorated = true,
+        // The mini content draws its own rounded corners on macOS; elsewhere the frame stays square and opaque.
+        transparent = isMacOs,
         resizable = false,
         focusable = entry.focusable,
         alwaysOnTop = true,
