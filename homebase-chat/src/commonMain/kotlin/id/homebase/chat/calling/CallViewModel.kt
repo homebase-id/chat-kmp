@@ -9,6 +9,7 @@ import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallVideos
+import id.homebase.chat.services.calling.isInCall
 import id.homebase.chat.services.calling.platformAudioRoutes
 import kotlin.time.Clock
 import kotlinx.coroutines.Job
@@ -49,8 +50,7 @@ data class CallUiState(
 
     val isVideoCall: Boolean get() = localVideo || remoteVideo
 
-    val inProgress: Boolean
-        get() = phase == CallPhase.Connecting || phase == CallPhase.Connected || phase == CallPhase.Reconnecting
+    val inProgress: Boolean get() = phase.isInCall
 
     val pipEligible: Boolean get() = isVideoCall && (phase == CallPhase.Connected || phase == CallPhase.Reconnecting)
 

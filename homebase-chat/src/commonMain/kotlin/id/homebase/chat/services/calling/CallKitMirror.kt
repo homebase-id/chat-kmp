@@ -47,7 +47,7 @@ class CallKitMirror(
 
 private val CallState.answeredInApp: Boolean
     get() = direction == CallDirection.Incoming &&
-        (acceptPending || phase == CallPhase.Connecting || phase == CallPhase.Connected || phase == CallPhase.Reconnecting)
+        (acceptPending || phase.isInCall)
 
 private fun CallEndReason.endedLocally(direction: CallDirection?): Boolean = when (this) {
     is CallEndReason.Hangup -> !remote

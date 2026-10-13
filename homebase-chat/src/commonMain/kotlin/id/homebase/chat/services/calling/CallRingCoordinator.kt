@@ -88,7 +88,7 @@ class CallRingCoordinator(
         get() = callId?.let { isRingingFor(it) } == true
 
     private val CallPhase.isLive: Boolean
-        get() = this == CallPhase.Connecting || this == CallPhase.Connected || this == CallPhase.Reconnecting || this == CallPhase.Outgoing
+        get() = isInCall || this == CallPhase.Outgoing
 }
 
 fun CallState.isRingingFor(callId: String): Boolean =

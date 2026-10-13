@@ -43,6 +43,9 @@ sealed interface CallPhase {
     data class Ended(val reason: CallEndReason) : CallPhase
 }
 
+val CallPhase.isInCall: Boolean
+    get() = this == CallPhase.Connecting || this == CallPhase.Connected || this == CallPhase.Reconnecting
+
 data class CallMedia(
     val audio: Boolean = true,
     val localVideo: Boolean = false,

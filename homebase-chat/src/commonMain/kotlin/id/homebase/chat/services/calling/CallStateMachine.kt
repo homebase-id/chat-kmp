@@ -92,9 +92,6 @@ class CallStateMachine(private val selfOdinId: String) {
         is CallEvent.SetRoute -> control(state, CallEffect.SetRoute(event.route)) { it.copy(route = event.route) }
     }
 
-    private fun CallPhase.isEstablishing() =
-        this == CallPhase.Connecting || this == CallPhase.Connected || this == CallPhase.Reconnecting
-
     private fun CallState.canStart() = phase is CallPhase.Idle || phase is CallPhase.Ended
 
     private fun userCall(s: CallState, e: CallEvent.UserCall): CallTransition {
@@ -159,7 +156,7 @@ class CallStateMachine(private val selfOdinId: String) {
                     CallTransition(s)
                 }
             is CallSignal.Restart ->
-                if (s.phase.isEstablishing()) CallTransition(s, listOf(CallEffect.AnswerRestart(sig.sdp))) else CallTransition(s)
+                if (s.phase.isInCall) CallTransition(s, listOf(CallEffect.AnswerRestart(sig.sdp))) else CallTransition(s)
             is CallSignal.RestartAnswer -> restartAnswer(s, sig.sdp)
             is CallSignal.Ice -> CallTransition(s, listOf(CallEffect.AddIce(sig.candidate, sig.sdpMid, sig.sdpMLineIndex)))
             is CallSignal.Hangup -> when (s.phase) {
@@ -325,7 +322,7 @@ class CallStateMachine(private val selfOdinId: String) {
         CallTransition(s.copy(phase = CallPhase.Connected, reconnectAttempt = 0, linkUp = true), listOf(CallEffect.CancelTimers))
 
     private fun restartAnswer(s: CallState, sdp: String): CallTransition {
-        if (!s.phase.isEstablishing() || !s.restartPending) return CallTransition(s)
+        if (!s.phase.isInCall || !s.restartPending) return CallTransition(s)
         val answered = s.copy(restartPending = false)
         val apply = CallEffect.ApplyRemoteAnswer(sdp)
         if (answered.phase != CallPhase.Reconnecting || !answered.linkUp) return CallTransition(answered, listOf(apply))
