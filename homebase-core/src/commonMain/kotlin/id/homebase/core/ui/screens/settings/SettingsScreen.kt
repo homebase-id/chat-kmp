@@ -31,7 +31,6 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
@@ -110,10 +109,9 @@ import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_desc
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
+import id.homebase.resources.profile_card_intro_title
 import id.homebase.resources.settings_edit_profile
 import id.homebase.core.ui.screens.card.CardTapShareSettingsRow
-import id.homebase.resources.settings_profile_card
-import id.homebase.resources.settings_profile_card_desc
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
 import id.homebase.resources.settings_keyboard
@@ -295,21 +293,15 @@ fun SettingsUi(
             item {
                 IdentityHeader(
                     session = uiState.ownerSession,
-                    onEditProfile = { onAction(SettingsUiAction.ProfileInfoClicked) },
+                    onEditProfile = actions.onProfileCard ?: { onAction(SettingsUiAction.ProfileInfoClicked) },
+                    openLabel = stringResource(
+                        if (actions.onProfileCard != null) MR.string.profile_card_intro_title else MR.string.settings_edit_profile,
+                    ),
                     onEditAvatar = { onAction(SettingsUiAction.AvatarClicked) },
                 )
             }
 
-            actions.onProfileCard?.let { onProfileCard ->
-                item {
-                    SettingsRow(
-                        modifier = Modifier.testTag("profileCardButton"),
-                        icon = Icons.Outlined.ContactPage,
-                        title = stringResource(MR.string.settings_profile_card),
-                        supportingText = stringResource(MR.string.settings_profile_card_desc),
-                        action = SettingsRowAction.Navigate(onProfileCard),
-                    )
-                }
+            if (actions.onProfileCard != null) {
                 item { CardTapShareSettingsRow() }
             }
 
@@ -523,14 +515,14 @@ fun SettingsUi(
 private fun IdentityHeader(
     session: OwnerSession?,
     onEditProfile: () -> Unit,
+    openLabel: String,
     onEditAvatar: () -> Unit,
 ) {
-    val editProfile = stringResource(MR.string.settings_edit_profile)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("profileHeader")
-            .clickable(onClickLabel = editProfile, onClick = onEditProfile)
+            .clickable(onClickLabel = openLabel, onClick = onEditProfile)
             .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

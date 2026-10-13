@@ -14,7 +14,7 @@ object CardDesign {
     const val COLLAGE = "collage"
     const val DOSSIER = "dossier"
     const val LINKS = "links"
-    val all = listOf(POSTER, BOARD, COLLAGE, DOSSIER, LINKS)
+    val all = listOf(LINKS, POSTER, BOARD, COLLAGE, DOSSIER)
 
     // Native copy of each page's base colour, shown until the page can be probed so the first frame already matches.
     fun baseArgb(design: String): Int = when (design) {
@@ -41,6 +41,7 @@ data class CardPayload(
     val data: CardData,
     val audience: CardAudiencePayload? = null,
     val overrides: CardOverrides? = null,
+    val visitorPreview: Boolean? = null,
 )
 
 @Serializable
