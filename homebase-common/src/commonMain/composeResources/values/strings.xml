@@ -2871,6 +2871,7 @@
     <string name="call_shortcuts_done">Done</string>
     <string name="call_hide_self_view">Hide self view</string>
     <string name="call_show_self_view">Show self view</string>
+    <string name="call_swap_views">Swap with the main video</string>
     <string name="call_end_confirm_title">End call?</string>
     <string name="call_end_confirm_body">You are still connected. End the call now?</string>
     <string name="call_end_keep">Keep talking</string>

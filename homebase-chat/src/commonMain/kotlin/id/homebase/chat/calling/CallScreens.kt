@@ -75,6 +75,9 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.foundation.gestures.detectTapGestures
 import id.homebase.resources.call_mini_mode
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Videocam
@@ -202,6 +205,7 @@ import id.homebase.resources.call_back_to_chat
 import id.homebase.resources.call_hide_self_view
 import id.homebase.resources.call_key_escape
 import id.homebase.resources.call_show_self_view
+import id.homebase.resources.call_swap_views
 import id.homebase.resources.call_tooltip_shortcut
 import id.homebase.resources.call_call_back
 import id.homebase.resources.call_camera_off
@@ -294,8 +298,6 @@ class CallScreenActions(
 
 private val ContentMaxWidth = 480.dp
 private val LargeWidth = 840.dp
-private val StageMaxWidth = 1040.dp
-private val StageMaxHeight = 720.dp
 private val PipTop = 84.dp
 internal const val RemoteVideoTag = "call-remote-video"
 private val PhoneDockReserve = 236.dp
@@ -333,6 +335,8 @@ internal fun previewCorners(width: Float, height: Float, pipW: Float, pipH: Floa
     val end = width - pipW - margin
     return listOf(Offset(margin, top), Offset(end, top), Offset(margin, bottom), Offset(end, bottom))
 }
+
+internal fun nearestPreviewCorner(corners: List<Offset>, landed: Offset): Offset = corners.minBy { (it - landed).getDistance() }
 
 /** Width:height to fit the remote video at, or null to fill: a stream turned the other way from the screen is shown whole. */
 internal fun remoteVideoLetterbox(video: Pair<Int, Int>?, viewWidth: Float, viewHeight: Float): Float? {
@@ -413,24 +417,9 @@ fun CallScreen(
             CompositionLocalProvider(LocalDesktopTier provides desktopTier(maxWidth, maxHeight), LocalCompactHeight provides compact) {
                 CallStage(ui, large = true, peerName, avatar, actions, chromeInsets)
             }
-        } else if (!compact && maxWidth >= LargeWidth) {
-            Box(
-                Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Surface(
-                    modifier = Modifier.widthIn(max = StageMaxWidth).fillMaxWidth().heightIn(max = StageMaxHeight).fillMaxHeight(),
-                    shape = RoundedCornerShape(32.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                    shadowElevation = 3.dp,
-                ) {
-                    CallStage(ui, large = true, peerName, avatar, actions, Modifier)
-                }
-            }
         } else {
             CompositionLocalProvider(LocalCompactHeight provides compact) {
-                CallStage(ui, large = false, peerName, avatar, actions, chromeInsets)
+                CallStage(ui, large = !compact && maxWidth >= LargeWidth, peerName, avatar, actions, chromeInsets)
             }
         }
     }
@@ -470,8 +459,13 @@ private fun CallStage(
 ) {
     val videoMode = ui.isVideoCall && ui.inProgress
     val selfStage = selfStageShowing(ui)
+    var swapRequested by rememberSaveable { mutableStateOf(false) }
+    val local = ui.videos.local
+    val onSwap = remember { { swapRequested = !swapRequested } }
+    val swapped = swapRequested && videoMode && ui.remoteShowing() && ui.localVideo && local != null
     Box(Modifier.fillMaxSize()) {
         if (videoMode) VideoStage(ui, large, avatar)
+        if (swapped && local != null) SelfStage(local)
         // Exits toward the self-view's home corner, so the camera reads as shrinking into the tile.
         AnimatedVisibility(
             selfStage,
@@ -492,7 +486,7 @@ private fun CallStage(
                 }
             }
         }
-        if (videoMode && !selfStage) ui.videos.local?.let { LocalPreview(it, ui.localVideo, large, contentInsets) }
+        if (videoMode && !selfStage) local?.let { LocalPreview(it, ui.localVideo, large, contentInsets, if (swapped) ui.videos.remote else null, onSwap) }
     }
 }
 
@@ -1064,7 +1058,7 @@ private fun MutedChip(muted: Boolean) {
 }
 
 @Composable
-private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large: Boolean, insets: Modifier) {
+private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large: Boolean, insets: Modifier, remote: VideoHandle?, onSwap: () -> Unit) {
     val density = LocalDensity.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val scope = rememberCoroutineScope()
@@ -1090,6 +1084,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val top = with(density) { (if (tier == DesktopTier.Minimal) 64.dp else if (large) 80.dp else if (compact) CompactPipTop else PipTop).toPx() }
         val bottom = with(density) { (if (tier == DesktopTier.Minimal) 72.dp else if (large) DesktopDockReserve else if (compact) CompactDockReserve else PhoneDockReserve).toPx() }
         val previewDescription = stringResource(MR.string.call_local_preview)
+        val swapLabel = stringResource(MR.string.call_swap_views)
         val corners = previewCorners(width, height, pipW, pipH, margin, top, bottom)
         // A narrow window has no top corner clear of the centred name pill.
         val home = if (tier == DesktopTier.Compact || tier == DesktopTier.Minimal) 3 else 1
@@ -1110,9 +1105,13 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
             modifier = Modifier
                 .offset { (anchor.value + drag).round() }
                 .size(pipWidth, pipHeight)
-                .semantics { contentDescription = previewDescription }
+                .semantics {
+                    contentDescription = previewDescription
+                    customActions = listOf(CustomAccessibilityAction(swapLabel) { onSwap(); true })
+                }
                 .hoverable(hover)
                 .pointerHoverIcon(PointerIcon.Hand)
+                .pointerInput(onSwap) { detectTapGestures { onSwap() } }
                 .pointerInput(width, height, rtl, compact) {
                     detectDragGestures(
                         onDrag = { change, amount ->
@@ -1121,8 +1120,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                         },
                         onDragEnd = {
                             val landed = anchor.value + drag
-                            val center = landed + Offset(pipW / 2, pipH / 2)
-                            val target = corners.minBy { (it + Offset(pipW / 2, pipH / 2) - center).getDistance() }
+                            val target = nearestPreviewCorner(corners, landed)
                             drag = Offset.Zero
                             scope.launch {
                                 anchor.snapTo(landed)
@@ -1137,7 +1135,9 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
             shadowElevation = 8.dp,
         ) {
             Box {
-                if (cameraOn) {
+                if (remote != null) {
+                    CallVideoSurface(remote, Modifier.fillMaxSize().clip(shape), cornerRadius = PreviewCorner)
+                } else if (cameraOn) {
                     CallVideoSurface(handle, Modifier.fillMaxSize().clip(shape), local = true, cornerRadius = PreviewCorner)
                 } else {
                     Column(
