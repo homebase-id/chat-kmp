@@ -1,9 +1,9 @@
 package id.homebase.core.calling
 
 import id.homebase.api.browser.DesktopAppFocusManager
+import id.homebase.api.browser.WindowKeys
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
-import id.homebase.chat.calling.CALL_WINDOW_KEY
 import id.homebase.chat.services.calling.CallRingCoordinator
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.DesktopCallRingSink
@@ -31,7 +31,7 @@ fun startDesktopCallCoordinator() {
         sink = DesktopCallRingSink(
             scope = scope,
             notify = displayer::show,
-            bringToFront = { DesktopAppFocusManager.requestFocus("incoming-call", CALL_WINDOW_KEY) },
+            bringToFront = { DesktopAppFocusManager.requestFocus("incoming-call", WindowKeys.CALL) },
             ringTone = { java.awt.Toolkit.getDefaultToolkit().beep() },
             incomingCallText = { TranslationUtil.getString(MR.string.call_incoming_generic) },
         ),

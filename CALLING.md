@@ -228,15 +228,21 @@ A video call that is `Connected` or `Reconnecting` goes into a system PiP window
   window stays interactive and `App(hostCallOverlay = false)` does not compose `CallHost`. One `CallWindowModel`
   (Koin `single` wrapping one `CallViewModel`) feeds both windows. desktopApp cannot see homebase-chat types, so
   homebase-core exposes the chat-free `DesktopCallWindow` that `desktopApp/CallWindow.kt` hosts. The window shows while
-  `CallUiState.visible`, so it disposes itself after `ENDED_LINGER_MS`; Failed stays until closed. Title is
-  `<peer> · mm:ss` (`callWindowTitle`), min size 320x240, default 960x640 video / 420x560 voice, geometry saved per
+  `CallUiState.visible` and is recreated per call (`windowKey` = callId), so it re-sizes for the new call kind and
+  disposes itself after `ENDED_LINGER_MS`; Failed stays until closed. `application{}` provides no `LocalLifecycleOwner`,
+  so `CallWindow` supplies its own for the call flows and the title it collects above the `Window`.
+  Title is the peer name, then `call_pill_text` (`<peer> · mm:ss`) once connected (`rememberCallWindowTitle`; the macOS
+  title stays visible in the transparent title bar). Min size 320x240, default 960x640 video / 420x560 voice, geometry saved per
   kind in `DesktopPreferences` (`callWindowWidthDp/HeightDp/Position`). The minimise chevron iconifies the window (the
-  VM `minimized` state and pill are unused on desktop). Close, Cmd/Ctrl+W and Esc all go through `callWindowCloseAction`:
+  VM `minimized` state and pill are unused on desktop). Window close and Cmd/Ctrl+W go through `callWindowCloseAction`:
   Incoming declines, Outgoing/Connecting hang up, Connected/Reconnecting show the `call_end_confirm` dialog in the call
-  window, Ended/Idle dismiss. While `inProgress` the main window shows `OngoingCallBar` above the nav host; clicking it
-  calls `DesktopAppFocusManager.requestFocus(.., "call")` (providers are keyed `main`/`call`; a keyed non-main focus also
-  de-iconifies). The ring window is `alwaysOnTop` only while Incoming. Raising the window also activates the app
-  (`Desktop.requestForeground`), which on macOS can bring the main window forward too.
+  window, Ended/Idle dismiss. Esc keeps `CallViewModel.endFromKeyboard` (shared with mobile). While `inProgress` the main
+  window shows `OngoingCallBar` above the nav host (`CallChrome`); clicking it raises the call window via
+  `DesktopAppFocusManager.requestFocus(.., WindowKeys.CALL)` (providers are keyed `main`/`call`; a keyed non-main
+  focus also de-iconifies, and a raise that arrives before the window has registered is replayed on registration
+  instead of falling back to the main window). The ring window is `alwaysOnTop` only while Incoming. Raising the
+  window also activates the app (`Desktop.requestForeground`), which on macOS can bring the main window forward too.
+  Not run by the harness: the live Mac call (scroll and type in another chat while the call window is open).
 
 ## Known limits
 

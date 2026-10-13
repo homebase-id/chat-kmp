@@ -13,14 +13,22 @@ object DesktopAppFocusManager {
     private val isMacOs: Boolean =
         System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
 
-    const val MAIN_WINDOW = "main"
+    const val MAIN_WINDOW = WindowKeys.MAIN
+
+    // A raise for a window that has not composed yet is held this long and replayed on registration.
+    private const val PENDING_RAISE_TTL_MS = 5_000L
 
     private val windowProviders = java.util.concurrent.ConcurrentHashMap<String, () -> Window?>()
+    private val pendingRaises = java.util.concurrent.ConcurrentHashMap<String, PendingRaise>()
+
+    private class PendingRaise(val reason: String, val atMs: Long)
 
     fun registerWindowProvider(provider: () -> Window?) = registerWindowProvider(MAIN_WINDOW, provider)
 
     fun registerWindowProvider(key: String, provider: () -> Window?) {
         windowProviders[key] = provider
+        val pending = pendingRaises.remove(key) ?: return
+        if (System.currentTimeMillis() - pending.atMs <= PENDING_RAISE_TTL_MS) requestFocus(pending.reason, key)
     }
 
     fun unregisterWindowProvider(key: String) {
@@ -32,6 +40,12 @@ object DesktopAppFocusManager {
     fun requestFocus(reason: String, key: String = MAIN_WINDOW) {
         Logger.i(tag = TAG) { "requestFocus(reason=$reason, key=$key)" }
         EventQueue.invokeLater {
+            // A non-main window that is still composing must not fall through to the app-wide
+            // activation below, which would raise the main window instead.
+            if (key != MAIN_WINDOW && windowProviders[key] == null) {
+                pendingRaises[key] = PendingRaise(reason, System.currentTimeMillis())
+                return@invokeLater
+            }
             // macOS's Cocoa window server ignores Window.toFront() / isAlwaysOnTop
             // toggling from a background app — only the *application* can activate
             // itself via NSApplication.activate(). Desktop.requestForeground(true)

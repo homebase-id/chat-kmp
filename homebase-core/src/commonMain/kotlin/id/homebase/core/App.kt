@@ -1,14 +1,9 @@
 package id.homebase.core
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Modifier
+import id.homebase.chat.calling.CallChrome
 import id.homebase.chat.calling.CallHost
 import id.homebase.chat.calling.CallWindowModel
-import id.homebase.chat.calling.OngoingCallBarHost
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,33 +56,32 @@ fun App(
         val appViewModel = koinViewModel<AppViewModel>()
         // Everything below resolves from the open identity session, so per-identity services and
         // the ViewModels that consume them are destroyed at logout rather than reset.
-        val callBar = if (hostCallOverlay) null else koinInject<CallWindowModel>()
-        val callBarVisible = callBar?.let { it.uiState.collectAsStateWithLifecycle().value.inProgress } == true
-        Column(Modifier.fillMaxSize()) {
-        if (callBar != null) OngoingCallBarHost(callBar, topInset = topInset)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-        IdentityScopeProvider {
-            AppNavHost(
-                // koinViewModel(), NOT koinInject(). AppViewModel is registered with
-                // viewModelOf(), which is a *factory* definition — koinInject() resolves
-                // it outside any ViewModelStore, so every Activity recreation minted a
-                // fresh AppViewModel whose onCleared() was never called. Each orphan kept
-                // its collectNotificationEvents() coroutine alive on
-                // NotificationService.navigationEvents, which is a single-consumer
-                // Channel.receiveAsFlow(): N live collectors round-robin the events, and
-                // an orphan that wins a turn forwards into its own channel that nothing
-                // reads. Result — notification taps and share deep links silently went
-                // nowhere (build 1788 log: three consecutive events "forwarded" by
-                // AppViewModel with no matching AppNavHost receipt, after four Activity
-                // onCreates in one process).
-                viewModel = appViewModel,
-                navController = navController,
-                youAuthFlowManager = youAuthFlowManager,
-                topInset = if (callBarVisible) 0.dp else topInset,
-            )
-        }
-        if (hostCallOverlay) CallHost(viewModel = koinViewModel())
-        }
+        CallChrome(
+            hostCallOverlay = hostCallOverlay,
+            callWindow = if (hostCallOverlay) null else koinInject<CallWindowModel>(),
+            topInset = topInset,
+            callHost = { CallHost(viewModel = koinViewModel()) },
+        ) { contentTopInset ->
+            IdentityScopeProvider {
+                AppNavHost(
+                    // koinViewModel(), NOT koinInject(). AppViewModel is registered with
+                    // viewModelOf(), which is a *factory* definition — koinInject() resolves
+                    // it outside any ViewModelStore, so every Activity recreation minted a
+                    // fresh AppViewModel whose onCleared() was never called. Each orphan kept
+                    // its collectNotificationEvents() coroutine alive on
+                    // NotificationService.navigationEvents, which is a single-consumer
+                    // Channel.receiveAsFlow(): N live collectors round-robin the events, and
+                    // an orphan that wins a turn forwards into its own channel that nothing
+                    // reads. Result — notification taps and share deep links silently went
+                    // nowhere (build 1788 log: three consecutive events "forwarded" by
+                    // AppViewModel with no matching AppNavHost receipt, after four Activity
+                    // onCreates in one process).
+                    viewModel = appViewModel,
+                    navController = navController,
+                    youAuthFlowManager = youAuthFlowManager,
+                    topInset = contentTopInset,
+                )
+            }
         }
         LaunchedEffect(navController) {
             onNavigatorReady { route -> navController.navigate(route) { launchSingleTop = true } }

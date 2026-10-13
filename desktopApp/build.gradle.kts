@@ -105,6 +105,10 @@ kotlin {
             implementation(libs.composemediaplayer)
         }
 
+        jvmTest.dependencies {
+            implementation(project(":homebase-chat"))
+        }
+
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)

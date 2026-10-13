@@ -20,16 +20,30 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.browser.WindowKeys
+import id.homebase.api.client.auth.ApiCredentials
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.websockets.StunUrlStore
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.calling.AudioRoute
+import id.homebase.chat.services.calling.CallChannel
+import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.CallSignalCodec
 import id.homebase.chat.services.calling.CallController
 import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
@@ -50,11 +64,14 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -82,13 +99,30 @@ class CallWindowTest {
     }
 
     @Test
-    fun titleShowsThePeerAndTheElapsedTimeOnlyWhileTheCallIsLive() {
+    fun elapsedTimeIsOnlyReportedWhileTheCallIsLive() {
         val connected = CallUiState(phase = CallPhase.Connected, callId = "c", connectedAtMs = 1_000)
-        assertEquals("Sam · 01:23", callWindowTitle(connected, "Sam", 1_000 + 83_000))
-        assertEquals("Sam · 1:01:01", callWindowTitle(connected, "Sam", 1_000 + 3_661_000))
-        assertEquals("Sam · 00:00", callWindowTitle(connected, "Sam", 0))
-        assertEquals("Sam", callWindowTitle(CallUiState(phase = CallPhase.Outgoing, callId = "c"), "Sam", 9_999))
-        assertEquals("Sam", callWindowTitle(connected.copy(phase = CallPhase.Ended(CallEndReason.Cancelled)), "Sam", 99_999))
+        assertEquals("01:23", callWindowElapsed(connected, 1_000 + 83_000))
+        assertEquals("1:01:01", callWindowElapsed(connected, 1_000 + 3_661_000))
+        assertEquals("00:00", callWindowElapsed(connected, 0))
+        assertNull(callWindowElapsed(CallUiState(phase = CallPhase.Outgoing, callId = "c"), 9_999))
+        assertNull(callWindowElapsed(connected.copy(phase = CallPhase.Ended(CallEndReason.Cancelled)), 99_999))
+    }
+
+    @Test
+    fun windowTitleIsThePeerThenThePillTextOnceConnected() {
+        withModel(connectedState(false).copy(connectedAtMs = System.currentTimeMillis() - 83_000)) { model, _, _ ->
+            runDesktopComposeUiTest(400, 100) {
+                setContent { Text(rememberCallWindowTitle(model), Modifier.testTag("title")) }
+                waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Samwise Gamgee · 01:", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            }
+        }
+        withModel(connectedState(false).copy(phase = CallPhase.Outgoing, connectedAtMs = null)) { model, _, _ ->
+            runDesktopComposeUiTest(400, 100) {
+                setContent { Text(rememberCallWindowTitle(model), Modifier.testTag("title")) }
+                waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Samwise Gamgee").fetchSemanticsNodes().isNotEmpty() }
+                onNodeWithTag("title").assertTextEquals("Samwise Gamgee")
+            }
+        }
     }
 
     @Test
@@ -103,24 +137,45 @@ class CallWindowTest {
         assertFalse(callWindowVisible(failed.copy(dismissedCallId = "c")))
     }
 
-    private class Rig(scope: TestScope) {
+    private val frodo = "frodo.baggins.demo.rocks"
+
+    private class ServiceRig(scope: TestScope, private val frodo: String, sam: String) {
         val net = LoopbackSignaling(now = { scope.testScheduler.currentTime })
-        val me = CallController(
-            selfOdinId = "frodo.baggins.demo.rocks",
-            signaling = net.endpoint("frodo.baggins.demo.rocks"),
+        val bus = EventBus()
+        val credentials = CredentialsManager()
+        val service = CallService(
+            credentialsManager = credentials,
+            eventBus = bus,
+            relay = { _, recipients, blob, _ ->
+                CallSignalCodec.decode(blob)?.let { net.deliver(recipients.single(), frodo, it) }
+                true
+            },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
+            stunUrls = StunUrlStore(EventBus(), scope.backgroundScope),
             scope = scope.backgroundScope,
-            clock = { scope.testScheduler.currentTime },
+            nowMs = { scope.testScheduler.currentTime },
         )
         val peer = CallController(
-            selfOdinId = "samwise.gamgee.demo.rocks",
-            signaling = net.endpoint("samwise.gamgee.demo.rocks"),
+            selfOdinId = sam,
+            signaling = net.endpoint(sam),
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "me", "peer") },
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
         )
         val focused = mutableListOf<String>()
-        val model = CallWindowModel(CallViewModel(me, audioRoutes = { listOf(AudioRoute.Earpiece) }), focus = { focused += it })
+        val model = CallWindowModel(CallViewModel(service, audioRoutes = { listOf(AudioRoute.Earpiece) }), focus = { focused += it }, displayName = { "Samwise Gamgee" })
+
+        init {
+            scope.backgroundScope.launch {
+                net.endpoint(frodo).incoming.collect {
+                    bus.emit(BackendEvent.LiveRelayReceived(OdinId(it.from), CallChannel.keyFor(frodo), CallSignalCodec.encode(it.signal), it.receivedAtMs))
+                }
+            }
+        }
+
+        suspend fun signIn() = credentials.setActiveCredentials(
+            ApiCredentials.create(OdinId(frodo), "token", SecureByteArray(ByteArray(16))),
+        )
     }
 
     private fun TestScope.settle(ms: Long = 0) {
@@ -130,12 +185,15 @@ class CallWindowTest {
     }
 
     @Test
-    fun oneSharedModelOpensTheWindowOnStartAndClosesItAfterTheEndedLinger() = runTest {
+    fun oneSharedModelDrivesTheWindowAndTheMainWindowBarFromStartToTheEndedLinger() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val rig = Rig(this)
+        val rig = ServiceRig(this, frodo, sam)
         try {
+            rig.signIn()
+            settle()
             assertFalse(rig.model.windowVisible.value)
-            rig.me.startCall(sam, video = false)
+
+            rig.service.startCall(sam, video = false)
             settle()
             assertTrue(rig.model.windowVisible.value)
             assertEquals(CallPhase.Outgoing, rig.model.uiState.value.phase)
@@ -143,15 +201,35 @@ class CallWindowTest {
             rig.peer.accept()
             settle(1_001)
             assertEquals(CallPhase.Connected, rig.model.uiState.value.phase)
-            assertTrue(rig.model.uiState.value.inProgress)
+
+            runDesktopComposeUiTest(900, 640) {
+                var hostedOverlay = false
+                setContent {
+                    HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
+                        CallChrome(
+                            hostCallOverlay = false,
+                            callWindow = rig.model,
+                            topInset = 0.dp,
+                            callHost = { hostedOverlay = true },
+                        ) { _ -> Text("Conversation list") }
+                    }
+                }
+                waitUntil(timeoutMillis = 5_000) { onAllNodesWithTag(OngoingCallBarTag).fetchSemanticsNodes().isNotEmpty() }
+                onNodeWithText("Conversation list").assertExists()
+                assertFalse(hostedOverlay, "the call screen belongs to the call window")
+                assertTrue(onAllNodes(hasContentDescription("End call"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+                onNodeWithTag(OngoingCallBarTag).performClick()
+                assertEquals(listOf(WindowKeys.CALL), rig.focused)
+            }
 
             rig.model.requestClose()
             settle()
-            assertEquals(CallPhase.Connected, rig.model.uiState.value.phase, "connected asks first")
+            assertEquals(CallPhase.Connected, rig.model.uiState.value.phase, "closing a connected call asks first")
 
-            rig.me.hangup()
+            rig.service.hangup()
             settle()
-            assertTrue(rig.model.windowVisible.value, "ended screen stays up for the linger")
+            assertTrue(rig.model.windowVisible.value, "the ended screen stays up for the linger")
+            assertFalse(rig.model.uiState.value.inProgress)
             settle(ENDED_LINGER_MS + 100)
             assertFalse(rig.model.windowVisible.value)
         } finally {
@@ -161,11 +239,13 @@ class CallWindowTest {
     }
 
     @Test
-    fun closingAnOutgoingCallHangsUpAndClosingAFailedOneDismisses() = runTest {
+    fun closingAnOutgoingCallHangsUpAndClosingTheEndedWindowDismissesIt() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val rig = Rig(this)
+        val rig = ServiceRig(this, frodo, sam)
         try {
-            rig.me.startCall(sam, video = false)
+            rig.signIn()
+            settle()
+            rig.service.startCall(sam, video = false)
             settle()
             rig.model.requestClose()
             settle()
@@ -173,6 +253,27 @@ class CallWindowTest {
             rig.model.requestClose()
             settle()
             assertFalse(rig.model.windowVisible.value, "closing the ended window dismisses it")
+        } finally {
+            rig.model.viewModel.viewModelScope.cancel()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun aNewCallGetsANewWindowKey() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val rig = ServiceRig(this, frodo, sam)
+        try {
+            rig.signIn()
+            settle()
+            rig.service.startCall(sam, video = false)
+            settle()
+            val first = rig.model.windowKey.value
+            rig.service.hangup()
+            settle()
+            rig.service.startCall(sam, video = true)
+            settle()
+            assertNotEquals(first, rig.model.windowKey.value)
         } finally {
             rig.model.viewModel.viewModelScope.cancel()
             Dispatchers.resetMain()
@@ -210,7 +311,7 @@ class CallWindowTest {
         val session = StateSession(state)
         if (state.media.localVideo) session.videos.value = CallVideos(FakeVideo(0xFF5C6BC0, "FB"), FakeVideo(0xFF26A69A, "SG"))
         val focused = mutableListOf<String>()
-        val model = CallWindowModel(CallViewModel(session, audioRoutes = { emptyList() }), focus = { focused += it })
+        val model = CallWindowModel(CallViewModel(session, audioRoutes = { emptyList() }), focus = { focused += it }, displayName = { "Samwise Gamgee" })
         try {
             block(model, session, focused)
         } finally {
@@ -299,28 +400,46 @@ class CallWindowTest {
     }
 
     @Test
-    fun mainWindowShowsTheOngoingCallBarNotTheCallScreenAndTheBarFocusesTheCallWindow() {
+    fun mainWindowShowsTheOngoingCallBarOverTheConversationListAndTheBarFocusesTheCallWindow() {
         for (dark in listOf(false, true)) {
             withModel(connectedState(false)) { model, _, focused ->
                 runDesktopComposeUiTest(900, 640) {
                     mainClock.autoAdvance = false
                     setContent {
                         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
-                            Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                                OngoingCallBarHost(model, peerName = { "Samwise Gamgee" })
-                                LazyColumn(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                                    items(12) { i -> ListItem(headlineContent = { Text("Conversation $i") }, supportingContent = { Text("Last message preview") }) }
+                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                                CallChrome(hostCallOverlay = false, callWindow = model, topInset = 0.dp, callHost = {}) { _ ->
+                                    LazyColumn(Modifier.fillMaxWidth()) {
+                                        items(12) { i -> ListItem(headlineContent = { Text("Conversation $i") }, supportingContent = { Text("Last message preview") }) }
+                                    }
                                 }
                             }
                         }
                     }
                     mainClock.advanceTimeBy(300)
                     onNodeWithTag(OngoingCallBarTag).assertExists()
-                    assertTrue(onAllNodes(hasContentDescription("End call"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty(), "call screen must not be composed here")
-                    assertTrue(onAllNodes(hasTestTag(RemoteVideoTag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
                     shoot("main-with-bar-900x640", dark)
                     onNodeWithTag(OngoingCallBarTag).performClick()
-                    assertEquals(listOf("call"), focused)
+                    assertEquals(listOf(WindowKeys.CALL), focused)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun theCallOverlayIsHostedInPlaceOfTheBarOnlyWhenThePlatformHasNoCallWindow() {
+        for (hostOverlay in listOf(true, false)) {
+            withModel(connectedState(false)) { model, _, _ ->
+                runDesktopComposeUiTest(900, 400) {
+                    var hosted = false
+                    setContent {
+                        HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
+                            CallChrome(hostCallOverlay = hostOverlay, callWindow = if (hostOverlay) null else model, topInset = 0.dp, callHost = { hosted = true }) { _ -> Text("content") }
+                        }
+                    }
+                    waitForIdle()
+                    assertEquals(hostOverlay, hosted)
+                    assertEquals(!hostOverlay, onAllNodesWithTag(OngoingCallBarTag).fetchSemanticsNodes().isNotEmpty())
                 }
             }
         }
@@ -330,7 +449,7 @@ class CallWindowTest {
     fun barIsAbsentWhenNoCallIsInProgress() {
         withModel(CallState()) { model, _, _ ->
             runDesktopComposeUiTest(900, 200) {
-                setContent { HomebaseTheme(darkTheme = false, followsSystemTheme = false) { OngoingCallBarHost(model, peerName = { "x" }) } }
+                setContent { HomebaseTheme(darkTheme = false, followsSystemTheme = false) { OngoingCallBarHost(model) } }
                 onNodeWithTag(OngoingCallBarTag).assertDoesNotExist()
             }
         }

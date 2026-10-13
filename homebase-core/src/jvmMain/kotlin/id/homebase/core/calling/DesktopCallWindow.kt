@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.StateFlow
 interface DesktopCallWindow {
     val visible: StateFlow<Boolean>
     val ringing: StateFlow<Boolean>
+
+    /** Changes with each call, so the window is recreated (and re-sized for its kind) rather than reused. */
+    val windowKey: StateFlow<String?>
     fun isVideoCall(): Boolean
     fun requestClose()
 
@@ -24,6 +27,7 @@ interface DesktopCallWindow {
 class ModelDesktopCallWindow(private val model: CallWindowModel) : DesktopCallWindow {
     override val visible get() = model.windowVisible
     override val ringing get() = model.ringing
+    override val windowKey get() = model.windowKey
     override fun isVideoCall() = model.isVideoCall()
     override fun requestClose() = model.requestClose()
 

@@ -158,9 +158,14 @@ fun CallOverlay(
 internal fun rememberPeerName(odinId: String?): String {
     if (odinId == null) return ""
     val gateway = koinInject<ContactInfoGateway>()
+    return rememberPeerName(odinId) { gateway.displayName(it) }
+}
+
+@Composable
+internal fun rememberPeerName(odinId: String, displayName: suspend (OdinId) -> String?): String {
     var name by remember(odinId) { mutableStateOf(odinId) }
     LaunchedEffect(odinId) {
-        runCatching { gateway.displayName(OdinId(odinId)) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { name = it }
+        runCatching { displayName(OdinId(odinId)) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { name = it }
     }
     return name
 }

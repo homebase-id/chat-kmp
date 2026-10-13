@@ -2,7 +2,7 @@ package id.homebase.app
 
 import com.russhwolf.settings.Settings
 
-/** In-memory [Settings] test fake. Shared by commonTest and jvmTest. */
+/** In-memory [Settings] for the DesktopPreferences tests; test sources are not shared across modules. */
 internal class InMemorySettings(seed: Map<String, Any> = emptyMap()) : Settings {
     private val backing: MutableMap<String, Any> = seed.toMutableMap()
     override val keys: Set<String> get() = backing.keys.toSet()

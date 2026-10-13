@@ -182,5 +182,13 @@ class CallViewModel(
         }
     }
 
-    fun endFromKeyboard() = requestClose()
+    fun endFromKeyboard() {
+        when (_uiState.value.phase) {
+            CallPhase.Connected -> _events.tryEmit(CallUiEvent.ConfirmEnd)
+            CallPhase.Incoming -> session.decline()
+            is CallPhase.Ended -> close()
+            CallPhase.Idle -> Unit
+            else -> session.hangup()
+        }
+    }
 }

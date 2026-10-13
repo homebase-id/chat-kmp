@@ -1303,7 +1303,7 @@ fun OngoingCallBar(ui: CallUiState, peerName: String, onClick: () -> Unit, modif
     }
 }
 
-internal const val OngoingCallBarTag = "ongoing-call-bar"
+const val OngoingCallBarTag = "ongoing-call-bar"
 
 @Composable
 internal fun endedText(reason: CallEndReason): String = stringResource(

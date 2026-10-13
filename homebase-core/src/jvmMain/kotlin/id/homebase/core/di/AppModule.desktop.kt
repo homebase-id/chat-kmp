@@ -5,6 +5,7 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import id.homebase.api.browser.DesktopAppFocusManager
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.calling.CallViewModel
 import id.homebase.chat.calling.CallWindowModel
@@ -55,6 +56,7 @@ actual fun platformModule(): Module = module {
         CallWindowModel(
             viewModel = CallViewModel(get<CallService>()),
             focus = { DesktopAppFocusManager.requestFocus("ongoing-call-bar", it) },
+            displayName = get<ContactInfoGateway>()::displayName,
         )
     }
     single<DesktopCallWindow> { ModelDesktopCallWindow(get()) }
