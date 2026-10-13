@@ -1,12 +1,14 @@
 package id.homebase.core.calling
 
 import id.homebase.chat.services.calling.CallKitMirror
+import id.homebase.chat.services.calling.CallPictureInPictureTeardown
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.CallKitActionsAdapter
 import id.homebase.chat.services.calling.CallKitRingRouter
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.VoipTokenRelay
 import id.homebase.core.notifications.CallKitBridgeHolder
+import id.homebase.core.notifications.CallPictureInPictureBridgeHolder
 import id.homebase.core.notifications.CallPushRouter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,4 +32,5 @@ fun startAppleCallCoordinator() {
     CallKitBridgeHolder.actions = CallKitActionsAdapter(service)
 
     scope.launch { CallKitMirror(service) { CallKitBridgeHolder.bridge }.run() }
+    scope.launch { CallPictureInPictureTeardown(service.state) { CallPictureInPictureBridgeHolder.bridge }.run() }
 }
