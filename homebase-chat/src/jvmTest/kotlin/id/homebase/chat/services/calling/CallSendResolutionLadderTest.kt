@@ -27,6 +27,27 @@ class CallSendResolutionLadderTest {
         assertEquals(720, nextSendHeight(540, 1_100_000.0))
         assertEquals(720, nextSendHeight(720, 1_600_000.0))
         assertEquals(1080, nextSendHeight(720, 2_500_000.0))
+        assertEquals(270, nextSendHeight(360, 200_000.0))
+        assertEquals(180, nextSendHeight(270, 100_000.0))
+        assertEquals(270, nextSendHeight(180, 190_000.0))
+    }
+
+    @Test
+    fun everyScaleKeepsBothSidesEven() {
+        assertEquals(468, evenShortSide(480, 1080, 1920))
+        for (rung in listOf(1080, 720, 540, 360, 270, 180)) assertEquals(rung, evenShortSide(rung, 1080, 1920))
+        for (rung in listOf(720, 540, 360, 270, 180)) assertEquals(rung, evenShortSide(rung, 720, 1280))
+    }
+
+    @Test
+    fun theLadderGoesBelow360WithEvenSidesOnEitherCamera() {
+        var applied: Double? = null
+        val hd = SendResolutionLadder { applied = it }
+        hd.onStats(stats(100_000.0))
+        assertEquals(6.0, applied)
+        val small = SendResolutionLadder { applied = it }
+        small.onStats(stats(100_000.0, sourceWidth = 1280, sourceHeight = 720))
+        assertEquals(4.0, applied)
     }
 
     // mobile2-r1 Redmi under NLC 3G: target 2.5M -> 527k -> 300k, then 361k..881k..2.5M once NLC was off, while

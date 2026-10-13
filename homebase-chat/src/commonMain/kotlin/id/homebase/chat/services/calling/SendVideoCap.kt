@@ -1,5 +1,7 @@
 package id.homebase.chat.services.calling
 
+import kotlin.math.roundToInt
+
 /**
  * What a sender may put on the wire: at most 1080p30, adapted down by WebRTC's bandwidth estimate. libwebrtc offers
  * H.264 at level 3.1 (profile-level-id 42e01f, at most 3600 macroblocks a frame) and each side encodes at the level
@@ -32,9 +34,8 @@ internal fun withH264SendLevel(sdp: String): String = profileLevelId.replace(sdp
 
 internal fun h264Levels(sdp: String): List<Int> = profileLevelId.findAll(sdp).map { it.groupValues[3].toInt(16) }.toList()
 
-// Short side of each rung and the target bitrate it needs. 480 is not a rung: 1080/480 scales a 1920 camera to 853 wide,
-// and an Android hardware encoder fails on that odd width, so libwebrtc drops H.264 for software VP8.
-private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 360 to 0)
+// Short side of each rung and the target bitrate it needs; no floor.
+private val sendRungs = listOf(1080 to 1_500_000, 720 to 800_000, 540 to 500_000, 360 to 250_000, 270 to 150_000, 180 to 0)
 
 private const val STEP_UP_HEADROOM = 1.25
 
@@ -45,6 +46,14 @@ internal fun nextSendHeight(currentHeight: Int, targetBps: Double): Int {
     val (up, upMin) = sendRungs.last { (height, _) -> height > currentHeight }
     return if (targetBps >= upMin * STEP_UP_HEADROOM) up else currentHeight
 }
+
+/**
+ * The largest short side up to [target] at which both sides of a [short]x[long] input scale to even integers: an Android
+ * hardware encoder fails on an odd width (1920x1080 at 480 is 853 wide) and libwebrtc then drops H.264 for software VP8.
+ */
+internal fun evenShortSide(target: Int, short: Int, long: Int): Int = (target downTo 2).firstOrNull { t ->
+    t % 2 == 0 && long.toLong() * t % short == 0L && long.toLong() * t / short % 2 == 0L
+} ?: target
 
 /**
  * Caps the sender's resolution to the network: libwebrtc's quality scaler only reacts to encoder QP and frame drops,
@@ -60,13 +69,15 @@ internal class SendResolutionLadder(private val apply: (Double) -> Unit) {
         val outbound = stats.video("outbound-rtp") ?: return null
         val target = outbound["targetBitrate"].asDouble() ?: return null
         val source = stats.video("media-source")
+        val sides = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble()).filter { it > 0 }.sorted()
+        val (sourceShort, sourceLong) = if (sides.size == 2) sides[0] to sides[1] else SendVideoCap.HEIGHT.toDouble() to SendVideoCap.WIDTH.toDouble()
         // iOS reports the camera's 4K before its adapter caps the encoder input at 1080p.
-        val inputShortSide = listOfNotNull(source?.get("width").asDouble(), source?.get("height").asDouble())
-            .filter { it > 0 }.plus(SendVideoCap.HEIGHT.toDouble()).min()
+        val inputShortSide = minOf(sourceShort, SendVideoCap.HEIGHT.toDouble())
+        val inputLongSide = (sourceLong * inputShortSide / sourceShort).roundToInt()
         val loadBefore = load.height
         val loadHeight = load.onStats(outbound)
         val next = nextSendHeight(height, target)
-        val nextScale = maxOf(1.0, inputShortSide / minOf(next, loadHeight))
+        val nextScale = maxOf(1.0, inputShortSide / evenShortSide(minOf(next, loadHeight), inputShortSide.roundToInt(), inputLongSide))
         if (next == height && nextScale == scale && loadHeight == loadBefore) return null
         height = next
         if (nextScale != scale) apply(nextScale)
