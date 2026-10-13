@@ -2075,6 +2075,7 @@ class ProfileCardViewModelTest {
         val legacy = CardOverrides.EMPTY.withBlockOrder(listOf("posts", "chat", "links", "moments"))
         assertEquals(listOf("chat", "links", "moments", "posts"), legacy.blocks!!.map { it.kind })
         assertFalse("posts" in CardOverrides.EMPTY.blockOrder())
+        assertEquals(listOf("links", "chat", "moments", "posts"), CardOverrides.EMPTY.withBlockOrder(listOf("links")).blocks!!.map { it.kind })
     }
 
     @Test
