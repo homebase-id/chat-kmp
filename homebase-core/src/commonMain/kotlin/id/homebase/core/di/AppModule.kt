@@ -116,7 +116,6 @@ import id.homebase.core.ui.screens.card.CardPreferences
 import id.homebase.core.ui.screens.card.CardRepository
 import id.homebase.core.ui.screens.card.ProfileRepositoryCardStore
 import id.homebase.core.ui.screens.card.CardTapShare
-import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.core.ui.screens.card.DefaultProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardSource
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
@@ -207,8 +206,8 @@ import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
+import id.homebase.core.ui.screens.profile.OwnerSessionAvatar
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
-import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
@@ -1261,16 +1260,8 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModel {
         val cards = get<ProfileCardSource>()
-        val connections = get<ConnectionNetworkProvider>()
-        ProfileEditViewModel(
-            get(),
-            get<DeveloperPreferences>().connectionReviewEnabled.value,
-            loadCircleNames = {
-                connections.getCirclesWithMembers(includeSystemCircle = false).associate { it.circle.id to it.circle.name }
-            },
-        ) { cards.circles() }
+        ProfileAvatarEditViewModel(OwnerSessionAvatar(get()), get(), get(), get()) { cards.circles() }
     }
-    viewModelOf(::ProfileAvatarEditViewModel)
     viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)

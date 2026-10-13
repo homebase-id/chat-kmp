@@ -1,6 +1,23 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import id.homebase.api.client.profile.ProfileAttributeTypes
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -105,6 +122,179 @@ class ProfileCardScreenFlowTest {
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithContentDescription(open("Friends")).fetchSemanticsNodes().isNotEmpty() }
             onAllNodes(chipFriends).assertCountEquals(0)
             assertFalse(viewModel.uiState.value.viewing)
+        }
+    }
+
+    @Test
+    fun editOpensTheContentEditorAndChangeDesignOpensThePickerForTheSelectedCard() {
+        val fixtures = ProfileCardViewModelTest()
+        val wire = CardWireHarness()
+        wire.seed(
+            Uuid.random(), Uuid.random(), ProfileAttributeTypes.PHONE, "connected",
+            JsonObject(mapOf(ProfileAttributeTypes.KEY_PHONE to JsonPrimitive("+14155550123"))), 0, listOf(FRIENDS_CIRCLE_ID),
+        )
+        wire.seed(
+            Uuid.random(), Uuid.random(), ProfileAttributeTypes.EMAIL, "owner",
+            JsonObject(mapOf(ProfileAttributeTypes.KEY_EMAIL to JsonPrimitive("frodo@shire.me"))), 0, null,
+        )
+        val repository: ProfileRepository = runBlocking { wire.profileRepository() }
+        val circles = listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends"), CardCircle(FAMILY_CIRCLE_ID, "Family"), CardCircle(WORK_CIRCLE_ID, "Work"))
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+
+        runDesktopComposeUiTest(width = 824, height = 1784) {
+            val source = ProfileCardViewModelTest.FakeSource(
+                fixtures.profile.filterNot { it.type == ProfileAttributeTypes.PHOTO },
+                cardRepository = CardRepository(ProfileRepositoryCardStore(repository)),
+            ).apply {
+                liveCards = { repository.loadAttributes() }
+                circleList = circles
+            }
+            val viewModel = ProfileCardViewModel(source) { error("the JVM WebView slot is not part of this flow") }
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                    var opened by remember { mutableStateOf<EditorMode?>(null) }
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    Box(Modifier.fillMaxSize()) {
+                        val mode = opened
+                        if (mode != null) {
+                            LaunchedEffect(mode) { if (mode == EditorMode.Design) viewModel.onEditorOpened() }
+                            ProfileCardEditorContent(
+                                uiState = uiState,
+                                mode = mode,
+                                step = EditorStep.Design,
+                                onStep = {},
+                                onBack = { opened = null },
+                                onSelect = viewModel::onDesignPicked,
+                                onOption = viewModel::onOptionSelected,
+                                onBlockOrder = viewModel::onBlockOrderChanged,
+                                onSave = viewModel::onSaveDesign,
+                                onContentToggle = viewModel::onContentToggled,
+                                onContentEdit = viewModel::onContentEdited,
+                                onContentAdd = viewModel::onContentAdded,
+                                snackbarHostState = remember { SnackbarHostState() },
+                            ) { Box(Modifier.fillMaxSize()) }
+                        } else {
+                            CardBottomChrome(
+                                audience = uiState.selectedAudience,
+                                isExporting = false,
+                                canShare = true,
+                                saveInsteadOfShare = false,
+                                readOnly = false,
+                                showsReset = false,
+                                canReset = false,
+                                onShare = {},
+                                onEdit = { opened = EditorMode.Content },
+                                onChangeDesign = { opened = EditorMode.Design },
+                                onReset = {},
+                                extraActions = {},
+                            )
+                        }
+                    }
+                }
+            }
+            waitUntil(timeoutMillis = 10_000) { viewModel.uiState.value.cards.size == 4 }
+            viewModel.onCardOpened(friends)
+            waitUntil(timeoutMillis = 10_000) { viewModel.uiState.value.selectedAudience == friends }
+
+            onNodeWithText("Edit").performClick()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Shown to Friends").fetchSemanticsNodes().isNotEmpty() }
+            onAllNodesWithText("Choose a design").assertCountEquals(0)
+            onAllNodesWithText("Design").assertCountEquals(0)
+            onNodeWithText("Edit profile").assertExists()
+            onNodeWithContentDescription("Card to edit").assertExists()
+            assertTrue(onAllNodes(hasContentDescription("Hide ", substring = true)).fetchSemanticsNodes().isNotEmpty())
+            onNodeWithContentDescription("Show frodo@shire.me on this card").assertExists()
+
+            onNodeWithContentDescription("Back").performClick()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Design").fetchSemanticsNodes().isNotEmpty() }
+
+            onNodeWithText("Design").performClick()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Choose a design").fetchSemanticsNodes().isNotEmpty() }
+            onAllNodesWithText("Shown to Friends").assertCountEquals(0)
+            onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)).assertCountEquals(5)
+            assertEquals(friends, viewModel.uiState.value.selectedAudience)
+
+            onNodeWithContentDescription("Back").performClick()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Design").fetchSemanticsNodes().isNotEmpty() }
+            onAllNodesWithText("Choose a design").assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun pickingADesignSavesItAndBackLeavesNothingUnsaved() {
+        val fixtures = ProfileCardViewModelTest()
+        val wire = CardWireHarness()
+        val repository: ProfileRepository = runBlocking { wire.profileRepository() }
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+
+        runDesktopComposeUiTest(width = 824, height = 1784) {
+            val source = ProfileCardViewModelTest.FakeSource(
+                fixtures.profile.filterNot { it.type == ProfileAttributeTypes.PHOTO },
+                cardRepository = CardRepository(ProfileRepositoryCardStore(repository)),
+            ).apply {
+                liveCards = { repository.loadAttributes() }
+                circleList = listOf(CardCircle(FRIENDS_CIRCLE_ID, "Friends"))
+            }
+            val viewModel = ProfileCardViewModel(source) { error("the JVM WebView slot is not part of this flow") }
+            var mode by mutableStateOf(EditorMode.Design)
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                    val editorState by viewModel.uiState.collectAsStateWithLifecycle()
+                    ProfileCardEditorContent(
+                        uiState = editorState,
+                        mode = mode,
+                        step = EditorStep.Design,
+                        onStep = {},
+                        onBack = { mode = EditorMode.Content },
+                        onSelect = viewModel::onDesignPicked,
+                        onOption = viewModel::onOptionSelected,
+                        onBlockOrder = viewModel::onBlockOrderChanged,
+                        onSave = viewModel::onSaveDesign,
+                        snackbarHostState = remember { SnackbarHostState() },
+                    ) { Box(Modifier.fillMaxSize()) }
+                }
+            }
+            waitUntil(timeoutMillis = 10_000) { viewModel.uiState.value.cards.any { it.audience == friends } }
+            viewModel.onCardOpened(friends)
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Choose a design").fetchSemanticsNodes().isNotEmpty() }
+
+            onNodeWithContentDescription("Poster").performClick()
+            waitUntil(timeoutMillis = 10_000) {
+                wire.putBodies.any { body ->
+                    body.jsonObject["type"]?.jsonPrimitive?.content == ProfileAttributeTypes.PROFILE_CARD &&
+                        body.jsonObject["data"]?.jsonObject?.get("design") == JsonPrimitive(CardDesign.POSTER)
+                }
+            }
+            waitUntil(timeoutMillis = 10_000) { !viewModel.uiState.value.isSavingDesign }
+            assertEquals(CardDesign.POSTER, viewModel.uiState.value.selectedCard?.design)
+
+            onNodeWithContentDescription("Back").performClick()
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Shown to Friends").fetchSemanticsNodes().isNotEmpty() }
+            viewModel.onPreviewDiscarded()
+            assertEquals(null, viewModel.uiState.value.previewDesign)
+            assertFalse(viewModel.uiState.value.hasUnsavedChanges)
+            assertEquals(CardDesign.POSTER, viewModel.uiState.value.design)
+        }
+    }
+
+    @Test
+    fun pickingACardToCopyFromClosesTheSheetSoTheNextTapReachesTheScreen() {
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+        var copying by mutableStateOf(true)
+        var picked: CardAudience? = null
+        runDesktopComposeUiTest(width = 400, height = 800) {
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                    if (copying) {
+                        CopyFromSheet(listOf(CardImportSource(friends, 1)), onPick = { picked = it }, onDismiss = { copying = false })
+                    }
+                }
+            }
+            onNodeWithContentDescription("Friends, 1 new item").performClick()
+            waitUntil(timeoutMillis = 10_000) { picked != null }
+            waitForIdle()
+            assertEquals(friends, picked)
+            assertFalse(copying)
         }
     }
 }

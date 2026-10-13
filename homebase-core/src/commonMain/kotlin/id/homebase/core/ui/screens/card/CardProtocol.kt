@@ -13,13 +13,15 @@ object CardDesign {
     const val BOARD = "board"
     const val COLLAGE = "collage"
     const val DOSSIER = "dossier"
-    val all = listOf(POSTER, BOARD, COLLAGE, DOSSIER)
+    const val LINKS = "links"
+    val all = listOf(POSTER, BOARD, COLLAGE, DOSSIER, LINKS)
 
     // Native copy of each page's base colour, shown until the page can be probed so the first frame already matches.
     fun baseArgb(design: String): Int = when (design) {
         POSTER -> 0xFF14120F
         COLLAGE -> 0xFFF3EADB
         DOSSIER -> 0xFF0E1013
+        LINKS -> 0xFFF1F3F6
         else -> 0xFF1F4E8C
     }.toInt()
 
@@ -28,6 +30,7 @@ object CardDesign {
         POSTER -> 0xFFF4F0EA
         COLLAGE -> 0xFF3A2E22
         DOSSIER -> 0xFFE9ECF1
+        LINKS -> 0xFF1B1F24
         else -> 0xFFFFFFFF
     }.toInt()
 }
