@@ -42,6 +42,7 @@ object CardDesignSpecs {
     val PORTRAIT_SHAPES = listOf("circle", "square", "rounded", "ellipse")
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
+    val ORDERED_KINDS = BLOCK_KINDS - "posts"
 
     private val ALL_OPTIONS = CardOption.entries.toSet()
 

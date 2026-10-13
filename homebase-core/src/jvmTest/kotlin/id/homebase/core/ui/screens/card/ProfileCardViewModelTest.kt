@@ -1998,7 +1998,7 @@ class ProfileCardViewModelTest {
         vm.onDesignSelected(CardDesign.DOSSIER)
         vm.onOptionSelected(CardOption.ACCENT, "#8B7CF6")
         vm.onOptionSelected(CardOption.PORTRAIT_SHAPE, "rounded")
-        vm.onBlockOrderChanged(listOf("posts", "chat", "links", "moments"))
+        vm.onBlockOrderChanged(listOf("moments", "chat", "links"))
 
         vm.onSaveDesign()
         advanceUntilIdle()
@@ -2008,7 +2008,7 @@ class ProfileCardViewModelTest {
         val overrides = CardOverrides.fromJson(written["overrides"]!!.jsonObject)
         assertEquals("#8B7CF6", overrides.palette?.accent)
         assertEquals("rounded", overrides.portraits?.first()?.shape)
-        assertEquals(listOf("posts", "chat", "links", "moments"), overrides.blocks?.map { it.kind })
+        assertEquals(listOf("moments", "posts", "chat", "links"), overrides.blocks?.map { it.kind })
         assertEquals("#8B7CF6", vm.uiState.value.savedOverrides.palette?.accent)
         assertNull(vm.uiState.value.previewOverrides)
         assertFalse(vm.uiState.value.hasUnsavedChanges)
@@ -2056,8 +2056,25 @@ class ProfileCardViewModelTest {
 
     @Test
     fun blockOrderFillsInMissingKindsInDefaultOrder() {
-        val overrides = CardOverrides.EMPTY.withBlockOrder(listOf("posts", "links"))
-        assertEquals(listOf("posts", "links", "chat", "moments"), overrides.blockOrder())
+        val overrides = CardOverrides.EMPTY.withBlockOrder(listOf("moments", "links"))
+        assertEquals(listOf("moments", "links", "chat"), overrides.blockOrder())
+    }
+
+    @Test
+    fun postsAlwaysFollowsMomentsAndHasNoOrderRow() {
+        listOf(
+            listOf("moments", "chat", "links"),
+            listOf("chat", "moments", "links"),
+            listOf("chat", "links", "moments"),
+        ).forEach { order ->
+            val stored = CardOverrides.EMPTY.withBlockOrder(order).blocks!!.map { it.kind }
+            assertEquals(stored.indexOf("moments") + 1, stored.indexOf("posts"), order.toString())
+            assertEquals(4, stored.size)
+            assertEquals(order, CardOverrides.EMPTY.withBlockOrder(order).blockOrder())
+        }
+        val legacy = CardOverrides.EMPTY.withBlockOrder(listOf("posts", "chat", "links", "moments"))
+        assertEquals(listOf("chat", "links", "moments", "posts"), legacy.blocks!!.map { it.kind })
+        assertFalse("posts" in CardOverrides.EMPTY.blockOrder())
     }
 
     @Test

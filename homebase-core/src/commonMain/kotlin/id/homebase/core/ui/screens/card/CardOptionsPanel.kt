@@ -157,7 +157,6 @@ import id.homebase.resources.montserrat_regular
 import id.homebase.resources.profile_card_block_chat
 import id.homebase.resources.profile_card_block_links
 import id.homebase.resources.profile_card_block_moments
-import id.homebase.resources.profile_card_block_posts
 import id.homebase.resources.profile_card_font_archivo_black
 import id.homebase.resources.profile_card_font_caveat
 import id.homebase.resources.profile_card_font_montserrat
@@ -205,7 +204,6 @@ private val OPTION_SIDE_INSET = 16.dp
 // Seven tools fit a 360dp phone at this inset.
 private val TOOLBAR_SIDE_INSET = 4.dp
 // Without room for its name, the picked tool still reads wider than the rest.
-private val PICKED_TOOL_GROWTH = 20.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
@@ -307,7 +305,7 @@ private fun OptionControl(
     }
 }
 
-// When every tool fits it sits still and whole, naming the picked one only if there's room; otherwise the row scrolls.
+// When every tool fits it sits still and whole, naming the picked one; when that doesn't fit the row scrolls.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
@@ -326,9 +324,7 @@ private fun OptionToolbar(
     BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
         val iconsRow = TOOL_SIZE * count + ButtonGroupDefaults.ConnectedSpaceBetween * (count - 1)
         val labelRoom = with(density) { measurer.measure(labels[pickedIndex], labelStyle).size.width.toDp() } + TOOL_LABEL_GAP
-        val fits = iconsRow <= maxWidth
-        val named = !fits || iconsRow + labelRoom <= maxWidth
-        val pickedMin = if (named) TOOL_SIZE else TOOL_SIZE + (maxWidth - iconsRow).coerceIn(0.dp, PICKED_TOOL_GROWTH)
+        val fits = iconsRow + labelRoom <= maxWidth
         val tools: @Composable RowScope.() -> Unit = {
             for (index in 0 until count) {
                 ToolItem(
@@ -336,8 +332,6 @@ private fun OptionToolbar(
                     label = labels[index],
                     description = descriptions[index],
                     selected = index == pickedIndex,
-                    named = named,
-                    minWidth = if (index == pickedIndex) pickedMin else TOOL_SIZE,
                     shapes = connectedButtonShapes(index, count),
                     onClick = { onPick(options[index]) },
                 )
@@ -369,8 +363,6 @@ private fun ToolItem(
     label: String,
     description: String,
     selected: Boolean,
-    named: Boolean,
-    minWidth: Dp,
     shapes: ToggleButtonShapes,
     onClick: () -> Unit,
 ) {
@@ -391,7 +383,7 @@ private fun ToolItem(
             modifier = Modifier
                 .revealWhenSelected(selected)
                 .height(TOOL_SIZE)
-                .widthIn(min = minWidth)
+                .widthIn(min = TOOL_SIZE)
                 .clearAndSetSemantics {
                     contentDescription = description
                     role = Role.Tab
@@ -401,7 +393,7 @@ private fun ToolItem(
         ) {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(20.dp))
             AnimatedVisibility(
-                visible = selected && named,
+                visible = selected,
                 enter = expandHorizontally(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()),
                 exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
             ) {
@@ -821,7 +813,6 @@ private fun socialsLabel(style: String): StringResource = when (style) {
 private fun blockLabel(kind: String): StringResource = when (kind) {
     "links" -> MR.string.profile_card_block_links
     "moments" -> MR.string.profile_card_block_moments
-    "posts" -> MR.string.profile_card_block_posts
     else -> MR.string.profile_card_block_chat
 }
 
