@@ -2840,6 +2840,8 @@
     <string name="call_device_system_default">System default</string>
     <string name="call_device_current">%1$s: %2$s</string>
     <string name="call_device_disconnected">%1$s disconnected, using %2$s</string>
+    <string name="call_device_switch_failed_using">Couldn't switch to %1$s, still using %2$s</string>
+    <string name="call_device_switch_failed">Couldn't switch to %1$s</string>
     <string name="call_device_returned">%1$s is connected again</string>
     <string name="call_device_change">Change</string>
     <string name="call_device_switch_back">Switch</string>

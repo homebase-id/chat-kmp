@@ -91,6 +91,11 @@ class FakeCallEngine(
 
     override fun setMuted(muted: Boolean) { this.muted = muted }
 
+    override suspend fun addVideo(): String {
+        _localVideo.value = localSource
+        return "fake-video-offer"
+    }
+
     override fun setVideo(on: Boolean) { if (on) _localVideo.value = localSource }
 
     override fun switchCamera() { frontCamera = !frontCamera }

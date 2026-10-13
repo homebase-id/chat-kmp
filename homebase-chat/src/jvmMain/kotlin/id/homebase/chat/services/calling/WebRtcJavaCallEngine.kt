@@ -194,15 +194,18 @@ class WebRtcJavaCallEngine(
         if (closed) return@synchronized
         val native = nativeDevices[device.kind to device.id] ?: error("${device.name} is no longer present")
         when (device.kind) {
-            MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic, { activeMic = it }) {
+            MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic ?: systemDefault { MediaDevices.getDefaultAudioCaptureDevice() }, { activeMic = it }) {
                 adm.stopRecording(); adm.setRecordingDevice(it); adm.initRecording(); adm.startRecording()
             }
-            MediaDeviceKind.Speaker -> switchAudio(native as AudioDevice, activeSpeaker, { activeSpeaker = it }) {
+            MediaDeviceKind.Speaker -> switchAudio(native as AudioDevice, activeSpeaker ?: systemDefault { MediaDevices.getDefaultAudioRenderDevice() }, { activeSpeaker = it }) {
                 adm.stopPlayout(); adm.setPlayoutDevice(it); adm.initPlayout(); adm.startPlayout()
             }
             MediaDeviceKind.Camera -> switchCaptureDevice(native as VideoDevice)
         }
     }
+
+    // Nothing has been picked yet on the first switch, so the call is still on the system default and that is what to restore.
+    private fun systemDefault(find: () -> AudioDevice?): AudioDevice? = runCatching(find).getOrNull()
 
     private var activeMic: AudioDevice? = null
     private var activeSpeaker: AudioDevice? = null
@@ -408,6 +411,12 @@ class WebRtcJavaCallEngine(
 
     override fun setVideo(on: Boolean) {
         synchronized(lock) { if (!closed) videoTrack?.isEnabled = on }
+    }
+
+    override suspend fun addVideo(): String? {
+        addLocalMedia(true)
+        if (videoTrack == null) return null
+        return offer(RTCOfferOptions())
     }
 
     override fun switchCamera() {

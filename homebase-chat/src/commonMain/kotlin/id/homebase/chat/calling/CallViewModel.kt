@@ -43,6 +43,7 @@ data class CallUiState(
     val peerRinging: Boolean = false,
     val muted: Boolean = false,
     val localVideo: Boolean = false,
+    val micLevelSeen: Boolean = false,
     val remoteVideo: Boolean = false,
     val route: AudioRoute = AudioRoute.Earpiece,
     val availableRoutes: List<AudioRoute> = emptyList(),
@@ -78,6 +79,7 @@ data class CallUiState(
 sealed interface CallUiEvent {
     data object ShowVerification : CallUiEvent
     data object ConfirmEnd : CallUiEvent
+    data class DeviceSwitchFailed(val kind: MediaDeviceKind, val name: String, val stillUsingName: String?) : CallUiEvent
     data class DeviceDisconnected(val name: String, val fallbackName: String, val kind: MediaDeviceKind) : CallUiEvent
     data class DeviceReturned(val kind: MediaDeviceKind, val id: String, val name: String) : CallUiEvent
 }
@@ -108,13 +110,14 @@ class CallViewModel(
             session.mediaDevices
                 .flatMapLatest { d -> if (d == null) flowOf(DeviceSnapshot()) else combine(d.devices, d.selected, d.micLevel, ::DeviceSnapshot) }
                 .collect { snap ->
-                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected, micLevel = snap.micLevel) }
+                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected, micLevel = snap.micLevel, micLevelSeen = it.micLevelSeen || snap.micLevel > 0f) }
                 }
         }
         viewModelScope.launch {
             session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { notice ->
                 when (notice) {
                     is MediaDeviceNotice.Disconnected -> _events.tryEmit(CallUiEvent.DeviceDisconnected(notice.name, notice.fallbackName, notice.kind))
+                    is MediaDeviceNotice.SwitchFailed -> _events.tryEmit(CallUiEvent.DeviceSwitchFailed(notice.kind, notice.name, notice.stillUsingName))
                     is MediaDeviceNotice.Returned -> _events.tryEmit(CallUiEvent.DeviceReturned(notice.kind, notice.id, notice.name))
                 }
             }

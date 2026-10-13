@@ -1179,7 +1179,8 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
     // Desktop pickers choose the real output and camera, so the phone route and flip toggles would only duplicate them.
     val pickers = ui.devices.isNotEmpty()
     val showRoute = ui.availableRoutes.size > 1 && !pickers
-    val showCamera = ui.videos.local != null
+    // A desktop voice call can turn the camera on mid-call; the engine renegotiates when there is no video track yet.
+    val showCamera = ui.videos.local != null || (LocalDesktopTier.current != null && ui.inProgress && !placing)
     // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
     val showFlip = ui.localVideo && !large && !placing && !pickers
     // With pickers each of mic and camera is a split button: a toggle segment and its own menu segment in the same group.
@@ -1208,7 +1209,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             shapes = segmentShapes(0, count),
             interaction = muteInteraction,
             modifier = Modifier.animateWidth(muteInteraction),
-            level = ui.micLevel.takeIf { pickers && !ui.muted },
+            level = ui.micLevel.takeIf { pickers && !ui.muted && ui.micLevelSeen },
         )
         if (pickers) DeviceMenuSegment(ui, MediaDeviceKind.Mic, actions, segmentShapes(1, count))
         if (showRoute) {

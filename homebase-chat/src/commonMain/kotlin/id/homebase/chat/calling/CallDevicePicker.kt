@@ -144,7 +144,7 @@ internal fun ColumnScope.CallDeviceMenuItems(
                 },
             )
         }
-        if (kind == MediaDeviceKind.Mic && !ui.muted) InputLevelRow(ui.micLevel)
+        if (kind == MediaDeviceKind.Mic && !ui.muted && ui.micLevelSeen) InputLevelRow(ui.micLevel)
     }
 }
 

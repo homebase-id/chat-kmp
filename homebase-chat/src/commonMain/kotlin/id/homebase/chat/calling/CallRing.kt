@@ -219,7 +219,7 @@ private fun RingAction(spec: RingActionSpec, stacked: Boolean, lines: Int, modif
     }
     // Row weight is parent data, so it has to sit outside the tooltip's own Box.
     Box(modifier) {
-        BarTooltip(spec.tooltip, TooltipAnchorPosition.Above) {
+        BarTooltip(spec.tooltip, TooltipAnchorPosition.Below) {
             Surface(
                 onClick = spec.onClick,
                 shape = shape,

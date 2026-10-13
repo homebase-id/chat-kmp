@@ -16,6 +16,8 @@ sealed interface MediaDeviceNotice {
     data class Disconnected(val kind: MediaDeviceKind, val name: String, val fallbackName: String) : MediaDeviceNotice
 
     /** The user's remembered device was plugged back in while the call runs on a fallback; switching back is their call. */
+    data class SwitchFailed(val kind: MediaDeviceKind, val name: String, val stillUsingName: String?) : MediaDeviceNotice
+
     data class Returned(val kind: MediaDeviceKind, val id: String, val name: String) : MediaDeviceNotice
 }
 
@@ -91,7 +93,7 @@ class ManagedCallMediaDevices(
             _selected.update { it + (kind to fallback?.id) }
             if (chosenId == null || fallback == null) continue
             val gone = previous.firstOrNull { it.kind == kind && it.id == chosenId }
-            tryApply(fallback)
+            tryApply(fallback, notify = false)
             _events.tryEmit(MediaDeviceNotice.Disconnected(kind, gone?.name ?: chosenId, fallback.name))
         }
     }
@@ -117,11 +119,15 @@ class ManagedCallMediaDevices(
         preferences.set(kind, id)
     }
 
-    private fun tryApply(device: MediaDevice): Boolean = try {
+    private fun tryApply(device: MediaDevice, notify: Boolean = true): Boolean = try {
         apply(device)
         true
     } catch (e: Exception) {
         onApplyFailed(device, e)
+        if (notify) {
+            val using = _selected.value[device.kind]?.let { id -> _devices.value.firstOrNull { it.kind == device.kind && it.id == id }?.name }
+            _events.tryEmit(MediaDeviceNotice.SwitchFailed(device.kind, device.name, using))
+        }
         false
     }
 

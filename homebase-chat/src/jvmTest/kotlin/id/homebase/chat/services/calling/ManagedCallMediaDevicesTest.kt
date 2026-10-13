@@ -68,6 +68,18 @@ class ManagedCallMediaDevicesTest {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
+    fun aDeviceThatFailsToSwitchTellsTheUserWhatIsStillInUse() = runTest(UnconfinedTestDispatcher()) {
+        val hw = everything()
+        val devices = managed(hw)
+        val notices = mutableListOf<MediaDeviceNotice>()
+        devices.events.onEach { notices += it }.launchIn(backgroundScope)
+        hw.failApply = true
+        devices.select(MediaDeviceKind.Mic, "mic-usb")
+        assertEquals(listOf<MediaDeviceNotice>(MediaDeviceNotice.SwitchFailed(MediaDeviceKind.Mic, "USB Mic", "MacBook Microphone")), notices)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
     fun unpluggingTheSelectedDeviceFallsBackToTheDefaultAndSaysSoOnce() = runTest(UnconfinedTestDispatcher()) {
         val hw = everything()
         val prefs = InMemoryCallDevicePreferences()

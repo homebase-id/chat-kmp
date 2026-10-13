@@ -72,6 +72,7 @@ class CallDevicesScreenshotTest {
         devices = devices,
         selectedDevices = mapOf(MediaDeviceKind.Mic to "mic-b", MediaDeviceKind.Speaker to "spk-a", MediaDeviceKind.Camera to "cam-a"),
         micLevel = micLevel,
+        micLevelSeen = micLevel > 0f,
     )
 
     private val picked = mutableListOf<Pair<MediaDeviceKind, String>>()
@@ -202,7 +203,7 @@ class CallDevicesScreenshotTest {
     @Test
     fun aMenuRequestOpensTheAudioMenuAtTheMicSegment() = runDesktopComposeUiTest(960, 640) {
         val request = mutableStateOf<MediaDeviceKind?>(null)
-        show(false, state(), deviceMenu = request)
+        show(false, state(micLevel = 0.4f), deviceMenu = request)
         assertEquals(0, onAllNodes(hasText("AirPods Pro"), useUnmergedTree = true).fetchSemanticsNodes().size)
         request.value = MediaDeviceKind.Mic
         mainClock.advanceTimeBy(400)

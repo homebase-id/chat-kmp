@@ -24,6 +24,9 @@ interface CallEngine {
     suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?)
     fun setMuted(muted: Boolean)
     fun setVideo(on: Boolean)
+
+    /** Adds a camera to a call that began without one and returns the renegotiation offer, or null when this engine cannot. */
+    suspend fun addVideo(): String? = null
     fun switchCamera()
     fun setAudioRoute(route: AudioRoute)
     fun close()

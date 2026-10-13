@@ -303,7 +303,17 @@ class CallController(
                     if (remoteReady) engine?.addIce(effect.candidate, effect.sdpMid, effect.sdpMLineIndex)
                     else bufferedIce += effect
                 is CallEffect.SetMuted -> engine?.setMuted(effect.muted)
-                is CallEffect.SetVideo -> engine?.setVideo(effect.on)
+                is CallEffect.SetVideo -> {
+                    val current = engine
+                    if (current != null && effect.on && current.localVideo.value == null && state.phase == CallPhase.Connected) {
+                        // A voice call has no video m-line, so turning the camera on renegotiates through the restart signals.
+                        current.addVideo()?.let { sdp ->
+                            restartOfferSdp = sdp
+                            post(CallEvent.VideoUpgradeSent)
+                            sendUnlessOffline(state.peer!!, CallSignal.Restart(state.callId!!, sdp), state)
+                        } ?: post(CallEvent.SetVideo(false))
+                    } else current?.setVideo(effect.on)
+                }
                 CallEffect.SwitchCamera -> engine?.switchCamera()
                 is CallEffect.SetRoute -> engine?.setAudioRoute(effect.route)
                 is CallEffect.StartTimer -> startTimer(effect.timer, effect.callId)
