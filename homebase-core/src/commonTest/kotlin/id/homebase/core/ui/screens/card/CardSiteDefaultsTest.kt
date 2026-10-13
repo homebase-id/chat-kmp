@@ -79,7 +79,7 @@ class CardSiteDefaultsTest {
     @Test
     fun cardThemesMapToTheirDesign() {
         assertEquals(CardDesign.POSTER, cardDesignForTheme("555"))
-        assertEquals(CardDesign.LINKS, cardDesignForTheme("666"))
+        assertEquals(CardDesign.BOARD, cardDesignForTheme("666"))
         assertEquals(CardDesign.COLLAGE, cardDesignForTheme("777"))
         assertEquals(CardDesign.DOSSIER, cardDesignForTheme("888"))
     }

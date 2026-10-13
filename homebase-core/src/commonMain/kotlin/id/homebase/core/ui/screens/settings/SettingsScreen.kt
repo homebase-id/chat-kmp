@@ -291,12 +291,11 @@ fun SettingsUi(
             contentPadding = innerPadding,
         ) {
             item {
-                val openCards = actions.onProfileCard
                 IdentityHeader(
                     session = uiState.ownerSession,
-                    onEditProfile = openCards ?: { onAction(SettingsUiAction.ProfileInfoClicked) },
+                    onEditProfile = actions.onProfileCard ?: { onAction(SettingsUiAction.ProfileInfoClicked) },
                     openLabel = stringResource(
-                        if (openCards != null) MR.string.profile_card_intro_title else MR.string.settings_edit_profile,
+                        if (actions.onProfileCard != null) MR.string.profile_card_intro_title else MR.string.settings_edit_profile,
                     ),
                     onEditAvatar = { onAction(SettingsUiAction.AvatarClicked) },
                 )
