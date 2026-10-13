@@ -15,7 +15,10 @@ interface CallNotifier {
     fun retract(callId: String)
 }
 
-/** Nucleus with Accept and Decline buttons where they are known to fire; KMPNotifier without buttons otherwise. */
+/**
+ * Nucleus with Accept and Decline buttons; KMPNotifier without buttons otherwise, where a click opens the ring window.
+ * Nucleus's macOS dispatcher registers each button as a UNNotificationAction and routes the "btn_" response to its callback.
+ */
 class DesktopCallNotifier : CallNotifier {
     private val disabled = isMacOsRunningUnbundled()
     private val nucleus: NucleusNotificationAdapter? = if (disabled) null else NucleusNotificationAdapter.createOrNull()
@@ -25,10 +28,11 @@ class DesktopCallNotifier : CallNotifier {
         val id = callNotificationId(callId)
         val adapter = nucleus
         if (adapter != null) {
-            adapter.showCall(id, title, body, actions, withButtons = !isMacOs())
+            adapter.showCall(id, title, body, actions)
             return
         }
-        NotifierManager.getLocalNotifier().notify(id = id, title = title, body = body, payloadData = emptyMap())
+        CallNotificationClickRouter.onOpen = actions.onOpen
+        NotifierManager.getLocalNotifier().notify(id = id, title = title, body = body, payloadData = CallNotificationClickRouter.payload(callId))
     }
 
     override fun retract(callId: String) {
@@ -37,8 +41,6 @@ class DesktopCallNotifier : CallNotifier {
         val adapter = nucleus
         if (adapter != null) adapter.dismiss(id) else runCatching { NotifierManager.getLocalNotifier().remove(id) }
     }
-
-    private fun isMacOs() = System.getProperty("os.name").orEmpty().contains("Mac", ignoreCase = true)
 }
 
 fun callNotificationId(callId: String): Int = "call:$callId".hashCode()

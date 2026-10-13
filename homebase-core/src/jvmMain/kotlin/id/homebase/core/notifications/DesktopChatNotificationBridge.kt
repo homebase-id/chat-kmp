@@ -73,6 +73,8 @@ class DesktopChatNotificationBridge(
         val floor = freshnessFloor
         for (file in event.batchData) {
             if (file.fileMetadata.appData.fileType != ChatProtocol.MessageFileType) continue
+            // The ring sink posts the only call notification; the call-log entry would be a second one.
+            if (file.fileMetadata.appData.dataType == ChatProtocol.ChatCallEventMessageDataType) continue
             val message = try {
                 mapToMessageData(file, credentialsManager)
             } catch (e: Exception) {

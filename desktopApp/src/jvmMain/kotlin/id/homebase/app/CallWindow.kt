@@ -127,6 +127,7 @@ private fun ApplicationScope.RingCallWindow(call: DesktopCallWindow, theme: Them
         icon = painterResource(MR.drawable.homebase_icon_round),
         undecorated = true,
         resizable = false,
+        focusable = false,
         alwaysOnTop = true,
     ) {
         DisposableEffect(window) {
@@ -153,7 +154,7 @@ private fun activeScreenArea(): DpRect {
 @Composable
 private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: DesktopPreferences, close: () -> Unit, toggleMini: () -> Unit) {
     val trayItems by call.trayItems.collectAsStateWithLifecycle()
-    val status = rememberCallMenuEntries(trayItems).firstOrNull { it.action == CallMenuAction.OpenCall }
+    val status = rememberCallMenuEntries(rememberSettledCallItems(trayItems)).firstOrNull { it.action == CallMenuAction.OpenCall }
     val live by call.live.collectAsStateWithLifecycle()
     val muted by call.muted.collectAsStateWithLifecycle()
     val canToggleCamera by call.canToggleCamera.collectAsStateWithLifecycle()
@@ -217,7 +218,6 @@ private fun ApplicationScope.FullCallWindow(
     state: WindowState,
     enterMini: (focusable: Boolean) -> Unit,
 ) {
-    val ringing by call.ringing.collectAsStateWithLifecycle()
     val saveGeometry = {
         if (state.placement == WindowPlacement.Floating) {
             runCatching {
@@ -242,7 +242,6 @@ private fun ApplicationScope.FullCallWindow(
         state = state,
         title = call.title(),
         icon = painterResource(MR.drawable.homebase_icon_round),
-        alwaysOnTop = ringing,
     ) {
         window.minimumSize = java.awt.Dimension(CALL_WINDOW_MIN_WIDTH.toInt(), CALL_WINDOW_MIN_HEIGHT.toInt())
         DisposableEffect(window) {

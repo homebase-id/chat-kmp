@@ -76,6 +76,15 @@ object DesktopAppFocusManager {
         }
     }
 
+    // Shows an already-composed window without activating the app, so a ring never takes the keyboard from whatever the user is typing in.
+    fun revealWithoutFocus(key: String) {
+        EventQueue.invokeLater {
+            val window = windowProviders[key]?.invoke() ?: return@invokeLater
+            if (window is Frame) window.extendedState = window.extendedState and Frame.ICONIFIED.inv()
+            window.isVisible = true
+        }
+    }
+
     private fun requestApplicationForeground() {
         try {
             if (!Desktop.isDesktopSupported()) return

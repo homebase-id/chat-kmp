@@ -29,7 +29,6 @@ internal class NucleusNotificationAdapter private constructor() {
 
     fun show(data: RichNotificationData) {
         try {
-            posted.remove(data.notificationId)?.dismiss()
             Logger.i(tag = "NucleusNotificationAdapter") {
                 "posting notification '${data.title}'"
             }
@@ -55,8 +54,6 @@ internal class NucleusNotificationAdapter private constructor() {
                 Logger.w(tag = "NucleusNotificationAdapter") {
                     "Send failed: ${result.reason}"
                 }
-            } else if (result is NotificationResult.Success) {
-                posted[data.notificationId] = result.handle
             }
         } catch (e: Exception) {
             Logger.e(tag = "NucleusNotificationAdapter") {
@@ -65,7 +62,7 @@ internal class NucleusNotificationAdapter private constructor() {
         }
     }
 
-    fun showCall(notificationId: Int, title: String, body: String, actions: CallNotificationActions, withButtons: Boolean) {
+    fun showCall(notificationId: Int, title: String, body: String, actions: CallNotificationActions) {
         try {
             posted.remove(notificationId)?.dismiss()
             val result = notification(
@@ -76,10 +73,8 @@ internal class NucleusNotificationAdapter private constructor() {
                     Logger.w(tag = "NucleusNotificationAdapter") { "Nucleus reported delivery failure for call notification" }
                 },
             ) {
-                if (withButtons) {
-                    button(actions.acceptLabel, actions.onAccept)
-                    button(actions.declineLabel, actions.onDecline)
-                }
+                button(actions.acceptLabel, actions.onAccept)
+                button(actions.declineLabel, actions.onDecline)
             }.send()
             if (result is NotificationResult.Success) posted[notificationId] = result.handle
             else if (result is NotificationResult.Failure) {

@@ -470,4 +470,45 @@ class CallWindowTest {
             }
         }
     }
+
+    @Test
+    fun trayItemsDoNotRestartOrLookTheNameUpAgainWhenOnlyUnrelatedCallStateChanges() = runTest(UnconfinedTestDispatcher()) {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val session = StateSession(connectedState(false))
+        var lookups = 0
+        val model = CallWindowModel(
+            CallViewModel(session, audioRoutes = { emptyList() }),
+            focus = {},
+            displayName = { lookups++; "Samwise Gamgee" },
+        )
+        val job = launch { model.trayItems.collect {} }
+        try {
+            runCurrent()
+            assertEquals(1, lookups)
+            repeat(5) { n ->
+                session.state.value = session.state.value.copy(verificationCode = "code $n", peerRinging = n % 2 == 0)
+                runCurrent()
+            }
+            assertEquals(1, lookups, "verification and ringing changes are not part of the tray")
+
+            session.state.value = session.state.value.copy(media = session.state.value.media.copy(muted = true))
+            runCurrent()
+            assertEquals(CallTrayItem.Mute(true), model.trayItems.value[1])
+        } finally {
+            job.cancel()
+            model.viewModel.viewModelScope.cancel()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun anUnansweredRingThatEndsLeavesNoWindowBehind() {
+        val ended = { reason: CallEndReason -> CallUiState(phase = CallPhase.Ended(reason), callId = "c", direction = CallDirection.Incoming) }
+        for (reason in listOf(CallEndReason.Missed, CallEndReason.Cancelled, CallEndReason.Declined)) {
+            assertTrue(ended(reason).unansweredRingEnded(), "$reason")
+        }
+        assertFalse(ended(CallEndReason.Failed(FailReason.NoRoute)).unansweredRingEnded())
+        assertFalse(ended(CallEndReason.Missed).copy(connectedAtMs = 5).unansweredRingEnded())
+        assertFalse(ended(CallEndReason.Missed).copy(direction = CallDirection.Outgoing).unansweredRingEnded())
+    }
 }

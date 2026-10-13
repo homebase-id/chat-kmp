@@ -5,6 +5,7 @@ import javax.sound.sampled.AudioSystem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -54,7 +55,9 @@ class OsRingTonePlayer(
     @Synchronized
     override fun start() {
         if (job?.isActive == true) return
+        val previous = job
         job = scope.launch(Dispatchers.IO) {
+            previous?.cancelAndJoin()
             val resolved = source()
             while (isActive) {
                 if (resolved == null) java.awt.Toolkit.getDefaultToolkit().beep() else playOnce(resolved)
@@ -66,17 +69,22 @@ class OsRingTonePlayer(
     @Synchronized
     override fun stop() {
         job?.cancel()
-        job = null
     }
 
     private suspend fun playOnce(source: RingSource) = withContext(Dispatchers.IO) {
         when (source) {
             is RingSource.Command -> {
-                val process = ProcessBuilder(source.argv).redirectErrorStream(true).start()
+                val process = ProcessBuilder(source.argv)
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+                val reaper = Thread { process.destroyForcibly() }
+                runCatching { Runtime.getRuntime().addShutdownHook(reaper) }
                 try {
-                    runInterruptible { process.inputStream.readBytes(); process.waitFor() }
+                    runInterruptible { process.waitFor() }
                 } finally {
-                    process.destroy()
+                    process.destroyForcibly()
+                    runCatching { Runtime.getRuntime().removeShutdownHook(reaper) }
                 }
             }
             is RingSource.Wav -> {

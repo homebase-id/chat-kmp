@@ -12,8 +12,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 interface CallPushTarget {
     fun onPushRing(callId: String, from: String)
     fun onPushHangup(callId: String)
-    fun accept() = Unit
-    fun decline() = Unit
+    fun accept()
+    fun decline()
 }
 
 interface CallRingSink {

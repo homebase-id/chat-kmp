@@ -64,6 +64,7 @@ import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
+import id.homebase.resources.desktop_tray_call_indicator
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
 import id.homebase.resources.homebase_icon_round
@@ -287,13 +288,14 @@ fun main() {
             }
         }
 
-        val callTrayItems by callWindow.trayItems.collectAsState()
-        val callEntries = rememberCallMenuEntries(callTrayItems)
+        val callTrayItems by collectCallTrayItems(callWindow)
+        val callEntries = rememberCallMenuEntries(rememberSettledCallItems(callTrayItems))
         CallDockMenu(callEntries, callWindow::perform)
+        val callActiveLabel = stringResource(MR.string.desktop_tray_call_indicator)
 
         HomebaseTray(
             tooltip = appName,
-            callActive = callEntries.isNotEmpty(),
+            callIndicatorLabel = callActiveLabel.takeIf { callEntries.isNotEmpty() },
             primaryAction = {
                 isWindowVisible = !isWindowVisible
             },

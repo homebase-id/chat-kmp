@@ -11,6 +11,7 @@ class DesktopCallRingSink(
     private val scope: CoroutineScope,
     private val notifier: CallNotifier,
     private val focusCallWindow: () -> Unit,
+    private val revealRing: () -> Unit = focusCallWindow,
     private val tone: RingTonePlayer,
     private val incomingCallText: suspend () -> String,
     private val acceptLabel: suspend () -> String,
@@ -22,32 +23,34 @@ class DesktopCallRingSink(
     private val showMissed: (RichNotificationData) -> Unit = {},
 ) : CallRingSink {
     private val ringing = ConcurrentHashMap.newKeySet<String>()
+    private val lock = Any()
 
     override fun ring(callId: String, label: String) {
         val first = ringing.add(callId)
         scope.launch {
             val body = incomingCallText()
-            if (callId !in ringing) return@launch
-            notifier.showIncoming(
-                callId, label, body,
-                CallNotificationActions(
-                    acceptLabel = acceptLabel(),
-                    declineLabel = declineLabel(),
-                    onAccept = { onAccept(callId) },
-                    onDecline = { onDecline(callId) },
-                    onOpen = focusCallWindow,
-                ),
+            val actions = CallNotificationActions(
+                acceptLabel = acceptLabel(),
+                declineLabel = declineLabel(),
+                onAccept = { onAccept(callId) },
+                onDecline = { onDecline(callId) },
+                onOpen = focusCallWindow,
             )
+            synchronized(lock) {
+                if (callId in ringing) notifier.showIncoming(callId, label, body, actions)
+            }
         }
         if (!first) return
-        focusCallWindow()
+        revealRing()
         tone.start()
     }
 
     override fun stopRinging(callId: String) {
-        if (!ringing.remove(callId)) return
-        tone.stop()
-        notifier.retract(callId)
+        synchronized(lock) {
+            if (!ringing.remove(callId)) return
+            if (ringing.isEmpty()) tone.stop()
+            notifier.retract(callId)
+        }
     }
 
     override fun missed(peerId: String, label: String) {

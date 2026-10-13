@@ -20,7 +20,7 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun ApplicationScope.HomebaseTray(
     tooltip: String,
-    callActive: Boolean = false,
+    callIndicatorLabel: String? = null,
     primaryAction: () -> Unit,
     menuContent: TrayMenuBuilder.() -> Unit,
 ) {
@@ -33,16 +33,16 @@ fun ApplicationScope.HomebaseTray(
             Box(Modifier.fillMaxSize()) {
                 Icon(
                     painter = painterResource(MR.drawable.homebase_icon_mono),
-                    contentDescription = tooltip,
+                    contentDescription = callIndicatorLabel?.let { "$tooltip, $it" } ?: tooltip,
                     tint = if (isMenuBarInDarkMode()) Color.White else Color.Black,
                     modifier = Modifier.fillMaxSize(),
                 )
-                if (callActive) {
+                if (callIndicatorLabel != null) {
                     Box(Modifier.align(Alignment.TopEnd).fillMaxSize(0.38f).background(CALL_INDICATOR, CircleShape))
                 }
             }
         },
-        tooltip = tooltip,
+        tooltip = callIndicatorLabel?.let { "$tooltip, $it" } ?: tooltip,
         primaryAction = primaryAction,
         menuContent = menuContent,
     )

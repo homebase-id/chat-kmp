@@ -49,6 +49,7 @@ fun startDesktopCallCoordinator() {
             scope = scope,
             notifier = DesktopCallNotifier(),
             focusCallWindow = { DesktopAppFocusManager.requestFocus("incoming-call", WindowKeys.CALL) },
+            revealRing = { DesktopAppFocusManager.revealWithoutFocus(WindowKeys.CALL) },
             tone = OsRingTonePlayer(scope),
             incomingCallText = { TranslationUtil.getString(MR.string.call_incoming_generic) },
             acceptLabel = { TranslationUtil.getString(MR.string.call_accept) },

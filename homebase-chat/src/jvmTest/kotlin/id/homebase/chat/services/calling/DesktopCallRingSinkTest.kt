@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -229,5 +230,59 @@ class DesktopCallRingSinkTest {
         rig.notifier.actions!!.onDecline()
         runCurrent()
         assertTrue(rig.missed.isEmpty())
+    }
+
+    @Test
+    fun theRingRevealsTheCallWindowWithoutTakingFocusAndOnlyAClickFocusesIt() = runTest {
+        val notifier = FakeNotifier()
+        var revealed = 0
+        var focused = 0
+        val sink = DesktopCallRingSink(
+            scope = backgroundScope, notifier = notifier, focusCallWindow = { focused++ }, revealRing = { revealed++ },
+            tone = FakeTone(), incomingCallText = { "Incoming call" }, acceptLabel = { "Accept" }, declineLabel = { "Decline" },
+            onAccept = {}, onDecline = {},
+        )
+        sink.ring("c1", "Sam")
+        runCurrent()
+        assertEquals(1, revealed)
+        assertEquals(0, focused)
+
+        notifier.actions!!.onOpen()
+        assertEquals(1, focused)
+    }
+
+    @Test
+    fun aStopThatLandsWhileTheLabelsAreStillLoadingLeavesNoNotificationBehind() = runTest {
+        val labels = CompletableDeferred<String>()
+        val notifier = FakeNotifier()
+        val sink = DesktopCallRingSink(
+            scope = backgroundScope, notifier = notifier, focusCallWindow = {}, tone = FakeTone(),
+            incomingCallText = { "Incoming call" }, acceptLabel = { labels.await() }, declineLabel = { "Decline" },
+            onAccept = {}, onDecline = {},
+        )
+        sink.ring("c1", "Sam")
+        runCurrent()
+        sink.stopRinging("c1")
+        labels.complete("Accept")
+        runCurrent()
+        assertTrue(notifier.shown.isEmpty())
+        assertTrue(notifier.live.isEmpty())
+    }
+
+    @Test
+    fun oneCallEndingDoesNotSilenceAnotherThatIsStillRinging() = runTest {
+        val tone = FakeTone()
+        val sink = DesktopCallRingSink(
+            scope = backgroundScope, notifier = FakeNotifier(), focusCallWindow = {}, tone = tone,
+            incomingCallText = { "Incoming call" }, acceptLabel = { "Accept" }, declineLabel = { "Decline" },
+            onAccept = {}, onDecline = {},
+        )
+        sink.ring("c1", "Sam")
+        sink.ring("c2", "Frodo")
+        runCurrent()
+        sink.stopRinging("c1")
+        assertTrue(tone.playing)
+        sink.stopRinging("c2")
+        assertFalse(tone.playing)
     }
 }

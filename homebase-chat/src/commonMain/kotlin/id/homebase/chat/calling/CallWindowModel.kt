@@ -22,6 +22,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.browser.WindowKeys
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.calling.CallDirection
+import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
@@ -30,6 +32,7 @@ import id.homebase.resources.call_pill_text
 import id.homebase.resources.call_window_title
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
@@ -54,6 +57,13 @@ fun callWindowCloseAction(phase: CallPhase): CallWindowCloseAction = when (phase
 
 fun callWindowVisible(ui: CallUiState): Boolean = ui.visible
 
+/** A ring the user never answered has nothing left to show once it ends; the ring window just goes away. */
+internal fun CallUiState.unansweredRingEnded(): Boolean {
+    val reason = endReason ?: return false
+    return direction == CallDirection.Incoming && connectedAtMs == null &&
+        (reason == CallEndReason.Missed || reason == CallEndReason.Cancelled || reason == CallEndReason.Declined)
+}
+
 /** Ringing out counts: the main window should already offer the way back to a call it just placed. */
 fun ongoingCallBarVisible(ui: CallUiState): Boolean = ui.inProgress || ui.phase == CallPhase.Outgoing
 
@@ -72,7 +82,7 @@ class CallWindowModel(
     val uiState: StateFlow<CallUiState> get() = viewModel.uiState
 
     val windowVisible: StateFlow<Boolean> =
-        viewModel.uiState.map(::callWindowVisible).stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
+        viewModel.uiState.map { callWindowVisible(it) && !it.unansweredRingEnded() }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
 
     val windowKey: StateFlow<String?> =
         viewModel.uiState.map { it.callId }.stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, null)
@@ -88,18 +98,31 @@ class CallWindowModel(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val trayItems: StateFlow<List<CallTrayItem>> =
-        viewModel.uiState.flatMapLatest { ui ->
-            if (!ui.inProgress) return@flatMapLatest flowOf(emptyList())
-            flow {
-                val peer = ui.peer
-                val name = peer?.let { runCatching { displayName(OdinId(it)) }.getOrNull()?.takeIf(String::isNotBlank) ?: it }.orEmpty()
-                while (true) {
-                    emit(callTrayItems(ui, name, callWindowElapsed(ui, Clock.System.now().toEpochMilliseconds())))
-                    if (ui.connectedAtMs == null) awaitCancellation()
-                    delay(1_000)
+        viewModel.uiState.map { TrayKey(it.inProgress, it.peer, it.connectedAtMs, it.muted) }
+            .distinctUntilChanged()
+            .flatMapLatest { key ->
+                if (!key.inProgress) return@flatMapLatest flowOf(emptyList())
+                flow {
+                    val name = key.peer?.let { lookupName(it) }.orEmpty()
+                    while (true) {
+                        val ui = viewModel.uiState.value
+                        emit(callTrayItems(ui, name, callWindowElapsed(ui, Clock.System.now().toEpochMilliseconds())))
+                        if (key.connectedAtMs == null) awaitCancellation()
+                        delay(1_000)
+                    }
                 }
-            }
-        }.distinctUntilChanged().stateIn(viewModel.viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+            }.distinctUntilChanged().stateIn(viewModel.viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+
+    private data class TrayKey(val inProgress: Boolean, val peer: String?, val connectedAtMs: Long?, val muted: Boolean)
+
+    private suspend fun lookupName(peer: String): String =
+        try {
+            displayName(OdinId(peer))?.takeIf(String::isNotBlank)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: peer
 
     val shortcutGate = ShortcutGate()
 

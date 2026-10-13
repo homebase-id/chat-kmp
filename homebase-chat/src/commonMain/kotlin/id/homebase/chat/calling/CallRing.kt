@@ -61,7 +61,7 @@ fun CallRingContent(
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            avatar(56.dp)
+            avatar(48.dp)
             Column(Modifier.weight(1f)) {
                 Text(name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -71,27 +71,26 @@ fun CallRingContent(
                 )
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val contentPadding = RingButtonPadding
-            Button(
-                onClick = onDecline,
-                modifier = Modifier.weight(1f),
-                contentPadding = contentPadding,
-                colors = ButtonDefaults.buttonColors(containerColor = endCallContainer(), contentColor = endCallContent()),
-            ) { ButtonLabel(stringResource(MR.string.call_decline)) }
-            FilledTonalButton(onClick = onAcceptVoice, modifier = Modifier.weight(1f), contentPadding = contentPadding) {
-                ButtonLabel(stringResource(MR.string.call_ring_accept_voice))
-            }
-            if (video) {
-                Button(onClick = onAcceptVideo, modifier = Modifier.weight(1f), contentPadding = contentPadding) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onAcceptVoice, modifier = Modifier.weight(1f), contentPadding = RingButtonPadding) {
+                    ButtonLabel(stringResource(MR.string.call_ring_accept_voice))
+                }
+                Button(onClick = onAcceptVideo, modifier = Modifier.weight(1f), contentPadding = RingButtonPadding) {
                     ButtonLabel(stringResource(MR.string.call_ring_accept_video))
                 }
             }
+            Button(
+                onClick = onDecline,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = RingButtonPadding,
+                colors = ButtonDefaults.buttonColors(containerColor = endCallContainer(), contentColor = endCallContent()),
+            ) { ButtonLabel(stringResource(MR.string.call_decline)) }
         }
     }
 }
 
-private val RingButtonPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+private val RingButtonPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
 
 @Composable
 private fun ButtonLabel(text: String) = Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
