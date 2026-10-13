@@ -84,12 +84,15 @@ class CallPushAndRestartTest {
     }
 
     @Test
-    fun onlyTheOriginalCallerDrivesIceRestart() {
+    fun theCalleeAsksTheOriginalCallerToRestartInsteadOfOffering() {
         val incoming = step(CallState(), fromSam(CallSignal.Offer(c, "o", false))).state
         val accepted = step(incoming, CallEvent.UserAccept).state
         val connected = step(accepted, CallEvent.Media(MediaEvent.Connected)).state
         val dropped = step(connected, CallEvent.Media(MediaEvent.Disconnected))
-        assertEquals(listOf<CallEffect>(CallEffect.StartTimer(CallTimer.Reconnect, c)), dropped.effects)
+        assertEquals(
+            listOf(CallEffect.StartTimer(CallTimer.Reconnect, c), CallEffect.SendSignal(sam, CallSignal.RestartRequest(c))),
+            dropped.effects,
+        )
     }
 
     @Test

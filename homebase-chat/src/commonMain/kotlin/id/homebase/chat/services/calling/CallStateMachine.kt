@@ -160,6 +160,12 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             is CallSignal.Restart ->
                 if (s.phase.isInCall) CallTransition(s, listOf(CallEffect.AnswerRestart(sig.sdp))) else CallTransition(s)
             is CallSignal.RestartAnswer -> restartAnswer(s, sig.sdp)
+            is CallSignal.RestartRequest ->
+                if (s.direction == CallDirection.Outgoing && (s.phase == CallPhase.Connected || s.phase == CallPhase.Reconnecting)) {
+                    CallTransition(s.restarting(), listOf(CallEffect.RestartIce))
+                } else {
+                    CallTransition(s)
+                }
             is CallSignal.Ice -> CallTransition(s, listOf(CallEffect.AddIce(sig.candidate, sig.sdpMid, sig.sdpMLineIndex)))
             is CallSignal.Hangup -> when (s.phase) {
                 CallPhase.Outgoing -> end(
@@ -339,9 +345,10 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
         }
     }
 
-    // Only the original caller drives the renegotiation, so the two sides never offer at once.
+    // Only the original caller drives the renegotiation, so the two sides never offer at once; the callee asks it to.
     private fun restartIce(s: CallState): List<CallEffect> =
-        if (s.direction == CallDirection.Outgoing) listOf(CallEffect.RestartIce) else emptyList()
+        if (s.direction == CallDirection.Outgoing) listOf(CallEffect.RestartIce)
+        else listOf(CallEffect.SendSignal(s.peer!!, CallSignal.RestartRequest(s.callId!!)))
 
     // A restart offer set locally but never answered leaves the caller on ICE credentials the peer
     // has not seen: the caller's link can report up while the peer's checks are rejected.

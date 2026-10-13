@@ -750,5 +750,26 @@ class CallControllerTest {
         assertEquals(CallPhase.Connected, a.phase)
         assertEquals(CallPhase.Connected, winner.phase)
     }
+
+    @Test
+    fun aCalleeThatLosesTheLinkAsksTheCallerToRestartIce() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        b.engines.single().simulateDrop()
+        runCurrent()
+
+        assertEquals(CallPhase.Reconnecting, b.phase)
+        assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartRequest })
+        assertTrue(net.sent.any { it.from == frodo && it.signal is CallSignal.Restart })
+        assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
+        assertEquals(1, a.engines.single().restarts)
+        b.engines.single().simulateRecover()
+        runCurrent()
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, b.phase)
+    }
 }
 

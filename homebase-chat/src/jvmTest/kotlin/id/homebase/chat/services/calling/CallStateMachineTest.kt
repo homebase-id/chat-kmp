@@ -543,5 +543,25 @@ class CallStateMachineTest {
         assertEquals(CallTransition(answered), device.step(answered, fromSam(CallSignal.Hangup(c, HangupReason.AnsweredElsewhere, chosen = "f1"))))
         assertEquals(CallTransition(answered), device.step(answered, fromSam(CallSignal.Hangup(c, HangupReason.AnsweredElsewhere))))
     }
+
+    @Test
+    fun theCalleeAsksForARestartAndTheCallerRestartsOnlyOnceInCall() {
+        val callee = CallStateMachine(frodo)
+        val answered = callee.step(callee.step(idle, fromSam(CallSignal.Offer(c, "sdp", false)), now = 0).state, CallEvent.UserAccept).state
+        val up = callee.step(answered, CallEvent.Media(MediaEvent.Connected)).state
+        val drop = callee.step(up, CallEvent.Media(MediaEvent.Disconnected))
+        assertEquals(CallPhase.Reconnecting, drop.state.phase)
+        assertEquals(
+            listOf(CallEffect.StartTimer(CallTimer.Reconnect, c), CallEffect.SendSignal(sam, CallSignal.RestartRequest(c))),
+            drop.effects,
+        )
+
+        val asked = machine.step(connected, fromSam(CallSignal.RestartRequest(c)))
+        assertEquals(listOf(CallEffect.RestartIce), asked.effects)
+        assertTrue(asked.state.restartPending)
+        assertEquals(CallPhase.Connected, asked.state.phase)
+        listOf(outgoing, connecting, ended).forEach { assertNoOp(it, fromSam(CallSignal.RestartRequest(c))) }
+        assertNoOp(drop.state, fromSam(CallSignal.RestartRequest(c)))
+    }
 }
 
