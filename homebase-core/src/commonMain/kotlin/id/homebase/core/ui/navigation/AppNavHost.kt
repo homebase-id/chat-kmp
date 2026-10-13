@@ -183,7 +183,6 @@ import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
-import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
 import id.homebase.core.ui.screens.settings.SettingsPaneHost
@@ -1653,7 +1652,7 @@ fun AppNavHost(
                                             navController.navigate(Route.ContactBookSettings)
                                         },
                                         onProfileEdit = {
-                                            navController.navigate(Route.ProfileEdit)
+                                            navController.navigate(Route.ProfileCardEditor())
                                         },
                                         onProfileAvatarEdit = {
                                             navController.navigate(Route.ProfileAvatarEdit)
@@ -1666,28 +1665,6 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ProfileEdit> { entry ->
-                            if (isAuthenticated) {
-                                if (profileCardEnabled) {
-                                    StartCardHostWhenSettled(
-                                        koinViewModel(viewModelStoreOwner = rememberCardHostOwner(navController, entry)),
-                                    )
-                                }
-                                ProfileEditScreen(
-                                    viewModel = koinViewModel(),
-                                    avatarViewModel = koinViewModel(),
-                                    onBack = { navController.popBackStack() },
-                                    onNavigateToCropper = { requestId ->
-                                        navController.navigate(
-                                            Route.Crop(requestId.toString(), lockedAspect = "square")
-                                        )
-                                    },
-                                    onOpenCard = { navController.navigate(Route.ProfileCard) }
-                                        .takeIf { profileCardEnabled },
-                                )
-                            }
-                        }
-
                         composable<Route.ProfileCard> { entry ->
                             if (isAuthenticated) {
                                 ProfileCardScreen(
@@ -1695,7 +1672,8 @@ fun AppNavHost(
                                         viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                     ),
                                     onBack = { navController.popBackStack() },
-                                    onEdit = { navController.navigate(Route.ProfileCardEditor) },
+                                    onEdit = { navController.navigate(Route.ProfileCardEditor()) },
+                                    onChangeDesign = { navController.navigate(Route.ProfileCardEditor(design = true)) },
                                 )
                             }
                         }
@@ -1706,8 +1684,13 @@ fun AppNavHost(
                                     viewModel = koinViewModel(
                                         viewModelStoreOwner = rememberCardHostOwner(navController, entry),
                                     ),
+                                    avatarViewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
-                                    onEditProfile = { navController.navigate(Route.ProfileEdit) },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(Route.Crop(requestId.toString(), lockedAspect = "square"))
+                                    },
+                                    cardsEnabled = profileCardEnabled,
+                                    openDesign = entry.toRoute<Route.ProfileCardEditor>().design,
                                 )
                             }
                         }
@@ -2346,13 +2329,12 @@ private fun NavHostController.navigateToIdentity(odinId: String) {
     )
 }
 
-// The card host lives with the Settings entry (else ProfileEdit's), so it is warm before the card opens and survives it.
+// The card host lives with the Settings entry, so it is warm before the card opens and survives it.
 @Composable
 private fun rememberCardHostOwner(navController: NavHostController, entry: NavBackStackEntry): ViewModelStoreOwner =
     remember(entry) {
         val backStack = navController.currentBackStack.value
         backStack.lastOrNull { it.destination.hasRoute(Route.Settings::class) }
-            ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileEdit::class) }
             ?: backStack.lastOrNull { it.destination.hasRoute(Route.ProfileCard::class) }
             ?: entry
     }
