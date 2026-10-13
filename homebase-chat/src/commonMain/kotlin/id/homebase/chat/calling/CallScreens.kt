@@ -5,6 +5,13 @@ package id.homebase.chat.calling
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.zIndex
+import id.homebase.chat.services.calling.CallDirection
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateDpAsState
@@ -356,6 +363,7 @@ private fun CallStage(
     contentInsets: Modifier,
 ) {
     val videoMode = ui.isVideoCall && ui.inProgress
+    val previewFills = ui.previewFillsStage()
     val chrome = LocalCallChrome.current
     val chromeVisible = chrome?.visible ?: true
     Box(
@@ -364,11 +372,23 @@ private fun CallStage(
         ),
     ) {
         if (videoMode) VideoStage(ui, large, avatar, chromeVisible)
-        Box(contentInsets.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        AnimatedVisibility(previewFills, Modifier.zIndex(ChromeLayer), enter = fadeIn(), exit = fadeOut()) {
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0f to MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                        0.3f to Color.Transparent,
+                        0.6f to Color.Transparent,
+                        1f to MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    ),
+                ),
+            )
+        }
+        Box(contentInsets.fillMaxSize().zIndex(ChromeLayer), contentAlignment = Alignment.TopCenter) {
             Box(Modifier.then(if (large || LocalCompactHeight.current) Modifier else Modifier.widthIn(max = ContentMaxWidth)).fillMaxSize()) {
                 when (val phase = ui.phase) {
                     CallPhase.Incoming -> IncomingLayout(ui, large, peerName, avatar, actions)
-                    CallPhase.Outgoing -> OutgoingLayout(ui, large, peerName, avatar, actions)
+                    CallPhase.Outgoing -> OutgoingLayout(ui, large, previewFills, peerName, avatar, actions)
                     is CallPhase.Ended ->
                         if (phase.reason is CallEndReason.Failed) FailedLayout(phase.reason.reason, large, peerName, avatar, actions)
                         else EndedLayout(ui, phase.reason, large, peerName, avatar, actions)
@@ -377,9 +397,16 @@ private fun CallStage(
                 }
             }
         }
-        if (videoMode) ui.videos.local?.let { LocalPreview(it, ui.localVideo, large, chromeVisible) }
+        if (videoMode || previewFills) ui.videos.local?.let { LocalPreview(it, ui.localVideo, large, chromeVisible, previewFills) }
     }
 }
+
+private const val ChromeLayer = 1f
+
+/** Our own camera holds the stage until the call connects, then shrinks into the self-view. */
+internal fun CallUiState.previewFillsStage(): Boolean =
+    direction == CallDirection.Outgoing && localVideo && videos.local != null &&
+        (phase == CallPhase.Outgoing || phase == CallPhase.Connecting)
 
 @Composable
 private fun CallBackdrop() {
@@ -556,18 +583,43 @@ private fun BoxScope.IncomingLayout(
 private fun BoxScope.OutgoingLayout(
     ui: CallUiState,
     large: Boolean,
+    overPreview: Boolean,
     peerName: String,
     avatar: @Composable (Dp) -> Unit,
     actions: CallScreenActions,
 ) {
-    PeerHeader(
-        name = peerName,
-        status = stringResource(if (ui.peerRinging) MR.string.call_status_ringing else MR.string.call_status_calling),
-        avatar = avatar,
-        halo = HaloMode.Ringing,
-        large = large,
-        modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (LocalCompactHeight.current) 104.dp else 190.dp),
-    )
+    val status = stringResource(if (ui.peerRinging) MR.string.call_status_ringing else MR.string.call_status_calling)
+    if (overPreview) {
+        // The face is in the middle of our own camera, so the peer moves up out of its way.
+        Column(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 32.dp).padding(top = if (large) 40.dp else 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (!LocalCompactHeight.current) {
+                avatar(if (large) 72.dp else 56.dp)
+                Spacer(Modifier.height(12.dp))
+            }
+            Text(
+                peerName,
+                style = MaterialTheme.typography.headlineMediumEmphasized.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(status, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        }
+    } else {
+        PeerHeader(
+            name = peerName,
+            status = status,
+            avatar = avatar,
+            halo = HaloMode.Ringing,
+            large = large,
+            modifier = Modifier.align(Alignment.Center).padding(bottom = if (large) 120.dp else if (LocalCompactHeight.current) 104.dp else 190.dp),
+        )
+    }
     ControlDock(ui, large, actions, placing = true, modifier = Modifier.align(Alignment.BottomCenter))
 }
 
@@ -796,18 +848,30 @@ private fun MutedChip(muted: Boolean) {
 }
 
 @Composable
-private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large: Boolean, chromeVisible: Boolean) {
+private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large: Boolean, chromeVisible: Boolean, fillStage: Boolean) {
     val density = LocalDensity.current
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val direction = LocalLayoutDirection.current
+    val rtl = direction == LayoutDirection.Rtl
     val scope = rememberCoroutineScope()
     val springSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Offset>()
-    BoxWithConstraints(Modifier.matchParentSize().then(if (large) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))) {
+    val fill = remember { Animatable(if (fillStage) 1f else 0f) }
+    LaunchedEffect(fillStage) { fill.animateTo(if (fillStage) 1f else 0f, tween(PreviewShrinkMs, easing = EmphasizedEasing)) }
+    val filling = fill.value > 0f
+    // Below the chrome while it fills the stage; the tile sits above it.
+    BoxWithConstraints(Modifier.matchParentSize().zIndex(if (filling) ChromeLayer / 2 else ChromeLayer * 2)) {
         val compact = LocalCompactHeight.current
         // A phone on its side captures landscape frames, so the inset turns with it.
         val pipWidth = if (large) 192.dp else if (compact) 156.dp else 108.dp
         val pipHeight = if (large) 132.dp else if (compact) 108.dp else 156.dp
-        val width = with(density) { maxWidth.toPx() }
-        val height = with(density) { maxHeight.toPx() }
+        val insets = if (large) WindowInsets(0) else WindowInsets.safeDrawing
+        val insetStart = (if (rtl) insets.getRight(density, direction) else insets.getLeft(density, direction)).toFloat()
+        val insetTop = insets.getTop(density).toFloat()
+        val insetEnd = (if (rtl) insets.getLeft(density, direction) else insets.getRight(density, direction)).toFloat()
+        val insetBottom = insets.getBottom(density).toFloat()
+        val stageW = with(density) { maxWidth.toPx() }
+        val stageH = with(density) { maxHeight.toPx() }
+        val width = stageW - insetStart - insetEnd
+        val height = stageH - insetTop - insetBottom
         val pipW = with(density) { pipWidth.toPx() }
         val pipH = with(density) { pipHeight.toPx() }
         val reserve = previewReserve(chromeVisible, large, compact)
@@ -823,34 +887,42 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         val shape = RoundedCornerShape(PreviewCorner)
         Surface(
             modifier = Modifier
-                .offset { (anchor.value + drag).round() }
-                .size(pipWidth, pipHeight)
+                .offset { lerp(anchor.value + drag + Offset(insetStart, insetTop), Offset.Zero, fill.value).round() }
+                .layout { measurable, _ ->
+                    val w = (pipW + (stageW - pipW) * fill.value).roundToInt()
+                    val h = (pipH + (stageH - pipH) * fill.value).roundToInt()
+                    val placeable = measurable.measure(Constraints.fixed(w, h))
+                    layout(w, h) { placeable.place(0, 0) }
+                }
                 .semantics { contentDescription = previewDescription }
-                .pointerInput(width, height, rtl, compact) {
-                    detectDragGestures(
-                        onDrag = { change, amount ->
-                            change.consume()
-                            drag += if (rtl) Offset(-amount.x, amount.y) else amount
-                        },
-                        onDragEnd = {
-                            val landed = anchor.value + drag
-                            val center = landed + Offset(pipW / 2, pipH / 2)
-                            corner = corners.indices.minBy { (corners[it] + Offset(pipW / 2, pipH / 2) - center).getDistance() }
-                            drag = Offset.Zero
-                            val target = corners[corner]
-                            scope.launch {
-                                anchor.snapTo(landed)
-                                anchor.animateTo(target, springSpec)
-                            }
-                        },
-                    )
-                },
+                .then(
+                    if (fillStage) Modifier else Modifier.pointerInput(width, height, rtl, compact) {
+                        detectDragGestures(
+                            onDrag = { change, amount ->
+                                change.consume()
+                                drag += if (rtl) Offset(-amount.x, amount.y) else amount
+                            },
+                            onDragEnd = {
+                                val landed = anchor.value + drag
+                                val center = landed + Offset(pipW / 2, pipH / 2)
+                                corner = corners.indices.minBy { (corners[it] + Offset(pipW / 2, pipH / 2) - center).getDistance() }
+                                drag = Offset.Zero
+                                val target = corners[corner]
+                                scope.launch {
+                                    anchor.snapTo(landed)
+                                    anchor.animateTo(target, springSpec)
+                                }
+                            },
+                        )
+                    },
+                ),
             shape = shape,
             color = MaterialTheme.colorScheme.surfaceContainer,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            shadowElevation = 8.dp,
+            border = if (filling) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shadowElevation = if (filling) 0.dp else 8.dp,
         ) {
             if (cameraOn) {
+                // The radius stays fixed: on Android a change between zero and non-zero swaps the renderer.
                 CallVideoSurface(handle, Modifier.fillMaxSize().clip(shape), local = true, cornerRadius = PreviewCorner)
             } else {
                 Column(
@@ -865,6 +937,9 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
         }
     }
 }
+
+private const val PreviewShrinkMs = 400
+private val EmphasizedEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 /** [placing] is the outgoing ring: only the controls that matter before the peer answers. */
 @Composable

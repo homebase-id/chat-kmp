@@ -48,6 +48,8 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
@@ -256,7 +258,7 @@ class CallScreenshotTest {
                 assertTrue(r.left >= 0f && r.top >= 0f && r.right <= width && r.bottom <= height, "$name video=$video: $r off screen")
             }
             for (n in names) for (b in buttons) assertTrue(!n.overlaps(b), "$name video=$video: name $n under control $b")
-            for (p in preview) {
+            for (p in preview.filter { it.width < width }) {
                 assertTrue(p.width > p.height, "$name: self-view follows the landscape camera: $p")
                 for (b in buttons) assertTrue(!p.overlaps(b), "$name: self-view $p covers control $b")
             }
@@ -275,6 +277,66 @@ class CallScreenshotTest {
         val buttons = onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
         val endRect = androidx.compose.ui.geometry.Rect(end.left.value, end.top.value, end.right.value, end.bottom.value)
         for (b in buttons) assertTrue(!endRect.overlaps(b), "snapped self-view $endRect covers control $b")
+    }
+
+    @Test
+    fun outgoingVideoFillsTheStageWithOurCameraAndShrinksIntoTheSelfViewOnConnect() {
+        for (size in Size.entries) for (remoteVideo in listOf(true, false)) for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(size.width, size.height) {
+                val ringing = shots.first { it.name == "outgoing" }.state(base(true, size))
+                var state by androidx.compose.runtime.mutableStateOf(ringing)
+                mainClock.autoAdvance = false
+                setContent {
+                    HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
+                        CallScreen(ui = state, peerName = "Samwise Gamgee", avatar = {}, actions = Recorder().actions())
+                    }
+                }
+                mainClock.advanceTimeBy(900)
+                val tag = "${if (dark) "dark" else "light"}-${if (remoteVideo) "video" else "peercamoff"}-${size.name.lowercase()}"
+                val full = previewBounds()
+                if (size == Size.Phone) {
+                    assertEquals(0f, full.left.value, 1f)
+                    assertEquals(0f, full.top.value, 1f)
+                    assertEquals(size.width.toFloat(), full.width.value, 1f)
+                    assertEquals(size.height.toFloat(), full.height.value, 1f)
+                } else {
+                    assertTrue(full.width.value > 900f && full.height.value > 600f, "fills the desktop stage: $full")
+                }
+                assertShown("Ringing")
+                assertShown("End call")
+                ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "dialing-fullpreview-$tag.png"))
+
+                state = state.copy(phase = CallPhase.Connecting)
+                mainClock.advanceTimeBy(900)
+                assertEquals(full, previewBounds(), "still fills while connecting")
+
+                state = state.copy(phase = CallPhase.Connected, connectedAtMs = System.currentTimeMillis(), remoteVideo = remoteVideo)
+                mainClock.advanceTimeBy(160)
+                val mid = previewBounds()
+                assertTrue(mid.width < full.width && mid.width.value > 108f, "mid-shrink: $mid")
+                ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "dialing-shrinking-$tag.png"))
+                mainClock.advanceTimeBy(1_000)
+                val tile = previewBounds()
+                assertEquals(if (size == Size.Phone) 108f else 192f, tile.width.value, 1f, "settles into the self-view")
+                ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "dialing-shrunk-$tag.png"))
+            }
+        }
+    }
+
+    @Test
+    fun voiceCallsAndAnsweredVideoCallsKeepTheirLayout() {
+        runDesktopComposeUiTest(390, 844) {
+            show(false, shots.first { it.name == "outgoing" }.state(base(false, Size.Phone)))
+            assertTrue(onAllNodes(hasContentDescription("Your camera preview", substring = true)).fetchSemanticsNodes().isEmpty())
+        }
+        runDesktopComposeUiTest(390, 844) {
+            show(false, shots.first { it.name == "outgoing" }.state(base(true, Size.Phone)).copy(localVideo = false))
+            assertTrue(onAllNodes(hasContentDescription("Your camera preview", substring = true)).fetchSemanticsNodes().isEmpty())
+        }
+        runDesktopComposeUiTest(390, 844) {
+            show(false, shots.first { it.name == "connecting" }.state(base(true, Size.Phone)).copy(direction = CallDirection.Incoming))
+            assertEquals(108f, previewBounds().width.value, 1f, "the callee's camera starts as the self-view")
+        }
     }
 
     private fun androidx.compose.ui.test.ComposeUiTest.clickables() =
