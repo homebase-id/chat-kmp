@@ -1,54 +1,61 @@
 package id.homebase.chat.services.calling
 
+import id.homebase.core.notifications.CallNotificationActions
+import id.homebase.core.notifications.CallNotifier
 import id.homebase.core.notifications.RichNotificationData
-import kotlin.time.Clock
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Desktop ring: a system notification, the window brought to the front, and a repeating sound until the call stops ringing. */
 class DesktopCallRingSink(
     private val scope: CoroutineScope,
-    private val notify: (RichNotificationData) -> Unit,
-    private val bringToFront: () -> Unit,
-    private val ringTone: () -> Unit,
+    private val notifier: CallNotifier,
+    private val focusCallWindow: () -> Unit,
+    private val tone: RingTonePlayer,
     private val incomingCallText: suspend () -> String,
-    private val ringIntervalMs: Long = 2_000,
+    private val acceptLabel: suspend () -> String,
+    private val declineLabel: suspend () -> String,
+    private val onAccept: (callId: String) -> Unit,
+    private val onDecline: (callId: String) -> Unit,
+    private val appInBackground: () -> Boolean = { false },
+    private val missedNotification: suspend (peerId: String, label: String) -> RichNotificationData? = { _, _ -> null },
+    private val showMissed: (RichNotificationData) -> Unit = {},
 ) : CallRingSink {
-    private val tones = mutableMapOf<String, Job>()
+    private val ringing = ConcurrentHashMap.newKeySet<String>()
 
     override fun ring(callId: String, label: String) {
-        val first = callId !in tones
-        scope.launch { notify(notification(callId, label, incomingCallText())) }
-        if (!first) return
-        bringToFront()
-        tones[callId] = scope.launch {
-            while (true) {
-                ringTone()
-                delay(ringIntervalMs)
-            }
+        val first = ringing.add(callId)
+        scope.launch {
+            val body = incomingCallText()
+            if (callId !in ringing) return@launch
+            notifier.showIncoming(
+                callId, label, body,
+                CallNotificationActions(
+                    acceptLabel = acceptLabel(),
+                    declineLabel = declineLabel(),
+                    onAccept = { onAccept(callId) },
+                    onDecline = { onDecline(callId) },
+                    onOpen = focusCallWindow,
+                ),
+            )
         }
+        if (!first) return
+        focusCallWindow()
+        tone.start()
     }
 
     override fun stopRinging(callId: String) {
-        tones.remove(callId)?.cancel()
+        if (!ringing.remove(callId)) return
+        tone.stop()
+        notifier.retract(callId)
+    }
+
+    override fun missed(peerId: String, label: String) {
+        if (!appInBackground()) return
+        scope.launch { missedNotification(peerId, label)?.let(showMissed) }
     }
 
     override fun connected(callId: String) = Unit
     override fun ended(callId: String) = stopRinging(callId)
     override fun setLive(live: Boolean, video: Boolean, callId: String?) = Unit
-
-    private fun notification(callId: String, label: String, body: String) = RichNotificationData(
-        notificationId = callId.hashCode(),
-        channelId = "messages",
-        conversationId = null,
-        title = label,
-        body = body,
-        senderName = label,
-        senderId = "",
-        senderImageBytes = null,
-        timestamp = Clock.System.now().toEpochMilliseconds(),
-        payloadData = emptyMap(),
-    )
 }

@@ -8,7 +8,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.DpSize
+import id.homebase.core.calling.DesktopRingWindowSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.WindowPlacement
@@ -96,14 +100,60 @@ private fun ApplicationScope.CallWindowFrame(call: DesktopCallWindow, config: De
         call.setMiniWindowOpen(mini != null)
         onDispose { call.setMiniWindowOpen(false) }
     }
+    val ringing by call.ringing.collectAsStateWithLifecycle()
+    if (ringing) {
+        RingCallWindow(call, theme)
+        return
+    }
     key(mini) {
         if (mini != null) MiniCallWindow(call, config, theme, mini, modes::exitMini)
         else FullCallWindow(call, config, theme, video, full, modes::enterMini)
     }
 }
 
+private val RING_WINDOW_MARGIN = 16.dp
+
+internal fun ringWindowPosition(area: DpRect, size: DpSize, margin: Dp = RING_WINDOW_MARGIN): WindowPosition.Absolute =
+    WindowPosition.Absolute(area.right - size.width - margin, area.top + margin)
+
+@Composable
+private fun ApplicationScope.RingCallWindow(call: DesktopCallWindow, theme: ThemeState) {
+    val size = DesktopRingWindowSize
+    val state = rememberWindowState(position = remember { ringWindowPosition(activeScreenArea(), size) }, size = size)
+    Window(
+        onCloseRequest = call::requestClose,
+        state = state,
+        title = call.title(),
+        icon = painterResource(MR.drawable.homebase_icon_round),
+        undecorated = true,
+        resizable = false,
+        alwaysOnTop = true,
+    ) {
+        DisposableEffect(window) {
+            DesktopAppFocusManager.registerWindowProvider(WindowKeys.CALL) { window }
+            onDispose { DesktopAppFocusManager.unregisterWindowProvider(WindowKeys.CALL) }
+        }
+        CallWindowTheme(theme) { call.RingContent(Modifier) }
+    }
+}
+
+private fun activeScreenArea(): DpRect {
+    val env = GraphicsEnvironment.getLocalGraphicsEnvironment()
+    val pointer = MouseInfo.getPointerInfo()?.location
+    val config = env.screenDevices.map { it.defaultConfiguration }.firstOrNull { pointer != null && it.bounds.contains(pointer) }
+        ?: env.defaultScreenDevice.defaultConfiguration
+    val bounds = config.bounds
+    val insets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(config)
+    return DpRect(
+        (bounds.x + insets.left).dp, (bounds.y + insets.top).dp,
+        (bounds.x + bounds.width - insets.right).dp, (bounds.y + bounds.height - insets.bottom).dp,
+    )
+}
+
 @Composable
 private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: DesktopPreferences, close: () -> Unit, toggleMini: () -> Unit) {
+    val trayItems by call.trayItems.collectAsStateWithLifecycle()
+    val status = rememberCallMenuEntries(trayItems).firstOrNull { it.action == CallMenuAction.OpenCall }
     val live by call.live.collectAsStateWithLifecycle()
     val muted by call.muted.collectAsStateWithLifecycle()
     val canToggleCamera by call.canToggleCamera.collectAsStateWithLifecycle()
@@ -117,6 +167,10 @@ private fun FrameWindowScope.CallMenuBar(call: DesktopCallWindow, config: Deskto
             )
         }
         Menu(stringResource(MR.string.desktop_menu_call)) {
+            if (status != null) {
+                Item(text = status.label, enabled = false, onClick = {})
+                Separator()
+            }
             Item(
                 text = stringResource(if (muted) MR.string.desktop_menu_call_unmute else MR.string.desktop_menu_call_mute),
                 shortcut = KeyShortcut(Key.D, ctrl = !isMacOs, meta = isMacOs),

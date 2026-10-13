@@ -46,7 +46,7 @@ actual class RichNotificationDisplayer actual constructor() {
     }
 }
 
-private fun isMacOsRunningUnbundled(): Boolean {
+internal fun isMacOsRunningUnbundled(): Boolean {
     val osName = System.getProperty("os.name") ?: ""
     if (!osName.contains("Mac", ignoreCase = true)) return false
     // Packaged HomebaseChat / HomebaseChatDev launchers put the JRE inside the .app

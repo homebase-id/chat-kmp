@@ -287,12 +287,22 @@ fun main() {
             }
         }
 
+        val callTrayItems by callWindow.trayItems.collectAsState()
+        val callEntries = rememberCallMenuEntries(callTrayItems)
+        CallDockMenu(callEntries, callWindow::perform)
+
         HomebaseTray(
             tooltip = appName,
+            callActive = callEntries.isNotEmpty(),
             primaryAction = {
                 isWindowVisible = !isWindowVisible
             },
         ) {
+            callEntries.forEach { entry ->
+                Item(label = entry.label) { callWindow.perform(entry.action) }
+            }
+            if (callEntries.isNotEmpty()) Divider()
+
             Item(label = showWindowLabel) {
                 isWindowVisible = true
             }

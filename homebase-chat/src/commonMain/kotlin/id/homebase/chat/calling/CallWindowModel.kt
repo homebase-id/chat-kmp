@@ -30,7 +30,13 @@ import id.homebase.resources.call_pill_text
 import id.homebase.resources.call_window_title
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +86,21 @@ class CallWindowModel(
     val canToggleCamera: StateFlow<Boolean> =
         viewModel.uiState.map(::callCameraToggleAvailable).stateIn(viewModel.viewModelScope, SharingStarted.Eagerly, false)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val trayItems: StateFlow<List<CallTrayItem>> =
+        viewModel.uiState.flatMapLatest { ui ->
+            if (!ui.inProgress) return@flatMapLatest flowOf(emptyList())
+            flow {
+                val peer = ui.peer
+                val name = peer?.let { runCatching { displayName(OdinId(it)) }.getOrNull()?.takeIf(String::isNotBlank) ?: it }.orEmpty()
+                while (true) {
+                    emit(callTrayItems(ui, name, callWindowElapsed(ui, Clock.System.now().toEpochMilliseconds())))
+                    if (ui.connectedAtMs == null) awaitCancellation()
+                    delay(1_000)
+                }
+            }
+        }.distinctUntilChanged().stateIn(viewModel.viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+
     val shortcutGate = ShortcutGate()
 
     val ringing: StateFlow<Boolean> =
@@ -91,6 +112,12 @@ class CallWindowModel(
     fun peerName(odinId: String?): String = if (odinId == null) "" else rememberPeerName(odinId, displayName)
 
     fun requestClose() = viewModel.requestClose()
+
+    fun acceptVoice() = viewModel.accept(withVideo = false)
+
+    fun acceptVideo() = viewModel.accept(withVideo = true)
+
+    fun decline() = viewModel.decline()
 
     fun toggleMute() = viewModel.toggleMute()
 
