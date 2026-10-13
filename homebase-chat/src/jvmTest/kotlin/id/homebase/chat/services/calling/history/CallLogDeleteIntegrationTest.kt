@@ -93,7 +93,6 @@ class CallLogDeleteIntegrationTest {
                 conversations = f.participantLookup,
                 preferences = CallsPreferences(f.dbm),
                 scope = backgroundScope,
-                nowMs = { atMs + 1_000_000 },
                 pageSize = 100,
             )
             history.refresh()

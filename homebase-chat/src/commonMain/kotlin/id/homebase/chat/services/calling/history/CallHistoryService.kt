@@ -41,7 +41,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -79,7 +78,6 @@ class CallHistoryService(
     private val preferences: CallsPreferences,
     private val scope: CoroutineScope,
     conversationsReady: Flow<Boolean> = emptyFlow(),
-    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val pageSize: Int = PAGE_SIZE,
 ) : CallHistorySource {
     private val chatDrive = chatTargetDrive.alias
@@ -178,8 +176,9 @@ class CallHistoryService(
     }
 
     override suspend fun markSeen() {
-        val newestMissed = entries.value.filter { it.missed }.maxOfOrNull { it.at.toEpochMilliseconds() } ?: 0L
-        preferences.setLastSeenMissedAtMs(maxOf(nowMs(), newestMissed))
+        // Newest seen, not now: a missed call that syncs in late (older userDate) must still badge.
+        val newestMissed = entries.value.filter { it.missed }.maxOfOrNull { it.at.toEpochMilliseconds() } ?: return
+        preferences.setLastSeenMissedAtMs(maxOf(preferences.lastSeenMissedAtMs.value, newestMissed))
     }
 
     private class Page(val entries: List<CallHistoryEntry>, val cursor: QueryBatchCursor, val hasMore: Boolean)

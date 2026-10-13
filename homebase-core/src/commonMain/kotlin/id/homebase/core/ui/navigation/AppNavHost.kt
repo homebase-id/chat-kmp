@@ -374,6 +374,8 @@ fun AppNavHost(
     val callsMissedCount by remember(callHistory) { callHistory?.missedCount ?: MutableStateFlow(0) }
         .collectAsStateWithLifecycle()
     val callsBadge = callsAvailable && callsBadgeVisible(callsMissedCount)
+    // Above the NavHost: the picker pops right after starting, and its permission prompt must outlive it.
+    val peerCallStarter = rememberPeerCallStarter()
     val topLevelRoutes = remember(
         callsAvailable,
         callsIconVisible,
@@ -1029,13 +1031,12 @@ fun AppNavHost(
                                         entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
                                     }
                                 }
-                                val callStarter = rememberPeerCallStarter()
                                 val callsScope = rememberCoroutineScope()
                                 CallsScreen(
                                     viewModel = koinViewModel(),
                                     showInNav = callsIconVisible,
                                     onShowInNavChange = { callsScope.launch { callsPreferences.setIconVisible(it) } },
-                                    onStartCall = { peer, video -> callStarter?.start(peer.domainName, video) },
+                                    onStartCall = { peer, video -> peerCallStarter?.start(peer.domainName, video) },
                                     onNewCall = { navController.navigate(Route.NewCall) },
                                     onOpenConversation = { conversationId, messageId ->
                                         navController.selectConversationOnChatList(conversationId, messageId = messageId)
@@ -1403,11 +1404,10 @@ fun AppNavHost(
 
                         composable<Route.NewCall> {
                             if (isAuthenticated) {
-                                val callStarter = rememberPeerCallStarter()
                                 NewCallScreen(
                                     viewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
-                                    onStartCall = { peer, video -> callStarter?.start(peer.domainName, video) },
+                                    onStartCall = { peer, video -> peerCallStarter?.start(peer.domainName, video) },
                                 )
                             }
                         }

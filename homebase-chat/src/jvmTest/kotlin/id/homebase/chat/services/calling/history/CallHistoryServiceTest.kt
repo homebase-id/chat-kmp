@@ -33,7 +33,6 @@ class CallHistoryServiceTest {
     private fun TestScope.service(
         f: ChatMessageSenderServiceTestFixture,
         pageSize: Int = 100,
-        nowMs: () -> Long = { base + 1_000_000 },
     ): CallHistoryService = CallHistoryService(
         credentialsManager = f.credentialsManager,
         dbm = f.dbm,
@@ -41,7 +40,6 @@ class CallHistoryServiceTest {
         conversations = f.conversationLookup,
         preferences = CallsPreferences(f.dbm),
         scope = backgroundScope,
-        nowMs = nowMs,
         pageSize = pageSize,
     ).also { runCurrent() }
 
@@ -253,7 +251,7 @@ class CallHistoryServiceTest {
             seedCall(f, convo, base + 4_000, CallOutcome.Completed)
             seedCall(f, convo, base + 5_000, CallOutcome.Declined)
 
-            val svc = service(f, nowMs = { base + 100_000 })
+            val svc = service(f)
             svc.refresh()
             assertEquals(2, svc.missedCount.first { it == 2 })
 
@@ -272,8 +270,7 @@ class CallHistoryServiceTest {
         ChatMessageSenderServiceTestFixture().use { f ->
             f.build(backgroundScope)
             val convo = f.seedConversation(others = listOf("alice.test"))
-            var now = base + 100_000
-            val svc = service(f, nowMs = { now })
+            val svc = service(f)
             svc.refresh()
             assertFalse(callsBadgeVisible(svc.missedCount.value))
 
@@ -293,7 +290,6 @@ class CallHistoryServiceTest {
             assertEquals(0, svc.missedCount.first { it == 0 })
             assertFalse(callsBadgeVisible(svc.missedCount.value))
 
-            now = base + 300_000
             f.eventBus.emit(BackendEvent.DataEvent.BatchReceived(f.chatDriveId, listOf(
                 header(f, convo, base + 250_000, descriptor(CallOutcome.NoAnswer), "alice.test"),
             )))
@@ -312,7 +308,7 @@ class CallHistoryServiceTest {
             val doomedFile = Uuid.random()
             val doomed = Uuid.random()
             seed(f, header(f, convo, base + 2_000, descriptor(CallOutcome.Completed), "alice.test", doomed, fileId = doomedFile))
-            val svc = service(f, nowMs = { base + 100_000 })
+            val svc = service(f)
             svc.refresh()
             assertEquals(2, svc.entries.value.size)
             assertEquals(0, svc.missedCount.value)
@@ -323,6 +319,24 @@ class CallHistoryServiceTest {
             f.eventBus.emit(BackendEvent.DriveEvent.Stopped(f.chatDriveId, 2, BackendEvent.DriveResult.Completed))
 
             assertEquals(listOf(missed, kept), svc.entries.first { l -> l.any { it.messageId == missed } }.map { it.messageId })
+            assertEquals(1, svc.missedCount.first { it == 1 })
+        }
+    }
+
+    @Test
+    fun missedCallSyncedLateAfterMarkSeen_stillBadges() = runTest {
+        ChatMessageSenderServiceTestFixture().use { f ->
+            f.build(backgroundScope)
+            val convo = f.seedConversation(others = listOf("alice.test"))
+            seedCall(f, convo, base + 1_000, CallOutcome.NoAnswer)
+            val svc = service(f)
+            svc.refresh()
+            svc.markSeen()
+            assertEquals(0, svc.missedCount.first { it == 0 })
+
+            f.eventBus.emit(BackendEvent.DataEvent.BatchReceived(f.chatDriveId, listOf(
+                header(f, convo, base + 2_000, descriptor(CallOutcome.NoAnswer), "alice.test"),
+            )))
             assertEquals(1, svc.missedCount.first { it == 1 })
         }
     }

@@ -18,6 +18,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -71,12 +72,13 @@ class NewCallViewModelTest {
         val vm = vm()
         assertEquals(listOf("Alice", "Bob"), vm.uiState.value.groups.flatMap { g -> g.rows.map { it.contact.name } })
         assertEquals(listOf(true, false), vm.uiState.value.groups.flatMap { g -> g.rows.map { it.connected } })
+        // Another Compose test in this JVM may deliver the snapshot apply on its own thread, so wait for it.
         vm.searchTextState.setTextAndPlaceCursorAtEnd("ali")
         Snapshot.sendApplyNotifications()
-        assertEquals(listOf("Alice"), vm.uiState.value.groups.flatMap { g -> g.rows.map { it.contact.name } })
+        vm.uiState.first { s -> s.groups.flatMap { g -> g.rows.map { it.contact.name } } == listOf("Alice") }
         vm.searchTextState.setTextAndPlaceCursorAtEnd("owner")
         Snapshot.sendApplyNotifications()
-        assertEquals(emptyList(), vm.uiState.value.groups)
+        vm.uiState.first { it.groups.isEmpty() }
         vm.viewModelScope.cancel()
     }
 
