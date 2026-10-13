@@ -87,6 +87,7 @@ import id.homebase.resources.call_lab_scenarios
 import id.homebase.resources.call_lab_screens
 import id.homebase.resources.call_lab_bubbles
 import id.homebase.chat.conversationlist.MessageClusterPosition
+import id.homebase.chat.conversationlist.clusterPosition
 import id.homebase.chat.widget.MessageTimestampFooter
 import id.homebase.chat.widget.bottomSpacing
 import id.homebase.chat.widget.messageBubbleShape
@@ -297,14 +298,7 @@ private fun LabCallBubbles() {
 
 /** Same run rule as the chat list's clustering, for galleries that have no timestamps to compare. */
 internal fun clusterPositions(owners: List<Boolean>): List<MessageClusterPosition> = owners.mapIndexed { i, own ->
-    val prev = owners.getOrNull(i - 1) == own
-    val next = owners.getOrNull(i + 1) == own
-    when {
-        prev && next -> MessageClusterPosition.MIDDLE
-        prev -> MessageClusterPosition.END
-        next -> MessageClusterPosition.START
-        else -> MessageClusterPosition.ALONE
-    }
+    clusterPosition(sameAsPrev = owners.getOrNull(i - 1) == own, sameAsNext = owners.getOrNull(i + 1) == own)
 }
 
 @Composable

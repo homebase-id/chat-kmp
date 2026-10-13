@@ -29,13 +29,13 @@ internal fun computeClusterPositions(
             item.message.sender == next.message.sender &&
             (next.message.userDate - item.message.userDate) < CLUSTER_TIME_WINDOW
 
-        val position = when {
-            sameAsPrev && sameAsNext -> MessageClusterPosition.MIDDLE
-            sameAsPrev -> MessageClusterPosition.END
-            sameAsNext -> MessageClusterPosition.START
-            else -> MessageClusterPosition.ALONE
-        }
-
-        item.copy(clusterPosition = position)
+        item.copy(clusterPosition = clusterPosition(sameAsPrev, sameAsNext))
     }
+}
+
+internal fun clusterPosition(sameAsPrev: Boolean, sameAsNext: Boolean): MessageClusterPosition = when {
+    sameAsPrev && sameAsNext -> MessageClusterPosition.MIDDLE
+    sameAsPrev -> MessageClusterPosition.END
+    sameAsNext -> MessageClusterPosition.START
+    else -> MessageClusterPosition.ALONE
 }
