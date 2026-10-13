@@ -97,10 +97,7 @@ fun FilesyncOnboardingScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
             TextButton(
-                onClick = {
-                    viewModel.onAction(FilesyncUiAction.DismissOnboardingClicked)
-                    onDismiss()
-                },
+                onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(MR.string.filesync_onboarding_dismiss))

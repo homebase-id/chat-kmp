@@ -41,7 +41,6 @@ data class FilesyncUiState(
 
 sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
-    data object DismissOnboardingClicked : FilesyncUiAction
     data object RetryCheck : FilesyncUiAction
     data object Refresh : FilesyncUiAction
     data object NavigateUp : FilesyncUiAction

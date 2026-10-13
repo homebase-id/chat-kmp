@@ -1307,7 +1307,6 @@ val appModule = module {
             uploadQueue = get(),
             editor = get(),
             extendPermissionViewModel = get(FilesyncPermissionQualifier),
-            filesyncPreferences = get(),
         )
     }
     viewModel { FilesyncTrashViewModel(get(), get()) }

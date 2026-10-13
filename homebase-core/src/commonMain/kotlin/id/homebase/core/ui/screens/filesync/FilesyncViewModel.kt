@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
-import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -32,7 +31,6 @@ class FilesyncViewModel(
     private val uploadQueue: FilesyncUploadQueue,
     private val editor: FilesyncEditor,
     val extendPermissionViewModel: ExtendPermissionViewModel,
-    private val filesyncPreferences: FilesyncPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FilesyncUiState(path = listOf(FilesyncCrumb(FilesyncProtocol.RootNodeId, null))))
@@ -52,9 +50,6 @@ class FilesyncViewModel(
         send = _events::send,
     )
 
-    // Not cleared by the dialog closing: its confirm button dismisses it before the grant arrives.
-    private var setupRequested = false
-
     init {
         viewModelScope.launch {
             combine(
@@ -65,8 +60,6 @@ class FilesyncViewModel(
                     val wasInstalled = _uiState.value.installed == true
                     _uiState.update { it.copy(installed = installed) }
                     if (installed == true && !wasInstalled) {
-                        if (setupRequested) filesyncPreferences.setIconVisible(true)
-                        setupRequested = false
                         _uiState.update { it.copy(setupInitiated = false) }
                         loadCurrentFolder()
                     }
@@ -103,12 +96,9 @@ class FilesyncViewModel(
     fun onAction(action: FilesyncUiAction) {
         when (action) {
             FilesyncUiAction.SetupClicked -> {
-                setupRequested = true
                 _uiState.update { it.copy(setupInitiated = true) }
                 extendPermissionViewModel.recheckPermissions()
             }
-
-            FilesyncUiAction.DismissOnboardingClicked -> viewModelScope.launch { filesyncPreferences.setIconVisible(false) }
 
             FilesyncUiAction.RetryCheck -> extendPermissionViewModel.recheckPermissions()
 
