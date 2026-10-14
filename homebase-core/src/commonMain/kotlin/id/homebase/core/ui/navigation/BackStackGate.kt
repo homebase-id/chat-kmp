@@ -1,5 +1,8 @@
 package id.homebase.core.ui.navigation
 
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
@@ -19,3 +22,7 @@ import kotlinx.coroutines.flow.first
  */
 suspend fun <T> Flow<List<T>>.firstContaining(predicate: (T) -> Boolean): List<T> =
     first { list -> list.any(predicate) }
+
+// Loading ends with popUpTo(AppLoading, inclusive): anything opened before ChatList is in the stack gets popped.
+suspend fun NavController.awaitChatList(): List<NavBackStackEntry> =
+    currentBackStack.firstContaining { it.destination.hasRoute(Route.ChatList::class) }
