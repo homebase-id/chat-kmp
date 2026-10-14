@@ -390,8 +390,8 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
-    // One CallController per identity behind CallService; platformCallEngineFactory() is null where calling is
-    // unsupported or switched off in Settings (read once, restart to apply), which hides every call entry point. The fake engine/loopback live only in the Call lab.
+    // One CallController per identity behind CallService; a null engineFactory (unsupported platform, or off in
+    // Settings, read once so a restart applies it) hides every call entry point. The fake engine/loopback live only in the Call lab.
     single {
         CallService(
             credentialsManager = get(),
