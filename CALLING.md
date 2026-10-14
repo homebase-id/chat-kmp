@@ -153,8 +153,11 @@ exercises a real ICE restart. It also proves the natives load on the host.
 `SendVideoCap` bounds what a sender puts on the wire: at most 720p30, 300 kbps to 2 Mbps, with MAINTAIN_FRAMERATE
 degradation on webrtc-kmp, so libwebrtc's own adaptations lower resolution and never frame rate (webrtc-java has no
 degradation preference). Android asks Camera2 for 720p; on iOS webrtc-kmp reads the
-camera formats through a freed struct and opens the camera at 4K, so `configureWebRtc` adapts the source output to
-720p instead.
+camera formats through a freed struct and opens the camera at 4K, so on every capture session start (a camera flip
+included) `pinCaptureFormat` re-picks the device format with Telegram's rule (`chooseCaptureFormat`: 8-bit 420v/420f,
+reaching 30 fps, exactly 1280x720 else the smallest covering 720, binned and lowest max fps first) and sets 1/30 frame
+durations; it logs `capture format chosen` and the format again 1 s later. `configureWebRtc`'s 720p output adapter
+stays as the safety net.
 
 - **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame, 108000 a second)
   and each side encodes at the level the peer advertised. 720p30 fits it exactly, so the SDP is left as libwebrtc wrote

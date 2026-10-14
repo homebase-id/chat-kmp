@@ -35,6 +35,7 @@ internal actual fun watchVideoPipeline(): () -> Unit {
                     session.multitaskingCameraAccessEnabled = true
                     session.commitConfiguration()
                 }
+                pinCaptureFormat(session)
                 Logger.i("WebRtcKmp") {
                     "capture session multitaskingSupported=${session.multitaskingCameraAccessSupported} multitaskingEnabled=${session.multitaskingCameraAccessEnabled}"
                 }
