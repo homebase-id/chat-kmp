@@ -3,14 +3,15 @@ package id.homebase.feed.crash
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
-import android.os.Build
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import co.touchlab.kermit.Logger
-import id.homebase.core.crash.CrashReporting
-import kotlin.time.Instant
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
+import id.homebase.core.crash.CrashReporting
+import kotlin.time.Instant
+import kotlinx.io.files.Path
 
 /**
  * Surfaces **native** crashes — NDK signals (SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE) from
@@ -98,8 +99,7 @@ object NativeCrashRecovery {
         }.getOrDefault(false)
     }
 
-    // The report also carries the homebase.log tail, i.e. what the app was doing when it died.
-    private fun writeNativeReport(context: Context): kotlinx.io.files.Path? {
+    private fun writeNativeReport(context: Context): Path? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         val exit = context.getSystemService(ActivityManager::class.java)
             .getHistoricalProcessExitReasons(context.packageName, 0, 5)
