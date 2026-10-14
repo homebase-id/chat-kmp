@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import CallKit
 import ComposeApp
@@ -324,8 +325,9 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
                 self?.log("pip remote first frame size=\(size)")
                 self?.content?.preferredContentSize = size
             }
+            view.onFirstRenderedFrame = { [weak self] ms in self?.log("pip renderer got frames remote after \(ms)ms") }
+            insetView?.onFirstRenderedFrame = { [weak self] ms in self?.log("pip renderer got frames self after \(ms)ms") }
             vc.view.addSubview(view)
-            remote.add(view)
             if let insetView {
                 vc.view.addSubview(insetView)
                 insetView.layer.cornerRadius = 8
@@ -384,6 +386,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
         let (remoteView, track, selfView, content) = (remoteView, track, selfView, content)
         let release = {
             if let remoteView { track?.remove(remoteView); remoteView.removeFromSuperview() }
+            selfView?.setRendering(false)
             selfView?.removeFromSuperview()
             _ = content
         }
@@ -403,6 +406,21 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
         self.track = nil
     }
 
+    // Telegram's rule: frames are converted and enqueued only while the window is up, not for the whole call.
+    private func attachRenderers() {
+        guard let remoteView else { return }
+        remoteView.setRendering(true)
+        selfView?.setRendering(true)
+        track?.add(remoteView)
+    }
+
+    private func detachRenderers() {
+        guard let remoteView else { return }
+        track?.remove(remoteView)
+        remoteView.setRendering(false)
+        selfView?.setRendering(false)
+    }
+
     private func startCounters() {
         stopCounters()
         counterTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -420,7 +438,10 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
         log("pip \(name) main=\(Thread.isMainThread) appState=\(UIApplication.shared.applicationState.rawValue) stopping=\(stopping.count)")
     }
 
-    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { event("will start") }
+    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) {
+        event("will start")
+        if c === controller { attachRenderers() }
+    }
     func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) {
         event("started")
         if c === controller { startCounters() }
@@ -431,6 +452,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
     }
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         event("failed to start: \(error)")
+        if c === controller { detachRenderers() }
     }
     func pictureInPictureController(
         _ c: AVPictureInPictureController,
@@ -443,6 +465,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
 
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
         event("stopped")
+        if c === controller { detachRenderers() }
         stopping.filter { $0.controller === c }.forEach { $0.release() }
         stopping.removeAll { $0.controller === c }
     }
@@ -459,7 +482,14 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
     private var enqueued = 0
     private var notReady = 0
     private var flushes = 0
+    private var converted = 0
+    private var renderingSince: CFTimeInterval?
+    private var firstFrameReported = false
+    private var pool: CVPixelBufferPool?
+    private var poolWidth = 0
+    private var poolHeight = 0
     var onSize: (CGSize) -> Void = { _ in }
+    var onFirstRenderedFrame: (Int) -> Void = { _ in }
 
     init(mirrored: Bool) {
         self.mirrored = mirrored
@@ -486,10 +516,21 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
 
     func setSize(_ size: CGSize) {}
 
+    func setRendering(_ on: Bool) {
+        lock.lock()
+        renderingSince = on ? CACurrentMediaTime() : nil
+        firstFrameReported = false
+        lock.unlock()
+    }
+
     func renderFrame(_ frame: RTCVideoFrame?) {
-        guard let frame, let pixelBuffer = Self.pixelBuffer(frame.buffer), let sample = Self.sampleBuffer(pixelBuffer) else { return }
+        lock.lock()
+        let rendering = renderingSince != nil
+        lock.unlock()
+        guard rendering, let frame, let pixelBuffer = pixelBuffer(frame.buffer), let sample = Self.sampleBuffer(pixelBuffer) else { return }
         let renderer = displayLayer.sampleBufferRenderer
         lock.lock()
+        if !(frame.buffer is RTCCVPixelBuffer) { converted += 1 }
         if renderer.status == .failed || renderer.requiresFlushToResumeDecoding {
             flushes += 1
             renderer.flush()
@@ -506,11 +547,17 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
         let first = size == .zero
         rotation = frame.rotation
         size = displaySize
+        var firstRenderedAfterMs: Int?
+        if !firstFrameReported, let renderingSince {
+            firstFrameReported = true
+            firstRenderedAfterMs = Int((CACurrentMediaTime() - renderingSince) * 1000)
+        }
         lock.unlock()
-        if changed {
+        if changed || firstRenderedAfterMs != nil {
             DispatchQueue.main.async { [self] in
-                setNeedsLayout()
-                if first { onSize(displaySize) }
+                if changed { setNeedsLayout() }
+                if changed && first { onSize(displaySize) }
+                if let firstRenderedAfterMs { onFirstRenderedFrame(firstRenderedAfterMs) }
             }
         }
     }
@@ -518,37 +565,52 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
     func drainCounters() -> String {
         let renderer = displayLayer.sampleBufferRenderer
         lock.lock()
-        defer { enqueued = 0; notReady = 0; flushes = 0; lock.unlock() }
-        return "enqueued=\(enqueued) notReady=\(notReady) flushes=\(flushes) status=\(renderer.status.rawValue) "
+        defer { enqueued = 0; notReady = 0; flushes = 0; converted = 0; lock.unlock() }
+        return "enqueued=\(enqueued) notReady=\(notReady) converted=\(converted) flushes=\(flushes) status=\(renderer.status.rawValue) "
             + "flushNeeded=\(renderer.requiresFlushToResumeDecoding) size=\(size) error=\(renderer.error.map { "\($0)" } ?? "nil")"
     }
 
-    private static func pixelBuffer(_ buffer: RTCVideoFrameBuffer) -> CVPixelBuffer? {
+    // Called only from the track's frame thread, so the pool needs no lock.
+    private func pixelBuffer(_ buffer: RTCVideoFrameBuffer) -> CVPixelBuffer? {
         if let cv = buffer as? RTCCVPixelBuffer { return cv.pixelBuffer }
         let i420 = buffer.toI420()
         let width = Int(i420.width), height = Int(i420.height)
+        if pool == nil || width != poolWidth || height != poolHeight {
+            let attrs: [CFString: Any] = [
+                kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                kCVPixelBufferWidthKey: width,
+                kCVPixelBufferHeightKey: height,
+                kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+            ]
+            pool = nil
+            guard CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool) == kCVReturnSuccess else { return nil }
+            poolWidth = width
+            poolHeight = height
+        }
         var out: CVPixelBuffer?
-        let attrs = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
-        guard CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, attrs, &out) == kCVReturnSuccess,
-              let out else { return nil }
+        guard let pool, CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let out else { return nil }
         CVPixelBufferLockBaseAddress(out, [])
         defer { CVPixelBufferUnlockBaseAddress(out, []) }
-        let yDst = CVPixelBufferGetBaseAddressOfPlane(out, 0)!.assumingMemoryBound(to: UInt8.self)
-        let yStride = CVPixelBufferGetBytesPerRowOfPlane(out, 0)
-        for row in 0..<height {
-            memcpy(yDst + row * yStride, i420.dataY + row * Int(i420.strideY), width)
-        }
-        let uvDst = CVPixelBufferGetBaseAddressOfPlane(out, 1)!.assumingMemoryBound(to: UInt8.self)
-        let uvStride = CVPixelBufferGetBytesPerRowOfPlane(out, 1)
-        for row in 0..<Int(i420.chromaHeight) {
-            let u = i420.dataU + row * Int(i420.strideU), v = i420.dataV + row * Int(i420.strideV)
-            let dst = uvDst + row * uvStride
-            for col in 0..<Int(i420.chromaWidth) {
-                dst[2 * col] = u[col]
-                dst[2 * col + 1] = v[col]
+        let chromaWidth = vImagePixelCount(i420.chromaWidth), chromaHeight = vImagePixelCount(i420.chromaHeight)
+        var srcY = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: i420.dataY), height: vImagePixelCount(height),
+                                 width: vImagePixelCount(width), rowBytes: Int(i420.strideY))
+        var dstY = vImage_Buffer(data: CVPixelBufferGetBaseAddressOfPlane(out, 0), height: vImagePixelCount(height),
+                                 width: vImagePixelCount(width), rowBytes: CVPixelBufferGetBytesPerRowOfPlane(out, 0))
+        guard vImageCopyBuffer(&srcY, &dstY, 1, vImage_Flags(kvImageNoFlags)) == kvImageNoError,
+              let uvDst = CVPixelBufferGetBaseAddressOfPlane(out, 1) else { return nil }
+        var srcU = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: i420.dataU), height: chromaHeight, width: chromaWidth,
+                                 rowBytes: Int(i420.strideU))
+        var srcV = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: i420.dataV), height: chromaHeight, width: chromaWidth,
+                                 rowBytes: Int(i420.strideV))
+        let uvRowBytes = CVPixelBufferGetBytesPerRowOfPlane(out, 1)
+        let interleaved = withUnsafePointer(to: &srcU) { u in
+            withUnsafePointer(to: &srcV) { v in
+                var planes: [UnsafePointer<vImage_Buffer>?] = [u, v]
+                var channels: [UnsafeMutableRawPointer?] = [uvDst, uvDst + 1]
+                return vImageConvert_PlanarToChunky8(&planes, &channels, 2, 2, chromaWidth, chromaHeight, uvRowBytes, vImage_Flags(kvImageNoFlags))
             }
         }
-        return out
+        return interleaved == kvImageNoError ? out : nil
     }
 
     private static func sampleBuffer(_ pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
