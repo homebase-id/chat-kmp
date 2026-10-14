@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Surface
 import co.touchlab.kermit.Logger
+import id.homebase.chat.services.calling.decoderNeedsReset
 import java.nio.ByteBuffer
 
 // libwebrtc configures MediaCodec with only a color format, and in its default display-order mode the Qualcomm decoder
@@ -57,7 +58,7 @@ private class ResizeResettingDecoder(codecName: String, type: VideoCodecMimeType
         val callback = callback
         val w = frame.encodedWidth
         val h = frame.encodedHeight
-        if (current != null && callback != null && w * h > 0 && (w != current.width || h != current.height)) {
+        if (current != null && callback != null && decoderNeedsReset(current.width, current.height, w, h)) {
             Logger.i("WebRtcKmp") { "decoder resize ${current.width}x${current.height} -> ${w}x$h: release + init" }
             release().takeIf { it != VideoCodecStatus.OK }?.let { return it }
             initDecode(VideoDecoder.Settings(current.numberOfCores, w, h), callback)

@@ -216,3 +216,7 @@ internal class SendLoadRung {
         return height
     }
 }
+
+/** Whether a frame at [frameWidth]x[frameHeight] needs the decoder re-initialised from [initWidth]x[initHeight]; a 0x0 frame says nothing about size. */
+internal fun decoderNeedsReset(initWidth: Int, initHeight: Int, frameWidth: Int, frameHeight: Int): Boolean =
+    frameWidth > 0 && frameHeight > 0 && (frameWidth != initWidth || frameHeight != initHeight)
