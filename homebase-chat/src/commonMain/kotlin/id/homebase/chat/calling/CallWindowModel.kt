@@ -269,7 +269,8 @@ fun CallChrome(
         if (callWindow != null) OngoingCallBarHost(callWindow, topInset = topInset)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val inset = if (barShown) 0.dp else topInset
-            if (callWindow == null) callHost { content(inset) } else content(inset)
+            if (callWindow == null) callHost { content(inset) }
+            else CompositionLocalProvider(LocalCallPermissionGate provides rememberCallPermissionGate()) { content(inset) }
         }
     }
 }

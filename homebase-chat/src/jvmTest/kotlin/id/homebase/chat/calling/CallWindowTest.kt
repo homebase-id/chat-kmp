@@ -384,6 +384,24 @@ class CallWindowTest {
         }
     }
 
+    // With a call window the main window's content skips CallHost, yet AppNavHost still starts calls.
+    @Test
+    fun callChromeProvidesThePermissionGateWithoutCallHost() {
+        withModel(connectedState(video = false)) { model, _, _ ->
+            runDesktopComposeUiTest(420, 560) {
+                setContent {
+                    HomebaseTheme {
+                        CallChrome(callWindow = model, topInset = 0.dp, callHost = { it() }) {
+                            LocalCallPermissionGate.current
+                            Text("main window")
+                        }
+                    }
+                }
+                onNodeWithText("main window").assertExists()
+            }
+        }
+    }
+
     @Test
     fun incomingRingWindowOffersAcceptAndDecline() {
         for (dark in listOf(false, true)) {
