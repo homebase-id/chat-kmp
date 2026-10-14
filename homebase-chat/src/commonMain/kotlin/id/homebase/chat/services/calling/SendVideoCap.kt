@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import kotlin.concurrent.Volatile
 import kotlin.math.roundToInt
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -61,7 +62,7 @@ internal class SendResolutionLadder(
     private val applyFps: (Int) -> Unit = {},
     private val apply: (Double) -> Unit,
 ) {
-    @kotlin.concurrent.Volatile
+    @Volatile
     private var pressure = DevicePressure()
 
     private var height = SendVideoCap.HEIGHT
@@ -77,7 +78,6 @@ internal class SendResolutionLadder(
 
     val fps: Int get() = pressure.cap.fps
 
-    /** Caps the send to [next]'s rung and frame rate from the next stats tick on; lifts when it clears. */
     fun setPressure(next: DevicePressure) {
         // Only stored: the sender's parameters are read-modify-written, so every write stays on the stats loop.
         pressure = next

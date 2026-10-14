@@ -3,7 +3,6 @@ package id.homebase.chat.services.calling
 internal enum class ThermalLevel { Nominal, Fair, Serious, Critical }
 
 internal data class DevicePressure(val thermal: ThermalLevel = ThermalLevel.Nominal, val lowPower: Boolean = false) {
-    /** The send cap this pressure imposes; [SendCap.NONE] when the device is not under any. */
     val cap: SendCap
         get() = when {
             thermal == ThermalLevel.Critical || lowPower -> SendCap(360, 15)
