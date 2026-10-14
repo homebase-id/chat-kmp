@@ -8,8 +8,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
-// Desktop shipped without libwebrtc-java's dylib: the engine constructor threw UnsatisfiedLinkError, an Error that
-// escaped the effect handler, killed the inbox loop and left the call on "Calling…" with a dead hang-up button.
+// An Error from the engine constructor (missing native lib) must end the call, not kill the inbox loop.
 @OptIn(ExperimentalCoroutinesApi::class)
 class CallEngineCreateFailureTest {
     private val frodo = "frodo.baggins.demo.rocks"
