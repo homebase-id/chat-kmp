@@ -174,7 +174,7 @@ fun CallWindowContent(
     val ui by model.uiState.collectAsStateWithLifecycle()
     val name = model.peerName(ui.peer)
     val avatar: @Composable (Dp) -> Unit = { size -> ui.peer?.let { PeerAvatar(it, name, size) } }
-    CompositionLocalProvider(LocalCallHost provides LocalCallHost.current.copy(ownsWindow = true), LocalShortcutGate provides model.shortcutGate) {
+    CompositionLocalProvider(LocalCallHost provides LocalCallHost.current.copy(ownsWindow = true), LocalShortcutGate provides model.shortcutGate, LocalCallPermissionGate provides rememberCallPermissionGate()) {
         if (mini) {
             val events = rememberCallEvents(model.viewModel)
             val expand = onToggleMini ?: {}
