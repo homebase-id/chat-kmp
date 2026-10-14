@@ -138,4 +138,17 @@ class CardOverridesTest {
 
         assertEquals(CardOverrides.EMPTY, everything.prunedFor("hologram"))
     }
+
+    @Test
+    fun orderToolOnlyOffersWhatTheDesignReorders() {
+        val collage = CardDesignSpecs.of(CardDesign.COLLAGE)!!
+        assertEquals(listOf("links", "moments"), collage.reorderable(hasLinks = true))
+        assertEquals(listOf("moments"), collage.reorderable(hasLinks = false))
+        assertEquals(listOf("chat", "links", "moments"), CardDesignSpecs.of(CardDesign.POSTER)!!.reorderable(hasLinks = true))
+
+        val stored = CardOverrides.EMPTY.withBlockOrder(listOf("links", "chat", "moments"))
+        val shown = listOf("links", "moments")
+        val reordered = stored.withShownBlockOrder(shown, listOf("moments", "links"))
+        assertEquals(listOf("moments", "chat", "links"), reordered.blockOrder())
+    }
 }
