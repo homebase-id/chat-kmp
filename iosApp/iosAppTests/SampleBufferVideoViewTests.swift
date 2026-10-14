@@ -1,7 +1,7 @@
 import XCTest
 import CoreVideo
 import WebRTC
-@testable import iosApp
+@testable import Homebase
 
 /// An I420 frame over memory the test owns, so strides can be wider than the width and dimensions odd.
 private final class PaddedI420Buffer: NSObject, RTCI420BufferProtocol {
