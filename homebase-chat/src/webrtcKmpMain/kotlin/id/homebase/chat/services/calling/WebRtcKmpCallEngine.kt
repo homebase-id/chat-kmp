@@ -217,18 +217,16 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             if (it is CancellationException) throw it
             Logger.w(it, "WebRtcKmp") { "camera recovery failed, video stays off" }
         }.getOrNull() ?: return
-        if (closed.load()) {
+        fun discard() {
             runCatching { fresh.stop() }
             runCatching { media?.release() }
-            return
         }
+        if (closed.load()) return discard()
         fresh.enabled = videoWanted
         runCatching { sender.replaceTrack(fresh) }.onFailure {
             if (it is CancellationException) throw it
             Logger.w(it, "WebRtcKmp") { "camera recovery could not replace the sender track, video stays off" }
-            runCatching { fresh.stop() }
-            runCatching { media?.release() }
-            return
+            return discard()
         }
         runCatching { recoveredStream?.release() }
         recoveredStream = media

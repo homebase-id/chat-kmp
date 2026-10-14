@@ -49,6 +49,5 @@ final class I420ToNV12Converter {
             }
         }
         return interleaved == kvImageNoError ? out : nil
-
     }
 }

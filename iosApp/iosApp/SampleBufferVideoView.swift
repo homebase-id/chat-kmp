@@ -1,4 +1,3 @@
-import Accelerate
 import AVFoundation
 import UIKit
 import WebRTC

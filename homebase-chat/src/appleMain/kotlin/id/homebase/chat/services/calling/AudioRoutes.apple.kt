@@ -23,7 +23,7 @@ internal fun audioRouteOf(portType: String?): AudioRoute? = when (portType) {
     else -> null
 }
 
-private fun AVAudioSession.portTypes(ports: List<*>?): List<String?> =
+private fun portTypes(ports: List<*>?): List<String?> =
     ports.orEmpty().map { (it as? AVAudioSessionPortDescription)?.portType }
 
 internal fun AVAudioSession.currentAudioRoute(): AudioRoute? =

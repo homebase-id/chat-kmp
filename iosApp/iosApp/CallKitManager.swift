@@ -1,7 +1,6 @@
 import AVFoundation
 import CallKit
 import ComposeApp
-import AVKit
 import Foundation
 import PushKit
 import WebRTC

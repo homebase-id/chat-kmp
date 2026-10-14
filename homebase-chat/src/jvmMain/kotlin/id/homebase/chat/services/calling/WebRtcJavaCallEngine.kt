@@ -504,7 +504,7 @@ class WebRtcJavaCallEngine(
 
     override fun setAudioRoute(route: AudioRoute) = Unit
 
-    // A native teardown call once spun for 43 minutes with no trace; this puts the stack of the thread stuck in it into the log.
+    // A native teardown call can hang with no trace of its own, so log the stuck thread's stack.
     private inline fun <T> reportIfStalled(call: String, block: () -> T): T {
         val caller = Thread.currentThread()
         val watchdog = Timer("call-close-watchdog", true)

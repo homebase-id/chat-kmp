@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 import co.touchlab.kermit.Logger
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.update
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -89,10 +90,7 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
     }
 
     fun remoteTrackArrived() {
-        while (true) {
-            val before = remote.load()
-            if (remote.compareAndSet(before, before.copy(trackArrivals = before.trackArrivals + 1))) break
-        }
+        remote.update { it.copy(trackArrivals = it.trackArrivals + 1) }
         publisher.request()
     }
 
