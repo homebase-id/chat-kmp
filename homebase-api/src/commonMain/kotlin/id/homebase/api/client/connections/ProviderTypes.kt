@@ -16,17 +16,6 @@ import kotlinx.serialization.encoding.Encoder
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 
-/** No-body POST. Some endpoints still expect a JSON object rather than an empty payload. */
-@Serializable
-class EmptyRequest
-
-/** What `POST /connections/enrollments/process` drained. */
-@Serializable
-data class ProcessEnrollmentsResult(
-    val connectionsProcessed: Int = 0,
-    val enrollmentsCompleted: Int = 0,
-)
-
 @Serializable
 data class OdinIdRequest(
     val odinId: OdinId

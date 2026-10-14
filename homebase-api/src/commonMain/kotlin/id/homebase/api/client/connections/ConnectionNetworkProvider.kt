@@ -170,15 +170,6 @@ class ConnectionNetworkProvider(
      * one round-trip; use that when showing more than one.
      */
     /**
-     * Finish circle enrollments queued for this app — the HTTP equivalent of the socket's
-     * `processEnrollments`, for when there is no live connection to send it on.
-     *
-     * Idempotent, and a no-op without the permission.
-     */
-    suspend fun processEnrollments(): ProcessEnrollmentsResult =
-        postAndDeserialize("/connections/enrollments/process", EmptyRequest())
-
-    /**
      * Connections that qualify for one of [appId]'s circles but are not in it yet.
      *
      * An app may ask only about itself — the list is computed across every connection on the
