@@ -98,6 +98,61 @@ class LiveRelayCallFlowTest {
     }
 
     @Test
+    fun aSlowRelayTrickleDoesNotHoldTheCallerOnConnecting() = flow { relay ->
+        val many = List(30) { "candidate:$it 1 udp 2122260223 192.0.2.$it 50000 typ host" }
+        val caller = peer(relay, frodo, relay.device(frodo, online = true), FakeCallScript(connectAfterMs = 50, localCandidates = many))
+        val callee = peer(relay, sam, relay.device(sam, online = true), FakeCallScript(connectAfterMs = 50))
+
+        caller.controller.startCall(sam, video = false, callId = "c-slow-relay")
+        await("callee rings") { callee.state.phase == CallPhase.Incoming }
+        relay.iceSendDelayMs = 100
+        callee.controller.accept()
+        await("caller connected") { caller.state.phase == CallPhase.Connected }
+
+        val trickled = relay.signalsFrom(frodo).count { it is CallSignal.Ice }
+        assertTrue(trickled < many.size, "Connected waited behind all $trickled trickled candidates")
+        await("every held candidate still trickled") { relay.signalsFrom(frodo).count { it is CallSignal.Ice } == many.size }
+    }
+
+    @Test
+    fun aHangupDuringTheTrickleStaysTheLastBlobTheRelayKeeps() = flow { relay ->
+        val many = List(30) { "candidate:$it 1 udp 2122260223 192.0.2.$it 50000 typ host" }
+        val caller = peer(relay, frodo, relay.device(frodo, online = true), FakeCallScript(connectAfterMs = 50, localCandidates = many))
+        val callee = peer(relay, sam, relay.device(sam, online = true), FakeCallScript(connectAfterMs = 50))
+
+        caller.controller.startCall(sam, video = false, callId = "c-hangup-trickle")
+        await("callee rings") { callee.state.phase == CallPhase.Incoming }
+        relay.iceSendDelayMs = 100
+        callee.controller.accept()
+        await("caller connected") { caller.state.phase == CallPhase.Connected }
+        caller.controller.hangup()
+        await("hangup posted") { relay.signalsFrom(frodo).any { it is CallSignal.Hangup } }
+        delay(300)
+
+        assertIs<CallSignal.Hangup>(relay.lastRetained(sam, frodo))
+        assertTrue(relay.signalsFrom(frodo).count { it is CallSignal.Ice } < many.size, "the trickle must stop at the hangup")
+    }
+
+    @Test
+    fun anIceRestartDuringTheTrickleStaysTheLastBlobTheRelayKeeps() = flow { relay ->
+        val many = List(30) { "candidate:$it 1 udp 2122260223 192.0.2.$it 50000 typ host" }
+        val callerDevice = relay.device(frodo, online = true)
+        val caller = peer(relay, frodo, callerDevice, FakeCallScript(connectAfterMs = 50, localCandidates = many))
+        val callee = peer(relay, sam, relay.device(sam, online = true), FakeCallScript(connectAfterMs = 50))
+
+        caller.controller.startCall(sam, video = false, callId = "c-restart-trickle")
+        await("callee rings") { callee.state.phase == CallPhase.Incoming }
+        relay.iceSendDelayMs = 100
+        callee.controller.accept()
+        await("caller connected") { caller.state.phase == CallPhase.Connected }
+        relay.replay(callerDevice, sam, CallSignal.RestartRequest("c-restart-trickle"), CallChannel.keyFor(frodo))
+        await("restart posted") { relay.signalsFrom(frodo).any { it is CallSignal.Restart } }
+        delay(300)
+
+        assertIs<CallSignal.Restart>(relay.lastRetained(sam, frodo))
+    }
+
+    @Test
     fun answeringOnOneCalleeDeviceStopsTheSiblingRingingAndIgnoresItsOwnEcho() = flow { relay ->
         val caller = peer(relay, frodo, relay.device(frodo, online = true))
         val phone = peer(relay, sam, relay.device(sam, online = true))

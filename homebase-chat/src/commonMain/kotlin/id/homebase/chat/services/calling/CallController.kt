@@ -78,6 +78,7 @@ class CallController(
     private var offerVideo = false
     private var publishedOfferSdp: String? = null
     private var republishJob: Job? = null
+    private var trickleJob: Job? = null
     private var restartOfferSdp: String? = null
     private val endedCalls = ArrayDeque<String>()
     @Volatile private var inFlight: Job? = null
@@ -193,6 +194,8 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
+        // The relay keeps only each sender's last blob: a held candidate posted after a hangup would replace it.
+        if (signal !is CallSignal.Ice) trickleJob?.cancelAndJoin()
         val outbound = CallChannel.outbound(peer, signal.fromDevice(deviceId))
         log.i { "send ${describe(signal)} call=${signal.callId} to=$peer push=${outbound.push?.kind?.wire}" }
         signaling.send(outbound)
@@ -369,7 +372,7 @@ class CallController(
         if (heldIce.size > publishedIce) scheduleOfferRepublish(callId)
     }
 
-    private suspend fun flushHeldIce(state: CallState) {
+    private fun flushHeldIce(state: CallState) {
         republishJob?.cancel()
         republishJob = null
         val pending = heldIce.toList()
@@ -377,7 +380,12 @@ class CallController(
         publishedIce = 0
         if (pending.isEmpty()) return
         log.i { "answer selected a device: trickling ${pending.size} held candidates call=${state.callId}" }
-        for (c in pending) sendBestEffort(state.peer!!, CallSignal.Ice(state.callId!!, c.candidate, c.sdpMid, c.sdpMLineIndex))
+        val peer = state.peer!!
+        val callId = state.callId!!
+        // One relay round trip per candidate: run in the inbox, 66 of them held the caller on Connecting for ~18 s.
+        trickleJob = scope.launch {
+            for (c in pending) sendBestEffort(peer, CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex))
+        }
     }
 
     private fun announceVerification(callId: String) {
@@ -419,6 +427,8 @@ class CallController(
     }
 
     private fun releaseEngine() {
+        trickleJob?.cancel()
+        trickleJob = null
         engineEvents?.cancel()
         engineEvents = null
         engineVideos?.cancel()
