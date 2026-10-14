@@ -43,6 +43,7 @@ import java.nio.ByteBuffer
 import java.util.Timer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.concurrent.timerTask
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -523,11 +524,9 @@ class WebRtcJavaCallEngine(
         // Before [lock]: the listener's native thread can be inside a refresh that waits for [lock].
         // The native unregister can spin indefinitely, so it gets a bounded wait instead of holding up the release path.
         if (listenerRegistered.compareAndSet(true, false)) {
-            val unregister = unregisterDeviceListener
-            Thread({ reportIfStalled("removeDeviceChangeListener") { runCatching { unregister(deviceListener) } } }, "call-device-teardown")
-                .apply { isDaemon = true }
-                .also { it.start() }
-                .join(LISTENER_TEARDOWN_WAIT_MS)
+            thread(isDaemon = true, name = "call-device-teardown") {
+                reportIfStalled("removeDeviceChangeListener") { runCatching { unregisterDeviceListener(deviceListener) } }
+            }.join(LISTENER_TEARDOWN_WAIT_MS)
         }
         deviceExecutor.shutdownNow()
         micLevelTimer.cancel()

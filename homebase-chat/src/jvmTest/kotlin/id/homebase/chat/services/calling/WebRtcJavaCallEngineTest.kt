@@ -1,6 +1,8 @@
 package id.homebase.chat.services.calling
 
+import dev.onvoid.webrtc.media.MediaDevices
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule
+import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -128,9 +130,9 @@ class WebRtcJavaCallEngineTest {
     fun aDeviceListenerTeardownThatNeverReturnsDoesNotBlockClose() = nativeTest {
         val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
         val registered = engine.listenerRegistered.get()
-        val entered = java.util.concurrent.CountDownLatch(1)
-        val release = java.util.concurrent.CountDownLatch(1)
-        engine.unregisterDeviceListener = { entered.countDown(); release.await(); dev.onvoid.webrtc.media.MediaDevices.removeDeviceChangeListener(it) }
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        engine.unregisterDeviceListener = { entered.countDown(); release.await(); MediaDevices.removeDeviceChangeListener(it) }
         try {
             val start = System.nanoTime()
             runWithin(10_000) { engine.close() }
