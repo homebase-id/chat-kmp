@@ -21,6 +21,8 @@ import dev.onvoid.webrtc.RTCPeerConnection
 import dev.onvoid.webrtc.RTCPeerConnectionState
 import dev.onvoid.webrtc.RTCRtpSender
 import dev.onvoid.webrtc.RTCRtpTransceiver
+import dev.onvoid.webrtc.RTCRtpTransceiverDirection
+import dev.onvoid.webrtc.RTCRtpTransceiverInit
 import dev.onvoid.webrtc.RTCSdpType
 import dev.onvoid.webrtc.RTCSessionDescription
 import dev.onvoid.webrtc.SetSessionDescriptionObserver
@@ -35,10 +37,12 @@ import dev.onvoid.webrtc.media.audio.AudioDeviceModule
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase
 import dev.onvoid.webrtc.media.audio.AudioOptions
 import dev.onvoid.webrtc.media.audio.AudioTrack
+import dev.onvoid.webrtc.media.video.CustomVideoSource
 import dev.onvoid.webrtc.media.video.VideoCaptureCapability
 import dev.onvoid.webrtc.media.video.VideoDevice
 import dev.onvoid.webrtc.media.video.VideoDeviceSource
 import dev.onvoid.webrtc.media.video.VideoTrack
+import dev.onvoid.webrtc.media.video.VideoTrackSource
 import java.nio.ByteBuffer
 import java.util.Timer
 import java.util.concurrent.Executors
@@ -51,11 +55,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-/** Desktop engine over webrtc-java. Pass [audioDevice] (e.g. a headless module) to avoid touching real hardware. */
+/**
+ * Desktop engine over webrtc-java. Pass [audioDevice] (e.g. a headless module) and [cameraSource] to avoid touching
+ * real hardware.
+ */
 class WebRtcJavaCallEngine(
     stunUrls: List<String>,
     audioDevice: AudioDeviceModuleBase? = null,
     devicePreferences: CallDevicePreferences = InMemoryCallDevicePreferences(),
+    private val cameraSource: (() -> VideoTrackSource)? = null,
 ) : CallEngine {
     private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
     override val events: Flow<MediaEvent> = _events.receiveAsFlow()
@@ -150,7 +158,6 @@ class WebRtcJavaCallEngine(
                     remoteTrack = track
                     _remote.value = handle
                 }
-                mediaState.remoteTrackArrived()
             }
         },
     ) ?: error("webrtc-java returned no peer connection")
@@ -323,7 +330,7 @@ class WebRtcJavaCallEngine(
         if (closed) throw CallEngineException(FailReason.Other, "engine closed")
     }
 
-    private fun addLocalMedia(video: Boolean) = synchronized(lock) {
+    private fun addLocalMedia(video: Boolean, offering: Boolean) = synchronized(lock) {
         checkOpen()
         if (audioTrack == null) {
             val source = factory.createAudioSource(AudioOptions().apply {
@@ -334,6 +341,7 @@ class WebRtcJavaCallEngine(
             audioTrack = factory.createAudioTrack("audio0", source).also { peer.addTrack(it, listOf(STREAM_ID)) }
         }
         if (video && videoTrack == null) startCamera()
+        if (offering && videoSender == null) addIdleVideoTransceiver()
         mediaState.setCamera(videoTrack != null && cameraOn)
         if (stateChannel == null) openStateChannel()
     }
@@ -378,44 +386,77 @@ class WebRtcJavaCallEngine(
 
     private fun startCamera() {
         try {
-            val available = cameras()
-            val chosen = devices.selected.value[MediaDeviceKind.Camera]
-            val device = available.firstOrNull { it.descriptor == chosen } ?: available.firstOrNull() ?: run {
-                Logger.w("WebRtcJava") { "no camera found, continuing audio-only" }
-                return
-            }
-            Logger.i("WebRtcJava") { "camera ${device.name} of ${available.map { it.name }}" }
-            val source = VideoDeviceSource().apply {
-                setVideoCaptureDevice(device)
-                captureCapability(device)?.let { setVideoCaptureCapability(it) }
-                start()
-            }
-            videoSource = source
+            val (source, mirrored) = cameraSource?.let { it() to false } ?: openDeviceCamera() ?: return
             val track = factory.createVideoTrack("video0", source)
-            // A webcam faces the user, so its preview is mirrored; the transmitted frames are untouched.
-            val handle = JvmVideoHandle(cameraMirrored(device.name, device.deviceTransport?.name)).also { localFrames = it }
+            val handle = JvmVideoHandle(mirrored).also { localFrames = it }
             track.addSink(handle.sink)
             track.addSink(capturedFrames)
-            videoSender = peer.addTrack(track, listOf(STREAM_ID)).also(::configureVideoSender)
+            val sender = videoSender?.also { it.replaceTrack(track) } ?: peer.addTrack(track, listOf(STREAM_ID))
+            videoSender = sender.also(::configureVideoSender)
             videoTrack = track
             _local.value = handle
-            cameraTried = listOf(device.descriptor)
-            watchForSilentCamera(cameraTried)
+            if (videoSource != null) watchForSilentCamera(cameraTried)
         } catch (e: Exception) {
             Logger.w(e, "WebRtcJava") { "camera unavailable, continuing audio-only" }
         }
     }
 
+    private fun openDeviceCamera(): Pair<VideoTrackSource, Boolean>? {
+        val available = cameras()
+        val chosen = devices.selected.value[MediaDeviceKind.Camera]
+        val device = available.firstOrNull { it.descriptor == chosen } ?: available.firstOrNull() ?: run {
+            Logger.w("WebRtcJava") { "no camera found, continuing audio-only" }
+            return null
+        }
+        Logger.i("WebRtcJava") { "camera ${device.name} of ${available.map { it.name }}" }
+        val source = VideoDeviceSource().apply {
+            setVideoCaptureDevice(device)
+            captureCapability(device)?.let { setVideoCaptureCapability(it) }
+            start()
+        }
+        videoSource = source
+        cameraTried = listOf(device.descriptor)
+        // A webcam faces the user, so its preview is mirrored; the transmitted frames are untouched.
+        return source to cameraMirrored(device.name, device.deviceTransport?.name)
+    }
+
+    // A send-receive video transceiver with no track lets either side start a camera later without renegotiating.
+    // webrtc-java refuses a transceiver without a track, so a placeholder goes on and comes straight off again.
+    private fun addIdleVideoTransceiver() {
+        val source = CustomVideoSource()
+        val placeholder = factory.createVideoTrack("video-idle", source)
+        try {
+            val init = RTCRtpTransceiverInit().apply {
+                direction = RTCRtpTransceiverDirection.SEND_RECV
+                streamIds = listOf(STREAM_ID)
+            }
+            videoSender = peer.addTransceiver(placeholder, init).sender.also { it.replaceTrack(null) }
+        } finally {
+            placeholder.dispose()
+            source.dispose()
+        }
+    }
+
+    private fun adoptOfferedVideo() {
+        synchronized(lock) {
+            if (closed || videoSender != null) return
+            val transceiver = peer.transceivers.firstOrNull { it.receiver.track?.kind == MediaStreamTrack.VIDEO_TRACK_KIND } ?: return
+            transceiver.direction = RTCRtpTransceiverDirection.SEND_RECV
+            videoSender = transceiver.sender
+        }
+    }
+
     override suspend fun createOffer(video: Boolean): String {
         devices.applyPreferences()
-        addLocalMedia(video)
+        addLocalMedia(video, offering = true)
         return offer(RTCOfferOptions())
     }
 
     override suspend fun answer(offerSdp: String, video: Boolean): String {
         devices.applyPreferences()
-        addLocalMedia(video)
+        addLocalMedia(video, offering = false)
         setRemote(RTCSessionDescription(RTCSdpType.OFFER, offerSdp))
+        adoptOfferedVideo()
         return createAnswer()
     }
 
@@ -487,10 +528,17 @@ class WebRtcJavaCallEngine(
         mediaState.setCamera(on)
     }
 
-    override suspend fun addVideo(): String? {
-        addLocalMedia(true)
-        if (videoTrack == null) return null
-        return offer(RTCOfferOptions())
+    override suspend fun addVideo(): Boolean {
+        val started = synchronized(lock) {
+            if (closed || videoSender == null) return false
+            if (videoTrack == null) {
+                cameraOn = true
+                startCamera()
+            }
+            videoTrack != null
+        }
+        if (started) mediaState.setCamera(true)
+        return started
     }
 
     override fun switchCamera() {

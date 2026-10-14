@@ -100,10 +100,10 @@ class FakeCallEngine(
         mediaState.setMic(!muted)
     }
 
-    override suspend fun addVideo(): String {
+    override suspend fun addVideo(): Boolean {
         _localVideo.value = localSource
         mediaState.setCamera(true)
-        return "fake-video-offer"
+        return true
     }
 
     override fun setVideo(on: Boolean) {

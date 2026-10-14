@@ -67,8 +67,7 @@ class CallRingAndTrayTest {
     private fun ComposeUiTest.showRing(
         video: Boolean,
         dark: Boolean,
-        onVoice: () -> Unit = {},
-        onVideo: () -> Unit = {},
+        onAccept: () -> Unit = {},
         onDecline: () -> Unit = {},
         shape: Shape = RectangleShape,
         fontScale: Float = 1f,
@@ -86,8 +85,7 @@ class CallRingAndTrayTest {
                                 Text("SG", color = MaterialTheme.colorScheme.onSecondaryContainer)
                             }
                         },
-                        onAcceptVoice = onVoice,
-                        onAcceptVideo = onVideo,
+                        onAccept = onAccept,
                         onDecline = onDecline,
                         shape = shape,
                         modifier = Modifier.testTag(RingTag),
@@ -104,24 +102,27 @@ class CallRingAndTrayTest {
     }
 
     @Test
-    fun theVideoRingOffersDeclineAcceptVoiceAndAcceptVideoAndEachButtonFiresItsOwnAction() {
+    fun theVideoRingOffersOnlyDeclineAndAcceptWithVideo() {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 200) {
             val fired = mutableListOf<String>()
-            showRing(video = true, dark = dark, onVoice = { fired += "voice" }, onVideo = { fired += "video" }, onDecline = { fired += "decline" })
+            showRing(video = true, dark = dark, onAccept = { fired += "accept" }, onDecline = { fired += "decline" })
             onNodeWithText("Decline").performClick()
-            onNodeWithText("Accept voice").performClick()
-            onNodeWithText("Accept video").performClick()
-            assertEquals(listOf("decline", "voice", "video"), fired)
+            onNodeWithContentDescription("Accept video call from Samwise Gamgee (Ctrl+Shift+A)").performClick()
+            assertEquals(listOf("decline", "accept"), fired)
+            onNodeWithText("Accept voice").assertDoesNotExist()
+            onNodeWithText("Voice only").assertDoesNotExist()
             shoot("ring-window-video", dark)
         }
     }
 
     @Test
-    fun theVoiceRingOffersTheSameThreeButtonsUntruncated() {
+    fun theVoiceRingOffersDeclineAndAcceptUntruncated() {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 200) {
             showRing(video = false, dark = dark)
             mainClock.advanceTimeBy(400)
-            for (label in listOf("Accept voice", "Accept video", "Decline")) {
+            onNodeWithContentDescription("Accept voice call from Samwise Gamgee (Ctrl+Shift+A)").assertExists()
+            onNodeWithText("Accept video").assertDoesNotExist()
+            for (label in listOf("Accept", "Decline")) {
                 val node = onNodeWithText(label)
                 node.assertExists()
                 val layouts = mutableListOf<TextLayoutResult>()
@@ -138,7 +139,7 @@ class CallRingAndTrayTest {
         for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 200) {
             showRing(video = true, dark = dark, shape = RoundedCornerShape(12.dp))
             onNodeWithContentDescription("Decline call from Samwise Gamgee (Ctrl+Shift+H)").assertExists()
-            onNodeWithContentDescription("Accept video (Ctrl+Shift+A)").assertExists()
+            onNodeWithContentDescription("Accept video call from Samwise Gamgee (Ctrl+Shift+A)").assertExists()
             shoot("ring-window-rounded", dark)
         }
     }
@@ -148,7 +149,7 @@ class CallRingAndTrayTest {
         for (scale in listOf(1.3f, 2f)) for (dark in listOf(false, true)) runDesktopComposeUiTest(360, 520) {
             showRing(video = false, dark = dark, shape = RoundedCornerShape(12.dp), fontScale = scale)
             shoot("ring-window-font${(scale * 100).toInt()}", dark)
-            val sizes = listOf("Decline", "Accept voice", "Accept video").map { label ->
+            val sizes = listOf("Decline", "Accept").map { label ->
                 val layouts = mutableListOf<TextLayoutResult>()
                 onNodeWithText(label).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
                 val layout = layouts.single()

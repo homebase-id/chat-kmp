@@ -132,11 +132,7 @@ class CallWindowModel(
 
     fun requestClose() = viewModel.requestClose()
 
-    fun acceptVoice() = viewModel.accept(withVideo = false)
-
-    fun acceptVideo() = viewModel.accept(withVideo = true)
-
-    fun answer() = if (isVideoCall()) acceptVideo() else acceptVoice()
+    fun answer() = viewModel.accept()
 
     fun decline() = viewModel.decline()
 
@@ -185,7 +181,7 @@ fun CallWindowContent(
             val actions = remember(model.viewModel, expand) {
                 val vm = model.viewModel
                 CallScreenActions(
-                    acceptAudio = {}, acceptVideo = {}, decline = vm::decline, hangup = vm::hangup,
+                    accept = {}, decline = vm::decline, hangup = vm::hangup,
                     toggleMute = vm::toggleMute, toggleVideo = { vm.setVideo(!vm.uiState.value.localVideo) }, switchCamera = vm::switchCamera,
                     setRoute = vm::setRoute, onVerificationClick = vm::onVerificationClick, retry = {}, close = vm::close,
                     minimize = onMinimize, endFromKeyboard = vm::endFromKeyboard, selectDevice = vm::selectDevice, toggleMini = expand,

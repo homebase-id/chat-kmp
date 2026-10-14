@@ -81,8 +81,7 @@ class CallScreenshotTest {
     private class Recorder {
         val calls = mutableListOf<String>()
         fun actions() = CallScreenActions(
-            acceptAudio = { calls += "acceptAudio" },
-            acceptVideo = { calls += "acceptVideo" },
+            accept = { calls += "accept" },
             decline = { calls += "decline" },
             hangup = { calls += "hangup" },
             toggleMute = { calls += "mute" },
@@ -202,13 +201,14 @@ class CallScreenshotTest {
     }
 
     @Test
-    fun incomingVideoCallOffersSeparateAudioAndVideoAcceptAndDecline() = runDesktopComposeUiTest(390, 844) {
+    fun incomingVideoCallOffersOnlyDeclineAndAcceptWithVideo() = runDesktopComposeUiTest(390, 844) {
         val recorder = Recorder()
         show(false, shot("incoming"), recorder)
-        onNodeWithContentDescription("Accept voice call from Samwise Gamgee").performClick()
+        onNodeWithContentDescription("Accept voice call from Samwise Gamgee").assertDoesNotExist()
+        onNodeWithText("Voice only").assertDoesNotExist()
         onNodeWithContentDescription("Accept video call from Samwise Gamgee").performClick()
         onNodeWithContentDescription("Decline call from Samwise Gamgee").performClick()
-        assertEquals(listOf("acceptAudio", "acceptVideo", "decline"), recorder.calls)
+        assertEquals(listOf("accept", "decline"), recorder.calls)
     }
 
     @Test

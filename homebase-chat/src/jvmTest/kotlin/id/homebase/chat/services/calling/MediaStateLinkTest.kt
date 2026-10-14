@@ -98,36 +98,6 @@ class MediaStateLinkTest {
     }
 
     @Test
-    fun aRemoteTrackShowsVideoUnlessThePeerSaidItsCameraIsOff() {
-        val b = End()
-        b.link.remoteTrackArrived()
-        assertEquals(listOf<MediaEvent>(MediaEvent.RemoteVideoChanged(true)), b.events)
-
-        b.events.clear()
-        b.link.received("""{"video":false,"audio":true,"seq":1}""".encodeToByteArray())
-        b.link.remoteTrackArrived()
-        assertEquals(listOf(MediaEvent.RemoteVideoChanged(false), MediaEvent.RemoteMuteChanged(false), MediaEvent.RemoteVideoChanged(false)), b.events)
-    }
-
-    @Test
-    fun aCameraOffMessageThatLandsWhileTheTrackArrivalIsBeingSentIsNotOverwrittenByIt() {
-        val events = mutableListOf<MediaEvent>()
-        lateinit var link: MediaStateLink
-        var armed = true
-        link = MediaStateLink("test") { event ->
-            if (armed && event == MediaEvent.RemoteVideoChanged(true)) {
-                armed = false
-                link.received("""{"video":false,"audio":true,"seq":1}""".encodeToByteArray())
-            }
-            events += event
-        }
-
-        link.remoteTrackArrived()
-
-        assertEquals(MediaEvent.RemoteVideoChanged(false), events.filterIsInstance<MediaEvent.RemoteVideoChanged>().last())
-    }
-
-    @Test
     fun aRestoredCapturerTellsThePeerVideoIsBackWhileTheUsersCameraIsOn() {
         val (a, b) = pair()
         a.link.setCamera(true)

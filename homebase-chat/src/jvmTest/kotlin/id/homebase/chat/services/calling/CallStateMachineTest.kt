@@ -390,10 +390,21 @@ class CallStateMachineTest {
     }
 
     @Test
-    fun turningTheCameraOnInAConnectedVoiceCallAddsVideoOnceAndAVideoCallJustToggles() {
-        assertEquals(false, connected.localVideoTrack)
+    fun turningTheCameraOnInAVoiceCallAddsVideoOnceWithoutRenegotiatingAndAVideoCallJustToggles() {
+        listOf(connecting, connected, reconnecting).forEach { live ->
+            assertEquals(false, live.localVideoTrack)
+            val t = machine.step(live, CallEvent.SetVideo(true))
+            assertEquals(listOf(CallEffect.AddVideo, CallEffect.SetRoute(AudioRoute.Speaker)), t.effects, "${live.phase}")
+            assertEquals(AudioRoute.Speaker, t.state.media.route)
+            assertEquals(live.restartPending, t.state.restartPending, "no offer goes out for the camera")
+        }
+        val onHeadset = connected.copy(media = connected.media.copy(route = AudioRoute.Bluetooth))
+        machine.step(onHeadset, CallEvent.SetVideo(true)).let {
+            assertEquals(listOf(CallEffect.AddVideo), it.effects)
+            assertEquals(AudioRoute.Bluetooth, it.state.media.route)
+        }
+
         val upgraded = machine.step(connected, CallEvent.SetVideo(true))
-        assertEquals(listOf(CallEffect.AddVideo), upgraded.effects)
         assertEquals(true, upgraded.state.localVideoTrack)
         assertEquals(listOf(CallEffect.SetVideo(false)), machine.step(upgraded.state, CallEvent.SetVideo(false)).effects)
         assertEquals(listOf(CallEffect.SetVideo(true)), machine.step(upgraded.state, CallEvent.SetVideo(true)).effects)
@@ -416,7 +427,10 @@ class CallStateMachineTest {
             }
             machine.step(it, CallEvent.SetVideo(true)).let { t ->
                 assertEquals(true, t.state.media.localVideo)
-                assertEquals(listOf(if (it === connected) CallEffect.AddVideo else CallEffect.SetVideo(true)), t.effects)
+                assertEquals(
+                    if (it === outgoing) listOf(CallEffect.SetVideo(true)) else listOf(CallEffect.AddVideo, CallEffect.SetRoute(AudioRoute.Speaker)),
+                    t.effects,
+                )
             }
             machine.step(it, CallEvent.SwitchCamera).let { t ->
                 assertEquals(CameraFacing.Back, t.state.media.camera)

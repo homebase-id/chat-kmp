@@ -207,7 +207,7 @@ private fun MiniVideo(ui: CallUiState, peerName: String, avatar: @Composable (Dp
         ) {
             Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 MiniMute(ui, actions)
-                if (ui.videos.local != null) MiniCamera(ui, actions)
+                if (ui.cameraAvailable) MiniCamera(ui, actions)
                 EndCallButton(actions.hangup, Modifier.size(width = 52.dp, height = 40.dp))
             }
         }

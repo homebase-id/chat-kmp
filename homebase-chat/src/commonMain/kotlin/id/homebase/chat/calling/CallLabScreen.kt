@@ -316,8 +316,7 @@ private fun PreviewLayer(state: CallUiState, onChange: (CallUiState?) -> Unit) {
     var verifying by remember(state.callId) { mutableStateOf(false) }
     val actions = remember(state) {
         CallScreenActions(
-            acceptAudio = { onChange(state.copy(phase = CallPhase.Connected, localVideo = false, connectedAtMs = Clock.System.now().toEpochMilliseconds())) },
-            acceptVideo = { onChange(state.copy(phase = CallPhase.Connected, connectedAtMs = Clock.System.now().toEpochMilliseconds())) },
+            accept = { onChange(state.copy(phase = CallPhase.Connected, connectedAtMs = Clock.System.now().toEpochMilliseconds())) },
             decline = { onChange(null) },
             hangup = { onChange(null) },
             toggleMute = { onChange(state.copy(muted = !state.muted)) },

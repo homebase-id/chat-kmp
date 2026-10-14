@@ -28,8 +28,8 @@ interface CallEngine {
     fun setMuted(muted: Boolean)
     fun setVideo(on: Boolean)
 
-    /** Adds a camera to a call that began without one and returns the renegotiation offer, or null when this engine cannot. */
-    suspend fun addVideo(): String? = null
+    /** Starts a camera on the video transceiver every call negotiates at setup; false when there is none or the camera fails. */
+    suspend fun addVideo(): Boolean = false
     fun switchCamera()
     fun setAudioRoute(route: AudioRoute)
     fun close()

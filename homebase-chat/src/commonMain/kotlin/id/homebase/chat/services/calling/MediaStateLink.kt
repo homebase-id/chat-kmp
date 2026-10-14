@@ -3,7 +3,6 @@ package id.homebase.chat.services.calling
 import co.touchlab.kermit.Logger
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.update
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -18,7 +17,8 @@ internal const val MEDIA_STATE_RESEND_MS = 1_000L
 /**
  * The camera and mic state each side tells the other over the in-call data channel, shaped like Signal's SenderStatus:
  * a change bumps `seq`, the engine resends the current state every [MEDIA_STATE_RESEND_MS], and the receiver keeps only
- * a newer `seq`. A peer whose build has no channel sends nothing, and the remote track arriving still turns video on.
+ * a newer `seq`. It is the only source of the peer's video state: every call negotiates a video track at setup, so a
+ * remote track arriving says nothing about whether the peer's camera is on.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> Unit) {
@@ -33,17 +33,9 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
         fun message() = MediaStateMessage(video, mic, seq)
     }
 
-    private data class Remote(
-        val seq: Long = -1,
-        val video: Boolean? = null,
-        val audio: Boolean? = null,
-        val trackArrivals: Int = 0,
-    ) {
-        /** The peer's stated camera wins over a track (re)appearing, which says nothing about whether frames flow. */
-        val shownVideo get() = video ?: if (trackArrivals > 0) true else null
-    }
+    private data class Remote(val seq: Long = -1, val video: Boolean? = null, val audio: Boolean? = null)
 
-    private data class Shown(val video: Boolean? = null, val audio: Boolean? = null, val trackArrivals: Int = 0)
+    private data class Shown(val video: Boolean? = null, val audio: Boolean? = null)
 
     private val local = AtomicReference(Local())
     private val remote = AtomicReference(Remote())
@@ -89,18 +81,12 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
         }
     }
 
-    fun remoteTrackArrived() {
-        remote.update { it.copy(trackArrivals = it.trackArrivals + 1) }
-        publisher.request()
-    }
-
     // Runs on one thread at a time and always from the latest remote state, so a stale value can never be sent after a newer one.
     private fun publishRemote() {
         val now = remote.load()
         val before = shown.load()
-        val video = now.shownVideo
-        shown.store(Shown(video, now.audio, now.trackArrivals))
-        if (video != null && (video != before.video || now.trackArrivals != before.trackArrivals)) emit(MediaEvent.RemoteVideoChanged(video))
+        shown.store(Shown(now.video, now.audio))
+        if (now.video != null && now.video != before.video) emit(MediaEvent.RemoteVideoChanged(now.video))
         if (now.audio != null && now.audio != before.audio) emit(MediaEvent.RemoteMuteChanged(!now.audio))
     }
 

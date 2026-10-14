@@ -69,6 +69,9 @@ data class CallUiState(
 
     val inProgress: Boolean get() = phase.isInCall
 
+    /** Every call negotiates a video transceiver, so once it is live the camera can be turned on even if it began as voice. */
+    val cameraAvailable: Boolean get() = videos.local != null || inProgress
+
     val pipEligible: Boolean get() = isVideoCall && phase.holdsPictureInPicture
 
     val keepScreenAwake: Boolean get() = phase != CallPhase.Idle && phase !is CallPhase.Ended
@@ -177,8 +180,9 @@ class CallViewModel(
         }
     }
 
-    fun accept(withVideo: Boolean) {
-        if (!withVideo && _uiState.value.localVideo) session.setVideo(false)
+    /** A video call is answered with video; only a denied camera takes it as voice. */
+    fun accept(cameraGranted: Boolean = true) {
+        if (!cameraGranted && _uiState.value.localVideo) session.setVideo(false)
         session.accept()
     }
 

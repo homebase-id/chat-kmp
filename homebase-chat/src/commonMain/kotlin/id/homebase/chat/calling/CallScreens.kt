@@ -217,7 +217,6 @@ import id.homebase.resources.call_state_mic_on_device
 import id.homebase.resources.action_retry
 import id.homebase.resources.call_accept
 import id.homebase.resources.call_accept_audio_from
-import id.homebase.resources.call_accept_audio_label
 import id.homebase.resources.call_accept_video_from
 import id.homebase.resources.call_back_to_chat
 import id.homebase.resources.call_hide_self_view
@@ -299,8 +298,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 class CallScreenActions(
-    val acceptAudio: () -> Unit,
-    val acceptVideo: () -> Unit,
+    val accept: () -> Unit,
     val decline: () -> Unit,
     val hangup: () -> Unit,
     val toggleMute: () -> Unit,
@@ -737,23 +735,13 @@ private fun BoxScope.IncomingLayout(
             content = endCallContent(),
             onClick = actions.decline,
         )
-        if (video) {
-            RoundCallButton(
-                icon = Icons.Default.Call,
-                label = stringResource(MR.string.call_accept_audio_label),
-                description = stringResource(MR.string.call_accept_audio_from, peerName),
-                container = MaterialTheme.colorScheme.secondaryContainer,
-                content = MaterialTheme.colorScheme.onSecondaryContainer,
-                onClick = actions.acceptAudio,
-            )
-        }
         RoundCallButton(
             icon = if (video) Icons.Default.Videocam else Icons.Default.Call,
             label = stringResource(MR.string.call_accept),
             description = stringResource(if (video) MR.string.call_accept_video_from else MR.string.call_accept_audio_from, peerName),
             container = MaterialTheme.colorScheme.primary,
             content = MaterialTheme.colorScheme.onPrimary,
-            onClick = if (video) actions.acceptVideo else actions.acceptAudio,
+            onClick = actions.accept,
             size = if (LocalCallLayout.current.windowed) 72.dp else 84.dp,
             pulse = true,
         )
@@ -1241,8 +1229,7 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
     // Desktop pickers choose the real output and camera, so the phone route and flip toggles would only duplicate them.
     val pickers = ui.devices.isNotEmpty()
     val showRoute = ui.availableRoutes.size > 1 && !pickers
-    // A desktop voice call can turn the camera on mid-call; the engine renegotiates when there is no video track yet.
-    val showCamera = ui.videos.local != null || (LocalCallLayout.current.windowed && ui.inProgress && !placing)
+    val showCamera = ui.cameraAvailable
     // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
     val showFlip = ui.localVideo && !large && !placing && !pickers
     // With pickers each of mic and camera is a split button: a toggle segment and its own menu segment in the same group.
@@ -1376,7 +1363,7 @@ internal fun Modifier.chromeFade(): Modifier {
 
 @Composable
 private fun MinimalDock(ui: CallUiState, actions: CallScreenActions, modifier: Modifier) {
-    val showCamera = ui.videos.local != null
+    val showCamera = ui.cameraAvailable
     val muteDescription = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
     val cameraDescription = stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on)
     val single = IconToggleButtonShapes(CircleShape, RoundedCornerShape(16.dp), CircleShape)

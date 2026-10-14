@@ -85,7 +85,7 @@ class CallDevicesViewModelTest {
     private fun TestScope.connect(rig: Rig) {
         rig.peer.startCall(frodo, video = false)
         settle()
-        rig.vm.accept(withVideo = false)
+        rig.vm.accept()
         settle(1_001)
         assertEquals(CallPhase.Connected, rig.ui.phase)
     }
@@ -165,7 +165,7 @@ class CallDevicesViewModelTest {
 
             rig.peer.startCall(frodo, video = false)
             settle()
-            rig.vm.accept(withVideo = false)
+            rig.vm.accept()
             settle(1_001)
             assertEquals("mic-usb", rig.ui.selectedDevices[MediaDeviceKind.Mic])
         }

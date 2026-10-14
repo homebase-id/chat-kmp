@@ -69,8 +69,7 @@ class CallDesktopErgonomicsTest {
     private class Recorder {
         val calls = mutableListOf<String>()
         fun actions(mini: Boolean = true) = CallScreenActions(
-            acceptAudio = { calls += "acceptAudio" },
-            acceptVideo = { calls += "acceptVideo" },
+            accept = { calls += "accept" },
             decline = { calls += "decline" },
             hangup = { calls += "hangup" },
             toggleMute = { calls += "mute" },

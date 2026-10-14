@@ -87,7 +87,7 @@ class CallViewModelTest {
         assertFalse(rig.ui.isVideoCall)
         assertTrue(rig.ui.visible)
 
-        rig.vm.accept(withVideo = false)
+        rig.vm.accept()
         settle(1_001)
         assertEquals(CallPhase.Connected, rig.ui.phase)
         assertEquals(CallPhase.Connected, rig.peer.state.value.phase)
@@ -95,11 +95,11 @@ class CallViewModelTest {
     }
 
     @Test
-    fun acceptingAVideoCallAsVoiceDropsLocalVideoAndAcceptingWithVideoKeepsIt() = rigTest { rig ->
+    fun aVideoCallAnsweredWithTheCameraDeniedGoesOutWithoutLocalVideo() = rigTest { rig ->
         rig.peer.startCall(frodo, video = true)
         settle()
         assertTrue(rig.ui.isVideoCall)
-        rig.vm.accept(withVideo = false)
+        rig.vm.accept(cameraGranted = false)
         settle(1_001)
         assertEquals(CallPhase.Connected, rig.ui.phase)
         assertFalse(rig.ui.localVideo)
@@ -107,13 +107,33 @@ class CallViewModelTest {
     }
 
     @Test
-    fun acceptWithVideoPublishesTheCameraHandle() = rigTest { rig ->
+    fun acceptingAVideoCallPublishesTheCameraHandle() = rigTest { rig ->
         rig.peer.startCall(frodo, video = true)
         settle()
-        rig.vm.accept(withVideo = true)
+        rig.vm.accept()
         settle(1_001)
         assertTrue(rig.ui.localVideo)
         assertTrue(rig.ui.videos.local != null)
+    }
+
+    @Test
+    fun aVoiceCallOffersTheCameraOnceInProgressAndTurnsIntoAVideoCall() = rigTest { rig ->
+        rig.peer.startCall(frodo, video = false)
+        settle()
+        assertFalse(rig.ui.cameraAvailable)
+        rig.vm.accept()
+        settle(1_001)
+        assertTrue(rig.ui.cameraAvailable)
+        assertFalse(rig.ui.isVideoCall)
+
+        rig.vm.setVideo(true)
+        settle()
+        assertTrue(rig.ui.localVideo)
+        assertTrue(rig.ui.isVideoCall)
+        assertTrue(rig.ui.pipEligible)
+        assertTrue(rig.ui.videos.local != null)
+        assertEquals(AudioRoute.Speaker, rig.ui.route)
+        assertEquals(1, rig.myEngines.size)
     }
 
     @Test

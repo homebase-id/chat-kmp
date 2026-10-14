@@ -28,11 +28,13 @@ class CallMediaStateFlowTest {
         val media get() = controller.state.value.media
     }
 
-    private fun TestScope.videoCall(): Pair<Side, Side> {
+    private fun TestScope.videoCall(): Pair<Side, Side> = call(video = true)
+
+    private fun TestScope.call(video: Boolean): Pair<Side, Side> {
         val net = LoopbackSignaling(now = { testScheduler.currentTime })
         val a = Side(frodo, this, net)
         val b = Side(sam, this, net)
-        a.controller.startCall(sam, video = true)
+        a.controller.startCall(sam, video = video)
         runCurrent()
         b.controller.accept()
         runCurrent()
@@ -75,6 +77,30 @@ class CallMediaStateFlowTest {
         a.engines.single().simulateCameraInterrupted(false)
         runCurrent()
         assertTrue(b.media.remoteVideo)
+    }
+
+    @Test
+    fun eitherSideOfAVoiceCallTurnsItsCameraOnAndThePeerSeesIt() = runTest {
+        val (a, b) = call(video = false)
+        assertFalse(a.media.remoteVideo)
+        assertFalse(b.media.remoteVideo)
+
+        b.controller.setVideo(true)
+        runCurrent()
+        assertTrue(b.media.localVideo)
+        assertEquals(AudioRoute.Speaker, b.media.route)
+        assertTrue(a.media.remoteVideo)
+        assertFalse(a.media.localVideo, "the peer's camera stays off until it turns it on")
+
+        a.controller.setVideo(true)
+        runCurrent()
+        assertTrue(b.media.remoteVideo)
+        assertEquals(1, a.engines.size, "the camera joins the same engine")
+
+        b.controller.setVideo(false)
+        runCurrent()
+        assertFalse(a.media.remoteVideo)
+        assertEquals(CallPhase.Connected, a.controller.state.value.phase)
     }
 
     @Test

@@ -59,11 +59,15 @@ class CallShortcutsTest {
     }
 
     @Test
-    fun cameraKeysNeedACameraToToggle() {
+    fun aVoiceCallCanTurnItsCameraOnOnceItIsInProgressButNotWhileDialling() {
         val voice = ui(CallPhase.Connected, CallVideos(), video = false)
-        assertNull(press(Key.E, voice, command = true))
-        assertNull(press(Key.V, voice))
+        assertEquals(CallShortcut.ToggleCamera, press(Key.E, voice, command = true))
+        assertEquals(CallShortcut.ToggleCamera, press(Key.V, voice))
         assertEquals(CallShortcut.ToggleMute, press(Key.D, voice, command = true))
+
+        val dialling = ui(CallPhase.Outgoing, CallVideos(), video = false)
+        assertNull(press(Key.E, dialling, command = true))
+        assertNull(press(Key.V, dialling))
     }
 
     @Test

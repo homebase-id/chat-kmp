@@ -204,6 +204,20 @@ A video call that is `Connected` or `Reconnecting` goes into a system PiP window
   `multitaskingCameraAccessEnabled` on webrtc-kmp's capture session as soon as it starts, where the device supports it;
   without it iOS interrupts the camera when the app leaves the foreground.
 
+### Answering and turning video on
+
+A video call is answered with video: every ring (in-app, desktop ring window, notification, Telecom, CallKit) has one
+Accept, and only a denied camera takes it as voice. A voice call starts as voice and either side can turn its camera on
+mid-call; the peer is not asked, it just starts seeing video and can turn its own camera on.
+
+Every call negotiates one send-receive video m-line at setup. The caller adds a video transceiver with no track when it
+has no camera (webrtc-java cannot add one without a track, so a placeholder goes on and comes straight off), and the
+answerer sets the offered video transceiver to send-receive before answering. Turning a camera on later puts the track
+on that sender with `replaceTrack` (`CallEngine.addVideo`), so nothing is renegotiated and no signal is sent. A sender
+with no track sends no RTP. The peer's video state comes only from `MediaStateMessage`: the remote track exists from
+setup in every call, so its arrival no longer means video. Turning the camera on also moves an earpiece call to the
+speaker, as a video call starts there. `WebRtcJavaVideoUpgradeTest` runs it on two real engines with synthetic cameras.
+
 ## Platform glue
 
 - **Android**: `DriveFcmService` hands ring/hangup pushes to `CallPushRouter` before the WorkManager hop.
@@ -264,8 +278,8 @@ A video call that is `Connected` or `Reconnecting` goes into a system PiP window
 
 ## Known limits
 
-- No TURN; no group calls; voice-to-video upgrade mid-call is not supported (the video track is added only when the
-  call starts as video).
+- No TURN; no group calls. A peer whose offer has no video m-line (a build before the idle video transceiver) cannot
+  receive a camera turned on mid-call; the toggle falls back to off.
 - Verification code is weak against a hostile relay (see above).
 - Mic/camera permission is requested before Accept/Call (`CallPermissionGate`); a denied camera downgrades to voice.
 - iOS link: webrtc-kmp does not bring the WebRTC framework, so `iosApp` links the SPM package `stasel/WebRTC`

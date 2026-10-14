@@ -64,12 +64,12 @@ fun KeyEvent.toCallKeyInput() =
 
 fun callIsLive(ui: CallUiState): Boolean = ui.inProgress || ui.phase == CallPhase.Outgoing
 
-fun callCameraToggleAvailable(ui: CallUiState): Boolean = callIsLive(ui) && ui.videos.local != null
+fun callCameraToggleAvailable(ui: CallUiState): Boolean = callIsLive(ui) && ui.cameraAvailable
 
 fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean = false): CallShortcut? {
     if (input.type != KeyEventType.KeyDown) return null
     val live = callIsLive(ui)
-    val cameraAvailable = ui.videos.local != null
+    val cameraAvailable = ui.cameraAvailable
     val key = input.key
     if (key == Key.Escape) return CallShortcut.Close
     if (input.command) {

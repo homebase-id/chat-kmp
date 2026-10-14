@@ -19,6 +19,7 @@ import com.shepeliev.webrtckmp.PeerConnectionState
 import com.shepeliev.webrtckmp.RtcConfiguration
 import com.shepeliev.webrtckmp.RtpReceiver
 import com.shepeliev.webrtckmp.RtpSender
+import com.shepeliev.webrtckmp.RtpTransceiverDirection
 import com.shepeliev.webrtckmp.SessionDescription
 import com.shepeliev.webrtckmp.SessionDescriptionType
 import com.shepeliev.webrtckmp.VideoTrack
@@ -84,7 +85,9 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
 
     @Volatile
     private var videoWanted = true
-    private var recoveredStream: MediaStream? = null
+
+    // A camera opened after setup (turned on mid-call or recovered) lives in its own stream.
+    private var cameraStream: MediaStream? = null
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.trySend(it) }
     private val mediaState = MediaStateLink("WebRtcKmp") { _events.trySend(it) }
@@ -111,7 +114,6 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             peer.onTrack.collect { event ->
                 val track = event.track as? VideoTrack ?: return@collect
                 _remote.value = KmpVideoHandle(track, mirrored = false, receiver = event.receiver)
-                mediaState.remoteTrackArrived()
             }
         }
         scope.launch { logVideoStats() }
@@ -152,7 +154,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         _local.value = KmpVideoHandle(track, mirrored = localFacing(track).mirrorsLocalPreview, local = true)
     }
 
-    private suspend fun addLocalMedia(video: Boolean) {
+    private suspend fun addLocalMedia(video: Boolean, offering: Boolean) {
         if (closed.load()) throw CallEngineException(FailReason.Other, "engine closed")
         if (stream != null) return
         _events.trySend(MediaEvent.RouteChanged(router.start(video) { _events.trySend(MediaEvent.RouteChanged(it)) }))
@@ -176,24 +178,69 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             val sender = peer.addTrack(track, media)
             when (track.kind) {
                 MediaStreamTrackKind.Audio -> audioTrack = track
-                MediaStreamTrackKind.Video -> (track as? VideoTrack)?.let {
-                    videoTrack = it
-                    videoSender = sender
-                    senderParams.update {
-                        copy(
-                            maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS,
-                            minBitrateBps = SendVideoCap.MIN_BITRATE_BPS,
-                            maxFramerate = sendLadder.fps,
-                        )
-                    }
-                    publishLocal(it)
-                    Logger.i("WebRtcKmp") { "local video settings=${it.settings}" }
-                    watchCapturer(it, MAX_CAMERA_RECOVERIES)
-                }
+                MediaStreamTrackKind.Video -> (track as? VideoTrack)?.let { attachCamera(it, sender) }
             }
+        }
+        if (offering && videoSender == null) {
+            peer.addIdleVideoTransceiver()
+            videoSender = peer.getTransceivers().lastOrNull { it.isVideo }?.sender
         }
         mediaState.setCamera(videoTrack != null)
         openStateChannel()
+    }
+
+    private fun attachCamera(track: VideoTrack, sender: RtpSender) {
+        videoTrack = track
+        videoSender = sender
+        senderParams.update {
+            copy(
+                maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS,
+                minBitrateBps = SendVideoCap.MIN_BITRATE_BPS,
+                maxFramerate = sendLadder.fps,
+            )
+        }
+        publishLocal(track)
+        Logger.i("WebRtcKmp") { "local video settings=${track.settings}" }
+        watchCapturer(track, MAX_CAMERA_RECOVERIES)
+    }
+
+    // Answering send-receive lets either side start a camera later without renegotiating.
+    private fun adoptOfferedVideo() {
+        if (videoSender != null) return
+        val transceiver = peer.getTransceivers().firstOrNull { it.isVideo } ?: return
+        transceiver.direction = RtpTransceiverDirection.SendRecv
+        videoSender = transceiver.sender
+    }
+
+    override suspend fun addVideo(): Boolean {
+        if (closed.load()) return false
+        if (videoTrack != null) return true
+        val sender = videoSender ?: return false.also { Logger.w("WebRtcKmp") { "no video transceiver was negotiated, the camera stays off" } }
+        var media: MediaStream? = null
+        val track = try {
+            MediaDevices.getUserMedia { requestCamera() }.also { media = it }.tracks.filterIsInstance<VideoTrack>().firstOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e, "WebRtcKmp") { "camera could not start mid-call" }
+            null
+        }
+        fun discard() {
+            runCatching { media?.tracks?.forEach { it.stop() } }
+            runCatching { media?.release() }
+        }
+        if (track == null || closed.load()) return false.also { discard() }
+        runCatching { sender.replaceTrack(track) }.onFailure {
+            if (it is CancellationException) throw it
+            Logger.w(it, "WebRtcKmp") { "camera could not be put on the video sender" }
+            discard()
+            return false
+        }
+        cameraStream = media
+        videoWanted = true
+        attachCamera(track, sender)
+        mediaState.setCamera(true)
+        return true
     }
 
     // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
@@ -228,8 +275,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             Logger.w(it, "WebRtcKmp") { "camera recovery could not replace the sender track, video stays off" }
             return discard()
         }
-        runCatching { recoveredStream?.release() }
-        recoveredStream = media
+        runCatching { cameraStream?.release() }
+        cameraStream = media
         videoTrack = fresh
         publishLocal(fresh)
         Logger.i("WebRtcKmp") { "camera recovered settings=${fresh.settings}" }
@@ -254,14 +301,16 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private fun Exception.isPermissionError() =
         this::class.simpleName.orEmpty().contains("Permission", ignoreCase = true)
 
+    // offerToReceiveVideo = false would strip the receive direction from the idle video transceiver.
     override suspend fun createOffer(video: Boolean): String {
-        addLocalMedia(video)
-        return offer(OfferAnswerOptions(offerToReceiveAudio = true, offerToReceiveVideo = video))
+        addLocalMedia(video, offering = true)
+        return offer(OfferAnswerOptions(offerToReceiveAudio = true))
     }
 
     override suspend fun answer(offerSdp: String, video: Boolean): String {
-        addLocalMedia(video)
+        addLocalMedia(video, offering = false)
         peer.setRemoteDescription(SessionDescription(SessionDescriptionType.Offer, offerSdp))
+        adoptOfferedVideo()
         return createAnswer().also { logVideoSender() }
     }
 
@@ -337,8 +386,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         runCatching { stream?.tracks?.forEach { it.stop() } }
         val tracks = start.elapsedNow()
         runCatching { stream?.release() }
-        runCatching { recoveredStream?.tracks?.forEach { it.stop() } }
-        runCatching { recoveredStream?.release() }
+        runCatching { cameraStream?.tracks?.forEach { it.stop() } }
+        runCatching { cameraStream?.release() }
         val released = start.elapsedNow()
         runCatching { peer.close() }
         val peerClosed = start.elapsedNow()

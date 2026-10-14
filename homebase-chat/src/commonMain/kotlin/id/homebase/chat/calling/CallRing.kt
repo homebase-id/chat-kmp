@@ -52,8 +52,9 @@ import id.homebase.resources.call_decline
 import id.homebase.resources.call_decline_from
 import id.homebase.resources.call_incoming_video
 import id.homebase.resources.call_incoming_voice
-import id.homebase.resources.call_ring_accept_video
-import id.homebase.resources.call_ring_accept_voice
+import id.homebase.resources.call_accept
+import id.homebase.resources.call_accept_audio_from
+import id.homebase.resources.call_accept_video_from
 import org.jetbrains.compose.resources.stringResource
 
 val RingWindowWidth = 360.dp
@@ -72,8 +73,7 @@ fun CallRingWindowContent(model: CallWindowModel, modifier: Modifier = Modifier)
         video = ui.isVideoCall,
         name = name,
         avatar = { size -> ui.peer?.let { PeerAvatar(it, name, size) } },
-        onAcceptVoice = model::acceptVoice,
-        onAcceptVideo = model::acceptVideo,
+        onAccept = model::answer,
         onDecline = model::decline,
         modifier = modifier,
         shape = LocalCallHost.current.floatingWindowShape,
@@ -87,8 +87,7 @@ fun CallRingContent(
     video: Boolean,
     name: String,
     avatar: @Composable (Dp) -> Unit,
-    onAcceptVoice: () -> Unit,
-    onAcceptVideo: () -> Unit,
+    onAccept: () -> Unit,
     onDecline: () -> Unit,
     modifier: Modifier = Modifier,
     shape: Shape = RectangleShape,
@@ -136,8 +135,7 @@ fun CallRingContent(
             }
             val acceptKeys = callShortcutKeys(RingAcceptKey, shift = true)
             val declineKeys = callShortcutKeys(RingDeclineKey, shift = true)
-            val voiceLabel = stringResource(MR.string.call_ring_accept_voice)
-            val videoLabel = stringResource(MR.string.call_ring_accept_video)
+            val acceptLabel = stringResource(MR.string.call_accept)
             val actions = listOf(
                 RingActionSpec(
                     icon = Icons.Default.CallEnd,
@@ -149,20 +147,13 @@ fun CallRingContent(
                     onClick = onDecline,
                 ),
                 RingActionSpec(
-                    icon = Icons.Default.Call,
-                    label = voiceLabel,
-                    tooltip = if (video) voiceLabel else shortcutTip(voiceLabel, acceptKeys),
-                    container = if (video) scheme.secondaryContainer else scheme.primary,
-                    content = if (video) scheme.onSecondaryContainer else scheme.onPrimary,
-                    onClick = onAcceptVoice,
-                ),
-                RingActionSpec(
-                    icon = Icons.Default.Videocam,
-                    label = videoLabel,
-                    tooltip = if (video) shortcutTip(videoLabel, acceptKeys) else videoLabel,
-                    container = if (video) scheme.primary else scheme.secondaryContainer,
-                    content = if (video) scheme.onPrimary else scheme.onSecondaryContainer,
-                    onClick = onAcceptVideo,
+                    icon = if (video) Icons.Default.Videocam else Icons.Default.Call,
+                    label = acceptLabel,
+                    tooltip = shortcutTip(acceptLabel, acceptKeys),
+                    description = shortcutTip(stringResource(if (video) MR.string.call_accept_video_from else MR.string.call_accept_audio_from, name), acceptKeys),
+                    container = scheme.primary,
+                    content = scheme.onPrimary,
+                    onClick = onAccept,
                 ),
             )
             val fontScale = LocalDensity.current.fontScale
@@ -181,7 +172,7 @@ fun CallRingContent(
     }
 }
 
-/** Past this the three side-by-side labels break mid-word, so the actions stack into full-width rows. */
+/** Past this the side-by-side labels break mid-word, so the actions stack into full-width rows. */
 private const val StackedFontScale = 1.6f
 
 private class RingActionSpec(

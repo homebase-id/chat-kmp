@@ -125,8 +125,7 @@ fun CallOverlay(
     CompositionLocalProvider(LocalChromeHold provides hold) { HoldChromeWhile(events.dialogOpen) }
     val actions = remember(viewModel, gate, onMinimize, onToggleMini) {
         CallScreenActions(
-            acceptAudio = { gate.run(video = false) { viewModel.accept(withVideo = false) } },
-            acceptVideo = { gate.run(video = true) { video -> viewModel.accept(withVideo = video) } },
+            accept = { gate.run(video = viewModel.uiState.value.isVideoCall) { camera -> viewModel.accept(cameraGranted = camera) } },
             decline = viewModel::decline,
             hangup = viewModel::hangup,
             toggleMute = viewModel::toggleMute,

@@ -37,7 +37,7 @@ internal fun offeredRoutes(connected: Set<AudioRoute>): List<AudioRoute> =
     (if (AudioRoute.Wired in connected) emptyList() else listOf(AudioRoute.Earpiece)) + AudioRoute.Speaker +
         listOf(AudioRoute.Bluetooth, AudioRoute.Wired).filter { it in connected }
 
-// Mode is fixed per call: WebRtcKmpCallEngine has no addVideo, so a voice call never gains a camera.
+// Chosen when the call starts: a voice call that turns its camera on keeps VoiceChat.
 internal data class CallAudioProfile(val mode: CallAudioMode, val route: AudioRoute)
 
 internal fun callAudioProfile(video: Boolean, headset: Boolean) = CallAudioProfile(
@@ -102,7 +102,7 @@ data class CallState(
     val verificationCode: String? = null,
     val placedWithVideo: Boolean = false,
     val restartPending: Boolean = false,
-    /** The engine holds a camera track; without one, turning video on renegotiates through [CallEffect.AddVideo]. */
+    /** The engine holds a camera track; without one, turning video on starts it through [CallEffect.AddVideo]. */
     val localVideoTrack: Boolean = false,
     val linkUp: Boolean = false,
 ) {

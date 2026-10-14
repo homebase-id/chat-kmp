@@ -323,16 +323,9 @@ class CallController(
                 is CallEffect.AddIce -> if (!remoteReady) bufferedIce += effect else engine?.let { addIce(it, effect) }
                 is CallEffect.SetMuted -> engine?.setMuted(effect.muted)
                 is CallEffect.SetVideo -> engine?.setVideo(effect.on)
-                CallEffect.AddVideo -> {
-                    val sdp = engine?.addVideo()
-                    if (sdp != null) {
-                        restartOfferSdp = sdp
-                        post(CallEvent.VideoUpgradeSent)
-                        sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
-                    } else {
-                        post(CallEvent.NoLocalVideoTrack)
-                        post(CallEvent.SetVideo(false))
-                    }
+                CallEffect.AddVideo -> if (engine?.addVideo() != true) {
+                    post(CallEvent.NoLocalVideoTrack)
+                    post(CallEvent.SetVideo(false))
                 }
                 CallEffect.SwitchCamera -> engine?.switchCamera()
                 is CallEffect.SetRoute -> engine?.setAudioRoute(effect.route)

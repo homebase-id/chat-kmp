@@ -108,7 +108,7 @@ class CallDevicesScreenshotTest {
                         peerName = "Samwise Gamgee",
                         avatar = { },
                         actions = CallScreenActions(
-                            acceptAudio = {}, acceptVideo = {}, decline = {}, hangup = {}, toggleMute = {}, toggleVideo = {},
+                            accept = {}, decline = {}, hangup = {}, toggleMute = {}, toggleVideo = {},
                             switchCamera = {}, setRoute = {}, onVerificationClick = {}, retry = {}, close = {}, minimize = {},
                             endFromKeyboard = {}, selectDevice = { kind, id -> picked += kind to id },
                         ),
