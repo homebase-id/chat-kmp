@@ -17,9 +17,7 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
     private var converted = 0
     private var renderingSince: CFTimeInterval?
     private var firstFrameReported = false
-    private var pool: CVPixelBufferPool?
-    private var poolWidth = 0
-    private var poolHeight = 0
+    private let converter = I420ToNV12Converter()
     var onSize: (CGSize) -> Void = { _ in }
     var onFirstRenderedFrame: (Int) -> Void = { _ in }
 
@@ -106,47 +104,10 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
             + "flushNeeded=\(renderer.requiresFlushToResumeDecoding) size=\(size) error=\(renderer.error.map { "\($0)" } ?? "nil")"
     }
 
-    // Called only from the track's frame thread, so the pool needs no lock.
+    // Called only from the track's frame thread, so the converter needs no lock.
     private func pixelBuffer(_ buffer: RTCVideoFrameBuffer) -> CVPixelBuffer? {
         if let cv = buffer as? RTCCVPixelBuffer { return cv.pixelBuffer }
-        let i420 = buffer.toI420()
-        let width = Int(i420.width), height = Int(i420.height)
-        if pool == nil || width != poolWidth || height != poolHeight {
-            let attrs: [CFString: Any] = [
-                kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-                kCVPixelBufferWidthKey: width,
-                kCVPixelBufferHeightKey: height,
-                kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
-            ]
-            pool = nil
-            guard CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool) == kCVReturnSuccess else { return nil }
-            poolWidth = width
-            poolHeight = height
-        }
-        var out: CVPixelBuffer?
-        guard let pool, CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let out else { return nil }
-        CVPixelBufferLockBaseAddress(out, [])
-        defer { CVPixelBufferUnlockBaseAddress(out, []) }
-        let chromaWidth = vImagePixelCount(i420.chromaWidth), chromaHeight = vImagePixelCount(i420.chromaHeight)
-        var srcY = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: i420.dataY), height: vImagePixelCount(height),
-                                 width: vImagePixelCount(width), rowBytes: Int(i420.strideY))
-        var dstY = vImage_Buffer(data: CVPixelBufferGetBaseAddressOfPlane(out, 0), height: vImagePixelCount(height),
-                                 width: vImagePixelCount(width), rowBytes: CVPixelBufferGetBytesPerRowOfPlane(out, 0))
-        guard vImageCopyBuffer(&srcY, &dstY, 1, vImage_Flags(kvImageNoFlags)) == kvImageNoError,
-              let uvDst = CVPixelBufferGetBaseAddressOfPlane(out, 1) else { return nil }
-        var srcU = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: i420.dataU), height: chromaHeight, width: chromaWidth,
-                                 rowBytes: Int(i420.strideU))
-        var srcV = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: i420.dataV), height: chromaHeight, width: chromaWidth,
-                                 rowBytes: Int(i420.strideV))
-        let uvRowBytes = CVPixelBufferGetBytesPerRowOfPlane(out, 1)
-        let interleaved = withUnsafePointer(to: &srcU) { u in
-            withUnsafePointer(to: &srcV) { v in
-                var planes: [UnsafePointer<vImage_Buffer>?] = [u, v]
-                var channels: [UnsafeMutableRawPointer?] = [uvDst, uvDst + 1]
-                return vImageConvert_PlanarToChunky8(&planes, &channels, 2, 2, chromaWidth, chromaHeight, uvRowBytes, vImage_Flags(kvImageNoFlags))
-            }
-        }
-        return interleaved == kvImageNoError ? out : nil
+        return converter.convert(buffer.toI420())
     }
 
     private static func sampleBuffer(_ pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
