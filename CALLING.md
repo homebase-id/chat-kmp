@@ -158,7 +158,7 @@ included) `pinCaptureFormat` re-picks the device format with Telegram's rule (`c
 reaching 30 fps, exactly 1280x720 else the smallest covering 720, binned and lowest max fps first) and sets 1/30 frame
 durations; it logs `capture format chosen` and the format again 1 s later. `configureWebRtc`'s 720p output adapter
 stays as the safety net. Baseline measured before the pin: source 3840x2160 at 30 fps with outbound 1280x720
-(the format sizes were read as garbage, `height=0 width=681`); the pinned capture has not been measured on a device yet.
+(the format sizes were read as garbage, `height=0 width=681`); on the morning device run the pinned format was chosen at call start (`1280x720@30 420v max60fps binned`, was 3840x2160) and outbound never exceeded 1280x720 at 29-31 fps. A camera flip logged no second `capture format chosen`: `pinCaptureFormat` runs only from the session-start observer and webrtc-kmp flips the input inside the running session, so the new camera's format is unpinned and 720p holds only through the output adapter (open).
 
 - **Thermal and Low Power Mode.** `DevicePressure` (filled by the Apple sender) reads `NSProcessInfo` thermal state and Low Power Mode and
   caps the send rung; the ladder applies the lower of the network cap and the pressure cap and lifts it when the
@@ -168,11 +168,11 @@ stays as the safety net. Baseline measured before the pin: source 3840x2160 at 3
   Before it, remote video state could only turn on (`WebRtcJavaMediaStateTest`, two real engines).
 - **iOS PiP rendering.** `SampleBufferVideoView` renders only while the PiP window is up; before, frames were wrapped
   and enqueued from arm time (7342 remote and 6778 self frames between arm and the first PiP start). The I420 to NV12
-  copy is pooled vImage. Baseline CPU (one core): foreground 27.2 % mean, PiP showing 23.4 %.
+  copy is pooled vImage. Baseline CPU (one core): foreground 27.2 % mean, PiP showing 23.4 %. After: first drain after PiP start enqueued 40 remote frames (was 7342), then 29-30 a second; foreground CPU without PiP 26.2 % mean. Both PiP sources on the iPhone/Redmi pair are VideoToolbox pixel buffers (`converted=0`), so the vImage copy never runs there and the saving from not rendering hidden frames is about 57 us a frame (Mac microbenchmark), about 0.3 % of one core. The per-second `pip frames` line carries `cpuUs` (frame thread CPU in wrap and enqueue) to measure it on device. PiP closed about 2.8 s after the peer's hangup (criterion 2 s), dominated by signalling latency, not teardown (13 ms).
 - **Android decode time.** libwebrtc's `AndroidVideoDecoder` keeps a `FrameInfo` deque that `reinitDecode` does not
   clear, so after a resolution change every output is paired with an older entry and `decodeMs` reads about 86 ms
   (a constant two frame intervals) while a real decode is about 20 ms. `ResizeResettingDecoder` clears the timings on a
-  size change (`decoderNeedsReset`, `CallDecoderResetTest`); the on-device number after the fix is not measured.
+  size change (`decoderNeedsReset`, `CallDecoderResetTest`); after the fix, decodeMs on the Redmi stayed 6.4-13.3 ms through an Edge-profile ladder down and back, with the longest freeze after recovery 0.9 s.
 
 - **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame, 108000 a second)
   and each side encodes at the level the peer advertised. 720p30 fits it exactly, so the SDP is left as libwebrtc wrote
@@ -194,7 +194,10 @@ stays as the safety net. Baseline measured before the pin: source 3840x2160 at 3
   while the last is still held; before the low-latency keys that halved 1080p to 15 fps (`Too many frames backed up in
   the decoder`). With them, Redmi A/B, iPhone->Redmi 720p30, ~75 s at the top rung: byte buffers 18-22 ms decode,
   0.6 frames in flight, app CPU ~152%; textures 10-13 ms, 0.3 in flight, ~136%; both 30 fps, no drops, no freezes,
-  no backed-up lines.
+  no backed-up lines. The Redmi's first decode of iPhone video had aborted the process because the Kotlin override of
+  `ResizeResettingDecoder.decode` declared `DecodeInfo` non-null while libwebrtc's JNI passes null (NullPointerException
+  inside the JNI call, then `!env->ExceptionCheck()`); the parameter is nullable now. On device, steady 1280x720 30 fps:
+  decodeMs 8.6-11.0, inFlight 0.3, no new freezes, zero `Too many frames backed up` lines.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
   and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log. A stalled
   outbound counter with a frozen source line is a stopped camera, with a moving one a failing encoder. qp above the
