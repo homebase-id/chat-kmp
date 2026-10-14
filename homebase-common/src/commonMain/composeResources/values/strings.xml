@@ -3007,5 +3007,7 @@
     <string name="filesync_trash_failed">Couldn't load the trash.</string>
     <string name="filesync_recent_failed">Couldn't load recent files.</string>
     <string name="filesync_folder_deleted">This folder was deleted.</string>
+    <string name="settings_calls_beta">Voice and video calls (beta)</string>
+    <string name="settings_calls_beta_desc">Experimental and may crash. Restart the app to apply.</string>
     <string name="settings_filesync_icon_desc">Show Filesync in the navigation bar</string>
 </resources>

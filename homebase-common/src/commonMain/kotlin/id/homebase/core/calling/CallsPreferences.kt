@@ -14,6 +14,9 @@ class CallsPreferences(private val databaseManager: DatabaseManager) {
     private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
+    private val _enabled = MutableStateFlow(readBoolean(ENABLED_KEY, default = false))
+    val enabled: StateFlow<Boolean> = _enabled.asStateFlow()
+
     private val _lastSeenMissedAtMs = MutableStateFlow(readLong(LAST_SEEN_MISSED_AT_KEY))
     val lastSeenMissedAtMs: StateFlow<Long> = _lastSeenMissedAtMs.asStateFlow()
 
@@ -21,6 +24,12 @@ class CallsPreferences(private val databaseManager: DatabaseManager) {
         if (_iconVisible.value == value) return
         keyValue.upsertValue(ICON_VISIBLE_KEY, byteArrayOf(if (value) 1 else 0))
         _iconVisible.value = value
+    }
+
+    suspend fun setEnabled(value: Boolean) {
+        if (_enabled.value == value) return
+        keyValue.upsertValue(ENABLED_KEY, byteArrayOf(if (value) 1 else 0))
+        _enabled.value = value
     }
 
     suspend fun setLastSeenMissedAtMs(value: Long) {
@@ -42,6 +51,7 @@ class CallsPreferences(private val databaseManager: DatabaseManager) {
 
     companion object {
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0c01")
+        val ENABLED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0c03")
         val LAST_SEEN_MISSED_AT_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0c02")
     }
 }
