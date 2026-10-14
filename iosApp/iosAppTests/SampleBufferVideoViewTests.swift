@@ -20,7 +20,7 @@ private final class PaddedI420Buffer: NSObject, RTCI420BufferProtocol {
     var dataU: UnsafePointer<UInt8> { UnsafePointer(u) }
     var dataV: UnsafePointer<UInt8> { UnsafePointer(v) }
 
-    init(width: Int32, height: Int32, strideY: Int32, strideU: Int32, strideV: Int32, seed: UInt8 = 0) {
+    init(width: Int32, height: Int32, strideY: Int32, strideU: Int32, strideV: Int32, seed: UInt8) {
         self.width = width
         self.height = height
         self.strideY = strideY
@@ -42,6 +42,24 @@ private final class PaddedI420Buffer: NSObject, RTCI420BufferProtocol {
             }
         }
         super.init()
+    }
+
+    convenience init(width: Int32, height: Int32, strideY: Int32, strideU: Int32, strideV: Int32) {
+        self.init(width: width, height: height, strideY: strideY, strideU: strideU, strideV: strideV, seed: 0)
+    }
+
+    convenience init(width: Int32, height: Int32) {
+        self.init(width: width, height: height, strideY: width, strideU: (width + 1) / 2, strideV: (width + 1) / 2, seed: 0)
+    }
+
+    convenience init(width: Int32, height: Int32, dataY: UnsafePointer<UInt8>, dataU: UnsafePointer<UInt8>, dataV: UnsafePointer<UInt8>) {
+        self.init(width: width, height: height)
+        let chromaWidth = Int((width + 1) / 2)
+        for row in 0..<Int(height) { (y + row * Int(strideY)).update(from: dataY + row * Int(width), count: Int(width)) }
+        for row in 0..<Int((height + 1) / 2) {
+            (u + row * Int(strideU)).update(from: dataU + row * chromaWidth, count: chromaWidth)
+            (v + row * Int(strideV)).update(from: dataV + row * chromaWidth, count: chromaWidth)
+        }
     }
 
     deinit {
