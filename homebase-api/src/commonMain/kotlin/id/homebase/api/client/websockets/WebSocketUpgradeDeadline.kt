@@ -7,8 +7,13 @@ import kotlinx.coroutines.launch
 /**
  * How long a connect attempt may take to reach the 101 Switching Protocols (#1921). Covers DNS,
  * TCP, TLS and the upgrade response; comfortably above CIO's 5 s TCP connect timeout.
+ *
+ * This deadline also applies on mobile. Android's OkHttp gives up first (10 s idle read timeout),
+ * except while a DNS lookup is stalled. On iOS, Darwin's default is a 60 s idle timeout, so this
+ * value becomes the effective connect limit there. 30 s still leaves room for a slow cellular
+ * connect, while Desktop recovers within about half a minute.
  */
-internal const val WS_UPGRADE_TIMEOUT_MS = 20_000L
+internal const val WS_UPGRADE_TIMEOUT_MS = 30_000L
 
 /**
  * A connect attempt that did not reach the 101 within its deadline. Deliberately NOT a
