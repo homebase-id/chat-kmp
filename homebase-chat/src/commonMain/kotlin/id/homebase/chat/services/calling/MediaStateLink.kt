@@ -59,6 +59,8 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
 
     fun capturerEnded() = change("capturer ended") { it.copy(capturerEnded = true) }
 
+    fun capturerRestored() = change("capturer restored") { it.copy(capturerEnded = false) }
+
     fun opened(send: (ByteArray) -> Boolean) {
         transport.store(send)
         val state = local.load().message()

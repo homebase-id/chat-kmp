@@ -38,8 +38,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
+
+private const val MAX_CAMERA_RECOVERIES = 3
 
 /** [receiver] is set for remote video: iOS PiP needs the native RTCVideoTrack, which only the receiver exposes. */
 class KmpVideoHandle(
@@ -78,6 +81,10 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private var audioTrack: MediaStreamTrack? = null
     private var videoTrack: VideoTrack? = null
     private var videoSender: RtpSender? = null
+
+    @Volatile
+    private var videoWanted = true
+    private var recoveredStream: MediaStream? = null
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.trySend(it) }
     private val mediaState = MediaStateLink("WebRtcKmp") { _events.trySend(it) }
@@ -181,18 +188,55 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                     }
                     publishLocal(it)
                     Logger.i("WebRtcKmp") { "local video settings=${it.settings}" }
-                    // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
-                    scope.launch {
-                        it.state.first { state -> state is MediaStreamTrackState.Ended }
-                        if (closed.load()) return@launch
-                        Logger.w("WebRtcKmp") { "local video track ended by capturer device=${it.settings.deviceId}" }
-                        mediaState.capturerEnded()
-                    }
+                    watchCapturer(it, MAX_CAMERA_RECOVERIES)
                 }
             }
         }
         mediaState.setCamera(videoTrack != null)
         openStateChannel()
+    }
+
+    // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
+    private fun watchCapturer(track: VideoTrack, recoveriesLeft: Int) {
+        scope.launch {
+            track.state.first { state -> state is MediaStreamTrackState.Ended }
+            if (closed.load()) return@launch
+            Logger.w("WebRtcKmp") { "local video track ended by capturer device=${track.settings.deviceId} recoveriesLeft=$recoveriesLeft" }
+            mediaState.capturerEnded()
+            if (recoveriesLeft > 0) recoverCamera(recoveriesLeft - 1)
+        }
+    }
+
+    private suspend fun recoverCamera(recoveriesLeft: Int) {
+        val sender = videoSender ?: return
+        var media: MediaStream? = null
+        val fresh = runCatching {
+            MediaDevices.getUserMedia { requestCamera() }.also { media = it }
+                .tracks.filterIsInstance<VideoTrack>().firstOrNull() ?: error("no video track")
+        }.onFailure {
+            if (it is CancellationException) throw it
+            Logger.w(it, "WebRtcKmp") { "camera recovery failed, video stays off" }
+        }.getOrNull() ?: return
+        if (closed.load()) {
+            runCatching { fresh.stop() }
+            runCatching { media?.release() }
+            return
+        }
+        fresh.enabled = videoWanted
+        runCatching { sender.replaceTrack(fresh) }.onFailure {
+            if (it is CancellationException) throw it
+            Logger.w(it, "WebRtcKmp") { "camera recovery could not replace the sender track, video stays off" }
+            runCatching { fresh.stop() }
+            runCatching { media?.release() }
+            return
+        }
+        runCatching { recoveredStream?.release() }
+        recoveredStream = media
+        videoTrack = fresh
+        publishLocal(fresh)
+        Logger.i("WebRtcKmp") { "camera recovered settings=${fresh.settings}" }
+        watchCapturer(fresh, recoveriesLeft)
+        mediaState.capturerRestored()
     }
 
     // Created after the tracks so the audio and video m-lines keep their indexes; an older peer never opens it.
@@ -262,6 +306,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     // Disabling webrtc-kmp's local video track also stops its capturer, so the camera is released, not just blanked.
     override fun setVideo(on: Boolean) {
         val track = videoTrack ?: return
+        videoWanted = on
         track.enabled = on
         mediaState.setCamera(on)
     }
@@ -294,6 +339,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         runCatching { stream?.tracks?.forEach { it.stop() } }
         val tracks = start.elapsedNow()
         runCatching { stream?.release() }
+        runCatching { recoveredStream?.tracks?.forEach { it.stop() } }
+        runCatching { recoveredStream?.release() }
         val released = start.elapsedNow()
         runCatching { peer.close() }
         val peerClosed = start.elapsedNow()

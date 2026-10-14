@@ -126,4 +126,22 @@ class MediaStateLinkTest {
 
         assertEquals(MediaEvent.RemoteVideoChanged(false), events.filterIsInstance<MediaEvent.RemoteVideoChanged>().last())
     }
+
+    @Test
+    fun aRestoredCapturerTellsThePeerVideoIsBackWhileTheUsersCameraIsOn() {
+        val (a, b) = pair()
+        a.link.setCamera(true)
+        a.link.capturerEnded()
+        a.link.capturerRestored()
+        assertEquals(
+            listOf<MediaEvent>(MediaEvent.RemoteVideoChanged(true), MediaEvent.RemoteVideoChanged(false), MediaEvent.RemoteVideoChanged(true)),
+            b.events,
+        )
+
+        b.events.clear()
+        a.link.setCamera(false)
+        a.link.capturerEnded()
+        a.link.capturerRestored()
+        assertEquals(listOf<MediaEvent>(MediaEvent.RemoteVideoChanged(false)), b.events)
+    }
 }
