@@ -89,6 +89,7 @@ class WebRtcJavaCallEngine(
     // Channel calls block on the signaling thread, so it never takes this lock: the open callback hands off to the timer.
     private val stateLock = Any()
     @Volatile private var cameraOn = true
+    private var cameraTried = emptyList<String>()
 
     // Native callbacks arrive on WebRTC threads; the lock keeps close() from disposing the connection under a live call.
     internal val lock = Any()
@@ -264,9 +265,10 @@ class WebRtcJavaCallEngine(
         source.stop()
         source.setVideoCaptureDevice(device)
         captureCapability(device)?.let { source.setVideoCaptureCapability(it) }
+        localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
+        cameraTried = tried
         if (!cameraOn) return
         source.start()
-        localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
         watchForSilentCamera(tried)
         if (fallback) devices.markApplied(MediaDeviceKind.Camera, device.descriptor)
     }
@@ -396,7 +398,8 @@ class WebRtcJavaCallEngine(
             videoSender = peer.addTrack(track, listOf(STREAM_ID)).also(::configureVideoSender)
             videoTrack = track
             _local.value = handle
-            watchForSilentCamera(listOf(device.descriptor))
+            cameraTried = listOf(device.descriptor)
+            watchForSilentCamera(cameraTried)
         } catch (e: Exception) {
             Logger.w(e, "WebRtcJava") { "camera unavailable, continuing audio-only" }
         }
@@ -475,7 +478,10 @@ class WebRtcJavaCallEngine(
             val track = videoTrack ?: return
             cameraOn = on
             track.isEnabled = on
-            if (on) videoSource?.start() else videoSource?.stop()
+            if (on) {
+                videoSource?.start()
+                watchForSilentCamera(cameraTried)
+            } else videoSource?.stop()
         }
         mediaState.setCamera(on)
     }
