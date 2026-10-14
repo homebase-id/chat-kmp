@@ -83,6 +83,11 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import coil3.ImageLoader
+import coil3.PlatformContext
+import org.koin.compose.KoinIsolatedContext
+import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalTestApi::class)
 class CallWindowTest {
@@ -363,6 +368,18 @@ class CallWindowTest {
                         shoot(if (video) "video-960x640" else "voice-420x560", dark)
                     }
                 }
+            }
+        }
+    }
+
+    // The desktop call window is its own Window, outside the main window's CallHost.
+    @Test
+    fun callWindowContentProvidesItsOwnPermissionGate() {
+        withModel(connectedState(video = false)) { model, _, _ ->
+            runDesktopComposeUiTest(420, 560) {
+                val koin = koinApplication { modules(module { single { ImageLoader.Builder(PlatformContext.INSTANCE).build() } }) }
+                setContent { KoinIsolatedContext(koin) { HomebaseTheme { CallWindowContent(model, onMinimize = {}, topInset = 0.dp) } } }
+                onNodeWithText("Samwise Gamgee", substring = true).assertExists()
             }
         }
     }
