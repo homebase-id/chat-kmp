@@ -38,10 +38,13 @@ class BottomBarDefaultsTest {
     ).map { it.route }
 
     @Test
-    fun freshInstallBarIsChatsCallsFeedMomentsHome() = runTest {
+    fun freshInstallBarIsChatsCallsFeedMomentsContactsHome() = runTest {
         val db = db()
         BottomBarDefaultsMigration.run(db)
-        assertEquals(listOf(Route.ChatList, Route.Calls, Route.Feed, Route.Moments, Route.Home), routes(db))
+        assertEquals(
+            listOf(Route.ChatList, Route.Calls, Route.Feed, Route.Moments, Route.ContactBook, Route.Home),
+            routes(db),
+        )
     }
 
     private val cursorKey = SystemDriveConstants.chatDrive.alias
