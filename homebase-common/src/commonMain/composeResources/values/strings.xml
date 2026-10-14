@@ -1681,8 +1681,6 @@
     <string name="dev_menu_network_rung_last_ip">Last-known IP</string>
     <string name="dev_menu_network_last_good_ip">Last-known good IP: %1$s</string>
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
-    <string name="dev_menu_connection_review">Connection review</string>
-    <string name="dev_menu_connection_review_desc">Show the Review button, the contact prompt, and Mark as new.</string>
     <string name="dev_menu_profile_card">Profile card</string>
     <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
@@ -1837,7 +1835,6 @@
     <string name="location_emergency_add_succeeded">Added</string>
     <string name="location_emergency_add_already_member">Already added</string>
     <string name="location_emergency_add_unreviewed_reason">Not yet reviewed — can't be added yet</string>
-    <string name="location_emergency_add_unvetted_reason">Not yet confirmed — can't be added yet</string>
     <string name="location_emergency_add_failed">Failed</string>
     <string name="location_emergency_status_pending">Pending</string>
     <string name="location_emergency_remove_cd">Remove %1$s</string>
@@ -1956,19 +1953,14 @@
     <string name="contactbook_tab_new">New</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
-    <string name="contactbook_vetted">Vetted</string>
-    <string name="contactbook_unvetted_empty">No unvetted connections.</string>
-    <string name="contactbook_vetted_empty">No vetted connections.</string>
     <string name="contactbook_filter_circles">Circles</string>
     <string name="contactbook_new_empty">Nothing waiting on you.</string>
     <string name="contactbook_circles_filter_empty">Nobody is in your circles yet.</string>
     <string name="contactbook_filter_blocked">Blocked</string>
     <string name="contactbook_blocked_filter_empty">You haven't blocked anyone.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
-    <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_disabled">Disabled</string>
-    <string name="contactbook_circle_name_disabled">%1$s (disabled)</string>
     <string name="contactbook_circle_menu">Circle options</string>
     <string name="contactbook_circle_disable">Disable circle</string>
     <string name="contactbook_circle_enable">Enable circle</string>
@@ -1981,7 +1973,6 @@
     <string name="circle_member_add_title">Add to %1$s</string>
     <string name="circle_member_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
     <string name="circle_member_add_unreviewed_reason">Not yet reviewed — can't be added to a circle</string>
-    <string name="circle_member_add_unvetted_reason">Not yet confirmed — can't be added to a circle</string>
     <string name="circle_member_add_succeeded">Added</string>
     <string name="circle_member_add_already_member">Already added</string>
     <string name="circle_member_add_drive_access_denied">This circle includes a drive Chat doesn't have access to, so it can't be added here.</string>
@@ -2085,11 +2076,8 @@
     <string name="contactbook_detail_connect">Send connection request</string>
     <string name="contactbook_detail_not_connected">Not connected</string>
     <string name="contactbook_detail_pending">Connection request pending</string>
-    <string name="contactbook_detail_request_incoming">Wants to connect with you</string>
     <string name="contactbook_detail_request_outgoing">Connection request sent</string>
-    <string name="contactbook_detail_accept">Accept</string>
     <string name="contactbook_detail_reject">Reject</string>
-    <string name="contactbook_detail_add_to_circles">Add to circles (optional)</string>
     <string name="contactbook_detail_cancel_request">Cancel request</string>
     <string name="contactbook_detail_blocked">Blocked</string>
     <string name="contactbook_detail_recent_media">Recent media</string>

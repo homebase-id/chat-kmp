@@ -29,9 +29,8 @@ enum class ContactState {
  * True for a circle whose membership makes a contact [ContactState.Circle].
  *
  * Personal designation, minus the circles nobody chose: ambient enrolment ([CircleGrantOn.Connect],
- * [CircleGrantOn.OwnFlowConnect]) happens without the owner present, and the two legacy system
- * circles are auto-connect carriers. A [CircleGrantOn.Review] circle does count — it is granted by
- * the owner's own review, which is exactly the act this state reports.
+ * [CircleGrantOn.OwnFlowConnect]) happens without the owner present. A [CircleGrantOn.Review] circle
+ * does count — it is granted by the owner's own review, which is exactly the act this state reports.
  */
 fun RedactedCircleDefinition.isPersonalCircle(): Boolean = !disabled && isPersonalKind()
 
@@ -97,3 +96,6 @@ fun contactStateOf(
         else -> ContactState.New
     }
 }
+
+/** True for a circle whose owning app enrols members itself, rather than one the user curates. */
+fun RedactedCircleDefinition.isAppDefaultCircle(): Boolean = grantOn != CircleGrantOn.None

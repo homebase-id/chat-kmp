@@ -336,7 +336,6 @@ class DeveloperMenuViewModel(
 
 @Immutable
 data class DeveloperMenuUiState(
-    /** Dark-launched: the connection review's entry points are hidden until this is on. */
     val profileCardEnabled: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,

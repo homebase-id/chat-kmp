@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.RequestDirection
@@ -36,12 +37,7 @@ fun ContactStateIcon(state: ContactState, modifier: Modifier = Modifier) {
         ContactState.Chat -> Icons.Outlined.ChatBubbleOutline to stringResource(MR.string.contact_state_chat)
         ContactState.Circle -> Icons.Outlined.Person to stringResource(MR.string.contact_state_circle)
     }
-    Icon(
-        imageVector = icon,
-        contentDescription = label,
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = modifier.size(20.dp),
-    )
+    TrailingStatusIcon(icon, label, modifier)
 }
 
 @Composable
@@ -52,6 +48,11 @@ fun RequestDirectionIcon(direction: RequestDirection, modifier: Modifier = Modif
         RequestDirection.OUTGOING ->
             Icons.AutoMirrored.Outlined.CallMade to stringResource(MR.string.contact_request_outgoing)
     }
+    TrailingStatusIcon(icon, label, modifier)
+}
+
+@Composable
+private fun TrailingStatusIcon(icon: ImageVector, label: String, modifier: Modifier) {
     Icon(
         imageVector = icon,
         contentDescription = label,

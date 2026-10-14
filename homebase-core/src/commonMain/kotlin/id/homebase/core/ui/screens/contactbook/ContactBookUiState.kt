@@ -192,6 +192,8 @@ data class ContactBookUiState(
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
+    /** Per-domain (lowercased) pending request directions, for the row's trailing slot. */
+    val requestDirections: Map<String, List<RequestDirection>> = emptyMap(),
     /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
     /** Circles the review sheet offers, in its three groups. */

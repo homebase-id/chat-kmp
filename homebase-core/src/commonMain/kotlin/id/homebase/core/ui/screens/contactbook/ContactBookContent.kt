@@ -69,13 +69,6 @@ fun ContactBookContent(
             emptyList()
         }
 
-        val requestDirections = remember(uiState.requests) {
-            uiState.requests
-                .filter { it.entry.odinId != null }
-                .groupBy({ it.entry.odinId!!.lowercase() }, { it.direction })
-                .mapValues { (_, directions) -> directions.distinct().sorted() }
-        }
-
         val derivedFromStates = showNew || uiState.filter == ContactFilter.CIRCLES
         val list = when {
             showNew -> uiState.newContacts
@@ -168,7 +161,7 @@ fun ContactBookContent(
                             items(entries, key = { it.uniqueId.toString() }) { entry ->
                                 val domain = entry.odinId?.lowercase()
                                 val state = domain?.let { uiState.contactStates[it] }
-                                val directions = domain?.let { requestDirections[it] }.orEmpty()
+                                val directions = domain?.let { uiState.requestDirections[it] }.orEmpty()
                                 ContactBookRow(
                                     entry = entry,
                                     onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },

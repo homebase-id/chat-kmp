@@ -331,6 +331,10 @@ class ContactBookViewModel(
         val requests = (incomingRequests + outgoingRequests)
             .filter { it.entry.matches(ui.query) }
             .sortedByDescending { it.receivedAtMs }
+        val requestDirections = (incomingRequests + outgoingRequests)
+            .mapNotNull { r -> r.entry.odinId?.lowercase()?.let { it to r.direction } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, directions) -> directions.distinct().sorted() }
 
         ContactBookUiState(
             selectedTab = ui.tab,
@@ -346,6 +350,7 @@ class ContactBookViewModel(
             statesLoading = circlesData.loading,
             enrollmentCandidateCount = ui.enrollmentCandidates,
             requests = requests,
+            requestDirections = requestDirections,
             incomingRequestCount = incomingRequests.size,
             reviewCircleGroups = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
                 .reviewCircleGroups(),

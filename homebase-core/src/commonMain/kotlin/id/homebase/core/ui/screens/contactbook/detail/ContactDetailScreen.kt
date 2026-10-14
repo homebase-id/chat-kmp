@@ -233,7 +233,6 @@ fun ContactDetailScreen(
         }
     }
 
-
     // The contact's photo opened full-screen. Kept out of [uiState.fullScreenMedia]:
     // that one is a chat attachment, this is a profile image. Null = closed.
     var fullScreenAvatar by remember { mutableStateOf<SubSamplingImageSource?>(null) }
@@ -410,7 +409,7 @@ private fun ContactDetailContent(
                         // Edit + the management menu (block/disconnect/delete) act on a saved
                         // contact — meaningless for a not-yet-accepted incoming request, whose
                         // only actions are Accept/Reject in the profile card below (#921).
-                        if (!uiState.isPendingIncoming) {
+                        if (uiState.requestReview == null) {
                             IconButton(onClick = { onAction(ContactDetailAction.EditClicked) }) {
                                 Icon(
                                     Icons.Outlined.Edit,

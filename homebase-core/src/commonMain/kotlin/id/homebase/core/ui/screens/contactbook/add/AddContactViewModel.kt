@@ -78,8 +78,8 @@ class AddContactViewModel(
 
     /**
      * Public state, with [AddContactUiState.relation] and [AddContactUiState.alreadySaved]
-     * folded in live from the connection map, the circle definitions, the pending incoming/outgoing request lists, and the saved contacts. This is
-     * what lets the resolved-identity card offer exactly the applicable action (send / accept /
+     * folded in live from the connection map, the circle definitions, the pending incoming/outgoing
+     * request lists, and the saved contacts. This is what lets the resolved-identity card offer exactly the applicable action (send / accept /
      * reject / cancel / nothing) and avoid offering to save a contact twice.
      */
     val state: StateFlow<AddContactUiState> =

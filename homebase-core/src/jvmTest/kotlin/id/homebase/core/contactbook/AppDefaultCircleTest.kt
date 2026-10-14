@@ -19,7 +19,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalUuidApi::class)
-class AssignableCirclesTest {
+class AppDefaultCircleTest {
 
     private fun circle(
         id: String,

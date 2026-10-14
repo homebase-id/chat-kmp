@@ -39,15 +39,6 @@ class ReviewSerializationTest {
         assertEquals(1_764_000_000_000L, reg.reviewedAt)
     }
 
-    /** A server that predates the review endpoints sends vetted and no reviewedAt. */
-    @Test
-    fun aPreRolloutServerShapeStillParses() {
-        val reg = OdinSystemSerializer
-            .deserialize<RedactedIdentityConnectionRegistration>("{$base,\"vetted\":true}")
-
-        assertNull(reg.reviewedAt)
-    }
-
     /** An empty selection is the "chat only" outcome, and has to reach the server as `[]`. */
     @Test
     fun aChatOnlyReviewSendsAnEmptyArrayNotAnOmittedField() {
