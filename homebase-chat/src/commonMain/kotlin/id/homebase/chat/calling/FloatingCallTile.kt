@@ -28,7 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +57,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.chat.services.calling.RemoteVideoSize
@@ -114,7 +114,7 @@ internal fun FloatingCallTile(
 ) {
     val density = LocalDensity.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val remoteSize by RemoteVideoSize.current.collectAsState()
+    val remoteSize by RemoteVideoSize.current.collectAsStateWithLifecycle()
     val tileSize = floatingTileSize(remoteSize)
     val insets = WindowInsets.safeDrawing
     val scope = rememberCoroutineScope()
