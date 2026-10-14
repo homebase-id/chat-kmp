@@ -9,6 +9,11 @@ import dev.onvoid.webrtc.PeerConnectionFactory
 import dev.onvoid.webrtc.PeerConnectionObserver
 import dev.onvoid.webrtc.RTCAnswerOptions
 import dev.onvoid.webrtc.RTCConfiguration
+import dev.onvoid.webrtc.RTCDataChannel
+import dev.onvoid.webrtc.RTCDataChannelBuffer
+import dev.onvoid.webrtc.RTCDataChannelInit
+import dev.onvoid.webrtc.RTCDataChannelObserver
+import dev.onvoid.webrtc.RTCDataChannelState
 import dev.onvoid.webrtc.RTCIceCandidate
 import dev.onvoid.webrtc.RTCIceServer
 import dev.onvoid.webrtc.RTCOfferOptions
@@ -34,6 +39,7 @@ import dev.onvoid.webrtc.media.video.VideoCaptureCapability
 import dev.onvoid.webrtc.media.video.VideoDevice
 import dev.onvoid.webrtc.media.video.VideoDeviceSource
 import dev.onvoid.webrtc.media.video.VideoTrack
+import java.nio.ByteBuffer
 import java.util.Timer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -77,6 +83,12 @@ class WebRtcJavaCallEngine(
     private var remoteFrames: JvmVideoHandle? = null
     private var remoteTrack: VideoTrack? = null
     private val mapper = PeerEventMapper { _events.trySend(it) }
+    private val mediaState = MediaStateLink("WebRtcJava") { _events.trySend(it) }
+    private var stateChannel: RTCDataChannel? = null
+
+    // Channel calls block on the signaling thread, so it never takes this lock: the open callback hands off to the timer.
+    private val stateLock = Any()
+    @Volatile private var cameraOn = true
 
     // Native callbacks arrive on WebRTC threads; the lock keeps close() from disposing the connection under a live call.
     internal val lock = Any()
@@ -136,7 +148,7 @@ class WebRtcJavaCallEngine(
                     remoteTrack = track
                     _remote.value = handle
                 }
-                mapper.remoteVideo(true)
+                mediaState.remoteTrackArrived()
             }
         },
     ) ?: error("webrtc-java returned no peer connection")
@@ -147,6 +159,10 @@ class WebRtcJavaCallEngine(
 
     private val micLevelTimer = Timer("call-mic-level", true).apply {
         schedule(timerTask { pollMicLevel() }, MIC_LEVEL_PERIOD_MS, MIC_LEVEL_PERIOD_MS)
+    }
+
+    private val mediaStateTimer = Timer("call-media-state", true).apply {
+        schedule(timerTask { mediaState.resend() }, MEDIA_STATE_RESEND_MS, MEDIA_STATE_RESEND_MS)
     }
 
     init {
@@ -248,6 +264,7 @@ class WebRtcJavaCallEngine(
         source.stop()
         source.setVideoCaptureDevice(device)
         captureCapability(device)?.let { source.setVideoCaptureCapability(it) }
+        if (!cameraOn) return
         source.start()
         localFrames?.mirrored = cameraMirrored(device.name, device.deviceTransport?.name)
         watchForSilentCamera(tried)
@@ -263,7 +280,7 @@ class WebRtcJavaCallEngine(
         val seen = capturedFrames.count.get()
         cameraWatch.schedule(timerTask {
             synchronized(lock) {
-                if (closed || capturedFrames.count.get() != seen) return@synchronized
+                if (closed || !cameraOn || capturedFrames.count.get() != seen) return@synchronized
                 val available = cameras()
                 val next = nextCameraAfterSilence(available.map { it.descriptor }, tried)
                     ?: return@synchronized Logger.w("WebRtcJava") { "camera delivered no frames and no other camera is left" }
@@ -314,6 +331,46 @@ class WebRtcJavaCallEngine(
             audioTrack = factory.createAudioTrack("audio0", source).also { peer.addTrack(it, listOf(STREAM_ID)) }
         }
         if (video && videoTrack == null) startCamera()
+        mediaState.setCamera(videoTrack != null && cameraOn)
+        if (stateChannel == null) openStateChannel()
+    }
+
+    // Created after the tracks so the audio and video m-lines keep their indexes; an older peer never opens it.
+    private fun openStateChannel() {
+        val init = RTCDataChannelInit().apply {
+            negotiated = true
+            id = MEDIA_STATE_CHANNEL_ID
+            ordered = true
+        }
+        val channel = peer.createDataChannel(MEDIA_STATE_CHANNEL_LABEL, init) ?: return
+        synchronized(stateLock) { stateChannel = channel }
+        channel.registerObserver(object : RTCDataChannelObserver {
+            override fun onBufferedAmountChange(previousAmount: Long) = Unit
+
+            override fun onStateChange() {
+                when (channel.state) {
+                    RTCDataChannelState.OPEN -> mediaStateTimer.schedule(timerTask { mediaState.opened(::sendState) }, 0)
+                    RTCDataChannelState.CLOSING, RTCDataChannelState.CLOSED -> mediaState.closed()
+                    else -> Unit
+                }
+            }
+
+            override fun onMessage(buffer: RTCDataChannelBuffer) {
+                val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
+                mediaState.received(bytes)
+            }
+        })
+    }
+
+    private fun sendState(bytes: ByteArray): Boolean = synchronized(stateLock) {
+        val channel = stateChannel ?: return false
+        try {
+            channel.send(RTCDataChannelBuffer(ByteBuffer.wrap(bytes), true))
+            true
+        } catch (e: Exception) {
+            Logger.w(e, "WebRtcJava") { "media-state send failed" }
+            false
+        }
     }
 
     private fun startCamera() {
@@ -408,10 +465,19 @@ class WebRtcJavaCallEngine(
     override fun setMuted(muted: Boolean) {
         micMuted = muted
         synchronized(lock) { if (!closed) audioTrack?.isEnabled = !muted }
+        mediaState.setMic(!muted)
     }
 
+    // The source stops too, so the camera light goes off and the peer is told instead of receiving black frames.
     override fun setVideo(on: Boolean) {
-        synchronized(lock) { if (!closed) videoTrack?.isEnabled = on }
+        synchronized(lock) {
+            if (closed) return
+            val track = videoTrack ?: return
+            cameraOn = on
+            track.isEnabled = on
+            if (on) videoSource?.start() else videoSource?.stop()
+        }
+        mediaState.setCamera(on)
     }
 
     override suspend fun addVideo(): String? {
@@ -437,6 +503,17 @@ class WebRtcJavaCallEngine(
         if (listenerRegistered.compareAndSet(true, false)) runCatching { MediaDevices.removeDeviceChangeListener(deviceListener) }
         deviceExecutor.shutdownNow()
         micLevelTimer.cancel()
+        // Unregistering waits out an open callback, so nothing schedules on the timer once it is cancelled.
+        synchronized(stateLock) {
+            stateChannel?.let { channel ->
+                runCatching { channel.unregisterObserver() }
+                runCatching { channel.close() }
+                runCatching { channel.dispose() }
+            }
+            stateChannel = null
+        }
+        mediaState.closed()
+        mediaStateTimer.cancel()
         synchronized(levelLock) { levelStopped = true }
         synchronized(lock) {
             if (closed) return

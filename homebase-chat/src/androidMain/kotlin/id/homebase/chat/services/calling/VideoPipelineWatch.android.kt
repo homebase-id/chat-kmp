@@ -9,7 +9,8 @@ import org.webrtc.supportsLowLatency
 
 // libwebrtc's warnings reach homebase.log through configureWebRtc; what it lacks is whether this device's H.264 decoders
 // claim to sustain the 720p30 a peer may send, and whether they offer a low-latency mode.
-internal actual fun watchVideoPipeline(): () -> Unit {
+// A lost Android camera ends webrtc-kmp's track instead, which the engine reports as capturer ended.
+internal actual fun watchVideoPipeline(onCameraInterrupted: (interrupted: Boolean, detail: String) -> Unit): () -> Unit {
     avcDecoderCapabilities.forEach { Logger.i("WebRtcKmp") { it } }
     return {}
 }

@@ -13,10 +13,14 @@ import platform.AVFoundation.AVCaptureSessionInterruptionReasonKey
 import platform.AVFoundation.AVCaptureSessionRuntimeErrorNotification
 import platform.AVFoundation.AVCaptureSessionWasInterruptedNotification
 import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSNumber
+
+// AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableInBackground
+private const val VIDEO_DEVICE_NOT_AVAILABLE_IN_BACKGROUND = 1L
 
 // RTCLog and AVFoundation notices go to os_log only, which a device run cannot hand back with homebase.log.
 @OptIn(ExperimentalForeignApi::class)
-internal actual fun watchVideoPipeline(): () -> Unit {
+internal actual fun watchVideoPipeline(onCameraInterrupted: (interrupted: Boolean, detail: String) -> Unit): () -> Unit {
     val center = NSNotificationCenter.defaultCenter
     val observers = listOf(
         AVCaptureSessionDidStartRunningNotification,
@@ -42,6 +46,12 @@ internal actual fun watchVideoPipeline(): () -> Unit {
             }
             Logger.w("WebRtcKmp") {
                 "capture session $name reason=${info?.get(AVCaptureSessionInterruptionReasonKey)} error=${info?.get(AVCaptureSessionErrorKey)}"
+            }
+            val reason = (info?.get(AVCaptureSessionInterruptionReasonKey) as? NSNumber)?.longValue
+            val detail = if (reason == VIDEO_DEVICE_NOT_AVAILABLE_IN_BACKGROUND) "background" else "reason=$reason"
+            when (name) {
+                AVCaptureSessionWasInterruptedNotification -> onCameraInterrupted(true, detail)
+                AVCaptureSessionInterruptionEndedNotification -> onCameraInterrupted(false, detail)
             }
         }
     }

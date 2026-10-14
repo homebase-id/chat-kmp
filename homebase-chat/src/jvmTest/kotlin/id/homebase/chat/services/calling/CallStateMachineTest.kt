@@ -361,6 +361,20 @@ class CallStateMachineTest {
     }
 
     @Test
+    fun remoteCameraAndMicTurningOffAndBackOnFollowThePeer() {
+        val on = machine.step(connected, CallEvent.Media(MediaEvent.RemoteVideoChanged(true))).state
+        val off = machine.step(on, CallEvent.Media(MediaEvent.RemoteVideoChanged(false)))
+        assertEquals(false, off.state.media.remoteVideo)
+        assertEquals(emptyList(), off.effects)
+        assertEquals(true, machine.step(off.state, CallEvent.Media(MediaEvent.RemoteVideoChanged(true))).state.media.remoteVideo)
+
+        val muted = machine.step(connected, CallEvent.Media(MediaEvent.RemoteMuteChanged(true)))
+        assertEquals(true, muted.state.media.remoteMuted)
+        assertEquals(emptyList(), muted.effects)
+        assertEquals(false, machine.step(muted.state, CallEvent.Media(MediaEvent.RemoteMuteChanged(false))).state.media.remoteMuted)
+    }
+
+    @Test
     fun localIceIsHeldWhileOutgoingTrickledAfterTheAnswerAndDroppedWhileIncoming() {
         val ice = CallEvent.Media(MediaEvent.LocalIce("cand", "0", 1))
         machine.step(outgoing, ice).let {

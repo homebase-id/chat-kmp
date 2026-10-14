@@ -351,7 +351,11 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                     CallTransition(s)
                 }
             is MediaEvent.Failed -> failed(s, e.reason)
-            is MediaEvent.RemoteVideoChanged -> CallTransition(s.copy(media = s.media.copy(remoteVideo = e.on)))
+            is MediaEvent.RemoteVideoChanged -> {
+                if (e.on != s.media.remoteVideo) Logger.i(TAG) { "call=${s.callId} RemoteVideoChanged on=${e.on}" }
+                CallTransition(s.copy(media = s.media.copy(remoteVideo = e.on)))
+            }
+            is MediaEvent.RemoteMuteChanged -> CallTransition(s.copy(media = s.media.copy(remoteMuted = e.muted)))
             is MediaEvent.QualityChanged -> CallTransition(s.copy(quality = e.quality))
             is MediaEvent.RouteChanged -> CallTransition(s.copy(media = s.media.copy(route = e.route)))
             is MediaEvent.LocalIce -> when (s.phase) {

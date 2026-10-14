@@ -72,6 +72,7 @@ data class CallMedia(
     val audio: Boolean = true,
     val localVideo: Boolean = false,
     val remoteVideo: Boolean = false,
+    val remoteMuted: Boolean = false,
     val camera: CameraFacing = CameraFacing.Front,
     val muted: Boolean = false,
     val route: AudioRoute = AudioRoute.Earpiece,
@@ -111,6 +112,7 @@ sealed interface MediaEvent {
     data object Disconnected : MediaEvent
     data class Failed(val reason: FailReason) : MediaEvent
     data class RemoteVideoChanged(val on: Boolean) : MediaEvent
+    data class RemoteMuteChanged(val muted: Boolean) : MediaEvent
     data class QualityChanged(val quality: CallQuality) : MediaEvent
     data class RouteChanged(val route: AudioRoute) : MediaEvent
     data class LocalIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : MediaEvent

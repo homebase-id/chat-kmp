@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
+import com.shepeliev.webrtckmp.DataChannel
 import com.shepeliev.webrtckmp.IceCandidate
 import com.shepeliev.webrtckmp.FacingMode
 import com.shepeliev.webrtckmp.IceServer
@@ -79,7 +80,9 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private var videoSender: RtpSender? = null
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.trySend(it) }
-    private val stopPipelineWatch = watchVideoPipeline()
+    private val mediaState = MediaStateLink("WebRtcKmp") { _events.trySend(it) }
+    private var stateChannel: DataChannel? = null
+    private val stopPipelineWatch = watchVideoPipeline { interrupted, detail -> mediaState.cameraInterrupted(interrupted, detail) }
     private val sendLadder = SendResolutionLadder(
         applyFps = { fps -> videoSender?.let { limitVideoSenderFps(it, fps) } },
         apply = { scale -> videoSender?.let { scaleVideoSender(it, scale) } },
@@ -100,10 +103,16 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             peer.onTrack.collect { event ->
                 val track = event.track as? VideoTrack ?: return@collect
                 _remote.value = KmpVideoHandle(track, mirrored = false, receiver = event.receiver)
-                mapper.remoteVideo(true)
+                mediaState.remoteTrackArrived()
             }
         }
         scope.launch { logVideoStats() }
+        scope.launch {
+            while (!closed.load()) {
+                delay(MEDIA_STATE_RESEND_MS)
+                mediaState.resend()
+            }
+        }
     }
 
     private suspend fun logVideoStats() {
@@ -169,11 +178,29 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                     // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
                     scope.launch {
                         it.state.first { state -> state is MediaStreamTrackState.Ended }
-                        if (!closed.load()) Logger.w("WebRtcKmp") { "local video track ended by capturer device=${it.settings.deviceId}" }
+                        if (closed.load()) return@launch
+                        Logger.w("WebRtcKmp") { "local video track ended by capturer device=${it.settings.deviceId}" }
+                        mediaState.capturerEnded()
                     }
                 }
             }
         }
+        mediaState.setCamera(videoTrack != null)
+        openStateChannel()
+    }
+
+    // Created after the tracks so the audio and video m-lines keep their indexes; an older peer never opens it.
+    private fun openStateChannel() {
+        val channel = peer.createDataChannel(
+            label = MEDIA_STATE_CHANNEL_LABEL,
+            id = MEDIA_STATE_CHANNEL_ID,
+            ordered = true,
+            negotiated = true,
+        ) ?: return Logger.w("WebRtcKmp") { "media-state data channel unavailable" }
+        stateChannel = channel
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { channel.onOpen.collect { mediaState.opened(channel::send) } }
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { channel.onClose.collect { mediaState.closed() } }
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { channel.onMessage.collect { mediaState.received(it) } }
     }
 
     private fun Exception.isPermissionError() =
@@ -223,10 +250,14 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
 
     override fun setMuted(muted: Boolean) {
         audioTrack?.enabled = !muted
+        mediaState.setMic(!muted)
     }
 
+    // Disabling webrtc-kmp's local video track also stops its capturer, so the camera is released, not just blanked.
     override fun setVideo(on: Boolean) {
-        videoTrack?.enabled = on
+        val track = videoTrack ?: return
+        track.enabled = on
+        mediaState.setCamera(on)
     }
 
     override fun switchCamera() {
@@ -252,6 +283,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         stopPipelineWatch()
         stopPressureWatch()
         val start = TimeSource.Monotonic.markNow()
+        mediaState.closed()
+        runCatching { stateChannel?.close() }
         runCatching { stream?.tracks?.forEach { it.stop() } }
         val tracks = start.elapsedNow()
         runCatching { stream?.release() }

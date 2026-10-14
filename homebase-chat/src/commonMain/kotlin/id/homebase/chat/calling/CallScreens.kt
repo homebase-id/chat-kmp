@@ -260,6 +260,7 @@ import id.homebase.resources.call_permission_body
 import id.homebase.resources.call_permission_title
 import id.homebase.resources.call_pill_description
 import id.homebase.resources.call_pill_text
+import id.homebase.resources.call_peer_muted
 import id.homebase.resources.call_poor_connection
 import id.homebase.resources.call_route_bluetooth
 import id.homebase.resources.call_route_earpiece
@@ -916,6 +917,7 @@ private fun AudioCallStatusContent(ui: CallUiState, elapsed: String) {
                 }
             }
             MutedChip(ui.muted)
+            MutedChip(ui.remoteMuted, MR.string.call_peer_muted)
         }
     }
 }
@@ -1089,13 +1091,16 @@ private fun NamePill(ui: CallUiState, peerName: String, elapsed: String) {
                 }
             }
         }
-        if (!minimal) MutedChip(ui.muted)
+        if (!minimal) {
+            MutedChip(ui.muted)
+            MutedChip(ui.remoteMuted, MR.string.call_peer_muted)
+        }
     }
 }
 
 /** Mirrors the mute toggle away from the dock, where a glance at the peer will catch it. */
 @Composable
-private fun MutedChip(muted: Boolean) {
+private fun MutedChip(muted: Boolean, label: StringResource = MR.string.call_you_are_muted) {
     AnimatedVisibility(
         muted,
         enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) + scaleIn(MaterialTheme.motionScheme.fastSpatialSpec()),
@@ -1108,7 +1113,7 @@ private fun MutedChip(muted: Boolean) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(Icons.Default.MicOff, null, Modifier.size(16.dp))
-                Text(stringResource(MR.string.call_you_are_muted), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
             }
         }
     }

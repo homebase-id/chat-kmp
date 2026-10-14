@@ -56,11 +56,13 @@ class FakeCallEngine(
     val addedIce = mutableListOf<String>()
 
     private var scriptJob: Job? = null
+    private val mediaState = MediaStateLink("FakeCallEngine") { _events.trySend(it) }
 
     override suspend fun createOffer(video: Boolean): String {
         devices?.applyPreferences()
         script.failOnCreateOffer?.let { throw it }
         _localVideo.value = if (video) localSource else null
+        mediaState.setCamera(video)
         script.localCandidates.forEach { _events.send(MediaEvent.LocalIce(it, "0", 0)) }
         return FAKE_OFFER_SDP
     }
@@ -68,6 +70,7 @@ class FakeCallEngine(
     override suspend fun answer(offerSdp: String, video: Boolean): String {
         devices?.applyPreferences()
         _localVideo.value = if (video) localSource else null
+        mediaState.setCamera(video)
         _remoteVideo.value = null
         startScript()
         return "fake-answer"
@@ -92,14 +95,21 @@ class FakeCallEngine(
         addedIce += candidate
     }
 
-    override fun setMuted(muted: Boolean) { this.muted = muted }
+    override fun setMuted(muted: Boolean) {
+        this.muted = muted
+        mediaState.setMic(!muted)
+    }
 
     override suspend fun addVideo(): String {
         _localVideo.value = localSource
+        mediaState.setCamera(true)
         return "fake-video-offer"
     }
 
-    override fun setVideo(on: Boolean) { if (on) _localVideo.value = localSource }
+    override fun setVideo(on: Boolean) {
+        if (on) _localVideo.value = localSource
+        if (_localVideo.value != null) mediaState.setCamera(on)
+    }
 
     override fun switchCamera() { frontCamera = !frontCamera }
 
@@ -107,6 +117,7 @@ class FakeCallEngine(
 
     override fun close() {
         closed = true
+        mediaState.closed()
         scriptJob?.cancel()
         _localVideo.value = null
         _remoteVideo.value = null
@@ -117,6 +128,8 @@ class FakeCallEngine(
     fun simulateRecover() { _events.trySend(MediaEvent.Connected) }
 
     fun simulateFail(reason: FailReason = FailReason.NoRoute) { _events.trySend(MediaEvent.Failed(reason)) }
+
+    fun simulateCameraInterrupted(interrupted: Boolean) = mediaState.cameraInterrupted(interrupted, "simulated")
 
     fun simulateRemoteVideo(on: Boolean) {
         _remoteVideo.value = if (on) remoteSource else null
@@ -146,5 +159,11 @@ class FakeCallEngine(
         const val FAKE_OFFER_SDP = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=mid:0\r\n"
 
         private fun String.dotsToSpaces() = replace('.', ' ')
+
+        /** Opens the in-call media-state channel between two fakes, as the data channel does once DTLS is up. */
+        fun connectMediaState(a: FakeCallEngine, b: FakeCallEngine) {
+            a.mediaState.opened { b.mediaState.received(it); true }
+            b.mediaState.opened { a.mediaState.received(it); true }
+        }
     }
 }
