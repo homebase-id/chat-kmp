@@ -35,3 +35,9 @@ fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when
 
 fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides =
     copy(blocks = kinds?.let { completeOrder(it) }?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }?.map { CardBlock(it) })
+
+/** Applies a new order of just the [kinds] a design shows, leaving the hidden kinds where they were. */
+fun CardOverrides.withShownBlockOrder(kinds: List<String>, shown: List<String>): CardOverrides {
+    val queue = shown.iterator()
+    return withBlockOrder(blockOrder().map { if (it in kinds) queue.next() else it })
+}

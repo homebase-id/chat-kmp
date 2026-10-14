@@ -227,11 +227,11 @@ class ProfileCardEditorShotsTest {
         Shot("k6-e14-load-failed", fixedFriends.copy(loadFailed = true), preview = Preview.LoadFailed),
         Shot("k6-e15-small-font-scale", fixedFriends, fontScale = 1.3f, widthDp = 360, heightDp = 640),
         Shot("k6-e16-small-font-scale-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640),
-        Shot("k6-e17-customise-order", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, act = tool("Section order")),
+        Shot("k6-e17-customise-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, act = tool("Section order")),
         Shot("k6-e18-small-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = 360, heightDp = 640),
         Shot("k6-e19-rtl-read-only", fixedReadOnly, rtl = true),
-        Shot("k6-e20-rtl-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, rtl = true, act = tool("Section order")),
-        Shot("k6-e21-font-scale-order", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
+        Shot("k6-e20-rtl-customise", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, rtl = true, act = tool("Section order")),
+        Shot("k6-e21-font-scale-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
         Shot("k6-e22-virtual-family", fixedFriends.copy(selectedAudience = family)),
     )
 
