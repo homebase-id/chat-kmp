@@ -32,6 +32,11 @@ internal fun preferredRoute(routes: List<AudioRoute>, previous: List<AudioRoute>
 
 internal enum class CallAudioMode { VoiceChat, VideoChat }
 
+// iOS has no earpiece route while wired headphones are plugged in, and the output override cannot leave a headset for it.
+internal fun offeredRoutes(connected: Set<AudioRoute>): List<AudioRoute> =
+    (if (AudioRoute.Wired in connected) emptyList() else listOf(AudioRoute.Earpiece)) + AudioRoute.Speaker +
+        listOf(AudioRoute.Bluetooth, AudioRoute.Wired).filter { it in connected }
+
 // Mode is fixed per call: WebRtcKmpCallEngine has no addVideo, so a voice call never gains a camera.
 internal data class CallAudioProfile(val mode: CallAudioMode, val route: AudioRoute)
 

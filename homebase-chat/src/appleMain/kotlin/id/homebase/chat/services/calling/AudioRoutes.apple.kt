@@ -4,6 +4,7 @@ import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionPortBluetoothA2DP
 import platform.AVFAudio.AVAudioSessionPortBluetoothHFP
 import platform.AVFAudio.AVAudioSessionPortBluetoothLE
+import platform.AVFAudio.AVAudioSessionPortBuiltInMic
 import platform.AVFAudio.AVAudioSessionPortBuiltInReceiver
 import platform.AVFAudio.AVAudioSessionPortBuiltInSpeaker
 import platform.AVFAudio.AVAudioSessionPortDescription
@@ -12,6 +13,7 @@ import platform.AVFAudio.AVAudioSessionPortHeadsetMic
 import platform.AVFAudio.AVAudioSessionPortUSBAudio
 import platform.AVFAudio.availableInputs
 import platform.AVFAudio.currentRoute
+import platform.AVFAudio.setPreferredInput
 
 internal fun audioRouteOf(portType: String?): AudioRoute? = when (portType) {
     AVAudioSessionPortBuiltInReceiver -> AudioRoute.Earpiece
@@ -27,7 +29,17 @@ private fun AVAudioSession.portTypes(ports: List<*>?): List<String?> =
 internal fun AVAudioSession.currentAudioRoute(): AudioRoute? =
     portTypes(currentRoute.outputs).firstNotNullOfOrNull(::audioRouteOf)
 
-internal fun AVAudioSession.availableAudioRoutes(): List<AudioRoute> {
-    val connected = (portTypes(currentRoute.outputs) + portTypes(availableInputs)).mapNotNullTo(HashSet(), ::audioRouteOf)
-    return listOf(AudioRoute.Earpiece, AudioRoute.Speaker) + listOf(AudioRoute.Bluetooth, AudioRoute.Wired).filter { it in connected }
+internal fun AVAudioSession.availableAudioRoutes(): List<AudioRoute> =
+    offeredRoutes((portTypes(currentRoute.outputs) + portTypes(availableInputs)).mapNotNullTo(HashSet(), ::audioRouteOf))
+
+// Nil clears the preference, handing the input back to the system; the output override alone cannot leave a headset.
+internal fun AVAudioSession.preferInputFor(route: AudioRoute) {
+    val port = availableInputs.orEmpty().filterIsInstance<AVAudioSessionPortDescription>().firstOrNull {
+        when (route) {
+            AudioRoute.Earpiece -> it.portType == AVAudioSessionPortBuiltInMic
+            AudioRoute.Speaker -> false
+            AudioRoute.Bluetooth, AudioRoute.Wired -> audioRouteOf(it.portType) == route
+        }
+    }
+    setPreferredInput(port, error = null)
 }

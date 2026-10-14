@@ -51,7 +51,7 @@ actual class CallAudioRouter actual constructor() {
     private val events = object : NSObject(), RTCAudioSessionDelegateProtocol {
         // Category changes on activation drop a port override; the audio unit starts right after CallKit's didActivate.
         override fun audioSessionDidStartPlayOrRecord(session: RTCAudioSession) {
-            overridePort(route)
+            applyRoute(route)
             log("activated")
         }
 
@@ -77,15 +77,16 @@ actual class CallAudioRouter actual constructor() {
         this.profile = profile
         this.onRouteChanged = onRouteChanged
         rtc.addDelegate(events)
-        setRoute(profile.route)
+        val initial = if (headset) session.currentAudioRoute() ?: profile.route else profile.route
+        setRoute(initial)
         log("started video=$video")
-        return profile.route
+        return initial
     }
 
     actual fun setRoute(route: AudioRoute) {
         this.route = route
         profile?.let { configure(it, route) }
-        overridePort(route)
+        applyRoute(route)
         log("route set $route")
     }
 
@@ -108,7 +109,8 @@ actual class CallAudioRouter actual constructor() {
         if (failed != null) Logger.w(TAG) { "audio session configure failed: $failed" }
     }
 
-    private fun overridePort(route: AudioRoute) {
+    private fun applyRoute(route: AudioRoute) {
+        session.preferInputFor(route)
         session.overrideOutputAudioPort(
             if (route == AudioRoute.Speaker) AVAudioSessionPortOverrideSpeaker else AVAudioSessionPortOverrideNone,
             error = null,
