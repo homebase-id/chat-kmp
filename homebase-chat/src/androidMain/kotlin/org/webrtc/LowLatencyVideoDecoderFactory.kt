@@ -55,12 +55,12 @@ private class ResizeResettingDecoder(codecName: String, type: VideoCodecMimeType
     override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo): VideoCodecStatus {
         val current = settings
         val callback = callback
-        val resized = frame.encodedWidth * frame.encodedHeight > 0 &&
-            current != null && (frame.encodedWidth != current.width || frame.encodedHeight != current.height)
-        if (resized && callback != null) {
-            Logger.i("WebRtcKmp") { "decoder resize ${current.width}x${current.height} -> ${frame.encodedWidth}x${frame.encodedHeight}: release + init" }
+        val w = frame.encodedWidth
+        val h = frame.encodedHeight
+        if (current != null && callback != null && w * h > 0 && (w != current.width || h != current.height)) {
+            Logger.i("WebRtcKmp") { "decoder resize ${current.width}x${current.height} -> ${w}x$h: release + init" }
             release().takeIf { it != VideoCodecStatus.OK }?.let { return it }
-            initDecode(VideoDecoder.Settings(current.numberOfCores, frame.encodedWidth, frame.encodedHeight), callback)
+            initDecode(VideoDecoder.Settings(current.numberOfCores, w, h), callback)
                 .takeIf { it != VideoCodecStatus.OK }?.let { return it }
         }
         return super.decode(frame, info)
