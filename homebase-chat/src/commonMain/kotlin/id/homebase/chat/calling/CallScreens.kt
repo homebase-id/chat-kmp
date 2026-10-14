@@ -281,7 +281,6 @@ import id.homebase.resources.call_status_reconnecting
 import id.homebase.resources.call_status_ringing
 import id.homebase.resources.call_switch_camera
 import id.homebase.resources.call_unmute
-import id.homebase.resources.call_verification_chip
 import id.homebase.resources.call_verification_show
 import id.homebase.resources.call_you_are_muted
 import id.homebase.resources.close
@@ -924,9 +923,6 @@ private fun AudioCallStatusContent(ui: CallUiState, elapsed: String) {
 
 @Composable
 private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actions: CallScreenActions, modifier: Modifier = Modifier) {
-    var codeOpen by remember(ui.callId) { mutableStateOf(false) }
-    HoldChromeWhile(codeOpen)
-    HoldCallChrome(codeOpen)
     val desktop = LocalCallLayout.current.windowed
     val minimal = LocalCallLayout.current.tier == CallTier.Minimal
     val mini = actions.toggleMini
@@ -944,40 +940,20 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
             ) { center() }
         }
         if (code != null || desktop || mini != null) {
-            Column(Modifier.align(Alignment.TopEnd), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (code != null) {
-                        ChromeIconButton(
-                            Icons.Default.VerifiedUser,
-                            stringResource(MR.string.call_verification_show),
-                            { codeOpen = !codeOpen },
-                            tint = MaterialTheme.colorScheme.primary,
-                            selected = codeOpen,
-                        )
-                    }
-                    if (mini != null) {
-                        val label = stringResource(MR.string.call_mini_mode)
-                        ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys("M", shift = true)))
-                    }
-                    if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
+            Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (code != null) {
+                    ChromeIconButton(
+                        Icons.Default.VerifiedUser,
+                        stringResource(MR.string.call_verification_show),
+                        actions.onVerificationClick,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
                 }
-                if (code != null) AnimatedVisibility(codeOpen, enter = fadeIn() + scaleIn(transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f)), exit = fadeOut() + scaleOut()) {
-                    Surface(
-                        onClick = actions.onVerificationClick,
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        shadowElevation = 4.dp,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) {
-                        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                stringResource(MR.string.call_verification_chip, code),
-                                style = MaterialTheme.typography.titleMedium.tabular(),
-                            )
-                        }
-                    }
+                if (mini != null) {
+                    val label = stringResource(MR.string.call_mini_mode)
+                    ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys("M", shift = true)))
                 }
+                if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
             }
         }
     }
@@ -990,7 +966,6 @@ private fun ChromeIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.onSurface,
-    selected: Boolean = false,
     tooltip: String = description,
 ) {
     Box(modifier) {
@@ -1000,7 +975,7 @@ private fun ChromeIconButton(
                 modifier = Modifier.size(40.dp).buttonChrome(CircleShape),
                 shapes = IconButtonDefaults.shapes(),
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else chromeColor(),
+                    containerColor = chromeColor(),
                     contentColor = tint,
                 ),
             ) {

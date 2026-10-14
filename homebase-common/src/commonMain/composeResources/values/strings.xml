@@ -2786,9 +2786,11 @@
     <string name="call_ended_permission">Allow microphone and camera access to make calls</string>
     <string name="call_ended_failed">Call failed</string>
     <string name="call_poor_connection">Poor connection</string>
-    <string name="call_verification_chip">Code %1$s</string>
-    <string name="call_verification_title">Verify this call</string>
-    <string name="call_verification_body">Both of you should see the same code. If it differs, someone may be tampering with the call setup, so hang up.</string>
+    <string name="call_verification_title">End-to-end encrypted</string>
+    <string name="call_verification_body">Your voice and video are encrypted on this device and can only be decrypted on theirs. No server in between can listen in.</string>
+    <string name="call_verification_code_label">Verification code</string>
+    <string name="call_verification_compare">Read the code aloud to each other. If it matches on both screens, the call is private.</string>
+    <string name="call_verification_mismatch">If the codes differ, end the call. It may not be private.</string>
     <string name="call_verification_ok">Got it</string>
     <string name="call_open_settings">Open settings</string>
     <string name="call_permission_title">Permission needed</string>
@@ -2896,7 +2898,7 @@
     <string name="call_route_name_earpiece">Earpiece</string>
     <string name="call_route_name_bluetooth">Bluetooth</string>
     <string name="call_route_name_wired">Headset</string>
-    <string name="call_verification_show">Show verification code</string>
+    <string name="call_verification_show">End-to-end encrypted, show verification code</string>
     <string name="call_accept_audio_from">Accept voice call from %1$s</string>
     <string name="call_accept_video_from">Accept video call from %1$s</string>
     <string name="call_decline_from">Decline call from %1$s</string>

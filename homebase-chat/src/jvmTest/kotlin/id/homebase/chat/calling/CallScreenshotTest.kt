@@ -45,6 +45,8 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
@@ -391,6 +393,33 @@ class CallScreenshotTest {
         mainClock.advanceTimeBy(ChromeIdleMs - 500)
         assertTrue(controlsShown(), "the press pushed the fade back and did not toggle the controls away")
         assertEquals(listOf("mute"), recorder.calls)
+    }
+
+    @Test
+    fun oneTapOnTheEncryptedShieldOpensTheVerificationSheet() = runDesktopComposeUiTest(390, 844) {
+        val recorder = Recorder()
+        show(false, shot("connected"), recorder)
+        onNodeWithContentDescription("End-to-end encrypted, show verification code").performClick()
+        assertEquals(listOf("verify"), recorder.calls)
+        assertTrue(onAllNodes(hasText("123 456", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isEmpty(), "no inline code chip")
+    }
+
+    @Test
+    fun verificationSheetExplainsTheCodeAndCloses() {
+        for (dark in listOf(false, true)) runDesktopComposeUiTest(390, 844) {
+            var open by mutableStateOf(true)
+            setContent {
+                HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
+                    if (open) CallVerificationSheet("123 456") { open = false }
+                }
+            }
+            waitForIdle()
+            for (marker in listOf("End-to-end encrypted", "123 456", "Read the code aloud", "If the codes differ, end the call")) assertShown(marker)
+            ImageIO.write(onAllNodes(isRoot()).onLast().captureToImage().toAwtImage(), "png", File(outDir, "verification-${if (dark) "dark" else "light"}.png"))
+            onNodeWithText("Close").performClick()
+            waitForIdle()
+            assertTrue(!open, "Close dismisses the sheet")
+        }
     }
 
     @Test

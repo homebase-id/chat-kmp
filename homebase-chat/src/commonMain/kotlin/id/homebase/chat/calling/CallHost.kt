@@ -65,9 +65,6 @@ import id.homebase.chat.services.calling.MediaDeviceKind
 import id.homebase.chat.services.calling.MediaDeviceNotice
 import id.homebase.resources.call_end_keep
 import id.homebase.resources.call_hang_up
-import id.homebase.resources.call_verification_body
-import id.homebase.resources.call_verification_ok
-import id.homebase.resources.call_verification_title
 import id.homebase.core.util.KeepScreenOn
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
@@ -243,16 +240,10 @@ private suspend fun showDeviceNotice(state: CallEventState, event: MediaDeviceNo
 
 @Composable
 internal fun CallEventDialogs(events: CallEventState, viewModel: CallViewModel) {
-    if (events.verification) {
-        AlertDialog(
-            onDismissRequest = { events.verification = false },
-            title = { Text(stringResource(MR.string.call_verification_title)) },
-            text = { Text(stringResource(MR.string.call_verification_body)) },
-            confirmButton = {
-                TextButton(onClick = { events.verification = false }) { Text(stringResource(MR.string.call_verification_ok)) }
-            },
-        )
-    }
+    val code = viewModel.uiState.collectAsStateWithLifecycle().value.verificationCode
+    // The flag outlives a call that ends with the sheet open; clear it so the next call's code doesn't pop it.
+    LaunchedEffect(code == null) { if (code == null) events.verification = false }
+    if (events.verification && code != null) CallVerificationSheet(code) { events.verification = false }
     if (events.confirmEnd) {
         AlertDialog(
             onDismissRequest = { events.confirmEnd = false },

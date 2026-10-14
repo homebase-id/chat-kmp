@@ -231,12 +231,12 @@ class CallDesktopErgonomicsTest {
     }
 
     @Test
-    fun controlsStayWhileTheVerificationCodeCardIsOpen() {
+    fun theEncryptedShieldOpensVerificationInTheCallWindow() {
+        val recorder = Recorder()
         runDesktopComposeUiTest(960, 640) {
-            showScreen(call(video = true, code = "123 456"), Recorder())
-            onNodeWithContentDescription("Show verification code").performSemanticsAction(SemanticsActions.OnClick)
-            mainClock.advanceTimeBy(6_000)
-            onNodeWithTag(CallDockTag).assert(!hidden)
+            showScreen(call(video = true, code = "123 456"), recorder)
+            onNodeWithContentDescription("End-to-end encrypted, show verification code").performSemanticsAction(SemanticsActions.OnClick)
+            assertEquals(listOf("verify"), recorder.calls)
         }
     }
 

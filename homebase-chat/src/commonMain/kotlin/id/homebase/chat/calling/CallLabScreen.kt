@@ -313,6 +313,7 @@ private fun LiveCallLayer(lab: Lab) {
 
 @Composable
 private fun PreviewLayer(state: CallUiState, onChange: (CallUiState?) -> Unit) {
+    var verifying by remember(state.callId) { mutableStateOf(false) }
     val actions = remember(state) {
         CallScreenActions(
             acceptAudio = { onChange(state.copy(phase = CallPhase.Connected, localVideo = false, connectedAtMs = Clock.System.now().toEpochMilliseconds())) },
@@ -323,14 +324,16 @@ private fun PreviewLayer(state: CallUiState, onChange: (CallUiState?) -> Unit) {
             toggleVideo = { onChange(state.copy(localVideo = !state.localVideo)) },
             switchCamera = {},
             setRoute = { onChange(state.copy(route = it)) },
-            onVerificationClick = {},
+            onVerificationClick = { verifying = true },
             retry = { onChange(state.copy(phase = CallPhase.Outgoing)) },
             close = { onChange(null) },
             minimize = {},
             endFromKeyboard = { onChange(null) },
         )
     }
-    CallScreen(ui = state, peerName = PeerName, avatar = { size -> LabAvatar(size) }, actions = actions)
+    CallScreen(ui = state, peerName = PeerName, avatar = { size -> LabAvatar(size) }, actions = actions, chromeHeld = verifying)
+    val code = state.verificationCode
+    if (verifying && code != null) CallVerificationSheet(code) { verifying = false }
 }
 
 @Composable
