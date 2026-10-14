@@ -160,10 +160,10 @@ durations; it logs `capture format chosen` and the format again 1 s later. `conf
 stays as the safety net. Baseline measured before the pin: source 3840x2160 at 30 fps with outbound 1280x720
 (the format sizes were read as garbage, `height=0 width=681`); the pinned capture has not been measured on a device yet.
 
-- **Thermal and Low Power Mode.** `CallDevicePressure` reads `NSProcessInfo` thermal state and Low Power Mode and
+- **Thermal and Low Power Mode.** `DevicePressure` (filled by the Apple sender) reads `NSProcessInfo` thermal state and Low Power Mode and
   caps the send rung; the ladder applies the lower of the network cap and the pressure cap and lifts it when the
   pressure clears (`CallDevicePressureTest`).
-- **Camera-paused signal.** `setVideo(false)` sends a numbered `MediaState` message so the peer emits
+- **Camera-paused signal.** `setVideo(false)` sends a numbered `MediaStateMessage` (video, audio, seq) so the peer emits
   `RemoteVideoChanged(false)` and shows the avatar instead of a frozen frame; `MediaStateLink` drops stale numbers.
   Before it, remote video state could only turn on (`WebRtcJavaMediaStateTest`, two real engines).
 - **iOS PiP rendering.** `SampleBufferVideoView` renders only while the PiP window is up; before, frames were wrapped
