@@ -31,7 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import com.shepeliev.webrtckmp.VideoTrack
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.channels.awaitClose
+import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionRouteChangeNotification
 
 actual fun platformCallEngineFactory(): CallEngineFactory? = CallEngineFactory { WebRtcKmpCallEngine(it) }
 
@@ -106,8 +110,14 @@ internal class AttachedVideoView(handle: KmpVideoHandle) {
     }
 }
 
-// The OS moves a call to a headset itself, so the picker only ever switches the built-in output.
-actual fun audioRouteChanges(): Flow<List<AudioRoute>> = flowOf(listOf(AudioRoute.Earpiece, AudioRoute.Speaker))
+actual fun audioRouteChanges(): Flow<List<AudioRoute>> = callbackFlow {
+    val session = AVAudioSession.sharedInstance()
+    trySend(session.availableAudioRoutes())
+    val observer = NSNotificationCenter.defaultCenter.addObserverForName(AVAudioSessionRouteChangeNotification, null, null) {
+        trySend(session.availableAudioRoutes())
+    }
+    awaitClose { NSNotificationCenter.defaultCenter.removeObserver(observer) }
+}.distinctUntilChanged()
 
 // RTCMTLVideoView calls this on the main queue only when the rotation-applied frame size changes, not per frame.
 @OptIn(ExperimentalForeignApi::class)

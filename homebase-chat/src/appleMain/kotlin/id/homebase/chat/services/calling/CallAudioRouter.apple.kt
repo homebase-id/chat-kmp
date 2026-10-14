@@ -45,6 +45,9 @@ actual class CallAudioRouter actual constructor() {
     @Volatile
     private var profile: CallAudioProfile? = null
 
+    @Volatile
+    private var onRouteChanged: ((AudioRoute) -> Unit)? = null
+
     private val events = object : NSObject(), RTCAudioSessionDelegateProtocol {
         // Category changes on activation drop a port override; the audio unit starts right after CallKit's didActivate.
         override fun audioSessionDidStartPlayOrRecord(session: RTCAudioSession) {
@@ -56,7 +59,13 @@ actual class CallAudioRouter actual constructor() {
             session: RTCAudioSession,
             reason: AVAudioSessionRouteChangeReason,
             previousRoute: AVAudioSessionRouteDescription,
-        ) = log("route changed reason=$reason")
+        ) {
+            log("route changed reason=$reason")
+            val actual = this@CallAudioRouter.session.currentAudioRoute() ?: return
+            if (actual == route) return
+            route = actual
+            onRouteChanged?.invoke(actual)
+        }
     }
 
     actual fun start(video: Boolean, onRouteChanged: (AudioRoute) -> Unit): AudioRoute {
@@ -66,6 +75,7 @@ actual class CallAudioRouter actual constructor() {
         }
         val profile = callAudioProfile(video, headset)
         this.profile = profile
+        this.onRouteChanged = onRouteChanged
         rtc.addDelegate(events)
         setRoute(profile.route)
         log("started video=$video")
@@ -107,6 +117,7 @@ actual class CallAudioRouter actual constructor() {
 
     actual fun stop() {
         rtc.removeDelegate(events)
+        onRouteChanged = null
         if (!rtc.useManualAudio) {
             session.setActive(false, withOptions = AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation, error = null)
         }
