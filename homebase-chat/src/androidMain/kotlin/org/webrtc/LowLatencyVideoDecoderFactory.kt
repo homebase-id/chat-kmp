@@ -34,7 +34,7 @@ private class LowLatencyHardwareDecoderFactory : HardwareVideoDecoderFactory(nul
         val (info, colorFormat) = candidates.firstOrNull { (info, _) -> info.name.endsWith(".low_latency") }
             ?: candidates.firstOrNull()
             ?: return null
-        return ResizeResettingDecoder(info.name, type, colorFormat)
+        return ResizeResettingDecoder(LowLatencyCodecs, info.name, type, colorFormat)
     }
 }
 
@@ -42,8 +42,8 @@ private class LowLatencyHardwareDecoderFactory : HardwareVideoDecoderFactory(nul
 // start times in frameInfos, which it pairs FIFO with later outputs: each leaked entry adds a frame interval to every
 // decode time from then on (Redmi: +66 ms after a ladder climb), and VCMTiming adds that to the playout delay.
 // release() is the only path that clears frameInfos, so a resize goes through release() + initDecode() instead.
-private class ResizeResettingDecoder(codecName: String, type: VideoCodecMimeType, colorFormat: Int) :
-    AndroidVideoDecoder(LowLatencyCodecs, codecName, type, colorFormat, null) {
+internal class ResizeResettingDecoder(codecs: MediaCodecWrapperFactory, codecName: String, type: VideoCodecMimeType, colorFormat: Int) :
+    AndroidVideoDecoder(codecs, codecName, type, colorFormat, null) {
     private var settings: VideoDecoder.Settings? = null
     private var callback: VideoDecoder.Callback? = null
 

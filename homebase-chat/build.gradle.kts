@@ -112,6 +112,10 @@ kotlin {
         }
         androidMain.get().dependsOn(webrtcKmpMain)
         appleMain.get().dependsOn(webrtcKmpMain)
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.robolectric)
+        }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.media3.exoplayer)
@@ -253,11 +257,8 @@ tasks.named("jvmJar") {
     finalizedBy(platformJarTasks)
 }
 
-// `withHostTest {}` is enabled above so AGP 9.2 stops warning about commonTest
-// with no Android host-test runner. Compose UI tests in commonTest use a
-// Skiko-backed implementation that doesn't compose against the mocked Android
-// host-test classpath, so disable the task until those tests are migrated
-// to jvmTest/.
-tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
-    enabled = false
+// commonTest's Compose UI tests are Skiko-backed and don't run on the mocked Android host classpath,
+// so the Android host run is limited to the Android-only tests until those move to jvmTest/.
+tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
+    filter { includeTestsMatching("org.webrtc.*") }
 }
