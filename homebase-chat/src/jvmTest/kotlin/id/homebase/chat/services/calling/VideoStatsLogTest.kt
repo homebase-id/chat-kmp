@@ -125,4 +125,11 @@ class VideoStatsLogTest {
 
         assertEquals("inbound audio codec=audio/opus jbMs=750.0 jbTargetMs=750.0 concealed=800", line)
     }
+
+    @Test
+    fun inboundLineCarriesTheTotalFreezeDuration() {
+        val inbound = StatsEntry("inbound-rtp", mapOf("kind" to "video", "freezeCount" to 2, "totalFreezesDuration" to 1.25))
+
+        assertTrue(" freezes=2 freezeS=1.25 " in videoStatsLines(listOf(inbound)).single())
+    }
 }

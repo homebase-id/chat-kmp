@@ -17,7 +17,7 @@ internal fun videoStatsLines(
         add(
             "inbound video codec=${stats.codecOf(m)} packets=${m["packetsReceived"]} lost=${m["packetsLost"]} bytes=${m["bytesReceived"]} " +
                 "received=${m["framesReceived"]} decoded=${m["framesDecoded"]} dropped=${m["framesDropped"]} " +
-                "fps=${m["framesPerSecond"]} freezes=${m["freezeCount"]} size=${m["frameWidth"]}x${m["frameHeight"]} plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]} " +
+                "fps=${m["framesPerSecond"]} freezes=${m["freezeCount"]} freezeS=${m["totalFreezesDuration"]} size=${m["frameWidth"]}x${m["frameHeight"]} plis=${m["pliCount"]} nacks=${m["nackCount"]} decoder=${m["decoderImplementation"]} " +
                 "qp=${perFrame(m, before, "qpSum", "framesDecoded")} " +
                 "decodeMs=$decodeMs inFlight=${framesInFlight(decodeMs, m["framesPerSecond"].asDouble())} " +
                 "jbMs=${perFrame(m, before, "jitterBufferDelay", "jitterBufferEmittedCount", 1000.0)} " +
