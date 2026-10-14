@@ -1,11 +1,17 @@
 package id.homebase.feed.crash
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import co.touchlab.kermit.Logger
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
+import id.homebase.core.crash.CrashReporting
+import kotlin.time.Instant
+import kotlinx.io.files.Path
 
 /**
  * Surfaces **native** crashes — NDK signals (SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE) from
@@ -32,6 +38,10 @@ object NativeCrashRecovery {
     internal const val PREFS = "crash_native_recovery"
     internal const val KEY_JVM_SURFACED = "jvm_crash_surfaced"
 
+    // didCrashOnPreviousExecution() stays true for the whole process, and CrashActivity's
+    // Restart reopens MainActivity in this same process.
+    private var checkedThisProcess = false
+
     /**
      * Pure policy (unit-tested). Show the next-launch native recovery screen only when the
      * previous run crashed and [GlobalCrashHandler] did *not* already surface it — i.e. it
@@ -40,7 +50,8 @@ object NativeCrashRecovery {
     internal fun shouldShowNativeCrashRecovery(
         didCrashOnPreviousExecution: Boolean,
         jvmCrashSurfacedLastRun: Boolean,
-    ): Boolean = didCrashOnPreviousExecution && !jvmCrashSurfacedLastRun
+        alreadyCheckedThisProcess: Boolean,
+    ): Boolean = !alreadyCheckedThisProcess && didCrashOnPreviousExecution && !jvmCrashSurfacedLastRun
 
     /**
      * Record that [GlobalCrashHandler] handled a JVM crash this run. Uses commit() (not
@@ -60,6 +71,8 @@ object NativeCrashRecovery {
      * startup). Always clears the per-run JVM marker so it reflects only the current run.
      */
     fun checkAndMaybeLaunch(activity: Activity): Boolean {
+        val alreadyChecked = checkedThisProcess
+        checkedThisProcess = true
         val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val jvmSurfacedLastRun = prefs.getBoolean(KEY_JVM_SURFACED, false)
         // Reset for the current run (the value above reflects the previous run).
@@ -69,20 +82,51 @@ object NativeCrashRecovery {
             Firebase.crashlytics.didCrashOnPreviousExecution()
         }.getOrDefault(false)
 
-        if (!shouldShowNativeCrashRecovery(didCrash, jvmSurfacedLastRun)) return false
+        if (!shouldShowNativeCrashRecovery(didCrash, jvmSurfacedLastRun, alreadyChecked)) return false
 
         Logger.w(tag = TAG) {
             "Previous run ended in a native crash not surfaced in-process; showing recovery."
         }
+        val report = runCatching { writeNativeReport(activity) }.getOrNull()
         return runCatching {
             activity.startActivity(
                 Intent(activity, CrashActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                    // No EXTRA_REPORT_PATH: the native trace lives in Crashlytics, not our
-                    // file log, so CrashActivity shows the table-flip + "report unavailable".
+                    report?.let { putExtra(CrashActivity.EXTRA_REPORT_PATH, it.toString()) }
                 }
             )
             true
         }.getOrDefault(false)
+    }
+
+    private fun writeNativeReport(context: Context): Path? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val exit = context.getSystemService(ActivityManager::class.java)
+            .getHistoricalProcessExitReasons(context.packageName, 0, 5)
+            .firstOrNull { it.reason == ApplicationExitInfo.REASON_CRASH_NATIVE } ?: return null
+        // Android 12+ hands over the tombstone (a protobuf); Android 11 gives no trace at all.
+        val frames = exit.traceInputStream?.use { tombstoneStrings(it.readBytes()) }.orEmpty()
+        return CrashReporting.writeReportRaw(
+            thread = "native",
+            name = "Native crash",
+            reason = "pid=${exit.pid} at=${Instant.fromEpochMilliseconds(exit.timestamp)} ${exit.description.orEmpty()}".trim(),
+            stack = frames.ifEmpty { listOf("(no tombstone on Android ${Build.VERSION.RELEASE}; adb shell dumpsys dropbox --print SYSTEM_TOMBSTONE)") },
+        )
+    }
+
+    /** The readable runs of a protobuf tombstone: abort message, frame symbols and library paths. */
+    internal fun tombstoneStrings(bytes: ByteArray, minLength: Int = 6, maxLines: Int = 300): List<String> {
+        val out = mutableListOf<String>()
+        val run = StringBuilder()
+        fun flush() {
+            if (run.length >= minLength && out.size < maxLines) out += run.toString()
+            run.clear()
+        }
+        for (b in bytes) {
+            val c = b.toInt() and 0xff
+            if (c in 0x20..0x7e) run.append(c.toChar()) else flush()
+        }
+        flush()
+        return out
     }
 }

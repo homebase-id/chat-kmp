@@ -3,6 +3,7 @@ package id.homebase.api.browser
 import co.touchlab.kermit.Logger
 import java.awt.Desktop
 import java.awt.EventQueue
+import java.awt.Frame
 import java.awt.Window
 
 object DesktopAppFocusManager {
@@ -12,17 +13,41 @@ object DesktopAppFocusManager {
     private val isMacOs: Boolean =
         System.getProperty("os.name").orEmpty().contains("mac", ignoreCase = true)
 
-    private var windowProvider: (() -> Window?)? = null
+    const val MAIN_WINDOW = WindowKeys.MAIN
 
-    fun registerWindowProvider(provider: () -> Window?) {
-        windowProvider = provider
+    // A raise for a window that has not composed yet is held this long and replayed on registration.
+    private const val PENDING_RAISE_TTL_MS = 5_000L
+
+    private val windowProviders = java.util.concurrent.ConcurrentHashMap<String, () -> Window?>()
+    private val pendingRaises = java.util.concurrent.ConcurrentHashMap<String, PendingRaise>()
+
+    private class PendingRaise(val reason: String, val atMs: Long)
+
+    fun registerWindowProvider(provider: () -> Window?) = registerWindowProvider(MAIN_WINDOW, provider)
+
+    fun registerWindowProvider(key: String, provider: () -> Window?) {
+        windowProviders[key] = provider
+        val pending = pendingRaises.remove(key) ?: return
+        if (System.currentTimeMillis() - pending.atMs <= PENDING_RAISE_TTL_MS) requestFocus(pending.reason, key)
+    }
+
+    fun windowFor(key: String): Window? = windowProviders[key]?.invoke()
+
+    fun unregisterWindowProvider(key: String) {
+        windowProviders.remove(key)
     }
 
     // Only legitimate in response to an explicit user action; [reason] names that action
     // so an unexpected restore is attributable from homebase.log alone.
-    fun requestFocus(reason: String) {
-        Logger.i(tag = TAG) { "requestFocus(reason=$reason)" }
+    fun requestFocus(reason: String, key: String = MAIN_WINDOW) {
+        Logger.i(tag = TAG) { "requestFocus(reason=$reason, key=$key)" }
         EventQueue.invokeLater {
+            // A non-main window that is still composing must not fall through to the app-wide
+            // activation below, which would raise the main window instead.
+            if (key != MAIN_WINDOW && windowProviders[key] == null) {
+                pendingRaises[key] = PendingRaise(reason, System.currentTimeMillis())
+                return@invokeLater
+            }
             // macOS's Cocoa window server ignores Window.toFront() / isAlwaysOnTop
             // toggling from a background app — only the *application* can activate
             // itself via NSApplication.activate(). Desktop.requestForeground(true)
@@ -32,8 +57,11 @@ object DesktopAppFocusManager {
             // but harmless.
             requestApplicationForeground()
 
-            val window = windowProvider?.invoke() ?: return@invokeLater
+            val window = windowProviders[key]?.invoke() ?: return@invokeLater
 
+            if (key != MAIN_WINDOW && window is Frame) {
+                window.extendedState = window.extendedState and Frame.ICONIFIED.inv()
+            }
             window.isVisible = true
             window.toFront()
             window.requestFocus()
@@ -45,6 +73,15 @@ object DesktopAppFocusManager {
                 window.isAlwaysOnTop = true
                 window.isAlwaysOnTop = false
             }
+        }
+    }
+
+    // Shows an already-composed window without activating the app, so a ring never takes the keyboard from whatever the user is typing in.
+    fun revealWithoutFocus(key: String) {
+        EventQueue.invokeLater {
+            val window = windowProviders[key]?.invoke() ?: return@invokeLater
+            if (window is Frame) window.extendedState = window.extendedState and Frame.ICONIFIED.inv()
+            window.isVisible = true
         }
     }
 

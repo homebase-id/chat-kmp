@@ -164,6 +164,11 @@ kotlin {
         jvmMain.dependencies {
                 implementation(libs.conveyor.control)
                 implementation(libs.composenativewebview)
+                // Declared here because desktopApp consumes homebase-chat as a repackaged jar that strips its external deps.
+                implementation(libs.webrtc.java)
+                listOf("macos-aarch64", "macos-x86_64", "windows-x86_64", "linux-x86_64", "linux-aarch64").forEach {
+                    runtimeOnly("${libs.webrtc.java.get().module}:${libs.versions.webrtcJava.get()}:$it")
+                }
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.

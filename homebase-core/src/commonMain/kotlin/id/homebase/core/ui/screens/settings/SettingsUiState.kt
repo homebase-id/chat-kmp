@@ -12,6 +12,7 @@ data class SettingsUiState(
     val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
     val useNativeFeed: Boolean = true,
     val filesyncIconVisible: Boolean = true,
+    val callsEnabled: Boolean = false,
     val theme: ThemeState = ThemeState.System,
     val appVersion: String = "",
     /** Null until the off-main measurement lands; the row shows a description meanwhile. */
@@ -30,6 +31,7 @@ sealed interface SettingsUiAction {
     data object SecuritySetupClicked : SettingsUiAction
     data class SetUseNativeFeed(val enabled: Boolean) : SettingsUiAction
     data class SetFilesyncIconVisible(val visible: Boolean) : SettingsUiAction
+    data class SetCallsEnabled(val enabled: Boolean) : SettingsUiAction
     data object AvatarClicked : SettingsUiAction
 }
 

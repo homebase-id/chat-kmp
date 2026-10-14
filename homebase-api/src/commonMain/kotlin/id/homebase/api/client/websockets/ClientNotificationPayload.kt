@@ -5,5 +5,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ClientNotificationPayload(
     val notificationType: ClientNotificationType = ClientNotificationType.unused,
-    val data: String = ""
+    val data: String = "",
+    val stunUrls: List<String> = emptyList(),
 )

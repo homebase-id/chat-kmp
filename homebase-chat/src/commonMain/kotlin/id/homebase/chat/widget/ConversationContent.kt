@@ -141,6 +141,9 @@ import id.homebase.chat.createconversation.GroupOrConversationItem
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
+import id.homebase.chat.calling.CallActionButtons
+import id.homebase.chat.calling.LocalCallStarter
+import id.homebase.chat.calling.rememberCallStarter
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
@@ -700,7 +703,9 @@ fun ConversationContent(
         )
     }
 
+    val callStarter = rememberCallStarter(conversation)
     CompositionLocalProvider(
+        LocalCallStarter provides callStarter,
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
         LocalMentionNames provides uiState.mentionNames,
         LocalUploadConnected provides uiState.isConnected,
@@ -819,6 +824,7 @@ fun ConversationContent(
                                 onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                             },
                         )
+                        CallActionButtons(callStarter)
                         IconButton(onClick = { showConversationMenu = true }) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,

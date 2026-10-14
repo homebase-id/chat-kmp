@@ -201,8 +201,8 @@ class YouAuthFlowManager(
      * @param scope CoroutineScope for launching browser
      * @param appId Application ID
      * @param appName Application name
-     * @param appSlug Application slug (e.g. "chat"). The server needs it when it still has to
-     *   register the app; it no longer derives one from the name.
+     * @param appSlug Application slug (e.g. "chat"). Sent as the client_id when given, and the
+     *   server needs it when it still has to register the app; it no longer derives one from the name.
      * @param drives List of drive access requests
      * @param persistForRedirect Persist the flow state (ECC key pair, password, CSRF state) to
      *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
@@ -275,10 +275,11 @@ class YouAuthFlowManager(
                     returnUrl = redirectUri
                 )
 
-            // Build authorization request
+            // Build authorization request. The slug is the same on every identity, so a device
+            // that never learned this identity's app id still finds the registration (odin-core #1933).
             val authRequest =
                 YouAuthorizationParams(
-                    clientId = appId,
+                    clientId = appSlug ?: appId,
                     clientType = ClientType.app,
                     clientInfo = clientFriendlyName ?: deviceDisplayName(),
                     publicKey = publicKeyToJwkBase64Url(keyPair.publicKey),

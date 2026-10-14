@@ -98,4 +98,25 @@ class WebSocketHoldPolicyTest {
         assertFalse(parked.isConnected, "a parked WS must report disconnected so background HTTP sync runs")
         assertFalse(parked.isConnecting, "a parked WS is not mid-connect")
     }
+
+    @Test
+    fun activeCallKeepsTheWsWhileBackgroundedOnPushPlatform() {
+        assertTrue(shouldKeepWebSocketConnected(foreground = false, backgroundSyncViaPush = true, callActive = true))
+        assertEquals(
+            WsHoldAction.NONE,
+            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = true, authResolved = true, callActive = true),
+        )
+        assertEquals(
+            WsHoldAction.CONNECT,
+            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = false, authResolved = true, callActive = true),
+        )
+    }
+
+    @Test
+    fun callEndingWhileBackgroundedParksTheWs() {
+        assertEquals(
+            WsHoldAction.PARK,
+            wsHoldDecision(foreground = false, backgroundSyncViaPush = true, wsPresent = true, authResolved = true, callActive = false),
+        )
+    }
 }

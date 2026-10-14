@@ -1,5 +1,7 @@
 package id.homebase.chat.services.content
 
+import id.homebase.chat.calling.CallEventDescriptor
+import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
@@ -53,6 +55,9 @@ sealed interface MessageContent {
      * without ever seeing the title.
      */
     val notificationLabel: String get() = displayLabel
+
+    /** False for messages the recipient should receive without a push, e.g. a log entry for a call they took. */
+    val pushesToRecipient: Boolean get() = true
 
     /**
      * A scheduled event with optional location, meeting URL, and RSVP via reactions.
@@ -123,6 +128,18 @@ sealed interface MessageContent {
      */
     data class Poll(val descriptor: PollDescriptor?) : MessageContent {
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_POLL_LABEL
+    }
+
+    /** A call log entry; [descriptor] follows the same nullability contract as [Event.descriptor]. */
+    data class CallEvent(val descriptor: CallEventDescriptor?) : MessageContent {
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_CALL_LABEL
+
+        // Only the callee gets the push, so it reads from their side.
+        override val notificationLabel: String
+            get() = descriptor?.let { if (it.video) "Missed video call" else "Missed call" } ?: UNPARSEABLE_CALL_LABEL
+
+        override val pushesToRecipient: Boolean
+            get() = descriptor?.outcome == CallOutcome.NoAnswer || descriptor?.outcome == CallOutcome.Cancelled
     }
 
     /**
@@ -210,6 +227,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_DICE_LABEL = "Dice roll"
         const val UNPARSEABLE_GROODLE_LABEL = "Groodle"
         const val UNPARSEABLE_POLL_LABEL = "Poll"
+        const val UNPARSEABLE_CALL_LABEL = "Call"
         const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
         const val UNPARSEABLE_VIEW_ONCE_LABEL = "Media"

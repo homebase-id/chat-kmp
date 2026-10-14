@@ -33,8 +33,8 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. ViewOnce is 216; pick the next
-     * free integer when adding one.
+     * off `appData.dataType` to choose a renderer. ViewOnce is 216 and CallEvent is 217;
+     * pick the next free integer when adding one.
      */
     const val ChatEventMessageDataType = 210
 
@@ -82,6 +82,9 @@ object ChatProtocol {
      * fetch on scroll. See [id.homebase.chat.contactcard.ContactCardDescriptor].
      */
     const val ChatContactCardMessageDataType = 215
+
+    /** Call log entry written once by the caller; see [id.homebase.chat.calling.CallEventDescriptor]. */
+    const val ChatCallEventMessageDataType = 217
 
     /**
      * View-once photo or video: the descriptor rides in `appData.content`, the single media

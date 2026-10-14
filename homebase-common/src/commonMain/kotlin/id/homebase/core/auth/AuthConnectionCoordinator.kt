@@ -98,6 +98,10 @@ class AuthConnectionCoordinator(
     )
     private var wsClient: OdinWebSocketClient? = null
 
+    // Call signalling (answer, ICE, hangup) rides the notify WS, so it must outlive a backgrounded or PiP activity.
+    @Volatile
+    private var callActive = false
+
     // #1349 dead-token detection. The server rejects the notify-WS upgrade with 401 once this
     // device's app registration is revoked, but the reconnect loop treats that like any other
     // drop and retries every 5s forever, leaving authState == Authenticated with no way out.
@@ -343,7 +347,7 @@ class AuthConnectionCoordinator(
                 // push-capable platform — FCM + WorkManager HTTP cover background sync. setForeground(true)
                 // reconnects on the next foreground. (Both this and applyWsHold branch on the same live
                 // currentForeground, so they stay consistent without sharing a lock here.)
-                if (shouldKeepWebSocketConnected(currentForeground, backgroundSyncViaPush)) {
+                if (shouldKeepWebSocketConnected(currentForeground, backgroundSyncViaPush, callActive)) {
                     connect(extraDrives = initialDrives)
                 } else {
                     Logger.i(tag = "AuthLifecycle") {
@@ -660,6 +664,12 @@ class AuthConnectionCoordinator(
         scope.launch { applyWsHold() }
     }
 
+    fun setCallActive(active: Boolean) {
+        if (callActive == active) return
+        callActive = active
+        scope.launch { applyWsHold() }
+    }
+
     /**
      * Idempotent WS "hold" mirroring [LocationTrackingCoordinator]'s GPS hold (#1108): keep the notify
      * WS connected only when [shouldKeepWebSocketConnected] is true, otherwise close it for the
@@ -670,7 +680,7 @@ class AuthConnectionCoordinator(
     private suspend fun applyWsHold() {
         wsLifecycleMutex.withLock {
             val authResolved = lastAuthenticatedDrives != null && !headless
-            when (wsHoldDecision(currentForeground, backgroundSyncViaPush, wsClient != null, authResolved)) {
+            when (wsHoldDecision(currentForeground, backgroundSyncViaPush, wsClient != null, authResolved, callActive)) {
                 // Rebuild a WS we tore down for background. connect()'s own wsClient != null guard
                 // makes a redundant call a no-op.
                 WsHoldAction.CONNECT -> {
@@ -1032,8 +1042,8 @@ internal fun drivesToPrune(active: Set<Uuid>, mandatory: Set<Uuid>, granted: Set
  * regardless. Suppress it only when backgrounded on a push-capable platform (Android/iOS), where FCM
  * push + WorkManager HTTP sync cover background work. Pure so the policy is unit-tested directly.
  */
-internal fun shouldKeepWebSocketConnected(foreground: Boolean, backgroundSyncViaPush: Boolean): Boolean =
-    foreground || !backgroundSyncViaPush
+internal fun shouldKeepWebSocketConnected(foreground: Boolean, backgroundSyncViaPush: Boolean, callActive: Boolean = false): Boolean =
+    foreground || !backgroundSyncViaPush || callActive
 
 internal enum class WsHoldAction { CONNECT, PARK, NONE }
 
@@ -1050,8 +1060,9 @@ internal fun wsHoldDecision(
     backgroundSyncViaPush: Boolean,
     wsPresent: Boolean,
     authResolved: Boolean,
+    callActive: Boolean = false,
 ): WsHoldAction = when {
-    shouldKeepWebSocketConnected(foreground, backgroundSyncViaPush) ->
+    shouldKeepWebSocketConnected(foreground, backgroundSyncViaPush, callActive) ->
         if (!wsPresent && authResolved) WsHoldAction.CONNECT else WsHoldAction.NONE
     wsPresent -> WsHoldAction.PARK
     else -> WsHoldAction.NONE

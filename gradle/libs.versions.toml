@@ -30,6 +30,8 @@ pdfbox = "3.0.5"
 vlcj = "4.8.2"
 composemediaplayer = "0.10.0"
 jna = "5.18.1"
+webrtcKmp = "0.125.11" # iosApp pins the stasel/WebRTC SPM package to the matching M125 build; bump both together
+webrtcJava = "0.19.0"
 jetbrains-compose-material3 = "1.10.0-alpha04"
 jetbrains-compose-material3-adaptive = "1.2.0"
 kotlinxHtmlJvm = "0.12.0"
@@ -161,6 +163,8 @@ ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
 vlcj = { module = "uk.co.caprica:vlcj", version.ref = "vlcj" }
 composemediaplayer = { module = "io.github.kdroidfilter:composemediaplayer", version.ref = "composemediaplayer" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+webrtc-kmp = { module = "com.shepeliev:webrtc-kmp", version.ref = "webrtcKmp" }
+webrtc-java = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtcJava" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-client-encoding = { module = "io.ktor:ktor-client-encoding", version.ref = "ktor" }
@@ -219,6 +223,7 @@ appcompat-v7 = { group = "com.android.support", name = "appcompat-v7", version.r
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "uiToolingPreview" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "uiToolingPreview" }
 multiplatform-settings = { group = "com.russhwolf", name = "multiplatform-settings", version.ref = "multiplatformSettings" }
+multiplatform-settings-test = { group = "com.russhwolf", name = "multiplatform-settings-test", version.ref = "multiplatformSettings" }
 coil3 = { group = "io.coil-kt.coil3", name = "coil", version.ref = "coil3" }
 coil3-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil3" }
 coil3-network = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil3" }

@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
+import id.homebase.core.calling.CallsPreferences
 import id.homebase.core.filesync.FilesyncPreferences
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -37,6 +38,7 @@ class SettingsViewModel(
     private val driveFileProviderCached: DriveFileProviderCached,
     private val webPushService: WebPushService,
     private val filesyncPreferences: FilesyncPreferences,
+    private val callsPreferences: CallsPreferences,
 ) : ViewModel() {
 
     private companion object {
@@ -75,6 +77,11 @@ class SettingsViewModel(
         viewModelScope.launch {
             filesyncPreferences.iconVisible.collect { visible ->
                 _uiState.update { it.copy(filesyncIconVisible = visible) }
+            }
+        }
+        viewModelScope.launch {
+            callsPreferences.enabled.collect { enabled ->
+                _uiState.update { it.copy(callsEnabled = enabled) }
             }
         }
     }
@@ -154,6 +161,9 @@ class SettingsViewModel(
 
             is SettingsUiAction.SetFilesyncIconVisible ->
                 viewModelScope.launch { filesyncPreferences.setIconVisible(action.visible) }
+
+            is SettingsUiAction.SetCallsEnabled ->
+                viewModelScope.launch { callsPreferences.setEnabled(action.enabled) }
         }
     }
 

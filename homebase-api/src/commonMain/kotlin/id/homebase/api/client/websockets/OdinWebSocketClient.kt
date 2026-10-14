@@ -430,6 +430,9 @@ class OdinWebSocketClient(
     private suspend fun dispatchNotification(notification: ClientNotificationPayload) {
         when (notification.notificationType) {
             ClientNotificationType.deviceHandshakeSuccess -> {
+                if (notification.stunUrls.isNotEmpty()) {
+                    eventBus.emit(BackendEvent.StunUrlsReceived(notification.stunUrls))
+                }
                 onHandshakeSuccess()
             }
 

@@ -104,11 +104,7 @@ fun PublicAvatar(
         ) { loaded ->
             if (loaded) {
                 SubcomposeAsyncImageContent(
-                    modifier = if (imageClick != null) {
-                        Modifier.fillMaxSize().clickable(onClick = imageClick)
-                    } else {
-                        Modifier
-                    }
+                    modifier = Modifier.fillMaxSize().then(if (imageClick != null) Modifier.clickable(onClick = imageClick) else Modifier)
                 )
             } else {
                 FallbackAvatar(

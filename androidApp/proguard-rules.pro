@@ -46,3 +46,5 @@
 # ServiceLoader (META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler),
 # so R8 must neither rename nor strip it.
 -keep class id.homebase.feed.GlobalCoroutineExceptionHandler { *; }
+# WebRTC — libjingle_peerconnection_so resolves these by name over JNI (FindClass), invisible to R8.
+-keep class org.webrtc.** { *; }

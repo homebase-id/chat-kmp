@@ -23,7 +23,9 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.PhotoCamera
+import id.homebase.resources.call_lab_title
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Warning
@@ -122,6 +124,7 @@ fun DeveloperMenuScreen(
     viewModel: DeveloperMenuViewModel,
     onBackClick: () -> Unit,
     onNavigateToScheduledPushTest: () -> Unit,
+    onNavigateToCallLab: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -153,6 +156,7 @@ fun DeveloperMenuScreen(
         onAction = viewModel::onUiAction,
         onBackClick = onBackClick,
         onNavigateToScheduledPushTest = onNavigateToScheduledPushTest,
+        onNavigateToCallLab = onNavigateToCallLab,
     )
 }
 
@@ -164,6 +168,7 @@ fun DeveloperMenuUi(
     onAction: (DeveloperMenuUiAction) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToScheduledPushTest: () -> Unit,
+    onNavigateToCallLab: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
     var showCrashConfirm by remember { mutableStateOf(false) }
@@ -352,6 +357,12 @@ fun DeveloperMenuUi(
                 icon = Icons.Outlined.Schedule,
                 title = stringResource(MR.string.dev_menu_test_scheduled_push),
                 action = SettingsRowAction.Navigate(onNavigateToScheduledPushTest),
+            )
+            SettingsRow(
+                modifier = Modifier.testTag("callLabRow"),
+                icon = Icons.Outlined.Call,
+                title = stringResource(MR.string.call_lab_title),
+                action = SettingsRowAction.Navigate(onNavigateToCallLab),
             )
 
             DevSectionHeader(title = stringResource(MR.string.dev_menu_section_crashlytics))
