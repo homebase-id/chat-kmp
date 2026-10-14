@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionPortBluetoothA2DP
 import platform.AVFAudio.AVAudioSessionPortBluetoothHFP
@@ -13,7 +14,6 @@ import platform.AVFAudio.AVAudioSessionPortHeadsetMic
 import platform.AVFAudio.AVAudioSessionPortUSBAudio
 import platform.AVFAudio.availableInputs
 import platform.AVFAudio.currentRoute
-import platform.AVFAudio.setPreferredInput
 
 internal fun audioRouteOf(portType: String?): AudioRoute? = when (portType) {
     AVAudioSessionPortBuiltInReceiver -> AudioRoute.Earpiece
@@ -33,6 +33,7 @@ internal fun AVAudioSession.availableAudioRoutes(): List<AudioRoute> =
     offeredRoutes((portTypes(currentRoute.outputs) + portTypes(availableInputs)).mapNotNullTo(HashSet(), ::audioRouteOf))
 
 // Nil clears the preference, handing the input back to the system; the output override alone cannot leave a headset.
+@OptIn(ExperimentalForeignApi::class)
 internal fun AVAudioSession.preferInputFor(route: AudioRoute) {
     val port = availableInputs.orEmpty().filterIsInstance<AVAudioSessionPortDescription>().firstOrNull {
         when (route) {
