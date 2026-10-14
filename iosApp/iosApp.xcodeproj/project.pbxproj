@@ -41,6 +41,8 @@
 		8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; };
 		A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83540B919899D142F6699230 /* Foundation.framework */; };
 		CF04EFF288B21720D5F2C2A5 /* fixture_1080p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */; };
+		5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */; };
+		5B0F1A0C0000000000000A03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 5B0F1A0C0000000000000A04 /* WebRTC */; };
 		DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */; };
 		F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006A01 /* SharedContentSaverTests.swift */; };
 		F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006C01 /* SharedContentSaver.swift */; };
@@ -111,6 +113,7 @@
 
 /* Begin PBXFileReference section */
 		03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_1080p.mp4; sourceTree = "<group>"; };
+		5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SampleBufferVideoViewTests.swift; sourceTree = "<group>"; };
 		1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FFmpegPipelineTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006A01 /* SharedContentSaverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedContentSaverTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006C01 /* SharedContentSaver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedContentSaver.swift; path = ShareExtension/SharedContentSaver.swift; sourceTree = SOURCE_ROOT; };
@@ -202,6 +205,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */,
+				5B0F1A0C0000000000000A03 /* WebRTC in Frameworks */,
 				E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */,
 				3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */,
 				8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */,
@@ -318,6 +322,7 @@
 			isa = PBXGroup;
 			children = (
 				1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */,
+				5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */,
 				F1207A520000000000006A01 /* SharedContentSaverTests.swift */,
 				F1207A520000000000006C01 /* SharedContentSaver.swift */,
 				E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */,
@@ -380,6 +385,9 @@
 				DAE7C6C248D295C574FFC09F /* PBXTargetDependency */,
 			);
 			name = iosAppTests;
+			packageProductDependencies = (
+				5B0F1A0C0000000000000A04 /* WebRTC */,
+			);
 			productName = iosAppTests;
 			productReference = A119F0A8E11D557B2E98503F /* iosAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -624,6 +632,7 @@
 				DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */,
 				F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */,
 				F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */,
+				5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1366,6 +1375,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCrashlytics;
+		};
+		5B0F1A0C0000000000000A04 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
 		};
 		7A1C0DE02F9000020055AA02 /* WebRTC */ = {
 			isa = XCSwiftPackageProductDependency;
