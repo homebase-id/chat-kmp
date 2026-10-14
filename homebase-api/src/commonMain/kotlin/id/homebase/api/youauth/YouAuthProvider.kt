@@ -84,8 +84,9 @@ class YouAuthProvider(
                 origin = host
             )
 
+        // Signs in by slug when it has one, as YouAuthFlowManager.authorize does (odin-core #1933)
         return YouAuthorizationParams(
-            clientId = appId,
+            clientId = appSlug ?: appId,
             clientType = ClientType.app,
             clientInfo = clientFriendlyName ?: deviceDisplayName(),
             publicKey = publicKeyToJwkBase64Url(publicKey.publicKey),
