@@ -341,7 +341,8 @@ class CallController(
             post(CallEvent.EngineError(e.reason))
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Native engines throw Errors (UnsatisfiedLinkError); one escaping here kills the inbox loop.
             log.w(e) { "call effect $effect failed" }
             post(CallEvent.EngineError(FailReason.Other))
         }
