@@ -21,5 +21,5 @@ internal expect fun applyVideoSender(sender: RtpSender, state: SenderState)
 /** The sender's live parameters (negotiated codec, bitrate window, degradation) as one log line. */
 internal expect fun describeVideoSender(sender: RtpSender): String
 
-/** Reports the device's thermal state and Low Power Mode now and on each change; null where the platform has neither. Returns the stop. */
+/** Reports the device's thermal state and Low Power Mode now and on each change, never where the platform has neither. Returns the stop. */
 internal expect fun observeDevicePressure(onChange: (DevicePressure) -> Unit): () -> Unit

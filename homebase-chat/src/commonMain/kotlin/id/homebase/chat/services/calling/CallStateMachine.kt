@@ -106,8 +106,11 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             if (state.phase == CallPhase.Incoming && !event.on) CallTransition(state.copy(media = state.media.copy(localVideo = false)))
             else if (event.on && state.phase.isInCall && !state.localVideoTrack) addVideo(state)
             else control(state, CallEffect.SetVideo(event.on)) { it.copy(localVideo = event.on) }
-        CallEvent.SwitchCamera -> control(state, CallEffect.SwitchCamera) {
-            it.copy(camera = if (it.camera == CameraFacing.Front) CameraFacing.Back else CameraFacing.Front)
+        CallEvent.SwitchCamera -> {
+            Logger.i(TAG) { "call=${state.callId} SwitchCamera in ${state.phase}" }
+            control(state, CallEffect.SwitchCamera) {
+                it.copy(camera = if (it.camera == CameraFacing.Front) CameraFacing.Back else CameraFacing.Front)
+            }
         }
         is CallEvent.SetRoute -> control(state, CallEffect.SetRoute(event.route)) { it.copy(route = event.route) }
     }

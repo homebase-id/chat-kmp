@@ -197,7 +197,7 @@ fun CallWindowContent(
                 CallMiniContent(ui, name, avatar, actions, Modifier, onMiniDragStart, onMiniDrag)
                 CallDeviceSnackbarHost(events.snackbar, Modifier.align(Alignment.BottomCenter))
             }
-            CallEventDialogs(events, model.viewModel)
+            CallEventDialogs(events, model.viewModel, ui.verificationCode)
             return@CompositionLocalProvider
         }
         // The stage runs under the transparent title bar; only the chrome steps down by topInset.
