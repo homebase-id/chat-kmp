@@ -188,11 +188,13 @@ stays as the safety net. Baseline measured before the pin: source 3840x2160 at 3
   full`. `SendLoadRung` caps the ladder further: two ticks under 24 fps with frames over 50 ms to encode step it down
   one rung (720, 540, 360, 270, 180; no floor), six ticks at 27 fps whose encode time, scaled to the next rung's
   pixels, stays under 40 ms step it back up. A camera slowed by low light encodes fast and never counts as slow.
-- **Android decodes into byte buffers.** webrtc-kmp gives `DefaultVideoDecoderFactory` the root EGL context, and a
-  texture-mode `AndroidVideoDecoder` has a single output texture: every frame that finishes while the previous one is
-  still held downstream (libwebrtc's render queue keeps it until its render time) is dropped. On the Redmi that halved
-  1080p to 15 fps with `Too many frames backed up in the decoder`; `DefaultVideoDecoderFactory(null)` decodes 1080p at
-  30 fps.
+- **Android decodes into textures on the root EGL context.** The low-latency factory hands `AndroidVideoDecoder` the
+  shared `WebRtc.rootEglBase` context, so frames reach the renderers as OES textures with no NV12->I420 copy or YUV
+  upload (software decoders stay the fallback). Texture mode has one output texture and drops a frame that finishes
+  while the last is still held; before the low-latency keys that halved 1080p to 15 fps (`Too many frames backed up in
+  the decoder`). With them, Redmi A/B, iPhone->Redmi 720p30, ~75 s at the top rung: byte buffers 18-22 ms decode,
+  0.6 frames in flight, app CPU ~152%; textures 10-13 ms, 0.3 in flight, ~136%; both 30 fps, no drops, no freezes,
+  no backed-up lines.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
   and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log. A stalled
   outbound counter with a frozen source line is a stopped camera, with a moving one a failing encoder. qp above the
