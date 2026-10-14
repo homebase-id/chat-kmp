@@ -12,11 +12,11 @@ internal expect fun configureWebRtc()
 /** Asks for the camera at [SendVideoCap] where the platform picks its capture format safely, else at its default. */
 internal expect fun MediaStreamConstraintsBuilder.requestCamera()
 
-/** Caps the video sender at [SendVideoCap] with BALANCED degradation, so WebRTC adapts resolution. */
+/** Bounds the video sender to [SendVideoCap]'s bitrate window keeping frame rate: WebRTC adapts resolution only. */
 internal expect fun configureVideoSender(sender: RtpSender)
 
-/** A [SendResolutionLadder] that scales [sender]'s encodings, where the platform needs one. */
-internal expect fun sendResolutionLadder(sender: () -> RtpSender?): SendResolutionLadder?
+/** Sets every encoding's scaleResolutionDownBy, as [SendResolutionLadder] decides. */
+internal expect fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double)
 
 /** The sender's live parameters (negotiated codec, bitrate window, degradation) as one log line. */
 internal expect fun describeVideoSender(sender: RtpSender): String

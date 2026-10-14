@@ -8,7 +8,7 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.files.WholePercentProgressGate
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.encryptFileStreaming
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFile
@@ -440,14 +440,7 @@ class VideoPayloadProcessor(
         // cache reclaim deleted it out from under a pending outbox row (ENOENT retries).
         val outputPath =
             fileOperationsProvider.createOutboxStagingPath("video-encrypted-", ".bin")
-        fileOperationsProvider.writeStream(
-            path = outputPath,
-            data = AesCbc.streamEncryptWithCbc(
-                dataStream = fileOperationsProvider.readFileAsFlow(inputPath),
-                key = keyHeader.aesKey,
-                iv = keyHeader.iv,
-            ),
-        )
+        fileOperationsProvider.encryptFileStreaming(inputPath, outputPath, keyHeader)
         return outputPath
     }
 

@@ -29,7 +29,7 @@ internal fun List<ProfileAttribute>.visibleAttribute(
         .firstOrNull { attribute -> keys.any { !attribute.string(it).isNullOrBlank() } }
 
 internal fun List<ProfileAttribute>.visibleValues(canSee: AclFilter): Map<ProfileField, String> =
-    ProfileEditViewModel.TYPE_FIELDS.flatMap { (type, fields) ->
+    PROFILE_TYPE_FIELDS.flatMap { (type, fields) ->
         val attribute = visibleAttribute(type, canSee, fields.map { it.second })
         fields.map { (field, key) -> field to attribute?.string(key).orEmpty() }
     }.toMap()

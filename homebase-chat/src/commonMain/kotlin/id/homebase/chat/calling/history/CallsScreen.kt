@@ -62,7 +62,7 @@ import id.homebase.chat.calling.CallLogDirection
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.calling.callEventVisual
 import id.homebase.chat.calling.imageVector
-import id.homebase.chat.calling.formatCallDuration
+import id.homebase.core.util.formatHms
 import id.homebase.chat.calling.stringRes
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
@@ -270,7 +270,7 @@ private fun CallRow(
     val title = stringResource(visual.title.stringRes())
     val withKind = stringResource(MR.string.call_event_duration, title, kind)
     val subtitle = if (entry.outcome == CallOutcome.Completed && entry.durationSeconds > 0) {
-        stringResource(MR.string.call_event_duration, withKind, formatCallDuration(entry.durationSeconds))
+        stringResource(MR.string.call_event_duration, withKind, formatHms(entry.durationSeconds * 1000, padMinutes = true))
     } else withKind
     Box {
         Row(

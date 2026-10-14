@@ -7,7 +7,7 @@ import org.webrtc.RtpParameters
 
 internal actual fun configureWebRtc() = configureWebRtcFactory
 
-// Camera2 picks the closest format the device lists, so asking for 1080p is safe here.
+// Camera2 picks the closest format the device lists, so asking for 720p is safe here.
 internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
     width(SendVideoCap.WIDTH)
     height(SendVideoCap.HEIGHT)
@@ -17,16 +17,23 @@ internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
 internal actual fun configureVideoSender(sender: RtpSender) {
     val native = sender.android
     val params = native.parameters
-    params.degradationPreference = RtpParameters.DegradationPreference.BALANCED
+    // MAINTAIN_FRAMERATE starts H.264 at 360p and its quality scaler waits for QP < 24, which the Qualcomm encoder never
+    // reaches, so it stays at 360p; SendResolutionLadder and SendLoadRung lower the resolution instead.
+    params.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
     params.encodings.forEach {
         it.maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS
+        it.minBitrateBps = SendVideoCap.MIN_BITRATE_BPS
         it.maxFramerate = SendVideoCap.FPS
     }
     if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected ${describeVideoSender(sender)}" }
 }
 
-// The quality scaler already follows the bandwidth on MediaCodec, and a scaled layer skips its 2-pixel alignment.
-internal actual fun sendResolutionLadder(sender: () -> RtpSender?): SendResolutionLadder? = null
+internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
+    val native = sender.android
+    val params = native.parameters
+    params.encodings.forEach { it.scaleResolutionDownBy = scaleDownBy }
+    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected scale $scaleDownBy" }
+}
 
 internal actual fun describeVideoSender(sender: RtpSender): String {
     val params = sender.android.parameters

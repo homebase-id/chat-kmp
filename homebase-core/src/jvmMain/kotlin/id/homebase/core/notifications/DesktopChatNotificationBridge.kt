@@ -7,7 +7,12 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.mapToMessageData
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.resources.MR
+import id.homebase.resources.call_event_missed
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
@@ -87,12 +92,17 @@ class DesktopChatNotificationBridge(
             if (message.created < floor) continue
 
             val senderId = message.originalAuthor?.domainName ?: continue
+            val body = if (file.fileMetadata.appData.dataType == ChatProtocol.ChatCallEventMessageDataType) {
+                missedCallBody(message.content) ?: continue
+            } else {
+                message.content
+            }
             val payload = buildSyntheticPayload(
                 senderId = senderId,
                 conversationId = message.conversationId,
                 messageId = message.id,
                 createdEpochMs = message.created.toEpochMilliseconds(),
-                body = message.content,
+                body = body,
             )
             val json = try {
                 OdinSystemSerializer.serialize(payload)
@@ -108,6 +118,13 @@ class DesktopChatNotificationBridge(
                 data = mapOf("data" to json),
             )
         }
+    }
+
+    /** The peer's call log entry is the missed-call notice; every other outcome stays silent. */
+    private suspend fun missedCallBody(content: String): String? {
+        val event = MessageContentParser.parse(ChatProtocol.ChatCallEventMessageDataType, content) as? MessageContent.CallEvent
+        if (event?.descriptor?.missedByRecipient != true) return null
+        return TranslationUtil.getString(MR.string.call_event_missed)
     }
 
     private fun buildSyntheticPayload(

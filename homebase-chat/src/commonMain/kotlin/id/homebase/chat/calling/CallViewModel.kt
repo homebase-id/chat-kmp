@@ -2,6 +2,7 @@ package id.homebase.chat.calling
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.chat.services.calling.AudioRoute
 import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
@@ -11,8 +12,13 @@ import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallVideos
 import id.homebase.chat.services.calling.holdsPictureInPicture
 import id.homebase.chat.services.calling.isInCall
+import id.homebase.chat.services.calling.MediaDevice
+import id.homebase.chat.services.calling.MediaDeviceKind
+import id.homebase.chat.services.calling.MediaDeviceNotice
 import id.homebase.chat.services.calling.platformAudioRoutes
 import kotlin.time.Clock
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -22,6 +28,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -35,7 +44,9 @@ data class CallUiState(
     val peerRinging: Boolean = false,
     val muted: Boolean = false,
     val localVideo: Boolean = false,
+    val micLevelSeen: Boolean = false,
     val remoteVideo: Boolean = false,
+    val placedWithVideo: Boolean = false,
     val route: AudioRoute = AudioRoute.Earpiece,
     val availableRoutes: List<AudioRoute> = emptyList(),
     val quality: CallQuality = CallQuality.Unknown,
@@ -45,6 +56,8 @@ data class CallUiState(
     val videos: CallVideos = CallVideos(),
     val minimized: Boolean = false,
     val dismissedCallId: String? = null,
+    val devices: List<MediaDevice> = emptyList(),
+    val selectedDevices: Map<MediaDeviceKind, String?> = emptyMap(),
 ) {
     val visible: Boolean
         get() = phase != CallPhase.Idle && !(phase is CallPhase.Ended && callId == dismissedCallId)
@@ -55,26 +68,34 @@ data class CallUiState(
 
     val pipEligible: Boolean get() = isVideoCall && phase.holdsPictureInPicture
 
-    val keepScreenAwake: Boolean get() = inProgress
+    val keepScreenAwake: Boolean get() = phase != CallPhase.Idle && phase !is CallPhase.Ended
 
-    val pillVisible: Boolean get() = minimized && inProgress
+    private val minimizedInCall: Boolean get() = minimized && inProgress
 
-    val endReason: CallEndReason? get() = (phase as? CallPhase.Ended)?.reason
+    val pillVisible: Boolean get() = minimizedInCall && !isVideoCall
 
-    val failed: Boolean get() = endReason is CallEndReason.Failed
+    val tileVisible: Boolean get() = minimizedInCall && isVideoCall
 }
 
 sealed interface CallUiEvent {
     data object ShowVerification : CallUiEvent
     data object ConfirmEnd : CallUiEvent
+    data class Device(val notice: MediaDeviceNotice) : CallUiEvent
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CallViewModel(
     private val session: CallSession,
     private val audioRoutes: () -> List<AudioRoute> = ::platformAudioRoutes,
+    // A native audio switch can hang for minutes holding the engine's locks; on Default enough of them starve the whole app.
+    private val deviceDispatcher: CoroutineDispatcher = ioDispatcher,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CallUiState())
     val uiState: StateFlow<CallUiState> = _uiState.asStateFlow()
+
+    private val _micLevel = MutableStateFlow(0f)
+    /** Ticks ~10x a second; kept out of [uiState] so only the meter reads it. */
+    val micLevel: StateFlow<Float> = _micLevel.asStateFlow()
 
     private val _events = MutableSharedFlow<CallUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<CallUiEvent> = _events.asSharedFlow()
@@ -82,7 +103,28 @@ class CallViewModel(
     private var lingerJob: Job? = null
     private var lingeringFor: String? = null
 
+    private class DeviceSnapshot(
+        val devices: List<MediaDevice> = emptyList(),
+        val selected: Map<MediaDeviceKind, String?> = emptyMap(),
+    )
+
     init {
+        viewModelScope.launch {
+            session.mediaDevices
+                .flatMapLatest { d -> if (d == null) flowOf(DeviceSnapshot()) else combine(d.devices, d.selected, ::DeviceSnapshot) }
+                .collect { snap ->
+                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected) }
+                }
+        }
+        viewModelScope.launch {
+            session.mediaDevices.flatMapLatest { it?.micLevel ?: flowOf(0f) }.collect { level ->
+                _micLevel.value = level
+                if (level > 0f) _uiState.update { it.copy(micLevelSeen = true) }
+            }
+        }
+        viewModelScope.launch {
+            session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { _events.tryEmit(CallUiEvent.Device(it)) }
+        }
         viewModelScope.launch {
             combine(session.state, session.videos) { state, videos -> state to videos }.collect { (state, videos) ->
                 val routes = if (state.isActive) audioRoutes() else emptyList()
@@ -97,18 +139,15 @@ class CallViewModel(
                         muted = state.media.muted,
                         localVideo = state.media.localVideo,
                         remoteVideo = state.media.remoteVideo,
+                        placedWithVideo = state.placedWithVideo,
                         route = state.media.route,
                         availableRoutes = routes,
                         quality = state.quality,
                         connectedAtMs = state.connectedAtMs,
-                        endedAtMs = when {
-                            state.phase !is CallPhase.Ended -> null
-                            previous.phase is CallPhase.Ended && !newCall -> previous.endedAtMs
-                            else -> Clock.System.now().toEpochMilliseconds()
-                        },
+                        endedAtMs = state.endedAtMs,
                         verificationCode = state.verificationCode,
                         videos = videos,
-                        minimized = previous.minimized && !newCall,
+                        minimized = previous.minimized && !newCall && state.phase.isInCall,
                     )
                 }
                 scheduleDismissal(state.phase, state.callId)
@@ -119,14 +158,12 @@ class CallViewModel(
     // Failed stays up: it carries Retry, so only the user dismisses it.
     private fun scheduleDismissal(phase: CallPhase, callId: String?) {
         val ended = phase as? CallPhase.Ended
-        if (ended == null || ended.reason is CallEndReason.Failed || callId == null) {
-            if (ended == null) {
-                lingerJob?.cancel()
-                lingeringFor = null
-            }
+        if (ended == null) {
+            lingerJob?.cancel()
+            lingeringFor = null
             return
         }
-        if (lingeringFor == callId) return
+        if (ended.reason is CallEndReason.Failed || callId == null || lingeringFor == callId) return
         lingerJob?.cancel()
         lingeringFor = callId
         lingerJob = viewModelScope.launch {
@@ -146,11 +183,17 @@ class CallViewModel(
 
     fun toggleMute() = session.setMuted(!_uiState.value.muted)
 
-    fun toggleVideo() = session.setVideo(!_uiState.value.localVideo)
+    fun setVideo(on: Boolean) = session.setVideo(on)
 
     fun switchCamera() = session.switchCamera()
 
     fun setRoute(route: AudioRoute) = session.setAudioRoute(route)
+
+    // Swapping a device restarts native audio or capture, which takes long enough to drop frames on the main thread.
+    fun selectDevice(kind: MediaDeviceKind, id: String) {
+        val devices = session.mediaDevices.value ?: return
+        viewModelScope.launch(deviceDispatcher) { devices.select(kind, id) }
+    }
 
     fun retry(withVideo: Boolean) {
         val current = _uiState.value
@@ -174,13 +217,22 @@ class CallViewModel(
         _events.tryEmit(CallUiEvent.ShowVerification)
     }
 
+    fun requestClose() {
+        when (callWindowCloseAction(_uiState.value.phase)) {
+            CallWindowCloseAction.Decline -> session.decline()
+            CallWindowCloseAction.Hangup -> session.hangup()
+            CallWindowCloseAction.ConfirmEnd -> _events.tryEmit(CallUiEvent.ConfirmEnd)
+            CallWindowCloseAction.Dismiss -> close()
+        }
+    }
+
     fun endFromKeyboard() {
         when (_uiState.value.phase) {
-            CallPhase.Connected -> _events.tryEmit(CallUiEvent.ConfirmEnd)
+            CallPhase.Connecting, CallPhase.Connected, CallPhase.Reconnecting -> _events.tryEmit(CallUiEvent.ConfirmEnd)
             CallPhase.Incoming -> session.decline()
+            CallPhase.Outgoing -> session.hangup()
             is CallPhase.Ended -> close()
             CallPhase.Idle -> Unit
-            else -> session.hangup()
         }
     }
 }

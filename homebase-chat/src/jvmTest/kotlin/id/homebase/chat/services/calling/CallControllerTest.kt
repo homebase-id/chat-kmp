@@ -110,6 +110,60 @@ class CallControllerTest {
         assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
     }
 
+    // Redmi: closing the engine took 1.7-2.0 s and the hangup waited behind it, so the iPhone ended 2.8-8.3 s late.
+    @Test
+    fun theHangupIsSentBeforeTheEngineFinishesClosing() = runTest {
+        val timeline = mutableListOf<String>()
+        lateinit var net: LoopbackSignaling
+        val recordClose: (FakeCallEngine) -> CallEngine = { fake ->
+            object : CallEngine by fake {
+                override fun close() {
+                    val hungUp = net.sent.any { it.from == frodo && it.signal is CallSignal.Hangup }
+                    timeline += if (hungUp) "closed after hangup" else "closed before hangup"
+                    fake.close()
+                }
+            }
+        }
+        val (loopback, a, b) = pair(wrapA = recordClose)
+        net = loopback
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        a.controller.hangup()
+        runCurrent()
+
+        assertEquals(listOf("closed after hangup"), timeline)
+        assertEquals(CallPhase.Ended(CallEndReason.Hangup(remote = true)), b.phase)
+    }
+
+    @Test
+    fun aCallPlacedRightAfterHangingUpOpensItsEngineOnlyOnceTheLastOneHasClosed() = runTest {
+        val timeline = mutableListOf<String>()
+        val record: (FakeCallEngine) -> CallEngine = { fake ->
+            val n = timeline.count { it.startsWith("created") } + 1
+            timeline += "created $n"
+            object : CallEngine by fake {
+                override fun close() {
+                    timeline += "closed $n"
+                    fake.close()
+                }
+            }
+        }
+        val (_, a, b) = pair(wrapA = record)
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+
+        a.controller.hangup()
+        a.controller.startCall(sam, video = true)
+        runCurrent()
+
+        assertEquals(listOf("created 1", "closed 1", "created 2"), timeline)
+    }
+
     @Test
     fun remoteHangupEndsTheCallWhileApplyingTheAnswerHangs() = runTest {
         val (_, a, b) = pair(wrapA = applyRemoteHangs)
@@ -134,7 +188,7 @@ class CallControllerTest {
         b.controller.accept()
         advanceTimeBy(1_001)
 
-        net.endpoint(sam).send(CallChannel.outbound(frodo, CallSignal.Hangup("another-call", HangupReason.Normal), sam))
+        net.endpoint(sam).send(CallChannel.outbound(frodo, CallSignal.Hangup("another-call", HangupReason.Normal)))
         runCurrent()
 
         assertEquals(CallPhase.Connecting, a.phase)
@@ -322,7 +376,7 @@ class CallControllerTest {
         assertEquals("call-a", b.state.callId)
         assertEquals(CallDirection.Outgoing, a.state.direction)
         assertEquals(CallDirection.Incoming, b.state.direction)
-        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.Normal) })
+        assertTrue(net.sent.any { it.from == sam && it.to == frodo && it.signal == CallSignal.Hangup("call-b", HangupReason.AnsweredElsewhere) })
         assertTrue(net.sent.none { it.signal is CallSignal.Hangup && !it.signal.reason.isElsewhere && it.push != null })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == frodo })
         assertEquals(1, net.sent.count { it.push?.kind == CallPushKind.Ring && it.from == sam })
@@ -417,7 +471,7 @@ class CallControllerTest {
     fun staleOrReplayedOfferDoesNotRing() = runTest {
         val (net, _, b) = pair()
         advanceTimeBy(RING_TIMEOUT_MS + 5_000)
-        net.deliver(sam, frodo, CallSignal.Offer("old", "sdp", false), receivedAtMs = 0)
+        net.deliver(sam, frodo, CallSignal.Offer("old", "sdp", false), receivedAtMs = 1)
         runCurrent()
         assertEquals(CallPhase.Idle, b.phase)
     }
@@ -657,7 +711,7 @@ class CallControllerTest {
     @Test
     fun pushRingAndSocketOfferCollapseIntoOneIncomingCall() = runTest {
         val (net, a, b) = pair()
-        b.controller.onPushRing("pushed", frodo)
+        b.controller.pushRing("pushed", frodo)
         runCurrent()
         assertEquals(CallPhase.Incoming, b.phase)
         a.controller.startCall(sam, video = false, callId = "pushed")
@@ -682,5 +736,48 @@ class CallControllerTest {
         a.controller.close()
         runCurrent()
         assertTrue(a.engines.all { it.closed })
+    }
+
+    @Test
+    fun aRingingSignalThatFailsToSendLeavesTheIncomingCallRinging() = runTest {
+        val (_, a, b) = pair()
+        b.offline = true
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        assertEquals(CallPhase.Incoming, b.phase)
+
+        b.offline = false
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, b.phase)
+        assertEquals(CallPhase.Connected, a.phase)
+    }
+
+    @Test
+    fun aRemoteCandidateTheEngineRejectsIsDroppedWithoutEndingTheCall() = runTest {
+        val rejectsIce: (FakeCallEngine) -> CallEngine = { fake ->
+            object : CallEngine by fake {
+                override suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?) =
+                    throw IllegalStateException("bad candidate")
+            }
+        }
+        val (_, a, b) = pair(wrapA = rejectsIce)
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        runCurrent()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, a.phase)
+    }
+
+    @Test
+    fun aRingPushedAfterTheControllerClosedIsCancelledNotLeftPending() = runTest {
+        val (_, a, _) = pair()
+        a.controller.close()
+        runCurrent()
+        val ring = a.controller.pushRing("c1", sam)
+        runCurrent()
+        assertTrue(ring.isCancelled)
     }
 }

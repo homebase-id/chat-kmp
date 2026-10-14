@@ -1,43 +1,247 @@
 package id.homebase.chat.services.calling
 
-import id.homebase.core.notifications.RichNotificationData
+import id.homebase.core.notifications.CallNotificationActions
+import id.homebase.core.notifications.CallNotifier
+import id.homebase.core.notifications.CallPushRouter
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopCallRingSinkTest {
-    @Test
-    fun ringingPostsANotificationRaisesTheWindowAndRepeatsTheToneUntilStopped() = runTest {
-        val notifications = mutableListOf<RichNotificationData>()
-        var raised = 0
-        var tones = 0
+    private val frodo = "frodo.baggins.demo.rocks"
+    private val sam = "samwise.gamgee.demo.rocks"
+
+    private class FakeNotifier : CallNotifier {
+        val shown = mutableListOf<Triple<String, String, String>>()
+        val live = mutableSetOf<String>()
+        val retracted = mutableListOf<String>()
+        var actions: CallNotificationActions? = null
+
+        override fun showIncoming(callId: String, title: String, body: String, actions: CallNotificationActions) {
+            shown += Triple(callId, title, body)
+            live += callId
+            this.actions = actions
+        }
+
+        override fun retract(callId: String) {
+            live -= callId
+            retracted += callId
+        }
+    }
+
+    private class FakeTone : RingTonePlayer {
+        var starts = 0
+        var stops = 0
+        var playing = false
+        override fun start() { starts++; playing = true }
+        override fun stop() { stops++; playing = false }
+    }
+
+    private class Rig(scope: TestScope, selfId: String) {
+        val notifier = FakeNotifier()
+        val tone = FakeTone()
+        var callWindowFocused = 0
+        val controller = CallController(
+            selfOdinId = selfId,
+            signaling = LoopbackSignaling(now = { scope.testScheduler.currentTime }).endpoint(selfId),
+            engineFactory = CallEngineFactory { _ ->
+                FakeCallEngine(scope.backgroundScope, FakeCallScript(), peerLabel = "peer", selfLabel = selfId)
+            },
+            scope = scope.backgroundScope,
+            clock = { scope.testScheduler.currentTime },
+        )
+        lateinit var coordinator: CallRingCoordinator
         val sink = DesktopCallRingSink(
-            scope = backgroundScope,
-            notify = { notifications += it },
-            bringToFront = { raised++ },
-            ringTone = { tones++ },
+            scope = scope.backgroundScope,
+            notifier = notifier,
+            focusCallWindow = { callWindowFocused++ },
+            tone = tone,
             incomingCallText = { "Incoming call" },
-            ringIntervalMs = 1_000,
+            acceptLabel = { "Accept" },
+            declineLabel = { "Decline" },
+            onAccept = { coordinator.accept(it) },
+            onDecline = { coordinator.decline(it) },
+        )
+
+        init {
+            coordinator = CallRingCoordinator(
+                target = object : CallPushTarget {
+                    override fun pushRing(callId: String, from: String, sentAtMs: Long) = controller.pushRing(callId, from, sentAtMs)
+                    override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
+                    override fun accept() = controller.accept()
+                    override fun decline() = controller.decline()
+                },
+                state = controller.state,
+                sink = sink,
+                labelFor = { "Sam" },
+                scope = scope.backgroundScope,
+            ).also { it.start(); CallPushRouter.handler = it }
+        }
+    }
+
+    @AfterTest
+    fun clearHandler() {
+        CallPushRouter.handler = null
+    }
+
+    private fun payload(typeId: String, callId: String) = mapOf(
+        "data" to """{"senderId":"$sam","timestamp":1,"options":{"appId":"app","typeId":"$typeId","tagId":"$callId"}}""",
+    )
+
+    private fun ring(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.RING_TYPE_ID, callId))
+    private fun hangup(callId: String) = CallPushRouter.tryHandle(payload(CallPushRouter.HANGUP_TYPE_ID, callId))
+
+    @Test
+    fun ringingFocusesTheCallWindowStartsTheToneOnceAndStopRetractsBoth() = runTest {
+        val tone = FakeTone()
+        val notifier = FakeNotifier()
+        var focused = 0
+        val sink = DesktopCallRingSink(
+            scope = backgroundScope, notifier = notifier, focusCallWindow = { focused++ }, tone = tone,
+            incomingCallText = { "Incoming call" }, acceptLabel = { "Accept" }, declineLabel = { "Decline" },
+            onAccept = {}, onDecline = {},
         )
 
         sink.ring("c1", "sam.demo.rocks")
         runCurrent()
-        advanceTimeBy(2_500)
-        assertEquals(3, tones)
-        assertEquals(1, raised)
-        assertEquals(listOf("sam.demo.rocks" to "Incoming call"), notifications.map { it.title to it.body })
+        assertEquals(1, focused)
+        assertEquals(1, tone.starts)
+        assertEquals(listOf(Triple("c1", "sam.demo.rocks", "Incoming call")), notifier.shown)
 
         sink.ring("c1", "Samwise")
         runCurrent()
-        assertEquals(1, raised)
-        assertEquals("Samwise", notifications.last().title)
+        advanceTimeBy(5_000)
+        assertEquals(1, focused)
+        assertEquals(1, tone.starts)
+        assertEquals("Samwise", notifier.shown.last().second)
 
         sink.stopRinging("c1")
+        assertFalse(tone.playing)
+        assertEquals(listOf("c1"), notifier.retracted)
+        assertTrue(notifier.live.isEmpty())
+
+        sink.stopRinging("c1")
+        sink.ended("c1", CallEndReason.Hangup(remote = false))
+        assertEquals(1, tone.stops)
+        assertEquals(listOf("c1"), notifier.retracted)
+    }
+
+    @Test
+    fun aRingPushFollowedByAHangupPushLeavesNoToneNoRingWindowAndNoNotification() = runTest {
+        val rig = Rig(this, frodo)
+        assertTrue(ring("c1"))
+        runCurrent()
+        assertTrue(rig.tone.playing)
+        assertEquals(setOf("c1"), rig.notifier.live)
+        assertEquals(1, rig.callWindowFocused)
+
+        assertTrue(hangup("c1"))
+        runCurrent()
         advanceTimeBy(5_000)
-        assertEquals(3, tones)
+        assertFalse(rig.tone.playing)
+        assertTrue(rig.notifier.live.isEmpty())
+        assertFalse(rig.controller.state.value.isRingingFor("c1"))
+    }
+
+    @Test
+    fun theNotificationAcceptButtonAnswersTheCallAndSilencesTheRing() = runTest {
+        val rig = Rig(this, frodo)
+        ring("c1")
+        runCurrent()
+        rig.notifier.actions!!.onAccept()
+        runCurrent()
+        val state = rig.controller.state.value
+        assertFalse(state.isRingingFor("c1"))
+        assertTrue(state.acceptPending || state.phase == CallPhase.Connecting || state.phase == CallPhase.Connected, "$state")
+        assertFalse(rig.tone.playing)
+        assertTrue(rig.notifier.live.isEmpty())
+    }
+
+    @Test
+    fun theNotificationDeclineButtonDeclinesTheCall() = runTest {
+        val rig = Rig(this, frodo)
+        ring("c1")
+        runCurrent()
+        rig.notifier.actions!!.onDecline()
+        runCurrent()
+        assertEquals(CallPhase.Ended(CallEndReason.Declined), rig.controller.state.value.phase)
+        assertFalse(rig.tone.playing)
+        assertTrue(rig.notifier.live.isEmpty())
+    }
+
+    @Test
+    fun aStaleNotificationButtonDoesNothingOnceTheRingIsOver() = runTest {
+        val rig = Rig(this, frodo)
+        ring("c1")
+        runCurrent()
+        val actions = rig.notifier.actions!!
+        hangup("c1")
+        runCurrent()
+        actions.onAccept()
+        runCurrent()
+        assertFalse(rig.controller.state.value.phase == CallPhase.Connecting)
+    }
+
+    @Test
+    fun theRingRevealsTheCallWindowWithoutTakingFocusAndOnlyAClickFocusesIt() = runTest {
+        val notifier = FakeNotifier()
+        var revealed = 0
+        var focused = 0
+        val sink = DesktopCallRingSink(
+            scope = backgroundScope, notifier = notifier, focusCallWindow = { focused++ }, revealRing = { revealed++ },
+            tone = FakeTone(), incomingCallText = { "Incoming call" }, acceptLabel = { "Accept" }, declineLabel = { "Decline" },
+            onAccept = {}, onDecline = {},
+        )
+        sink.ring("c1", "Sam")
+        runCurrent()
+        assertEquals(1, revealed)
+        assertEquals(0, focused)
+
+        notifier.actions!!.onOpen()
+        assertEquals(1, focused)
+    }
+
+    @Test
+    fun aStopThatLandsWhileTheLabelsAreStillLoadingLeavesNoNotificationBehind() = runTest {
+        val labels = CompletableDeferred<String>()
+        val notifier = FakeNotifier()
+        val sink = DesktopCallRingSink(
+            scope = backgroundScope, notifier = notifier, focusCallWindow = {}, tone = FakeTone(),
+            incomingCallText = { "Incoming call" }, acceptLabel = { labels.await() }, declineLabel = { "Decline" },
+            onAccept = {}, onDecline = {},
+        )
+        sink.ring("c1", "Sam")
+        runCurrent()
+        sink.stopRinging("c1")
+        labels.complete("Accept")
+        runCurrent()
+        assertTrue(notifier.shown.isEmpty())
+        assertTrue(notifier.live.isEmpty())
+    }
+
+    @Test
+    fun oneCallEndingDoesNotSilenceAnotherThatIsStillRinging() = runTest {
+        val tone = FakeTone()
+        val sink = DesktopCallRingSink(
+            scope = backgroundScope, notifier = FakeNotifier(), focusCallWindow = {}, tone = tone,
+            incomingCallText = { "Incoming call" }, acceptLabel = { "Accept" }, declineLabel = { "Decline" },
+            onAccept = {}, onDecline = {},
+        )
+        sink.ring("c1", "Sam")
+        sink.ring("c2", "Frodo")
+        runCurrent()
+        sink.stopRinging("c1")
+        assertTrue(tone.playing)
+        sink.stopRinging("c2")
+        assertFalse(tone.playing)
     }
 }

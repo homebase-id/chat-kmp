@@ -11,7 +11,7 @@ import kotlinx.serialization.json.Json
 @Serializable
 enum class HangupReason { Normal, Declined, Busy, Cancelled, Missed, AnsweredElsewhere, DeclinedElsewhere }
 
-/** Sent by the device that took the call to its own identity, so the callee's other devices stop ringing. */
+/** Sent by the caller once one callee device has answered or declined, so the callee's other devices stop ringing. */
 val HangupReason.isElsewhere: Boolean get() = this == HangupReason.AnsweredElsewhere || this == HangupReason.DeclinedElsewhere
 
 /**
@@ -86,13 +86,17 @@ object CallChannel {
         return Uuid.fromByteArray(bytes).toString()
     }
 
-    /** Ring only for the first [CallSignal.Offer] (re-published offers are silent); hangup only for a caller-side retraction (Cancelled/Missed) before the answer. */
-    fun outbound(peer: String, signal: CallSignal, selfLabel: String): OutboundSignal {
+    /**
+     * Ring only for the first [CallSignal.Offer] (re-published offers are silent); hangup only for a caller-side retraction
+     * (Cancelled/Missed) before the answer. The text is only shown by a client that cannot take calls, which titles it with
+     * the sender's name; like every other push body it is English.
+     */
+    fun outbound(peer: String, signal: CallSignal): OutboundSignal {
         val push = when {
             signal is CallSignal.Offer && signal.seq == 0 ->
-                CallPush(CallPushKind.Ring, RING_TYPE_ID, signal.callId, "$selfLabel is calling")
+                CallPush(CallPushKind.Ring, RING_TYPE_ID, signal.callId, "Incoming call")
             signal is CallSignal.Hangup && (signal.reason == HangupReason.Cancelled || signal.reason == HangupReason.Missed) ->
-                CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Missed call from $selfLabel")
+                CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Missed call")
             signal is CallSignal.Hangup && signal.reason.isElsewhere ->
                 CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Call handled on another device")
             else -> null

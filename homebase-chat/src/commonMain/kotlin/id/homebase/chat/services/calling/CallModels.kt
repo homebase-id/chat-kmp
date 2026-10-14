@@ -62,6 +62,7 @@ data class CallState(
     val direction: CallDirection? = null,
     val media: CallMedia = CallMedia(),
     val connectedAtMs: Long? = null,
+    val endedAtMs: Long? = null,
     val quality: CallQuality = CallQuality.Unknown,
     val reconnectAttempt: Int = 0,
     val peerRinging: Boolean = false,
@@ -71,6 +72,8 @@ data class CallState(
     val verificationCode: String? = null,
     val placedWithVideo: Boolean = false,
     val restartPending: Boolean = false,
+    /** The engine holds a camera track; without one, turning video on renegotiates through [CallEffect.AddVideo]. */
+    val localVideoTrack: Boolean = false,
     val linkUp: Boolean = false,
 ) {
     val isActive: Boolean

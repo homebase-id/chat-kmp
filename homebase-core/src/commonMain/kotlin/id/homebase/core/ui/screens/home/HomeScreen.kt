@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.LocationOn
@@ -69,6 +70,8 @@ import id.homebase.resources.vault_home_subtitle
 import id.homebase.resources.vault_label
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
+import id.homebase.resources.filesync_label
+import id.homebase.resources.filesync_home_subtitle
 import id.homebase.resources.calls_home_subtitle
 import id.homebase.resources.nav_calls
 import kotlinx.coroutines.launch
@@ -79,6 +82,7 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToVault: () -> Unit,
     onNavigateToWebDrop: () -> Unit,
+    onNavigateToFilesync: () -> Unit,
     onNavigateToMoments: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToContacts: () -> Unit,
@@ -136,6 +140,7 @@ fun HomeScreen(
         onAction = viewModel::onAction,
         onNavigateToVault = onNavigateToVault,
         onNavigateToWebDrop = onNavigateToWebDrop,
+        onNavigateToFilesync = onNavigateToFilesync,
         onNavigateToMoments = onNavigateToMoments,
         onNavigateToLocation = onNavigateToLocation,
         onNavigateToContacts = onNavigateToContacts,
@@ -151,6 +156,7 @@ fun HomeUi(
     onAction: (HomeUiAction) -> Unit,
     onNavigateToVault: () -> Unit = {},
     onNavigateToWebDrop: () -> Unit = {},
+    onNavigateToFilesync: () -> Unit = {},
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
@@ -194,6 +200,15 @@ fun HomeUi(
                 label = stringResource(MR.string.webdrop_label),
                 subtitle = stringResource(MR.string.webdrop_home_subtitle),
                 onClick = onNavigateToWebDrop,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
+                icon = Icons.Outlined.Folder,
+                label = stringResource(MR.string.filesync_label),
+                subtitle = stringResource(MR.string.filesync_home_subtitle),
+                onClick = onNavigateToFilesync,
             )
 
             Spacer(modifier = Modifier.height(12.dp))

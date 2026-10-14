@@ -1,6 +1,10 @@
 package id.homebase.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -16,6 +20,7 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun ApplicationScope.HomebaseTray(
     tooltip: String,
+    callIndicatorLabel: String? = null,
     primaryAction: () -> Unit,
     menuContent: TrayMenuBuilder.() -> Unit,
 ) {
@@ -25,15 +30,23 @@ fun ApplicationScope.HomebaseTray(
         // The menu bar follows the desktop picture, not the app theme, so this tints off
         // the bar's own appearance rather than a MaterialTheme role.
         iconContent = {
-            Icon(
-                painter = painterResource(MR.drawable.homebase_icon_mono),
-                contentDescription = tooltip,
-                tint = if (isMenuBarInDarkMode()) Color.White else Color.Black,
-                modifier = Modifier.fillMaxSize(),
-            )
+            Box(Modifier.fillMaxSize()) {
+                Icon(
+                    painter = painterResource(MR.drawable.homebase_icon_mono),
+                    contentDescription = callIndicatorLabel?.let { "$tooltip, $it" } ?: tooltip,
+                    tint = if (isMenuBarInDarkMode()) Color.White else Color.Black,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (callIndicatorLabel != null) {
+                    Box(Modifier.align(Alignment.TopEnd).fillMaxSize(0.38f).background(CALL_INDICATOR, CircleShape))
+                }
+            }
         },
-        tooltip = tooltip,
+        tooltip = callIndicatorLabel?.let { "$tooltip, $it" } ?: tooltip,
         primaryAction = primaryAction,
         menuContent = menuContent,
     )
 }
+
+// The menu bar is drawn by the OS outside MaterialTheme, so the recording-red dot and the white/black glyph follow the system bar, not our scheme.
+private val CALL_INDICATOR = Color(0xFFE53935)

@@ -15,18 +15,20 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 private const val TAG = "CardSiteDefaults"
+internal const val CARD_DESIGN_KEY = "cardDesign"
 
 data class CardSiteDefaults(
-    val design: String = CardDesign.BOARD,
+    val design: String? = null,
     val tagLine: String? = null,
     val header: HomebaseImageData? = null,
 )
 
-internal fun cardDesignForTheme(themeId: String?): String = when (themeId) {
+internal fun cardDesignForTheme(themeId: String?): String? = when (themeId) {
     "555" -> CardDesign.POSTER
     "777" -> CardDesign.COLLAGE
     "888" -> CardDesign.DOSSIER
-    else -> CardDesign.BOARD
+    "666" -> CardDesign.BOARD
+    else -> null
 }
 
 /** The homepage Theme attribute from a `sitedata.json` root; null when it has none. */

@@ -47,6 +47,12 @@ class CallEventDescriptorTest {
     }
 
     @Test
+    fun onlyAnUnansweredOrCancelledCallIsMissedByTheRecipient() {
+        val missed = CallOutcome.entries.filter { CallEventDescriptor(it).missedByRecipient }
+        assertEquals(listOf(CallOutcome.NoAnswer, CallOutcome.Cancelled), missed)
+    }
+
+    @Test
     fun failedOutcomeRoundTripsThroughTheParser() {
         val content = MessageContent.CallEvent(CallEventDescriptor(CallOutcome.Failed, video = true))
         val json = MessageContentParser.serialize(content)

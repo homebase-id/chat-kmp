@@ -23,10 +23,6 @@ sealed class Route {
     data object Settings : Route()
 
     @Serializable
-    @SerialName("profile-edit")
-    data object ProfileEdit : Route()
-
-    @Serializable
     @SerialName("profile-avatar-edit")
     data object ProfileAvatarEdit : Route()
 
@@ -36,7 +32,7 @@ sealed class Route {
 
     @Serializable
     @SerialName("profile-card-editor")
-    data object ProfileCardEditor : Route()
+    data class ProfileCardEditor(val design: Boolean = false) : Route()
 
     @Serializable
     @SerialName("create-conversation")
@@ -162,6 +158,18 @@ sealed class Route {
     @Serializable
     @SerialName("webdrop")
     data object WebDrop : Route()
+
+    @Serializable
+    @SerialName("filesync")
+    data object Filesync : Route()
+
+    @Serializable
+    @SerialName("filesync-trash")
+    data object FilesyncTrash : Route()
+
+    @Serializable
+    @SerialName("filesync-recent")
+    data object FilesyncRecent : Route()
 
     @Serializable
     @SerialName("vault-settings")

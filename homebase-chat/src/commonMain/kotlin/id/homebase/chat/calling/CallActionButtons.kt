@@ -7,6 +7,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,24 +18,26 @@ import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
 import id.homebase.resources.call_button_voice
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.getKoin
+import org.koin.compose.koinInject
 
-/** Starts a call to the open conversation's peer, or null where calling it isn't possible right now. */
-val LocalCallBack = compositionLocalOf<((video: Boolean) -> Unit)?> { null }
+/** The open conversation's [CallStarter], or null where its peer can't be called. */
+val LocalCallStarter = compositionLocalOf<CallStarter?> { null }
 
-class CallStarter(val idle: Boolean, val start: (video: Boolean) -> Unit)
+data class CallStarter(val idle: Boolean, val start: (video: Boolean) -> Unit)
 
 class PeerCallStarter(val idle: Boolean, val start: (peer: String, video: Boolean) -> Unit)
 
 @Composable
 fun rememberPeerCallStarter(): PeerCallStarter? {
-    val service = getKoin().getOrNull<CallService>()?.takeIf { it.available } ?: return null
-    val state by service.state.collectAsStateWithLifecycle()
+    val service = koinInject<CallService>().takeIf { it.available } ?: return null
+    val state = service.state.collectAsStateWithLifecycle()
+    // Only idleness, so the conversation screen does not recompose on every call-state change.
+    val idle by remember(state) { derivedStateOf { !state.value.isActive } }
     val gate = rememberCallPermissionGate()
     val start = remember(service, gate) {
         { peer: String, video: Boolean -> gate.run(video = video) { granted -> service.startCall(peer, video = granted) } }
     }
-    return PeerCallStarter(idle = !state.isActive, start = start)
+    return PeerCallStarter(idle = idle, start = start)
 }
 
 @Composable

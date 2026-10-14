@@ -1,11 +1,10 @@
 package id.homebase.chat.services.calling
 
-import android.content.Context
-import org.koin.mp.KoinPlatformTools
+import id.homebase.api.ActivityProvider
 import org.webrtc.Camera2Enumerator
 
 actual fun platformCameras(): List<CameraInfo> {
-    val enumerator = Camera2Enumerator(KoinPlatformTools.defaultContext().get().get<Context>())
+    val enumerator = Camera2Enumerator(ActivityProvider.requireApplicationContext())
     return enumerator.deviceNames.mapNotNull { id ->
         when {
             enumerator.isFrontFacing(id) -> CameraInfo(id, CameraFacing.Front)

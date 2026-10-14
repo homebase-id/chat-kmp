@@ -141,6 +141,7 @@ kotlin {
             implementation(libs.jna.platform)
             implementation(libs.composemediaplayer)
             implementation(libs.webrtc.java)
+            implementation(libs.multiplatform.settings)
             listOf("macos-aarch64", "macos-x86_64", "windows-x86_64", "linux-x86_64", "linux-aarch64").forEach {
                 runtimeOnly("${libs.webrtc.java.get().module}:${libs.versions.webrtcJava.get()}:$it")
             }
