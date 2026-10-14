@@ -25,6 +25,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
@@ -33,6 +34,7 @@ import kotlinx.coroutines.withTimeout
 class CallWindowAppScopeTest {
     private class StateSession(initial: CallState) : CallSession {
         override val state = MutableStateFlow(initial)
+        override val transitions get() = state
         override val videos = MutableStateFlow(CallVideos())
         override fun startCall(peer: String, video: Boolean) = Unit
         override fun accept() = Unit
@@ -52,7 +54,7 @@ class CallWindowAppScopeTest {
         val session = StateSession(CallState())
         val focused = mutableListOf<String>()
         val model = CallWindowModel(
-            viewModel = CallViewModel(session, audioRoutes = { emptyList() }),
+            viewModel = CallViewModel(session, audioRoutes = flowOf(emptyList())),
             focus = { focused += it },
             displayName = { "Samwise Gamgee" },
         )
