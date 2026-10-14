@@ -43,7 +43,6 @@ import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
-import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.widget.ProvideSettingsChrome
@@ -70,7 +69,7 @@ internal data class SettingsPaneActions(
     val onNavigateToDefragmenter: () -> Unit,
 )
 
-private enum class ProfilePage { Edit, Avatar, Card, CardEditor }
+private enum class ProfilePage { Avatar, Card, CardEditor }
 
 @Composable
 internal fun SettingsPaneHost(
@@ -83,7 +82,13 @@ internal fun SettingsPaneHost(
     // configuration change or process death to restore across.
     var category by remember { mutableStateOf(SettingsCategory.General) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
-    var cardOpenedFromEdit by remember { mutableStateOf(false) }
+    var editorOpenedFromCard by remember { mutableStateOf(false) }
+    var editorOpensDesign by remember { mutableStateOf(false) }
+    val openEditor = { fromCard: Boolean, design: Boolean ->
+        editorOpenedFromCard = fromCard
+        editorOpensDesign = design
+        profilePage = ProfilePage.CardEditor
+    }
     // Pre-warms the card page; its host lives as long as the Settings entry.
     val cardViewModel = if (profileCardEnabled) koinViewModel<ProfileCardViewModel>() else null
     cardViewModel?.let { StartCardHostWhenSettled(it) }
@@ -146,12 +151,9 @@ internal fun SettingsPaneHost(
                             category = shownCategory,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
-                            onProfileEdit = { profilePage = ProfilePage.Edit },
+                            onProfileEdit = { openEditor(false, false) },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
-                            onProfileCard = {
-                                cardOpenedFromEdit = false
-                                profilePage = ProfilePage.Card
-                            }.takeIf { cardViewModel != null },
+                            onProfileCard = { profilePage = ProfilePage.Card }.takeIf { cardViewModel != null },
                             actions = actions,
                             emailMailboxMode = emailMailboxMode,
                         )
@@ -161,17 +163,6 @@ internal fun SettingsPaneHost(
                     // back arrow is correct here and returns to the category rather than closing.
                     ProvideSettingsChrome(embedded = false) {
                         when (profile) {
-                            ProfilePage.Edit -> ProfileEditScreen(
-                                viewModel = koinViewModel(),
-                                avatarViewModel = koinViewModel(),
-                                onBack = { profilePage = null },
-                                onNavigateToCropper = actions.onNavigateToCropper,
-                                onOpenCard = {
-                                    cardOpenedFromEdit = true
-                                    profilePage = ProfilePage.Card
-                                }.takeIf { cardViewModel != null },
-                            )
-
                             ProfilePage.Avatar -> ProfileAvatarEditScreen(
                                 viewModel = koinViewModel(),
                                 onBack = { profilePage = null },
@@ -181,21 +172,21 @@ internal fun SettingsPaneHost(
                             ProfilePage.Card -> cardViewModel?.let {
                                 ProfileCardScreen(
                                     viewModel = it,
-                                    onBack = { profilePage = if (cardOpenedFromEdit) ProfilePage.Edit else null },
-                                    onEdit = { profilePage = ProfilePage.CardEditor },
+                                    onBack = { profilePage = null },
+                                    onEdit = { openEditor(true, false) },
+                                    onChangeDesign = { openEditor(true, true) },
                                 )
                             }
 
-                            ProfilePage.CardEditor -> cardViewModel?.let {
-                                ProfileCardEditorScreen(
-                                    viewModel = it,
-                                    onBack = { profilePage = ProfilePage.Card },
-                                    onEditProfile = {
-                                        cardOpenedFromEdit = false
-                                        profilePage = ProfilePage.Edit
-                                    },
-                                )
-                            }
+                            // Without the card flag this is still Edit profile, so its view model is made here when needed.
+                            ProfilePage.CardEditor -> ProfileCardEditorScreen(
+                                viewModel = cardViewModel ?: koinViewModel(),
+                                avatarViewModel = koinViewModel(),
+                                onBack = { profilePage = if (editorOpenedFromCard) ProfilePage.Card else null },
+                                onNavigateToCropper = actions.onNavigateToCropper,
+                                cardsEnabled = profileCardEnabled,
+                                openDesign = editorOpensDesign,
+                            )
                         }
                     }
                 }

@@ -45,6 +45,7 @@ fun buildCardPayload(
     posts: List<CardPost> = emptyList(),
     audience: CardAudience = CardAudience.Public,
     overrides: CardOverrides = CardOverrides.EMPTY,
+    visitorPreview: Boolean = false,
 ): CardPayload {
     val canSee = audience.aclFilter()
     val values = attributes.visibleValues(canSee)
@@ -53,6 +54,7 @@ fun buildCardPayload(
         design = design,
         audience = audience.toPayload(),
         overrides = overrides.takeUnless { it.isEmpty() },
+        visitorPreview = visitorPreview.takeIf { it },
         data = CardData(
             odinId = odinId,
             firstName = text(ProfileField.GIVEN_NAME),
