@@ -14,32 +14,19 @@ internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
     frameRate(SendVideoCap.FPS.toDouble())
 }
 
-internal actual fun configureVideoSender(sender: RtpSender) {
+internal actual fun applyVideoSender(sender: RtpSender, state: SenderState) {
     val native = sender.android
     val params = native.parameters
     // MAINTAIN_FRAMERATE starts H.264 at 360p and its quality scaler waits for QP < 24, which the Qualcomm encoder never
     // reaches, so it stays at 360p; SendResolutionLadder and SendLoadRung lower the resolution instead.
     params.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
-    params.encodings.forEach {
-        it.maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS
-        it.minBitrateBps = SendVideoCap.MIN_BITRATE_BPS
-        it.maxFramerate = SendVideoCap.FPS
+    params.encodings.forEach { encoding ->
+        state.maxBitrateBps?.let { encoding.maxBitrateBps = it }
+        state.minBitrateBps?.let { encoding.minBitrateBps = it }
+        state.maxFramerate?.let { encoding.maxFramerate = it }
+        state.scaleDownBy?.let { encoding.scaleResolutionDownBy = it }
     }
-    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected ${describeVideoSender(sender)}" }
-}
-
-internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
-    val native = sender.android
-    val params = native.parameters
-    params.encodings.forEach { it.scaleResolutionDownBy = scaleDownBy }
-    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected scale $scaleDownBy" }
-}
-
-internal actual fun limitVideoSenderFps(sender: RtpSender, fps: Int) {
-    val native = sender.android
-    val params = native.parameters
-    params.encodings.forEach { it.maxFramerate = fps }
-    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected fps $fps" }
+    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected $state: ${describeVideoSender(sender)}" }
 }
 
 internal actual fun observeDevicePressure(onChange: (DevicePressure) -> Unit): () -> Unit = {}

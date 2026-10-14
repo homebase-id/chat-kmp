@@ -83,9 +83,10 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private val mediaState = MediaStateLink("WebRtcKmp") { _events.trySend(it) }
     private var stateChannel: DataChannel? = null
     private val stopPipelineWatch = watchVideoPipeline { interrupted, detail -> mediaState.cameraInterrupted(interrupted, detail) }
+    private val senderParams = SenderParams { state -> videoSender?.let { applyVideoSender(it, state) } }
     private val sendLadder = SendResolutionLadder(
-        applyFps = { fps -> videoSender?.let { limitVideoSenderFps(it, fps) } },
-        apply = { scale -> videoSender?.let { scaleVideoSender(it, scale) } },
+        applyFps = { fps -> senderParams.update { copy(maxFramerate = fps) } },
+        apply = { scale -> senderParams.update { copy(scaleDownBy = scale) } },
     )
     private val stopPressureWatch = observeDevicePressure { pressure ->
         sendLadder.setPressure(pressure)
@@ -171,8 +172,13 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                 MediaStreamTrackKind.Video -> (track as? VideoTrack)?.let {
                     videoTrack = it
                     videoSender = sender
-                    configureVideoSender(sender)
-                    if (sendLadder.fps != SendVideoCap.FPS) limitVideoSenderFps(sender, sendLadder.fps)
+                    senderParams.update {
+                        copy(
+                            maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS,
+                            minBitrateBps = SendVideoCap.MIN_BITRATE_BPS,
+                            maxFramerate = sendLadder.fps,
+                        )
+                    }
                     publishLocal(it)
                     Logger.i("WebRtcKmp") { "local video settings=${it.settings}" }
                     // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.

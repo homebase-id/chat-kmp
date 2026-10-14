@@ -39,33 +39,16 @@ internal actual fun configureWebRtc() {
 internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video(true)
 
 @OptIn(ExperimentalForeignApi::class)
-internal actual fun configureVideoSender(sender: RtpSender) {
+internal actual fun applyVideoSender(sender: RtpSender, state: SenderState) {
     val native = sender.ios
     val params = native.parameters
     params.degradationPreference = NSNumber(long = RTCDegradationPreference.RTCDegradationPreferenceMaintainFramerate.value)
-    params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
-        it.maxBitrateBps = NSNumber(int = SendVideoCap.MAX_BITRATE_BPS)
-        it.minBitrateBps = NSNumber(int = SendVideoCap.MIN_BITRATE_BPS)
-        it.maxFramerate = NSNumber(int = SendVideoCap.FPS)
+    params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach { encoding ->
+        state.maxBitrateBps?.let { encoding.maxBitrateBps = NSNumber(int = it) }
+        state.minBitrateBps?.let { encoding.minBitrateBps = NSNumber(int = it) }
+        state.maxFramerate?.let { encoding.maxFramerate = NSNumber(int = it) }
+        state.scaleDownBy?.let { encoding.scaleResolutionDownBy = NSNumber(double = it) }
     }
-    native.parameters = params
-}
-
-@OptIn(ExperimentalForeignApi::class)
-internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
-    val native = sender.ios
-    val params = native.parameters
-    params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
-        it.scaleResolutionDownBy = NSNumber(double = scaleDownBy)
-    }
-    native.parameters = params
-}
-
-@OptIn(ExperimentalForeignApi::class)
-internal actual fun limitVideoSenderFps(sender: RtpSender, fps: Int) {
-    val native = sender.ios
-    val params = native.parameters
-    params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach { it.maxFramerate = NSNumber(int = fps) }
     native.parameters = params
 }
 
