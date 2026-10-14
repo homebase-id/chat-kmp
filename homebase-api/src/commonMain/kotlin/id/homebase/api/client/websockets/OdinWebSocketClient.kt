@@ -681,9 +681,11 @@ class OdinWebSocketClient(
      * Finish any circle enrollments queued for this app: another app's client recorded the
      * owner's choice but could not mint grants for drives whose keys only we hold.
      *
-     * Idempotent, a no-op when the queue is empty, and a silent no-op without the permission.
+     * Sent blind on every connect — the queue is not visible from here, the command is a no-op
+     * when empty, idempotent when repeated, and a silent no-op without the permission. Missing
+     * one costs latency, never the work; the queue is durable.
      */
-    private suspend fun processEnrollments() {
+    suspend fun processEnrollments() {
         send(command = "processEnrollments", data = "")
     }
 
