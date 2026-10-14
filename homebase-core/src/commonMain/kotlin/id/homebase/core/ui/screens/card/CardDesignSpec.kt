@@ -42,6 +42,7 @@ object CardDesignSpecs {
     val PORTRAIT_SHAPES = listOf("circle", "square", "rounded", "ellipse")
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
+    val ORDERED_KINDS = BLOCK_KINDS - "posts"
 
     private val ALL_OPTIONS = CardOption.entries.toSet()
 
@@ -141,7 +142,7 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
         portraits = shape?.takeIf { has(CardOption.PORTRAIT_SHAPE) }?.let {
             List(spec.portraitSlots) { slot -> if (slot == 0) CardPortrait(shape = it) else CardPortrait() }
         },
-        blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.map { CardBlock(it.kind) },
+        blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.let { withBlockOrder(blockOrder()).blocks },
         socials = socials?.takeIf { has(CardOption.SOCIALS_STYLE) },
     )
 }

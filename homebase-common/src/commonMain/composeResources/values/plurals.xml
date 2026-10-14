@@ -48,6 +48,30 @@
         <item quantity="one">%1$d email still trying to send</item>
         <item quantity="other">%1$d emails still trying to send</item>
     </plurals>
+    <plurals name="filesync_folder_items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <plurals name="filesync_folder_count">
+        <item quantity="one">%1$d folder</item>
+        <item quantity="other">%1$d folders</item>
+    </plurals>
+    <plurals name="filesync_file_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="filesync_uploads_queued">
+        <item quantity="one">%1$d more queued</item>
+        <item quantity="other">%1$d more queued</item>
+    </plurals>
+    <plurals name="filesync_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="filesync_delete_forever_confirm_many">
+        <item quantity="one">Delete %1$d item forever? It will be gone from all your devices.</item>
+        <item quantity="other">Delete %1$d items forever? They will be gone from all your devices.</item>
+    </plurals>
     <plurals name="profile_card_import_count">
         <item quantity="one">%1$d new item</item>
         <item quantity="other">%1$d new items</item>

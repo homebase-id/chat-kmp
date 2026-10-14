@@ -1,6 +1,7 @@
 package id.homebase.api.client.drives.upload
 
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
@@ -15,7 +16,8 @@ data class UploadPayloadDescriptor(
     val contentType: String? = null,
     val previewThumbnail: EmbeddedThumb? = null,
     val thumbnails: List<UploadThumbnailDescriptor>? = null,
-    @Serializable(with = Base64ByteArraySerializer::class) val iv: ByteArray? = null
+    @Serializable(with = Base64ByteArraySerializer::class) val iv: ByteArray? = null,
+    val hash: PayloadHash? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -30,6 +32,7 @@ data class UploadPayloadDescriptor(
             if (other.iv == null) return false
             if (!iv.contentEquals(other.iv)) return false
         } else if (other.iv != null) return false
+        if (hash != other.hash) return false
         return true
     }
 
@@ -40,6 +43,7 @@ data class UploadPayloadDescriptor(
         result = 31 * result + (previewThumbnail?.hashCode() ?: 0)
         result = 31 * result + (thumbnails?.hashCode() ?: 0)
         result = 31 * result + (iv?.contentHashCode() ?: 0)
+        result = 31 * result + (hash?.hashCode() ?: 0)
         return result
     }
 }
@@ -73,6 +77,7 @@ data class UploadManifest(
             thumbnails: List<ThumbnailFile>? = null,
             generatePayloadIv: Boolean = false
         ): UploadManifest {
+            requireHashesBoundToIvs(payloads)
             val descriptors =
                 payloads?.map { payload ->
                     UploadPayloadDescriptor(
@@ -100,7 +105,8 @@ data class UploadManifest(
                             ?: if (generatePayloadIv)
                                 ByteArrayUtil
                                     .getRndByteArray(16)
-                            else null
+                            else null,
+                        hash = payload.hash,
                     )
                 }
             return UploadManifest(
@@ -119,7 +125,8 @@ data class UploadManifestPayloadDescriptor(
     val contentType: String? = null,
     val previewThumbnail: EmbeddedThumb? = null,
     val thumbnails: List<UploadThumbnailDescriptor>? = null,
-    @Serializable(with = Base64ByteArraySerializer::class) val iv: ByteArray? = null
+    @Serializable(with = Base64ByteArraySerializer::class) val iv: ByteArray? = null,
+    val hash: PayloadHash? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -135,6 +142,7 @@ data class UploadManifestPayloadDescriptor(
             if (other.iv == null) return false
             if (!iv.contentEquals(other.iv)) return false
         } else if (other.iv != null) return false
+        if (hash != other.hash) return false
         return true
     }
 
@@ -146,6 +154,7 @@ data class UploadManifestPayloadDescriptor(
         result = 31 * result + (previewThumbnail?.hashCode() ?: 0)
         result = 31 * result + (thumbnails?.hashCode() ?: 0)
         result = 31 * result + (iv?.contentHashCode() ?: 0)
+        result = 31 * result + (hash?.hashCode() ?: 0)
         return result
     }
 }
@@ -181,6 +190,7 @@ data class UpdateManifest(
             thumbnails: List<ThumbnailFile>? = null,
             generatePayloadIv: Boolean = false
         ): UpdateManifest {
+            requireHashesBoundToIvs(payloads)
             val appendInstructions =
                 payloads?.map { payload ->
                     UploadManifestPayloadDescriptor(
@@ -210,7 +220,8 @@ data class UpdateManifest(
                             ?: if (generatePayloadIv)
                                 ByteArrayUtil
                                     .getRndByteArray(16)
-                            else null
+                            else null,
+                        hash = payload.hash,
                     )
                 }
                     ?: emptyList()
@@ -229,6 +240,11 @@ data class UpdateManifest(
             )
         }
     }
+}
+
+// A hash's encrypted content hash is bound to the payload IV, so a generated IV would orphan it.
+private fun requireHashesBoundToIvs(payloads: List<PayloadFile>?) {
+    payloads?.forEach { require(it.hash == null || it.iv != null) { "Payload ${it.key} has a hash but no IV" } }
 }
 
 /** Helper class for specifying payloads to delete. */

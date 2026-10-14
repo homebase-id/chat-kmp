@@ -165,10 +165,6 @@ import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
-import id.homebase.resources.profile_card_access_body
-import id.homebase.resources.profile_card_access_continue
-import id.homebase.resources.profile_card_access_later
-import id.homebase.resources.profile_card_access_title
 import id.homebase.resources.profile_card_save_public
 import id.homebase.resources.profile_card_share_public
 import id.homebase.resources.profile_card_share_public_message
@@ -447,7 +443,6 @@ private fun ProfileCardViewer(
                 )
             }
         }
-        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
         val circle = uiState.selectedAudience as? CardAudience.Circle
         if (confirmPublicShare && circle != null) {
             SharePublicCardDialog(
@@ -613,31 +608,6 @@ internal fun BoxScope.CardBottomChrome(
         )
     }
     if (explainReadOnly) ReadOnlyCardDialog(onDismiss = { explainReadOnly = false })
-}
-
-@Composable
-internal fun DesignAccessPrompt(shown: Boolean, viewModel: ProfileCardViewModel) {
-    if (shown) DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
-}
-
-@Composable
-internal fun DesignAccessDialog(onContinue: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
-        title = { Text(stringResource(MR.string.profile_card_access_title), textAlign = TextAlign.Center) },
-        text = { Text(stringResource(MR.string.profile_card_access_body)) },
-        confirmButton = {
-            Button(onClick = onContinue, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(MR.string.profile_card_access_continue))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(MR.string.profile_card_access_later))
-            }
-        },
-    )
 }
 
 // Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.

@@ -85,6 +85,12 @@ kotlin {
         jvmMain.get().dependsOn(cameraStubMain)
         wasmJsMain.get().dependsOn(cameraStubMain)
 
+        // FileKit's PlatformFile.path and lastModified() exist on every target but the web.
+        val nonWebMain by creating { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(nonWebMain)
+        jvmMain.get().dependsOn(nonWebMain)
+        nativeMain.get().dependsOn(nonWebMain)
+
         commonMain.dependencies {
             api(project(":homebase-api"))
             api(project(":homebase-notifshared"))

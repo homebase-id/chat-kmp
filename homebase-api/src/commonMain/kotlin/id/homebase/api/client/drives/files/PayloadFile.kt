@@ -32,6 +32,8 @@ data class PayloadFile(
      * of [equals]/[hashCode] — it's a transient input handle, like [trimStartMs]/[trimEndMs].
      */
     val inputBlobUrl: String? = null,
+    /** Only with [isPreEncrypted] and [iv]: the hashes are bound to that ciphertext and IV. */
+    val hash: PayloadHash? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -48,6 +50,7 @@ data class PayloadFile(
             if (other.iv == null) return false
             if (!iv.contentEquals(other.iv)) return false
         } else if (other.iv != null) return false
+        if (hash != other.hash) return false
 
         return true
     }
@@ -59,6 +62,7 @@ data class PayloadFile(
         result = 31 * result + (descriptorContent?.hashCode() ?: 0)
         result = 31 * result + isPreEncrypted.hashCode()
         result = 31 * result + (iv?.contentHashCode() ?: 0)
+        result = 31 * result + (hash?.hashCode() ?: 0)
         return result
     }
 }

@@ -31,7 +31,7 @@ object HashUtil {
      * (a domain string → 32-byte digest) so performance is irrelevant. Verified
      * bit-for-bit against [sha256] in [HashUtilTest].
      */
-    fun sha256Sync(input: ByteArray): ByteArray = PureKotlinSha256.hash(input)
+    fun sha256Sync(input: ByteArray): ByteArray = Sha256Hasher().apply { update(input) }.digest()
 
     /** Compute SHA-256 hash of a stream with optional nonce Returns hash and stream length */
     suspend fun streamSha256(
