@@ -30,6 +30,17 @@ internal fun preferredRoute(routes: List<AudioRoute>, previous: List<AudioRoute>
     else -> AudioRoute.Earpiece
 }
 
+internal enum class CallAudioMode { VoiceChat, VideoChat }
+
+/** How iOS sets up the call's audio session; the mode is fixed for the call because an iOS voice call cannot add a camera later (WebRtcKmpCallEngine has no addVideo). */
+internal data class CallAudioProfile(val mode: CallAudioMode, val defaultToSpeaker: Boolean, val route: AudioRoute)
+
+internal fun callAudioProfile(video: Boolean, headset: Boolean) = CallAudioProfile(
+    mode = if (video) CallAudioMode.VideoChat else CallAudioMode.VoiceChat,
+    defaultToSpeaker = video,
+    route = if (video && !headset) AudioRoute.Speaker else AudioRoute.Earpiece,
+)
+
 enum class CallQuality { Good, Poor, Unknown }
 
 enum class FailReason { NoRoute, Permission, Other }

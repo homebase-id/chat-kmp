@@ -252,7 +252,7 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
     }
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        NSLog("[Call] CallKit audio session activated")
+        NSLog("[Call] CallKit audio session activated mode=%@ category=%@", audioSession.mode.rawValue, audioSession.category.rawValue)
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidActivate(audioSession)
         rtc.isAudioEnabled = true
