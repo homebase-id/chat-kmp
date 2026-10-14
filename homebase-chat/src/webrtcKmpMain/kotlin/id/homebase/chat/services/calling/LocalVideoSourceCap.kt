@@ -24,5 +24,5 @@ internal expect fun describeVideoSender(sender: RtpSender): String
 /** Sets every encoding's maxFramerate, as [DevicePressure] decides. */
 internal expect fun limitVideoSenderFps(sender: RtpSender, fps: Int)
 
-/** Reports the device's thermal state and Low Power Mode now and on each change; null where the platform has neither. Returns the stop. */
+/** Reports the device's thermal state and Low Power Mode now and on each change, never where the platform has neither. Returns the stop. */
 internal expect fun observeDevicePressure(onChange: (DevicePressure) -> Unit): () -> Unit

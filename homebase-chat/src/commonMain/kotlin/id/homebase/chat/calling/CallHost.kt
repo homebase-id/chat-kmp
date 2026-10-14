@@ -190,7 +190,7 @@ fun CallOverlay(
         }
     }
 
-    CallEventDialogs(events, viewModel)
+    CallEventDialogs(events, viewModel, ui.verificationCode)
 }
 
 internal class CallEventState {
@@ -239,8 +239,7 @@ private suspend fun showDeviceNotice(state: CallEventState, event: MediaDeviceNo
 }
 
 @Composable
-internal fun CallEventDialogs(events: CallEventState, viewModel: CallViewModel) {
-    val code = viewModel.uiState.collectAsStateWithLifecycle().value.verificationCode
+internal fun CallEventDialogs(events: CallEventState, viewModel: CallViewModel, code: String?) {
     // The flag outlives a call that ends with the sheet open; clear it so the next call's code doesn't pop it.
     LaunchedEffect(code == null) { if (code == null) events.verification = false }
     if (events.verification && code != null) CallVerificationSheet(code) { events.verification = false }
