@@ -299,14 +299,20 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
 
     override suspend fun answer(offerSdp: String, video: Boolean): String {
         addLocalMedia(video, offering = false)
-        peer.setRemoteDescription(SessionDescription(SessionDescriptionType.Offer, offerSdp))
+        setRemote(SessionDescriptionType.Offer, offerSdp)
         adoptOfferedVideo()
         return createAnswer().also { logVideoSender() }
     }
 
     override suspend fun applyRemote(answerSdp: String) {
-        peer.setRemoteDescription(SessionDescription(SessionDescriptionType.Answer, answerSdp))
+        setRemote(SessionDescriptionType.Answer, answerSdp)
         logVideoSender()
+    }
+
+    // webrtc-kmp's onAddTrack calls Android getTransceivers(), which disposes every sender an earlier call returned.
+    private suspend fun setRemote(type: SessionDescriptionType, sdp: String) {
+        peer.setRemoteDescription(SessionDescription(type, sdp))
+        if (videoSender != null) videoSender = peer.getTransceivers().firstOrNull { it.isVideo }?.sender ?: videoSender
     }
 
     private fun logVideoSender() {
@@ -317,7 +323,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override suspend fun restartIce(): String = offer(OfferAnswerOptions(iceRestart = true))
 
     override suspend fun answerRestart(offerSdp: String): String {
-        peer.setRemoteDescription(SessionDescription(SessionDescriptionType.Offer, offerSdp))
+        setRemote(SessionDescriptionType.Offer, offerSdp)
         return createAnswer()
     }
 
