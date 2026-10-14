@@ -46,7 +46,9 @@ fun rememberCallStarter(conversation: EnrichedConversationUiModel): CallStarter?
     if (conversation.conversation.isGroupConversation || conversation.conversation.isWithSelf) return null
     val starter = rememberPeerCallStarter() ?: return null
     val peer = remember(status) { status.otherOdinId.domainName }
-    return CallStarter(idle = starter.idle, start = { video -> starter.start(peer, video) })
+    // Remembered so CallStarter stays equal across recompositions and LocalCallStarter readers are not invalidated.
+    val start = remember(starter.start, peer) { { video: Boolean -> starter.start(peer, video) } }
+    return CallStarter(idle = starter.idle, start = start)
 }
 
 @Composable
