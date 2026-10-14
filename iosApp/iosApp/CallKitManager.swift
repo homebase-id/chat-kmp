@@ -476,6 +476,7 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
     private var notReady = 0
     private var flushes = 0
     private var converted = 0
+    private var renderCpuNs: UInt64 = 0
     private var renderingSince: CFTimeInterval?
     private var firstFrameReported = false
     private var pool: CVPixelBufferPool?
@@ -534,7 +535,10 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
                 if first { onSize(displaySize) }
             }
         }
-        guard rendering, let pixelBuffer = pixelBuffer(frame.buffer), let sample = Self.sampleBuffer(pixelBuffer) else { return }
+        guard rendering else { return }
+        // Thread CPU of one frame's wrap+enqueue: times the per-second frame count the baseline paid while no window was up.
+        let cpuStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        guard let pixelBuffer = pixelBuffer(frame.buffer), let sample = Self.sampleBuffer(pixelBuffer) else { return }
         let renderer = displayLayer.sampleBufferRenderer
         lock.lock()
         if !(frame.buffer is RTCCVPixelBuffer) { converted += 1 }
@@ -548,6 +552,7 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
         } else {
             notReady += 1
         }
+        renderCpuNs += clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - cpuStart
         var firstRenderedAfterMs: Int?
         if !firstFrameReported, let renderingSince {
             firstFrameReported = true
@@ -562,8 +567,8 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
     func drainCounters() -> String {
         let renderer = displayLayer.sampleBufferRenderer
         lock.lock()
-        defer { enqueued = 0; notReady = 0; flushes = 0; converted = 0; lock.unlock() }
-        return "enqueued=\(enqueued) notReady=\(notReady) converted=\(converted) flushes=\(flushes) status=\(renderer.status.rawValue) "
+        defer { enqueued = 0; notReady = 0; flushes = 0; converted = 0; renderCpuNs = 0; lock.unlock() }
+        return "enqueued=\(enqueued) notReady=\(notReady) converted=\(converted) cpuUs=\(renderCpuNs / 1000) flushes=\(flushes) status=\(renderer.status.rawValue) "
             + "flushNeeded=\(renderer.requiresFlushToResumeDecoding) size=\(size) error=\(renderer.error.map { "\($0)" } ?? "nil")"
     }
 
