@@ -8,7 +8,7 @@ import kotlinx.browser.window
  * Seamless owner-session login for the web app (issue #853).
  *
  * When the wasm bundle is hosted on the identity's own domain (production serves it under
- * `/apps/chat-wasm/`), the owner console's session cookie lives on the same origin. Instead of
+ * `/apps/chat/`), the owner console's session cookie lives on the same origin. Instead of
  * showing the login form + YouAuth popup, we navigate the top window straight to the authorize
  * endpoint: the cookie rides along, odin-core skips consent for same-origin first-party apps
  * (`YouAuthUnifiedService.NeedConsent` — "Apps on /owner doesn't need consent"), and the user
