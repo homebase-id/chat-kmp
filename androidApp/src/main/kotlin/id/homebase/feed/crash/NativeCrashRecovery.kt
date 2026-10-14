@@ -32,6 +32,10 @@ object NativeCrashRecovery {
     internal const val PREFS = "crash_native_recovery"
     internal const val KEY_JVM_SURFACED = "jvm_crash_surfaced"
 
+    // didCrashOnPreviousExecution() stays true for the whole process, and CrashActivity's
+    // Restart reopens MainActivity in this same process.
+    private var checkedThisProcess = false
+
     /**
      * Pure policy (unit-tested). Show the next-launch native recovery screen only when the
      * previous run crashed and [GlobalCrashHandler] did *not* already surface it — i.e. it
@@ -40,7 +44,8 @@ object NativeCrashRecovery {
     internal fun shouldShowNativeCrashRecovery(
         didCrashOnPreviousExecution: Boolean,
         jvmCrashSurfacedLastRun: Boolean,
-    ): Boolean = didCrashOnPreviousExecution && !jvmCrashSurfacedLastRun
+        alreadyCheckedThisProcess: Boolean,
+    ): Boolean = !alreadyCheckedThisProcess && didCrashOnPreviousExecution && !jvmCrashSurfacedLastRun
 
     /**
      * Record that [GlobalCrashHandler] handled a JVM crash this run. Uses commit() (not
@@ -60,6 +65,8 @@ object NativeCrashRecovery {
      * startup). Always clears the per-run JVM marker so it reflects only the current run.
      */
     fun checkAndMaybeLaunch(activity: Activity): Boolean {
+        val alreadyChecked = checkedThisProcess
+        checkedThisProcess = true
         val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val jvmSurfacedLastRun = prefs.getBoolean(KEY_JVM_SURFACED, false)
         // Reset for the current run (the value above reflects the previous run).
@@ -69,7 +76,7 @@ object NativeCrashRecovery {
             Firebase.crashlytics.didCrashOnPreviousExecution()
         }.getOrDefault(false)
 
-        if (!shouldShowNativeCrashRecovery(didCrash, jvmSurfacedLastRun)) return false
+        if (!shouldShowNativeCrashRecovery(didCrash, jvmSurfacedLastRun, alreadyChecked)) return false
 
         Logger.w(tag = TAG) {
             "Previous run ended in a native crash not surfaced in-process; showing recovery."

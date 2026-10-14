@@ -19,23 +19,30 @@ class NativeCrashRecoveryTest {
     @Test
     fun nativeCrash_previousRunCrashed_notSurfacedByJvm_showsRecovery() {
         // didCrashOnPreviousExecution=true, and GlobalCrashHandler did NOT mark it → native.
-        assertTrue(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, false))
+        assertTrue(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, false, alreadyCheckedThisProcess = false))
     }
 
     @Test
     fun jvmCrash_alreadySurfacedInProcess_doesNotReshow() {
         // We showed CrashActivity in-process at JVM-crash time; don't double-show next launch.
-        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, true))
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, true, alreadyCheckedThisProcess = false))
     }
 
     @Test
     fun cleanPreviousRun_showsNothing() {
-        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, false))
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, false, alreadyCheckedThisProcess = false))
     }
 
     @Test
     fun cleanPreviousRun_evenWithStaleJvmMarker_showsNothing() {
         // No crash last run ⇒ never show, regardless of a leftover marker.
-        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, true))
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, true, alreadyCheckedThisProcess = false))
+    }
+
+    @Test
+    fun restartIntoTheSameProcess_doesNotReshow() {
+        // Restart reopens MainActivity in the process that already showed the screen, where
+        // didCrashOnPreviousExecution() still reports the old crash.
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, false, alreadyCheckedThisProcess = true))
     }
 }
