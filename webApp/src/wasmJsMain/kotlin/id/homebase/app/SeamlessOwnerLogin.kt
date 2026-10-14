@@ -50,13 +50,14 @@ object SeamlessOwnerLogin {
      * a normal boot.
      */
     fun consumePendingCallbackUrl(): String? {
-        val location = window.location
-        if (!location.pathname.contains(CALLBACK_PATH_SEGMENT)) return null
-        if (!location.search.contains("state=")) return null
-        val href = location.href
+        if (!isCallbackUrl()) return null
+        val href = window.location.href
         window.history.replaceState(null, "", document.baseURI)
         return href
     }
+
+    fun isCallbackUrl(): Boolean =
+        window.location.pathname.contains(CALLBACK_PATH_SEGMENT) && window.location.search.contains("state=")
 
     /**
      * Mark the seamless attempt for this tab session. Returns false if an attempt was already
