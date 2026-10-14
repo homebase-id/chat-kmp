@@ -1723,27 +1723,29 @@ class ConversationService(
         val audit = MethodAudit("archiveConversation")
         audit.start("conversationId=$conversationId")
         try {
-            stampArchivedAt(conversationId, UnixTimeUtc())
-            updateConversationTags(conversationId) { it + ChatProtocol.ConversationArchivedTag }
+            val stamp = stampArchivedAt(conversationId, UnixTimeUtc())
+            updateConversationTags(conversationId, dependencyUniqueId = stamp) { it + ChatProtocol.ConversationArchivedTag }
             audit.finish()
         } catch (e: Throwable) { audit.threw("execution", e); audit.finish("threw"); throw e }
         // ---- end DEBUG ----
     }
 
     /** Cleared on unarchive so a re-archive whose stamp fails falls back to
-     *  "never auto-unarchive" instead of a stale timestamp. */
-    private suspend fun stampArchivedAt(conversationId: Uuid, at: UnixTimeUtc?) {
+     *  "never auto-unarchive" instead of a stale timestamp.
+     *  Returns the outbox id to order the tag write behind: both write the same
+     *  file's localAppData, and whichever lands second would hold a stale versionTag. */
+    private suspend fun stampArchivedAt(conversationId: Uuid, at: UnixTimeUtc?): Uuid? =
         optimisticWriter.stampConversationArchivedAt(chatDrive, conversationId, at)
-            ?.let { outboxSync.tryEnqueue(it) }
-    }
+            ?.also { outboxSync.tryEnqueue(it) }
+            ?.fileId
 
     suspend fun unarchiveConversation(conversationId: Uuid) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("unarchiveConversation")
         audit.start("conversationId=$conversationId")
         try {
-            stampArchivedAt(conversationId, null)
-            updateConversationTags(conversationId) { it - ChatProtocol.ConversationArchivedTag }
+            val stamp = stampArchivedAt(conversationId, null)
+            updateConversationTags(conversationId, dependencyUniqueId = stamp) { it - ChatProtocol.ConversationArchivedTag }
             audit.finish()
         } catch (e: Throwable) { audit.threw("execution", e); audit.finish("threw"); throw e }
         // ---- end DEBUG ----
@@ -2317,7 +2319,6 @@ class ConversationService(
                     fileId = file.fileId.toString(),
                     targetDrive = chatTargetDrive
                 ),
-                versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
                 tags = newTags.map { it.toString() },
                 // Stable id so the uploader resolves the current fileId at send time.
                 uniqueId = conversationId
