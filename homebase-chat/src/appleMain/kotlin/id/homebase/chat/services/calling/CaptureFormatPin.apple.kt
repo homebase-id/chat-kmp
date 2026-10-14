@@ -36,14 +36,14 @@ internal fun pinCaptureFormat(session: AVCaptureSession) {
         val device = session.inputs.filterIsInstance<AVCaptureDeviceInput>()
             .map { it.device }
             .firstOrNull { it.hasMediaType(AVMediaTypeVideo) } ?: return@dispatch_async
-        val formats = device.formats.filterIsInstance<AVCaptureDeviceFormat>()
-        val described = formats.map { it.describe() }
-        val chosen = chooseCaptureFormat(described)?.let { formats[described.indexOf(it)] }
+        val byDescription = device.formats.filterIsInstance<AVCaptureDeviceFormat>().associateBy { it.describe() }
+        val chosenDescription = chooseCaptureFormat(byDescription.keys.toList())
         val was = device.activeFormat.describe()
-        if (chosen == null) {
+        if (chosenDescription == null) {
             Logger.w("WebRtcKmp") { "capture format none usable, keeping ${was.label()}" }
             return@dispatch_async
         }
+        val chosen = byDescription.getValue(chosenDescription)
         val failed = memScoped {
             val error = alloc<ObjCObjectVar<NSError?>>()
             if (!device.lockForConfiguration(error.ptr)) return@memScoped error.value?.localizedDescription ?: "unknown"
@@ -57,7 +57,7 @@ internal fun pinCaptureFormat(session: AVCaptureSession) {
             Logger.w("WebRtcKmp") { "capture format lock failed $failed, keeping ${was.label()}" }
             return@dispatch_async
         }
-        Logger.i("WebRtcKmp") { "capture format chosen ${chosen.describe().label(SendVideoCap.FPS)} (was ${was.label()})" }
+        Logger.i("WebRtcKmp") { "capture format chosen ${chosenDescription.label(SendVideoCap.FPS)} (was ${was.label()})" }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC.toLong()), queue) {
             Logger.i("WebRtcKmp") { "capture format after 1s ${device.activeFormat.describe().label()}" }
         }
