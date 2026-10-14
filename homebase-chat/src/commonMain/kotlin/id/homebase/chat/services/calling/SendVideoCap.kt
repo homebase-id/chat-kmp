@@ -66,6 +66,7 @@ internal class SendResolutionLadder(
 
     private var height = SendVideoCap.HEIGHT
     private var scale = 1.0
+    private var appliedFps = SendVideoCap.FPS
     private val load = SendLoadRung()
     private var lastLoadHeight = SendVideoCap.HEIGHT
     private var lastBytesSent: Pair<Double, TimeMark>? = null
@@ -76,15 +77,20 @@ internal class SendResolutionLadder(
 
     val fps: Int get() = pressure.cap.fps
 
-    /** Caps the send to [next]'s rung and frame rate at once (the resolution follows on the next stats tick); lifts when it clears. */
+    /** Caps the send to [next]'s rung and frame rate from the next stats tick on; lifts when it clears. */
     fun setPressure(next: DevicePressure) {
-        if (next.cap.fps != pressure.cap.fps) applyFps(next.cap.fps)
+        // Only stored: the sender's parameters are read-modify-written, so every write stays on the stats loop.
         pressure = next
     }
 
     fun onStats(stats: Collection<StatsEntry>): String? {
         val outbound = stats.video("outbound-rtp") ?: return null
         val target = outbound["targetBitrate"].asDouble() ?: return null
+        val cap = pressure.cap
+        if (cap.fps != appliedFps) {
+            appliedFps = cap.fps
+            applyFps(cap.fps)
+        }
         val sent = sentBps(outbound["bytesSent"].asDouble())
         val clean = linkIsClean(stats)
         val source = stats.video("media-source")
@@ -94,7 +100,7 @@ internal class SendResolutionLadder(
         val inputShortSide = minOf(sourceShort, SendVideoCap.HEIGHT.toDouble())
         val inputLongSide = (sourceLong * inputShortSide / sourceShort).roundToInt()
         val loadBefore = lastLoadHeight
-        val loadHeight = minOf(load.onStats(outbound), pressure.cap.height)
+        val loadHeight = minOf(load.onStats(outbound), cap.height)
         val next = nextHeight(target, sent, clean, outbound, minOf(height, loadHeight))
         val nextScale = maxOf(1.0, inputShortSide / evenShortSide(minOf(next, loadHeight), inputShortSide.roundToInt(), inputLongSide))
         if (next == height && nextScale == scale && loadHeight == loadBefore) return null
