@@ -504,9 +504,25 @@ class WebRtcJavaCallEngine(
 
     override fun setAudioRoute(route: AudioRoute) = Unit
 
+    // A native teardown call once spun for 43 minutes with no trace; this puts the stack of the thread stuck in it into the log.
+    private inline fun <T> reportIfStalled(call: String, block: () -> T): T {
+        val caller = Thread.currentThread()
+        val watchdog = Timer("call-close-watchdog", true)
+        watchdog.schedule(timerTask {
+            Logger.e("WebRtcJava") { "$call still running after ${CLOSE_STALL_MS} ms on ${caller.name}:\n" + caller.stackTrace.joinToString("\n") { "\tat $it" } }
+        }, CLOSE_STALL_MS)
+        try {
+            return block()
+        } finally {
+            watchdog.cancel()
+        }
+    }
+
     override fun close() {
         // Before [lock]: the listener's native thread can be inside a refresh that waits for [lock].
-        if (listenerRegistered.compareAndSet(true, false)) runCatching { MediaDevices.removeDeviceChangeListener(deviceListener) }
+        if (listenerRegistered.compareAndSet(true, false)) {
+            reportIfStalled("removeDeviceChangeListener") { runCatching { MediaDevices.removeDeviceChangeListener(deviceListener) } }
+        }
         deviceExecutor.shutdownNow()
         micLevelTimer.cancel()
         // Unregistering waits out an open callback, so nothing schedules on the timer once it is cancelled.
@@ -548,6 +564,7 @@ class WebRtcJavaCallEngine(
         const val STREAM_ID = "homebase-call"
         const val STATS_PERIOD_MS = 5_000L
         const val MIC_LEVEL_PERIOD_MS = 100L
+        const val CLOSE_STALL_MS = 10_000L
         const val CAMERA_SILENCE_MS = 3_000L
 
         // The capturer reports a failed camera start only through the native log, which otherwise goes nowhere.
