@@ -130,11 +130,8 @@ class EmailPreferences(
         return if (bytes.isEmpty()) default else bytes[0].toInt() != 0
     }
 
-    private fun readIconVisible(): Boolean {
-        val visible = runCatching { BottomBarDefaultsMigration.iconVisible(keyValue, ICON_VISIBLE_KEY) }.getOrDefault(false)
-        BottomBarDefaultsMigration.persistIfPending(databaseManager, migrationScope)
-        return visible
-    }
+    private fun readIconVisible(): Boolean =
+        BottomBarDefaultsMigration.resolveIconVisible(databaseManager, ICON_VISIBLE_KEY, migrationScope)
 
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 

@@ -1676,7 +1676,6 @@
     <string name="calls_more_options">More options</string>
     <string name="calls_home_subtitle">Your voice and video call history</string>
     <string name="calls_new_call">New call</string>
-    <string name="calls_new_call_title">New call</string>
     <string name="calls_missed_badge_cd">Missed calls</string>
     <string name="calls_contact_not_connected">Not connected</string>
     <string name="calls_kind_voice">Voice</string>

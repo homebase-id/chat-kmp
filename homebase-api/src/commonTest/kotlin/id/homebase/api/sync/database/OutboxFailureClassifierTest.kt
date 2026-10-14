@@ -75,6 +75,7 @@ class OutboxFailureClassifierTest {
             OdinClientErrorCode.MissingVersionTag,
             OdinClientErrorCode.VersionTagMismatch,
             OdinClientErrorCode.CannotOverwriteNonExistentFile,
+            OdinClientErrorCode.CannotUpdateNonActiveFile,
             OdinClientErrorCode.UnknownId,
         )
         for (code in permanentCodes) {

@@ -48,8 +48,14 @@ object BottomBarDefaultsMigration {
         keyValue.upsertValue(DONE_KEY, byteArrayOf(1))
     }
 
-    /** Called by each pref after it resolves its icon; freezes the decision before a first sync can change it. */
-    internal fun persistIfPending(databaseManager: DatabaseManager, scope: CoroutineScope?) {
+    /** What a pref seeds its icon from; also freezes the decision before a first sync can change it. */
+    internal fun resolveIconVisible(databaseManager: DatabaseManager, key: Uuid, scope: CoroutineScope?): Boolean {
+        val visible = runCatching { iconVisible(databaseManager.keyValue, key) }.getOrDefault(false)
+        persistIfPending(databaseManager, scope)
+        return visible
+    }
+
+    private fun persistIfPending(databaseManager: DatabaseManager, scope: CoroutineScope?) {
         if (scope == null || runCatching { isDone(databaseManager.keyValue) }.getOrDefault(true)) return
         scope.launch {
             try {
