@@ -59,7 +59,7 @@ actual class CallVideoRenderers actual constructor() {
         renderers.getOrPut(handle.track) { newRenderer(context, handle) }
 
     actual fun keepOnly(handles: List<VideoHandle>) {
-        val live = handles.mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }
+        val live = handles.kmpTracks()
         renderers.keys.filterNot { it in live }.forEach { track -> renderers.remove(track)?.let { track.detach(it) } }
     }
 }

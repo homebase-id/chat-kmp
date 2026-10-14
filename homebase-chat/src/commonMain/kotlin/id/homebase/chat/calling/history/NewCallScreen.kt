@@ -41,7 +41,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
 import id.homebase.resources.call_button_voice
 import id.homebase.resources.calls_contact_not_connected
-import id.homebase.resources.calls_new_call_title
+import id.homebase.resources.calls_new_call
 import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
 import id.homebase.resources.chat_search_result_empty
@@ -82,7 +82,7 @@ fun NewCallContent(
         modifier = modifier.imePadding(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.calls_new_call_title)) },
+                title = { Text(stringResource(MR.string.calls_new_call)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
