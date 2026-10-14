@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import dev.onvoid.webrtc.media.FourCC
@@ -20,7 +23,8 @@ import org.jetbrains.skia.impl.BufferUtil
 /** One decoded frame; [rotation] is the clockwise turn, in degrees, that shows it upright. */
 class VideoFrameImage internal constructor(internal val bitmap: Bitmap, val image: ImageBitmap, val rotation: Int)
 
-class JvmVideoHandle(val mirrored: Boolean = false) : VideoHandle {
+class JvmVideoHandle(mirrored: Boolean = false) : VideoHandle {
+    var mirrored by mutableStateOf(mirrored)
     override val frameSize: StateFlow<Pair<Int, Int>?> = MutableStateFlow(null)
     private val _frame = MutableStateFlow<VideoFrameImage?>(null)
     val frame: StateFlow<VideoFrameImage?> = _frame.asStateFlow()
@@ -81,7 +85,5 @@ class JvmVideoHandle(val mirrored: Boolean = false) : VideoHandle {
 
     companion object {
         private const val MIN_FRAME_GAP_NS = 50_000_000L
-
-        fun localPreview(facing: CameraFacing) = JvmVideoHandle(mirrored = facing.mirrorsLocalPreview)
     }
 }

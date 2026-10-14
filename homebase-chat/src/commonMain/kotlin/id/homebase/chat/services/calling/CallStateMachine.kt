@@ -7,6 +7,8 @@ enum class CallTimer { Ring, Connect, Reconnect }
 sealed interface CallEvent {
     data class UserCall(val callId: String, val peer: String, val video: Boolean) : CallEvent
     data object UserAccept : CallEvent
+    data object VideoUpgradeSent : CallEvent
+    data object NoLocalVideoTrack : CallEvent
     data object UserDecline : CallEvent
     data object UserHangup : CallEvent
     data class Signal(val inbound: InboundSignal) : CallEvent
@@ -35,6 +37,8 @@ sealed interface CallEffect {
     data class HoldIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     data class SetMuted(val muted: Boolean) : CallEffect
     data class SetVideo(val on: Boolean) : CallEffect
+    /** A voice call has no video m-line, so turning the camera on renegotiates through the restart signals. */
+    data object AddVideo : CallEffect
     data object SwitchCamera : CallEffect
     data class SetRoute(val route: AudioRoute) : CallEffect
     data class StartTimer(val timer: CallTimer, val callId: String) : CallEffect
@@ -47,10 +51,22 @@ data class CallTransition(val state: CallState, val effects: List<CallEffect> = 
 class CallStateMachine(private val selfOdinId: String, private val selfDevice: String? = null) {
 
     fun reduce(state: CallState, event: CallEvent, nowMs: Long): CallTransition =
-        decide(state, event, nowMs).stampEnd(state, nowMs).also { log(state, event, it) }
+        decide(state, event, nowMs).withLocalVideoTrack().stampEnd(state, nowMs).also { log(state, event, it) }
 
     private fun CallTransition.stampEnd(before: CallState, nowMs: Long): CallTransition =
         if (state.phase is CallPhase.Ended && before.phase !is CallPhase.Ended) copy(state = state.copy(endedAtMs = nowMs)) else this
+
+    // The engine opens a camera track exactly when it builds an offer or answer with video.
+    private fun CallTransition.withLocalVideoTrack(): CallTransition {
+        val video = effects.firstNotNullOfOrNull {
+            when (it) {
+                is CallEffect.CreateOffer -> it.video
+                is CallEffect.CreateAnswer -> it.video
+                else -> null
+            }
+        } ?: return this
+        return copy(state = state.copy(localVideoTrack = video))
+    }
 
     private fun log(before: CallState, event: CallEvent, t: CallTransition) {
         val after = t.state
@@ -85,10 +101,14 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
         is CallEvent.TimerFired -> timer(state, event)
         is CallEvent.Media -> media(state, event.event, nowMs)
         is CallEvent.EngineError -> failed(state, event.reason)
+        CallEvent.VideoUpgradeSent -> CallTransition(if (state.phase.isInCall) state.copy(restartPending = true) else state)
+        CallEvent.NoLocalVideoTrack -> CallTransition(state.copy(localVideoTrack = false))
         is CallEvent.SetMuted -> control(state, CallEffect.SetMuted(event.muted)) { it.copy(muted = event.muted) }
         is CallEvent.SetVideo ->
             if (state.phase == CallPhase.Incoming && !event.on) CallTransition(state.copy(media = state.media.copy(localVideo = false)))
-            else control(state, CallEffect.SetVideo(event.on)) { it.copy(localVideo = event.on) }
+            else if (event.on && state.phase == CallPhase.Connected && !state.localVideoTrack) {
+                CallTransition(state.copy(media = state.media.copy(localVideo = true), localVideoTrack = true), listOf(CallEffect.AddVideo))
+            } else control(state, CallEffect.SetVideo(event.on)) { it.copy(localVideo = event.on) }
         CallEvent.SwitchCamera -> control(state, CallEffect.SwitchCamera) {
             it.copy(camera = if (it.camera == CameraFacing.Front) CameraFacing.Back else CameraFacing.Front)
         }

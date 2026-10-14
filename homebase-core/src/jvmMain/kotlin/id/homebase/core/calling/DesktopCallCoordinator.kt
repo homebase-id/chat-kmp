@@ -1,14 +1,18 @@
 package id.homebase.core.calling
 
 import id.homebase.api.browser.DesktopAppFocusManager
+import id.homebase.api.browser.WindowKeys
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallRingCoordinator
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.DesktopCallRingSink
+import id.homebase.chat.services.calling.OsRingTonePlayer
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.notifications.DesktopCallNotifier
 import id.homebase.resources.MR
+import id.homebase.resources.call_accept
+import id.homebase.resources.call_decline
 import id.homebase.resources.call_incoming_generic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,21 +27,25 @@ fun startDesktopCallCoordinator() {
     val service = koin.get<CallService>()
     if (!service.available) return
     val contacts = koin.get<ContactInfoGateway>()
-    val displayer = RichNotificationDisplayer()
-    CallRingCoordinator(
+    lateinit var coordinator: CallRingCoordinator
+    coordinator = CallRingCoordinator(
         target = service,
         transitions = service.transitions,
         sink = DesktopCallRingSink(
             scope = scope,
-            notify = displayer::show,
-            cancelNotification = displayer::cancel,
-            bringToFront = { DesktopAppFocusManager.requestFocus("incoming-call") },
-            ringTone = { java.awt.Toolkit.getDefaultToolkit().beep() },
+            notifier = DesktopCallNotifier(),
+            focusCallWindow = { DesktopAppFocusManager.requestFocus("incoming-call", WindowKeys.CALL) },
+            revealRing = { DesktopAppFocusManager.revealWithoutFocus(WindowKeys.CALL) },
+            tone = OsRingTonePlayer(scope),
             incomingCallText = { TranslationUtil.getString(MR.string.call_incoming_generic) },
+            acceptLabel = { TranslationUtil.getString(MR.string.call_accept) },
+            declineLabel = { TranslationUtil.getString(MR.string.call_decline) },
+            onAccept = { coordinator.accept(it) },
+            onDecline = { coordinator.decline(it) },
         ),
         labelFor = { contacts.displayName(OdinId(it)) },
         scope = scope,
-    ).start()
+    ).also { it.start() }
 }
 
 /** Blocks the quitting thread until any call is hung up and its camera and mic are released. */

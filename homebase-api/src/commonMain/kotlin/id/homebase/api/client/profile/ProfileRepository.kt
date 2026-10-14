@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.util.compareStringUuId
 import kotlinx.serialization.json.JsonObject
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
@@ -148,10 +149,11 @@ class ProfileRepository(
         visibility: ProfileVisibility,
         previewThumbnail: PreviewThumbnail? = null,
         maxAttempts: Int = 3,
+        circleId: String? = null,
     ): ProfileWriteResponse {
         require(maxAttempts >= 1) { "maxAttempts must be >= 1" }
 
-        var existing = photoAttribute(visibility)
+        var existing = photoAttribute(visibility, circleId)
 
         repeat(maxAttempts) {
             val result = try {
@@ -160,6 +162,7 @@ class ProfileRepository(
                         id = existing?.id,
                         expectedVersionTag = existing?.versionTag,
                         visibility = visibility.photoWireValue,
+                        circleIds = circleId?.let { listOf(it) },
                         contentType = contentType,
                         content = Base64.encode(content),
                         thumbnails = thumbnails.map {
@@ -191,7 +194,7 @@ class ProfileRepository(
             when (result) {
                 is ProfileWriteResult.Ok -> return result.body
                 ProfileWriteResult.Conflict -> {
-                    existing = photoAttribute(visibility)
+                    existing = photoAttribute(visibility, circleId)
                         ?: error("profile photo returned 409 but is no longer present")
                 }
             }
@@ -204,9 +207,9 @@ class ProfileRepository(
     suspend fun photoAttributes(): List<ProfileAttribute> =
         loadAttributes().filter { it.type == ProfileAttributeTypes.PHOTO }
 
-    /** The current photo attribute at [visibility], if the owner already has one. */
-    suspend fun photoAttribute(visibility: ProfileVisibility): ProfileAttribute? =
-        photoAttributes().firstOrNull { it.visibility == visibility }
+    // circleId null matches only an unscoped photo, so a circle's photo is never taken for the all-connections one.
+    suspend fun photoAttribute(visibility: ProfileVisibility, circleId: String? = null): ProfileAttribute? =
+        photoAttributes().firstOrNull { it.visibility == visibility && it.isPhotoScopedTo(circleId) }
 
     /**
      * Finds the current attribute by id when known, else the first of [type] AT [visibility] — the
@@ -219,4 +222,9 @@ class ProfileRepository(
         return if (id != null) all.firstOrNull { it.id == id }
         else all.firstOrNull { it.type == type && it.visibility == visibility }
     }
+}
+
+fun ProfileAttribute.isPhotoScopedTo(circleId: String?): Boolean {
+    val circles = acl.circleIdList.orEmpty()
+    return if (circleId == null) circles.isEmpty() else circles.size == 1 && compareStringUuId(circles.single(), circleId)
 }

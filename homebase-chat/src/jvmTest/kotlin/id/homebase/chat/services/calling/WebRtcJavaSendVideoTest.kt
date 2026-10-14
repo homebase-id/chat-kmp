@@ -16,7 +16,6 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -24,7 +23,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 /** Real libwebrtc: a peer encodes H.264 at the level the other side's SDP advertises. */
 class WebRtcJavaSendVideoTest {
     @Test
-    fun theAnswerOurEngineSendsLetsThePeerEncode1080pAndTheSenderKeepsItsCap() = runBlocking {
+    fun theAnswerOurEngineSendsLetsThePeerEncodeTheCapAndTheSenderKeepsItsBitrateWindow() = runBlocking {
         val factory = PeerConnectionFactory(HeadlessAudioDeviceModule())
         val source = CustomVideoSource()
         val peer = factory.createPeerConnection(RTCConfiguration(), object : PeerConnectionObserver {
@@ -37,9 +36,7 @@ class WebRtcJavaSendVideoTest {
             configureVideoSender(sender)
 
             val offer = peer.create()
-            val defaultLevels = h264Levels(offer.sdp)
-            assertTrue(defaultLevels.isNotEmpty(), "libwebrtc offered no H.264")
-            assertTrue(defaultLevels.all { it < SendVideoCap.H264_MIN_LEVEL }, "libwebrtc's own levels: $defaultLevels")
+            assertTrue(h264Levels(offer.sdp).isNotEmpty(), "libwebrtc offered no H.264")
             peer.set(local = true, offer)
 
             val answer = engine.answer(offer.sdp, video = false)
@@ -50,11 +47,11 @@ class WebRtcJavaSendVideoTest {
             assertTrue(h264.isNotEmpty(), "negotiated send codecs: ${params.codecs}")
             h264.forEach {
                 val level = it.parameters.getValue("profile-level-id").takeLast(2).toInt(16)
-                assertTrue(level >= SendVideoCap.H264_MIN_LEVEL, "send codec $it")
+                assertTrue(level >= H264_LEVEL_31, "send codec $it")
             }
             val encoding = params.encodings.single()
             assertEquals(SendVideoCap.MAX_BITRATE_BPS, encoding.maxBitrate)
-            assertNull(encoding.minBitrate)
+            assertEquals(SendVideoCap.MIN_BITRATE_BPS, encoding.minBitrate)
         } finally {
             engine.close()
             peer.close()

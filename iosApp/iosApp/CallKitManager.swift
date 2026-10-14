@@ -271,10 +271,10 @@ final class CallKitManager: NSObject, CXProviderDelegate, PKPushRegistryDelegate
 }
 
 
-/// Remote call video in the system PiP window. AVPictureInPictureVideoCallViewController (iOS 15+) hosts a Metal view fed
-/// by the remote track; PiP starts by itself when the app backgrounds. Outgoing video keeps flowing because the call's
-/// capture session gets multitasking camera access in VideoPipelineWatch.apple.kt.
-final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVideoViewDelegate, AVPictureInPictureControllerDelegate {
+/// The call in the system PiP window: AVPictureInPictureVideoCallViewController (iOS 15+) with the remote video and the camera
+/// as an inset, both on sample-buffer layers; PiP starts by itself when the app backgrounds. Outgoing video keeps flowing because
+/// the call's capture session gets multitasking camera access in VideoPipelineWatch.apple.kt.
+final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPictureInPictureControllerDelegate {
     static let shared = PictureInPictureManager()
 
     private override init() {
@@ -283,22 +283,26 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
 
     private var controller: AVPictureInPictureController?
     private var content: AVPictureInPictureVideoCallViewController?
-    private var renderer: RTCMTLVideoView?
+    private var remoteView: SampleBufferVideoView?
+    private var selfView: SampleBufferVideoView?
+    private var onRestore: () -> Void = {}
     private var track: RTCVideoTrack?
     private var lifecycleObservers: [NSObjectProtocol] = []
-    // A controller released while its window is up leaves that window on screen with nothing to close it.
-    private var stopping: [(AVPictureInPictureController, AVPictureInPictureVideoCallViewController?)] = []
-    private var firstFrameLogged = false
+    private var counterTimer: Timer?
+    // A window being stopped keeps its controller and live content until didStop, or it shows black while it animates away.
+    private var stopping: [(controller: AVPictureInPictureController, release: () -> Void)] = []
     private var log: (String) -> Void = { NSLog("%@", $0) }
 
-    func start(remoteTrack: Any, log: @escaping (String) -> Void) {
+    func start(remoteTrack: Any, inset: Bool, insetMirrored: Bool, onRestore: @escaping () -> Void, log: @escaping (String) -> Void) -> Any? {
         guard let remote = remoteTrack as? RTCVideoTrack else {
             log("pip start skipped: remote track is \(type(of: remoteTrack))")
-            return
+            return nil
         }
+        let insetView = inset ? SampleBufferVideoView(mirrored: insetMirrored) : nil
         DispatchQueue.main.async { [self] in
             teardown()
             self.log = log
+            self.onRestore = onRestore
             guard AVPictureInPictureController.isPictureInPictureSupported() else {
                 log("pip start skipped: isPictureInPictureSupported=false")
                 return
@@ -313,12 +317,28 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
 
             let vc = AVPictureInPictureVideoCallViewController()
             vc.preferredContentSize = CGSize(width: 9, height: 16)
-            let view = RTCMTLVideoView(frame: vc.view.bounds)
+            let view = SampleBufferVideoView(mirrored: false)
+            view.frame = vc.view.bounds
             view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            view.videoContentMode = .scaleAspectFill
-            view.delegate = self
+            view.onSize = { [weak self] size in
+                self?.log("pip remote first frame size=\(size)")
+                self?.content?.preferredContentSize = size
+            }
             vc.view.addSubview(view)
             remote.add(view)
+            if let insetView {
+                vc.view.addSubview(insetView)
+                insetView.layer.cornerRadius = 8
+                insetView.clipsToBounds = true
+                // Constraints, not frames: the PiP window resizes the content view after this.
+                insetView.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    insetView.widthAnchor.constraint(equalTo: vc.view.widthAnchor, multiplier: 0.28),
+                    insetView.heightAnchor.constraint(equalTo: insetView.widthAnchor, multiplier: 4.0 / 3.0),
+                    insetView.trailingAnchor.constraint(equalTo: vc.view.trailingAnchor, constant: -6),
+                    insetView.bottomAnchor.constraint(equalTo: vc.view.bottomAnchor, constant: -6),
+                ])
+            }
 
             let pip = AVPictureInPictureController(
                 contentSource: AVPictureInPictureController.ContentSource(
@@ -327,9 +347,9 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
             pip.delegate = self
             controller = pip
             content = vc
-            renderer = view
+            remoteView = view
+            selfView = insetView
             track = remote
-            firstFrameLogged = false
             log("pip armed: \(state(source: source))")
             // iOS does not always end an automatically started PiP when the app comes back, so the window would cover the call screen.
             lifecycleObservers = [NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -338,6 +358,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
                 if controller.isPictureInPictureActive { controller.stopPictureInPicture() }
             }]
         }
+        return insetView
     }
 
     func stop() {
@@ -353,40 +374,197 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, RTCVi
         return "possible=\(controller?.isPictureInPicturePossible ?? false) active=\(controller?.isPictureInPictureActive ?? false) "
             + "autoFromInline=\(controller?.canStartPictureInPictureAutomaticallyFromInline ?? false) controllerRetained=\(controller != nil) "
             + "rtcAudioActive=\(RTCAudioSession.sharedInstance().isActive) audioCategory=\(audio.category.rawValue) mode=\(audio.mode.rawValue) "
-            + "firstFrame=\(firstFrameLogged) appState=\(UIApplication.shared.applicationState.rawValue) \(sourceState)"
+            + "appState=\(UIApplication.shared.applicationState.rawValue) \(sourceState)"
     }
 
     private func teardown() {
         lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
         lifecycleObservers = []
-        controller?.canStartPictureInPictureAutomaticallyFromInline = false
-        if let controller, controller.isPictureInPictureActive {
-            stopping.append((controller, content))
+        stopCounters()
+        let (remoteView, track, selfView, content) = (remoteView, track, selfView, content)
+        let release = {
+            if let remoteView { track?.remove(remoteView); remoteView.removeFromSuperview() }
+            selfView?.removeFromSuperview()
+            _ = content
+        }
+        // stopPictureInPicture() does nothing unless the scene is foreground-active (AVKit's canAnimatePictureInPictureTransition);
+        // releasing the controller stops it anyway, because its dealloc invalidates the window without that check.
+        if let controller, controller.isPictureInPictureActive, UIApplication.shared.applicationState == .active {
+            controller.canStartPictureInPictureAutomaticallyFromInline = false
+            stopping.append((controller, release))
             controller.stopPictureInPicture()
+        } else {
+            release()
         }
-        if let renderer { track?.remove(renderer); renderer.delegate = nil; renderer.removeFromSuperview() }
-        controller = nil
-        content = nil
-        renderer = nil
-        track = nil
+        self.selfView = nil
+        self.controller = nil
+        self.content = nil
+        self.remoteView = nil
+        self.track = nil
     }
 
-    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { log("pip will start") }
-    func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) { log("pip started") }
+    private func startCounters() {
+        stopCounters()
+        counterTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.log("pip frames remote[\(self.remoteView?.drainCounters() ?? "-")] self[\(self.selfView?.drainCounters() ?? "-")]")
+        }
+    }
+
+    private func stopCounters() {
+        counterTimer?.invalidate()
+        counterTimer = nil
+    }
+
+    private func event(_ name: String) {
+        log("pip \(name) main=\(Thread.isMainThread) appState=\(UIApplication.shared.applicationState.rawValue) stopping=\(stopping.count)")
+    }
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) { event("will start") }
+    func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) {
+        event("started")
+        if c === controller { startCounters() }
+    }
+    func pictureInPictureControllerWillStopPictureInPicture(_ c: AVPictureInPictureController) {
+        event("will stop")
+        stopCounters()
+    }
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        log("pip failed to start: \(error)")
+        event("failed to start: \(error)")
     }
-    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
-        let wasStopping = stopping.contains { $0.0 === c }
-        stopping.removeAll { $0.0 === c }
-        log("pip stopped\(wasStopping ? " after teardown" : "")")
+    func pictureInPictureController(
+        _ c: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+    ) {
+        event("restore requested")
+        onRestore()
+        completionHandler(true)
     }
 
-    func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
-        guard size.width > 0, size.height > 0 else { return }
-        DispatchQueue.main.async { [self] in
-            if !firstFrameLogged { firstFrameLogged = true; log("pip renderer got frames size=\(size)") }
-            content?.preferredContentSize = size
+    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
+        event("stopped")
+        stopping.filter { $0.controller === c }.forEach { $0.release() }
+        stopping.removeAll { $0.controller === c }
+    }
+}
+
+/// WebRTC frames on an AVSampleBufferDisplayLayer. A Metal view (RTCMTLVideoView) stops presenting once the app is in the
+/// background, so in the PiP window it froze on its last frame; a sample-buffer layer is composited by the system and keeps going.
+final class SampleBufferVideoView: UIView, RTCVideoRenderer {
+    private let displayLayer = AVSampleBufferDisplayLayer()
+    private let mirrored: Bool
+    private let lock = NSLock()
+    private var rotation: RTCVideoRotation = ._0
+    private var size = CGSize.zero
+    private var enqueued = 0
+    private var notReady = 0
+    private var flushes = 0
+    var onSize: (CGSize) -> Void = { _ in }
+
+    init(mirrored: Bool) {
+        self.mirrored = mirrored
+        super.init(frame: .zero)
+        backgroundColor = .black
+        displayLayer.videoGravity = .resizeAspectFill
+        layer.addSublayer(displayLayer)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let quarterTurn = rotation == ._90 || rotation == ._270
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        displayLayer.setAffineTransform(.identity)
+        displayLayer.bounds = CGRect(origin: .zero, size: quarterTurn ? CGSize(width: bounds.height, height: bounds.width) : bounds.size)
+        displayLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        let turn = CGAffineTransform(rotationAngle: CGFloat(rotation.rawValue) * .pi / 180)
+        displayLayer.setAffineTransform(mirrored ? turn.concatenating(CGAffineTransform(scaleX: -1, y: 1)) : turn)
+        CATransaction.commit()
+    }
+
+    func setSize(_ size: CGSize) {}
+
+    func renderFrame(_ frame: RTCVideoFrame?) {
+        guard let frame, let pixelBuffer = Self.pixelBuffer(frame.buffer), let sample = Self.sampleBuffer(pixelBuffer) else { return }
+        let renderer = displayLayer.sampleBufferRenderer
+        lock.lock()
+        if renderer.status == .failed || renderer.requiresFlushToResumeDecoding {
+            flushes += 1
+            renderer.flush()
         }
+        if renderer.isReadyForMoreMediaData {
+            renderer.enqueue(sample)
+            enqueued += 1
+        } else {
+            notReady += 1
+        }
+        let quarterTurn = frame.rotation == ._90 || frame.rotation == ._270
+        let displaySize = quarterTurn ? CGSize(width: CGFloat(frame.height), height: CGFloat(frame.width)) : CGSize(width: CGFloat(frame.width), height: CGFloat(frame.height))
+        let changed = frame.rotation != rotation || displaySize != size
+        let first = size == .zero
+        rotation = frame.rotation
+        size = displaySize
+        lock.unlock()
+        if changed {
+            DispatchQueue.main.async { [self] in
+                setNeedsLayout()
+                if first { onSize(displaySize) }
+            }
+        }
+    }
+
+    func drainCounters() -> String {
+        let renderer = displayLayer.sampleBufferRenderer
+        lock.lock()
+        defer { enqueued = 0; notReady = 0; flushes = 0; lock.unlock() }
+        return "enqueued=\(enqueued) notReady=\(notReady) flushes=\(flushes) status=\(renderer.status.rawValue) "
+            + "flushNeeded=\(renderer.requiresFlushToResumeDecoding) size=\(size) error=\(renderer.error.map { "\($0)" } ?? "nil")"
+    }
+
+    private static func pixelBuffer(_ buffer: RTCVideoFrameBuffer) -> CVPixelBuffer? {
+        if let cv = buffer as? RTCCVPixelBuffer { return cv.pixelBuffer }
+        let i420 = buffer.toI420()
+        let width = Int(i420.width), height = Int(i420.height)
+        var out: CVPixelBuffer?
+        let attrs = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
+        guard CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, attrs, &out) == kCVReturnSuccess,
+              let out else { return nil }
+        CVPixelBufferLockBaseAddress(out, [])
+        defer { CVPixelBufferUnlockBaseAddress(out, []) }
+        let yDst = CVPixelBufferGetBaseAddressOfPlane(out, 0)!.assumingMemoryBound(to: UInt8.self)
+        let yStride = CVPixelBufferGetBytesPerRowOfPlane(out, 0)
+        for row in 0..<height {
+            memcpy(yDst + row * yStride, i420.dataY + row * Int(i420.strideY), width)
+        }
+        let uvDst = CVPixelBufferGetBaseAddressOfPlane(out, 1)!.assumingMemoryBound(to: UInt8.self)
+        let uvStride = CVPixelBufferGetBytesPerRowOfPlane(out, 1)
+        for row in 0..<Int(i420.chromaHeight) {
+            let u = i420.dataU + row * Int(i420.strideU), v = i420.dataV + row * Int(i420.strideV)
+            let dst = uvDst + row * uvStride
+            for col in 0..<Int(i420.chromaWidth) {
+                dst[2 * col] = u[col]
+                dst[2 * col + 1] = v[col]
+            }
+        }
+        return out
+    }
+
+    private static func sampleBuffer(_ pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
+        var format: CMVideoFormatDescription?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: pixelBuffer, formatDescriptionOut: &format) == noErr,
+              let format else { return nil }
+        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
+        var sample: CMSampleBuffer?
+        guard CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: nil, imageBuffer: pixelBuffer, formatDescription: format, sampleTiming: &timing, sampleBufferOut: &sample) == noErr,
+              let sample else { return nil }
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true), CFArrayGetCount(attachments) > 0 {
+            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+            CFDictionarySetValue(dict, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+        }
+        return sample
     }
 }

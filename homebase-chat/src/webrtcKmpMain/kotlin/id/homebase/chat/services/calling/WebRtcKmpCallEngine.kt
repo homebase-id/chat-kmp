@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 /** [receiver] is set for remote video: iOS PiP needs the native RTCVideoTrack, which only the receiver exposes. */
 class KmpVideoHandle(
@@ -79,6 +80,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.trySend(it) }
     private val stopPipelineWatch = watchVideoPipeline()
+    private val sendLadder = SendResolutionLadder { scale -> videoSender?.let { scaleVideoSender(it, scale) } }
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -102,9 +104,10 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         while (!closed.load()) {
             delay(5_000)
             val stats = runCatching { peer.getStats()?.stats?.values }.getOrNull() ?: continue
-            val entries = stats.map { StatsEntry(it.type, it.members) }
+            val entries = stats.map { StatsEntry(it.type, it.members, it.id) }
             videoStatsLines(entries, localTrack = videoTrack?.state?.value?.toString(), previous = previous)
                 .forEach { line -> Logger.i("WebRtcKmp") { line } }
+            sendLadder.onStats(entries)?.let { line -> Logger.i("WebRtcKmp") { line } }
             previous = entries
         }
     }
@@ -206,9 +209,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private suspend fun createAnswer(): String = setLocal(peer.createAnswer(OfferAnswerOptions()))
 
     private suspend fun setLocal(created: SessionDescription): String {
-        val description = SessionDescription(created.type, withH264SendLevel(created.sdp))
-        peer.setLocalDescription(description)
-        return description.sdp
+        peer.setLocalDescription(created)
+        return created.sdp
     }
 
     override fun setMuted(muted: Boolean) {
@@ -240,11 +242,19 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         stopPipelineWatch()
+        val start = TimeSource.Monotonic.markNow()
         runCatching { stream?.tracks?.forEach { it.stop() } }
+        val tracks = start.elapsedNow()
         runCatching { stream?.release() }
+        val released = start.elapsedNow()
         runCatching { peer.close() }
+        val peerClosed = start.elapsedNow()
         router.stop()
         _local.value = null
         _remote.value = null
+        Logger.i("WebRtcKmp") {
+            "engine closed in ${start.elapsedNow().inWholeMilliseconds} ms: tracks=${tracks.inWholeMilliseconds} " +
+                "release=${(released - tracks).inWholeMilliseconds} peer=${(peerClosed - released).inWholeMilliseconds}"
+        }
     }
 }

@@ -258,7 +258,14 @@ existing range. Current owners:
 | `0000...0a02xx` | Moments |
 | `0000...0a03xx` | Location |
 | `0000...0a04xx` | Contact Book (contact manager) |
-| `0000...0a05xx` | **next free** — claim it here when you take it |
+| `0000...0a05xx` | `ServerIpStore` (network diagnostics) |
+| `0000...0a06xx` | Event reminders |
+| `0000...0a07xx` | Email |
+| `0000...0a08xx` | Dice rolls, and `DeveloperPreferences.CONNECTION_REVIEW_KEY` (both use `0a0801`) |
+| `0000...0a09xx` | `DeveloperPreferences` (profile card) |
+| `0000...0a0axx` | Filesync |
+| `0000...0a0bxx` | Profile card |
+| `0000...0a0cxx` | **next free** — claim it here when you take it |
 
 ---
 

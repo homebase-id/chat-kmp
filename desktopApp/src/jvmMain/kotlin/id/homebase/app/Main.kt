@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
@@ -25,6 +26,8 @@ import com.kdroid.composetray.utils.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
+import id.homebase.core.util.HostOs
+import id.homebase.core.util.hostOs
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
@@ -61,9 +64,13 @@ import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.desktop_menu_call
+import id.homebase.resources.desktop_menu_call_answer
+import id.homebase.resources.desktop_menu_call_decline
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
+import id.homebase.resources.desktop_tray_call_indicator
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
 import id.homebase.resources.homebase_icon_round
@@ -198,6 +205,7 @@ fun main() {
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
     id.homebase.core.calling.startDesktopCallCoordinator()
+    val callWindow = koin.get<id.homebase.chat.calling.CallWindowModel>()
 
     application {
         remember { StartupLogger.checkpoint("Compose application{} entered") }
@@ -255,6 +263,8 @@ fun main() {
             return@application
         }
 
+        CallWindow(callWindow, config, uiState.theme)
+
         // Quit and Settings belong to the macOS app menu, which AppKit owns above the
         // JMenuBar — the app-menu Quit would otherwise exit without persisting geometry,
         // and no Preferences item appears at all until a handler is registered.
@@ -284,12 +294,25 @@ fun main() {
             }
         }
 
+        val appLifecycleOwner = rememberApplicationLifecycleOwner()
+        // The ring window never takes focus, so its answer and decline shortcuts live in this menu.
+        val callRinging by callWindow.ringing.collectAsStateWithLifecycle(lifecycleOwner = appLifecycleOwner)
+        val callEntries = collectSettledCallEntries(callWindow.trayItems, appLifecycleOwner)
+        CallDockMenu(callEntries, callWindow::perform)
+        val callActiveLabel = stringResource(MR.string.desktop_tray_call_indicator)
+
         HomebaseTray(
             tooltip = appName,
+            callIndicatorLabel = callActiveLabel.takeIf { callEntries.isNotEmpty() },
             primaryAction = {
                 isWindowVisible = !isWindowVisible
             },
         ) {
+            callEntries.forEach { entry ->
+                Item(label = entry.label) { callWindow.perform(entry.action) }
+            }
+            if (callEntries.isNotEmpty()) Divider()
+
             Item(label = showWindowLabel) {
                 isWindowVisible = true
             }
@@ -353,6 +376,20 @@ fun main() {
                         onClick = hideWindow,
                     )
                 }
+                if (callRinging) {
+                    Menu(stringResource(MR.string.desktop_menu_call)) {
+                        Item(
+                            text = stringResource(MR.string.desktop_menu_call_answer),
+                            shortcut = menuShortcut(Key.A, shift = true),
+                            onClick = callWindow::answer,
+                        )
+                        Item(
+                            text = stringResource(MR.string.desktop_menu_call_decline),
+                            shortcut = menuShortcut(Key.H, shift = true),
+                            onClick = callWindow::decline,
+                        )
+                    }
+                }
                 Menu(themeMenuLabel) {
                     ThemeState.entries.forEach { theme ->
                         RadioButtonItem(
@@ -404,20 +441,20 @@ fun main() {
                 App(
                     onNavigatorReady = { navigateTo = it },
                     topInset = if (isMacOs) MAC_TITLE_BAR_HEIGHT else 0.dp,
+                    hostCallOverlay = false,
                 )
             }
         }
     }
 }
 
-internal val isMacOs =
-    System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
+internal val isMacOs = hostOs == HostOs.Mac
 
 // Traffic lights float over the content once apple.awt.fullWindowContent is on.
 private val MAC_TITLE_BAR_HEIGHT = 28.dp
 
-private fun menuShortcut(key: Key) =
-    KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs)
+internal fun menuShortcut(key: Key, shift: Boolean = false) =
+    KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs, shift = shift)
 
 /**
  * A failure the desktop app records and keeps running for, instead of dying: a transient network

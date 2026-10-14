@@ -52,6 +52,8 @@ class CallRingCoordinatorTest {
             target = object : CallPushTarget {
                 override fun pushRing(callId: String, from: String, sentAtMs: Long) = controller.pushRing(callId, from, sentAtMs)
                 override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
+                override fun accept() = controller.accept()
+                override fun decline() = controller.decline()
             },
             transitions = controller.transitions,
             sink = sink,

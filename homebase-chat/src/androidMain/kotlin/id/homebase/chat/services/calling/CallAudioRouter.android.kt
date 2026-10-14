@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import id.homebase.api.ActivityProvider
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
@@ -17,7 +18,7 @@ internal val WiredDeviceTypes = setOf(
 
 actual class CallAudioRouter actual constructor() {
     private val audio: AudioManager =
-        callAppContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        ActivityProvider.requireApplicationContext().getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousMode = AudioManager.MODE_NORMAL
     private var focus: AudioFocusRequest? = null
     private var started = false

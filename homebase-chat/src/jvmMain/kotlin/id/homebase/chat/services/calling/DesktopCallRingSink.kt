@@ -1,65 +1,55 @@
 package id.homebase.chat.services.calling
 
-import id.homebase.core.notifications.RichNotificationData
-import kotlin.time.Clock
+import id.homebase.core.notifications.CallNotificationActions
+import id.homebase.core.notifications.CallNotifier
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Desktop ring: a system notification, the window brought to the front, and a repeating sound until the call stops ringing. */
 class DesktopCallRingSink(
     private val scope: CoroutineScope,
-    private val notify: (RichNotificationData) -> Unit,
-    private val cancelNotification: (Int) -> Unit,
-    private val bringToFront: () -> Unit,
-    private val ringTone: () -> Unit,
+    private val notifier: CallNotifier,
+    private val focusCallWindow: () -> Unit,
+    private val revealRing: () -> Unit = focusCallWindow,
+    private val tone: RingTonePlayer,
     private val incomingCallText: suspend () -> String,
-    private val ringIntervalMs: Long = 2_000,
+    private val acceptLabel: suspend () -> String,
+    private val declineLabel: suspend () -> String,
+    private val onAccept: (callId: String) -> Unit,
+    private val onDecline: (callId: String) -> Unit,
 ) : CallRingSink {
-    private val tones = mutableMapOf<String, Job>()
+    private val ringing = ConcurrentHashMap.newKeySet<String>()
+    private val lock = Any()
 
     override fun ring(callId: String, label: String) {
-        val first = callId !in tones
-        if (first) {
-            bringToFront()
-            tones[callId] = scope.launch {
-                while (true) {
-                    ringTone()
-                    delay(ringIntervalMs)
-                }
+        val first = ringing.add(callId)
+        scope.launch {
+            val body = incomingCallText()
+            val actions = CallNotificationActions(
+                acceptLabel = acceptLabel(),
+                declineLabel = declineLabel(),
+                onAccept = { onAccept(callId) },
+                onDecline = { onDecline(callId) },
+                onOpen = focusCallWindow,
+            )
+            synchronized(lock) {
+                if (callId in ringing) notifier.showIncoming(callId, label, body, actions)
             }
         }
-        scope.launch {
-            val text = incomingCallText()
-            if (callId !in tones) return@launch
-            // A label upgrade re-posts; a desktop toast is not replaced by id, so the first one would stay up.
-            if (!first) cancelNotification(notificationId(callId))
-            notify(notification(callId, label, text))
-        }
+        if (!first) return
+        revealRing()
+        tone.start()
     }
 
     override fun stopRinging(callId: String) {
-        tones.remove(callId)?.cancel()
-        cancelNotification(notificationId(callId))
+        synchronized(lock) {
+            if (!ringing.remove(callId)) return
+            if (ringing.isEmpty()) tone.stop()
+            notifier.retract(callId)
+        }
     }
 
     override fun connected(callId: String) = Unit
     override fun ended(callId: String, reason: CallEndReason) = stopRinging(callId)
     override fun setLive(live: Boolean, video: Boolean, callId: String?) = Unit
-
-    private fun notificationId(callId: String) = callId.hashCode()
-
-    private fun notification(callId: String, label: String, body: String) = RichNotificationData(
-        notificationId = notificationId(callId),
-        channelId = "calls",
-        conversationId = null,
-        title = label,
-        body = body,
-        senderName = label,
-        senderId = "",
-        senderImageBytes = null,
-        timestamp = Clock.System.now().toEpochMilliseconds(),
-        payloadData = emptyMap(),
-    )
 }

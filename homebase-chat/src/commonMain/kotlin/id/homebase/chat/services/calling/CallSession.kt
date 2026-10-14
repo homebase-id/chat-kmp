@@ -8,6 +8,7 @@ interface CallSession {
     /** Every state change in order, starting with the current one; [state] drops the ones a slow collector misses. */
     val transitions: Flow<CallState>
     val videos: StateFlow<CallVideos>
+    val mediaDevices: StateFlow<CallMediaDevices?> get() = NoCallMediaDevices
 
     fun startCall(peer: String, video: Boolean)
     fun accept()

@@ -17,6 +17,7 @@ interface CallEngine {
     val events: Flow<MediaEvent>
     val localVideo: StateFlow<VideoHandle?>
     val remoteVideo: StateFlow<VideoHandle?>
+    val mediaDevices: CallMediaDevices? get() = null
 
     suspend fun createOffer(video: Boolean): String
     suspend fun answer(offerSdp: String, video: Boolean): String
@@ -26,6 +27,9 @@ interface CallEngine {
     suspend fun addIce(candidate: String, sdpMid: String?, sdpMLineIndex: Int?)
     fun setMuted(muted: Boolean)
     fun setVideo(on: Boolean)
+
+    /** Adds a camera to a call that began without one and returns the renegotiation offer, or null when this engine cannot. */
+    suspend fun addVideo(): String? = null
     fun switchCamera()
     fun setAudioRoute(route: AudioRoute)
     fun close()

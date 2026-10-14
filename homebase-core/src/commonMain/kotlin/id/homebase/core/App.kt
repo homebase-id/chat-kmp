@@ -3,7 +3,9 @@ package id.homebase.core
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import id.homebase.chat.calling.CallChrome
 import id.homebase.chat.calling.CallHost
+import id.homebase.chat.calling.CallWindowModel
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +35,7 @@ fun App(
     onNavHostReady: suspend (NavController) -> Unit = {},
     onNavigatorReady: ((Route) -> Unit) -> Unit = {},
     topInset: Dp = 0.dp,
+    hostCallOverlay: Boolean = true,
 ) {
     remember { StartupLogger.checkpoint("App() first composition") }
     val navController = rememberNavController()
@@ -53,27 +56,21 @@ fun App(
         // scope that comes and goes buys nothing and risks the duplicate-instance problem the
         // comment below describes.
         val appViewModel = koinViewModel<AppViewModel>()
-        CallHost(viewModel = koinViewModel(), modifier = Modifier.fillMaxSize()) {
-            // Everything below resolves from the open identity session, so per-identity services and
-            // the ViewModels that consume them are destroyed at logout rather than reset.
+        // Everything below resolves from the open identity session, so per-identity services and
+        // the ViewModels that consume them are destroyed at logout rather than reset.
+        CallChrome(
+            callWindow = if (hostCallOverlay) null else koinInject<CallWindowModel>(),
+            topInset = topInset,
+            callHost = { content -> CallHost(viewModel = koinViewModel(), modifier = Modifier.fillMaxSize(), content = content) },
+        ) { contentTopInset ->
             IdentityScopeProvider {
                 AppNavHost(
-                    // koinViewModel(), NOT koinInject(). AppViewModel is registered with
-                    // viewModelOf(), which is a *factory* definition — koinInject() resolves
-                    // it outside any ViewModelStore, so every Activity recreation minted a
-                    // fresh AppViewModel whose onCleared() was never called. Each orphan kept
-                    // its collectNotificationEvents() coroutine alive on
-                    // NotificationService.navigationEvents, which is a single-consumer
-                    // Channel.receiveAsFlow(): N live collectors round-robin the events, and
-                    // an orphan that wins a turn forwards into its own channel that nothing
-                    // reads. Result — notification taps and share deep links silently went
-                    // nowhere (build 1788 log: three consecutive events "forwarded" by
-                    // AppViewModel with no matching AppNavHost receipt, after four Activity
-                    // onCreates in one process).
+                    // koinViewModel(), not koinInject(): the factory resolved outside a ViewModelStore leaks
+                    // orphans whose collectors steal events from the single-consumer navigation channel.
                     viewModel = appViewModel,
                     navController = navController,
                     youAuthFlowManager = youAuthFlowManager,
-                    topInset = topInset,
+                    topInset = contentTopInset,
                 )
             }
         }

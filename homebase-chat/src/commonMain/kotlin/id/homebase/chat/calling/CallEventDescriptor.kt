@@ -13,6 +13,9 @@ data class CallEventDescriptor(
     val durationSeconds: Long = 0,
     val schemaVersion: Int = 1,
 ) {
+    /** What the other side sees as a missed call; the caller's own log says not answered or cancelled. */
+    val missedByRecipient: Boolean get() = outcome == CallOutcome.NoAnswer || outcome == CallOutcome.Cancelled
+
     fun isValid(): Boolean = durationSeconds in 0..MAX_DURATION_SECONDS &&
         (outcome == CallOutcome.Completed || durationSeconds == 0L)
 

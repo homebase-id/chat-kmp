@@ -85,9 +85,9 @@ class CardSiteDefaultsTest {
     }
 
     @Test
-    fun disabledLegacyAndGarbageThemesFallBackToBoard() {
+    fun disabledLegacyAndGarbageThemesHaveNoDesign() {
         listOf("0", "111", "222", "333", "444", "999", "", " 555", "poster", "null", null).forEach {
-            assertEquals(CardDesign.BOARD, cardDesignForTheme(it), "themeId=$it")
+            assertNull(cardDesignForTheme(it), "themeId=$it")
         }
     }
 
@@ -134,13 +134,13 @@ class CardSiteDefaultsTest {
     }
 
     @Test
-    fun legacyOrDisabledThemeFallsBackToBoardButKeepsTagLineAndHeader() {
+    fun legacyOrDisabledThemeHasNoDesignButKeepsTagLineAndHeader() {
         val legacy = assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"222","tagLine":"Hi","headerImageKey":"headr_key"}"""))))
-        assertEquals(CardDesign.BOARD, legacy.design)
+        assertNull(legacy.design)
         assertEquals("Hi", legacy.tagLine)
         assertEquals("headr_key", legacy.header?.payloadKey)
-        assertEquals(CardDesign.BOARD, assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"0"}""")))).design)
-        assertEquals(CardDesign.BOARD, assertNotNull(cardSiteDefaults(siteData(themeSection("""{}""")))).design)
+        assertNull(assertNotNull(cardSiteDefaults(siteData(themeSection("""{"themeId":"0"}""")))).design)
+        assertNull(assertNotNull(cardSiteDefaults(siteData(themeSection("""{}""")))).design)
     }
 
     @Test

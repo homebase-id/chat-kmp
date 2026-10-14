@@ -13,3 +13,10 @@ actual fun platformCallEngineFactory(): CallEngineFactory? = null
 actual fun CallVideoView(handle: VideoHandle?, modifier: Modifier, cornerRadius: Dp) = Unit
 
 actual fun audioRouteChanges(): Flow<List<AudioRoute>> = flowOf(emptyList())
+
+@Composable
+actual fun rememberScreenReaderOn(): Boolean = false
+
+actual class CallVideoRenderers actual constructor() {
+    actual fun keepOnly(handles: List<VideoHandle>) = Unit
+}

@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PendingIntentCompat
 import androidx.core.util.Consumer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.resources.MR
 import id.homebase.resources.call_hang_up
@@ -56,7 +57,15 @@ actual fun rememberInPictureInPicture(): Boolean {
 }
 
 @Composable
-actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit) {
+actual fun CallPictureInPictureEffect(
+    eligible: Boolean,
+    remote: VideoHandle?,
+    local: VideoHandle?,
+    muted: Boolean,
+    onToggleMute: () -> Unit,
+    onHangup: () -> Unit,
+    onRestore: () -> Unit,
+) {
     val activity = LocalContext.current.findActivity() ?: return
     val size = remote.collectFrameSize()
     val muteLabel = stringResource(if (muted) MR.string.call_unmute else MR.string.call_mute)
@@ -80,6 +89,9 @@ actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, m
     }
 
     val inPip = rememberInPictureInPicture()
+    val restore by rememberUpdatedState(onRestore)
+    // The expand control and a dismissal look the same from here, so the call is un-minimized on the way in.
+    LaunchedEffect(inPip) { if (inPip) restore() }
     LaunchedEffect(inPip, eligible) {
         if (shouldLeavePictureInPicture(inPip, eligible)) {
             Logger.i("CallPiP") { "leaving pip: call no longer pip-eligible" }

@@ -39,6 +39,8 @@ class CallKitRingRouterTest {
             target = object : CallPushTarget {
                 override fun pushRing(callId: String, from: String, sentAtMs: Long) = controller.pushRing(callId, from, sentAtMs)
                 override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
+                override fun accept() = controller.accept()
+                override fun decline() = controller.decline()
             },
             bridge = { bridge },
             scope = scope.backgroundScope,
@@ -100,6 +102,8 @@ class CallKitRingRouterTest {
             target = object : CallPushTarget {
                 override fun pushRing(callId: String, from: String, sentAtMs: Long) = rig.controller.pushRing(callId, from, sentAtMs)
                 override fun onPushHangup(callId: String) = rig.controller.onPushHangup(callId)
+                override fun accept() = rig.controller.accept()
+                override fun decline() = rig.controller.decline()
             },
             transitions = rig.controller.transitions,
             sink = CallKitRingSink { rig.bridge },

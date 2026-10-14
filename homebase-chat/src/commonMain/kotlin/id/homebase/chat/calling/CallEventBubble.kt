@@ -60,6 +60,7 @@ import id.homebase.resources.call_event_missed
 import id.homebase.resources.call_event_no_answer
 import id.homebase.resources.call_event_outgoing
 import id.homebase.resources.call_event_unparseable
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** [isOwn] is true when this device's user placed the call (the author of the log message). */
@@ -84,27 +85,9 @@ fun CallEventBubble(
         )
         return
     }
-    val missedForMe = !isOwn && (descriptor.outcome == CallOutcome.NoAnswer || descriptor.outcome == CallOutcome.Cancelled)
-    val icon: ImageVector = when {
-        missedForMe -> Icons.AutoMirrored.Filled.CallMissed
-        descriptor.outcome == CallOutcome.NoAnswer -> Icons.AutoMirrored.Filled.CallMissedOutgoing
-        descriptor.outcome == CallOutcome.Cancelled -> Icons.Outlined.Cancel
-        descriptor.outcome == CallOutcome.Declined -> Icons.Default.CallEnd
-        descriptor.outcome == CallOutcome.Busy -> Icons.Default.PhoneDisabled
-        descriptor.outcome == CallOutcome.Failed -> Icons.Outlined.ErrorOutline
-        isOwn -> Icons.AutoMirrored.Filled.CallMade
-        else -> Icons.AutoMirrored.Filled.CallReceived
-    }
-    val title = stringResource(
-        when (descriptor.outcome) {
-            CallOutcome.Completed -> if (isOwn) MR.string.call_event_outgoing else MR.string.call_event_incoming
-            CallOutcome.NoAnswer -> if (isOwn) MR.string.call_event_no_answer else MR.string.call_event_missed
-            CallOutcome.Cancelled -> if (isOwn) MR.string.call_event_cancelled else MR.string.call_event_missed
-            CallOutcome.Failed -> MR.string.call_event_failed
-            CallOutcome.Declined -> MR.string.call_event_declined
-            CallOutcome.Busy -> MR.string.call_event_busy
-        },
-    )
+    val visual = callEventVisual(descriptor, isOwn)
+    val icon = visual.icon.imageVector()
+    val title = stringResource(visual.title.stringRes())
     val kind = stringResource(if (descriptor.video) MR.string.call_button_video else MR.string.call_button_voice)
     val duration = if (descriptor.outcome == CallOutcome.Completed && descriptor.durationSeconds > 0) {
         spokenCallDuration(descriptor.durationSeconds)
@@ -115,10 +98,10 @@ fun CallEventBubble(
     CallEventLayout(
         modifier, shape, containerColor, contentColor,
         icon = icon,
-        iconTint = if (missedForMe) colors.error else contentColor.copy(alpha = 0.72f),
+        iconTint = if (visual.missed) colors.error else contentColor.copy(alpha = 0.72f),
         title = title,
         titleStyle = MaterialTheme.typography.titleSmall,
-        titleColor = if (missedForMe) colors.error else contentColor,
+        titleColor = if (visual.missed) colors.error else contentColor,
         subtitle = subtitle,
         footer = footer,
         trailing = if (onCallBack == null) null else {
@@ -249,4 +232,26 @@ internal fun spokenCallDuration(totalSeconds: Long): String {
         m > 0 -> stringResource(MR.string.call_duration_minutes, m, s)
         else -> stringResource(MR.string.call_duration_seconds, s)
     }
+}
+
+internal fun CallEventIcon.imageVector(): ImageVector = when (this) {
+    CallEventIcon.Missed -> Icons.AutoMirrored.Filled.CallMissed
+    CallEventIcon.NoAnswerOutgoing -> Icons.AutoMirrored.Filled.CallMissedOutgoing
+    CallEventIcon.Cancelled -> Icons.Outlined.Cancel
+    CallEventIcon.Declined -> Icons.Default.CallEnd
+    CallEventIcon.Busy -> Icons.Default.PhoneDisabled
+    CallEventIcon.Failed -> Icons.Outlined.ErrorOutline
+    CallEventIcon.Outgoing -> Icons.AutoMirrored.Filled.CallMade
+    CallEventIcon.Incoming -> Icons.AutoMirrored.Filled.CallReceived
+}
+
+internal fun CallEventTitle.stringRes(): StringResource = when (this) {
+    CallEventTitle.Outgoing -> MR.string.call_event_outgoing
+    CallEventTitle.Incoming -> MR.string.call_event_incoming
+    CallEventTitle.NoAnswer -> MR.string.call_event_no_answer
+    CallEventTitle.Missed -> MR.string.call_event_missed
+    CallEventTitle.Cancelled -> MR.string.call_event_cancelled
+    CallEventTitle.Failed -> MR.string.call_event_failed
+    CallEventTitle.Declined -> MR.string.call_event_declined
+    CallEventTitle.Busy -> MR.string.call_event_busy
 }

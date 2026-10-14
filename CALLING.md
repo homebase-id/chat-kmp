@@ -7,6 +7,7 @@ signalling rides odin-core Live Relay. This file is the architecture record for 
 
 ```
 UI            calling/CallHost, CallScreens, CallActionButtons, CallLabScreen, CallEventBubble   (homebase-chat commonMain)
+Desktop UI    calling/CallWindowModel (one shared CallViewModel), core DesktopCallWindow, desktopApp CallWindow   (own OS window)
 Service       services/calling/CallService         one CallController per signed-in identity
 Controller    services/calling/CallController      single inbox loop; owns engine, timers, buffered ICE
 State machine services/calling/CallStateMachine    pure reducer: (state, event) -> (state, effects)
@@ -149,36 +150,37 @@ exercises a real ICE restart. It also proves the natives load on the host.
 
 ### Video send
 
-`SendVideoCap` caps what a sender puts on the wire at 1080p30 and 2.5 Mbps, with BALANCED degradation on webrtc-kmp
-(webrtc-java has no degradation preference). There is no minimum bitrate, so the encoder follows the bandwidth estimate
-down to libwebrtc's own 30 kbps floor. Android asks Camera2 for 1080p; on iOS webrtc-kmp reads the camera formats through
-a freed struct and opens the camera at 4K, so `configureWebRtc` adapts the source output to 1080p instead. Desktop's
-`VideoDeviceSource` captures at its default 1280x720@30.
+`SendVideoCap` bounds what a sender puts on the wire: at most 720p30, 300 kbps to 2 Mbps, with MAINTAIN_FRAMERATE
+degradation on webrtc-kmp, so libwebrtc's own adaptations lower resolution and never frame rate (webrtc-java has no
+degradation preference). Android asks Camera2 for 720p; on iOS webrtc-kmp reads the
+camera formats through a freed struct and opens the camera at 4K, so `configureWebRtc` adapts the source output to
+720p instead.
 
-- **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame) and each side
-  encodes at the level the peer advertised. Every local offer and answer is raised to level 4.0 before it is set
-  (`withH264SendLevel`): VideoToolbox rejects a 1080p frame at 3.1 with -12902 and, with no fallback codec, the
-  stream stops for good.
-- **Resolution ladder (desktop only).** `SendResolutionLadder` reads the outbound `targetBitrate` on every 5 s stats
-  tick and sets `scaleResolutionDownBy`: 1080p from 1.5 Mbps, 720p from 800 kbps, 540p from 500 kbps, 360p from
-  300 kbps, 270p from 150 kbps, else 180p. It steps straight down to the rung that fits and back up one rung at a time
-  with 25 % headroom (`CallSendResolutionLadderTest`).
-- **Phones have no ladder.** libwebrtc's BALANCED adaptation follows the bandwidth on both MediaCodec and VideoToolbox
-  (`limit=bandwidth`, its own 853x480 and 427x240 frames, 10 fps under NLC Edge). A ladder only caps it from above, and
-  its step-up stalls: goog-cc grows the estimate only with what is actually sent, so a cheap picture at 720p (QP 25,
-  ~0.8 Mbps) held the iPhone's target at 1.75-1.80 Mbps, under the 1.875 Mbps 1080p needed, for 4.5 minutes; climbing
-  on "sending far under target" instead fought libwebrtc and flapped 360p-540p-720p every 15 s. Android's quality
-  scaler took the Redmi from 270p back to 1080p in about a minute. A scaled layer would also skip
-  `HardwareVideoEncoder`'s 2-pixel alignment, which only the scaler's own output honours (`EncoderInfo(2, false)`): the
-  ladder's 2.25 turned a 960x540 frame into 427x240, MediaCodec refused it, and with no H.264 software fallback the
-  stream stopped.
+- **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame, 108000 a second)
+  and each side encodes at the level the peer advertised. 720p30 fits it exactly, so the SDP is left as libwebrtc wrote
+  it; a larger cap needs a higher level, as VideoToolbox rejects a frame over 3.1 with -12902 and the stream stops.
+  The cap was 1080p until the Redmi's Qualcomm decoder was measured holding 1080p frames for 500-650 ms.
+- **Resolution ladder.** libwebrtc's quality scaler only reacts to encoder QP and frame drops, so a cheap-to-encode
+  picture stays at the top rung on any bitrate. `SendResolutionLadder` reads the outbound `targetBitrate` on every 5 s stats
+  tick and sets `scaleResolutionDownBy`: 720p from 800 kbps, 540p from 500 kbps, 360p from 250 kbps, 270p from 150 kbps,
+  else 180p; no floor. It steps straight down to the rung that fits and back up one rung at a time with 25 % headroom
+  (`CallSendResolutionLadderTest`).
+- **Encoder load.** libwebrtc's CPU adaptation gives a hardware encoder 200 % encode usage before it acts; the Redmi's
+  sent frame rate already falls to 13-22 fps from about 150 %, with `HardwareVideoEncoder: Dropped frame, encoder queue
+  full`. `SendLoadRung` caps the ladder further: two ticks under 24 fps with frames over 50 ms to encode step it down
+  one rung (720, 540, 360, 270, 180; no floor), six ticks at 27 fps whose encode time, scaled to the next rung's
+  pixels, stays under 40 ms step it back up. A camera slowed by low light encodes fast and never counts as slow.
 - **Android decodes into byte buffers.** webrtc-kmp gives `DefaultVideoDecoderFactory` the root EGL context, and a
   texture-mode `AndroidVideoDecoder` has a single output texture: every frame that finishes while the previous one is
   still held downstream (libwebrtc's render queue keeps it until its render time) is dropped. On the Redmi that halved
   1080p to 15 fps with `Too many frames backed up in the decoder`; `DefaultVideoDecoderFactory(null)` decodes 1080p at
   30 fps.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
-  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log.
+  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log. A stalled
+  outbound counter with a frozen source line is a stopped camera, with a moving one a failing encoder. qp above the
+  quality scaler's threshold with `limit=none` is a sender not adapting; decodeMs above 1000/fps is a decoder that cannot
+  keep up; a steady inFlight (decodeMs x fps) near a picture buffer's size is a decoder holding frames. A/V sync holds
+  audio back to the video's delay, which the audio line's jbMs shows.
 
 ### Keep-awake and picture-in-picture
 
@@ -234,9 +236,28 @@ A video call that is `Connected` or `Reconnecting` goes into a system PiP window
   `CXCallUpdate.hasVideo` is set from the offer via `reportVideo`. **Not verified on a device.**
 - **Desktop**: the app is the receiver (socket offers). `DesktopCallRingSink` (driven by `CallRingCoordinator` from
   `CallService.state`, started in `startDesktopCallCoordinator`, so it works with the window minimised) posts the
-  incoming-call notification through `RichNotificationDisplayer`, raises the window with
-  `DesktopAppFocusManager.requestFocus("incoming-call")`, and beeps every 2 s until the call stops ringing; the in-app
-  incoming screen is `CallHost`. No background ring when the app is closed.
+  incoming-call notification through `RichNotificationDisplayer`, raises the call window with
+  `DesktopAppFocusManager.requestFocus("incoming-call", "call")`, and beeps every 2 s until the call stops ringing; the incoming
+  screen is the call window. No background ring when the app is closed.
+- **Desktop call window**: every call phase (outgoing, incoming, in-call, ended, failed) is a separate OS window; the main
+  window stays interactive and `App(hostCallOverlay = false)` does not compose `CallHost`. One `CallWindowModel`
+  (Koin `single` wrapping one `CallViewModel`) feeds both windows. desktopApp cannot see homebase-chat types, so
+  homebase-core exposes the chat-free `DesktopCallWindow` that `desktopApp/CallWindow.kt` hosts. The window shows while
+  `CallUiState.visible` and is recreated per call (`windowKey` = callId), so it re-sizes for the new call kind and
+  disposes itself after `ENDED_LINGER_MS`; Failed stays until closed. `application{}` provides no `LocalLifecycleOwner`,
+  so `CallWindow` supplies its own for the call flows and the title it collects above the `Window`.
+  Title is the peer name, then `call_pill_text` (`<peer> · mm:ss`) once connected (`rememberCallWindowTitle`; the macOS
+  title stays visible in the transparent title bar). Min size 320x240, default 960x640 video / 420x560 voice, geometry saved per
+  kind in `DesktopPreferences` (`callWindowWidthDp/HeightDp/Position`). The minimise chevron iconifies the window (the
+  VM `minimized` state and pill are unused on desktop). Window close and Cmd/Ctrl+W go through `callWindowCloseAction`:
+  Incoming declines, Outgoing/Connecting hang up, Connected/Reconnecting show the `call_end_confirm` dialog in the call
+  window, Ended/Idle dismiss. Esc keeps `CallViewModel.endFromKeyboard` (shared with mobile). While `inProgress` the main
+  window shows `OngoingCallBar` above the nav host (`CallChrome`); clicking it raises the call window via
+  `DesktopAppFocusManager.requestFocus(.., WindowKeys.CALL)` (providers are keyed `main`/`call`; a keyed non-main
+  focus also de-iconifies, and a raise that arrives before the window has registered is replayed on registration
+  instead of falling back to the main window). The ring window is `alwaysOnTop` only while Incoming. Raising the
+  window also activates the app (`Desktop.requestForeground`), which on macOS can bring the main window forward too.
+  Not run by the harness: the live Mac call (scroll and type in another chat while the call window is open).
 
 ## Known limits
 

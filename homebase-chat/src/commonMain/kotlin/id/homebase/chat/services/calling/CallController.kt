@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 class CallController(
     selfOdinId: String,
@@ -35,6 +37,7 @@ class CallController(
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
+    private val engineCloseContext: CoroutineContext = EmptyCoroutineContext,
     private val deviceId: String = Uuid.random().toString(),
 ) : CallSession {
     private val log = Logger.withTag(TAG)
@@ -49,6 +52,9 @@ class CallController(
     private val _videos = MutableStateFlow(CallVideos())
     override val videos: StateFlow<CallVideos> = _videos.asStateFlow()
 
+    private val _mediaDevices = MutableStateFlow<CallMediaDevices?>(null)
+    override val mediaDevices: StateFlow<CallMediaDevices?> = _mediaDevices.asStateFlow()
+
     // Everything below the inbox is touched only from the inbox loop; other threads just post.
     private sealed interface Command {
         class Event(val event: CallEvent, val processed: CompletableDeferred<CallState>? = null) : Command
@@ -58,6 +64,7 @@ class CallController(
 
     private val inbox = Channel<Command>(Channel.UNLIMITED)
     private var engine: CallEngine? = null
+    private var closingEngine: Job? = null
     private var engineEvents: Job? = null
     private var engineVideos: Job? = null
     private var remoteReady = false
@@ -96,7 +103,10 @@ class CallController(
                     }
                 }
             } finally {
-                withContext(NonCancellable) { teardown() }
+                withContext(NonCancellable) {
+                    teardown()
+                    closingEngine?.join()
+                }
             }
         }
         collectors = listOf(signals, inboxLoop)
@@ -245,8 +255,13 @@ class CallController(
         if (endedCalls.size > ENDED_CALLS_REMEMBERED) endedCalls.removeFirst()
     }
 
-    private suspend fun engine(): CallEngine = engine ?: engineFactory.create(stunUrls()).also { created ->
+    private suspend fun engine(): CallEngine = engine ?: run {
+        // The next call's camera, mic and audio mode must not race the last call's release of them.
+        closingEngine?.join()
+        engineFactory.create(stunUrls())
+    }.also { created ->
         engine = created
+        _mediaDevices.value = created.mediaDevices
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             created.events.collect { post(CallEvent.Media(it)) }
@@ -256,12 +271,17 @@ class CallController(
         }
     }
 
+    private fun reportMissingCamera(videoRequested: Boolean) {
+        if (videoRequested && engine?.localVideo?.value == null) post(CallEvent.NoLocalVideoTrack)
+    }
+
     private suspend fun run(effect: CallEffect, state: CallState) {
         try {
             when (effect) {
                 is CallEffect.SendSignal -> sendBestEffort(effect.peer, effect.signal)
                 is CallEffect.CreateOffer -> {
                     val sdp = engine().createOffer(effect.video)
+                    reportMissingCamera(effect.video)
                     offerSdp = sdp
                     offerVideo = effect.video
                     offerSeq = 0
@@ -274,6 +294,7 @@ class CallController(
                 }
                 is CallEffect.CreateAnswer -> {
                     val sdp = engine().answer(effect.offerSdp, effect.video)
+                    reportMissingCamera(effect.video)
                     offerSdp = effect.offerSdp
                     answerSdp = sdp
                     send(state.peer!!, CallSignal.Answer(state.callId!!, sdp))
@@ -299,12 +320,20 @@ class CallController(
                     val sdp = engine().answerRestart(effect.offerSdp)
                     sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
                 }
-                is CallEffect.AddIce -> {
-                    val current = engine
-                    if (!remoteReady) bufferedIce += effect else if (current != null) addIce(current, effect)
-                }
+                is CallEffect.AddIce -> if (!remoteReady) bufferedIce += effect else engine?.let { addIce(it, effect) }
                 is CallEffect.SetMuted -> engine?.setMuted(effect.muted)
                 is CallEffect.SetVideo -> engine?.setVideo(effect.on)
+                CallEffect.AddVideo -> {
+                    val sdp = engine?.addVideo()
+                    if (sdp != null) {
+                        restartOfferSdp = sdp
+                        post(CallEvent.VideoUpgradeSent)
+                        sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
+                    } else {
+                        post(CallEvent.NoLocalVideoTrack)
+                        post(CallEvent.SetVideo(false))
+                    }
+                }
                 CallEffect.SwitchCamera -> engine?.switchCamera()
                 is CallEffect.SetRoute -> engine?.setAudioRoute(effect.route)
                 is CallEffect.StartTimer -> startTimer(effect.timer, effect.callId)
@@ -312,12 +341,12 @@ class CallController(
                 CallEffect.ReleaseEngine -> releaseEngine()
             }
         } catch (e: CallEngineException) {
-            Logger.w(tag = TAG) { "engine failed: ${e.reason} ${e.message}" }
+            log.w { "engine failed: ${e.reason} ${e.message}" }
             post(CallEvent.EngineError(e.reason))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(e, TAG) { "call effect $effect failed" }
+            log.w(e) { "call effect $effect failed" }
             post(CallEvent.EngineError(FailReason.Other))
         }
     }
@@ -402,7 +431,11 @@ class CallController(
         engineVideos?.cancel()
         engineVideos = null
         _videos.value = CallVideos()
-        engine?.close()
+        _mediaDevices.value = null
+        // Closing takes ~2 s on a Redmi (camera stop, peer close); the hangup that follows must not wait for it.
+        engine?.let { released ->
+            closingEngine = scope.launch(engineCloseContext, start = CoroutineStart.ATOMIC) { released.close() }
+        }
         engine = null
         remoteReady = false
         bufferedIce.clear()

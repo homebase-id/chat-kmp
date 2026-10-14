@@ -145,8 +145,6 @@ class MediaEventMappingTest {
     fun onlyTheFrontCameraPreviewIsMirrored() {
         assertTrue(CameraFacing.Front.mirrorsLocalPreview)
         assertFalse(CameraFacing.Back.mirrorsLocalPreview)
-        assertTrue(JvmVideoHandle.localPreview(CameraFacing.Front).mirrored)
-        assertFalse(JvmVideoHandle.localPreview(CameraFacing.Back).mirrored)
         assertFalse(JvmVideoHandle().mirrored)
     }
 }

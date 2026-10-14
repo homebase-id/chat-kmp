@@ -376,6 +376,24 @@ class CallStateMachineTest {
     }
 
     @Test
+    fun turningTheCameraOnInAConnectedVoiceCallAddsVideoOnceAndAVideoCallJustToggles() {
+        assertEquals(false, connected.localVideoTrack)
+        val upgraded = machine.step(connected, CallEvent.SetVideo(true))
+        assertEquals(listOf(CallEffect.AddVideo), upgraded.effects)
+        assertEquals(true, upgraded.state.localVideoTrack)
+        assertEquals(listOf(CallEffect.SetVideo(false)), machine.step(upgraded.state, CallEvent.SetVideo(false)).effects)
+        assertEquals(listOf(CallEffect.SetVideo(true)), machine.step(upgraded.state, CallEvent.SetVideo(true)).effects)
+
+        val noCamera = machine.step(upgraded.state, CallEvent.NoLocalVideoTrack).state
+        assertEquals(false, noCamera.localVideoTrack)
+
+        val videoCall = machine.step(idle, CallEvent.UserCall(c, sam, true)).state
+        assertEquals(true, videoCall.localVideoTrack)
+        val videoConnected = machine.step(machine.step(videoCall, fromSam(CallSignal.Answer(c, "ans"))).state, CallEvent.Media(MediaEvent.Connected)).state
+        assertEquals(listOf(CallEffect.SetVideo(true)), machine.step(videoConnected, CallEvent.SetVideo(true)).effects)
+    }
+
+    @Test
     fun controlsApplyWhileTheCallIsLiveAndAreIgnoredOtherwise() {
         listOf(outgoing, connecting, connected, reconnecting).forEach {
             machine.step(it, CallEvent.SetMuted(true)).let { t ->
@@ -384,7 +402,7 @@ class CallStateMachineTest {
             }
             machine.step(it, CallEvent.SetVideo(true)).let { t ->
                 assertEquals(true, t.state.media.localVideo)
-                assertEquals(listOf(CallEffect.SetVideo(true)), t.effects)
+                assertEquals(listOf(if (it === connected) CallEffect.AddVideo else CallEffect.SetVideo(true)), t.effects)
             }
             machine.step(it, CallEvent.SwitchCamera).let { t ->
                 assertEquals(CameraFacing.Back, t.state.media.camera)

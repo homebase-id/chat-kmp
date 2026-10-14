@@ -14,6 +14,8 @@ interface CallPushTarget {
     /** Completes with the call state once the ring has been processed; cancelled if it never will be. */
     fun pushRing(callId: String, from: String, sentAtMs: Long = 0): Deferred<CallState>
     fun onPushHangup(callId: String)
+    fun accept()
+    fun decline()
 }
 
 interface CallRingSink {
@@ -87,6 +89,14 @@ class CallRingCoordinator(
             if (label.isNullOrBlank() || label == peer) return@launch
             lock.withLock { if (ringingId == callId) sink.ring(callId, label) }
         }
+    }
+
+    fun accept(callId: String) {
+        if (ringingId == callId) target.accept()
+    }
+
+    fun decline(callId: String) {
+        if (ringingId == callId) target.decline()
     }
 
     override fun onRing(callId: String, from: String, sentAtMs: Long) {

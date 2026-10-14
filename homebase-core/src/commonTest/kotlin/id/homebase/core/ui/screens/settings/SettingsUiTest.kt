@@ -87,7 +87,6 @@ class SettingsUiTest {
         settings(routes = routes)
 
         val expected = listOf(
-            "profileCardButton" to "profileCard",
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",
@@ -107,10 +106,18 @@ class SettingsUiTest {
     }
 
     @Test
-    fun profileCardRowIsHiddenWhileTheCardIsDarkLaunched() = runComposeUiTest {
-        settings(actions = Routes().actions().copy(onProfileCard = null))
-        onNodeWithTag("securitySetupButton").assertExists()
-        onNodeWithTag("profileCardButton").assertDoesNotExist()
+    fun headerOpensTheCardsScreenWhenCardsAreEnabled() = runComposeUiTest {
+        val routes = Routes()
+        var edited = false
+        settings(routes = routes, onAction = { if (it is SettingsUiAction.ProfileInfoClicked) edited = true })
+        onNodeWithTag("profileHeader").assert(
+            SemanticsMatcher("click label is Your cards") {
+                it.config.getOrNull(SemanticsActions.OnClick)?.label == "Your cards"
+            },
+        )
+        tapRow("profileHeader")
+        assertEquals(listOf("profileCard"), routes.fired)
+        assertTrue(!edited)
     }
 
     @Test
@@ -130,9 +137,12 @@ class SettingsUiTest {
     }
 
     @Test
-    fun profileHeaderOpensProfileEdit() = runComposeUiTest {
+    fun headerFallsBackToProfileEditWhileTheCardIsDarkLaunched() = runComposeUiTest {
         var fired = false
-        settings(onAction = { if (it is SettingsUiAction.ProfileInfoClicked) fired = true })
+        settings(
+            actions = Routes().actions().copy(onProfileCard = null),
+            onAction = { if (it is SettingsUiAction.ProfileInfoClicked) fired = true },
+        )
         tapRow("profileHeader")
         assertTrue(fired)
     }

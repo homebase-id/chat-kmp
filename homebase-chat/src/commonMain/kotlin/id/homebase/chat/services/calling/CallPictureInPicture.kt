@@ -33,11 +33,21 @@ fun pipAspectRatio(size: Pair<Int, Int>?): Pair<Int, Int> {
 expect fun rememberInPictureInPicture(): Boolean
 
 /**
- * While [eligible], leaving the app keeps the call in a system PiP window sized from [remote]'s frames with mute
- * and end-call controls. Does nothing where the platform has no PiP.
+ * While [eligible], leaving the app keeps the call in a system PiP window sized from [remote]'s frames: that video
+ * with [local], when given, as a small self-view inset, and mute and end-call controls. [onRestore] runs no later than
+ * the window handing back to the app, so the full call screen returns rather than the minimized pill.
+ * Does nothing where the platform has no PiP.
  */
 @Composable
-expect fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit)
+expect fun CallPictureInPictureEffect(
+    eligible: Boolean,
+    remote: VideoHandle?,
+    local: VideoHandle?,
+    muted: Boolean,
+    onToggleMute: () -> Unit,
+    onHangup: () -> Unit,
+    onRestore: () -> Unit,
+)
 
 /** The PiP window only makes sense for an eligible call; once it is not, the activity must go back to full screen. */
 fun shouldLeavePictureInPicture(inPip: Boolean, eligible: Boolean): Boolean = inPip && !eligible

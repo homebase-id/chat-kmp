@@ -1,6 +1,8 @@
 package id.homebase.core.email
 
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.ui.navigation.BottomBarDefaultsMigration
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,11 +23,12 @@ import kotlin.uuid.Uuid
 class EmailPreferences(
     private val databaseManager: DatabaseManager,
     private val clock: Clock = Clock.System,
+    private val migrationScope: CoroutineScope? = null,
 ) {
 
     private val keyValue get() = databaseManager.keyValue
 
-    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
+    private val _iconVisible = MutableStateFlow(readIconVisible())
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
@@ -55,7 +58,7 @@ class EmailPreferences(
     }
 
     fun reset() {
-        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
+        _iconVisible.value = readIconVisible()
         _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
         _serverSupportsMail.value = readBooleanOrNull(SERVER_SUPPORTS_MAIL_KEY)
         lastAuthTimeMs = 0L
@@ -125,6 +128,12 @@ class EmailPreferences(
             keyValue.selectByKeyBootstrapSync(key) { _, data -> data }
         }.getOrNull() ?: return default
         return if (bytes.isEmpty()) default else bytes[0].toInt() != 0
+    }
+
+    private fun readIconVisible(): Boolean {
+        val visible = runCatching { BottomBarDefaultsMigration.iconVisible(keyValue, ICON_VISIBLE_KEY) }.getOrDefault(false)
+        BottomBarDefaultsMigration.persistIfPending(databaseManager, migrationScope)
+        return visible
     }
 
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)

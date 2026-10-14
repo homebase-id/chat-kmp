@@ -22,7 +22,9 @@ class WebRtcJavaCallEngineCycleTest {
     fun threeConnectedCallsLeaveNothingBehind() = runBlocking {
         val after = (1..3).map {
             connectAndHangUp()
-            ManagementFactory.getThreadMXBean().threadCount to footprintMb()
+            // Measured first: its subprocess starts the JDK's lazy "process reaper" thread, which must not land in the count.
+            val footprint = footprintMb()
+            ManagementFactory.getThreadMXBean().threadCount to footprint
         }
         println("after each call (threads, footprintMB): $after")
         val (firstThreads, firstFootprint) = after.first()

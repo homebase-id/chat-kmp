@@ -26,6 +26,9 @@ class JvmVideoHandleMemoryTest {
         val track = factory.createVideoTrack("video0", source)
         val handle = JvmVideoHandle()
         track.addSink(handle.sink)
+        // The engine's camera watchdog sits on the same local track and must release its reference too.
+        val counter = FrameCounter()
+        track.addSink(counter)
         // Incompressible pixels; footprint (what jetsam kills on) also counts compressed pages, which RSS hides.
         val noise = Random(7).nextBytes(WIDTH * HEIGHT)
         val images = HashSet<Int>()
@@ -54,6 +57,7 @@ class JvmVideoHandleMemoryTest {
             }
         } finally {
             track.removeSink(handle.sink)
+            track.removeSink(counter)
             handle.close()
             track.dispose()
             source.dispose()

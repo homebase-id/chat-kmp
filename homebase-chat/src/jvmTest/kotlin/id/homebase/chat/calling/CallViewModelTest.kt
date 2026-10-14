@@ -264,8 +264,22 @@ class CallViewModelTest {
         settle(1_001)
         rig.vm.minimize()
         assertTrue(rig.ui.pillVisible)
+        assertFalse(rig.ui.tileVisible)
         rig.vm.restore()
         assertFalse(rig.ui.pillVisible)
+    }
+
+    @Test
+    fun minimizedVideoCallFloatsATileInsteadOfThePill() = rigTest { rig ->
+        rig.me.startCall(sam, video = true)
+        settle()
+        rig.peer.accept()
+        settle(1_001)
+        rig.vm.minimize()
+        assertTrue(rig.ui.tileVisible)
+        assertFalse(rig.ui.pillVisible)
+        rig.vm.restore()
+        assertFalse(rig.ui.tileVisible)
     }
 
     @Test

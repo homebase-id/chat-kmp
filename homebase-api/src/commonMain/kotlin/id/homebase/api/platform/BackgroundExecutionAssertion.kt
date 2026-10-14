@@ -8,8 +8,8 @@ package id.homebase.api.platform
  * outbox row stays checked out until the user foregrounds the app again — observed as
  * 9h stalls for uploads that need 10 seconds (#1467).
  *
- * Ceiling: iOS grants tens of seconds (~30s), not the 5-minute `requestTimeoutMillis` a single
- * POST is allowed. An upload still running when the grant lapses suspends mid-POST exactly as
+ * Ceiling: iOS grants tens of seconds (~30s), while an upload POST may run as long as it
+ * keeps sending. An upload still running when the grant lapses suspends mid-POST exactly as
  * before — the expiry path logs it so the residual case stays distinguishable from the fix.
  * Eliminating that class needs a background NSURLSession, which is its own change.
  *

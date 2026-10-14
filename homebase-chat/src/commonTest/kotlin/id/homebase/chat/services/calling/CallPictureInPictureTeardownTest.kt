@@ -13,7 +13,7 @@ import kotlinx.coroutines.test.runTest
 class CallPictureInPictureTeardownTest {
     private class Bridge : CallPictureInPictureBridge {
         var stops = 0
-        override fun start(remoteTrack: Any, log: (String) -> Unit) = Unit
+        override fun start(remoteTrack: Any, inset: Boolean, insetMirrored: Boolean, onRestore: () -> Unit, log: (String) -> Unit): Any? = null
         override fun stop() { stops++ }
     }
 
