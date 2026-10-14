@@ -6,7 +6,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
-import org.koin.mp.KoinPlatformTools
+import id.homebase.api.ActivityProvider
 
 internal val BluetoothDeviceTypes = setOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET)
 internal val WiredDeviceTypes = setOf(
@@ -17,13 +17,14 @@ internal val WiredDeviceTypes = setOf(
 
 actual class CallAudioRouter actual constructor() {
     private val audio: AudioManager =
-        KoinPlatformTools.defaultContext().get().get<Context>().getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        ActivityProvider.requireApplicationContext().getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousMode = AudioManager.MODE_NORMAL
     private var focus: AudioFocusRequest? = null
     private var started = false
+    private var current = AudioRoute.Earpiece
 
     actual fun start(video: Boolean): AudioRoute {
-        if (started) return AudioRoute.Earpiece
+        if (started) return current
         started = true
         previousMode = audio.mode
         focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
@@ -49,6 +50,7 @@ actual class CallAudioRouter actual constructor() {
     }
 
     actual fun setRoute(route: AudioRoute) {
+        current = route
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val types = when (route) {
                 AudioRoute.Earpiece -> setOf(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)

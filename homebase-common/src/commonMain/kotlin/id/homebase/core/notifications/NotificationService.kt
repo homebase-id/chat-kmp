@@ -318,10 +318,6 @@ class NotificationService(
         notificationBackend.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
     }
 
-    /**
-     * Called from platform FCM service when a new token is received.
-     * Forwards to the same listener path as KMPNotifier's built-in service.
-     */
     @kotlin.concurrent.Volatile
     private var voipToken: String? = null
 
@@ -332,6 +328,10 @@ class NotificationService(
         scope.launch { notificationBackend.getPushToken()?.let { registerToken(it) } }
     }
 
+    /**
+     * Called from platform FCM service when a new token is received.
+     * Forwards to the same listener path as KMPNotifier's built-in service.
+     */
     fun onNewFcmToken(token: String) {
         Logger.i(tag = "NotificationService") { "New push token (from FCM service): $token" }
         registerToken(token)

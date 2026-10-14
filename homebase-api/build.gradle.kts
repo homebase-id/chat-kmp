@@ -197,6 +197,10 @@ kotlin {
         nativeMain.get().dependsOn(skiaMain)
         wasmJsMain.get().dependsOn(skiaMain)
 
+        val javaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(javaMain)
+        androidMain.get().dependsOn(javaMain)
+
         commonMain.dependencies {
             implementation(libs.atomicfu)
             implementation(libs.kotlinx.datetime)

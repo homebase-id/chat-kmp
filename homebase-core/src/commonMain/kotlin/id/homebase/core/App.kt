@@ -1,6 +1,8 @@
 package id.homebase.core
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import id.homebase.chat.calling.CallChrome
 import id.homebase.chat.calling.CallHost
 import id.homebase.chat.calling.CallWindowModel
@@ -59,7 +61,7 @@ fun App(
         CallChrome(
             callWindow = if (hostCallOverlay) null else koinInject<CallWindowModel>(),
             topInset = topInset,
-            callHost = { CallHost(viewModel = koinViewModel()) },
+            callHost = { content -> CallHost(viewModel = koinViewModel(), modifier = Modifier.fillMaxSize(), content = content) },
         ) { contentTopInset ->
             IdentityScopeProvider {
                 AppNavHost(

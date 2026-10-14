@@ -83,7 +83,7 @@ class LiveRelayCallFlowTest {
         assertEquals((1 until sent.size).toList(), sent.drop(1).map { (it as CallSignal.Offer).seq })
 
         val woken = peer(relay, sam, sleeping)
-        woken.controller.onPushRing("c-woken", frodo)
+        woken.controller.pushRing("c-woken", frodo)
         relay.connect(sleeping)
         await("incoming call with the offer") { woken.state.pendingOfferSdp != null }
 
@@ -151,7 +151,7 @@ class LiveRelayCallFlowTest {
         assertIs<CallSignal.Offer>(relay.lastRetained(sam, frodo))
 
         val woken = peer(relay, sam, sleeping)
-        woken.controller.onPushRing("c-two", frodo)
+        woken.controller.pushRing("c-two", frodo)
         relay.connect(sleeping)
         await("push-woken device holds the offer") { woken.state.pendingOfferSdp != null }
         assertEquals(candidates.size, woken.state.pendingOfferSdp.orEmpty().lines().count { it.startsWith("a=candidate:") })

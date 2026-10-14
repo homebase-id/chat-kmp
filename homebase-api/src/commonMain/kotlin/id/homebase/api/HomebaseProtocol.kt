@@ -10,6 +10,9 @@ object HomebaseProtocol {
     // Mirrors odin-core FileMetadata.MaxPayloadsCount — the server rejects a file with more.
     const val MaxPayloadsPerFile = 25
 
+    // odin-core can't take a payload over 4 GiB yet; AES-CBC adds up to one 16-byte block.
+    const val MaxPlaintextPayloadBytes = 4_294_967_295L - 16
+
     // Server's hard rejection threshold on EmbeddedThumb.content after
     // base64 decode — exceed it and the upload comes back 400
     // "Thumbnail size of N exceeds 1024" with errorCode collapsed into

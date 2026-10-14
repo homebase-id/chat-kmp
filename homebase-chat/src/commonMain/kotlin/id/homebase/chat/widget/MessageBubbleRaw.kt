@@ -78,7 +78,7 @@ import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
 import id.homebase.chat.calling.CallEventBubble
-import id.homebase.chat.calling.LocalCallBack
+import id.homebase.chat.calling.LocalCallStarter
 import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -361,7 +361,7 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.CallEvent -> {
-            val callBack = LocalCallBack.current?.takeIf { !displayOnly }
+            val callBack = LocalCallStarter.current?.takeIf { it.idle && !displayOnly }?.start
             val descriptor = content.descriptor
             CallEventBubble(
                 descriptor = descriptor,

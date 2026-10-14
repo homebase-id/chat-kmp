@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver
 import dev.onvoid.webrtc.PeerConnectionFactory
@@ -37,11 +40,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.timerTask
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 
@@ -51,8 +51,8 @@ class WebRtcJavaCallEngine(
     audioDevice: AudioDeviceModuleBase? = null,
     devicePreferences: CallDevicePreferences = InMemoryCallDevicePreferences(),
 ) : CallEngine {
-    private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
-    override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
+    private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
+    override val events: Flow<MediaEvent> = _events.receiveAsFlow()
 
     private val _local = MutableStateFlow<VideoHandle?>(null)
     private val _remote = MutableStateFlow<VideoHandle?>(null)
@@ -76,7 +76,7 @@ class WebRtcJavaCallEngine(
     private var localFrames: JvmVideoHandle? = null
     private var remoteFrames: JvmVideoHandle? = null
     private var remoteTrack: VideoTrack? = null
-    private val mapper = PeerEventMapper { _events.tryEmit(it) }
+    private val mapper = PeerEventMapper { _events.trySend(it) }
 
     // Native callbacks arrive on WebRTC threads; the lock keeps close() from disposing the connection under a live call.
     internal val lock = Any()
@@ -272,7 +272,7 @@ class WebRtcJavaCallEngine(
         synchronized(lock) {
             if (closed) return
             peer.getStats { report ->
-                val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes) }
+                val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes, it.id) }
                 videoStatsLines(entries, localTrack = videoTrack?.let { if (it.isEnabled) "enabled" else "disabled" }, previous = previousStats)
                     .forEach { line -> Logger.i("WebRtcJava") { line } }
                 if (!closed) sendLadder.onStats(entries)?.let { line -> Logger.i("WebRtcJava") { line } }
@@ -367,30 +367,18 @@ class WebRtcJavaCallEngine(
         }
     }
 
-    private suspend fun offer(options: RTCOfferOptions): String {
+    private suspend fun offer(options: RTCOfferOptions) = createLocal { peer.createOffer(options, it) }
+
+    private suspend fun createAnswer() = createLocal { peer.createAnswer(RTCAnswerOptions(), it) }
+
+    private suspend fun createLocal(create: (CreateSessionDescriptionObserver) -> Unit): String {
         checkOpen()
         val description = suspendCancellableCoroutine { cont ->
-            peer.createOffer(options, object : CreateSessionDescriptionObserver {
+            create(object : CreateSessionDescriptionObserver {
                 override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
                 override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
             })
         }
-        return setLocalRaised(description)
-    }
-
-    private suspend fun createAnswer(): String {
-        checkOpen()
-        val description = suspendCancellableCoroutine { cont ->
-            peer.createAnswer(RTCAnswerOptions(), object : CreateSessionDescriptionObserver {
-                override fun onSuccess(description: RTCSessionDescription) = cont.resume(description)
-                override fun onFailure(error: String) = cont.resumeWithException(CallEngineException(FailReason.Other, error))
-            })
-        }
-        return setLocalRaised(description)
-    }
-
-    private suspend fun setLocalRaised(created: RTCSessionDescription): String {
-        val description = RTCSessionDescription(created.sdpType, withH264SendLevel(created.sdp))
         setLocal(description)
         return description.sdp
     }

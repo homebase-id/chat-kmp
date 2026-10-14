@@ -95,7 +95,7 @@ class CallDesktopErgonomicsTest {
         muted = muted,
         localVideo = video,
         remoteVideo = video,
-        videos = if (video) CallVideos(FakeVideo(0xFF5C6BC0, "FB"), FakeVideo(0xFF26A69A, "SG")) else CallVideos(),
+        videos = if (video) CallVideos(FakeVideo("FB"), FakeVideo("SG")) else CallVideos(),
         connectedAtMs = System.currentTimeMillis() - 83_000,
     )
 
@@ -310,11 +310,12 @@ class CallDesktopErgonomicsTest {
     }
 
     @Test
-    fun aVideoCallRingingOutShowsYourOwnCameraFullBleedAndNoSelfTile() {
+    fun aVideoCallRingingOutFillsTheStageWithTheOneSelfView() {
         runDesktopComposeUiTest(960, 640) {
             showScreen(call(video = true, phase = CallPhase.Outgoing), Recorder())
-            onNodeWithTag(SelfStageTag).assertExists()
-            assertTrue(onAllNodesWithContentDescription("Your camera preview", substring = true).fetchSemanticsNodes().isEmpty())
+            assertTrue(onAllNodes(androidx.compose.ui.test.hasTestTag(SelfStageTag)).fetchSemanticsNodes().isEmpty())
+            val preview = onNode(androidx.compose.ui.test.hasContentDescription("Your camera preview", substring = true)).getBoundsInRoot()
+            assertTrue(preview.width.value > 900f && preview.height.value > 600f, "fills the stage: $preview")
         }
         runDesktopComposeUiTest(960, 640) {
             showScreen(call(video = true), Recorder())

@@ -1,5 +1,8 @@
 package id.homebase.chat.services.calling
 
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
 import com.shepeliev.webrtckmp.IceCandidate
 import com.shepeliev.webrtckmp.FacingMode
@@ -29,15 +32,13 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 /** [receiver] is set for remote video: iOS PiP needs the native RTCVideoTrack, which only the receiver exposes. */
 class KmpVideoHandle(
@@ -53,8 +54,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val router = CallAudioRouter()
 
-    private val _events = MutableSharedFlow<MediaEvent>(extraBufferCapacity = 64)
-    override val events: SharedFlow<MediaEvent> = _events.asSharedFlow()
+    private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
+    override val events: Flow<MediaEvent> = _events.receiveAsFlow()
 
     private val _local = MutableStateFlow<VideoHandle?>(null)
     private val _remote = MutableStateFlow<VideoHandle?>(null)
@@ -62,7 +63,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override val remoteVideo: StateFlow<VideoHandle?> = _remote.asStateFlow()
 
     init {
-        capLocalVideoSource()
+        configureWebRtc()
     }
 
     // Every URL as given by the device's own server; nothing is derived or added.
@@ -75,7 +76,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private var videoTrack: VideoTrack? = null
     private var videoSender: RtpSender? = null
     private val closed = AtomicBoolean(false)
-    private val mapper = PeerEventMapper { _events.tryEmit(it) }
+    private val mapper = PeerEventMapper { _events.trySend(it) }
     private val stopPipelineWatch = watchVideoPipeline()
     private val sendLadder = SendResolutionLadder { scale -> videoSender?.let { scaleVideoSender(it, scale) } }
 
@@ -103,7 +104,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         while (!closed.load()) {
             delay(5_000)
             val stats = runCatching { peer.getStats()?.stats?.values }.getOrNull() ?: continue
-            val entries = stats.map { StatsEntry(it.type, it.members) }
+            val entries = stats.map { StatsEntry(it.type, it.members, it.id) }
             videoStatsLines(entries, localTrack = videoTrack?.state?.value?.toString(), previous = previous)
                 .forEach { line -> Logger.i("WebRtcKmp") { line } }
             sendLadder.onStats(entries)?.let { line -> Logger.i("WebRtcKmp") { line } }
@@ -130,7 +131,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private suspend fun addLocalMedia(video: Boolean) {
         if (closed.load()) throw CallEngineException(FailReason.Other, "engine closed")
         if (stream != null) return
-        _events.tryEmit(MediaEvent.RouteChanged(router.start(video)))
+        _events.trySend(MediaEvent.RouteChanged(router.start(video)))
         val media = try {
             MediaDevices.getUserMedia {
                 audio(true)
@@ -208,9 +209,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private suspend fun createAnswer(): String = setLocal(peer.createAnswer(OfferAnswerOptions()))
 
     private suspend fun setLocal(created: SessionDescription): String {
-        val description = SessionDescription(created.type, withH264SendLevel(created.sdp))
-        peer.setLocalDescription(description)
-        return description.sdp
+        peer.setLocalDescription(created)
+        return created.sdp
     }
 
     override fun setMuted(muted: Boolean) {
@@ -242,11 +242,19 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         stopPipelineWatch()
+        val start = TimeSource.Monotonic.markNow()
         runCatching { stream?.tracks?.forEach { it.stop() } }
+        val tracks = start.elapsedNow()
         runCatching { stream?.release() }
+        val released = start.elapsedNow()
         runCatching { peer.close() }
+        val peerClosed = start.elapsedNow()
         router.stop()
         _local.value = null
         _remote.value = null
+        Logger.i("WebRtcKmp") {
+            "engine closed in ${start.elapsedNow().inWholeMilliseconds} ms: tracks=${tracks.inWholeMilliseconds} " +
+                "release=${(released - tracks).inWholeMilliseconds} peer=${(peerClosed - released).inWholeMilliseconds}"
+        }
     }
 }

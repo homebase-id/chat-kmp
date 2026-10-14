@@ -19,7 +19,10 @@ class CallActionReceiver : BroadcastReceiver(), KoinComponent {
                 IncomingCallNotifier(context).cancel(callId, reason = "declineAction")
                 if (state.callId == callId && state.phase == CallPhase.Incoming) callService.decline()
             }
-            IncomingCallNotifier.ACTION_HANGUP -> if (state.isActive) callService.hangup()
+            IncomingCallNotifier.ACTION_HANGUP -> {
+                val callId = intent.getStringExtra(IncomingCallNotifier.EXTRA_CALL_ID) ?: return
+                if (state.callId == callId && state.isActive) callService.hangup()
+            }
         }
     }
 }

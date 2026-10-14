@@ -220,7 +220,7 @@ compose.desktop {
                 packageName = "Homebase Chat"
                 bundleID = "id.homebase.feed"
                 entitlementsFile.set(project.file("packaging/macos/entitlements.plist"))
-                runtimeEntitlementsFile.set(project.file("packaging/macos/runtime-entitlements.plist"))
+                runtimeEntitlementsFile.set(project.file("packaging/macos/entitlements.plist"))
 
                 // Add Info.plist configuration for macOS
                 infoPlist {

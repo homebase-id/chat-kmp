@@ -3,13 +3,16 @@ package id.homebase.chat.services.calling
 import com.shepeliev.webrtckmp.MediaStreamConstraintsBuilder
 import com.shepeliev.webrtckmp.RtpSender
 
-/** Caps what the local camera source hands the encoder at [SendVideoCap]; must run before the first PeerConnection. */
-internal expect fun capLocalVideoSource()
+/**
+ * One-time PeerConnectionFactory setup; must run before the first PeerConnection. iOS caps what the camera source hands
+ * the encoder at [SendVideoCap]; Android routes libwebrtc's own log into homebase.log.
+ */
+internal expect fun configureWebRtc()
 
 /** Asks for the camera at [SendVideoCap] where the platform picks its capture format safely, else at its default. */
 internal expect fun MediaStreamConstraintsBuilder.requestCamera()
 
-/** Bounds the video sender to [SendVideoCap]'s bitrate window with BALANCED degradation, so WebRTC adapts resolution. */
+/** Bounds the video sender to [SendVideoCap]'s bitrate window keeping frame rate: WebRTC adapts resolution only. */
 internal expect fun configureVideoSender(sender: RtpSender)
 
 /** Sets every encoding's scaleResolutionDownBy, as [SendResolutionLadder] decides. */

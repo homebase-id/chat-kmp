@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.profile
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE
 import id.homebase.api.client.profile.ProfileAttribute
-import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.util.compareStringUuId
@@ -35,15 +34,6 @@ sealed interface ProfileAudience {
         }
 
     val circleIds: List<String> get() = (this as? Circles)?.let { it.ids + it.otherIds }?.sorted().orEmpty()
-}
-
-private val PUBLIC_BY_DEFAULT = setOf(ProfileAttributeTypes.NAME, ProfileAttributeTypes.BIO_SUMMARY)
-
-/** A detail nobody has set yet: name and bio start Public; anything personal starts with the Contacts circles, or Only me without them. */
-internal fun defaultAudience(type: String, circles: List<CardCircle>): ProfileAudience = when {
-    type in PUBLIC_BY_DEFAULT -> ProfileAudience.Public
-    circles.isEmpty() -> ProfileAudience.OnlyMe
-    else -> ProfileAudience.Circles(circles.map { it.id }.toSet())
 }
 
 /** Connected with no circles means every connection, so it reads as every Contacts circle selected. */
@@ -89,4 +79,35 @@ internal suspend fun ProfileRepository.saveWithAudience(
             data = data,
             acl = audience.toAcl(),
         )
+}
+
+// Keeps previous's circle spelling and order, so an undo is byte-identical.
+internal suspend fun ProfileRepository.restoreAcl(current: ProfileAttribute, previous: ProfileAttribute): ProfileAttribute {
+    val response = save(
+        type = current.type,
+        data = current.data,
+        visibility = previous.visibility,
+        knownId = current.id,
+        knownVersionTag = current.versionTag,
+        priority = previous.priority,
+        circleIds = previous.acl.circleIdList.orEmpty(),
+    )
+    return current.copy(versionTag = response.versionTag, visibility = previous.visibility, acl = previous.acl)
+}
+
+// Every circle gone: only the owner could see it, while Connected with no circles would mean every connection.
+internal fun ProfileAudience.keepingOtherCircles(kept: (String) -> Boolean): ProfileAudience {
+    if (this !is ProfileAudience.Circles) return this
+    val other = otherIds.filter(kept).toSet()
+    return if (ids.isEmpty() && other.isEmpty() && otherIds.isNotEmpty()) ProfileAudience.OnlyMe else copy(otherIds = other)
+}
+
+internal fun ProfileAttribute.keepingCircles(kept: (String) -> Boolean): ProfileAttribute {
+    val stored = acl.circleIdList.orEmpty()
+    val left = stored.filter(kept)
+    return when {
+        left.size == stored.size -> this
+        left.isEmpty() -> copy(visibility = ProfileVisibility.OWNER, acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.OWNER.wireValue))
+        else -> copy(acl = acl.copy(circleIdList = left))
+    }
 }
