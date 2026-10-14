@@ -52,7 +52,8 @@ private class ResizeResettingDecoder(codecName: String, type: VideoCodecMimeType
         return super.initDecode(settings, callback)
     }
 
-    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo): VideoCodecStatus {
+    // libwebrtc's JNI wrapper passes a null DecodeInfo; a non-null Kotlin parameter throws into native and aborts.
+    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo?): VideoCodecStatus {
         val current = settings
         val callback = callback
         val w = frame.encodedWidth
