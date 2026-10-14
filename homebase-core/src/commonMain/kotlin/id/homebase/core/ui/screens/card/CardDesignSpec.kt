@@ -18,7 +18,11 @@ data class CardDesignSpec(
     val options: Set<CardOption>,
     val portraitSlots: Int = 0,
     val schemes: List<CardColourScheme> = emptyList(),
-)
+    val orderedKinds: List<String> = CardDesignSpecs.ORDERED_KINDS,
+) {
+    /** Chat and moments always render; links only when the card has some. */
+    fun reorderable(hasLinks: Boolean): List<String> = orderedKinds.filter { hasLinks || it != "links" }
+}
 
 /** Everything but the accent, set together so the ink always reads on its ground; [id] names it in the UI. */
 data class CardColourScheme(
@@ -44,6 +48,8 @@ object CardDesignSpecs {
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
     val ORDERED_KINDS = BLOCK_KINDS - "posts"
 
+    // These renderers pin chat and socials outside the ordered list.
+    private val PINNED_CHAT_KINDS = listOf("links", "moments")
     private val ALL_OPTIONS = CardOption.entries.toSet()
 
     // Poster's ground tints a photo and its paper section is set in the ground colour, so it only takes dark grounds.
@@ -76,6 +82,7 @@ object CardDesignSpecs {
         CardDesignSpec(
             CardDesign.COLLAGE,
             ALL_OPTIONS,
+            orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 2,
             schemes = listOf(
                 CardColourScheme("sage", "#DDE5D3", "#26331F", "#56664A", "#FFFFFF", "#26331F"),
@@ -90,6 +97,7 @@ object CardDesignSpecs {
         CardDesignSpec(
             CardDesign.DOSSIER,
             ALL_OPTIONS,
+            orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 1,
             schemes = listOf(
                 CardColourScheme("ink", "#0D1B2A", "#E3ECF5", "#8EA3B8", "#1B2E44", "#E3ECF5"),
