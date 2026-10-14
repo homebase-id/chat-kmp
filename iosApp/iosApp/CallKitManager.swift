@@ -328,6 +328,8 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
             view.onFirstRenderedFrame = { [weak self] ms in self?.log("pip renderer got frames remote after \(ms)ms") }
             insetView?.onFirstRenderedFrame = { [weak self] ms in self?.log("pip renderer got frames self after \(ms)ms") }
             vc.view.addSubview(view)
+            // Attached now so the first frame sizes the window before it opens; the view converts and enqueues only while rendering.
+            remote.add(view)
             if let insetView {
                 vc.view.addSubview(insetView)
                 insetView.layer.cornerRadius = 8
@@ -407,18 +409,9 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
     }
 
     // Telegram's rule: frames are converted and enqueued only while the window is up, not for the whole call.
-    private func attachRenderers() {
-        guard let remoteView else { return }
-        remoteView.setRendering(true)
-        selfView?.setRendering(true)
-        track?.add(remoteView)
-    }
-
-    private func detachRenderers() {
-        guard let remoteView else { return }
-        track?.remove(remoteView)
-        remoteView.setRendering(false)
-        selfView?.setRendering(false)
+    private func setRendering(_ on: Bool) {
+        remoteView?.setRendering(on)
+        selfView?.setRendering(on)
     }
 
     private func startCounters() {
@@ -440,7 +433,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
 
     func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) {
         event("will start")
-        if c === controller { attachRenderers() }
+        if c === controller { setRendering(true) }
     }
     func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) {
         event("started")
@@ -452,7 +445,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
     }
     func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         event("failed to start: \(error)")
-        if c === controller { detachRenderers() }
+        if c === controller { setRendering(false) }
     }
     func pictureInPictureController(
         _ c: AVPictureInPictureController,
@@ -465,7 +458,7 @@ final class PictureInPictureManager: NSObject, CallPictureInPictureBridge, AVPic
 
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
         event("stopped")
-        if c === controller { detachRenderers() }
+        if c === controller { setRendering(false) }
         stopping.filter { $0.controller === c }.forEach { $0.release() }
         stopping.removeAll { $0.controller === c }
     }
@@ -524,10 +517,24 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
     }
 
     func renderFrame(_ frame: RTCVideoFrame?) {
+        guard let frame else { return }
+        // Size and rotation track every frame, rendering or not, so the PiP window opens at the video's aspect and orientation.
+        let quarterTurn = frame.rotation == ._90 || frame.rotation == ._270
+        let displaySize = quarterTurn ? CGSize(width: CGFloat(frame.height), height: CGFloat(frame.width)) : CGSize(width: CGFloat(frame.width), height: CGFloat(frame.height))
         lock.lock()
+        let changed = frame.rotation != rotation || displaySize != size
+        let first = size == .zero
+        rotation = frame.rotation
+        size = displaySize
         let rendering = renderingSince != nil
         lock.unlock()
-        guard rendering, let frame, let pixelBuffer = pixelBuffer(frame.buffer), let sample = Self.sampleBuffer(pixelBuffer) else { return }
+        if changed {
+            DispatchQueue.main.async { [self] in
+                setNeedsLayout()
+                if first { onSize(displaySize) }
+            }
+        }
+        guard rendering, let pixelBuffer = pixelBuffer(frame.buffer), let sample = Self.sampleBuffer(pixelBuffer) else { return }
         let renderer = displayLayer.sampleBufferRenderer
         lock.lock()
         if !(frame.buffer is RTCCVPixelBuffer) { converted += 1 }
@@ -541,24 +548,14 @@ final class SampleBufferVideoView: UIView, RTCVideoRenderer {
         } else {
             notReady += 1
         }
-        let quarterTurn = frame.rotation == ._90 || frame.rotation == ._270
-        let displaySize = quarterTurn ? CGSize(width: CGFloat(frame.height), height: CGFloat(frame.width)) : CGSize(width: CGFloat(frame.width), height: CGFloat(frame.height))
-        let changed = frame.rotation != rotation || displaySize != size
-        let first = size == .zero
-        rotation = frame.rotation
-        size = displaySize
         var firstRenderedAfterMs: Int?
         if !firstFrameReported, let renderingSince {
             firstFrameReported = true
             firstRenderedAfterMs = Int((CACurrentMediaTime() - renderingSince) * 1000)
         }
         lock.unlock()
-        if changed || firstRenderedAfterMs != nil {
-            DispatchQueue.main.async { [self] in
-                if changed { setNeedsLayout() }
-                if changed && first { onSize(displaySize) }
-                if let firstRenderedAfterMs { onFirstRenderedFrame(firstRenderedAfterMs) }
-            }
+        if let firstRenderedAfterMs {
+            DispatchQueue.main.async { [self] in onFirstRenderedFrame(firstRenderedAfterMs) }
         }
     }
 
