@@ -33,7 +33,37 @@ private class LowLatencyHardwareDecoderFactory : HardwareVideoDecoderFactory(nul
         val (info, colorFormat) = candidates.firstOrNull { (info, _) -> info.name.endsWith(".low_latency") }
             ?: candidates.firstOrNull()
             ?: return null
-        return AndroidVideoDecoder(LowLatencyCodecs, info.name, type, colorFormat, null)
+        return ResizeResettingDecoder(info.name, type, colorFormat)
+    }
+}
+
+// AndroidVideoDecoder's own resize path (reinitDecode) drops the old codec with frames still inside it but keeps their
+// start times in frameInfos, which it pairs FIFO with later outputs: each leaked entry adds a frame interval to every
+// decode time from then on (Redmi: +66 ms after a ladder climb), and VCMTiming adds that to the playout delay.
+// release() is the only path that clears frameInfos, so a resize goes through release() + initDecode() instead.
+private class ResizeResettingDecoder(codecName: String, type: VideoCodecMimeType, colorFormat: Int) :
+    AndroidVideoDecoder(LowLatencyCodecs, codecName, type, colorFormat, null) {
+    private var settings: VideoDecoder.Settings? = null
+    private var callback: VideoDecoder.Callback? = null
+
+    override fun initDecode(settings: VideoDecoder.Settings, callback: VideoDecoder.Callback): VideoCodecStatus {
+        this.settings = settings
+        this.callback = callback
+        return super.initDecode(settings, callback)
+    }
+
+    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo): VideoCodecStatus {
+        val current = settings
+        val callback = callback
+        val resized = frame.encodedWidth * frame.encodedHeight > 0 &&
+            current != null && (frame.encodedWidth != current.width || frame.encodedHeight != current.height)
+        if (resized && callback != null) {
+            Logger.i("WebRtcKmp") { "decoder resize ${current.width}x${current.height} -> ${frame.encodedWidth}x${frame.encodedHeight}: release + init" }
+            release().takeIf { it != VideoCodecStatus.OK }?.let { return it }
+            initDecode(VideoDecoder.Settings(current.numberOfCores, frame.encodedWidth, frame.encodedHeight), callback)
+                .takeIf { it != VideoCodecStatus.OK }?.let { return it }
+        }
+        return super.decode(frame, info)
     }
 }
 
@@ -42,6 +72,8 @@ private object LowLatencyCodecs : MediaCodecWrapperFactory {
 }
 
 private class LowLatencyCodec(private val codec: MediaCodec) : MediaCodecWrapper {
+    @Volatile private var queued = 0
+    @Volatile private var output = 0
     override fun configure(format: MediaFormat, surface: Surface?, crypto: MediaCrypto?, flags: Int) {
         val mime = format.getString(MediaFormat.KEY_MIME)
         val keys = lowLatencyKeys(codec.codecInfo, mime)
@@ -61,11 +93,17 @@ private class LowLatencyCodec(private val codec: MediaCodec) : MediaCodecWrapper
     override fun start() = codec.start()
     override fun flush() = codec.flush()
     override fun stop() = codec.stop()
-    override fun release() = codec.release()
+    override fun release() {
+        Logger.i("WebRtcKmp") { "decoder ${codec.name} released after $queued inputs, $output outputs" }
+        codec.release()
+    }
     override fun dequeueInputBuffer(timeoutUs: Long) = codec.dequeueInputBuffer(timeoutUs)
-    override fun queueInputBuffer(index: Int, offset: Int, size: Int, presentationTimeUs: Long, flags: Int) =
+    override fun queueInputBuffer(index: Int, offset: Int, size: Int, presentationTimeUs: Long, flags: Int) {
         codec.queueInputBuffer(index, offset, size, presentationTimeUs, flags)
-    override fun dequeueOutputBuffer(info: MediaCodec.BufferInfo, timeoutUs: Long) = codec.dequeueOutputBuffer(info, timeoutUs)
+        queued++
+    }
+    override fun dequeueOutputBuffer(info: MediaCodec.BufferInfo, timeoutUs: Long) =
+        codec.dequeueOutputBuffer(info, timeoutUs).also { if (it >= 0) output++ }
     override fun releaseOutputBuffer(index: Int, render: Boolean) = codec.releaseOutputBuffer(index, render)
     override fun getInputFormat(): MediaFormat = codec.inputFormat
     override fun getOutputFormat(): MediaFormat = codec.outputFormat
