@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook
 
+import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -161,7 +162,7 @@ fun ContactBookContent(
                             items(entries, key = { it.uniqueId.toString() }) { entry ->
                                 val domain = entry.odinId?.lowercase()
                                 val state = domain?.let { uiState.contactStates[it] }
-                                val directions = domain?.let { uiState.requestDirections[it] }.orEmpty()
+                                val direction = domain?.let { uiState.requestDirections[it] }
                                 ContactBookRow(
                                     entry = entry,
                                     onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
@@ -170,12 +171,8 @@ fun ContactBookContent(
                                     // filter (a New contact is still a connection).
                                     connected = domain in uiState.connectedOdinIds,
                                     trailing = when {
-                                        directions.isNotEmpty() -> {
-                                            {
-                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    directions.forEach { RequestDirectionIcon(it) }
-                                                }
-                                            }
+                                        direction != null -> {
+                                            { RequestDirectionIcon(direction) }
                                         }
 
                                         state == null -> null

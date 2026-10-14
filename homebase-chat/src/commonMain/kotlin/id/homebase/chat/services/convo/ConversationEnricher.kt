@@ -1,5 +1,7 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.chat.services.requests.RequestDirection
+import id.homebase.chat.services.requests.pendingRequestDirection
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.initials
@@ -61,12 +63,17 @@ class ConversationEnricher {
             val other = otherParticipants.first()
             val connection = connectionMap[other]
             val connected = connection?.status == ConnectionStatus.Connected
+            val direction = pendingRequestDirection(
+                connection?.status,
+                hasIncoming = other in incomingRequestSenders,
+                hasOutgoing = other in outgoingRequestRecipients,
+            )
 
             val status = when {
                 connected -> OneOnOneConnectionStatus.Connected(other)
-                incomingRequestSenders.contains(other) ->
+                direction == RequestDirection.INCOMING ->
                     OneOnOneConnectionStatus.IncomingRequestPending(other)
-                outgoingRequestRecipients.contains(other) ->
+                direction == RequestDirection.OUTGOING ->
                     OneOnOneConnectionStatus.OutgoingRequestPending(other)
                 !connectionStatusKnown -> OneOnOneConnectionStatus.Unknown(other)
                 else -> OneOnOneConnectionStatus.NotConnected(other)

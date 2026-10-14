@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactExperience
@@ -11,7 +12,6 @@ import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.ContactDraft
-import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid

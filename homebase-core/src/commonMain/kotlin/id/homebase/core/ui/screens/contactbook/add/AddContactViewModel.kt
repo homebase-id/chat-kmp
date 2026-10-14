@@ -25,7 +25,8 @@ import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.isTerminal
-import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
+import id.homebase.chat.services.requests.RequestDirection
+import id.homebase.chat.services.requests.pendingRequestDirection
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
@@ -106,14 +107,18 @@ class AddContactViewModel(
             // Taken once: the relation below is derived from it, so the two can't disagree.
             val incomingRequest = domain
                 ?.let { d -> incoming.firstOrNull { it.senderOdinId.domainName.lowercase() == d } }
-            val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
+            val direction = pendingRequestDirection(
+                status,
+                hasIncoming = incomingRequest != null,
+                hasOutgoing = outgoing.any { it.recipientOdinId.domainName.lowercase() == domain },
+            )
+            val pendingIncoming = direction == RequestDirection.INCOMING
             val relation = when {
                 domain == null -> IdentityRelation.NONE
                 status == ConnectionStatus.Connected -> IdentityRelation.CONNECTED
                 status == ConnectionStatus.Blocked -> IdentityRelation.BLOCKED
                 pendingIncoming -> IdentityRelation.INCOMING_PENDING
-                outgoing.any { it.recipientOdinId.domainName.lowercase() == domain } ->
-                    IdentityRelation.OUTGOING_PENDING
+                direction == RequestDirection.OUTGOING -> IdentityRelation.OUTGOING_PENDING
                 else -> IdentityRelation.NONE
             }
             val alreadySaved = domain != null &&

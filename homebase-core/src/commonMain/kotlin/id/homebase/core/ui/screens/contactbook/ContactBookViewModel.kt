@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.contactbook
 
+import id.homebase.chat.services.requests.RequestDirection
+import id.homebase.chat.services.requests.pendingRequestDirection
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -314,27 +316,34 @@ class ContactBookViewModel(
         // identity. The service's UI-model names are placeholders ("TODO …"), so we deliberately
         // resolve names through the contact book / domain, not those fields.
         fun pendingEntry(domain: String) = contactsByOdin[domain.lowercase()] ?: syntheticContact(domain)
-        val incomingRequests = requestsData.incoming.map { req ->
-            PendingRequestEntry(
-                entry = pendingEntry(req.senderOdinId.domainName),
-                direction = RequestDirection.INCOMING,
-                receivedAtMs = req.receivedTimestampMilliseconds.milliseconds,
-            )
-        }
-        val outgoingRequests = requestsData.outgoing.map { req ->
-            PendingRequestEntry(
-                entry = pendingEntry(req.recipientOdinId.domainName),
-                direction = RequestDirection.OUTGOING,
-                receivedAtMs = req.receivedTimestampMilliseconds.milliseconds,
-            )
-        }
+        val statusByDomain = contactsData.connections.statusByDomain()
+        val incomingDomains = requestsData.incoming.map { it.senderOdinId.domainName.lowercase() }.toSet()
+        val outgoingDomains = requestsData.outgoing.map { it.recipientOdinId.domainName.lowercase() }.toSet()
+        val requestDirections = (incomingDomains + outgoingDomains).mapNotNull { d ->
+            pendingRequestDirection(statusByDomain[d], d in incomingDomains, d in outgoingDomains)?.let { d to it }
+        }.toMap()
+        fun isLive(domain: String, direction: RequestDirection) = requestDirections[domain.lowercase()] == direction
+        val incomingRequests = requestsData.incoming
+            .filter { isLive(it.senderOdinId.domainName, RequestDirection.INCOMING) }
+            .map { req ->
+                PendingRequestEntry(
+                    entry = pendingEntry(req.senderOdinId.domainName),
+                    direction = RequestDirection.INCOMING,
+                    receivedAtMs = req.receivedTimestampMilliseconds.milliseconds,
+                )
+            }
+        val outgoingRequests = requestsData.outgoing
+            .filter { isLive(it.recipientOdinId.domainName, RequestDirection.OUTGOING) }
+            .map { req ->
+                PendingRequestEntry(
+                    entry = pendingEntry(req.recipientOdinId.domainName),
+                    direction = RequestDirection.OUTGOING,
+                    receivedAtMs = req.receivedTimestampMilliseconds.milliseconds,
+                )
+            }
         val requests = (incomingRequests + outgoingRequests)
             .filter { it.entry.matches(ui.query) }
             .sortedByDescending { it.receivedAtMs }
-        val requestDirections = (incomingRequests + outgoingRequests)
-            .mapNotNull { r -> r.entry.odinId?.lowercase()?.let { it to r.direction } }
-            .groupBy({ it.first }, { it.second })
-            .mapValues { (_, directions) -> directions.distinct().sorted() }
 
         ContactBookUiState(
             selectedTab = ui.tab,
@@ -345,7 +354,7 @@ class ContactBookViewModel(
             knownContacts = knownContacts,
             circleContacts = circleContacts,
             blockedContacts = blockedContacts,
-            connectionStatuses = contactsData.connections.statusByDomain(),
+            connectionStatuses = statusByDomain,
             contactStates = contactStates,
             statesLoading = circlesData.loading,
             enrollmentCandidateCount = ui.enrollmentCandidates,

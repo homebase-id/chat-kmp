@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.chat.services.requests.RequestDirection
 import id.homebase.core.ui.screens.contactbook.launchCircleToggle
 import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
 import id.homebase.core.ui.screens.contactbook.toggleBlockedReason
@@ -54,10 +55,9 @@ import id.homebase.core.ui.screens.contactbook.personalCirclesFor
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
-import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
+import id.homebase.chat.services.requests.pendingRequestDirection
 import id.homebase.core.ui.screens.contactbook.isPersonalKind
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
-import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
@@ -260,14 +260,13 @@ class ContactDetailViewModel(
                     bundle.incoming.firstOrNull { it.senderOdinId.domainName.equals(d, ignoreCase = true) }
                 }
                 val requestDirection = domain?.let { d ->
-                    when {
-                        incomingRequest != null -> RequestDirection.INCOMING
-                        bundle.outgoing.any { it.recipientOdinId.domainName.equals(d, ignoreCase = true) } ->
-                            RequestDirection.OUTGOING
-                        else -> null
-                    }
+                    pendingRequestDirection(
+                        status,
+                        hasIncoming = incomingRequest != null,
+                        hasOutgoing = bundle.outgoing.any { it.recipientOdinId.domainName.equals(d, ignoreCase = true) },
+                    )
                 }
-                val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
+                val pendingIncoming = requestDirection == RequestDirection.INCOMING
                 // User circles only — app default circles are surfaced through the connection
                 // status, not as chips. Real membership comes from circ.circlesFor and pending
                 // deposits from the registration, so both update with the next refresh.

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.CallMade
 import androidx.compose.material.icons.automirrored.outlined.CallReceived
@@ -14,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.ContactState
-import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.resources.MR
 import id.homebase.resources.contact_request_incoming
 import id.homebase.resources.contact_request_outgoing

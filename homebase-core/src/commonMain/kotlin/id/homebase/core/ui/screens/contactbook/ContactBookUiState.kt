@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.contactbook
 
+import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.connections.CircleWithMembers
@@ -36,14 +37,6 @@ enum class ContactTab {
 
 /** Pills within [ContactTab.KNOWN]. */
 enum class ContactFilter { ALL, CIRCLES, BLOCKED }
-
-/** Which way a pending connection request points relative to the signed-in identity. */
-enum class RequestDirection {
-    /** Someone wants to connect with me (I can Accept / Reject). */
-    INCOMING,
-    /** I asked to connect with them (I can Cancel). */
-    OUTGOING,
-}
 
 /**
  * A pending connection request projected onto a [ContactBookEntry] for the "Connection requests"
@@ -192,8 +185,8 @@ data class ContactBookUiState(
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
-    /** Per-domain (lowercased) pending request directions, for the row's trailing slot. */
-    val requestDirections: Map<String, List<RequestDirection>> = emptyMap(),
+    /** Per-domain (lowercased) live request direction, for the row's trailing slot. */
+    val requestDirections: Map<String, RequestDirection> = emptyMap(),
     /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
     /** Circles the review sheet offers, in its three groups. */
