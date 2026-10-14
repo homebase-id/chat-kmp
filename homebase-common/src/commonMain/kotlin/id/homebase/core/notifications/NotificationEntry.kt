@@ -89,6 +89,9 @@ class NotificationEntry(
         }
     }
 
+    /** Called from the iOS PushKit delegate when the VoIP token changes. */
+    fun onVoipToken(token: String) = notificationService.onVoipToken(token)
+
     /** Swift-callable bridge for [onPushArrived]. */
     fun onPushArrivedAsync(
         title: String?,

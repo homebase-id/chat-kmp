@@ -1,6 +1,8 @@
 package id.homebase.core.vault
 
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.ui.navigation.BottomBarDefaultsMigration
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,11 +12,12 @@ import kotlin.uuid.Uuid
 class VaultPreferences(
     private val databaseManager: DatabaseManager,
     private val clock: Clock = Clock.System,
+    private val migrationScope: CoroutineScope? = null,
 ) {
 
     private val keyValue get() = databaseManager.keyValue
 
-    private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
+    private val _iconVisible = MutableStateFlow(readIconVisible())
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
@@ -44,7 +47,7 @@ class VaultPreferences(
     }
 
     fun reset() {
-        _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
+        _iconVisible.value = readIconVisible()
         _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
         lastAuthTimeMs = 0L
         lastBackgroundTimeMs = 0L
@@ -108,6 +111,9 @@ class VaultPreferences(
         }.getOrNull() ?: return default
         return if (bytes.isEmpty()) default else bytes[0].toInt() != 0
     }
+
+    private fun readIconVisible(): Boolean =
+        BottomBarDefaultsMigration.resolveIconVisible(databaseManager, ICON_VISIBLE_KEY, migrationScope)
 
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 

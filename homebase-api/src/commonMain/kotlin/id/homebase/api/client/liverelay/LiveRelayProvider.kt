@@ -21,13 +21,19 @@ class LiveRelayProvider(
 
     /**
      * Relay [blob] to [recipients] (domain strings) on [channelKey]. Returns true on 2xx.
-     * Shared-secret-encrypted like every other V2 JSON POST.
+     * Shared-secret-encrypted like every other V2 JSON POST. [wakeCause] attributes the send in [BgTrace]; null skips it.
      */
-    suspend fun relay(channelKey: String, recipients: List<String>, blob: String): Boolean {
+    suspend fun relay(
+        channelKey: String,
+        recipients: List<String>,
+        blob: String,
+        push: LiveRelayPush? = null,
+        wakeCause: String? = "live-share-send",
+    ): Boolean {
         val creds = requireCreds()
         val url = apiUrl(creds.domain, "/live-relay")
         val body = OdinSystemSerializer.serialize(
-            LiveRelayRequest(channelKey = channelKey, recipients = recipients, blob = blob)
+            LiveRelayRequest(channelKey = channelKey, recipients = recipients, blob = blob, push = push)
         )
         val response = encryptedPostJson(
             url = url,
@@ -39,9 +45,7 @@ class LiveRelayProvider(
         Logger.i(tag = TAG) {
             "SEND ch=$channelKey n=${recipients.size} bytes=${blob.length} -> ${response.status}"
         }
-        // #1109 background wake-cause attribution: a location fix that produced an outbound live-share
-        // relay (vs a plain history point). Greppable alongside the other background wake causes.
-        BgTrace.log(BgTrace.wake("live-share-send", "ch=$channelKey -> ${response.status}"))
+        if (wakeCause != null) BgTrace.log(BgTrace.wake(wakeCause, "ch=$channelKey -> ${response.status}"))
         return ok
     }
 
@@ -55,4 +59,14 @@ data class LiveRelayRequest(
     val channelKey: String,
     val recipients: List<String>,
     val blob: String,
+    val push: LiveRelayPush? = null,
+)
+
+/** Optional wake-up riding a relay. `kind` is one of `notify`, `ring`, `hangup`, `wake`; `tagId` collapses ring/hangup pairs. */
+@Serializable
+data class LiveRelayPush(
+    val kind: String,
+    val typeId: String,
+    val tagId: String,
+    val unEncryptedMessage: String,
 )

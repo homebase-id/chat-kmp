@@ -11,6 +11,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import co.touchlab.kermit.Logger
+import id.homebase.feed.calls.AndroidCallCoordinator
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import com.mmk.kmpnotifier.notification.NotifierManager
@@ -144,6 +145,8 @@ class MainApplication : Application(), KoinComponent {
         // Publish share shortcuts when conversations change
         initShareShortcuts()
 
+        AndroidCallCoordinator(this, get(), get(), appScope).start()
+
         // Reap cleartext share-OUT temps every time the app reaches the
         // foreground. The chat "Share to other app" flow writes decrypted
         // copies of E2EE Homebase payloads into <cacheDir>/share_outbound/
@@ -175,7 +178,7 @@ class MainApplication : Application(), KoinComponent {
         })
     }
 
-    private val appScope = supervisedScope("android-app")
+    val appScope = supervisedScope("android-app")
 
     private fun initShareShortcuts() {
         val conversationStream = get<ConversationStream>()

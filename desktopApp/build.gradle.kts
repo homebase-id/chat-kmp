@@ -90,6 +90,8 @@ kotlin {
         }
 
         jvmMain.dependencies {
+            // Types only: at runtime homebase-chat comes from the per-platform JAR wired in below.
+            compileOnly(project(":homebase-chat"))
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(libs.sqldelight.sqlite.driver.get().toString()) {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
@@ -103,6 +105,13 @@ kotlin {
             implementation(libs.jna)
             implementation(libs.jna.platform)
             implementation(libs.composemediaplayer)
+        }
+
+        jvmTest.dependencies {
+            implementation(project(":homebase-chat"))
+            implementation(libs.multiplatform.settings.test)
+            implementation(compose.desktop.currentOs)
+            implementation(libs.jetbrains.compose.ui.test)
         }
 
         commonTest.dependencies {
@@ -213,13 +222,17 @@ compose.desktop {
                 iconFile.set(project.rootProject.file("icons/icon.icns"))  // Path to your .icns file
                 packageName = "Homebase Chat"
                 bundleID = "id.homebase.feed"
+                entitlementsFile.set(project.file("packaging/macos/entitlements.plist"))
+                runtimeEntitlementsFile.set(project.file("packaging/macos/entitlements.plist"))
 
                 // Add Info.plist configuration for macOS
                 infoPlist {
-                    // Microphone permission
+                    // Camera and microphone permissions (voice/video calls and audio messages)
                     extraKeysRawXml = """
                         <key>NSMicrophoneUsageDescription</key>
-                        <string>Allow access to the microphone to record audio for message attachment.</string>
+                        <string>Allow access to the microphone for voice and video calls and to record audio messages.</string>
+                        <key>NSCameraUsageDescription</key>
+                        <string>Allow access to the camera for video calls.</string>
                     """.trimIndent()
                 }
             }

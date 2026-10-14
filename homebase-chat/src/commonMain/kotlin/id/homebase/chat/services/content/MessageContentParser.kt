@@ -6,6 +6,7 @@ import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
@@ -43,6 +44,7 @@ object MessageContentParser {
             ChatProtocol.ChatDiceRollMessageDataType -> parseDiceRoll(content)
             ChatProtocol.ChatGroodleMessageDataType -> parseGroodle(content)
             ChatProtocol.ChatPollMessageDataType -> parsePoll(content)
+            ChatProtocol.ChatCallEventMessageDataType -> parseCallEvent(content)
             ChatProtocol.ChatContactCardMessageDataType -> parseContactCard(content)
             ChatProtocol.ChatViewOnceMessageDataType -> parseViewOnce(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
@@ -128,6 +130,19 @@ object MessageContentParser {
         null
     }
 
+    private fun parseCallEvent(content: String): MessageContent.CallEvent = try {
+        val descriptor = OdinSystemSerializer.deserialize<CallEventDescriptor>(content)
+        if (descriptor.isValid()) {
+            MessageContent.CallEvent(descriptor)
+        } else {
+            Logger.w(tag = TAG) { "CallEvent descriptor failed validation" }
+            MessageContent.CallEvent(null)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "CallEvent parse failed; rendering chip" }
+        MessageContent.CallEvent(null)
+    }
+
     private fun parsePoll(content: String): MessageContent.Poll = try {
         val descriptor = OdinSystemSerializer.deserialize<PollDescriptor>(content)
         if (descriptor.isValid()) {
@@ -193,6 +208,10 @@ object MessageContentParser {
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "Poll descriptor must be non-null on send" }
             )
+        is MessageContent.CallEvent ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "CallEvent descriptor must be non-null on send" }
+            )
         is MessageContent.ContactCard ->
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "ContactCard descriptor must be non-null on send" }
@@ -215,6 +234,7 @@ object MessageContentParser {
         is MessageContent.Groodle -> ChatProtocol.ChatGroodleMessageDataType
         is MessageContent.Poll -> ChatProtocol.ChatPollMessageDataType
         is MessageContent.ContactCard -> ChatProtocol.ChatContactCardMessageDataType
+        is MessageContent.CallEvent -> ChatProtocol.ChatCallEventMessageDataType
         is MessageContent.ViewOnce -> ChatProtocol.ChatViewOnceMessageDataType
         is MessageContent.Location -> ChatProtocol.ChatLocationMessageDataType
         is MessageContent.Unknown ->
@@ -237,6 +257,7 @@ object MessageContentParser {
         is MessageContent.DiceRoll,
         is MessageContent.Groodle,
         is MessageContent.Poll,
+        is MessageContent.CallEvent,
         is MessageContent.ContactCard,
         is MessageContent.ViewOnce,
         is MessageContent.Location -> true

@@ -1,5 +1,6 @@
 package id.homebase.feed.crash
 
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
@@ -19,23 +20,41 @@ class NativeCrashRecoveryTest {
     @Test
     fun nativeCrash_previousRunCrashed_notSurfacedByJvm_showsRecovery() {
         // didCrashOnPreviousExecution=true, and GlobalCrashHandler did NOT mark it → native.
-        assertTrue(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, false))
+        assertTrue(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, false, alreadyCheckedThisProcess = false))
     }
 
     @Test
     fun jvmCrash_alreadySurfacedInProcess_doesNotReshow() {
         // We showed CrashActivity in-process at JVM-crash time; don't double-show next launch.
-        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, true))
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, true, alreadyCheckedThisProcess = false))
     }
 
     @Test
     fun cleanPreviousRun_showsNothing() {
-        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, false))
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, false, alreadyCheckedThisProcess = false))
     }
 
     @Test
     fun cleanPreviousRun_evenWithStaleJvmMarker_showsNothing() {
         // No crash last run ⇒ never show, regardless of a leftover marker.
-        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, true))
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(false, true, alreadyCheckedThisProcess = false))
+    }
+
+    @Test
+    fun restartIntoTheSameProcess_doesNotReshow() {
+        // Restart reopens MainActivity in the process that already showed the screen, where
+        // didCrashOnPreviousExecution() still reports the old crash.
+        assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, false, alreadyCheckedThisProcess = true))
+    }
+
+    @Test
+    fun tombstoneStrings_keepsReadableRunsAndDropsProtobufNoise() {
+        val bytes = byteArrayOf(0x0a, 0x12) + "android::uirenderer::WorkQueue::process()".encodeToByteArray() +
+            byteArrayOf(0x1a, 0x05) + "abc".encodeToByteArray() + byteArrayOf(0x22, 0x18) +
+            "/system/lib64/libhwui.so".encodeToByteArray()
+        assertEquals(
+            listOf("android::uirenderer::WorkQueue::process()", "/system/lib64/libhwui.so"),
+            NativeCrashRecovery.tombstoneStrings(bytes),
+        )
     }
 }

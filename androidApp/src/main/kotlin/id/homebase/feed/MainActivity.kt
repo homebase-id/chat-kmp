@@ -1,9 +1,12 @@
 package id.homebase.feed
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
@@ -16,33 +19,56 @@ import id.homebase.api.ActivityProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.chat.services.calling.CallPhase
+import id.homebase.chat.services.calling.CallService
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AppConfig
-import id.homebase.core.util.CreatedIdentityRelay
+import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
-import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
+import id.homebase.core.util.CreatedIdentityRelay
+import id.homebase.feed.calls.IncomingCallNotifier
+import id.homebase.feed.calls.acceptRinging
 import id.homebase.feed.crash.NativeCrashRecovery
 import id.homebase.feed.share.ShareShortcutPublisher
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
 class MainActivity : AppCompatActivity() {
+
+    private companion object {
+        const val STATE_MIC_REQUEST_FOR = "mic_request_for"
+    }
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
     private val notificationService: NotificationService by inject()
     private val notificationEntry: NotificationEntry by inject()
     private val eventBus: EventBus by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
+    private val callService: CallService by inject()
+    private var micRequestFor: String? = null
+    private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val callId = micRequestFor
+        micRequestFor = null
+        if (callId == null) return@registerForActivityResult
+        if (granted) acceptRingingCall(callId) else declineRingingCall(callId)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        micRequestFor?.let { outState.putString(STATE_MIC_REQUEST_FOR, it) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Must run before super.onCreate — swaps Theme.Homebase.Splash for the real app
@@ -50,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        micRequestFor = savedInstanceState?.getString(STATE_MIC_REQUEST_FOR)
 
         // If the previous run died in a *native* crash (an NDK signal — e.g. a SQLCipher
         // SIGSEGV — that the JVM GlobalCrashHandler can never see), surface the recovery
@@ -70,6 +97,8 @@ class MainActivity : AppCompatActivity() {
         // Idempotent; safe across Activity recreation. See AuthCC.promoteToForeground.
         authConnectionCoordinator.promoteToForeground()
 
+        showOverLockScreenForCall(intent)
+        acceptCallFromIntent(intent)
         handleIntent(intent)
 
         ActivityProvider.initialize(this)
@@ -94,6 +123,8 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent) // Update the activity's intent
+        showOverLockScreenForCall(intent)
+        acceptCallFromIntent(intent)
         handleIntent(intent)
 
         // Notify KMPNotifier of new intent
@@ -116,6 +147,45 @@ class MainActivity : AppCompatActivity() {
 
             // If no callback arrived and we're still authenticating, the user likely cancelled
             youAuthFlowManager.onAppResumed()
+        }
+    }
+
+    // An incoming-call launch may show over the lock screen, but only while that call is ringing or live.
+    private fun showOverLockScreenForCall(intent: Intent) {
+        if (!intent.hasExtra(IncomingCallNotifier.EXTRA_CALL_ID)) return
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+        lifecycleScope.launch {
+            callService.state.first { !it.isActive }
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        }
+    }
+
+    private fun acceptCallFromIntent(intent: Intent) {
+        if (!intent.getBooleanExtra(IncomingCallNotifier.EXTRA_ACCEPT, false)) return
+        intent.removeExtra(IncomingCallNotifier.EXTRA_ACCEPT)
+        val callId = intent.getStringExtra(IncomingCallNotifier.EXTRA_CALL_ID) ?: return
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            acceptRingingCall(callId)
+        } else {
+            micRequestFor = callId
+            requestMic.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun declineRingingCall(callId: String) {
+        if (callService.state.value.callId == callId) callService.onPermissionDenied()
+    }
+
+    // The ring may still be on its way (cold process); app scope so a recreation can't drop the accept.
+    private fun acceptRingingCall(callId: String) {
+        val context = applicationContext
+        (application as MainApplication).appScope.launch {
+            val ringing = withTimeoutOrNull(10_000) {
+                callService.state.first { it.callId == callId && it.phase == CallPhase.Incoming }
+            } ?: return@launch
+            callService.acceptRinging(context, ringing)
         }
     }
 

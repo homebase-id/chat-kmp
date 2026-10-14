@@ -2,6 +2,7 @@
 
 package id.homebase.core.di
 
+import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.core.ui.screens.email.EmailService
@@ -43,6 +44,7 @@ import id.homebase.chat.conversationmedia.ConversationMediaViewModel
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
+import id.homebase.chat.calling.history.NewCallViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
@@ -55,6 +57,13 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.calling.CallViewModel
+import id.homebase.chat.calling.history.CallLogDeleter
+import id.homebase.chat.calling.history.CallsViewModel
+import id.homebase.chat.services.calling.history.CallHistoryService
+import id.homebase.core.calling.CallsPreferences
+import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
 import id.homebase.core.config.locationLabeledDrive
@@ -65,7 +74,10 @@ import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.viewonce.ViewOnceActions
 import id.homebase.chat.viewonce.ViewOncePayloadLoader
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.XorIdUtil
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
@@ -153,6 +165,7 @@ import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
+import kotlinx.coroutines.flow.map
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentCommentsService
@@ -328,8 +341,8 @@ val appModule = module {
     singleOf(::FeedPermissionService)
     singleOf(::ReportingUrlProvider)
 
-    single { VaultPreferences(get()) }
-    single { EmailPreferences(get()) }
+    single { VaultPreferences(get(), migrationScope = get()) }
+    single { EmailPreferences(get(), migrationScope = get()) }
 
     // Contact Book add-on (contact manager). Reads from the mandatory Contacts
     // drive; writes through the api-layer ContactsProvider. No optional-drive
@@ -377,6 +390,32 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    // One CallController per identity behind CallService; platformCallEngineFactory() is null where calling is
+    // unsupported, which hides every call entry point. The fake engine/loopback live only in the Call lab.
+    single {
+        CallService(
+            credentialsManager = get(),
+            eventBus = get(),
+            relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push, wakeCause = null) },
+            engineFactory = platformCallEngineFactory(),
+            stunUrls = get(),
+            scope = get(),
+            onCallActiveChanged = { get<AuthConnectionCoordinator>().setCallActive(it) },
+            recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
+        )
+    }
+    single { CallsPreferences(get()) }
+    single {
+        CallHistoryService(
+            credentialsManager = get(),
+            dbm = get(),
+            eventBus = get(),
+            conversations = get(),
+            preferences = get(),
+            scope = get(),
+            conversationsReady = get<ConversationStream>().conversations.map { it.dataReady },
+        )
+    }
     single { EmergencyLocateStore(eventBus = get(), scope = get()) }
     single { EmergencyLocateService(temporalDriveReadProvider = get(), store = get()) }
     // Readiness gate for "Share live location": activated add-on + location permission, so the chat
@@ -663,6 +702,7 @@ val appModule = module {
                 conversationStream.reset()
                 conversationStream.start()
                 get<ContactService>().start()
+                get<CallHistoryService>()
                 // MRU store before lookup: lookup's combine() reads
                 // mruStore.stableKeys, and started-first means the cold-load
                 // emits before the lookup builds its first list.
@@ -725,7 +765,7 @@ val appModule = module {
                 // endregion
 
                 get<VaultPreferences>().reset()
-            get<EmailPreferences>().reset()
+                get<EmailPreferences>().reset()
             get<EmailStream>().apply { reset(); start() }
                 get<VaultStream>().apply { reset(); start() }
                 get<WebDropStream>().apply { reset(); start() }
@@ -1017,6 +1057,27 @@ val appModule = module {
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
+    viewModel { CallViewModel(get<CallService>()) }
+    viewModel {
+        val calls = get<CallService>()
+        CallsViewModel(
+            history = get<CallHistoryService>(),
+            contacts = get<ContactService>().contacts,
+            conversations = get(),
+            session = calls,
+            callsAvailable = calls.available,
+            deleter = CallLogDeleter { id, forEveryone -> get<ChatMessageActionService>().deleteMessage(id, forEveryone) },
+        )
+    }
+    viewModel {
+        val calls = get<CallService>()
+        NewCallViewModel(
+            contacts = get<ContactService>().contacts,
+            self = get<OwnerSessionRepository>().user,
+            session = calls,
+            callsAvailable = calls.available,
+        )
+    }
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
     // Manual `viewModel { ... }` rather than viewModelOf because the constructor
@@ -1379,3 +1440,18 @@ val allModules = listOf(
     appModule,
     id.homebase.imageeditor.ui.di.imageEditorModule,
 )
+
+private suspend fun recordCallEvent(
+    credentials: CredentialsManager,
+    sender: ChatMessageSenderService,
+    peer: String,
+    event: CallEventDescriptor,
+) {
+    val self = credentials.getActiveDomain()?.domainName ?: return
+    sender.sendNewTypedMessage(
+        messageUniqueId = Uuid.random(),
+        conversationId = XorIdUtil.getNewXorId(self, peer),
+        content = MessageContent.CallEvent(event),
+        previousMessageUniqueId = null,
+    )
+}

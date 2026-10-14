@@ -77,6 +77,8 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
+import id.homebase.chat.calling.CallEventBubble
+import id.homebase.chat.calling.LocalCallStarter
 import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -355,6 +357,30 @@ fun MessageBubbleRaw(
             UnknownMessageBubble(
                 dataType = content.dataType,
                 modifier = modifier,
+            )
+            return
+        }
+        is MessageContent.CallEvent -> {
+            val callBack = LocalCallStarter.current?.takeIf { it.idle && !displayOnly }?.start
+            val descriptor = content.descriptor
+            CallEventBubble(
+                descriptor = descriptor,
+                isOwn = sentByYou,
+                modifier = modifier,
+                onCallBack = if (callBack != null && descriptor != null) ({ callBack(descriptor.video) }) else null,
+                shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
+                containerColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
+                footer = { footerColor ->
+                    MessageTimestampFooter(
+                        infoText = formatMessageTimestamp(message.userDate),
+                        contentColor = footerColor,
+                        showDeliveryStatus = false,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                    )
+                },
             )
             return
         }

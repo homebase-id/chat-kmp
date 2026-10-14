@@ -28,6 +28,7 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.client.mail.MailProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
@@ -57,6 +58,7 @@ import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.dsl.factoryOf
@@ -192,6 +194,9 @@ val apiModule = module {
     singleOf(::LocationPreviewProvider)
 
     single { EventBus() }
+    single(createdAtStart = true) {
+        StunUrlStore(get(), get<CredentialsManager>().credentialsFlow.map { it?.domain?.domainName }, get<CoroutineScope>())
+    }
 
     // Eager startup task: logs a one-shot breakdown of the cache directory so an
     // `adb logcat -s CacheAudit:*` capture shows where disk usage is going. The

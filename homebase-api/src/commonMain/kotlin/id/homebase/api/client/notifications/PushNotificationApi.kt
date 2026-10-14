@@ -15,7 +15,9 @@ import kotlinx.serialization.json.Json
 data class PushSubscriptionRequest(
     @SerialName("DeviceToken") val deviceToken: String,
     @SerialName("DevicePlatform") val devicePlatform: String,
-    @SerialName("FriendlyName") val friendlyName: String
+    @SerialName("FriendlyName") val friendlyName: String,
+    /** PushKit token; only sent from a build that handles CallKit. */
+    @SerialName("VoipDeviceToken") val voipDeviceToken: String? = null,
 )
 
 /**
@@ -44,13 +46,14 @@ data class PushSubscriptionResponse(
 class PushNotificationApi(httpClient: HttpClient, credentialsManager: CredentialsManager) :
     OdinApiProviderBase(httpClient, credentialsManager) {
 
-    suspend fun subscribe(deviceToken: String, devicePlatform: String, friendlyName: String) {
+    suspend fun subscribe(deviceToken: String, devicePlatform: String, friendlyName: String, voipDeviceToken: String? = null) {
         val creds = requireCreds()
         val requestBody =
             PushSubscriptionRequest(
                 deviceToken = deviceToken,
                 devicePlatform = devicePlatform,
-                friendlyName = friendlyName
+                friendlyName = friendlyName,
+                voipDeviceToken = voipDeviceToken,
             )
 
         val jsonBody = OdinSystemSerializer.serialize(requestBody)

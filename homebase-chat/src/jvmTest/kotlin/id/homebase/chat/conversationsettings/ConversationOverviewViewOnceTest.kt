@@ -46,7 +46,7 @@ class ConversationOverviewViewOnceTest {
         val plain = imageMessage(null)
         val viewOnce = imageMessage(MessageContent.ViewOnce(ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE)))
         val unparseable = imageMessage(MessageContent.ViewOnce(null))
-        val unknown = imageMessage(MessageContent.Unknown(217))
+        val unknown = imageMessage(MessageContent.Unknown(218))
 
         val overview = collectConversationOverview(
             BatchResult(

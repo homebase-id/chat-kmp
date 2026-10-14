@@ -253,6 +253,9 @@ sealed interface BackendEvent {
     data object ConnectionOnline : BackendEvent
     data object ConnectionOffline : BackendEvent
 
+    /** The device's own server's STUN URLs, sent in every `deviceHandshakeSuccess`. Use all of them as given. */
+    data class StunUrlsReceived(val urls: List<String>) : BackendEvent
+
     /**
      * Emitted once when the user logs out (authState → Unauthenticated), AFTER the
      * WebSocket and DriveSync have been torn down so no producer can re-populate
