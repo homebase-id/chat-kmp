@@ -146,16 +146,16 @@ class ConnectionNetworkProvider(
     /**
      * Lists the owner's circles, each with its members, in one round-trip.
      * GET /api/v2/connections/circles/with-members (OwnerOrApp — guest tokens are
-     * rejected with 403). [includeSystemCircle] = false drops the built-in system circle.
+     * rejected with 403). The server's built-in system circle is never requested.
      */
-    suspend fun getCirclesWithMembers(includeSystemCircle: Boolean = true): List<CircleWithMembers> {
+    suspend fun getCirclesWithMembers(): List<CircleWithMembers> {
         val creds = requireCreds()
 
         val response = encryptedGet(
             url = apiUrl(creds.domain, "/connections/circles/with-members"),
             token = creds.accessToken,
             secret = creds.secret,
-            queryString = "includeSystemCircle=$includeSystemCircle",
+            queryString = "includeSystemCircle=false",
         )
 
         throwForFailure(response)

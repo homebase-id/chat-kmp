@@ -218,10 +218,10 @@ class DefaultProfileCardSource(
     override val supportsCircleCards: Boolean get() = cardRepository.supportsCircleCards
 
     override suspend fun circles(): List<CardCircle> =
-        contactsCircles(connectionProvider.getCirclesWithMembers(includeSystemCircle = false))
+        contactsCircles(connectionProvider.getCirclesWithMembers())
 
     override suspend fun serverCircleIds(): Set<String> =
-        connectionProvider.getCirclesWithMembers(includeSystemCircle = false).map { it.circle.id }.toSet()
+        connectionProvider.getCirclesWithMembers().map { it.circle.id }.toSet()
 
     override suspend fun saveCircleCard(card: ProfileCard) = cardRepository.saveCircle(card)
 

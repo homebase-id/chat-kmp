@@ -266,7 +266,7 @@ class ConnectionService(
                 // Circles ride along on the same refresh. A failure here must not break the
                 // connection map, so it is caught independently and leaves prior circles intact.
                 val circlesDeferred = async {
-                    runCatching { provider.getCirclesWithMembers(includeSystemCircle = true) }
+                    runCatching { provider.getCirclesWithMembers() }
                         .getOrElse { e ->
                             Logger.w(e) { "ConnectionService: getCirclesWithMembers failed" }
                             null
