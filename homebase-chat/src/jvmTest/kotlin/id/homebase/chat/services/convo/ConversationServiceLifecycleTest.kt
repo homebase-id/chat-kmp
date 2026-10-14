@@ -1,6 +1,7 @@
 package id.homebase.chat.services.convo
 
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.upload.PayloadBundle
@@ -356,6 +357,7 @@ class ConversationServiceLifecycleTest {
             service.archiveConversation(convoId)
 
             assertEquals(2L, fixture.outboxRowCount() - before)
+            assertTagWriteWaitsForStamp(fixture)
         }
     }
 
@@ -372,7 +374,19 @@ class ConversationServiceLifecycleTest {
             service.unarchiveConversation(convoId)
 
             assertEquals(2L, fixture.outboxRowCount() - before)
+            assertTagWriteWaitsForStamp(fixture)
         }
+    }
+
+    // Both rows write the same file's localAppData; sent in parallel, the
+    // second to land fails VersionTagMismatch and the outbox drops it.
+    private suspend fun assertTagWriteWaitsForStamp(fixture: ConversationServiceTestFixture) {
+        val rows = fixture.drainOutboxInDependencyOrder()
+        assertEquals(
+            listOf(DriveOutboxUploader.UpdateLocalMetadataContent, DriveOutboxUploader.UpdateLocalMetadataTags),
+            rows.map { it.uploadType },
+        )
+        assertEquals(rows[0].uniqueId, rows[1].dependencyUniqueId)
     }
 
     @Test
