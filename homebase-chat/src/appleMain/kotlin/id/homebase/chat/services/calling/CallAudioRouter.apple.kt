@@ -42,6 +42,9 @@ actual class CallAudioRouter actual constructor() {
     @Volatile
     private var route = AudioRoute.Earpiece
 
+    @Volatile
+    private var profile: CallAudioProfile? = null
+
     private val events = object : NSObject(), RTCAudioSessionDelegateProtocol {
         // Category changes on activation drop a port override; the audio unit starts right after CallKit's didActivate.
         override fun audioSessionDidStartPlayOrRecord(session: RTCAudioSession) {
@@ -62,14 +65,29 @@ actual class CallAudioRouter actual constructor() {
             type == AVAudioSessionPortHeadphones || type == AVAudioSessionPortBluetoothHFP || type == AVAudioSessionPortBluetoothA2DP
         }
         val profile = callAudioProfile(video, headset)
+        this.profile = profile
+        rtc.addDelegate(events)
+        setRoute(profile.route)
+        log("started video=$video")
+        return profile.route
+    }
+
+    actual fun setRoute(route: AudioRoute) {
+        this.route = route
+        profile?.let { configure(it, route) }
+        overridePort(route)
+        log("route set $route")
+    }
+
+    // With DefaultToSpeaker set, PortOverrideNone still plays on the loudspeaker, so the earpiece needs the option cleared.
+    private fun configure(profile: CallAudioProfile, route: AudioRoute) {
         val config = RTCAudioSessionConfiguration().apply {
             category = AVAudioSessionCategoryPlayAndRecord!!
             mode = if (profile.mode == CallAudioMode.VideoChat) AVAudioSessionModeVideoChat!! else AVAudioSessionModeVoiceChat!!
             categoryOptions = AVAudioSessionCategoryOptionAllowBluetooth or
-                (if (profile.defaultToSpeaker) AVAudioSessionCategoryOptionDefaultToSpeaker else 0u)
+                (if (profile.defaultToSpeaker && route == AudioRoute.Speaker) AVAudioSessionCategoryOptionDefaultToSpeaker else 0u)
         }
         RTCAudioSessionConfiguration.setWebRTCConfiguration(config)
-        rtc.addDelegate(events)
         val failed = memScoped {
             val error = alloc<ObjCObjectVar<NSError?>>()
             rtc.lockForConfiguration()
@@ -78,15 +96,6 @@ actual class CallAudioRouter actual constructor() {
             if (ok) null else error.value?.localizedDescription ?: "unknown"
         }
         if (failed != null) Logger.w(TAG) { "audio session configure failed: $failed" }
-        setRoute(profile.route)
-        log("started video=$video")
-        return profile.route
-    }
-
-    actual fun setRoute(route: AudioRoute) {
-        this.route = route
-        overridePort(route)
-        log("route set $route")
     }
 
     private fun overridePort(route: AudioRoute) {
