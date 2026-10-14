@@ -17,11 +17,11 @@ import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
 import id.homebase.resources.call_camera_denied_body
 import id.homebase.resources.call_camera_denied_title
-import id.homebase.resources.call_cancel
 import id.homebase.resources.call_open_settings
 import id.homebase.resources.call_permission_body
 import id.homebase.resources.call_permission_title
 import id.homebase.resources.call_verification_ok
+import id.homebase.resources.cancel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -74,7 +74,7 @@ fun rememberCallPermissionGate(): CallPermissionGate {
                     Text(stringResource(MR.string.call_open_settings))
                 }
             },
-            dismissButton = { TextButton(onClick = { blocked = false }) { Text(stringResource(MR.string.call_cancel)) } },
+            dismissButton = { TextButton(onClick = { blocked = false }) { Text(stringResource(MR.string.cancel)) } },
         )
     }
     if (cameraDenied) {

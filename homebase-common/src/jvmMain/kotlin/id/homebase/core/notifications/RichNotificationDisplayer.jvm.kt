@@ -44,6 +44,11 @@ actual class RichNotificationDisplayer actual constructor() {
             payloadData = data.payloadData,
         )
     }
+
+    fun cancel(notificationId: Int) {
+        if (disabled) return
+        nucleus?.dismiss(notificationId) ?: NotifierManager.getLocalNotifier().remove(notificationId)
+    }
 }
 
 internal fun isMacOsRunningUnbundled(): Boolean {

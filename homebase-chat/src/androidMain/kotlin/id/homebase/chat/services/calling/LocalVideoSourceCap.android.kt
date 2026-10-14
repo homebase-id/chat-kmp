@@ -5,9 +5,9 @@ import com.shepeliev.webrtckmp.MediaStreamConstraintsBuilder
 import com.shepeliev.webrtckmp.RtpSender
 import org.webrtc.RtpParameters
 
-internal actual fun capLocalVideoSource() = Unit
+internal actual fun configureWebRtc() = configureWebRtcFactory
 
-// Camera2 picks the closest format the device lists, so asking for 1080p is safe here.
+// Camera2 picks the closest format the device lists, so asking for 720p is safe here.
 internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
     width(SendVideoCap.WIDTH)
     height(SendVideoCap.HEIGHT)
@@ -17,7 +17,9 @@ internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video {
 internal actual fun configureVideoSender(sender: RtpSender) {
     val native = sender.android
     val params = native.parameters
-    params.degradationPreference = RtpParameters.DegradationPreference.BALANCED
+    // MAINTAIN_FRAMERATE starts H.264 at 360p and its quality scaler waits for QP < 24, which the Qualcomm encoder never
+    // reaches, so it stays at 360p; SendResolutionLadder and SendLoadRung lower the resolution instead.
+    params.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
     params.encodings.forEach {
         it.maxBitrateBps = SendVideoCap.MAX_BITRATE_BPS
         it.minBitrateBps = SendVideoCap.MIN_BITRATE_BPS

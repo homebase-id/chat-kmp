@@ -150,22 +150,37 @@ exercises a real ICE restart. It also proves the natives load on the host.
 
 ### Video send
 
-`SendVideoCap` bounds what a sender puts on the wire: at most 1080p30, 300 kbps to 2.5 Mbps, with BALANCED degradation
-on webrtc-kmp (webrtc-java has no degradation preference). Android asks Camera2 for 1080p; on iOS webrtc-kmp reads the
-camera formats through a freed struct and opens the camera at 4K, so `capLocalVideoSource` adapts the source output to
-1080p instead.
+`SendVideoCap` bounds what a sender puts on the wire: at most 720p30, 300 kbps to 2 Mbps, with MAINTAIN_FRAMERATE
+degradation on webrtc-kmp, so libwebrtc's own adaptations lower resolution and never frame rate (webrtc-java has no
+degradation preference). Android asks Camera2 for 720p; on iOS webrtc-kmp reads the
+camera formats through a freed struct and opens the camera at 4K, so `configureWebRtc` adapts the source output to
+720p instead.
 
-- **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame) and each side
-  encodes at the level the peer advertised. Every local offer and answer is raised to level 4.0 before it is set
-  (`withH264SendLevel`): VideoToolbox rejects a 1080p frame at 3.1 with -12902 and, with no fallback codec, the
-  stream stops for good.
+- **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame, 108000 a second)
+  and each side encodes at the level the peer advertised. 720p30 fits it exactly, so the SDP is left as libwebrtc wrote
+  it; a larger cap needs a higher level, as VideoToolbox rejects a frame over 3.1 with -12902 and the stream stops.
+  The cap was 1080p until the Redmi's Qualcomm decoder was measured holding 1080p frames for 500-650 ms.
 - **Resolution ladder.** libwebrtc's quality scaler only reacts to encoder QP and frame drops, so a cheap-to-encode
-  picture stays at 1080p on any bitrate. `SendResolutionLadder` reads the outbound `targetBitrate` on every 5 s stats
-  tick and sets `scaleResolutionDownBy`: 1080p from 1.5 Mbps, 720p from 800 kbps, 540p from 500 kbps, else the 480p
-  floor. It steps straight down to the rung that fits and back up one rung at a time with 25 % headroom
+  picture stays at the top rung on any bitrate. `SendResolutionLadder` reads the outbound `targetBitrate` on every 5 s stats
+  tick and sets `scaleResolutionDownBy`: 720p from 800 kbps, 540p from 500 kbps, 360p from 250 kbps, 270p from 150 kbps,
+  else 180p; no floor. It steps straight down to the rung that fits and back up one rung at a time with 25 % headroom
   (`CallSendResolutionLadderTest`).
+- **Encoder load.** libwebrtc's CPU adaptation gives a hardware encoder 200 % encode usage before it acts; the Redmi's
+  sent frame rate already falls to 13-22 fps from about 150 %, with `HardwareVideoEncoder: Dropped frame, encoder queue
+  full`. `SendLoadRung` caps the ladder further: two ticks under 24 fps with frames over 50 ms to encode step it down
+  one rung (720, 540, 360, 270, 180; no floor), six ticks at 27 fps whose encode time, scaled to the next rung's
+  pixels, stays under 40 ms step it back up. A camera slowed by low light encodes fast and never counts as slow.
+- **Android decodes into byte buffers.** webrtc-kmp gives `DefaultVideoDecoderFactory` the root EGL context, and a
+  texture-mode `AndroidVideoDecoder` has a single output texture: every frame that finishes while the previous one is
+  still held downstream (libwebrtc's render queue keeps it until its render time) is dropped. On the Redmi that halved
+  1080p to 15 fps with `Too many frames backed up in the decoder`; `DefaultVideoDecoderFactory(null)` decodes 1080p at
+  30 fps.
 - **Health logs.** Each engine logs inbound, source, outbound and candidate-pair stats every 5 s (`videoStatsLines`),
-  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log.
+  and `watchVideoPipeline` writes camera-session interruptions and native WebRTC warnings to homebase.log. A stalled
+  outbound counter with a frozen source line is a stopped camera, with a moving one a failing encoder. qp above the
+  quality scaler's threshold with `limit=none` is a sender not adapting; decodeMs above 1000/fps is a decoder that cannot
+  keep up; a steady inFlight (decodeMs x fps) near a picture buffer's size is a decoder holding frames. A/V sync holds
+  audio back to the video's delay, which the audio line's jbMs shows.
 
 ### Keep-awake and picture-in-picture
 

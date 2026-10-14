@@ -75,7 +75,7 @@ class CallDevicesScreenshotTest {
         phase = CallPhase.Connected,
         localVideo = true,
         remoteVideo = true,
-        videos = CallVideos(FakeVideo(0xFF5C6BC0, "FB"), FakeVideo(0xFF26A69A, "SG")),
+        videos = CallVideos(FakeVideo("FB"), FakeVideo("SG")),
         connectedAtMs = System.currentTimeMillis() - 83_000,
         verificationCode = "123 456",
         devices = devices,

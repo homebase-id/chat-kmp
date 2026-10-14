@@ -80,7 +80,7 @@ class DesktopCallRingSinkTest {
         init {
             coordinator = CallRingCoordinator(
                 target = object : CallPushTarget {
-                    override fun onPushRing(callId: String, from: String) = controller.onPushRing(callId, from)
+                    override fun pushRing(callId: String, from: String, sentAtMs: Long) = controller.pushRing(callId, from, sentAtMs)
                     override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
                     override fun accept() = controller.accept()
                     override fun decline() = controller.decline()
@@ -140,7 +140,7 @@ class DesktopCallRingSinkTest {
         assertTrue(notifier.live.isEmpty())
 
         sink.stopRinging("c1")
-        sink.ended("c1")
+        sink.ended("c1", CallEndReason.Hangup(remote = false))
         assertEquals(1, tone.stops)
         assertEquals(listOf("c1"), notifier.retracted)
     }

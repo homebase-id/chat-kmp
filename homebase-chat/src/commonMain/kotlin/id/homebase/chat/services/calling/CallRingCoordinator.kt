@@ -2,6 +2,7 @@ package id.homebase.chat.services.calling
 
 import id.homebase.core.notifications.CallPushRouter
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -10,7 +11,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
 interface CallPushTarget {
-    fun onPushRing(callId: String, from: String)
+    /** Completes with the call state once the ring has been processed; cancelled if it never will be. */
+    fun pushRing(callId: String, from: String, sentAtMs: Long = 0): Deferred<CallState>
     fun onPushHangup(callId: String)
     fun accept()
     fun decline()
@@ -21,7 +23,7 @@ interface CallRingSink {
     fun stopRinging(callId: String)
     fun connected(callId: String)
     fun missed(peerId: String, label: String) = Unit
-    fun ended(callId: String)
+    fun ended(callId: String, reason: CallEndReason)
     fun setLive(live: Boolean, video: Boolean, callId: String?)
 }
 
@@ -70,7 +72,7 @@ class CallRingCoordinator(
                     established = callId
                     sink.connected(callId)
                 }
-                if (callId != null && s.phase is CallPhase.Ended) sink.ended(callId)
+                if (callId != null && s.phase is CallPhase.Ended) sink.ended(callId, s.phase.reason)
                 val peer = s.peer
                 if (callId != null && peer != null && missedFor != callId && s.isMissedIncoming()) {
                     missedFor = callId
@@ -100,7 +102,9 @@ class CallRingCoordinator(
         if (state.value.isRingingFor(callId)) target.decline()
     }
 
-    override fun onRing(callId: String, from: String, message: String?) = target.onPushRing(callId, from)
+    override fun onRing(callId: String, from: String, sentAtMs: Long) {
+        target.pushRing(callId, from, sentAtMs)
+    }
 
     override fun onHangup(callId: String, from: String) = target.onPushHangup(callId)
 

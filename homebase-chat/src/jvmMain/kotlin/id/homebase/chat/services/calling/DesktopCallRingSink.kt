@@ -59,6 +59,6 @@ class DesktopCallRingSink(
     }
 
     override fun connected(callId: String) = Unit
-    override fun ended(callId: String) = stopRinging(callId)
+    override fun ended(callId: String, reason: CallEndReason) = stopRinging(callId)
     override fun setLive(live: Boolean, video: Boolean, callId: String?) = Unit
 }

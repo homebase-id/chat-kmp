@@ -19,6 +19,7 @@ class CallKitRingRouterTest {
         override fun reportOutgoing(callId: String, handle: String, video: Boolean) = Unit
         override fun reportConnected(callId: String) = Unit
         override fun reportVideo(callId: String, video: Boolean) = Unit
+        override fun reportCaller(callId: String, label: String) = Unit
         override fun reportEnded(callId: String, remoteEnded: Boolean) { ended += callId }
         override fun reportEndedElsewhere(callId: String, declined: Boolean) { ended += callId }
         override fun requestAnswer(callId: String) = Unit
@@ -34,9 +35,11 @@ class CallKitRingRouterTest {
             clock = { scope.testScheduler.currentTime },
         )
         val router = CallKitRingRouter(
-            target = object : CallRingPushTarget {
-                override fun pushRing(callId: String, from: String) = controller.pushRing(callId, from)
+            target = object : CallPushTarget {
+                override fun pushRing(callId: String, from: String, sentAtMs: Long) = controller.pushRing(callId, from, sentAtMs)
                 override fun onPushHangup(callId: String) = controller.onPushHangup(callId)
+                override fun accept() = controller.accept()
+                override fun decline() = controller.decline()
             },
             bridge = { bridge },
             scope = scope.backgroundScope,
@@ -46,7 +49,7 @@ class CallKitRingRouterTest {
     @Test
     fun aRingThatStartsRingingKeepsItsCallKitCall() = runTest {
         val rig = Rig(this)
-        rig.router.onRing("c1", sam, null)
+        rig.router.onRing("c1", sam, 0)
         runCurrent()
 
         assertEquals(CallPhase.Incoming, rig.controller.state.value.phase)
@@ -56,13 +59,13 @@ class CallKitRingRouterTest {
     @Test
     fun aReplayedRingForACallThatAlreadyEndedEndsItsCallKitCall() = runTest {
         val rig = Rig(this)
-        rig.router.onRing("c1", sam, null)
+        rig.router.onRing("c1", sam, 0)
         runCurrent()
         rig.router.onHangup("c1", sam)
         runCurrent()
         assertEquals(emptyList(), rig.bridge.ended)
 
-        rig.router.onRing("c1", sam, null)
+        rig.router.onRing("c1", sam, 0)
         runCurrent()
 
         assertEquals(listOf("c1"), rig.bridge.ended)
@@ -71,10 +74,10 @@ class CallKitRingRouterTest {
     @Test
     fun aRingRefusedBecauseTheLineIsBusyEndsOnlyThatCallsCallKitCall() = runTest {
         val rig = Rig(this)
-        rig.router.onRing("c1", sam, null)
+        rig.router.onRing("c1", sam, 0)
         runCurrent()
 
-        rig.router.onRing("c2", "merry.demo.rocks", null)
+        rig.router.onRing("c2", "merry.demo.rocks", 0)
         runCurrent()
 
         assertEquals(listOf("c2"), rig.bridge.ended)
@@ -84,7 +87,7 @@ class CallKitRingRouterTest {
     @Test
     fun aRingFromOurselfEndsItsCallKitCall() = runTest {
         val rig = Rig(this)
-        rig.router.onRing("c3", frodo, null)
+        rig.router.onRing("c3", frodo, 0)
         runCurrent()
 
         assertEquals(listOf("c3"), rig.bridge.ended)
