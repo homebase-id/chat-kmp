@@ -16,10 +16,10 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 private val configured = AtomicBoolean(false)
 
 // webrtc-kmp 0.125.11 reads each camera format's size through a freed struct (copyContents), so it opens the iPhone
-// camera at 4K and the adapter lets the encoder climb past 1080p. The source itself stays the capturer's delegate, so
+// camera at 4K and the adapter lets the encoder climb past 720p. The source itself stays the capturer's delegate, so
 // no Kotlin runs per frame.
 @OptIn(ExperimentalForeignApi::class, ExperimentalAtomicApi::class)
-internal actual fun capLocalVideoSource() {
+internal actual fun configureWebRtc() {
     if (!configured.compareAndSet(false, true)) return
     WebRtc.configure(
         VideoProcessorFactory { source ->
@@ -36,7 +36,7 @@ internal actual fun MediaStreamConstraintsBuilder.requestCamera() = video(true)
 internal actual fun configureVideoSender(sender: RtpSender) {
     val native = sender.ios
     val params = native.parameters
-    params.degradationPreference = NSNumber(long = RTCDegradationPreference.RTCDegradationPreferenceBalanced.value)
+    params.degradationPreference = NSNumber(long = RTCDegradationPreference.RTCDegradationPreferenceMaintainFramerate.value)
     params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach {
         it.maxBitrateBps = NSNumber(int = SendVideoCap.MAX_BITRATE_BPS)
         it.minBitrateBps = NSNumber(int = SendVideoCap.MIN_BITRATE_BPS)

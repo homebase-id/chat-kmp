@@ -14,12 +14,18 @@ class MacEntitlementsTest {
     )
 
     @Test
-    fun appAndRuntimeEntitlementsKeepJvmLaunchAndCallKeys() {
-        for (name in listOf("entitlements.plist", "runtime-entitlements.plist")) {
-            val text = File("packaging/macos/$name").readText()
-            for (key in required) {
-                assertTrue("<key>$key</key>\\s*<true/>".toRegex().containsMatchIn(text), "$name missing $key")
-            }
+    fun entitlementsKeepJvmLaunchAndCallKeys() {
+        val text = File("packaging/macos/entitlements.plist").readText()
+        for (key in required) {
+            assertTrue("<key>$key</key>\\s*<true/>".toRegex().containsMatchIn(text), "missing $key")
+        }
+    }
+
+    @Test
+    fun conveyorReleaseRequestsCameraAndMicrophone() {
+        val conf = File("conveyor_common.conf").readText()
+        for (key in required.take(2)) {
+            assertTrue("\"$key\"\\s*=\\s*true".toRegex().containsMatchIn(conf), "conveyor missing $key")
         }
     }
 }

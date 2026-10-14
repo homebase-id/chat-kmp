@@ -42,6 +42,7 @@ class CallKitMirrorTest {
 
         override fun reportConnected(callId: String) { log += "connected:$callId" }
         override fun reportVideo(callId: String, video: Boolean) { log += "video:$callId:$video" }
+        override fun reportCaller(callId: String, label: String) { log += "caller:$callId:$label" }
         override fun reportEnded(callId: String, remoteEnded: Boolean) { log += "ended:$callId:remote=$remoteEnded" }
         override fun reportEndedElsewhere(callId: String, declined: Boolean) { log += "elsewhere:$callId:declined=$declined" }
         override fun requestAnswer(callId: String) { log += "answer:$callId" }
@@ -222,5 +223,18 @@ class CallKitMirrorTest {
         runCurrent()
 
         assertTrue(rig.callee.state.value.media.muted)
+    }
+
+    @Test
+    fun aCallKitAnswerForAnEarlierCallDoesNotAnswerTheOneRingingNow() = runTest {
+        val rig = Rig(this)
+        rig.caller.startCall(sam, video = false, callId = "c-now")
+        runCurrent()
+        rig.calleeActions.accept("c-before")
+        runCurrent()
+        assertEquals(CallPhase.Incoming, rig.callee.state.value.phase)
+        rig.calleeActions.accept("c-now")
+        runCurrent()
+        assertTrue(rig.callee.state.value.phase != CallPhase.Incoming)
     }
 }

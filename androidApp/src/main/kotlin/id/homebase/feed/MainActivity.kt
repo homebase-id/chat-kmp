@@ -180,11 +180,12 @@ class MainActivity : AppCompatActivity() {
 
     // The ring may still be on its way (cold process); app scope so a recreation can't drop the accept.
     private fun acceptRingingCall(callId: String) {
+        val context = applicationContext
         (application as MainApplication).appScope.launch {
             val ringing = withTimeoutOrNull(10_000) {
                 callService.state.first { it.callId == callId && it.phase == CallPhase.Incoming }
             } ?: return@launch
-            callService.acceptRinging(this@MainActivity, ringing)
+            callService.acceptRinging(context, ringing)
         }
     }
 

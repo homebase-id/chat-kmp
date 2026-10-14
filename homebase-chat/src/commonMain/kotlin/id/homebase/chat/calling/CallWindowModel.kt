@@ -25,6 +25,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallPhase
+import id.homebase.core.util.formatHms
 import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
 import id.homebase.resources.call_button_voice
@@ -57,7 +58,7 @@ fun callWindowCloseAction(phase: CallPhase): CallWindowCloseAction = when (phase
 
 /** A ring the user never answered has nothing left to show once it ends; the ring window just goes away. */
 internal fun CallUiState.unansweredRingEnded(): Boolean {
-    val reason = endReason ?: return false
+    val reason = (phase as? CallPhase.Ended)?.reason ?: return false
     return direction == CallDirection.Incoming && connectedAtMs == null &&
         (reason == CallEndReason.Missed || reason == CallEndReason.Cancelled || reason == CallEndReason.Declined)
 }
@@ -65,7 +66,7 @@ internal fun CallUiState.unansweredRingEnded(): Boolean {
 fun callWindowElapsed(ui: CallUiState, nowMs: Long): String? {
     val connectedAt = ui.connectedAtMs
     if (connectedAt == null || !ui.inProgress) return null
-    return formatCallDuration(((nowMs - connectedAt) / 1000).coerceAtLeast(0))
+    return formatHms(nowMs - connectedAt, padMinutes = true)
 }
 
 /** One call UI state shared by the desktop call window and the main window's ongoing-call bar. */
@@ -141,7 +142,7 @@ class CallWindowModel(
 
     fun toggleMute() = viewModel.toggleMute()
 
-    fun toggleVideo() = viewModel.toggleVideo()
+    fun toggleVideo() = viewModel.setVideo(!viewModel.uiState.value.localVideo)
 
     fun hangup() = viewModel.hangup()
 
@@ -185,7 +186,7 @@ fun CallWindowContent(
                 val vm = model.viewModel
                 CallScreenActions(
                     acceptAudio = {}, acceptVideo = {}, decline = vm::decline, hangup = vm::hangup,
-                    toggleMute = vm::toggleMute, toggleVideo = vm::toggleVideo, switchCamera = vm::switchCamera,
+                    toggleMute = vm::toggleMute, toggleVideo = { vm.setVideo(!vm.uiState.value.localVideo) }, switchCamera = vm::switchCamera,
                     setRoute = vm::setRoute, onVerificationClick = vm::onVerificationClick, retry = {}, close = vm::close,
                     minimize = onMinimize, endFromKeyboard = vm::endFromKeyboard, selectDevice = vm::selectDevice, toggleMini = expand,
                 )
@@ -262,7 +263,7 @@ fun OngoingCallBarHost(
 fun CallChrome(
     callWindow: CallWindowModel?,
     topInset: Dp,
-    callHost: @Composable () -> Unit,
+    callHost: @Composable (content: @Composable () -> Unit) -> Unit,
     content: @Composable (topInset: Dp) -> Unit,
 ) {
     val barShown = callWindow != null &&
@@ -271,8 +272,8 @@ fun CallChrome(
     Column(Modifier.fillMaxSize()) {
         if (callWindow != null) OngoingCallBarHost(callWindow, topInset = topInset)
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            content(if (barShown) 0.dp else topInset)
-            if (callWindow == null) callHost()
+            val inset = if (barShown) 0.dp else topInset
+            if (callWindow == null) callHost { content(inset) } else content(inset)
         }
     }
 }

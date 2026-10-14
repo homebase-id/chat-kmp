@@ -1,6 +1,7 @@
 package id.homebase.chat.services.calling
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -15,5 +16,17 @@ expect fun platformCallEngineFactory(): CallEngineFactory?
 @Composable
 expect fun CallVideoView(handle: VideoHandle?, modifier: Modifier = Modifier, cornerRadius: Dp = 0.dp)
 
+/** One native renderer per track, re-parented as the call moves between full screen, tile and PiP; without it in [LocalCallVideoRenderers] each view owns its own. Holds nothing on desktop and web. */
+expect class CallVideoRenderers() {
+    /** Releases every renderer whose track is not among [handles]. */
+    fun keepOnly(handles: List<VideoHandle>)
+}
+
+val LocalCallVideoRenderers = staticCompositionLocalOf<CallVideoRenderers?> { null }
+
 /** Output routes the OS offers right now; fewer than two means the route picker is hidden. */
 expect fun platformAudioRoutes(): List<AudioRoute>
+
+/** True while a screen reader (TalkBack, VoiceOver) drives the UI, which then must not hide controls on a timer. False where it cannot be told. */
+@Composable
+expect fun rememberScreenReaderOn(): Boolean

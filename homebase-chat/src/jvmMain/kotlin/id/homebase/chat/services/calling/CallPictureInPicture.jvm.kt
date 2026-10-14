@@ -6,4 +6,12 @@ import androidx.compose.runtime.Composable
 actual fun rememberInPictureInPicture(): Boolean = false
 
 @Composable
-actual fun CallPictureInPictureEffect(eligible: Boolean, remote: VideoHandle?, muted: Boolean, onToggleMute: () -> Unit, onHangup: () -> Unit) = Unit
+actual fun CallPictureInPictureEffect(
+    eligible: Boolean,
+    remote: VideoHandle?,
+    local: VideoHandle?,
+    muted: Boolean,
+    onToggleMute: () -> Unit,
+    onHangup: () -> Unit,
+    onRestore: () -> Unit,
+) = Unit

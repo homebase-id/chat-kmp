@@ -13,7 +13,7 @@ sealed interface CallEvent {
     data object UserHangup : CallEvent
     data class Signal(val inbound: InboundSignal) : CallEvent
     /** A `ring` push arrived before (or without) the socket offer; collapses with the offer by [callId]. */
-    data class PushRing(val callId: String, val from: String) : CallEvent
+    data class PushRing(val callId: String, val from: String, val sentAtMs: Long = 0) : CallEvent
     data class PushHangup(val callId: String) : CallEvent
     data class Verification(val callId: String, val code: String) : CallEvent
     data class TimerFired(val timer: CallTimer, val callId: String) : CallEvent
@@ -51,7 +51,10 @@ data class CallTransition(val state: CallState, val effects: List<CallEffect> = 
 class CallStateMachine(private val selfOdinId: String) {
 
     fun reduce(state: CallState, event: CallEvent, nowMs: Long): CallTransition =
-        decide(state, event, nowMs).withLocalVideoTrack().also { log(state, event, it) }
+        decide(state, event, nowMs).withLocalVideoTrack().stampEnd(state, nowMs).also { log(state, event, it) }
+
+    private fun CallTransition.stampEnd(before: CallState, nowMs: Long): CallTransition =
+        if (state.phase is CallPhase.Ended && before.phase !is CallPhase.Ended) copy(state = state.copy(endedAtMs = nowMs)) else this
 
     // The engine opens a camera track exactly when it builds an offer or answer with video.
     private fun CallTransition.withLocalVideoTrack(): CallTransition {
@@ -88,7 +91,7 @@ class CallStateMachine(private val selfOdinId: String) {
         CallEvent.UserAccept -> userAccept(state)
         CallEvent.UserDecline, CallEvent.UserHangup -> userHangup(state)
         is CallEvent.Signal -> signal(state, event.inbound, nowMs)
-        is CallEvent.PushRing -> pushRing(state, event)
+        is CallEvent.PushRing -> pushRing(state, event, nowMs)
         is CallEvent.PushHangup ->
             if (state.phase == CallPhase.Incoming && state.callId == event.callId) end(state, CallEndReason.Cancelled)
             else CallTransition(state)
@@ -112,10 +115,8 @@ class CallStateMachine(private val selfOdinId: String) {
         is CallEvent.SetRoute -> control(state, CallEffect.SetRoute(event.route)) { it.copy(route = event.route) }
     }
 
-    private fun CallState.canStart() = phase is CallPhase.Idle || phase is CallPhase.Ended
-
     private fun userCall(s: CallState, e: CallEvent.UserCall): CallTransition {
-        if (!s.canStart() || e.peer == selfOdinId) return CallTransition(s)
+        if (s.isActive || e.peer == selfOdinId) return CallTransition(s)
         val next = CallState(
             phase = CallPhase.Outgoing,
             callId = e.callId,
@@ -183,7 +184,12 @@ class CallStateMachine(private val selfOdinId: String) {
                 CallPhase.Outgoing -> end(
                     s,
                     if (sig.reason == HangupReason.Busy) CallEndReason.Busy else CallEndReason.Declined,
-                    notify = if (sig.reason == HangupReason.Declined) HangupReason.DeclinedElsewhere else null,
+                    notify = when (sig.reason) {
+                        HangupReason.Declined -> HangupReason.DeclinedElsewhere
+                        // One busy device ends the call, so its sibling devices must stop ringing too.
+                        HangupReason.Busy -> HangupReason.Cancelled
+                        else -> null
+                    },
                 )
                 CallPhase.Incoming -> end(
                     s,
@@ -206,12 +212,12 @@ class CallStateMachine(private val selfOdinId: String) {
 
     private fun offer(s: CallState, from: String, sig: CallSignal.Offer, receivedAtMs: Long, nowMs: Long): CallTransition {
         if (from == selfOdinId) return CallTransition(s)
-        if (nowMs - receivedAtMs > RING_TIMEOUT_MS) {
+        if (isStale(receivedAtMs, nowMs)) {
             Logger.i(TAG) { "stale offer call=${sig.callId} age=${nowMs - receivedAtMs}ms dropped" }
             return CallTransition(s)
         }
         if (sig.callId == s.callId) return offerForPushedRing(s, from, sig)
-        if (s.canStart()) {
+        if (!s.isActive) {
             val next = CallState(
                 phase = CallPhase.Incoming,
                 callId = sig.callId,
@@ -246,17 +252,29 @@ class CallStateMachine(private val selfOdinId: String) {
             )
             return CallTransition(
                 next,
-                listOf(
-                    CallEffect.CancelTimers,
-                    CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.Normal)),
-                    CallEffect.ReleaseEngine,
-                    CallEffect.CreateAnswer(sig.sdp, s.media.localVideo),
-                    CallEffect.StartTimer(CallTimer.Connect, sig.callId),
-                ),
+                buildList {
+                    add(CallEffect.CancelTimers)
+                    add(CallEffect.ReleaseEngine)
+                    // The peer's account is in this call now, so its other devices drop our ring as handled, not missed.
+                    add(CallEffect.SendSignal(from, CallSignal.Hangup(s.callId!!, HangupReason.AnsweredElsewhere)))
+                    add(CallEffect.CreateAnswer(sig.sdp, s.media.localVideo))
+                    addAll(replayControls(s.media))
+                    add(CallEffect.StartTimer(CallTimer.Connect, sig.callId))
+                },
             )
         }
         Logger.i(TAG) { "busy: refusing offer call=${sig.callId} from=$from while ${s.phase} call=${s.callId}" }
         return CallTransition(s, listOf(CallEffect.SendSignal(from, CallSignal.Hangup(sig.callId, HangupReason.Busy))))
+    }
+
+    // Both stamps are server time read against the device clock, so a device clock off by more than the ring timeout misjudges them.
+    private fun isStale(serverSentAtMs: Long, nowMs: Long) = serverSentAtMs > 0 && nowMs - serverSentAtMs > RING_TIMEOUT_MS
+
+    // The answering engine is new, so the controls the user set on the yielded one are applied again.
+    private fun replayControls(media: CallMedia) = buildList {
+        if (media.muted) add(CallEffect.SetMuted(true))
+        if (media.camera != CallMedia().camera) add(CallEffect.SwitchCamera)
+        if (media.route != CallMedia().route) add(CallEffect.SetRoute(media.route))
     }
 
     private fun timer(s: CallState, e: CallEvent.TimerFired): CallTransition {
@@ -352,8 +370,12 @@ class CallStateMachine(private val selfOdinId: String) {
         )
     }
 
-    private fun pushRing(s: CallState, e: CallEvent.PushRing): CallTransition {
-        if (e.from == selfOdinId || e.callId == s.callId || !s.canStart()) return CallTransition(s)
+    private fun pushRing(s: CallState, e: CallEvent.PushRing, nowMs: Long): CallTransition {
+        if (e.from == selfOdinId || e.callId == s.callId || s.isActive) return CallTransition(s)
+        if (isStale(e.sentAtMs, nowMs)) {
+            Logger.i(TAG) { "stale ring push call=${e.callId} age=${nowMs - e.sentAtMs}ms dropped" }
+            return CallTransition(s)
+        }
         return CallTransition(
             CallState(phase = CallPhase.Incoming, callId = e.callId, peer = e.from, direction = CallDirection.Incoming),
             listOf(CallEffect.StartTimer(CallTimer.Ring, e.callId)),
@@ -375,7 +397,7 @@ class CallStateMachine(private val selfOdinId: String) {
             listOf(
                 ringing,
                 CallEffect.CancelTimers,
-                CallEffect.CreateAnswer(sig.sdp, sig.video),
+                CallEffect.CreateAnswer(sig.sdp, media.localVideo),
                 CallEffect.StartTimer(CallTimer.Connect, sig.callId),
             ),
         )
@@ -394,10 +416,11 @@ class CallStateMachine(private val selfOdinId: String) {
     private fun end(s: CallState, reason: CallEndReason, notify: HangupReason? = null): CallTransition {
         val effects = buildList {
             add(CallEffect.CancelTimers)
+            // Camera and mic go first: the hangup may wait on a network that is gone.
+            add(CallEffect.ReleaseEngine)
             if (notify != null && s.peer != null && s.callId != null) {
                 add(CallEffect.SendSignal(s.peer, CallSignal.Hangup(s.callId, notify)))
             }
-            add(CallEffect.ReleaseEngine)
         }
         return CallTransition(
             s.copy(phase = CallPhase.Ended(reason), pendingOfferSdp = null, acceptPending = false, peerRinging = false),

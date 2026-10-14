@@ -11,8 +11,12 @@ import org.webrtc.VideoFrame
 import org.webrtc.VideoSink
 import java.util.concurrent.CountDownLatch
 
-/** Aspect-fill WebRTC renderer on a TextureView, so a Compose clip can round it. */
-internal class TextureVideoRenderer(context: Context, eglContext: EglBase.Context) :
+/** Aspect-fill WebRTC renderer on a TextureView, so a Compose clip can round it. [onFrameSize] runs on the decoder thread. */
+internal class TextureVideoRenderer(
+    context: Context,
+    eglContext: EglBase.Context,
+    private val onFrameSize: ((width: Int, height: Int) -> Unit)? = null,
+) :
     TextureView(context), TextureView.SurfaceTextureListener, VideoSink {
 
     private val egl = EglRenderer("CallTextureVideo").apply { init(eglContext, EglBase.CONFIG_PLAIN, GlRectDrawer()) }
@@ -25,7 +29,17 @@ internal class TextureVideoRenderer(context: Context, eglContext: EglBase.Contex
 
     fun release() = egl.release()
 
-    override fun onFrame(frame: VideoFrame) = egl.onFrame(frame)
+    private var frameWidth = 0
+    private var frameHeight = 0
+
+    override fun onFrame(frame: VideoFrame) {
+        if (onFrameSize != null && (frame.rotatedWidth != frameWidth || frame.rotatedHeight != frameHeight)) {
+            frameWidth = frame.rotatedWidth
+            frameHeight = frame.rotatedHeight
+            onFrameSize(frameWidth, frameHeight)
+        }
+        egl.onFrame(frame)
+    }
 
     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
         fillTo(width, height)

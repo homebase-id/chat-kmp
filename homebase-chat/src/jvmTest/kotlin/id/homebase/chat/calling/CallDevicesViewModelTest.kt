@@ -90,6 +90,32 @@ class CallDevicesViewModelTest {
     }
 
     @Test
+    fun aMicLevelTickDoesNotEmitANewCallUiState() {
+        rigTest({ listOf(builtIn) }) { rig ->
+            connect(rig)
+            val emitted = mutableListOf<CallUiState>()
+            val job = backgroundScope.launch { rig.vm.uiState.collect { emitted += it } }
+            settle()
+            val before = emitted.size
+
+            rig.managed.last().setMicLevel(0.5f)
+            settle()
+            val afterFirstSound = emitted.size
+            assertEquals(0.5f, rig.vm.micLevel.value)
+            assertTrue(rig.ui.micLevelSeen)
+            assertEquals(before + 1, afterFirstSound)
+
+            for (level in listOf(0.1f, 0.9f, 0.3f, 0f, 0.7f)) {
+                rig.managed.last().setMicLevel(level)
+                settle()
+            }
+            assertEquals(0.7f, rig.vm.micLevel.value)
+            assertEquals(afterFirstSound, emitted.size)
+            job.cancel()
+        }
+    }
+
+    @Test
     fun selectingADevicePropagatesToTheUiState() {
         val present = listOf(builtIn, usb)
         rigTest({ present }) { rig ->

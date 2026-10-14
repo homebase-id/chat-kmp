@@ -15,6 +15,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
@@ -46,6 +47,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.MutableStateFlow
 
 @OptIn(ExperimentalTestApi::class)
 class CallDevicesScreenshotTest {
@@ -60,19 +62,25 @@ class CallDevicesScreenshotTest {
         MediaDevice("cam-b", "Studio Display Camera", MediaDeviceKind.Camera, isDefault = false),
     )
 
-    private fun state(micLevel: Float = 0f) = CallUiState(
+    private var shownLevel = 0f
+
+    private fun state(micLevel: Float = 0f): CallUiState {
+        shownLevel = micLevel
+        return stateOf(micLevel)
+    }
+
+    private fun stateOf(micLevel: Float) = CallUiState(
         callId = "shot",
         peer = "samwise.gamgee.demo.rocks",
         direction = CallDirection.Outgoing,
         phase = CallPhase.Connected,
         localVideo = true,
         remoteVideo = true,
-        videos = CallVideos(FakeVideo(0xFF5C6BC0, "FB"), FakeVideo(0xFF26A69A, "SG")),
+        videos = CallVideos(FakeVideo("FB"), FakeVideo("SG")),
         connectedAtMs = System.currentTimeMillis() - 83_000,
         verificationCode = "123 456",
         devices = devices,
         selectedDevices = mapOf(MediaDeviceKind.Mic to "mic-b", MediaDeviceKind.Speaker to "spk-a", MediaDeviceKind.Camera to "cam-a"),
-        micLevel = micLevel,
         micLevelSeen = micLevel > 0f,
     )
 
@@ -90,7 +98,9 @@ class CallDevicesScreenshotTest {
         deviceMenu: MutableState<MediaDeviceKind?>? = null,
     ) {
         mainClock.autoAdvance = false
+        val level = MutableStateFlow(shownLevel)
         setContent {
+            CompositionLocalProvider(LocalMicLevel provides level) {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                 Box(Modifier.fillMaxSize()) {
                     CompositionLocalProvider(LocalCallHost provides CallHostCapabilities(ownsWindow = true)) { CallScreen(
@@ -119,6 +129,7 @@ class CallDevicesScreenshotTest {
                         LaunchedEffect(Unit) { snackbar.showSnackbar(notice) }
                     }
                 }
+            }
             }
         }
         mainClock.advanceTimeBy(900)

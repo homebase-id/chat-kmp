@@ -104,6 +104,7 @@ data class SetPhotoAttributeRequest(
     val content: String,
     val thumbnails: List<PhotoThumbnailContent> = emptyList(),
     val previewThumbnail: EmbeddedThumb? = null,
+    val circleIds: List<String>? = null,
 )
 
 @Serializable

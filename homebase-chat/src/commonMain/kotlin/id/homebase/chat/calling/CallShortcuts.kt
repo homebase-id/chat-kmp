@@ -122,8 +122,6 @@ class ShortcutGate(private val nowMs: () -> Long = { Clock.System.now().toEpochM
 
 val LocalShortcutGate = staticCompositionLocalOf<ShortcutGate?> { null }
 
-internal const val ChromeIdleMs = 3_000L
-
 internal fun chromeAutoHideEligible(ui: CallUiState): Boolean = ui.isVideoCall && ui.phase == CallPhase.Connected
 
 class ChromeHold {

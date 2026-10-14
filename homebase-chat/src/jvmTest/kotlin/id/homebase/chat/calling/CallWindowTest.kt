@@ -152,9 +152,8 @@ class CallWindowTest {
                 true
             },
             engineFactory = CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope, FakeCallScript(), "peer", "me") },
-            stunUrls = StunUrlStore(EventBus(), scope.backgroundScope),
+            stunUrls = StunUrlStore(EventBus(), kotlinx.coroutines.flow.flowOf(null), scope.backgroundScope),
             scope = scope.backgroundScope,
-            nowMs = { scope.testScheduler.currentTime },
         )
         val peer = CallController(
             selfOdinId = sam,
@@ -210,7 +209,7 @@ class CallWindowTest {
                         CallChrome(
                             callWindow = rig.model,
                             topInset = 0.dp,
-                            callHost = { hostedOverlay = true },
+                            callHost = { content -> hostedOverlay = true; content() },
                         ) { _ -> Text("Conversation list") }
                     }
                 }
@@ -309,7 +308,7 @@ class CallWindowTest {
     private fun withModel(state: CallState, block: (CallWindowModel, StateSession, MutableList<String>) -> Unit) {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val session = StateSession(state)
-        if (state.media.localVideo) session.videos.value = CallVideos(FakeVideo(0xFF5C6BC0, "FB"), FakeVideo(0xFF26A69A, "SG"))
+        if (state.media.localVideo) session.videos.value = CallVideos(FakeVideo("FB"), FakeVideo("SG"))
         val focused = mutableListOf<String>()
         val model = CallWindowModel(CallViewModel(session, audioRoutes = { emptyList() }), focus = { focused += it }, displayName = { "Samwise Gamgee" })
         try {
@@ -408,7 +407,7 @@ class CallWindowTest {
                     setContent {
                         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
                             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                                CallChrome(callWindow = model, topInset = 0.dp, callHost = {}) { _ ->
+                                CallChrome(callWindow = model, topInset = 0.dp, callHost = { it() }) { _ ->
                                     LazyColumn(Modifier.fillMaxWidth()) {
                                         items(12) { i -> ListItem(headlineContent = { Text("Conversation $i") }, supportingContent = { Text("Last message preview") }) }
                                     }
@@ -434,7 +433,7 @@ class CallWindowTest {
                     var hosted = false
                     setContent {
                         HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
-                            CallChrome(callWindow = if (hostOverlay) null else model, topInset = 0.dp, callHost = { hosted = true }) { _ -> Text("content") }
+                            CallChrome(callWindow = if (hostOverlay) null else model, topInset = 0.dp, callHost = { content -> hosted = true; content() }) { _ -> Text("content") }
                         }
                     }
                     waitForIdle()

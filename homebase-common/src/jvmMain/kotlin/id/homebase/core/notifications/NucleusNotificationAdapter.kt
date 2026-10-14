@@ -50,6 +50,7 @@ internal class NucleusNotificationAdapter private constructor() {
                     }
                 },
             ).send()
+            if (result is NotificationResult.Success) posted[data.notificationId] = result.handle
             if (result is NotificationResult.Failure) {
                 Logger.w(tag = "NucleusNotificationAdapter") {
                     "Send failed: ${result.reason}"

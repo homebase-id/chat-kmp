@@ -10,6 +10,7 @@ import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallQuality
 import id.homebase.chat.services.calling.CallSession
 import id.homebase.chat.services.calling.CallVideos
+import id.homebase.chat.services.calling.holdsPictureInPicture
 import id.homebase.chat.services.calling.isInCall
 import id.homebase.chat.services.calling.MediaDevice
 import id.homebase.chat.services.calling.MediaDeviceKind
@@ -45,6 +46,7 @@ data class CallUiState(
     val localVideo: Boolean = false,
     val micLevelSeen: Boolean = false,
     val remoteVideo: Boolean = false,
+    val placedWithVideo: Boolean = false,
     val route: AudioRoute = AudioRoute.Earpiece,
     val availableRoutes: List<AudioRoute> = emptyList(),
     val quality: CallQuality = CallQuality.Unknown,
@@ -56,7 +58,6 @@ data class CallUiState(
     val dismissedCallId: String? = null,
     val devices: List<MediaDevice> = emptyList(),
     val selectedDevices: Map<MediaDeviceKind, String?> = emptyMap(),
-    val micLevel: Float = 0f,
 ) {
     val visible: Boolean
         get() = phase != CallPhase.Idle && !(phase is CallPhase.Ended && callId == dismissedCallId)
@@ -65,15 +66,15 @@ data class CallUiState(
 
     val inProgress: Boolean get() = phase.isInCall
 
-    val pipEligible: Boolean get() = isVideoCall && (phase == CallPhase.Connected || phase == CallPhase.Reconnecting)
+    val pipEligible: Boolean get() = isVideoCall && phase.holdsPictureInPicture
 
-    val keepScreenAwake: Boolean get() = inProgress
+    val keepScreenAwake: Boolean get() = phase != CallPhase.Idle && phase !is CallPhase.Ended
 
-    val pillVisible: Boolean get() = minimized && inProgress
+    private val minimizedInCall: Boolean get() = minimized && inProgress
 
-    val endReason: CallEndReason? get() = (phase as? CallPhase.Ended)?.reason
+    val pillVisible: Boolean get() = minimizedInCall && !isVideoCall
 
-    val failed: Boolean get() = endReason is CallEndReason.Failed
+    val tileVisible: Boolean get() = minimizedInCall && isVideoCall
 }
 
 sealed interface CallUiEvent {
@@ -92,6 +93,10 @@ class CallViewModel(
     private val _uiState = MutableStateFlow(CallUiState())
     val uiState: StateFlow<CallUiState> = _uiState.asStateFlow()
 
+    private val _micLevel = MutableStateFlow(0f)
+    /** Ticks ~10x a second; kept out of [uiState] so only the meter reads it. */
+    val micLevel: StateFlow<Float> = _micLevel.asStateFlow()
+
     private val _events = MutableSharedFlow<CallUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<CallUiEvent> = _events.asSharedFlow()
 
@@ -101,16 +106,21 @@ class CallViewModel(
     private class DeviceSnapshot(
         val devices: List<MediaDevice> = emptyList(),
         val selected: Map<MediaDeviceKind, String?> = emptyMap(),
-        val micLevel: Float = 0f,
     )
 
     init {
         viewModelScope.launch {
             session.mediaDevices
-                .flatMapLatest { d -> if (d == null) flowOf(DeviceSnapshot()) else combine(d.devices, d.selected, d.micLevel, ::DeviceSnapshot) }
+                .flatMapLatest { d -> if (d == null) flowOf(DeviceSnapshot()) else combine(d.devices, d.selected, ::DeviceSnapshot) }
                 .collect { snap ->
-                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected, micLevel = snap.micLevel, micLevelSeen = it.micLevelSeen || snap.micLevel > 0f) }
+                    _uiState.update { it.copy(devices = snap.devices, selectedDevices = snap.selected) }
                 }
+        }
+        viewModelScope.launch {
+            session.mediaDevices.flatMapLatest { it?.micLevel ?: flowOf(0f) }.collect { level ->
+                _micLevel.value = level
+                if (level > 0f) _uiState.update { it.copy(micLevelSeen = true) }
+            }
         }
         viewModelScope.launch {
             session.mediaDevices.flatMapLatest { it?.events ?: emptyFlow() }.collect { _events.tryEmit(CallUiEvent.Device(it)) }
@@ -129,18 +139,15 @@ class CallViewModel(
                         muted = state.media.muted,
                         localVideo = state.media.localVideo,
                         remoteVideo = state.media.remoteVideo,
+                        placedWithVideo = state.placedWithVideo,
                         route = state.media.route,
                         availableRoutes = routes,
                         quality = state.quality,
                         connectedAtMs = state.connectedAtMs,
-                        endedAtMs = when {
-                            state.phase !is CallPhase.Ended -> null
-                            previous.phase is CallPhase.Ended && !newCall -> previous.endedAtMs
-                            else -> Clock.System.now().toEpochMilliseconds()
-                        },
+                        endedAtMs = state.endedAtMs,
                         verificationCode = state.verificationCode,
                         videos = videos,
-                        minimized = previous.minimized && !newCall,
+                        minimized = previous.minimized && !newCall && state.phase.isInCall,
                     )
                 }
                 scheduleDismissal(state.phase, state.callId)
@@ -151,14 +158,12 @@ class CallViewModel(
     // Failed stays up: it carries Retry, so only the user dismisses it.
     private fun scheduleDismissal(phase: CallPhase, callId: String?) {
         val ended = phase as? CallPhase.Ended
-        if (ended == null || ended.reason is CallEndReason.Failed || callId == null) {
-            if (ended == null) {
-                lingerJob?.cancel()
-                lingeringFor = null
-            }
+        if (ended == null) {
+            lingerJob?.cancel()
+            lingeringFor = null
             return
         }
-        if (lingeringFor == callId) return
+        if (ended.reason is CallEndReason.Failed || callId == null || lingeringFor == callId) return
         lingerJob?.cancel()
         lingeringFor = callId
         lingerJob = viewModelScope.launch {
@@ -178,7 +183,7 @@ class CallViewModel(
 
     fun toggleMute() = session.setMuted(!_uiState.value.muted)
 
-    fun toggleVideo() = session.setVideo(!_uiState.value.localVideo)
+    fun setVideo(on: Boolean) = session.setVideo(on)
 
     fun switchCamera() = session.switchCamera()
 
@@ -223,11 +228,11 @@ class CallViewModel(
 
     fun endFromKeyboard() {
         when (_uiState.value.phase) {
-            CallPhase.Connected -> _events.tryEmit(CallUiEvent.ConfirmEnd)
+            CallPhase.Connecting, CallPhase.Connected, CallPhase.Reconnecting -> _events.tryEmit(CallUiEvent.ConfirmEnd)
             CallPhase.Incoming -> session.decline()
+            CallPhase.Outgoing -> session.hangup()
             is CallPhase.Ended -> close()
             CallPhase.Idle -> Unit
-            else -> session.hangup()
         }
     }
 }

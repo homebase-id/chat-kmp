@@ -15,7 +15,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CallShortcutsTest {
-    private val camera = CallVideos(FakeVideo(0xFF5C6BC0, "FB"), FakeVideo(0xFF26A69A, "SG"))
+    private val camera = CallVideos(FakeVideo("FB"), FakeVideo("SG"))
 
     private fun ui(phase: CallPhase, videos: CallVideos = camera, video: Boolean = true) = CallUiState(
         phase = phase,

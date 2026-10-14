@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.calling.CallEndReason
 import id.homebase.chat.services.calling.CallRingCoordinator
 import id.homebase.chat.services.calling.CallRingSink
 import id.homebase.chat.services.calling.CallService
@@ -53,15 +54,15 @@ private class AndroidCallRingSink(private val context: Context) : CallRingSink {
 
     override fun connected(callId: String) = HomebaseConnectionService.setActive(callId)
 
-    override fun ended(callId: String) {
+    override fun ended(callId: String, reason: CallEndReason) {
         HomebaseConnectionService.labels.remove(callId)
         notifier.cancel(callId, reason = "ended")
-        HomebaseConnectionService.end(callId, remote = true)
+        HomebaseConnectionService.end(callId, reason.disconnectCause())
     }
 
     override fun setLive(live: Boolean, video: Boolean, callId: String?) {
         if (live) {
-            runCatching { CallForegroundService.start(context, video, callId?.let { HomebaseConnectionService.labels[it] }) }
+            runCatching { CallForegroundService.start(context, video, callId, callId?.let { HomebaseConnectionService.labels[it] }) }
                 .onSuccess { foregroundRunning = true }
                 .onFailure { Logger.w(it, "AndroidCall") { "foreground service refused" } }
         } else if (foregroundRunning) {

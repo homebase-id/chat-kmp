@@ -57,7 +57,7 @@ class LiveRelayCallSignalingTest {
         val s = signaling(sink = sink)
         val offer = CallSignal.Offer("0b1a2c3d-0000-4000-8000-000000000001", "v=0", video = false)
 
-        s.send(CallChannel.outbound(sam, offer, "frodo.baggins.demo.rocks"))
+        s.send(CallChannel.outbound(sam, offer))
 
         val sent = sink.single()
         assertEquals("/api/v2/live-relay", sent.path)
@@ -70,14 +70,14 @@ class LiveRelayCallSignalingTest {
         assertEquals("ring", push.getValue("kind").jsonPrimitive.content)
         assertEquals(CallChannel.RING_TYPE_ID, push.getValue("typeId").jsonPrimitive.content)
         assertEquals(offer.callId, push.getValue("tagId").jsonPrimitive.content)
-        assertEquals("frodo.baggins.demo.rocks is calling", push.getValue("unEncryptedMessage").jsonPrimitive.content)
+        assertEquals("Incoming call", push.getValue("unEncryptedMessage").jsonPrimitive.content)
     }
 
     @Test
     fun cancelledHangupRetractsWithKindHangupAndSameTag() = runTest {
         val sink = mutableListOf<Captured>()
         val s = signaling(sink = sink)
-        s.send(CallChannel.outbound(sam, CallSignal.Hangup("call-1", HangupReason.Cancelled), "frodo"))
+        s.send(CallChannel.outbound(sam, CallSignal.Hangup("call-1", HangupReason.Cancelled)))
         val push = sink.single().body.getValue("push").jsonObject
         assertEquals("hangup", push.getValue("kind").jsonPrimitive.content)
         assertEquals("call-1", push.getValue("tagId").jsonPrimitive.content)
@@ -87,9 +87,9 @@ class LiveRelayCallSignalingTest {
     fun answerAndIceCarryNoPushObject() = runTest {
         val sink = mutableListOf<Captured>()
         val s = signaling(sink = sink)
-        s.send(CallChannel.outbound(sam, CallSignal.Answer("c", "sdp"), "frodo"))
-        s.send(CallChannel.outbound(sam, CallSignal.Ice("c", "cand"), "frodo"))
-        s.send(CallChannel.outbound(sam, CallSignal.Hangup("c", HangupReason.Normal), "frodo"))
+        s.send(CallChannel.outbound(sam, CallSignal.Answer("c", "sdp")))
+        s.send(CallChannel.outbound(sam, CallSignal.Ice("c", "cand")))
+        s.send(CallChannel.outbound(sam, CallSignal.Hangup("c", HangupReason.Normal)))
         assertEquals(3, sink.size)
         assertTrue(sink.none { "push" in it.body.keys })
     }
@@ -98,9 +98,9 @@ class LiveRelayCallSignalingTest {
     fun refusedOfferThrowsButRefusedIceDoesNot() = runTest {
         val sink = mutableListOf<Captured>()
         val s = signaling(status = HttpStatusCode.BadRequest, sink = sink)
-        s.send(CallChannel.outbound(sam, CallSignal.Ice("c", "cand"), "frodo"))
+        s.send(CallChannel.outbound(sam, CallSignal.Ice("c", "cand")))
         assertFailsWith<CallEngineException> {
-            s.send(CallChannel.outbound(sam, CallSignal.Offer("c", "sdp", false), "frodo"))
+            s.send(CallChannel.outbound(sam, CallSignal.Offer("c", "sdp", false)))
         }
     }
 
@@ -140,7 +140,7 @@ class LiveRelayCallSignalingTest {
         )
         val pushKinds = listOf("ring", null, null, null, null, "hangup", "hangup", null, null)
 
-        cases.forEach { (signal, _) -> s.send(CallChannel.outbound(sam, signal, "Frodo")) }
+        cases.forEach { (signal, _) -> s.send(CallChannel.outbound(sam, signal)) }
 
         assertEquals(cases.size, sink.size)
         sink.forEachIndexed { i, sent ->
