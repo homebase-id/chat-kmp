@@ -64,19 +64,18 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -135,8 +134,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.close
 import id.homebase.resources.profile_card_preview
-import id.homebase.resources.profile_card_access_allow_description
-import id.homebase.resources.profile_card_app_only
 import id.homebase.resources.profile_card_change_design_to
 import id.homebase.resources.profile_card_audience_editing
 import id.homebase.resources.profile_card_design_save_failed
@@ -167,7 +164,6 @@ import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
-private val APP_ONLY_LABEL_MIN_ROOM = 216.dp
 private val COMPACT_HEIGHT = 760.dp
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val WIDE_PANEL_WIDTH = 440.dp
@@ -240,7 +236,6 @@ fun ProfileCardEditorScreen(
     LaunchedEffect(mode) {
         if (mode == EditorMode.Design) {
             designOpened = true
-            viewModel.onEditorOpened()
         } else if (designOpened) {
             designOpened = false
             viewModel.onEditorClosed()
@@ -351,7 +346,6 @@ fun ProfileCardEditorScreen(
             },
             onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
-            onRequestDesignAccess = viewModel::onPublishRetry,
             onContentToggle = viewModel::onContentToggled,
             onContentEdit = viewModel::onContentEdited,
             onContentDelete = viewModel::onContentDeleted,
@@ -372,7 +366,6 @@ fun ProfileCardEditorScreen(
                 skeleton = true,
             )
         }
-        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
         PhotoRemovalConfirmDialog(avatarState.removalToConfirm, avatarViewModel::onAction)
         if (uiState.pendingImport != null) {
             ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
@@ -416,7 +409,6 @@ internal fun ProfileCardEditorContent(
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: () -> Unit = {},
     onImport: (CardAudience) -> Unit = {},
-    onRequestDesignAccess: () -> Unit = {},
     onContentToggle: (Uuid, Boolean) -> Unit = { _, _ -> },
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
     onContentDelete: (Uuid) -> Unit = {},
@@ -463,8 +455,6 @@ internal fun ProfileCardEditorContent(
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
-                    onSave = onSave,
-                    onAppOnly = onRequestDesignAccess,
                     onContentToggle = onContentToggle,
                     onContentEdit = onContentEdit,
                     onContentDelete = onContentDelete,
@@ -515,6 +505,9 @@ internal fun ProfileCardEditorContent(
                     onBack = onBack,
                     title = if (contentOpen) stringResource(MR.string.profile_edit_title) else null,
                     onPreview = { previewOpen = true }.takeIf { contentOpen && showCard },
+                    onSave = onSave.takeIf { !contentOpen && step == EditorStep.Customise && !uiState.isCircleReadOnly },
+                    canSave = uiState.canSaveDesign,
+                    isSaving = uiState.isSavingDesign,
                 )
                 if (contentOpen && uiState.cards.size > 1) {
                     CardSwitcher(
@@ -659,10 +652,14 @@ private fun EditorTopBar(
     onBack: () -> Unit,
     title: String? = null,
     onPreview: (() -> Unit)? = null,
+    onSave: (() -> Unit)? = null,
+    canSave: Boolean = false,
+    isSaving: Boolean = false,
 ) {
     val editing = stringResource(MR.string.profile_card_audience_editing, audienceLabel(audience))
     val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
     val unsavedLabel = stringResource(MR.string.profile_card_not_saved)
+    val saveLabel = stringResource(MR.string.save)
     val chipDescription = when {
         readOnly -> "$editing. $readOnlyLabel"
         unsaved -> "$editing. $unsavedLabel"
@@ -704,6 +701,15 @@ private fun EditorTopBar(
                 IconButton(onClick = onPreview) {
                     Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
                 }
+            } else if (onSave != null) {
+                FilledIconButton(
+                    onClick = { if (!isSaving) onSave() },
+                    enabled = canSave || isSaving,
+                    shapes = IconButtonDefaults.shapes(),
+                    modifier = Modifier.semantics { contentDescription = saveLabel },
+                ) {
+                    SaveGlyph(isSaving = isSaving, size = 24.dp)
+                }
             } else {
                 // Balances the back button so the audience chip sits centred.
                 Spacer(Modifier.size(48.dp))
@@ -720,8 +726,6 @@ private fun EditorPanel(
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
-    onSave: () -> Unit,
-    onAppOnly: () -> Unit,
     onContentToggle: (Uuid, Boolean) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
     onContentDelete: (Uuid) -> Unit,
@@ -788,11 +792,7 @@ private fun EditorPanel(
                 step = step,
                 design = design,
                 isSaving = isSaving,
-                canSave = uiState.canSaveDesign,
                 canCustomise = !uiState.loadFailed,
-                showsAppOnly = uiState.showsAppOnlyTag,
-                onAppOnly = onAppOnly,
-                onSave = onSave,
                 onStep = onStep,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
@@ -829,24 +829,19 @@ private fun EditorPanel(
     }
 }
 
-// One filled action per step: Customise on the first, Save on the second; Save on the first is the quiet way out.
+// One filled action per step: Customise on the first; the second swaps designs, and Save lives in the top bar.
 @Composable
 private fun StepHeader(
     step: EditorStep,
     design: String,
     isSaving: Boolean,
-    canSave: Boolean,
     canCustomise: Boolean,
-    showsAppOnly: Boolean,
-    onAppOnly: () -> Unit,
-    onSave: () -> Unit,
     onStep: (EditorStep) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val motion = MaterialTheme.motionScheme
     val count = stringResource(MR.string.profile_card_step_count, step.ordinal + 1, EditorStep.entries.size)
     val designName = stringResource(designLabel(design))
-    val save: () -> Unit = { if (!isSaving) onSave() }
     AnimatedContent(
         targetState = step,
         transitionSpec = {
@@ -875,54 +870,31 @@ private fun StepHeader(
                 // The design's name is the way back to step one, so the step reads as "this design, adjusted".
                 EditorStep.Customise -> {
                     val description = stringResource(MR.string.profile_card_change_design_to, designName)
-                    BoxWithConstraints(Modifier.weight(1f)) {
-                        // Below this the label would squeeze the design's name, so the tag keeps only its icon.
-                        val tagLabelled = maxWidth >= APP_ONLY_LABEL_MIN_ROOM * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            FilledTonalButton(
-                                onClick = { if (!isSaving) onStep(EditorStep.Design) },
-                                enabled = !isSaving,
-                                shapes = ButtonDefaults.shapes(),
-                                contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                                modifier = Modifier
-                                    .weight(1f, fill = false)
-                                    .heightIn(min = ACTION_HEIGHT)
-                                    .semantics {
-                                        heading()
-                                        contentDescription = "$description, $count"
-                                    },
-                            ) {
-                                Icon(
-                                    Icons.Outlined.SwapHoriz,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
-                                )
-                                Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                                ActionLabel(designName)
-                            }
-                            if (showsAppOnly) {
-                                AppOnlyTag(
-                                    labelled = tagLabelled,
-                                    onClick = { if (!isSaving) onAppOnly() },
-                                    modifier = Modifier.padding(start = 8.dp),
-                                )
-                            }
-                        }
-                    }
-                    Button(
-                        onClick = save,
-                        enabled = canSave || isSaving,
-                        shapes = ButtonDefaults.shapes(),
-                        contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-                        modifier = Modifier.heightIn(min = ACTION_HEIGHT),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f),
                     ) {
-                        SaveGlyph(isSaving = isSaving, size = ButtonDefaults.iconSizeFor(ACTION_HEIGHT))
-                        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-                        ActionLabel(stringResource(MR.string.save))
+                        FilledTonalButton(
+                            onClick = { if (!isSaving) onStep(EditorStep.Design) },
+                            enabled = !isSaving,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .heightIn(min = ACTION_HEIGHT)
+                                .semantics {
+                                    heading()
+                                    contentDescription = "$description, $count"
+                                },
+                        ) {
+                            Icon(
+                                Icons.Outlined.SwapHoriz,
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)),
+                            )
+                            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+                            ActionLabel(designName)
+                        }
                     }
                 }
             }
@@ -1028,42 +1000,6 @@ private fun ReadOnlyCard(designName: String, modifier: Modifier = Modifier) {
             }
         }
     }
-}
-
-// Quiet on purpose: the app-only card is a choice the owner made, not an error, and the tag is the way back to the grant.
-@Composable
-private fun AppOnlyTag(labelled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val label = stringResource(MR.string.profile_card_app_only)
-    val action = stringResource(MR.string.profile_card_access_allow_description)
-    val colors = MaterialTheme.colorScheme
-    val semantics = Modifier.semantics {
-        contentDescription = label
-        onClick(label = action) { onClick(); true }
-    }
-    if (!labelled) {
-        IconButton(onClick = onClick, modifier = modifier.then(semantics)) {
-            Icon(
-                Icons.Outlined.Info,
-                contentDescription = null,
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(AssistChipDefaults.IconSize),
-            )
-        }
-        return
-    }
-    AssistChip(
-        onClick = onClick,
-        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = {
-            Icon(Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize))
-        },
-        colors = AssistChipDefaults.assistChipColors(
-            labelColor = colors.onSurfaceVariant,
-            leadingIconContentColor = colors.onSurfaceVariant,
-        ),
-        border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = colors.outlineVariant),
-        modifier = modifier.then(semantics),
-    )
 }
 
 // The glyph and the indicator share one slot, so saving never changes the button's width.
