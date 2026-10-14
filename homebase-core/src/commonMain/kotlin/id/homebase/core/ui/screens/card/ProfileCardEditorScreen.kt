@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
+import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.profile.PhotoRemovalConfirmDialog
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.resources.profile_card_content_save_failed
@@ -821,6 +822,7 @@ private fun EditorPanel(
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
                         gap = metrics.gap,
+                        hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
