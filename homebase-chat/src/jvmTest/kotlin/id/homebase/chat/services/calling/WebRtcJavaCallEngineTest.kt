@@ -3,6 +3,7 @@ package id.homebase.chat.services.calling
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
@@ -23,10 +24,22 @@ class WebRtcJavaCallEngineTest {
     private val frodo = "frodo.baggins.demo.rocks"
     private val sam = "samwise.gamgee.demo.rocks"
 
+    // A blocking native call cannot be interrupted, so the body runs on a daemon thread that is abandoned on timeout; the test fails with its stack.
+    private fun runWithin(timeoutMs: Long, body: () -> Unit) {
+        var failure: Throwable? = null
+        val worker = Thread({ try { body() } catch (e: Throwable) { failure = e } }, "native-test").apply { isDaemon = true }
+        worker.start()
+        worker.join(timeoutMs)
+        if (worker.isAlive) throw AssertionError("test body still running after $timeoutMs ms:\n" + worker.stackTrace.joinToString("\n") { "  at $it" })
+        failure?.let { throw it }
+    }
+
+    private fun nativeTest(body: suspend CoroutineScope.() -> Unit) = runWithin(180_000) { runBlocking(block = body) }
+
     private fun headless() = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun, HeadlessAudioDeviceModule()) }
 
     @Test
-    fun twoRealEnginesOverLoopbackSignalingReachConnectedAndFingerprintsMatch() = runBlocking {
+    fun twoRealEnginesOverLoopbackSignalingReachConnectedAndFingerprintsMatch() = nativeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val net = LoopbackSignaling()
@@ -58,7 +71,7 @@ class WebRtcJavaCallEngineTest {
     }
 
     @Test
-    fun engineReportsConnectedAndSurvivesAnIceRestart() = runBlocking {
+    fun engineReportsConnectedAndSurvivesAnIceRestart() = nativeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val a = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
         val b = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
@@ -99,7 +112,7 @@ class WebRtcJavaCallEngineTest {
     }
 
     @Test
-    fun deviceListIsReportedGracefullyAndCloseUnregistersTheListenerTwiceOver() {
+    fun deviceListIsReportedGracefullyAndCloseUnregistersTheListenerTwiceOver() = nativeTest {
         val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
         val devices = engine.mediaDevices.devices.value
         val selected = engine.mediaDevices.selected.value
@@ -112,7 +125,13 @@ class WebRtcJavaCallEngineTest {
     }
 
     @Test
-    fun switchingMicAndSpeakerOnAConnectedCallKeepsItConnectedWithTheTrackEnabled() = runBlocking {
+    fun aNativeCallThatNeverReturnsFailsTheTestInsteadOfBlockingGradle() {
+        val failure = assertFailsWith<AssertionError> { runWithin(200) { Thread.sleep(Long.MAX_VALUE) } }
+        assertTrue("still running after 200 ms" in failure.message.orEmpty(), failure.message)
+    }
+
+    @Test
+    fun switchingMicAndSpeakerOnAConnectedCallKeepsItConnectedWithTheTrackEnabled() = nativeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val engines = mutableListOf<WebRtcJavaCallEngine>()
         val factory = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun, HeadlessAudioDeviceModule()).also { engines += it } }
@@ -145,9 +164,9 @@ class WebRtcJavaCallEngineTest {
     }
 
     @Test
-    fun switchingCameraOnAVideoCallSwapsTheSourceWithoutANewOffer() = runBlocking {
+    fun switchingCameraOnAVideoCallSwapsTheSourceWithoutANewOffer() = nativeTest {
         val cameras = runCatching { dev.onvoid.webrtc.media.MediaDevices.getVideoCaptureDevices() }.getOrDefault(emptyList())
-        if (cameras.size < 2) return@runBlocking
+        if (cameras.size < 2) return@nativeTest
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val net = LoopbackSignaling()
