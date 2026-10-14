@@ -216,31 +216,37 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         if (closed.load()) return false
         if (videoTrack != null) return true
         val sender = videoSender ?: return false.also { Logger.w("WebRtcKmp") { "no video transceiver was negotiated, the camera stays off" } }
-        var media: MediaStream? = null
-        val track = try {
-            MediaDevices.getUserMedia { requestCamera() }.also { media = it }.tracks.filterIsInstance<VideoTrack>().firstOrNull()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, "WebRtcKmp") { "camera could not start mid-call" }
-            null
-        }
-        fun discard() {
-            runCatching { media?.tracks?.forEach { it.stop() } }
-            runCatching { media?.release() }
-        }
-        if (track == null || closed.load()) return false.also { discard() }
-        runCatching { sender.replaceTrack(track) }.onFailure {
-            if (it is CancellationException) throw it
-            Logger.w(it, "WebRtcKmp") { "camera could not be put on the video sender" }
-            discard()
-            return false
-        }
+        val (track, media) = openCameraOnto(sender, enabled = true, "mid-call camera") ?: return false
         cameraStream = media
         videoWanted = true
         attachCamera(track, sender)
         mediaState.setCamera(true)
         return true
+    }
+
+    // Null after logging and releasing the camera when it cannot open, the engine closed meanwhile, or the swap fails.
+    private suspend fun openCameraOnto(sender: RtpSender, enabled: Boolean, purpose: String): Pair<VideoTrack, MediaStream?>? {
+        var media: MediaStream? = null
+        fun discard(): Nothing? {
+            runCatching { media?.tracks?.forEach { it.stop() } }
+            runCatching { media?.release() }
+            return null
+        }
+        val track = runCatching {
+            MediaDevices.getUserMedia { requestCamera() }.also { media = it }
+                .tracks.filterIsInstance<VideoTrack>().firstOrNull() ?: error("no video track")
+        }.onFailure {
+            if (it is CancellationException) throw it
+            Logger.w(it, "WebRtcKmp") { "$purpose failed, video stays off" }
+        }.getOrNull() ?: return discard()
+        if (closed.load()) return discard()
+        track.enabled = enabled
+        runCatching { sender.replaceTrack(track) }.onFailure {
+            if (it is CancellationException) throw it
+            Logger.w(it, "WebRtcKmp") { "$purpose could not replace the sender track, video stays off" }
+            return discard()
+        }
+        return track to media
     }
 
     // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
@@ -256,25 +262,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
 
     private suspend fun recoverCamera(recoveriesLeft: Int) {
         val sender = videoSender ?: return
-        var media: MediaStream? = null
-        val fresh = runCatching {
-            MediaDevices.getUserMedia { requestCamera() }.also { media = it }
-                .tracks.filterIsInstance<VideoTrack>().firstOrNull() ?: error("no video track")
-        }.onFailure {
-            if (it is CancellationException) throw it
-            Logger.w(it, "WebRtcKmp") { "camera recovery failed, video stays off" }
-        }.getOrNull() ?: return
-        fun discard() {
-            runCatching { fresh.stop() }
-            runCatching { media?.release() }
-        }
-        if (closed.load()) return discard()
-        fresh.enabled = videoWanted
-        runCatching { sender.replaceTrack(fresh) }.onFailure {
-            if (it is CancellationException) throw it
-            Logger.w(it, "WebRtcKmp") { "camera recovery could not replace the sender track, video stays off" }
-            return discard()
-        }
+        val (fresh, media) = openCameraOnto(sender, enabled = videoWanted, "camera recovery") ?: return
         runCatching { cameraStream?.release() }
         cameraStream = media
         videoTrack = fresh

@@ -69,7 +69,6 @@ fun callCameraToggleAvailable(ui: CallUiState): Boolean = callIsLive(ui) && ui.c
 fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean = false): CallShortcut? {
     if (input.type != KeyEventType.KeyDown) return null
     val live = callIsLive(ui)
-    val cameraAvailable = ui.cameraAvailable
     val key = input.key
     if (key == Key.Escape) return CallShortcut.Close
     if (input.command) {
@@ -78,7 +77,7 @@ fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean =
             key == Key.W -> CallShortcut.Close
             key == Key.H && input.shift && live -> CallShortcut.HangUp
             key == Key.D && !input.shift && live -> CallShortcut.ToggleMute
-            key == Key.E && !input.shift && live && cameraAvailable -> CallShortcut.ToggleCamera
+            key == Key.E && !input.shift && live && ui.cameraAvailable -> CallShortcut.ToggleCamera
             key == Key.M && input.shift && live -> CallShortcut.ToggleMini
             else -> null
         }
@@ -89,7 +88,7 @@ fun callShortcutFor(input: CallKeyInput, ui: CallUiState, textFocused: Boolean =
     }
     return when {
         key == Key.M && live -> CallShortcut.ToggleMute
-        key == Key.V && live && cameraAvailable -> CallShortcut.ToggleCamera
+        key == Key.V && live && ui.cameraAvailable -> CallShortcut.ToggleCamera
         else -> null
     }
 }
