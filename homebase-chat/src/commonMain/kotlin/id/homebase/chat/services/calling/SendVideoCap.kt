@@ -58,16 +58,29 @@ private const val MAX_CLIMB_TICKS = 24
  */
 internal class SendResolutionLadder(
     private val clock: TimeSource = TimeSource.Monotonic,
+    private val applyFps: (Int) -> Unit = {},
     private val apply: (Double) -> Unit,
 ) {
+    @kotlin.concurrent.Volatile
+    private var pressure = DevicePressure()
+
     private var height = SendVideoCap.HEIGHT
     private var scale = 1.0
     private val load = SendLoadRung()
+    private var lastLoadHeight = SendVideoCap.HEIGHT
     private var lastBytesSent: Pair<Double, TimeMark>? = null
     private var minRtt = Double.MAX_VALUE
     private var climbTicksNeeded = CLIMB_TICKS
     private var encoderLimitedTicks = 0
     private var ticksSinceEncoderClimb: Int? = null
+
+    val fps: Int get() = pressure.cap.fps
+
+    /** Caps the send to [next]'s rung and frame rate at once (the resolution follows on the next stats tick); lifts when it clears. */
+    fun setPressure(next: DevicePressure) {
+        if (next.cap.fps != pressure.cap.fps) applyFps(next.cap.fps)
+        pressure = next
+    }
 
     fun onStats(stats: Collection<StatsEntry>): String? {
         val outbound = stats.video("outbound-rtp") ?: return null
@@ -80,12 +93,13 @@ internal class SendResolutionLadder(
         // iOS reports the camera's 4K before its adapter caps the encoder input at 720p.
         val inputShortSide = minOf(sourceShort, SendVideoCap.HEIGHT.toDouble())
         val inputLongSide = (sourceLong * inputShortSide / sourceShort).roundToInt()
-        val loadBefore = load.height
-        val loadHeight = load.onStats(outbound)
+        val loadBefore = lastLoadHeight
+        val loadHeight = minOf(load.onStats(outbound), pressure.cap.height)
         val next = nextHeight(target, sent, clean, outbound, minOf(height, loadHeight))
         val nextScale = maxOf(1.0, inputShortSide / evenShortSide(minOf(next, loadHeight), inputShortSide.roundToInt(), inputLongSide))
         if (next == height && nextScale == scale && loadHeight == loadBefore) return null
         height = next
+        lastLoadHeight = loadHeight
         if (nextScale != scale) apply(nextScale)
         scale = nextScale
         return "send ladder target=${target.toLong()} sent=${sent?.toLong()} clean=$clean height=$next load=$loadHeight " +

@@ -80,7 +80,14 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     private val closed = AtomicBoolean(false)
     private val mapper = PeerEventMapper { _events.trySend(it) }
     private val stopPipelineWatch = watchVideoPipeline()
-    private val sendLadder = SendResolutionLadder { scale -> videoSender?.let { scaleVideoSender(it, scale) } }
+    private val sendLadder = SendResolutionLadder(
+        applyFps = { fps -> videoSender?.let { limitVideoSenderFps(it, fps) } },
+        apply = { scale -> videoSender?.let { scaleVideoSender(it, scale) } },
+    )
+    private val stopPressureWatch = observeDevicePressure { pressure ->
+        sendLadder.setPressure(pressure)
+        Logger.i("WebRtcKmp") { pressure.describe() }
+    }
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -156,6 +163,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
                     videoTrack = it
                     videoSender = sender
                     configureVideoSender(sender)
+                    if (sendLadder.fps != SendVideoCap.FPS) limitVideoSenderFps(sender, sendLadder.fps)
                     publishLocal(it)
                     Logger.i("WebRtcKmp") { "local video settings=${it.settings}" }
                     // webrtc-kmp stops the track itself on a camera error or freeze; nothing else reports it.
@@ -242,6 +250,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         if (!closed.compareAndSet(false, true)) return
         scope.cancel()
         stopPipelineWatch()
+        stopPressureWatch()
         val start = TimeSource.Monotonic.markNow()
         runCatching { stream?.tracks?.forEach { it.stop() } }
         val tracks = start.elapsedNow()

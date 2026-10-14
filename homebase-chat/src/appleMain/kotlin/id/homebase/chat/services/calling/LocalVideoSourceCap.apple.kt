@@ -8,7 +8,14 @@ import com.shepeliev.webrtckmp.RtpSender
 import com.shepeliev.webrtckmp.VideoProcessorFactory
 import com.shepeliev.webrtckmp.WebRtc
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNumber
+import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSProcessInfoPowerStateDidChangeNotification
+import platform.Foundation.NSProcessInfoThermalStateDidChangeNotification
+import platform.Foundation.isLowPowerModeEnabled
+import platform.Foundation.thermalState
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
@@ -52,6 +59,33 @@ internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
         it.scaleResolutionDownBy = NSNumber(double = scaleDownBy)
     }
     native.parameters = params
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun limitVideoSenderFps(sender: RtpSender, fps: Int) {
+    val native = sender.ios
+    val params = native.parameters
+    params.encodings.filterIsInstance<RTCRtpEncodingParameters>().forEach { it.maxFramerate = NSNumber(int = fps) }
+    native.parameters = params
+}
+
+internal actual fun observeDevicePressure(onChange: (DevicePressure) -> Unit): () -> Unit {
+    val info = NSProcessInfo.processInfo
+    val report = {
+        // NSProcessInfoThermalState: Nominal 0, Fair 1, Serious 2, Critical 3 (the constants are not exported to Kotlin).
+        val thermal = when (info.thermalState.value.toLong()) {
+            1L -> ThermalLevel.Fair
+            2L -> ThermalLevel.Serious
+            3L -> ThermalLevel.Critical
+            else -> ThermalLevel.Nominal
+        }
+        onChange(DevicePressure(thermal, info.isLowPowerModeEnabled()))
+    }
+    val center = NSNotificationCenter.defaultCenter
+    val observers = listOf(NSProcessInfoThermalStateDidChangeNotification, NSProcessInfoPowerStateDidChangeNotification)
+        .map { name -> center.addObserverForName(name, info, NSOperationQueue.mainQueue) { _ -> report() } }
+    report()
+    return { observers.forEach { center.removeObserver(it) } }
 }
 
 @OptIn(ExperimentalForeignApi::class)

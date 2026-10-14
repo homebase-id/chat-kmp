@@ -35,6 +35,15 @@ internal actual fun scaleVideoSender(sender: RtpSender, scaleDownBy: Double) {
     if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected scale $scaleDownBy" }
 }
 
+internal actual fun limitVideoSenderFps(sender: RtpSender, fps: Int) {
+    val native = sender.android
+    val params = native.parameters
+    params.encodings.forEach { it.maxFramerate = fps }
+    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected fps $fps" }
+}
+
+internal actual fun observeDevicePressure(onChange: (DevicePressure) -> Unit): () -> Unit = {}
+
 internal actual fun describeVideoSender(sender: RtpSender): String {
     val params = sender.android.parameters
     val codecs = params.codecs.joinToString { "${it.name}${it.parameters}" }
