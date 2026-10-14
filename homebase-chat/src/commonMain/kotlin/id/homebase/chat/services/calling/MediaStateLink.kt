@@ -32,10 +32,22 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
         fun message() = MediaStateMessage(video, mic, seq)
     }
 
-    private data class Remote(val seq: Long = -1, val video: Boolean? = null, val audio: Boolean? = null)
+    private data class Remote(
+        val seq: Long = -1,
+        val video: Boolean? = null,
+        val audio: Boolean? = null,
+        val trackArrivals: Int = 0,
+    ) {
+        /** The peer's stated camera wins over a track (re)appearing, which says nothing about whether frames flow. */
+        val shownVideo get() = video ?: if (trackArrivals > 0) true else null
+    }
+
+    private data class Shown(val video: Boolean? = null, val audio: Boolean? = null, val trackArrivals: Int = 0)
 
     private val local = AtomicReference(Local())
     private val remote = AtomicReference(Remote())
+    private val shown = AtomicReference(Shown())
+    private val publisher = SerialDrain(::publishRemote)
     private val transport = AtomicReference<((ByteArray) -> Boolean)?>(null)
 
     fun setCamera(on: Boolean) = change("user") { it.copy(camera = on) }
@@ -65,19 +77,32 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
         while (true) {
             val before = remote.load()
             if (message.seq <= before.seq) return
-            val after = Remote(message.seq, message.video, message.audio)
-            if (!remote.compareAndSet(before, after)) continue
-            if (before.video != after.video || before.audio != after.audio) {
+            if (!remote.compareAndSet(before, before.copy(seq = message.seq, video = message.video, audio = message.audio))) continue
+            if (before.video != message.video || before.audio != message.audio) {
                 Logger.i(tag) { "media-state received video=${message.video} audio=${message.audio} seq=${message.seq}" }
             }
-            if (before.video != after.video) emit(MediaEvent.RemoteVideoChanged(message.video))
-            if (before.audio != after.audio) emit(MediaEvent.RemoteMuteChanged(!message.audio))
+            publisher.request()
             return
         }
     }
 
-    /** The peer's stated camera wins over a track (re)appearing, which says nothing about whether frames flow. */
-    fun remoteTrackArrived() = emit(MediaEvent.RemoteVideoChanged(remote.load().video ?: true))
+    fun remoteTrackArrived() {
+        while (true) {
+            val before = remote.load()
+            if (remote.compareAndSet(before, before.copy(trackArrivals = before.trackArrivals + 1))) break
+        }
+        publisher.request()
+    }
+
+    // Runs on one thread at a time and always from the latest remote state, so a stale value can never be sent after a newer one.
+    private fun publishRemote() {
+        val now = remote.load()
+        val before = shown.load()
+        val video = now.shownVideo
+        shown.store(Shown(video, now.audio, now.trackArrivals))
+        if (video != null && (video != before.video || now.trackArrivals != before.trackArrivals)) emit(MediaEvent.RemoteVideoChanged(video))
+        if (now.audio != null && now.audio != before.audio) emit(MediaEvent.RemoteMuteChanged(!now.audio))
+    }
 
     private fun change(reason: String, update: (Local) -> Local) {
         while (true) {

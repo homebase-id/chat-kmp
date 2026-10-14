@@ -108,4 +108,22 @@ class MediaStateLinkTest {
         b.link.remoteTrackArrived()
         assertEquals(listOf(MediaEvent.RemoteVideoChanged(false), MediaEvent.RemoteMuteChanged(false), MediaEvent.RemoteVideoChanged(false)), b.events)
     }
+
+    @Test
+    fun aCameraOffMessageThatLandsWhileTheTrackArrivalIsBeingSentIsNotOverwrittenByIt() {
+        val events = mutableListOf<MediaEvent>()
+        lateinit var link: MediaStateLink
+        var armed = true
+        link = MediaStateLink("test") { event ->
+            if (armed && event == MediaEvent.RemoteVideoChanged(true)) {
+                armed = false
+                link.received("""{"video":false,"audio":true,"seq":1}""".encodeToByteArray())
+            }
+            events += event
+        }
+
+        link.remoteTrackArrived()
+
+        assertEquals(MediaEvent.RemoteVideoChanged(false), events.filterIsInstance<MediaEvent.RemoteVideoChanged>().last())
+    }
 }
