@@ -109,7 +109,8 @@ class WebRtcJavaCallEngine(
     @Volatile private var micMuted = false
 
     private val deviceExecutor = Executors.newSingleThreadExecutor { task -> Thread(task, "call-devices").apply { isDaemon = true } }
-    private val listenerRegistered = AtomicBoolean(false)
+    internal val listenerRegistered = AtomicBoolean(false)
+    internal var unregisterDeviceListener: (DeviceChangeListener) -> Unit = MediaDevices::removeDeviceChangeListener
     private val refreshQueued = AtomicBoolean(false)
     private val deviceListener = object : DeviceChangeListener {
         override fun deviceConnected(device: Device) = refreshDevices()
@@ -520,8 +521,13 @@ class WebRtcJavaCallEngine(
 
     override fun close() {
         // Before [lock]: the listener's native thread can be inside a refresh that waits for [lock].
+        // The native unregister can spin indefinitely, so it gets a bounded wait instead of holding up the release path.
         if (listenerRegistered.compareAndSet(true, false)) {
-            reportIfStalled("removeDeviceChangeListener") { runCatching { MediaDevices.removeDeviceChangeListener(deviceListener) } }
+            val unregister = unregisterDeviceListener
+            Thread({ reportIfStalled("removeDeviceChangeListener") { runCatching { unregister(deviceListener) } } }, "call-device-teardown")
+                .apply { isDaemon = true }
+                .also { it.start() }
+                .join(LISTENER_TEARDOWN_WAIT_MS)
         }
         deviceExecutor.shutdownNow()
         micLevelTimer.cancel()
@@ -565,6 +571,7 @@ class WebRtcJavaCallEngine(
         const val STATS_PERIOD_MS = 5_000L
         const val MIC_LEVEL_PERIOD_MS = 100L
         const val CLOSE_STALL_MS = 10_000L
+        const val LISTENER_TEARDOWN_WAIT_MS = 1_000L
         const val CAMERA_SILENCE_MS = 3_000L
 
         // The capturer reports a failed camera start only through the native log, which otherwise goes nowhere.

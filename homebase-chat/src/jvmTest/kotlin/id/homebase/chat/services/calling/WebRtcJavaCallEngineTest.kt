@@ -125,6 +125,24 @@ class WebRtcJavaCallEngineTest {
     }
 
     @Test
+    fun aDeviceListenerTeardownThatNeverReturnsDoesNotBlockClose() = nativeTest {
+        val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
+        val registered = engine.listenerRegistered.get()
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        engine.unregisterDeviceListener = { entered.countDown(); release.await(); dev.onvoid.webrtc.media.MediaDevices.removeDeviceChangeListener(it) }
+        try {
+            val start = System.nanoTime()
+            runWithin(10_000) { engine.close() }
+            val tookMs = (System.nanoTime() - start) / 1_000_000
+            assertTrue(tookMs < 3_000, "close took $tookMs ms")
+            if (registered) assertTrue(entered.count == 0L, "close never reached the listener teardown")
+        } finally {
+            release.countDown()
+        }
+    }
+
+    @Test
     fun aNativeCallThatNeverReturnsFailsTheTestInsteadOfBlockingGradle() {
         val failure = assertFailsWith<AssertionError> { runWithin(200) { Thread.sleep(Long.MAX_VALUE) } }
         assertTrue("still running after 200 ms" in failure.message.orEmpty(), failure.message)
