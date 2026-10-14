@@ -121,7 +121,7 @@ Failed. The receiver renders "Missed call" from the envelope author. Older clien
 | Target | Engine | Notes |
 |---|---|---|
 | Android | `webrtc-kmp` 0.125.11 (Google WebRTC M125) | `CallAudioRouter` sets `MODE_IN_COMMUNICATION` and routes earpiece/speaker; video via `SurfaceViewRenderer` |
-| iOS | same engine, `RTCMTLVideoView` renderer | `AVAudioSession` PlayAndRecord/VoiceChat; CallKit owns activation |
+| iOS | same engine, `RTCMTLVideoView` renderer | `AVAudioSession` PlayAndRecord; voice calls use VoiceChat, video calls VideoChat (`CallAudioProfile`); CallKit owns activation |
 | Desktop | `webrtc-java` 0.19.0 + natives for macOS/Windows/Linux | frames converted to `ImageBitmap`; camera/mic capture untested on Windows/Linux |
 | Web | none | `platformCallEngineFactory()` is null, calling hidden |
 
@@ -157,7 +157,22 @@ camera formats through a freed struct and opens the camera at 4K, so on every ca
 included) `pinCaptureFormat` re-picks the device format with Telegram's rule (`chooseCaptureFormat`: 8-bit 420v/420f,
 reaching 30 fps, exactly 1280x720 else the smallest covering 720, binned and lowest max fps first) and sets 1/30 frame
 durations; it logs `capture format chosen` and the format again 1 s later. `configureWebRtc`'s 720p output adapter
-stays as the safety net.
+stays as the safety net. Baseline measured before the pin: source 3840x2160 at 30 fps with outbound 1280x720
+(the format sizes were read as garbage, `height=0 width=681`); the pinned capture has not been measured on a device yet.
+
+- **Thermal and Low Power Mode.** `DevicePressure` (filled by the Apple sender) reads `NSProcessInfo` thermal state and Low Power Mode and
+  caps the send rung; the ladder applies the lower of the network cap and the pressure cap and lifts it when the
+  pressure clears (`CallDevicePressureTest`).
+- **Camera-paused signal.** `setVideo(false)` sends a numbered `MediaStateMessage` (video, audio, seq) so the peer emits
+  `RemoteVideoChanged(false)` and shows the avatar instead of a frozen frame; `MediaStateLink` drops stale numbers.
+  Before it, remote video state could only turn on (`WebRtcJavaMediaStateTest`, two real engines).
+- **iOS PiP rendering.** `SampleBufferVideoView` renders only while the PiP window is up; before, frames were wrapped
+  and enqueued from arm time (7342 remote and 6778 self frames between arm and the first PiP start). The I420 to NV12
+  copy is pooled vImage. Baseline CPU (one core): foreground 27.2 % mean, PiP showing 23.4 %.
+- **Android decode time.** libwebrtc's `AndroidVideoDecoder` keeps a `FrameInfo` deque that `reinitDecode` does not
+  clear, so after a resolution change every output is paired with an older entry and `decodeMs` reads about 86 ms
+  (a constant two frame intervals) while a real decode is about 20 ms. `ResizeResettingDecoder` clears the timings on a
+  size change (`decoderNeedsReset`, `CallDecoderResetTest`); the on-device number after the fix is not measured.
 
 - **H.264 level.** libwebrtc offers H.264 at level 3.1 (`42e01f`, at most 3600 macroblocks a frame, 108000 a second)
   and each side encodes at the level the peer advertised. 720p30 fits it exactly, so the SDP is left as libwebrtc wrote
@@ -280,7 +295,8 @@ speaker, as a video call starts there. `WebRtcJavaVideoUpgradeTest` runs it on t
 
 - No TURN; no group calls. A peer whose offer has no video m-line (a build before the idle video transceiver) cannot
   receive a camera turned on mid-call; the toggle falls back to off.
-- Verification code is weak against a hostile relay (see above).
+- Verification code is weak against a hostile relay (see above). The shield in the call top bar opens an
+  end-to-end encryption sheet showing the code (`CallEventDialogs`, shared by the desktop call window and mini window).
 - Mic/camera permission is requested before Accept/Call (`CallPermissionGate`); a denied camera downgrades to voice.
 - iOS link: webrtc-kmp does not bring the WebRTC framework, so `iosApp` links the SPM package `stasel/WebRTC`
   pinned to 125.0.0 (M125). Bump it together with webrtc-kmp. The extensions do not need it.
