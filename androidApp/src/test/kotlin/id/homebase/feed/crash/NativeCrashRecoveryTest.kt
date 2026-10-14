@@ -1,5 +1,6 @@
 package id.homebase.feed.crash
 
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
@@ -44,5 +45,16 @@ class NativeCrashRecoveryTest {
         // Restart reopens MainActivity in the process that already showed the screen, where
         // didCrashOnPreviousExecution() still reports the old crash.
         assertFalse(NativeCrashRecovery.shouldShowNativeCrashRecovery(true, false, alreadyCheckedThisProcess = true))
+    }
+
+    @Test
+    fun tombstoneStrings_keepsReadableRunsAndDropsProtobufNoise() {
+        val bytes = byteArrayOf(0x0a, 0x12) + "android::uirenderer::WorkQueue::process()".encodeToByteArray() +
+            byteArrayOf(0x1a, 0x05) + "abc".encodeToByteArray() + byteArrayOf(0x22, 0x18) +
+            "/system/lib64/libhwui.so".encodeToByteArray()
+        assertEquals(
+            listOf("android::uirenderer::WorkQueue::process()", "/system/lib64/libhwui.so"),
+            NativeCrashRecovery.tombstoneStrings(bytes),
+        )
     }
 }
