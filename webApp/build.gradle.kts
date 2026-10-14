@@ -64,11 +64,12 @@ fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrash
     outputs.dir(workDir)
 
     doFirst {
-        // binaryen asserts on the null sourcesContent entries Kotlin writes.
+        // binaryen asserts on the null sourcesContent entries Kotlin writes. parseText, not parse(File):
+        // over 2 MB, parse(File) switches to a reader parser that overruns its 10,000-char buffer.
         workDir.mkdirs()
         val kotlinMap = File(linkedWasm.get().asFile.path + ".map")
         @Suppress("UNCHECKED_CAST")
-        val map = groovy.json.JsonSlurper().parse(kotlinMap) as MutableMap<String, Any?>
+        val map = groovy.json.JsonSlurper().parseText(kotlinMap.readText()) as MutableMap<String, Any?>
         map.keys.retainAll(listOf("version", "sources", "names", "mappings"))
         binaryenInputMap.writeText(groovy.json.JsonOutput.toJson(map))
     }
