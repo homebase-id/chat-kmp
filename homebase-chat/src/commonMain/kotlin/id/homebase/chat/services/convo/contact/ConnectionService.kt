@@ -195,11 +195,8 @@ class ConnectionService(
     }
 
     /**
-     * Drain any circle enrolments queued for this app, over HTTP.
-     *
-     * The socket carries the same command and is sent on every connect, but it answers nothing —
-     * so it cannot tell us whether an enrolment was actually claimed. This one returns counts.
-     * Idempotent and a no-op without the permission, so running both is harmless.
+     * Drain any circle enrolments queued for this app, once per session; enrolments queued after
+     * that arrive as a socket notification, which claims them itself.
      */
     private suspend fun processEnrollments() {
         // Logged before the call as well as after: without this, silence is ambiguous — never
