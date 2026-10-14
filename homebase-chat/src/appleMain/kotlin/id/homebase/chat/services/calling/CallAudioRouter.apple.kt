@@ -85,7 +85,7 @@ actual class CallAudioRouter actual constructor() {
             category = AVAudioSessionCategoryPlayAndRecord!!
             mode = if (profile.mode == CallAudioMode.VideoChat) AVAudioSessionModeVideoChat!! else AVAudioSessionModeVoiceChat!!
             categoryOptions = AVAudioSessionCategoryOptionAllowBluetooth or
-                (if (profile.defaultToSpeaker && route == AudioRoute.Speaker) AVAudioSessionCategoryOptionDefaultToSpeaker else 0u)
+                (if (profile.mode == CallAudioMode.VideoChat && route == AudioRoute.Speaker) AVAudioSessionCategoryOptionDefaultToSpeaker else 0u)
         }
         RTCAudioSessionConfiguration.setWebRTCConfiguration(config)
         val failed = memScoped {
