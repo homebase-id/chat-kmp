@@ -18,6 +18,7 @@ import id.homebase.core.config.OWNER_APP_ID
 import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.ui.navigation.Route
 import id.homebase.core.sync.awaitAuthRestored
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
@@ -742,6 +743,10 @@ class NotificationService(
     /** Navigate to the WebDrop composer (used for the "New WebDrop" share deep link). */
     fun navigateToWebDropCompose() {
         _navigationEvents.trySend(NotificationNavigationEvent.OpenWebDropCompose)
+    }
+
+    fun navigateToApp(route: Route) {
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenApp(route))
     }
 
     /** Displays a rich notification using platform-specific APIs. */

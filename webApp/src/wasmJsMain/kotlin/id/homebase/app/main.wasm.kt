@@ -22,6 +22,8 @@ import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.di.allModules
+import id.homebase.core.notifications.NotificationService
+import id.homebase.core.ui.navigation.AppLink
 import id.homebase.core.widget.ComposerAutocompleteProbe
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
@@ -46,6 +48,7 @@ private fun recordAutocompleteMismatch(report: String): Unit =
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
+    WebAppLink.captureFromUrl()
     configureWebResources {
         resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
     }
@@ -107,9 +110,17 @@ fun main() {
         // forever and the app hangs on "syncing". Mirrors MainActivity.onCreate
         // (Android) and MainViewController() (iOS). Idempotent.
         GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
+        val notificationService = GlobalContext.get().get<NotificationService>()
+        WebAppLink.consumePending()?.let { notificationService.navigateToApp(it.route) }
         ComposeViewport("ComposeApp") {
             LaunchedEffect(Unit) { bootDone() }
-            App(onNavHostReady = { it.bindToBrowserNavigation() })
+            App(onNavHostReady = { nav ->
+                WebAppLink.listenForTypedHash { notificationService.navigateToApp(it.route) }
+                // A custom fragment turns off the library's own hash parsing; WebAppLink does that instead.
+                nav.bindToBrowserNavigation { _ ->
+                    AppLink.forBackStack(nav.currentBackStack.value)?.let { "#${it.slug}" }.orEmpty()
+                }
+            })
         }
     }
 }
