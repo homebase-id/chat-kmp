@@ -137,7 +137,7 @@ tasks.matching { it.name == "wasmJsBrowserDistribution" }.configureEach {
     finalizedBy(collectWasmCrashSymbols)
 }
 
-// Sub-path mount support. Pass -PpublicPath=/apps/chat-wasm/ to host the bundle under a sub-path
+// Sub-path mount support. Pass -PpublicPath=/apps/chat/ to host the bundle under a sub-path
 // (odin-core's CI does this); defaults to "/" for standalone runs. The normalized value flows to:
 //   - webpack `output.publicPath` (via the generated webpack.config.d/00-publicPath.js)
 //   - the <base href> injected into index.html (via processResources token substitution)
