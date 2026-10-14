@@ -48,6 +48,8 @@ class KmpVideoHandle(
     val receiver: RtpReceiver? = null,
 ) : VideoHandle
 
+internal fun List<VideoHandle>.kmpTracks(): Set<VideoTrack> = mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }
+
 /** Android and iOS engine over webrtc-kmp. Platform audio routing is delegated to [CallAudioRouter]. */
 @OptIn(ExperimentalAtomicApi::class)
 class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {

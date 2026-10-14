@@ -6,7 +6,9 @@ import kotlin.uuid.Uuid
 @Serializable
 data class UpdateLocalMetadataTagsOutboxRequest(
     val file: FileIdFileIdentifier,
-    val versionTag: String?,
+    // Unused — the uploader pins the server's current versionTag at send time. Kept
+    // because OutboxSerializer is strict and rows already queued carry it.
+    val versionTag: String? = null,
     val tags: List<String>?,
     // Stable id of the target file. Lets the uploader resolve the current (possibly
     // rekeyed) fileId at send time, so an own-send pin isn't dropped when temp→server
