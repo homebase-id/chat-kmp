@@ -118,6 +118,35 @@ class CardIntroTest {
     }
 
     @Test
+    fun theTopLeftBackArrowClosesTheCardsScreen() {
+        var closed = 0
+        runDesktopComposeUiTest(width = 824, height = 1784) {
+            setContent {
+                HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                    CardIntro(
+                        uiState = stateOf(), tiles = emptyMap(), host = null, revision = 0,
+                        onOpen = {}, onClose = { closed++ }, onRetry = {}, onCapture = {}, onTilePainted = {},
+                    )
+                }
+            }
+            onNodeWithContentDescription("Back").performClick()
+            assertEquals(1, closed)
+            onAllNodesWithContentDescription("Close").assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun introRendersLightAndDark() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(width = 824, height = 1784) {
+                setContent { HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) { intro(stateOf()) } }
+                waitForIdle()
+                outDir?.let { ImageIO.write(onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage(), "png", File(it, "L1-intro-${if (dark) "dark" else "light"}.png")) }
+            }
+        }
+    }
+
+    @Test
     fun eachTileReportsItsOwnPaintOnceItsStillIsShown() {
         val painted = mutableListOf<CardAudience>()
         val state = stateOf()

@@ -60,7 +60,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import javax.imageio.ImageIO
+import androidx.compose.ui.test.assertCountEquals
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -115,8 +117,6 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides().with(CardOption.COLOURS, "#F4F1EA"),
     )
 
-    private fun appOnly(state: ProfileCardUiState) = state.copy(designAccessMissing = true, designAccessDeclined = true)
-
     private fun tool(description: String): ComposeUiTest.() -> Unit = {
         // The semantic click reaches a tool scrolled out of view and leaves no hover highlight behind.
         onNodeWithContentDescription(description).performSemanticsAction(SemanticsActions.OnClick)
@@ -129,6 +129,7 @@ class ProfileCardEditorShotsTest {
         Shot("03-design-saving", base.copy(previewDesign = CardDesign.COLLAGE, isSavingDesign = true)),
         Shot("03b-customise-saving", edited.copy(isSavingDesign = true), EditorStep.Customise),
         Shot("04-customise-accent", edited, EditorStep.Customise),
+        Shot("04b-customise-unedited", base, EditorStep.Customise),
         Shot("05-customise-heading-font", edited, EditorStep.Customise, act = tool("Heading font")),
         Shot("06-customise-portrait", edited, EditorStep.Customise, act = tool("Portrait shape")),
         Shot("07-customise-socials", edited, EditorStep.Customise, act = tool("Social links style")),
@@ -151,16 +152,9 @@ class ProfileCardEditorShotsTest {
         Shot("20-small-phone-customise", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
         Shot("21-small-phone-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = 360, heightDp = 640),
         Shot("22-small-phone-fonts", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Body font")),
-        Shot("23-app-only-design", appOnly(base), EditorStep.Design),
-        Shot("24-app-only-customise", appOnly(edited), EditorStep.Customise, act = tool("Social links style")),
-        Shot("25-app-only-small-phone", appOnly(edited), EditorStep.Customise, widthDp = 360, heightDp = 640),
-        Shot("26-app-only-font-scale", appOnly(edited), EditorStep.Customise, fontScale = 1.6f),
-        Shot("27-app-only-long-design", appOnly(base.copy(previewDesign = CardDesign.DOSSIER)), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("30-redmi-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("31-redmi-design-access", appOnly(base.copy(previewDesign = CardDesign.DOSSIER)), widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("32-redmi-design-unsaved", appOnly(base.copy(previewDesign = CardDesign.COLLAGE)), widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("32-redmi-design-unsaved", base.copy(previewDesign = CardDesign.COLLAGE), widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("33-redmi-colours", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("34-redmi-colours-access", appOnly(schemed), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("35-redmi-accent", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Accent colour")),
         Shot("36-redmi-heading-font", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Heading font")),
         Shot("37-redmi-portrait", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Portrait shape")),
@@ -369,7 +363,6 @@ class ProfileCardEditorShotsTest {
         for (dark in listOf(false, true)) {
             for (shot in viewerShots) renderViewer(shot, dark)
             renderPopup("v06-reset-dialog", dark) { ResetCardDialog(audience = work, onReset = {}, onDismiss = {}) }
-            renderPopup("v07-access-dialog", dark) { DesignAccessDialog(onContinue = {}, onDismiss = {}) }
             renderPopup("v03-share-public-confirm", dark) {
                 SharePublicCardDialog(circleLabel = "Acquaintances", saveInsteadOfShare = false, onConfirm = {}, onDismiss = {})
             }
@@ -447,6 +440,41 @@ class ProfileCardEditorShotsTest {
         assertTrue(image.width > 0 && image.height > 0)
         outDir?.let { dir ->
             ImageIO.write(image.toAwtImage(), "png", File(dir, "$name-${if (dark) "dark" else "light"}.png"))
+        }
+    }
+
+    @Test
+    fun saveIsACheckInTheTopBarOnlyOnTheCustomiseStep() {
+        for ((step, expected) in listOf(EditorStep.Design to 0, EditorStep.Customise to 1)) {
+            var saved = 0
+            runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
+                setContent {
+                    CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+                        HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                            CardExpressiveTheme {
+                                ProfileCardEditorContent(
+                                    uiState = edited.copy(previewDesign = CardDesign.POSTER),
+                                    step = step,
+                                    onStep = {},
+                                    onBack = {},
+                                    onSelect = {},
+                                    onOption = { _, _ -> },
+                                    onBlockOrder = {},
+                                    onSave = { saved++ },
+                                    snackbarHostState = remember { SnackbarHostState() },
+                                ) { Box(Modifier.fillMaxSize()) }
+                            }
+                        }
+                    }
+                }
+                waitForIdle()
+                onAllNodesWithContentDescription("Save").assertCountEquals(expected)
+                onAllNodesWithText("Save").assertCountEquals(0)
+                if (expected == 1) {
+                    onNodeWithContentDescription("Save").performClick()
+                    assertEquals(1, saved)
+                }
+            }
         }
     }
 

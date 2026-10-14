@@ -1788,7 +1788,7 @@
     <string name="profile_card_design_board">Tavle</string>
     <string name="profile_card_design_collage">Collage</string>
     <string name="profile_card_design_dossier">Dossier</string>
-    <string name="profile_card_design_links">Links</string>
+    <string name="profile_card_design_links">Enkel</string>
     <string name="profile_card_error">Kunne ikke vise dit kort.</string>
     <string name="profile_card_share_failed">Kunne ikke lave kortbilledet.</string>
     <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
@@ -1827,8 +1827,6 @@
     <string name="profile_card_nfc_switch">Del mit kort ved berøring, mens Homebase er åben</string>
     <string name="profile_card_nfc_switch_desc">En anden telefon kan åbne dit kort ved at røre din</string>
     <string name="profile_card_nfc_shared">Kort delt</string>
-    <string name="settings_profile_card">Profilkort</string>
-    <string name="settings_profile_card_desc">Se hvordan andre ser dig, og del det som et billede</string>
 
     <!-- Avatar editor -->
     <string name="profile_avatar_edit_title">Skift foto</string>

@@ -28,7 +28,8 @@ Every file and folder is one Homebase file:
   - `mtime` and `ct` (creation time, optional, files and folders) are in Unix milliseconds;
     `size` is the plaintext size; `x` means executable and is left out when false. Folders have
     `v`, `name` and maybe `ct`.
-  - `tags` holds Finder tags, `[{"n": "Red", "c": 6}]`; the mini-app doesn't show them yet, and writes them back as read.
+  - `tags` holds Finder tags, `[{"n": "Red", "c": 6}]` (`c` 1 grey … 7 orange, optional). The mini-app shows them as dots and
+    chips and filters on them, and writes them back as read.
   - Ignore keys you don't know. If `v` > 1, show the item but don't change it.
 
 ## Listing a folder
@@ -41,6 +42,14 @@ Every file and folder is one Homebase file:
   `sync_data` payload.
 - odin-core has no index on `groupId` yet, so on a big drive each listing scans the whole drive
   (to fix in odin-core).
+
+## What the list shows
+Everything comes from the node's HomebaseFile; nothing is stored beside it.
+- Kind and icon come from the name's extension: the payload's `contentType` is always `application/octet-stream`.
+- Size is `content.size`; modified is `mtime` (files only); created is `ct` when set; `x` shows a "runs" badge.
+- "On Homebase since" is the header's `created`; "Last uploaded" is `sync_data`'s `lastModified`; the info pane names the
+  payload's hash algorithm.
+- There are no thumbnails, and folders have no size or item count.
 
 ## Downloading
 - Fetch payload `sync_data` and decrypt it with the file's key (AES-CBC, the same as other
