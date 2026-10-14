@@ -86,7 +86,7 @@ actual class CallVideoRenderers actual constructor() {
     internal fun obtain(handle: KmpVideoHandle): AttachedVideoView = views.getOrPut(handle.track) { AttachedVideoView(handle) }
 
     actual fun keepOnly(handles: List<VideoHandle>) {
-        val live = handles.mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }
+        val live = handles.kmpTracks()
         views.keys.filterNot { it in live }.forEach { views.remove(it)?.detach() }
     }
 }
