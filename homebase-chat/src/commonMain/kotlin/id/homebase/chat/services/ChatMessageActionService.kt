@@ -464,7 +464,6 @@ class ChatMessageActionService(
                     fileId = file.fileId.toString(),
                     targetDrive = chatTargetDrive,
                 ),
-                versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
                 tags = newTags.map { it.toString() },
                 // Stable id so the uploader targets the current (post-rekey) fileId —
                 // a just-sent message's fileId here is a temp id that the create rekeys.

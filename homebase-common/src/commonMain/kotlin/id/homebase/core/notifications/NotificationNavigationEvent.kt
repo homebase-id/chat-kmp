@@ -1,5 +1,7 @@
 package id.homebase.core.notifications
 
+import id.homebase.core.ui.navigation.Route
+
 /** Events emitted by NotificationService when a notification is tapped. Observed by AppNavHost. */
 sealed class NotificationNavigationEvent {
     data class OpenConversation(
@@ -50,4 +52,7 @@ sealed class NotificationNavigationEvent {
      * the WebDrop view model opens the composer with the seeded files on init.
      */
     data object OpenWebDropCompose : NotificationNavigationEvent()
+
+    /** Open a mini app's root screen, e.g. from a web `#filesync` link. */
+    data class OpenApp(val route: Route) : NotificationNavigationEvent()
 }
