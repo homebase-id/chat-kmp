@@ -18,7 +18,7 @@ class ResizeResettingDecoderTest {
     @Test
     fun aResizeDropsTheTimingsOfFramesTheOldCodecStillHeld() {
         val codecs = HoldingCodecs()
-        val decoder = ResizeResettingDecoder(codecs, "fake.decoder", VideoCodecMimeType.H264, COLOR_FORMAT)
+        val decoder = ResizeResettingDecoder(codecs, "fake.decoder", VideoCodecMimeType.H264, COLOR_FORMAT, sharedContext = null)
 
         decodeHeldFramesThenResize(decoder)
 

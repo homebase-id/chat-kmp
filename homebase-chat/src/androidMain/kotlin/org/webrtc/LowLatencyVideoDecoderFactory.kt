@@ -16,9 +16,10 @@ import java.nio.ByteBuffer
 // fills its picture buffer before it outputs a frame. AndroidVideoDecoder and MediaCodecWrapperFactory are
 // package-private, hence this package: a libwebrtc bump that renames them breaks the build here, not at runtime.
 
-fun lowLatencyVideoDecoderFactory(): VideoDecoderFactory = DefaultVideoDecoderFactory(LowLatencyHardwareDecoderFactory())
+fun lowLatencyVideoDecoderFactory(sharedContext: EglBase.Context?): VideoDecoderFactory =
+    DefaultVideoDecoderFactory(LowLatencyHardwareDecoderFactory(sharedContext))
 
-private class LowLatencyHardwareDecoderFactory : HardwareVideoDecoderFactory(null) {
+private class LowLatencyHardwareDecoderFactory(private val sharedContext: EglBase.Context?) : HardwareVideoDecoderFactory(null) {
     override fun createDecoder(codecInfo: VideoCodecInfo): VideoDecoder? {
         val type = VideoCodecMimeType.valueOf(codecInfo.name)
         val candidates = (0 until MediaCodecList.getCodecCount())
@@ -34,7 +35,7 @@ private class LowLatencyHardwareDecoderFactory : HardwareVideoDecoderFactory(nul
         val (info, colorFormat) = candidates.firstOrNull { (info, _) -> info.name.endsWith(".low_latency") }
             ?: candidates.firstOrNull()
             ?: return null
-        return ResizeResettingDecoder(LowLatencyCodecs, info.name, type, colorFormat)
+        return ResizeResettingDecoder(LowLatencyCodecs, info.name, type, colorFormat, sharedContext)
     }
 }
 
@@ -42,8 +43,13 @@ private class LowLatencyHardwareDecoderFactory : HardwareVideoDecoderFactory(nul
 // start times in frameInfos, which it pairs FIFO with later outputs: each leaked entry adds a frame interval to every
 // decode time from then on (Redmi: +66 ms after a ladder climb), and VCMTiming adds that to the playout delay.
 // release() is the only path that clears frameInfos, so a resize goes through release() + initDecode() instead.
-internal class ResizeResettingDecoder(codecs: MediaCodecWrapperFactory, codecName: String, type: VideoCodecMimeType, colorFormat: Int) :
-    AndroidVideoDecoder(codecs, codecName, type, colorFormat, null) {
+internal class ResizeResettingDecoder(
+    codecs: MediaCodecWrapperFactory,
+    codecName: String,
+    type: VideoCodecMimeType,
+    colorFormat: Int,
+    sharedContext: EglBase.Context?,
+) : AndroidVideoDecoder(codecs, codecName, type, colorFormat, sharedContext) {
     private var settings: VideoDecoder.Settings? = null
     private var callback: VideoDecoder.Callback? = null
 
@@ -53,7 +59,8 @@ internal class ResizeResettingDecoder(codecs: MediaCodecWrapperFactory, codecNam
         return super.initDecode(settings, callback)
     }
 
-    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo): VideoCodecStatus {
+    // libwebrtc's JNI wrapper passes a null DecodeInfo; a non-null Kotlin parameter throws into native and aborts.
+    override fun decode(frame: EncodedImage, info: VideoDecoder.DecodeInfo?): VideoCodecStatus {
         val current = settings
         val callback = callback
         val w = frame.encodedWidth

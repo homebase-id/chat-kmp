@@ -138,7 +138,7 @@ internal fun FloatingCallTile(
         val position = remember { Animatable(corners[corner], Offset.VectorConverter) }
         var drag by remember { mutableStateOf(Offset.Zero) }
         LaunchedEffect(corners[corner]) { if (drag == Offset.Zero) position.animateTo(corners[corner], springSpec) }
-        val appear = remember { Animatable(0.8f) }
+        val appear = remember { Animatable(0f) }
         val appearSpec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
         LaunchedEffect(Unit) { appear.animateTo(1f, appearSpec) }
         Surface(
@@ -148,9 +148,10 @@ internal fun FloatingCallTile(
                 .size(tileSize)
                 .testTag(FloatingTileTag)
                 .graphicsLayer {
-                    scaleX = appear.value
-                    scaleY = appear.value
-                    alpha = ((appear.value - 0.8f) / 0.2f).coerceIn(0f, 1f)
+                    scaleX = 0.8f + 0.2f * appear.value
+                    scaleY = scaleX
+                    // Must settle at exactly 1f: below it the layer goes offscreen and the iOS video's interop hole clears that buffer, not the window.
+                    alpha = appear.value.coerceIn(0f, 1f)
                 }
                 .semantics { contentDescription = description }
                 .pointerInput(Unit) {

@@ -16,12 +16,11 @@ internal val configureWebRtcFactory: Unit by lazy {
     val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     val severity = if (debuggable) Logging.Severity.LS_INFO else Logging.Severity.LS_WARNING
     val options = WebRtc.createInitializationOptionsBuilder().setInjectableLogger(WebRtcLog, severity)
-    // A texture-mode decoder has one output texture and drops every frame decoded while libwebrtc's render queue still
-    // holds the last one until its render time, which halved 1080p to 15 fps on the Redmi; byte buffers have no such slot.
+    // Texture output has one slot and dropped 1080p to 15 fps until the low-latency keys made decode fast (CALLING.md).
     val builder = WebRtc.createPeerConnectionFactoryBuilder(initializationOptionsBuilder = options)
-        .setVideoDecoderFactory(lowLatencyVideoDecoderFactory())
+        .setVideoDecoderFactory(lowLatencyVideoDecoderFactory(WebRtc.rootEglBase.eglBaseContext))
     WebRtc.configure(peerConnectionFactoryBuilder = builder)
-    Logger.i("WebRtcKmp") { "libwebrtc logging at $severity, warnings to homebase.log; video decoders output byte buffers in low-latency mode" }
+    Logger.i("WebRtcKmp") { "libwebrtc logging at $severity, warnings to homebase.log; video decoders output textures in low-latency mode" }
 }
 
 private object WebRtcLog : Loggable {
