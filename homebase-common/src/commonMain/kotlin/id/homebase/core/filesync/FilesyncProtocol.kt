@@ -2,7 +2,7 @@ package id.homebase.core.filesync
 
 import kotlin.uuid.Uuid
 
-/** The Filesync drive format: docs/filesync-browser.md, and filesync's docs/spec/node-schema-v1.md. */
+/** The Filesync drive format: filesync's docs/spec/file-browser.md and docs/spec/node-schema-v1.md. */
 object FilesyncProtocol {
     // Filesync's fixed ids (filesync app.rs); its desktop clients address the drive by them.
     val DriveAlias: Uuid = Uuid.parse("cfceb937-b868-496b-91cb-3402f18320f8")
