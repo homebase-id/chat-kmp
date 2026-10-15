@@ -7,8 +7,6 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.util.initials
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -155,11 +153,7 @@ class MomentsRecipientLookupService(
 
         for (cwm in circles) {
             val def = cwm.circle
-            // User-defined circles only: drop the Confirmed/Auto system circles (Emergency and any
-            // other user circle stay). Disabled ones are kept and rendered unselectable.
-            if (def.id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
-                def.id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
-            ) continue
+            // Disabled circles are kept and rendered unselectable.
             if (def.name.isBlank()) continue
             // Snapshot the members (v1 member expansion); self isn't a transit recipient.
             // Empty circles are kept (they render greyed-out + non-selectable in the picker so the

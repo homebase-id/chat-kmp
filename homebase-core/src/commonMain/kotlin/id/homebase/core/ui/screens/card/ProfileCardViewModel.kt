@@ -7,7 +7,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
-import id.homebase.api.client.drives.CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -18,7 +17,6 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.util.compareStringUuId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.ui.screens.contactbook.isOwnedByContactsApp
@@ -220,12 +218,10 @@ class DefaultProfileCardSource(
     override val supportsCircleCards: Boolean get() = cardRepository.supportsCircleCards
 
     override suspend fun circles(): List<CardCircle> =
-        contactsCircles(connectionProvider.getCirclesWithMembers(includeSystemCircle = false))
+        contactsCircles(connectionProvider.getCirclesWithMembers())
 
-    // Listing system circles is owner-only, but the server creates both at startup, so they always exist.
     override suspend fun serverCircleIds(): Set<String> =
-        connectionProvider.getCirclesWithMembers(includeSystemCircle = false).map { it.circle.id }.toSet() +
-            setOf(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, AUTO_CONNECTIONS_CIRCLE_ID)
+        connectionProvider.getCirclesWithMembers().map { it.circle.id }.toSet()
 
     override suspend fun saveCircleCard(card: ProfileCard) = cardRepository.saveCircle(card)
 

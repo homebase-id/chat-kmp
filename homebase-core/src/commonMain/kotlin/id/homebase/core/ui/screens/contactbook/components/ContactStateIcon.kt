@@ -1,6 +1,9 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.CallMade
+import androidx.compose.material.icons.automirrored.outlined.CallReceived
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material.icons.outlined.Person
@@ -9,9 +12,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.resources.MR
+import id.homebase.resources.contact_request_incoming
+import id.homebase.resources.contact_request_outgoing
 import id.homebase.resources.contact_state_chat
 import id.homebase.resources.contact_state_circle
 import id.homebase.resources.contact_state_new
@@ -31,6 +37,22 @@ fun ContactStateIcon(state: ContactState, modifier: Modifier = Modifier) {
         ContactState.Chat -> Icons.Outlined.ChatBubbleOutline to stringResource(MR.string.contact_state_chat)
         ContactState.Circle -> Icons.Outlined.Person to stringResource(MR.string.contact_state_circle)
     }
+    TrailingStatusIcon(icon, label, modifier)
+}
+
+@Composable
+fun RequestDirectionIcon(direction: RequestDirection, modifier: Modifier = Modifier) {
+    val (icon, label) = when (direction) {
+        RequestDirection.INCOMING ->
+            Icons.AutoMirrored.Outlined.CallReceived to stringResource(MR.string.contact_request_incoming)
+        RequestDirection.OUTGOING ->
+            Icons.AutoMirrored.Outlined.CallMade to stringResource(MR.string.contact_request_outgoing)
+    }
+    TrailingStatusIcon(icon, label, modifier)
+}
+
+@Composable
+private fun TrailingStatusIcon(icon: ImageVector, label: String, modifier: Modifier) {
     Icon(
         imageVector = icon,
         contentDescription = label,

@@ -796,7 +796,6 @@ val appModule = module {
             // #1109: attribute a background window to the active location profile in the
             // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
             locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
-            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
         )
     }
     single {
@@ -836,7 +835,6 @@ val appModule = module {
             eventBus = get(),
             scope = get(),
             cache = get(),
-            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
         )
     }
     singleOf(::EmergencyCircleNotifier)
@@ -1172,7 +1170,6 @@ val appModule = module {
             conversationService = get(),
             emergencyLocateService = get(),
             authConnectionCoordinator = get(),
-            developerPreferences = get(),
         )
     }
     viewModelOf(::EmergencyContactPickerViewModel)
@@ -1220,7 +1217,6 @@ val appModule = module {
             circleName = params.get(),
             repo = get(),
             connectionService = get(),
-            developerPreferences = get(),
         )
     }
     // Manual block: conversationId arrives as a Koin runtime parameter from the ShareContact route.

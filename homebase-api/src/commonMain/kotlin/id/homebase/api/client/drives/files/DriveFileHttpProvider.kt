@@ -89,7 +89,10 @@ public class DriveFileHttpProvider(
             bearerAuth(creds.accessToken)
             timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
         }.execute { response ->
-            if (response.status.value == 404) return@execute false
+            if (response.status.value == 404) {
+                Logger.w(tag = TAG) { "streamPayloadDecryptedToPath 404 file=$fileId key=$key" }
+                return@execute false
+            }
 
             if (response.status.value !in listOf(200, 206)) {
                 throwForFailure(

@@ -9,8 +9,8 @@ import kotlin.test.assertEquals
 
 class AccessControlVisibilityTest {
 
-    private val systemCircle = "bb2683fa-402a-ff86-6e77-1a6495765a15"
     private val friendsCircle = "0f2c1a8e-5b3d-4e6f-9a1b-2c3d4e5f6a7b"
+    private val familyCircle = "1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d"
 
     private fun acl(group: String?, circles: List<String>? = null, odinIds: List<String>? = null) =
         AccessControlList(requiredSecurityGroup = group, circleIdList = circles, odinIdList = odinIds?.map(::OdinId))
@@ -28,11 +28,7 @@ class AccessControlVisibilityTest {
             acl("autoconnected") to listOf(CONNECTED),
             acl("owner") to emptyList(),
             acl("connected", circles = listOf(friendsCircle)) to emptyList(),
-            acl("connected", circles = listOf(systemCircle)) to listOf(CONNECTED),
-            acl("connected", circles = listOf(systemCircle.replace("-", "").uppercase())) to listOf(CONNECTED),
-            acl("connected", circles = listOf(friendsCircle, systemCircle)) to listOf(CONNECTED),
-            acl("authenticated", circles = listOf(systemCircle)) to listOf(CONNECTED),
-            acl("anonymous", circles = listOf(systemCircle)) to listOf(CONNECTED),
+            acl("anonymous", circles = listOf(friendsCircle)) to emptyList(),
             acl("connected", circles = emptyList()) to listOf(CONNECTED),
             acl("connected", odinIds = listOf("sam.dotyou.cloud")) to emptyList(),
             acl("anonymous", odinIds = listOf("sam.dotyou.cloud")) to emptyList(),
@@ -49,7 +45,6 @@ class AccessControlVisibilityTest {
         assertEquals(true, null.isVisibleTo(ProfileVisibility.OWNER))
         assertEquals(true, acl("authenticated").isVisibleTo(ProfileVisibility.AUTHENTICATED))
         assertEquals(false, acl("connected").isVisibleTo(ProfileVisibility.AUTHENTICATED))
-        assertEquals(false, acl("authenticated", circles = listOf(systemCircle)).isVisibleTo(ProfileVisibility.AUTHENTICATED))
     }
 
     @Test
@@ -57,12 +52,12 @@ class AccessControlVisibilityTest {
         val anonymous = acl("anonymous")
         val authenticated = acl("authenticated")
         val connected = acl("connected")
-        val connectedSystemCircle = acl("connected", circles = listOf(systemCircle))
-        val connectedTwoCircles = acl("connected", circles = listOf(systemCircle, friendsCircle))
+        val connectedOneCircle = acl("connected", circles = listOf(friendsCircle))
+        val connectedTwoCircles = acl("connected", circles = listOf(friendsCircle, familyCircle))
         val owner = acl("owner")
         assertEquals(
-            listOf(owner, connectedSystemCircle, connectedTwoCircles, connected, authenticated, anonymous),
-            listOf(anonymous, connectedTwoCircles, authenticated, owner, connected, connectedSystemCircle)
+            listOf(owner, connectedOneCircle, connectedTwoCircles, connected, authenticated, anonymous),
+            listOf(anonymous, connectedTwoCircles, authenticated, owner, connected, connectedOneCircle)
                 .sortedWith(aclMostRestrictiveFirst),
         )
     }
@@ -80,7 +75,6 @@ class AccessControlVisibilityTest {
             acl("connected", circles = listOf(friendsCircle.replace("-", "").uppercase())) to true,
             acl("connected", circles = listOf(other, friendsCircle)) to true,
             acl("connected", circles = listOf(other)) to false,
-            acl("connected", circles = listOf(systemCircle)) to true,
             acl("anonymous", circles = listOf(other)) to false,
             acl("authenticated", circles = listOf(other)) to false,
             acl("anonymous", circles = listOf(friendsCircle)) to true,

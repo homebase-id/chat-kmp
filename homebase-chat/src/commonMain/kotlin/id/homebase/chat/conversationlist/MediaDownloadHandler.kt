@@ -300,9 +300,20 @@ internal class MediaDownloadHandler(
                         filePath
                     messagesUiState.update { it.copy(decryptedFiles = decryptedFiles.toPersistentMap()) }
                 } else {
+                    Logger.e(tag = "DecryptFile") {
+                        "stream returned false file=${message.fileId} key=${action.payloadKey} " +
+                            "contentType=${payload.contentType} bytesWritten=${payload.bytesWritten} path=$filePath"
+                    }
                     sendEvent(ShowErrorMessage(MR.string.chat_error_downloading_file))
                 }
             } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "DecryptFile") {
+                    val payload = message.payloads?.find { it.key == action.payloadKey }
+                    val aesKey = message.keyHeader.aesKey.unsafeBytes
+                    "failed file=${message.fileId} key=${action.payloadKey} contentType=${payload?.contentType} " +
+                        "bytesWritten=${payload?.bytesWritten} hasIv=${payload?.iv != null} " +
+                        "aesKeySize=${aesKey.size} aesKeyZeroed=${aesKey.all { it == 0.toByte() }}"
+                }
                 sendEvent(
                     ShowErrorMessage(MR.string.chat_error_downloading_file_detail, e.message ?: "")
                 )

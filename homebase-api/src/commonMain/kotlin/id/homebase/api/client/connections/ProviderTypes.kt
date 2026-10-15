@@ -16,17 +16,6 @@ import kotlinx.serialization.encoding.Encoder
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 
-/** No-body POST. Some endpoints still expect a JSON object rather than an empty payload. */
-@Serializable
-class EmptyRequest
-
-/** What `POST /connections/enrollments/process` drained. */
-@Serializable
-data class ProcessEnrollmentsResult(
-    val connectionsProcessed: Int = 0,
-    val enrollmentsCompleted: Int = 0,
-)
-
 @Serializable
 data class OdinIdRequest(
     val odinId: OdinId
@@ -308,13 +297,6 @@ data class RedactedIdentityConnectionRegistration(
      * original value, so this is "first vouched for", never "last reviewed".
      */
     val reviewedAt: Long? = null,
-
-    /**
-     * Legacy alias for `reviewedAt != null`. Read only by the circle pickers while the connection
-     * review flag is off; delete with the flag.
-     */
-    @Deprecated("Read reviewedAt instead", ReplaceWith("reviewedAt != null"))
-    val vetted: Boolean = false
 )
 
 // ------------------------------------------------------------

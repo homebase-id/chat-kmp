@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.ActivityProvider
 import android.content.Context
 import android.media.AudioAttributes
@@ -64,12 +65,24 @@ actual class CallAudioRouter actual constructor() {
                 AudioRoute.Bluetooth -> BluetoothDeviceTypes
                 AudioRoute.Wired -> WiredDeviceTypes
             }
-            audio.availableCommunicationDevices.firstOrNull { it.type in types }?.let { audio.setCommunicationDevice(it) }
-                ?: audio.clearCommunicationDevice()
+            val available = audio.availableCommunicationDevices
+            val device = available.firstOrNull { it.type in types }
+            val accepted = device?.let { audio.setCommunicationDevice(it) }
+            if (device == null) audio.clearCommunicationDevice()
+            Logger.i(TAG) {
+                "route set $route device=${device?.type} accepted=$accepted active=${audio.communicationDevice?.type} " +
+                    "available=${available.map { it.type }} mode=${audio.mode}"
+            }
         } else {
             @Suppress("DEPRECATION")
             audio.isSpeakerphoneOn = route == AudioRoute.Speaker
+            @Suppress("DEPRECATION")
+            Logger.i(TAG) { "route set $route speakerphoneOn=${audio.isSpeakerphoneOn} mode=${audio.mode}" }
         }
+    }
+
+    private companion object {
+        const val TAG = "CallAudio"
     }
 
     actual fun stop() {

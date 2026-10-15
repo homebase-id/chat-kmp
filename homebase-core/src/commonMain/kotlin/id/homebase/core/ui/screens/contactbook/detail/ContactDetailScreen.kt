@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -61,7 +62,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,9 +73,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
@@ -87,7 +84,6 @@ import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.connections.ConnectRequestViewModel
-import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.util.formatTimestamp
@@ -235,16 +231,6 @@ fun ContactDetailScreen(
                 is ContactDetailEvent.OpenOtherContact -> onOpenContact(event.uniqueId, event.odinId)
             }
         }
-    }
-
-    // Flag off: main's pending circles are a live read, so a resume has to re-check them.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshPendingCircles()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // The contact's photo opened full-screen. Kept out of [uiState.fullScreenMedia]:
@@ -423,7 +409,7 @@ private fun ContactDetailContent(
                         // Edit + the management menu (block/disconnect/delete) act on a saved
                         // contact — meaningless for a not-yet-accepted incoming request, whose
                         // only actions are Accept/Reject in the profile card below (#921).
-                        if (!uiState.isPendingIncoming) {
+                        if (uiState.requestReview == null) {
                             IconButton(onClick = { onAction(ContactDetailAction.EditClicked) }) {
                                 Icon(
                                     Icons.Outlined.Edit,
@@ -453,17 +439,12 @@ private fun ContactDetailContent(
                     // needs synced ext_data — none exist before connecting). Show a self-contained
                     // public-profile card to inform Accept/Reject instead of the placeholder tabs
                     // (#921). Once accepted, this same screen flips to the full detail below.
-                    uiState.isPendingIncoming -> PendingRequestProfile(
+                    uiState.requestReview != null -> PendingRequestProfile(
                         entry = entry,
-                        assignableCircles = uiState.assignableCircles,
                         review = uiState.requestReview,
                         reviewCircleGroups = uiState.reviewCircleGroups,
-                        onAccept = { selectedCircleIds ->
-                            onAction(ContactDetailAction.AcceptRequestClicked(selectedCircleIds))
-                        },
                         onReviewSubmit = { ids -> onAction(ContactDetailAction.RequestReviewSubmitted(ids)) },
                         onReject = { onAction(ContactDetailAction.RejectRequestClicked) },
-                        actionInProgress = uiState.actionInProgress,
                         onAvatarClick = onAvatarClick,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
@@ -514,7 +495,7 @@ private fun ContactDetailContent(
                                         when (tab) {
                                             ContactDetailTab.DETAILS -> {
                                                 if (uiState.isAccessRevoked) AccessRevokedBanner()
-                                                if (uiState.needsReview && uiState.reviewEnabled) {
+                                                if (uiState.needsReview) {
                                                     NeedsReviewBanner(
                                                         onReview = {
                                                             onAction(ContactDetailAction.ReviewClicked)
@@ -539,7 +520,6 @@ private fun ContactDetailContent(
                                                     CirclesSection(
                                                         circles = uiState.circles,
                                                         isConnected = uiState.isConnected,
-                                                        reviewEnabled = uiState.reviewEnabled,
                                                         onCircleClicked = {
                                                             onAction(ContactDetailAction.CircleClicked(it))
                                                         },
@@ -662,7 +642,7 @@ private fun ManagementMenu(
                 leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
                 onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
             )
-            if (uiState.isConnected && !uiState.needsReview && uiState.reviewEnabled) {
+            if (uiState.isConnected && !uiState.needsReview) {
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.contact_unreview_action)) },
                     leadingIcon = { Icon(Icons.Outlined.WavingHand, contentDescription = null) },
@@ -728,7 +708,7 @@ private fun DetailHeader(
     val blocked = status == ConnectionStatus.Blocked
     val pending = status == ConnectionStatus.None
     // No incoming-request state here: a pending incoming request takes over the whole body with
-    // [PendingRequestProfile] (which owns Accept/Reject plus the circle picker), so this header
+    // [PendingRequestProfile] (the review, whose submit accepts), so this header
     // only ever renders once that request is gone — accepted, rejected, or never there.
     val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
     // Has a Homebase identity but no active connection, pending request, or block.

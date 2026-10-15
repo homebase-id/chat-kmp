@@ -81,6 +81,8 @@ enum class OdinClientErrorCode(val value: Int) {
     CannotClearReviewWhilePersonalCircleMember(3012),
     CircleNotFound(3016),
     CannotDisableSystemCircle(3018),
+    CannotDeleteBuiltInCircle(3020),
+    ContactNotReviewed(3021),
 
     // Drive management errors 40xx
     CannotAllowAnonymousReadsOnOwnerOnlyDrive(4001),

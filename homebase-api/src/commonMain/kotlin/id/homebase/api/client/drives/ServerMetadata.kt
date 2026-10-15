@@ -34,14 +34,11 @@ data class AccessControlList(
     // Add fields as needed from the C# AccessControlList
 )
 
-// Odin's SystemCircleConstants.ConfirmedConnectionsCircleId, granted to every owner-approved connection.
-const val CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE = "bb2683fa402aff866e771a6495765a15"
-
 /**
  * Whether [viewer] can read a file with this ACL, mirroring Odin's DriveAclAuthorizationService for
- * an anonymous visitor ([ProfileVisibility.ANONYMOUS]), a logged-in stranger
- * ([ProfileVisibility.AUTHENTICATED]) or a plain connection whose only circle is the system
- * confirmed-connections one ([ProfileVisibility.CONNECTED]). A missing ACL or an unknown group is
+ * an anonymous visitor ([ProfileVisibility.ANONYMOUS]), a logged-in stranger or unreviewed
+ * connection ([ProfileVisibility.AUTHENTICATED]) or a reviewed connection in no circle
+ * ([ProfileVisibility.CONNECTED]). A missing ACL or an unknown group is
  * visible to the owner only.
  */
 fun AccessControlList?.isVisibleTo(viewer: ProfileVisibility): Boolean {
@@ -54,10 +51,7 @@ fun AccessControlList?.isVisibleTo(viewer: ProfileVisibility): Boolean {
         else -> return false
     }
     if (viewer < required) return false
-    val circles = circleIdList.orEmpty()
-    return circles.isEmpty() ||
-        viewer == ProfileVisibility.CONNECTED &&
-        circles.any { it.replace("-", "").equals(CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE, ignoreCase = true) }
+    return circleIdList.isNullOrEmpty()
 }
 
 fun AccessControlList?.isVisibleToCircle(circleId: String): Boolean {
@@ -68,7 +62,7 @@ fun AccessControlList?.isVisibleToCircle(circleId: String): Boolean {
     }
     val circles = circleIdList.orEmpty()
     if (circles.isEmpty()) return true
-    return circles.any { compareStringUuId(it, circleId) || compareStringUuId(it, CONFIRMED_CONNECTIONS_SYSTEM_CIRCLE) }
+    return circles.any { compareStringUuId(it, circleId) }
 }
 
 private fun securityRank(group: String?): Int = when (group?.lowercase()) {
