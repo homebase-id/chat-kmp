@@ -16,3 +16,18 @@ data class InvitationCode(
     /** Built by the server; never assemble this URL on the client. */
     val link: String,
 )
+
+/** A code as the provisioning host's create and list calls return it (PROTOTYPE, #1908). */
+@Serializable
+data class OwnedInvitationCode(
+    val code: String,
+    val owner: String,
+    val maxUses: Int = 0,
+    val usesLeft: Int = 0,
+)
+
+@Serializable
+internal data class CreateInvitationCodeRequest(
+    val owner: String,
+    val maxUses: Int,
+)
