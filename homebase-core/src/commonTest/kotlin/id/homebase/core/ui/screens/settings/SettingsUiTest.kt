@@ -40,6 +40,7 @@ class SettingsUiTest {
             onOpenWebDrop = { fired += "webdrop" },
             onLocation = { fired += "location" },
             onContactBookSettings = { fired += "contactBook" },
+            onInviteFriends = { fired += "inviteFriends" },
             onProfileEdit = { fired += "profileEdit" },
             onProfileAvatarEdit = { fired += "profileAvatarEdit" },
             onProfileCard = { fired += "profileCard" },

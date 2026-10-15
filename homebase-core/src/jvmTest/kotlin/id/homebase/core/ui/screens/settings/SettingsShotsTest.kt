@@ -26,7 +26,7 @@ class SettingsShotsTest {
     private val actions = SettingsActions(
         onBack = {}, onNotifications = {}, onAppearance = {}, onMedia = {}, onKeyboard = {}, onStorage = {},
         onHelp = {}, onMomentsSettings = {}, onVaultSettings = {}, onEmailSettings = {}, onOpenWebDrop = {},
-        onLocation = {}, onContactBookSettings = {}, onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
+        onLocation = {}, onContactBookSettings = {}, onInviteFriends = {}, onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
     )
 
     private val koin = koinApplication { modules(module { single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() } }) }

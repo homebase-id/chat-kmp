@@ -1647,6 +1647,13 @@
     <string name="settings_storage_desc">Caches, database and media</string>
     <string name="settings_storage_used">%1$s used on this device</string>
     <string name="settings_help_desc">Logs and diagnostics</string>
+    <string name="invite_friends_title">Invite friends</string>
+    <string name="invite_friends_desc">Share your invitation code</string>
+    <string name="invite_friends_uses_left">%1$d of %2$d uses left</string>
+    <string name="invite_friends_share_text">Join me on Homebase: %1$s</string>
+    <string name="invite_friends_empty">You don't have an invitation code yet</string>
+    <string name="invite_friends_used_up">All uses of your code are used up</string>
+    <string name="invite_friends_load_error">Couldn't load your invitation code</string>
     <string name="settings_logout_desc">Your data stays on your identity</string>
     <string name="settings_delete_account_desc">Permanent, in your owner console</string>
 

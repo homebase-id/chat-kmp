@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PermMedia
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.email_settings_section
+import id.homebase.resources.invite_friends_title
 import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_category_general
@@ -75,6 +77,7 @@ internal enum class SettingsCategory(
     Vault(MR.string.vault_settings_section, Icons.Outlined.Lock),
     Email(MR.string.email_settings_section, Icons.Outlined.MailOutline),
     Contacts(MR.string.contactbook_settings_section, Icons.Outlined.People),
+    InviteFriends(MR.string.invite_friends_title, Icons.Outlined.PersonAdd),
     Storage(MR.string.settings_data_storage, Icons.Outlined.Storage),
     Help(MR.string.settings_help, Icons.AutoMirrored.Outlined.HelpOutline),
 }

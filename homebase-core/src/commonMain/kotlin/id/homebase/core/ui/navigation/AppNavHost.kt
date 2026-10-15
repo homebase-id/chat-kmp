@@ -155,6 +155,7 @@ import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
+import id.homebase.core.ui.screens.invite.InviteFriendsScreen
 import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
@@ -1727,6 +1728,9 @@ fun AppNavHost(
                                             onContactBookSettings = {
                                                 navController.navigate(Route.ContactBookSettings)
                                             },
+                                            onInviteFriends = {
+                                                navController.navigate(Route.InviteFriends)
+                                            },
                                             onProfileEdit = {
                                                 navController.navigate(Route.ProfileCardEditor())
                                             },
@@ -2360,6 +2364,15 @@ fun AppNavHost(
                                     KeyboardSettingsScreen(
                                         viewModel = koinViewModel(),
                                         onBackClick = { navController.popBackStack() })
+                                }
+                            }
+
+                            composable<Route.InviteFriends> {
+                                if (isAuthenticated) {
+                                    InviteFriendsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                    )
                                 }
                             }
 

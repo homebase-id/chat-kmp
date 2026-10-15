@@ -38,6 +38,7 @@ import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.core.ui.screens.invite.InviteFriendsScreen
 import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
 import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
@@ -225,6 +226,7 @@ private fun CategoryPage(
                 onOpenWebDrop = actions.onOpenWebDrop,
                 onLocation = actions.onLocation,
                 onContactBookSettings = { onSelectCategory(SettingsCategory.Contacts) },
+                onInviteFriends = { onSelectCategory(SettingsCategory.InviteFriends) },
                 onProfileEdit = onProfileEdit,
                 onProfileAvatarEdit = onProfileAvatarEdit,
                 onProfileCard = onProfileCard,
@@ -275,6 +277,11 @@ private fun CategoryPage(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onOpenContacts = actions.onOpenContacts,
+        )
+
+        SettingsCategory.InviteFriends -> InviteFriendsScreen(
+            viewModel = koinViewModel(),
+            onBackClick = onDismiss,
         )
 
         SettingsCategory.Storage -> StorageSettingsScreen(

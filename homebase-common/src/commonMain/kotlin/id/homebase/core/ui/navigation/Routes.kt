@@ -120,6 +120,10 @@ sealed class Route {
     data object KeyboardSettings : Route()
 
     @Serializable
+    @SerialName("invite-friends")
+    data object InviteFriends : Route()
+
+    @Serializable
     @SerialName("defragmenter")
     data object Defragmenter : Route()
 

@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.PermMedia
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -117,6 +118,8 @@ import id.homebase.resources.settings_edit_profile
 import id.homebase.core.ui.screens.card.CardTapShareSettingsRow
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
+import id.homebase.resources.invite_friends_desc
+import id.homebase.resources.invite_friends_title
 import id.homebase.resources.settings_keyboard
 import id.homebase.resources.settings_keyboard_desc
 import id.homebase.resources.settings_location_desc
@@ -317,6 +320,15 @@ fun SettingsUi(
                     action = SettingsRowAction.External {
                         onAction(SettingsUiAction.SecuritySetupClicked)
                     },
+                )
+            }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("inviteFriendsButton"),
+                    icon = Icons.Outlined.PersonAdd,
+                    title = stringResource(MR.string.invite_friends_title),
+                    supportingText = stringResource(MR.string.invite_friends_desc),
+                    action = SettingsRowAction.Navigate(actions.onInviteFriends),
                 )
             }
 
@@ -668,7 +680,7 @@ fun SettingsUiPreview() {
                 onEmailSettings = {},
                 onOpenWebDrop = {},
                 onLocation = {},
-                onContactBookSettings = {},
+                onContactBookSettings = {}, onInviteFriends = {},
                 onProfileEdit = {},
                 onProfileAvatarEdit = {},
                 onProfileCard = {},
