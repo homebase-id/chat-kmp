@@ -1306,7 +1306,7 @@ class ConversationService(
 
         // 3. Keep the left tag locally — same ordering dependency as leaveGroup
         audit.step(3, "updateConversationTags(+LeftTag)")
-        runCatching {
+        val tagWrite = runCatching {
             updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
                 it + ChatProtocol.ConversationLeftTag
             }
@@ -1316,10 +1316,12 @@ class ConversationService(
                 audit.finish("ABORTED at STEP 3")
                 throw e
             }
+            .getOrThrow()
 
-        audit.step(4, "stampConversationExitedAt + tryEnqueue")
+        // Behind the tag write, as in archive: the first write's server echo replaces the local row.
+        audit.step(4, "stampConversationExitedAt + tryEnqueue(dep=$tagWrite)")
         optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
-            ?.let { outboxSync.tryEnqueue(it) }
+            ?.let { outboxSync.tryEnqueue(it, dependencyUniqueId = tagWrite) }
         audit.finish()
     }
 
