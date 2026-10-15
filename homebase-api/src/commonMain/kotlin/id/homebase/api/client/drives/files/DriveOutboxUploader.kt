@@ -362,7 +362,7 @@ class DriveOutboxUploader(
             throw NotFoundException()
         }
         // Never request.versionTag: a localAppData content write on the same file
-        // (e.g. archive's archivedAt stamp) bumps it before this row sends.
+        // (e.g. leave's exitedAt stamp) can bump it before this row sends.
         val versionTag = header.fileMetadata.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataTags(
             file = request.file.copy(fileId = header.fileId.toString()),

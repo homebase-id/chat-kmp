@@ -1306,7 +1306,7 @@ class ConversationService(
 
         // 3. Keep the left tag locally — same ordering dependency as leaveGroup
         audit.step(3, "updateConversationTags(+LeftTag)")
-        runCatching {
+        val tagWrite = runCatching {
             updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
                 it + ChatProtocol.ConversationLeftTag
             }
@@ -1316,10 +1316,12 @@ class ConversationService(
                 audit.finish("ABORTED at STEP 3")
                 throw e
             }
+            .getOrThrow()
 
-        audit.step(4, "stampConversationExitedAt + tryEnqueue")
+        // Behind the tag write, as in archive: the first write's server echo replaces the local row.
+        audit.step(4, "stampConversationExitedAt + tryEnqueue(dep=$tagWrite)")
         optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
-            ?.let { outboxSync.tryEnqueue(it) }
+            ?.let { outboxSync.tryEnqueue(it, dependencyUniqueId = tagWrite) }
         audit.finish()
     }
 
@@ -1723,29 +1725,28 @@ class ConversationService(
         val audit = MethodAudit("archiveConversation")
         audit.start("conversationId=$conversationId")
         try {
-            val stamp = stampArchivedAt(conversationId, UnixTimeUtc())
-            updateConversationTags(conversationId, dependencyUniqueId = stamp) { it + ChatProtocol.ConversationArchivedTag }
+            // Tag write first: the first write's server echo replaces the local row, so it must carry the tag.
+            val tagWrite = updateConversationTags(conversationId) { it + ChatProtocol.ConversationArchivedTag }
+            stampArchivedAt(conversationId, UnixTimeUtc(), dependencyUniqueId = tagWrite)
             audit.finish()
         } catch (e: Throwable) { audit.threw("execution", e); audit.finish("threw"); throw e }
         // ---- end DEBUG ----
     }
 
     /** Cleared on unarchive so a re-archive whose stamp fails falls back to
-     *  "never auto-unarchive" instead of a stale timestamp.
-     *  Returns the outbox id to order the tag write behind: both write the same
-     *  file's localAppData, and whichever lands second would hold a stale versionTag. */
-    private suspend fun stampArchivedAt(conversationId: Uuid, at: UnixTimeUtc?): Uuid? =
+     *  "never auto-unarchive" instead of a stale timestamp. */
+    private suspend fun stampArchivedAt(conversationId: Uuid, at: UnixTimeUtc?, dependencyUniqueId: Uuid?) {
         optimisticWriter.stampConversationArchivedAt(chatDrive, conversationId, at)
-            ?.also { outboxSync.tryEnqueue(it) }
-            ?.fileId
+            ?.let { outboxSync.tryEnqueue(it, dependencyUniqueId = dependencyUniqueId) }
+    }
 
     suspend fun unarchiveConversation(conversationId: Uuid) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("unarchiveConversation")
         audit.start("conversationId=$conversationId")
         try {
-            val stamp = stampArchivedAt(conversationId, null)
-            updateConversationTags(conversationId, dependencyUniqueId = stamp) { it - ChatProtocol.ConversationArchivedTag }
+            val tagWrite = updateConversationTags(conversationId) { it - ChatProtocol.ConversationArchivedTag }
+            stampArchivedAt(conversationId, null, dependencyUniqueId = tagWrite)
             audit.finish()
         } catch (e: Throwable) { audit.threw("execution", e); audit.finish("threw"); throw e }
         // ---- end DEBUG ----
@@ -2278,7 +2279,7 @@ class ConversationService(
         conversationId: Uuid,
         dependencyUniqueId: Uuid? = null,
         transform: (Set<Uuid>) -> Set<Uuid>
-    ) {
+    ): Uuid? {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("updateConversationTags")
         audit.start("conversationId=$conversationId dep=$dependencyUniqueId")
@@ -2313,6 +2314,7 @@ class ConversationService(
         // enqueue while the file update is still pending, causing the LeftTag to never reach
         // the server.  The dependencyUniqueId still ensures correct ordering when provided.
         audit.step(2, "outboxSync.tryEnqueue(UpdateLocalMetadataTagsOutboxRequest, random uniqueId, dep=$dependencyUniqueId)")
+        val outboxId = Uuid.random()
         val enqueued = outboxSync.tryEnqueue(
             request = UpdateLocalMetadataTagsOutboxRequest(
                 file = FileIdFileIdentifier(
@@ -2324,7 +2326,7 @@ class ConversationService(
                 uniqueId = conversationId
             ),
             driveId = chatDrive,
-            uniqueId = Uuid.random(),
+            uniqueId = outboxId,
             dependencyUniqueId = dependencyUniqueId
         )
         audit.info("STEP 2 returned $enqueued")
@@ -2337,6 +2339,7 @@ class ConversationService(
         audit.check("postLocalTags", postLocalTags == newTags,
             "localTags after optimisticWriter.updateLocalTags differ from expected; got=${postLocalTags - newTags}+/${newTags - postLocalTags}-")
         audit.finish()
+        return outboxId.takeIf { enqueued.enqueued }
     }
 
     /**

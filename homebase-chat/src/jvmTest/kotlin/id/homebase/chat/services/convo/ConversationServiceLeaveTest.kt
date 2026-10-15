@@ -1,5 +1,6 @@
 package id.homebase.chat.services.convo
 
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.StatusMessage
@@ -191,6 +192,26 @@ class ConversationServiceLeaveTest {
                 service.declineRejoin(groupId)
             }
             assertTrue(ex.message!!.contains("RejoinPending"))
+        }
+    }
+
+    @Test
+    fun declineRejoin_exitedAtStampWaitsForLeftTagWrite() = runTest {
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val groupId = fixture.seedGroup(
+                others = listOf("alice.test", "bob.test"),
+                adminDomains = listOf("alice.test"),
+                localTags = listOf(ChatProtocol.ConversationLeftTag),
+            )
+
+            service.declineRejoin(groupId)
+
+            val rows = fixture.drainOutboxInDependencyOrder()
+            val tagWrite = rows.single { it.uploadType == DriveOutboxUploader.UpdateLocalMetadataTags }
+            val stamp = rows.single { it.uploadType == DriveOutboxUploader.UpdateLocalMetadataContent }
+            assertEquals(tagWrite.uniqueId, stamp.dependencyUniqueId)
+            assertTrue(rows.indexOf(tagWrite) < rows.indexOf(stamp))
         }
     }
 
