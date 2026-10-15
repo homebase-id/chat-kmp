@@ -378,8 +378,6 @@ class ConversationServiceLifecycleTest {
         }
     }
 
-    // Tag write first: the server echo of the first write replaces the local row, so a
-    // stamp-first order shows the stale tag set (the archive flicker) until the tag write lands.
     private suspend fun assertStampWaitsForTagWrite(fixture: ConversationServiceTestFixture) {
         val rows = fixture.drainOutboxInDependencyOrder()
         assertEquals(

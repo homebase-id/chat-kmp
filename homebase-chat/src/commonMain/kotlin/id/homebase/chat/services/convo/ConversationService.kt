@@ -1723,6 +1723,7 @@ class ConversationService(
         val audit = MethodAudit("archiveConversation")
         audit.start("conversationId=$conversationId")
         try {
+            // Tag write first: the first write's server echo replaces the local row, so it must carry the tag.
             val tagWrite = updateConversationTags(conversationId) { it + ChatProtocol.ConversationArchivedTag }
             stampArchivedAt(conversationId, UnixTimeUtc(), dependencyUniqueId = tagWrite)
             audit.finish()
@@ -1731,9 +1732,7 @@ class ConversationService(
     }
 
     /** Cleared on unarchive so a re-archive whose stamp fails falls back to
-     *  "never auto-unarchive" instead of a stale timestamp.
-     *  Sent after the tag write: the server echo of whichever lands first replaces the
-     *  local row, so that echo must already carry the (visible) tag change. */
+     *  "never auto-unarchive" instead of a stale timestamp. */
     private suspend fun stampArchivedAt(conversationId: Uuid, at: UnixTimeUtc?, dependencyUniqueId: Uuid?) {
         optimisticWriter.stampConversationArchivedAt(chatDrive, conversationId, at)
             ?.let { outboxSync.tryEnqueue(it, dependencyUniqueId = dependencyUniqueId) }
