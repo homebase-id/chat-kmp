@@ -357,7 +357,7 @@ class ConversationServiceLifecycleTest {
             service.archiveConversation(convoId)
 
             assertEquals(2L, fixture.outboxRowCount() - before)
-            assertTagWriteWaitsForStamp(fixture)
+            assertStampWaitsForTagWrite(fixture)
         }
     }
 
@@ -374,16 +374,16 @@ class ConversationServiceLifecycleTest {
             service.unarchiveConversation(convoId)
 
             assertEquals(2L, fixture.outboxRowCount() - before)
-            assertTagWriteWaitsForStamp(fixture)
+            assertStampWaitsForTagWrite(fixture)
         }
     }
 
-    // Both rows write the same file's localAppData; sent in parallel, the
-    // second to land fails VersionTagMismatch and the outbox drops it.
-    private suspend fun assertTagWriteWaitsForStamp(fixture: ConversationServiceTestFixture) {
+    // Tag write first: the server echo of the first write replaces the local row, so a
+    // stamp-first order shows the stale tag set (the archive flicker) until the tag write lands.
+    private suspend fun assertStampWaitsForTagWrite(fixture: ConversationServiceTestFixture) {
         val rows = fixture.drainOutboxInDependencyOrder()
         assertEquals(
-            listOf(DriveOutboxUploader.UpdateLocalMetadataContent, DriveOutboxUploader.UpdateLocalMetadataTags),
+            listOf(DriveOutboxUploader.UpdateLocalMetadataTags, DriveOutboxUploader.UpdateLocalMetadataContent),
             rows.map { it.uploadType },
         )
         assertEquals(rows[0].uniqueId, rows[1].dependencyUniqueId)
