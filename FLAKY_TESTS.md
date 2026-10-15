@@ -89,3 +89,24 @@ even after you fix it. The point is twofold:
     case-varies-run-to-run behaviour the symptom section calls out. Diff was
     `homebase-chat`-only (Stopped-gate widening); zero overlap with the
     failing test. Passed on retry. Expected until #623 merges to main.
+
+## CardContentTest — `addingAnExistingHiddenItemShowsItOnFriendsOnly` (JVM)
+
+- **Status:** Open. Seen once, not reproduced locally (3 of 3 passes).
+- **Where:** `homebase-core/src/jvmTest/.../ui/screens/card/CardContentTest.kt`
+- **Target:** `homebase-core:jvmTest` in the "Run unittests" CI job.
+- **Symptom:**
+  ```
+  java.lang.AssertionError: expected:<[https://shire.example/w]> but was:<[]>
+      at ...CardContentTest$addingAnExistingHiddenItemShowsItOnFriendsOnly$1.invokeSuspend(CardContentTest.kt:687)
+  ```
+  The circle assertion on the line before passed: the item was saved to Friends, but the last card
+  the fake host drew didn't show the link yet.
+- **Suspected cause (unconfirmed):** `Rig.write` waits for the PUT and for `isContentBusy` to clear,
+  not for the host to redraw. `host.rendered.last()` can still be the Friends card that `open()`
+  waited for, drawn before the toggle. A fix would make `write` (or this assertion) wait for a
+  render that includes the change, the way `open()` waits on the audience.
+- **Recurrences observed:**
+  - **2026-10-15, PR #1943 — `filesync-browser-doc-pointer`** (docs only, no overlap).
+    [Run unittests](https://github.com/homebase-id/chat-kmp/actions/runs/38699026506/job/116302422721)
+    failed; main was green on the same base. Passed on re-run.
