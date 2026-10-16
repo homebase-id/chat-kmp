@@ -6,6 +6,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
@@ -78,6 +79,7 @@ class FilesyncViewModel(
                     if (installed == true && !wasInstalled) {
                         _uiState.update { it.copy(setupInitiated = false) }
                         loadCurrentFolder()
+                        launch { editor.purgeOnce() }
                     }
                 }
         }
@@ -168,10 +170,7 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.Restore -> viewModelScope.launch {
-                if (reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }) {
-                    // Its removed folders came back with it.
-                    _uiState.update { state -> state.copy(path = state.path.map { it.copy(removedMs = null) }) }
-                }
+                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
             }
         }
     }
@@ -195,16 +194,20 @@ class FilesyncViewModel(
     private fun loadCurrentFolder() {
         val path = _uiState.value.path
         val folderId = path.last().nodeId
-        // In a removed folder, what is still live but written before the folder's removal was deleted with it.
-        val removedAboveMs = path.lastOrNull { it.removedMs != null }?.removedMs
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
                 val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
                 transfers.handles = folder.handles
-                val nodes = folder.nodes.values.filter { removedAboveMs == null || it.removed || !FilesyncTrash.wentWith(it, removedAboveMs) }
-                arrange { it.copy(isLoading = false).withNodes(nodes) }
+                // A restore from anywhere makes a removed crumb live again: ask the drive, not the trail.
+                val removed = path.filter { it.removedMs != null }.map { it.nodeId }
+                val stillRemoved = if (removed.isEmpty()) emptyMap() else repository.findNodes(removed, ArchivalStatus.Removed).nodes
+                val current = path.map { crumb -> crumb.copy(removedMs = crumb.removedMs?.let { stillRemoved[crumb.nodeId]?.removedMs }) }
+                // In a removed folder, what is still live but written before its removal was deleted with it.
+                val folderDeletedMs = current.last().removedMs
+                val nodes = folder.nodes.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
+                arrange { state -> state.copy(isLoading = false, path = if (state.path == path) current else state.path).withNodes(nodes) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

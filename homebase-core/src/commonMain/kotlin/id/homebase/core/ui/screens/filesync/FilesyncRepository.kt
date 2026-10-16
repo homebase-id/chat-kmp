@@ -17,8 +17,6 @@ import kotlin.uuid.Uuid
 /** Nodes with what writing or downloading each one needs. */
 class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
     operator fun plus(other: FilesyncNodes) = FilesyncNodes(nodes + other.nodes, handles + other.handles)
-
-    fun only(ids: Set<Uuid>) = FilesyncNodes(nodes.filterKeys { it in ids }, handles.filterKeys { it in ids })
 }
 
 /** Network only: the drive is never synced, so every listing is fetched fresh. */

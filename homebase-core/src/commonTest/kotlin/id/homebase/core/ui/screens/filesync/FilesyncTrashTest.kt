@@ -62,8 +62,49 @@ class FilesyncTrashTest {
         val edited = live("c.jpg", photosId, folder = false, written = 201)
         val trash = trash(nodes.plus(edited))
         assertNull(trash.itemOf[edited.nodeId])
-        assertEquals(setOf(photos, a, old, notes), trash.deleted.nodes.values.toSet())
+        assertEquals(setOf(photos.nodeId, a.nodeId, old.nodeId, notes.nodeId), trash.itemOf.keys)
         assertFalse(FilesyncTrash.wentWith(edited, photos.updatedMs))
+    }
+
+    @Test
+    fun thePurgeTakesAnExpiredItemWithEverythingDeletedWithItAndNothingNewer() {
+        val year = live("2024", photosId, folder = true, written = 150)
+        val lateA = removed("late.jpg", photosId, folder = false, at = 500)
+        val trash = trash(nodes.plus(year, lateA))
+        assertEquals(setOf(old.nodeId), trash.removedBefore(200))
+        assertEquals(setOf(old.nodeId, photosId, a.nodeId, year.nodeId, lateA.nodeId), trash.removedBefore(201))
+        assertEquals(trash.itemOf.keys, trash.removedBefore(301))
+    }
+
+    @Test
+    fun aNestedFolderRestoredByItselfBringsBackWhatWentWithIt() {
+        val year = removed("2024", photosId, folder = true, at = 205)
+        val b = removed("b.jpg", year.nodeId, folder = false, at = 206)
+        val trash = trash(nodes.plus(year, b))
+        assertEquals(photosId, trash.itemOf[b.nodeId])
+        assertEquals(listOf(photos, year, b), trash.restorePlan(year))
+    }
+
+    @Test
+    fun aLiveFolderWrittenAfterTheDeleteKeepsWhatIsInIt() {
+        val year = live("2024", photosId, folder = true, written = 300)
+        val m = live("m.jpg", year.nodeId, folder = false, written = 100)
+        val r = removed("r.jpg", year.nodeId, folder = false, at = 400)
+        val trash = trash(nodes.plus(year, m, r))
+        assertNull(trash.itemOf[m.nodeId])
+        assertEquals(r.nodeId, trash.itemOf[r.nodeId])
+        assertEquals(listOf(photos, a), trash.group(photos))
+        assertEquals(listOf(r), trash.restorePlan(r))
+    }
+
+    @Test
+    fun aRestoreStopsAtALiveFolder() {
+        val year = live("2024", photosId, folder = true, written = 150)
+        val x = removed("x.jpg", year.nodeId, folder = false, at = 100)
+        val trash = trash(nodes.plus(year, x))
+        assertEquals(x.nodeId, trash.itemOf[x.nodeId])
+        assertEquals(listOf(x), trash.restorePlan(x))
+        assertEquals(listOf(year, photos), trash.chainOf(year))
     }
 
     @Test
