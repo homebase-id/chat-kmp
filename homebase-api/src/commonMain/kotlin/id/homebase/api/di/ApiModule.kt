@@ -31,6 +31,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.client.invitations.InvitationCodesProvider
+import id.homebase.api.client.onboarding.OnboardingProvider
 import id.homebase.api.client.mail.MailProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
@@ -130,6 +131,7 @@ val apiModule = module {
     factoryOf(::FollowProvider)
     factoryOf(::MailProvider)
     factoryOf(::InvitationCodesProvider)
+    factoryOf(::OnboardingProvider)
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::PeerDriveQueryProvider)
