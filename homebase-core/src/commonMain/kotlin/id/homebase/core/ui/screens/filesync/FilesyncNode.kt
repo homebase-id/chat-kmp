@@ -39,8 +39,7 @@ data class FilesyncNode(
     val modifiedMs: Long?,
     val sizeBytes: Long?,
     val addedMs: Long = 0,
-    /** Set while it's in Recently deleted: the server's time of its removal, its header's `updated`. */
-    val removedMs: Long? = null,
+    val removed: Boolean = false,
     val createdMs: Long? = null,
     val executable: Boolean = false,
     val tags: List<FilesyncTag> = emptyList(),
@@ -52,6 +51,9 @@ data class FilesyncNode(
     internal val nameKey: String = FilesyncNames.key(name)
     internal val kind: FileKind? = if (isFolder) null else fileKindOf(null, name)
     internal val role: FilesyncRoleFolder? = if (isFolder) FilesyncRoleFolder.of(nodeId) else null
+
+    /** Set while it's in Recently deleted: nothing writes to a removed node, so its last write is its removal. */
+    val removedMs: Long? get() = updatedMs.takeIf { removed }
 }
 
 /** What a download of a file node needs. */
@@ -131,7 +133,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         modifiedMs = content.mtime,
         sizeBytes = content.size,
         addedMs = fileMetadata.created.milliseconds,
-        removedMs = fileMetadata.updated.milliseconds.takeIf { appData.archivalStatus == ArchivalStatus.Removed },
+        removed = appData.archivalStatus == ArchivalStatus.Removed,
         createdMs = epochMs(raw["ct"]),
         executable = (raw["x"] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true,
         tags = tagsOf(raw),

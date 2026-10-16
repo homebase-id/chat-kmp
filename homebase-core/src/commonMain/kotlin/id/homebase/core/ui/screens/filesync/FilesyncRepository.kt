@@ -17,6 +17,8 @@ import kotlin.uuid.Uuid
 /** Nodes with what writing or downloading each one needs. */
 class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
     operator fun plus(other: FilesyncNodes) = FilesyncNodes(nodes + other.nodes, handles + other.handles)
+
+    fun only(ids: Set<Uuid>) = FilesyncNodes(nodes.filterKeys { it in ids }, handles.filterKeys { it in ids })
 }
 
 /** Network only: the drive is never synced, so every listing is fetched fresh. */
@@ -38,9 +40,7 @@ class FilesyncRepository(
         var all = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
         var folders = all.nodes.values.filter { it.isFolder }.map { it.nodeId }
         while (folders.isNotEmpty()) {
-            val live = folders.chunked(PAGE_SIZE).fold(FilesyncNodes(emptyMap(), emptyMap())) { acc, ids ->
-                acc + queryAll(nodeParams(listOf(ArchivalStatus.None)).copy(groupId = ids))
-            }
+            val live = queryChunked(folders, listOf(ArchivalStatus.None)) { copy(groupId = it) }
             folders = live.nodes.values.filter { it.isFolder && it.nodeId !in all.nodes }.map { it.nodeId }
             all += live
         }
@@ -59,12 +59,16 @@ class FilesyncRepository(
             ),
         ).first
 
-    /** The nodes among [nodeIds] that are in [status] now; one gone for good, or in the other status, is left out. */
-    suspend fun findNodes(nodeIds: Collection<Uuid>, status: ArchivalStatus): FilesyncNodes =
-        nodeIds.distinct().filter { it != FilesyncProtocol.RootNodeId }.chunked(PAGE_SIZE)
-            .fold(FilesyncNodes(emptyMap(), emptyMap())) { all, ids ->
-                all + queryAll(nodeParams(listOf(status)).copy(clientUniqueIdAtLeastOne = ids))
-            }
+    /** The nodes among [nodeIds] that are in one of [status] now; one gone for good, or in another status, is left out. */
+    suspend fun findNodes(nodeIds: Collection<Uuid>, vararg status: ArchivalStatus): FilesyncNodes =
+        queryChunked(nodeIds.distinct().filter { it != FilesyncProtocol.RootNodeId }, status.toList()) { copy(clientUniqueIdAtLeastOne = it) }
+
+    private suspend fun queryChunked(
+        ids: List<Uuid>,
+        status: List<ArchivalStatus>,
+        by: FileQueryParams.(List<Uuid>) -> FileQueryParams,
+    ): FilesyncNodes =
+        ids.chunked(PAGE_SIZE).fold(FilesyncNodes(emptyMap(), emptyMap())) { all, chunk -> all + queryAll(nodeParams(status).by(chunk)) }
 
     /** Folder names for "in Photos" lines, live or removed alike; the top level is left to the caller. */
     suspend fun folderNames(folderIds: Collection<Uuid>, known: Map<Uuid, FilesyncNode>): Map<Uuid, String> {

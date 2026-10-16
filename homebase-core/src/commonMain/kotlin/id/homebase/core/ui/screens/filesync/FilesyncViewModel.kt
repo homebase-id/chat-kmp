@@ -203,7 +203,7 @@ class FilesyncViewModel(
             try {
                 val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
                 transfers.handles = folder.handles
-                val nodes = folder.nodes.values.filter { removedAboveMs == null || it.removedMs != null || it.updatedMs > removedAboveMs }
+                val nodes = folder.nodes.values.filter { removedAboveMs == null || it.removed || !FilesyncTrash.wentWith(it, removedAboveMs) }
                 arrange { it.copy(isLoading = false).withNodes(nodes) }
             } catch (e: CancellationException) {
                 throw e

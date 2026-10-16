@@ -90,9 +90,9 @@ class FilesyncRecentViewModel(
                     val deleted = async { repository.listDeleted() }
                     added.await() to deleted.await()
                 }
-                val inTrash = FilesyncTrash.deleted(deleted.nodes)
-                val addedFiles = added.nodes.values.filter { it.nodeId !in inTrash }
-                val deletedFiles = deleted.nodes.values.filter { !it.isFolder && it.removedMs != null }.sortedByDescending { it.removedMs }
+                val trash = FilesyncTrash(deleted)
+                val addedFiles = added.nodes.values.filter { it.nodeId !in trash.itemOf }
+                val deletedFiles = deleted.nodes.values.filter { !it.isFolder && it.removed }.sortedByDescending { it.removedMs }
                 val parents = (addedFiles + deletedFiles).mapTo(mutableSetOf()) { it.parentId }
                 val names = repository.folderNames(parents, deleted.nodes)
                 transfers.handles = added.handles

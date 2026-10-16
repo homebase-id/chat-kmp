@@ -4,7 +4,7 @@ import androidx.compose.runtime.Immutable
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
-/** One step of the breadcrumb trail; [name] is null for the top level, [removed] when it's in Recently deleted. */
+/** One step of the breadcrumb trail; [name] is null for the top level, [removedMs] set when it's in Recently deleted. */
 @Immutable
 data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removedMs: Long? = null)
 
