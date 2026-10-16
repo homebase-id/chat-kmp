@@ -63,7 +63,12 @@ class FilesyncEditor(
         for (node in plan) {
             val target = when (node.parentId) {
                 in planned -> node.parentId.takeIf { it in restored }
-                FilesyncProtocol.RootNodeId, in liveParents -> node.parentId
+                FilesyncProtocol.RootNodeId -> node.parentId
+                // A live folder that went with a delete is back only once the removed folders it went with are.
+                in trash.itemOf -> node.parentId.takeIf { parent ->
+                    trash.chainOf(trash.all.nodes.getValue(parent)).all { !it.removed || it.nodeId in restored }
+                }
+                in liveParents -> node.parentId
                 // Its folder was deleted for good: it comes back at the top level.
                 else -> FilesyncProtocol.RootNodeId
             }
@@ -88,38 +93,40 @@ class FilesyncEditor(
     }
 
     /**
-     * Deletes [ids] of [trash] for good, files before folders. Each is read again first and left as it is if it, or a
-     * folder whose delete it went with, changed since; so is every folder above a live node that stays. The server's
-     * batch delete has no version guard, so a change in the moment between is not caught.
+     * Deletes [ids] of [seen] for good, files before folders. Recently deleted is read again first: what changed since,
+     * or went with a folder that did, stays as it is, and so does every folder above a live node that isn't deleted.
+     * The server's batch delete has no version guard, so a change in the moment between is not caught.
      */
-    internal suspend fun deleteForGood(trash: FilesyncTrash, ids: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
-        val current = repository.findNodes(ids, ArchivalStatus.Removed, ArchivalStatus.None)
+    internal suspend fun deleteForGood(seen: FilesyncTrash, ids: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
+        val now = FilesyncTrash(repository.listDeleted())
         val unchanged = ids.filterTo(mutableSetOf()) { id ->
-            val now = current.handles[id]
-            now != null && now.writable && now.versionTag == trash.all.handles[id]?.versionTag
+            val handle = now.all.handles[id]
+            handle != null && handle.writable && handle.versionTag == seen.all.handles[id]?.versionTag
         }
-        val doomed = ids.mapNotNull { trash.all.nodes[it] }
-            .filter { node -> trash.chainOf(node).all { it.nodeId in unchanged } }
+        val doomed = ids.mapNotNull { now.all.nodes[it] }
+            .filter { node -> now.chainOf(node).all { it.nodeId in unchanged } }
             .associateByTo(mutableMapOf()) { it.nodeId }
-        // Deleting a folder for good would leave what stays live in it nowhere: one written after its delete, or left above.
-        trash.all.nodes.values
-            .filter { it.nodeId !in doomed && (it.nodeId in ids || it.nodeId !in trash.itemOf) && !(current.nodes[it.nodeId] ?: it).removed }
-            .forEach { kept -> trash.ancestorsOf(kept).forEach { doomed.remove(it.nodeId) } }
+        val changed = ids.size - doomed.size
+        // Deleting a folder for good would leave a live node in it nowhere.
+        now.all.nodes.values
+            .filter { !it.removed && it.nodeId !in doomed && it.nodeId !in now.itemOf }
+            .forEach { kept -> now.ancestorsOf(kept).forEach { doomed.remove(it.nodeId) } }
         val (files, folders) = doomed.values.partition { !it.isFolder }
         var deleted = 0
         listOf(files, folders).forEach { batch ->
             batch.chunked(DELETE_BATCH).forEach { chunk ->
-                val result = driveFileProvider.deleteFiles(FilesyncProtocol.DriveAlias, chunk.map { current.handles.getValue(it.nodeId).fileId })
+                val result = driveFileProvider.deleteFiles(FilesyncProtocol.DriveAlias, chunk.map { now.all.handles.getValue(it.nodeId).fileId })
                 deleted += result.results.count { it.localFileDeleted }
             }
         }
         if (deleted > 0) _changed.tryEmit(Unit)
-        FilesyncWriteResult(deleted, ids.size - deleted)
+        // A folder kept for a live node in it isn't a change elsewhere: the desktops bring it back.
+        FilesyncWriteResult(deleted, changed)
     }
 
     private var purged = false
 
-    /** [purgeExpired] once a run, when the drive first opens; a failed one waits for the next run. */
+    /** [purgeExpired] once a run, when the drive first opens; a failed one tries again the next time it opens. */
     suspend fun purgeOnce() {
         if (purged) return
         purged = true
@@ -130,6 +137,7 @@ class FilesyncEditor(
             purged = false
             throw e
         } catch (e: Exception) {
+            purged = false
             Logger.w(e, TAG) { "purge failed" }
         }
     }

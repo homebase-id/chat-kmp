@@ -98,12 +98,12 @@ class FilesyncTrashTest {
     }
 
     @Test
-    fun aRestoreStopsAtALiveFolder() {
+    fun aRestoreStopsAtALiveFolderButNotAtOneThatWentWithTheDelete() {
         val year = live("2024", photosId, folder = true, written = 150)
         val x = removed("x.jpg", year.nodeId, folder = false, at = 100)
         val trash = trash(nodes.plus(year, x))
         assertEquals(x.nodeId, trash.itemOf[x.nodeId])
-        assertEquals(listOf(x), trash.restorePlan(x))
+        assertEquals(listOf(photos, x), trash.restorePlan(x))
         assertEquals(listOf(year, photos), trash.chainOf(year))
     }
 

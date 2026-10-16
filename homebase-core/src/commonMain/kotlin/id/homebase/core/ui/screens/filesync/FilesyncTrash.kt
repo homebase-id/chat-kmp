@@ -14,13 +14,23 @@ data class FilesyncTrashItem(val node: FilesyncNode, val count: Int)
  */
 internal class FilesyncTrash(val all: FilesyncNodes) {
     private val children = all.nodes.values.groupBy { it.parentId }
-    private val liveDeletedAt = mutableMapOf<Uuid, Long?>()
 
     // The nodes that went with their folder's delete; a live folder passes it on only if it went too.
-    private val wentWithParent: Set<Uuid> = all.nodes.values.filter { node ->
-        val parent = all.nodes[node.parentId] ?: return@filter false
-        deletedAt(parent, mutableSetOf(node.nodeId, parent.nodeId))?.let { wentWith(node, it) } == true
-    }.mapTo(mutableSetOf()) { it.nodeId }
+    private val wentWithParent: Set<Uuid> = run {
+        val liveDeletedAt = mutableMapOf<Uuid, Long?>()
+        // When the delete that took a node happened: its own removal, or a live node's folder's; null when it isn't deleted.
+        fun deletedAt(node: FilesyncNode, seen: MutableSet<Uuid>): Long? {
+            if (node.removed) return node.updatedMs
+            if (node.nodeId in liveDeletedAt) return liveDeletedAt[node.nodeId]
+            val parent = all.nodes[node.parentId]?.takeIf { seen.add(it.nodeId) }
+            return parent?.let { deletedAt(it, seen) }?.takeIf { wentWith(node, it) }
+                .also { liveDeletedAt[node.nodeId] = it }
+        }
+        all.nodes.values.filter { node ->
+            val parent = all.nodes[node.parentId] ?: return@filter false
+            deletedAt(parent, mutableSetOf(node.nodeId, parent.nodeId))?.let { wentWith(node, it) } == true
+        }.mapTo(mutableSetOf()) { it.nodeId }
+    }
 
     /** Each deleted node's item: itself when deleted on its own. A node not in here isn't deleted. */
     val itemOf: Map<Uuid, Uuid> = buildMap {
@@ -52,14 +62,9 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
 
     /** [node] and the folders above it whose delete it went with, up to its item. */
     fun chainOf(node: FilesyncNode): List<FilesyncNode> {
-        val chain = mutableListOf(node)
-        val seen = mutableSetOf(node.nodeId)
-        while (chain.last().nodeId in wentWithParent) {
-            val parent = all.nodes.getValue(chain.last().parentId)
-            if (!seen.add(parent.nodeId)) break
-            chain += parent
-        }
-        return chain
+        val path = listOf(node) + ancestorsOf(node)
+        val end = path.indexOfFirst { it.nodeId !in wentWithParent }.takeIf { it >= 0 } ?: path.lastIndex
+        return path.take(end + 1)
     }
 
     /** The known folders above [node], nearest first. */
@@ -78,18 +83,13 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
     fun removedBefore(beforeMs: Long): Set<Uuid> =
         itemOf.filterValues { all.nodes.getValue(it).updatedMs < beforeMs }.keys
 
-    /** What restoring [node] writes, in order: the removed folders right above it alone, outermost first, then it and what was removed with it. */
+    /**
+     * What restoring [node] writes, in order: the removed folders above it alone, outermost first, up to the first live
+     * folder that isn't deleted, then it and what was removed with it.
+     */
     fun restorePlan(node: FilesyncNode): List<FilesyncNode> =
-        ancestorsOf(node).takeWhile { it.removed }.asReversed() + group(node).filter { it.removed }
-
-    // When the delete that took [node] happened: its own removal, or a live node's folder's; null when it isn't deleted.
-    private fun deletedAt(node: FilesyncNode, seen: MutableSet<Uuid>): Long? {
-        if (node.removed) return node.updatedMs
-        if (node.nodeId in liveDeletedAt) return liveDeletedAt[node.nodeId]
-        val parent = all.nodes[node.parentId]?.takeIf { seen.add(it.nodeId) }
-        return parent?.let { deletedAt(it, seen) }?.takeIf { wentWith(node, it) }
-            .also { liveDeletedAt[node.nodeId] = it }
-    }
+        ancestorsOf(node).takeWhile { it.removed || it.nodeId in itemOf }.filter { it.removed }.asReversed() +
+            group(node).filter { it.removed }
 
     companion object {
         /** Whether [node], in a folder deleted at [folderDeletedMs], went with it: removed no earlier, or still live and written no later. */
