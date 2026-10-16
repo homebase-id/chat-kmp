@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.filesync.FilesyncRoleFolder
 import id.homebase.core.util.FileKind
 import id.homebase.core.util.fileKindOf
 import kotlinx.serialization.Serializable
@@ -25,10 +26,6 @@ import kotlin.io.encoding.Base64
 import kotlin.math.roundToLong
 import kotlin.uuid.Uuid
 
-/** A node in filesync's Recently deleted: removed at [atMs] by the delete of [root] (itself, or a folder it was in). */
-@Immutable
-data class FilesyncRemoval(val atMs: Long, val root: Uuid)
-
 /** A Finder tag; [colour] is Finder's 1 grey … 7 orange, or null for none. */
 @Immutable
 data class FilesyncTag(val name: String, val colour: Int?)
@@ -42,16 +39,21 @@ data class FilesyncNode(
     val modifiedMs: Long?,
     val sizeBytes: Long?,
     val addedMs: Long = 0,
-    val removal: FilesyncRemoval? = null,
+    val removed: Boolean = false,
     val createdMs: Long? = null,
     val executable: Boolean = false,
     val tags: List<FilesyncTag> = emptyList(),
     val uploadedMs: Long? = null,
     val hashAlgorithm: PayloadHashAlgorithm? = null,
+    val updatedMs: Long = 0,
 ) {
     // Once per node: search and sorting compare these on every keystroke, and neither is free on the web.
     internal val nameKey: String = FilesyncNames.key(name)
     internal val kind: FileKind? = if (isFolder) null else fileKindOf(null, name)
+    internal val role: FilesyncRoleFolder? = if (isFolder) FilesyncRoleFolder.of(nodeId) else null
+
+    /** Set while it's in Recently deleted: nothing writes to a removed node, so its last write is its removal. */
+    val removedMs: Long? get() = updatedMs.takeIf { removed }
 }
 
 /** What a download of a file node needs. */
@@ -84,6 +86,7 @@ internal data class FilesyncNodeContent(
     val size: Long? = null,
 )
 
+// filesync wrote it to removed nodes before 2026-10-15; it means nothing now, and a write leaves it out.
 internal const val REMOVAL_KEY = "rm"
 
 internal const val CONTENT_VERSION = 1
@@ -130,24 +133,16 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         modifiedMs = content.mtime,
         sizeBytes = content.size,
         addedMs = fileMetadata.created.milliseconds,
-        removal = removalOf(appData.archivalStatus, raw, nodeId, fileMetadata.updated.milliseconds),
+        removed = appData.archivalStatus == ArchivalStatus.Removed,
         createdMs = epochMs(raw["ct"]),
         executable = (raw["x"] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true,
         tags = tagsOf(raw),
         uploadedMs = descriptor?.lastModified,
         hashAlgorithm = payload?.hash?.knownAlgorithm,
+        updatedMs = fileMetadata.updated.milliseconds,
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
     return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v)
-}
-
-/** Only status 2 removes; a node removed by another app has no readable `rm` and counts as removed at [updatedMs], on its own. */
-internal fun removalOf(status: ArchivalStatus?, content: JsonObject, nodeId: Uuid, updatedMs: Long): FilesyncRemoval? {
-    if (status != ArchivalStatus.Removed) return null
-    val rm = content[REMOVAL_KEY] as? JsonObject
-    val at = epochMs(rm?.get("at"))
-    val root = (rm?.get("root") as? JsonPrimitive)?.takeIf { it.isString }?.let { runCatching { Uuid.parse(it.content) }.getOrNull() }
-    return if (at != null && root != null) FilesyncRemoval(at, root) else FilesyncRemoval(updatedMs, nodeId)
 }
 
 /** A time in Unix ms as filesync writes it: an int, or a finite float rounded; anything else is none. */

@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.filesync.FilesyncRoleFolder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
@@ -26,6 +28,16 @@ class FilesyncSortingTest {
     fun byNameFoldersFirstIgnoringCaseInBothDirections() {
         assertEquals(listOf("alpha", "Zeta", "A.txt", "b.pdf", "c.mp4"), nodes.arranged(FilesyncSort()).names())
         assertEquals(listOf("Zeta", "alpha", "c.mp4", "b.pdf", "A.txt"), nodes.arranged(FilesyncSort(ascending = false)).names())
+    }
+
+    @Test
+    fun roleFoldersComeFirstInRoleOrderToldApartByIdNotName() {
+        fun role(role: FilesyncRoleFolder, name: String) =
+            FilesyncNode(role.nodeId, FilesyncProtocol.RootNodeId, isFolder = true, name = name, modifiedMs = null, sizeBytes = null)
+        val withRoles = nodes + listOf(role(FilesyncRoleFolder.Music, "Music"), folder("Documents"), role(FilesyncRoleFolder.Documents, "Work papers"))
+        val expected = listOf("Work papers", "Music", "alpha", "Documents", "Zeta", "A.txt", "b.pdf", "c.mp4")
+        assertEquals(expected, withRoles.arranged(FilesyncSort()).names())
+        assertEquals(expected.take(2), withRoles.arranged(FilesyncSort(ascending = false)).names().take(2))
     }
 
     @Test

@@ -59,6 +59,9 @@ public class DriveFileHttpProvider(
 
     companion object {
         private const val TAG = "DriveFileHttpProvider"
+
+        // odin-core's FileVersionTagBatchV2.MaxFiles.
+        const val HARD_DELETE_BATCH = 1000
     }
 
     // ==================== GET METHODS ====================
@@ -373,6 +376,27 @@ public class DriveFileHttpProvider(
 
         return deserialize<DeleteFileIdBatchResult>(response.body)
 
+    }
+
+    /**
+     * Deletes [files] for good, payloads and all, leaving no tombstone: each only at its versionTag. One file's
+     * answer never stops the others; at most [HARD_DELETE_BATCH] per call.
+     */
+    suspend fun hardDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): HardDeleteBatchResult {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        require(files.size in 1..HARD_DELETE_BATCH) { "1 to $HARD_DELETE_BATCH files, not ${files.size}" }
+        val creds = requireCreds()
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, "/drives/$driveId/files/hard-delete-batch"),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(HardDeleteBatchRequest(files)),
+            secret = creds.secret
+        )
+
+        throwForFailure(response)
+
+        return deserialize<HardDeleteBatchResult>(response.body)
     }
 
     /** Deletes files from the drive by group IDs. */

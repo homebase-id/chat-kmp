@@ -124,7 +124,7 @@ internal fun FilesyncInfoContent(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (node.removal != null) {
+            if (node.removedMs != null) {
                 Button(onClick = { onAction(FilesyncUiAction.Restore(node.nodeId)) }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(MR.string.filesync_restore))
                 }
@@ -146,7 +146,7 @@ internal fun FilesyncInfoContent(
             node.createdMs?.let { InfoRow(MR.string.filesync_info_created, formatDayTime(it)) }
             node.addedMs.takeIf { it > 0 }?.let { InfoRow(MR.string.filesync_info_added, formatDayTime(it)) }
             node.uploadedMs?.let { InfoRow(MR.string.filesync_info_uploaded, formatDayTime(it)) }
-            node.removal?.let { InfoRow(MR.string.filesync_deleted, formatDayTime(it.atMs)) }
+            node.removedMs?.let { InfoRow(MR.string.filesync_deleted, formatDayTime(it)) }
             InfoRow(MR.string.filesync_info_where, where.joinToString(" › "))
         }
 
@@ -196,9 +196,9 @@ internal fun FilesyncNodeMenu(
     offset: DpOffset = DpOffset(0.dp, 0.dp),
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
-        if (onInfo == null && node.removal == null) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
+        if (onInfo == null && node.removedMs == null) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
         onInfo?.let { MenuItem(MR.string.info, onDismiss, it) }
-        if (node.removal != null) {
+        if (node.removedMs != null) {
             MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(node.nodeId)) }
         } else if (!node.isFolder) {
             MenuItem(MR.string.save, onDismiss) { onAction(FilesyncUiAction.SaveClicked(node)) }

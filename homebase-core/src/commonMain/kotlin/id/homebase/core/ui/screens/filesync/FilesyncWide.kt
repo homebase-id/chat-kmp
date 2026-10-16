@@ -513,7 +513,7 @@ internal fun TableRow(
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val textColor = if (node.removal != null) colors.onSurfaceVariant else colors.onSurface
+            val textColor = if (node.removedMs != null) colors.onSurfaceVariant else colors.onSurface
             FileTypeTile(node, size = 30.dp)
             Spacer(Modifier.width(12.dp))
             NodeName(
@@ -546,7 +546,7 @@ internal fun TableRow(
 // The menu's open state lives in the row, which keeps these actions shown while the pointer is over the menu.
 @Composable
 private fun RowActions(node: FilesyncNode, onAction: (FilesyncUiAction) -> Unit, expanded: Boolean, onExpanded: (Boolean) -> Unit) {
-    if (!node.isFolder && node.removal == null) {
+    if (!node.isFolder && node.removedMs == null) {
         IconButton(onClick = { onAction(FilesyncUiAction.SaveClicked(node)) }, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_save), modifier = Modifier.size(20.dp))
         }

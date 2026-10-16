@@ -7,6 +7,7 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
@@ -45,11 +46,11 @@ class FilesyncEditor(
 
     /** Brings each of [nodeIds] back with the items its delete took along, and the removed folders above it first. */
     suspend fun restore(nodeIds: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
-        val removed = repository.listRemoved()
-        val tops = nodeIds.mapNotNull { removed.nodes[it] }
+        val trash = FilesyncTrash(repository.listDeleted())
+        val tops = nodeIds.mapNotNull { id -> trash.all.nodes[id]?.takeIf { it.removed } }
         // One already live was restored by an earlier tap or another device: nothing to do, nothing to report.
-        val gone = (nodeIds - removed.nodes.keys).let { it.size - repository.findNodes(it, ArchivalStatus.None).nodes.size }
-        val plan = tops.flatMap { FilesyncTrash.restorePlan(it, removed.nodes) }.distinctBy { it.nodeId }
+        val gone = (nodeIds - tops.map { it.nodeId }.toSet()).let { it.size - repository.findNodes(it, ArchivalStatus.None).nodes.size }
+        val plan = tops.flatMap { trash.restorePlan(it) }.distinctBy { it.nodeId }
         val planned = plan.mapTo(mutableSetOf()) { it.nodeId }
         val outsideParents = plan.map { it.parentId }.filter { it !in planned }
         val liveParents = repository.findNodes(outsideParents, ArchivalStatus.None).nodes.keys
@@ -60,7 +61,12 @@ class FilesyncEditor(
         for (node in plan) {
             val target = when (node.parentId) {
                 in planned -> node.parentId.takeIf { it in restored }
-                FilesyncProtocol.RootNodeId, in liveParents -> node.parentId
+                FilesyncProtocol.RootNodeId -> node.parentId
+                // A live folder that went with a delete is back only once the removed folders it went with are.
+                in trash.itemOf -> node.parentId.takeIf { parent ->
+                    trash.chainOf(trash.all.nodes.getValue(parent)).all { !it.removed || it.nodeId in restored }
+                }
+                in liveParents -> node.parentId
                 // Its folder was deleted for good: it comes back at the top level.
                 else -> FilesyncProtocol.RootNodeId
             }
@@ -72,7 +78,7 @@ class FilesyncEditor(
                 repository.listFolder(target).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
             }
             val name = FilesyncNames.restoredName(node.name, taken)
-            val handle = removed.handles.getValue(node.nodeId)
+            val handle = trash.all.handles.getValue(node.nodeId)
             if (name == null || !handle.writable || !write(node.nodeId, handle, restoredContent(handle.content, name), target)) {
                 skipped++
                 continue
@@ -84,27 +90,106 @@ class FilesyncEditor(
         FilesyncWriteResult(restored.size, skipped)
     }
 
-    /**
-     * Deletes [shown] for good, files before folders. Each is read again first and left alone if it changed since
-     * the user saw it; the server's batch delete has no version guard, so a change in the moment between is not caught.
-     */
-    suspend fun deleteForGood(shown: FilesyncNodes): FilesyncWriteResult = writeLock.withLock {
-        val current = repository.findNodes(shown.nodes.keys, ArchivalStatus.Removed)
-        val unchanged = shown.nodes.values.filter { node ->
-            val now = current.handles[node.nodeId] ?: return@filter false
-            now.writable && now.versionTag == shown.handles[node.nodeId]?.versionTag
+    /** Deletes [items] for good, each with what was deleted with it; one changed since [seen] has its versionTag stays. */
+    internal suspend fun deleteForGood(items: Set<Uuid>, seen: Map<Uuid, FilesyncHandle>): FilesyncWriteResult = writeLock.withLock {
+        deleteListed(FilesyncTrash(repository.listDeleted()), items, seen)
+    }
+
+    private var purged = false
+
+    /** The purge once a run, when the drive first opens; a failed one tries again the next time it opens. */
+    suspend fun purgeOnce() {
+        if (purged) return
+        purged = true
+        try {
+            val result = purgeExpired()
+            if (result.done + result.skipped > 0) Logger.i(TAG) { "purge: ${result.done} deleted for good, ${result.skipped} changed meanwhile" }
+        } catch (e: Exception) {
+            purged = false
+            if (e is CancellationException) throw e
+            Logger.w(e, TAG) { "purge failed" }
         }
-        val (files, folders) = unchanged.partition { !it.isFolder }
+    }
+
+    // What every filesync client does (node schema, "Recently deleted"), by the server's clock as the desktops count it.
+    private suspend fun purgeExpired(): FilesyncWriteResult = writeLock.withLock {
+        val (removed, readAtMs) = repository.listRemoved()
+        val before = readAtMs - FilesyncProtocol.KeepDeleted.inWholeMilliseconds
+        // Most runs find nothing old enough: only then is the walk below removed folders worth it.
+        val expired = if (removed.nodes.values.none { it.updatedMs < before }) {
+            FilesyncWriteResult(0, 0)
+        } else {
+            val trash = FilesyncTrash(repository.listDeleted(removed))
+            deleteListed(trash, trash.removedBefore(before), seen = null, hardBefore = before)
+        }
+        // A delete for good by hand leaves a tombstone, the feed's trace of it; once every desktop had 30 days to read it, it goes too.
+        FilesyncWriteResult(expired.done + hardDelete(repository.listTombstones(before)).size, expired.skipped)
+    }
+
+    /**
+     * Deletes [items] of [now], a fresh listing, for good: files, then folders from the deepest, a folder only once
+     * nothing below it stays. What changed since [seen], or went with a folder that did, stays as it is, and so does
+     * every folder above a live node that isn't deleted. A node removed before [hardBefore] goes without a trace, at
+     * its version; any other leaves a tombstone, and the server's soft batch delete has no version guard, so a change
+     * in the moment between is not caught.
+     */
+    private suspend fun deleteListed(
+        now: FilesyncTrash,
+        items: Set<Uuid>,
+        seen: Map<Uuid, FilesyncHandle>?,
+        hardBefore: Long? = null,
+    ): FilesyncWriteResult {
+        val group = now.deletedWith(items)
+        val unchanged = group.filterTo(mutableSetOf()) { id ->
+            val handle = now.all.handles.getValue(id)
+            handle.writable && (seen?.get(id)?.let { it.versionTag == handle.versionTag } ?: true)
+        }
+        val doomed = unchanged.map { now.all.nodes.getValue(it) }
+            .filter { node -> now.chainOf(node).all { it.nodeId in unchanged } }
+            .associateByTo(mutableMapOf()) { it.nodeId }
+        // A folder kept below for a live node in it isn't a change elsewhere: the desktops bring it back.
+        val changed = items.count { it !in doomed }
+        // Deleting a folder for good would leave what stays in it nowhere: a live node not deleted, or one left as it is.
+        now.all.nodes.values
+            .filter { it.nodeId !in doomed && (it.nodeId in group || !it.removed && it.nodeId !in now.itemOf) }
+            .forEach { stays -> now.ancestorsOf(stays).forEach { doomed.remove(it.nodeId) } }
         var deleted = 0
-        listOf(files, folders).forEach { batch ->
-            batch.chunked(DELETE_BATCH).forEach { chunk ->
-                val result = driveFileProvider.deleteFiles(FilesyncProtocol.DriveAlias, chunk.map { current.handles.getValue(it.nodeId).fileId })
-                deleted += result.results.count { it.localFileDeleted }
+        var kept = 0
+        for (pass in now.deleteOrder(doomed.values)) {
+            val handles = pass.filter { it.nodeId in doomed }.associateWith { now.all.handles.getValue(it.nodeId) }
+            val hard = handles.mapNotNull { (node, handle) ->
+                handle.versionTag?.takeIf { hardBefore != null && now.removalMs(node)?.let { it < hardBefore } == true }
+                    ?.let { FileVersionTag(handle.fileId, it) }
+            }
+            val hardIds = hard.mapTo(mutableSetOf()) { it.fileId }
+            val gone = hardDelete(hard) + softDelete(handles.values.filter { it.fileId !in hardIds })
+            for ((node, handle) in handles) {
+                if (handle.fileId in gone) {
+                    deleted++
+                } else {
+                    kept++
+                    now.ancestorsOf(node).forEach { doomed.remove(it.nodeId) }
+                }
             }
         }
         if (deleted > 0) _changed.tryEmit(Unit)
-        FilesyncWriteResult(deleted, shown.nodes.size - deleted)
+        return FilesyncWriteResult(deleted, changed + kept)
     }
+
+    /** The [files] gone now; one written since its versionTag stays. */
+    private suspend fun hardDelete(files: List<FileVersionTag>): Set<Uuid> =
+        files.chunked(DriveFileHttpProvider.HARD_DELETE_BATCH).flatMapTo(mutableSetOf()) { chunk ->
+            val (gone, left) = driveFileProvider.hardDeleteFiles(FilesyncProtocol.DriveAlias, chunk).results
+                .partition { it.errorCode == null || it.errorCode == OdinClientErrorCode.FileNotFound }
+            if (left.isNotEmpty()) Logger.i(TAG) { "hard delete left ${left.size} as they are: ${left.map { it.errorCode }.distinct()}" }
+            gone.map { it.fileId }
+        }
+
+    private suspend fun softDelete(handles: List<FilesyncHandle>): Set<Uuid> =
+        handles.chunked(DELETE_BATCH).flatMapTo(mutableSetOf()) { chunk ->
+            driveFileProvider.deleteFiles(FilesyncProtocol.DriveAlias, chunk.map { it.fileId })
+                .results.filter { it.localFileDeleted || it.localFileNotFound }.map { it.fileId }
+        }
 
     /** False when the node changed or went since it was read; that's another device's newer word, not a failure. */
     internal suspend fun write(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid): Boolean {

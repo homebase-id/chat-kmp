@@ -47,7 +47,7 @@ class FilesyncTrashViewModel(
     val events: Flow<FilesyncUiEvent> = _events.receiveAsFlow()
 
     /** What the list shows: Empty and Delete forever touch only these, as they were when listed. */
-    private var shown = FilesyncNodes(emptyMap(), emptyMap())
+    private var shown = FilesyncTrash(FilesyncNodes(emptyMap(), emptyMap()))
     private var loadJob: Job? = null
 
     init {
@@ -66,13 +66,10 @@ class FilesyncTrashViewModel(
                 editor.restore(action.nodeIds)
             }
             is FilesyncTrashAction.DeleteForever -> write(FilesyncNotice.DeletedForever, FilesyncError.DeleteFailed) {
-                val group = action.nodeIds.mapNotNull { shown.nodes[it] }
-                    .flatMap { FilesyncTrash.group(it, shown.nodes) }
-                    .associateBy { it.nodeId }
-                editor.deleteForGood(FilesyncNodes(group, shown.handles.filterKeys { it in group }))
+                editor.deleteForGood(action.nodeIds, shown.all.handles)
             }
             FilesyncTrashAction.EmptyTrash -> write(FilesyncNotice.DeletedForever, FilesyncError.DeleteFailed) {
-                editor.deleteForGood(shown)
+                editor.deleteForGood(shown.itemOf.values.toSet(), shown.all.handles)
             }
         }
     }
@@ -94,10 +91,10 @@ class FilesyncTrashViewModel(
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
-                val removed = repository.listRemoved()
-                val items = FilesyncTrash.topmost(removed.nodes)
-                val names = repository.folderNames(items.map { it.node.parentId }.toSet(), removed.nodes)
-                shown = removed
+                val trash = FilesyncTrash(repository.listDeleted())
+                val items = trash.items()
+                val names = repository.folderNames(items.map { it.node.parentId }.toSet(), trash.all.nodes)
+                shown = trash
                 _uiState.update { state ->
                     state.copy(
                         isLoading = false,
