@@ -15,29 +15,27 @@ data class FilesyncTrashItem(val node: FilesyncNode, val count: Int)
 internal class FilesyncTrash(val all: FilesyncNodes) {
     private val children = all.nodes.values.groupBy { it.parentId }
 
-    // The nodes that went with their folder's delete; a live folder passes it on only if it went too.
-    private val wentWithParent: Set<Uuid> = run {
-        val liveDeletedAt = mutableMapOf<Uuid, Long?>()
-        // When the delete that took a node happened: its own removal, or a live node's folder's; null when it isn't deleted.
-        fun deletedAt(node: FilesyncNode, seen: MutableSet<Uuid>): Long? {
-            if (node.removed) return node.updatedMs
-            if (node.nodeId in liveDeletedAt) return liveDeletedAt[node.nodeId]
+    // When the delete each node went with happened; a live folder passes a delete on only if it went too.
+    private val wentWithParentAt: Map<Uuid, Long> = run {
+        val memo = mutableMapOf<Uuid, Long?>()
+        fun at(node: FilesyncNode, seen: MutableSet<Uuid>): Long? {
+            if (node.nodeId in memo) return memo[node.nodeId]
             val parent = all.nodes[node.parentId]?.takeIf { seen.add(it.nodeId) }
-            return parent?.let { deletedAt(it, seen) }?.takeIf { wentWith(node, it) }
-                .also { liveDeletedAt[node.nodeId] = it }
+            val folderAt = parent?.let { if (it.removed) it.updatedMs else at(it, seen) }
+            return folderAt?.takeIf { wentWith(node, it) }.also { memo[node.nodeId] = it }
         }
-        all.nodes.values.filter { node ->
-            val parent = all.nodes[node.parentId] ?: return@filter false
-            deletedAt(parent, mutableSetOf(node.nodeId, parent.nodeId))?.let { wentWith(node, it) } == true
-        }.mapTo(mutableSetOf()) { it.nodeId }
+        buildMap { for (node in all.nodes.values) at(node, mutableSetOf(node.nodeId))?.let { put(node.nodeId, it) } }
     }
 
     /** Each deleted node's item: itself when deleted on its own. A node not in here isn't deleted. */
-    val itemOf: Map<Uuid, Uuid> = buildMap {
-        for (node in all.nodes.values) {
-            val top = chainOf(node).last()
-            if (top.removed) put(node.nodeId, top.nodeId)
+    val itemOf: Map<Uuid, Uuid> = run {
+        val memo = mutableMapOf<Uuid, Uuid?>()
+        fun item(node: FilesyncNode, seen: MutableSet<Uuid>): Uuid? {
+            if (node.nodeId in memo) return memo[node.nodeId]
+            val parent = all.nodes[node.parentId]?.takeIf { node.nodeId in wentWithParentAt && seen.add(it.nodeId) }
+            return (parent?.let { item(it, seen) } ?: node.nodeId.takeIf { node.removed }).also { memo[node.nodeId] = it }
         }
+        buildMap { for (node in all.nodes.values) item(node, mutableSetOf(node.nodeId))?.let { put(node.nodeId, it) } }
     }
 
     /** The items deleted on their own, newest first. */
@@ -54,7 +52,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         val seen = mutableSetOf(node.nodeId)
         var level = listOf(node)
         while (level.isNotEmpty()) {
-            level = level.flatMap { children[it.nodeId].orEmpty() }.filter { it.nodeId in wentWithParent && seen.add(it.nodeId) }
+            level = level.flatMap { children[it.nodeId].orEmpty() }.filter { it.nodeId in wentWithParentAt && seen.add(it.nodeId) }
             result += level
         }
         return result
@@ -62,9 +60,14 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
 
     /** [node] and the folders above it whose delete it went with, up to its item. */
     fun chainOf(node: FilesyncNode): List<FilesyncNode> {
-        val path = listOf(node) + ancestorsOf(node)
-        val end = path.indexOfFirst { it.nodeId !in wentWithParent }.takeIf { it >= 0 } ?: path.lastIndex
-        return path.take(end + 1)
+        val chain = mutableListOf(node)
+        val seen = mutableSetOf(node.nodeId)
+        while (chain.last().nodeId in wentWithParentAt) {
+            val parent = all.nodes.getValue(chain.last().parentId)
+            if (!seen.add(parent.nodeId)) break
+            chain += parent
+        }
+        return chain
     }
 
     /** The known folders above [node], nearest first. */
@@ -79,9 +82,12 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         return chain
     }
 
-    /** The items removed before [beforeMs], each with what was deleted with it: what the purge deletes for good. */
+    /** The items removed before [beforeMs]: what the purge deletes for good. */
     fun removedBefore(beforeMs: Long): Set<Uuid> =
-        itemOf.filterValues { all.nodes.getValue(it).updatedMs < beforeMs }.keys
+        itemOf.values.filterTo(mutableSetOf()) { item -> all.nodes.getValue(item).removedMs?.let { it < beforeMs } == true }
+
+    /** [items] and what was deleted with each. */
+    fun deletedWith(items: Set<Uuid>): Set<Uuid> = itemOf.filterValues { it in items }.keys
 
     /**
      * What restoring [node] writes, in order: the removed folders above it alone, outermost first, up to the first live

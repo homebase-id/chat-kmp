@@ -72,8 +72,8 @@ class FilesyncTrashTest {
         val lateA = removed("late.jpg", photosId, folder = false, at = 500)
         val trash = trash(nodes.plus(year, lateA))
         assertEquals(setOf(old.nodeId), trash.removedBefore(200))
-        assertEquals(setOf(old.nodeId, photosId, a.nodeId, year.nodeId, lateA.nodeId), trash.removedBefore(201))
-        assertEquals(trash.itemOf.keys, trash.removedBefore(301))
+        assertEquals(setOf(old.nodeId, photosId, a.nodeId, year.nodeId, lateA.nodeId), trash.deletedWith(trash.removedBefore(201)))
+        assertEquals(trash.itemOf.keys, trash.deletedWith(trash.removedBefore(301)))
     }
 
     @Test

@@ -1,5 +1,7 @@
 package id.homebase.core.filesync
 
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
 
 /** The Filesync drive format: filesync's docs/spec/file-browser.md and docs/spec/node-schema-v1.md. */
@@ -17,6 +19,9 @@ object FilesyncProtocol {
     val RootNodeId: Uuid = Uuid.parse("2a1c0d55-8ad3-417e-a5d7-42c3d0baba0e")
 
     const val PayloadKey = "sync_data"
+
+    /** Recently deleted keeps an item this long after its removal; then any client deletes it for good. */
+    val KeepDeleted: Duration = 30.days
 
     // filesync's update site (its RELEASING.md); latest/download/<version-free name> always resolves.
     const val DesktopReleasesUrl = "https://github.com/homebase-id/filesync-release-production/releases/latest"

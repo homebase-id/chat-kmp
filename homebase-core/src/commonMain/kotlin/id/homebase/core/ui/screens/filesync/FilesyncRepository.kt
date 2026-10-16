@@ -33,9 +33,12 @@ class FilesyncRepository(
                 .copy(groupId = listOf(folderId))
         )
 
-    /** Every removed node across the drive, and the live ones below removed folders, level by level (see [FilesyncTrash]). */
-    suspend fun listDeleted(): FilesyncNodes {
-        var all = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
+    /** Every removed node across the drive. */
+    suspend fun listRemoved(): FilesyncNodes = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
+
+    /** [removed], and the live nodes below removed folders, level by level (see [FilesyncTrash]). */
+    suspend fun listDeleted(removed: FilesyncNodes? = null): FilesyncNodes {
+        var all = removed ?: listRemoved()
         var folders = all.nodes.values.filter { it.isFolder }.map { it.nodeId }
         while (folders.isNotEmpty()) {
             val live = queryChunked(folders, listOf(ArchivalStatus.None)) { copy(groupId = it) }

@@ -24,8 +24,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.time.Clock
-import kotlin.time.Duration.Companion.days
-import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val TAG = "FilesyncEditor"
@@ -92,21 +90,52 @@ class FilesyncEditor(
         FilesyncWriteResult(restored.size, skipped)
     }
 
-    /**
-     * Deletes [ids] of [seen] for good, files before folders. Recently deleted is read again first: what changed since,
-     * or went with a folder that did, stays as it is, and so does every folder above a live node that isn't deleted.
-     * The server's batch delete has no version guard, so a change in the moment between is not caught.
-     */
-    internal suspend fun deleteForGood(seen: FilesyncTrash, ids: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
-        val now = FilesyncTrash(repository.listDeleted())
-        val unchanged = ids.filterTo(mutableSetOf()) { id ->
-            val handle = now.all.handles[id]
-            handle != null && handle.writable && handle.versionTag == seen.all.handles[id]?.versionTag
+    /** Deletes [items] for good, each with what was deleted with it; one changed since [seen] has its versionTag stays. */
+    internal suspend fun deleteForGood(items: Set<Uuid>, seen: Map<Uuid, FilesyncHandle>): FilesyncWriteResult = writeLock.withLock {
+        deleteListed(FilesyncTrash(repository.listDeleted()), items, seen)
+    }
+
+    private var purged = false
+
+    /** The purge once a run, when the drive first opens; a failed one tries again the next time it opens. */
+    suspend fun purgeOnce() {
+        if (purged) return
+        purged = true
+        try {
+            val result = purgeExpired()
+            if (result.done + result.skipped > 0) Logger.i(TAG) { "purge: ${result.done} deleted for good, ${result.skipped} changed meanwhile" }
+        } catch (e: Exception) {
+            purged = false
+            if (e is CancellationException) throw e
+            Logger.w(e, TAG) { "purge failed" }
         }
-        val doomed = ids.mapNotNull { now.all.nodes[it] }
+    }
+
+    // What every filesync client does (node schema, "Recently deleted").
+    private suspend fun purgeExpired(): FilesyncWriteResult = writeLock.withLock {
+        val before = (Clock.System.now() - FilesyncProtocol.KeepDeleted).toEpochMilliseconds()
+        val removed = repository.listRemoved()
+        // Most runs find nothing old enough: only then is the walk below removed folders worth it.
+        if (removed.nodes.values.none { it.updatedMs < before }) return@withLock FilesyncWriteResult(0, 0)
+        val trash = FilesyncTrash(repository.listDeleted(removed))
+        deleteListed(trash, trash.removedBefore(before), seen = null)
+    }
+
+    /**
+     * Deletes [items] of [now], a fresh listing, for good, files before folders: what changed since [seen], or went with
+     * a folder that did, stays as it is, and so does every folder above a live node that isn't deleted. The server's
+     * batch delete has no version guard, so a change in the moment between is not caught.
+     */
+    private suspend fun deleteListed(now: FilesyncTrash, items: Set<Uuid>, seen: Map<Uuid, FilesyncHandle>?): FilesyncWriteResult {
+        val unchanged = now.deletedWith(items).filterTo(mutableSetOf()) { id ->
+            val handle = now.all.handles.getValue(id)
+            handle.writable && (seen?.get(id)?.let { it.versionTag == handle.versionTag } ?: true)
+        }
+        val doomed = unchanged.map { now.all.nodes.getValue(it) }
             .filter { node -> now.chainOf(node).all { it.nodeId in unchanged } }
             .associateByTo(mutableMapOf()) { it.nodeId }
-        val changed = ids.size - doomed.size
+        // A folder kept below for a live node in it isn't a change elsewhere: the desktops bring it back.
+        val changed = items.count { it !in doomed }
         // Deleting a folder for good would leave a live node in it nowhere.
         now.all.nodes.values
             .filter { !it.removed && it.nodeId !in doomed && it.nodeId !in now.itemOf }
@@ -120,36 +149,7 @@ class FilesyncEditor(
             }
         }
         if (deleted > 0) _changed.tryEmit(Unit)
-        // A folder kept for a live node in it isn't a change elsewhere: the desktops bring it back.
-        FilesyncWriteResult(deleted, changed)
-    }
-
-    private var purged = false
-
-    /** [purgeExpired] once a run, when the drive first opens; a failed one tries again the next time it opens. */
-    suspend fun purgeOnce() {
-        if (purged) return
-        purged = true
-        try {
-            val result = purgeExpired()
-            if (result.done + result.skipped > 0) Logger.i(TAG) { "purge: ${result.done} deleted for good, ${result.skipped} changed meanwhile" }
-        } catch (e: CancellationException) {
-            purged = false
-            throw e
-        } catch (e: Exception) {
-            purged = false
-            Logger.w(e, TAG) { "purge failed" }
-        }
-    }
-
-    /**
-     * Deletes for good what was removed over [KEEP_DELETED] ago, as every filesync client does (node schema, "Recently
-     * deleted"); an item changed or restored since it was read stays.
-     */
-    suspend fun purgeExpired(now: Instant = Clock.System.now()): FilesyncWriteResult {
-        val trash = FilesyncTrash(repository.listDeleted())
-        val expired = trash.removedBefore((now - KEEP_DELETED).toEpochMilliseconds())
-        return if (expired.isEmpty()) FilesyncWriteResult(0, 0) else deleteForGood(trash, expired)
+        return FilesyncWriteResult(deleted, changed)
     }
 
     /** False when the node changed or went since it was read; that's another device's newer word, not a failure. */
@@ -167,7 +167,6 @@ class FilesyncEditor(
 
     private companion object {
         const val DELETE_BATCH = 100
-        val KEEP_DELETED = 30.days
     }
 }
 

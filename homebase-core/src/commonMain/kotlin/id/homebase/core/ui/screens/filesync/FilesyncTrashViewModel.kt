@@ -66,11 +66,10 @@ class FilesyncTrashViewModel(
                 editor.restore(action.nodeIds)
             }
             is FilesyncTrashAction.DeleteForever -> write(FilesyncNotice.DeletedForever, FilesyncError.DeleteFailed) {
-                val group = action.nodeIds.mapNotNull { shown.all.nodes[it] }.flatMap { shown.group(it) }
-                editor.deleteForGood(shown, group.mapTo(mutableSetOf()) { it.nodeId })
+                editor.deleteForGood(action.nodeIds, shown.all.handles)
             }
             FilesyncTrashAction.EmptyTrash -> write(FilesyncNotice.DeletedForever, FilesyncError.DeleteFailed) {
-                editor.deleteForGood(shown, shown.itemOf.keys)
+                editor.deleteForGood(shown.itemOf.values.toSet(), shown.all.handles)
             }
         }
     }

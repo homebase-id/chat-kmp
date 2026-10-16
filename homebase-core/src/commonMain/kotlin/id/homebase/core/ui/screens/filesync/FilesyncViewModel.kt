@@ -14,7 +14,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -198,13 +200,19 @@ class FilesyncViewModel(
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
-                val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
-                transfers.handles = folder.handles
-                // A restore from anywhere makes a removed crumb live again: ask the drive, not the trail.
                 val removed = path.filter { it.removedMs != null }.map { it.nodeId }
-                val now = if (removed.isEmpty()) emptyMap() else repository.findNodes(removed, ArchivalStatus.Removed, ArchivalStatus.None).nodes
+                val (folder, now) = coroutineScope {
+                    val folder = async { repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted) }
+                    // A restore from anywhere makes a removed crumb live again: ask the drive, not the trail.
+                    val now = async { if (removed.isEmpty()) emptyMap() else repository.findNodes(removed, ArchivalStatus.Removed, ArchivalStatus.None).nodes }
+                    folder.await() to now.await()
+                }
+                transfers.handles = folder.handles
                 // One deleted for good stays removed: nothing may be uploaded into it.
-                val current = path.map { crumb -> crumb.copy(removedMs = crumb.removedMs?.let { now[crumb.nodeId]?.let { node -> node.removedMs } ?: it }) }
+                val current = path.map { crumb ->
+                    val node = now[crumb.nodeId]
+                    if (crumb.removedMs == null || node == null) crumb else crumb.copy(removedMs = node.removedMs)
+                }
                 // In a removed folder, what is still live but written before its removal was deleted with it.
                 val folderDeletedMs = current.last().removedMs
                 val nodes = folder.nodes.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
