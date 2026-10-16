@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -15,10 +16,9 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.uuid.Uuid
 
-/** Nodes with what writing or downloading each one needs; [readAtMs] is the server's clock when the listing began. */
-class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>, val readAtMs: Long? = null) {
-    operator fun plus(other: FilesyncNodes) =
-        FilesyncNodes(nodes + other.nodes, handles + other.handles, listOfNotNull(readAtMs, other.readAtMs).minOrNull())
+/** Nodes with what writing or downloading each one needs. */
+class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
+    operator fun plus(other: FilesyncNodes) = FilesyncNodes(nodes + other.nodes, handles + other.handles)
 }
 
 /** Network only: the drive is never synced, so every listing is fetched fresh. */
@@ -33,14 +33,14 @@ class FilesyncRepository(
         queryAll(
             nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
                 .copy(groupId = listOf(folderId))
-        )
+        ).first
 
-    /** Every removed node across the drive. */
-    suspend fun listRemoved(): FilesyncNodes = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
+    /** Every removed node across the drive, and the server's clock when the listing began. */
+    suspend fun listRemoved(): Pair<FilesyncNodes, Long> = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
 
     /** [removed], and the live nodes below removed folders, level by level (see [FilesyncTrash]). */
     suspend fun listDeleted(removed: FilesyncNodes? = null): FilesyncNodes {
-        var all = removed ?: listRemoved()
+        var all = removed ?: listRemoved().first
         var folders = all.nodes.values.filter { it.isFolder }.map { it.nodeId }
         while (folders.isNotEmpty()) {
             val live = queryChunked(folders, listOf(ArchivalStatus.None)) { copy(groupId = it) }
@@ -52,43 +52,31 @@ class FilesyncRepository(
 
     /** The tombstones last written before [beforeMs], by the server's clock, each at its version. */
     suspend fun listTombstones(beforeMs: Long): List<FileVersionTag> {
-        val params = FileQueryParams(
-            fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType),
-            fileState = listOf(FileState.Deleted),
-        )
         val found = mutableListOf<FileVersionTag>()
-        var cursor: String? = null
-        do {
-            val response = driveQueryProvider.queryBatch(
-                driveId = FilesyncProtocol.DriveAlias,
-                request = QueryBatchRequest(
-                    queryParams = params,
-                    resultOptionsRequest = QueryBatchResultOptionsRequest(
-                        cursorState = cursor,
-                        maxRecords = PAGE_SIZE,
-                        ordering = QueryBatchSortOrder.OldestFirst,
-                        sorting = QueryBatchSortField.AnyChangeDate,
-                    ),
-                ),
-            )
-            val old = response.searchResults.takeWhile { it.fileMetadata.updated.milliseconds < beforeMs }
+        forEachPage(
+            nodeParams(null, FileState.Deleted),
+            QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE, ordering = QueryBatchSortOrder.OldestFirst, sorting = QueryBatchSortField.AnyChangeDate),
+        ) { page ->
+            val old = page.searchResults.takeWhile { it.fileMetadata.updated.milliseconds < beforeMs }
             old.mapNotNullTo(found) { file -> file.fileMetadata.versionTag?.let { FileVersionTag(file.fileId, it) } }
-            cursor = response.cursorState?.takeIf { response.hasMoreRows && old.size == response.searchResults.size && it != cursor }
-        } while (cursor != null)
+            old.size == page.searchResults.size
+        }
         return found
     }
 
     /** The newest live files, newest first. */
     suspend fun listRecentlyAdded(limit: Int = RECENT_LIMIT): FilesyncNodes =
-        query(
-            nodeParams(listOf(ArchivalStatus.None)).copy(fileType = listOf(FilesyncProtocol.FileFileType)),
-            QueryBatchResultOptionsRequest(
-                maxRecords = limit,
-                includeMetadataHeader = true,
-                ordering = QueryBatchSortOrder.NewestFirst,
-                sorting = QueryBatchSortField.CreatedDate,
-            ),
-        ).first
+        nodesOf(
+            queryPage(
+                nodeParams(listOf(ArchivalStatus.None)).copy(fileType = listOf(FilesyncProtocol.FileFileType)),
+                QueryBatchResultOptionsRequest(
+                    maxRecords = limit,
+                    includeMetadataHeader = true,
+                    ordering = QueryBatchSortOrder.NewestFirst,
+                    sorting = QueryBatchSortField.CreatedDate,
+                ),
+            )
+        )
 
     /** The nodes among [nodeIds] that are in one of [status] now; one gone for good, or in another status, is left out. */
     suspend fun findNodes(nodeIds: Collection<Uuid>, vararg status: ArchivalStatus): FilesyncNodes =
@@ -99,7 +87,7 @@ class FilesyncRepository(
         status: List<ArchivalStatus>,
         by: FileQueryParams.(List<Uuid>) -> FileQueryParams,
     ): FilesyncNodes =
-        ids.chunked(PAGE_SIZE).fold(FilesyncNodes(emptyMap(), emptyMap())) { all, chunk -> all + queryAll(nodeParams(status).by(chunk)) }
+        ids.chunked(PAGE_SIZE).fold(FilesyncNodes(emptyMap(), emptyMap())) { all, chunk -> all + queryAll(nodeParams(status).by(chunk)).first }
 
     /** Folder names for "in Photos" lines, live or removed alike; the top level is left to the caller. */
     suspend fun folderNames(folderIds: Collection<Uuid>, known: Map<Uuid, FilesyncNode>): Map<Uuid, String> {
@@ -108,40 +96,49 @@ class FilesyncRepository(
         return (known + live).filterKeys { it in folderIds }.mapValues { it.value.name }
     }
 
-    private fun nodeParams(status: List<ArchivalStatus>) = FileQueryParams(
+    private fun nodeParams(status: List<ArchivalStatus>?, state: FileState = FileState.Active) = FileQueryParams(
         fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType),
-        fileState = listOf(FileState.Active),
-        archivalStatus = status.map { it.value },
+        fileState = listOf(state),
+        archivalStatus = status?.map { it.value },
     )
 
-    private suspend fun queryAll(params: FileQueryParams): FilesyncNodes {
-        // Keyed by node: a node changed between two pages comes back on both.
+    // Keyed by node: a node changed between two pages comes back on both. The time is the server's, at the first page.
+    private suspend fun queryAll(params: FileQueryParams): Pair<FilesyncNodes, Long> {
         var all = FilesyncNodes(emptyMap(), emptyMap())
-        var cursor: String? = null
-        do {
-            val (page, next) = query(
-                params,
-                QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = PAGE_SIZE, includeMetadataHeader = true),
-            )
-            all += page
-            cursor = next?.takeIf { it != cursor }
-        } while (cursor != null)
-        return all
+        var readAtMs = Long.MAX_VALUE
+        forEachPage(params, QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE, includeMetadataHeader = true)) { page ->
+            readAtMs = minOf(readAtMs, page.queryTime.milliseconds)
+            all += nodesOf(page)
+            true
+        }
+        return all to readAtMs
     }
 
-    private suspend fun query(params: FileQueryParams, options: QueryBatchResultOptionsRequest): Pair<FilesyncNodes, String?> {
-        val response = driveQueryProvider.queryBatch(
+    /** Reads every page while [onPage] asks for the next. */
+    private suspend fun forEachPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest, onPage: (QueryBatchResponse) -> Boolean) {
+        var cursor: String? = null
+        do {
+            val page = queryPage(params, options.copy(cursorState = cursor))
+            val more = onPage(page)
+            cursor = page.cursorState?.takeIf { more && page.hasMoreRows && it != cursor }
+        } while (cursor != null)
+    }
+
+    private suspend fun queryPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest): QueryBatchResponse =
+        driveQueryProvider.queryBatch(
             driveId = FilesyncProtocol.DriveAlias,
             request = QueryBatchRequest(queryParams = params, resultOptionsRequest = options),
         )
+
+    private fun nodesOf(page: QueryBatchResponse): FilesyncNodes {
         val nodes = linkedMapOf<Uuid, FilesyncNode>()
         val handles = mutableMapOf<Uuid, FilesyncHandle>()
-        response.searchResults.forEach { file ->
+        page.searchResults.forEach { file ->
             val (node, handle) = file.toFilesyncNode() ?: return@forEach
             nodes[node.nodeId] = node
             handles[node.nodeId] = handle
         }
-        return FilesyncNodes(nodes, handles, response.queryTime.milliseconds) to response.cursorState?.takeIf { response.hasMoreRows }
+        return FilesyncNodes(nodes, handles)
     }
 
     /**

@@ -92,7 +92,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
     /** [nodes] in the passes a delete for good takes: the files, then the folders from the deepest. */
     fun deleteOrder(nodes: Collection<FilesyncNode>): List<List<FilesyncNode>> {
         val (folders, files) = nodes.partition { it.isFolder }
-        return listOf(files).filter { it.isNotEmpty() } +
+        return listOf(files) +
             folders.groupBy { ancestorsOf(it).size }.entries.sortedByDescending { it.key }.map { it.value }
     }
 

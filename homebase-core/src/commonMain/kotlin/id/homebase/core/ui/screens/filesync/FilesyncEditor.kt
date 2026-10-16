@@ -113,8 +113,8 @@ class FilesyncEditor(
 
     // What every filesync client does (node schema, "Recently deleted"), by the server's clock as the desktops count it.
     private suspend fun purgeExpired(): FilesyncWriteResult = writeLock.withLock {
-        val removed = repository.listRemoved()
-        val before = (removed.readAtMs ?: return@withLock FilesyncWriteResult(0, 0)) - FilesyncProtocol.KeepDeleted.inWholeMilliseconds
+        val (removed, readAtMs) = repository.listRemoved()
+        val before = readAtMs - FilesyncProtocol.KeepDeleted.inWholeMilliseconds
         // Most runs find nothing old enough: only then is the walk below removed folders worth it.
         val expired = if (removed.nodes.values.none { it.updatedMs < before }) {
             FilesyncWriteResult(0, 0)
@@ -123,10 +123,7 @@ class FilesyncEditor(
             deleteListed(trash, trash.removedBefore(before), seen = null, hardBefore = before)
         }
         // A delete for good by hand leaves a tombstone, the feed's trace of it; once every desktop had 30 days to read it, it goes too.
-        val tombstones = repository.listTombstones(before).chunked(DriveFileHttpProvider.HARD_DELETE_BATCH).sumOf { batch ->
-            driveFileProvider.hardDeleteFiles(FilesyncProtocol.DriveAlias, batch).results.count { it.errorCode == null }
-        }
-        FilesyncWriteResult(expired.done + tombstones, expired.skipped)
+        FilesyncWriteResult(expired.done + hardDelete(repository.listTombstones(before)).size, expired.skipped)
     }
 
     /**
@@ -155,20 +152,23 @@ class FilesyncEditor(
         // Deleting a folder for good would leave what stays in it nowhere: a live node not deleted, or one left as it is.
         now.all.nodes.values
             .filter { it.nodeId !in doomed && (it.nodeId in group || !it.removed && it.nodeId !in now.itemOf) }
-            .forEach { kept -> now.ancestorsOf(kept).forEach { doomed.remove(it.nodeId) } }
-        val held = mutableSetOf<Uuid>()
+            .forEach { stays -> now.ancestorsOf(stays).forEach { doomed.remove(it.nodeId) } }
         var deleted = 0
         var kept = 0
         for (pass in now.deleteOrder(doomed.values)) {
-            val (hard, soft) = pass.filter { it.nodeId !in held }.map { it to now.all.handles.getValue(it.nodeId) }
-                .partition { (node, handle) -> hardBefore != null && now.removalMs(node)?.let { it < hardBefore } == true && handle.versionTag != null }
-            val gone = hardDelete(hard.map { it.second }) + softDelete(soft.map { it.second })
-            for ((node, handle) in hard + soft) {
+            val handles = pass.filter { it.nodeId in doomed }.associateWith { now.all.handles.getValue(it.nodeId) }
+            val hard = handles.mapNotNull { (node, handle) ->
+                handle.versionTag?.takeIf { hardBefore != null && now.removalMs(node)?.let { it < hardBefore } == true }
+                    ?.let { FileVersionTag(handle.fileId, it) }
+            }
+            val hardIds = hard.mapTo(mutableSetOf()) { it.fileId }
+            val gone = hardDelete(hard) + softDelete(handles.values.filter { it.fileId !in hardIds })
+            for ((node, handle) in handles) {
                 if (handle.fileId in gone) {
                     deleted++
                 } else {
                     kept++
-                    now.ancestorsOf(node).forEach { held += it.nodeId }
+                    now.ancestorsOf(node).forEach { doomed.remove(it.nodeId) }
                 }
             }
         }
@@ -176,11 +176,10 @@ class FilesyncEditor(
         return FilesyncWriteResult(deleted, changed + kept)
     }
 
-    /** The files of [handles] gone now; one written since its versionTag stays. */
-    private suspend fun hardDelete(handles: List<FilesyncHandle>): Set<Uuid> =
-        handles.chunked(DriveFileHttpProvider.HARD_DELETE_BATCH).flatMapTo(mutableSetOf()) { chunk ->
-            val files = chunk.mapNotNull { handle -> handle.versionTag?.let { FileVersionTag(handle.fileId, it) } }
-            val (gone, left) = driveFileProvider.hardDeleteFiles(FilesyncProtocol.DriveAlias, files).results
+    /** The [files] gone now; one written since its versionTag stays. */
+    private suspend fun hardDelete(files: List<FileVersionTag>): Set<Uuid> =
+        files.chunked(DriveFileHttpProvider.HARD_DELETE_BATCH).flatMapTo(mutableSetOf()) { chunk ->
+            val (gone, left) = driveFileProvider.hardDeleteFiles(FilesyncProtocol.DriveAlias, chunk).results
                 .partition { it.errorCode == null || it.errorCode == OdinClientErrorCode.FileNotFound }
             if (left.isNotEmpty()) Logger.i(TAG) { "hard delete left ${left.size} as they are: ${left.map { it.errorCode }.distinct()}" }
             gone.map { it.fileId }
