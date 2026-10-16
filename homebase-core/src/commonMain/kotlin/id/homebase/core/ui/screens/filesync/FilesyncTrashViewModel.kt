@@ -72,7 +72,8 @@ class FilesyncTrashViewModel(
                 editor.deleteForGood(FilesyncNodes(group, shown.handles.filterKeys { it in group }))
             }
             FilesyncTrashAction.EmptyTrash -> write(FilesyncNotice.DeletedForever, FilesyncError.DeleteFailed) {
-                editor.deleteForGood(shown)
+                val all = FilesyncTrash.deleted(shown.nodes)
+                editor.deleteForGood(FilesyncNodes(all, shown.handles.filterKeys { it in all }))
             }
         }
     }
@@ -94,10 +95,10 @@ class FilesyncTrashViewModel(
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
-                val removed = repository.listRemoved()
-                val items = FilesyncTrash.topmost(removed.nodes)
-                val names = repository.folderNames(items.map { it.node.parentId }.toSet(), removed.nodes)
-                shown = removed
+                val deleted = repository.listDeleted()
+                val items = FilesyncTrash.items(deleted.nodes)
+                val names = repository.folderNames(items.map { it.node.parentId }.toSet(), deleted.nodes)
+                shown = deleted
                 _uiState.update { state ->
                     state.copy(
                         isLoading = false,

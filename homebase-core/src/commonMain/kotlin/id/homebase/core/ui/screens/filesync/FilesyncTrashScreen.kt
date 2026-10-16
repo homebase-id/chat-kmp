@@ -46,6 +46,7 @@ import id.homebase.resources.filesync_folder_items
 import id.homebase.resources.filesync_from_folder
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_restore
+import id.homebase.resources.filesync_role_folder_returns
 import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_trash
 import id.homebase.resources.filesync_trash_empty
@@ -56,6 +57,13 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 /** Recently deleted as a trash can: what each delete took, newest first, to restore or delete for good. */
+// Deleting one for good lasts only once no computer syncs it: one that does makes it again.
+@Composable
+private fun roleFoldersReturn(nodes: List<FilesyncNode>): String {
+    val names = nodes.filter { it.role != null }.map { it.name }
+    return if (names.isEmpty()) "" else "\n\n" + pluralStringResource(MR.plurals.filesync_role_folder_returns, names.size, names.size, names.joinToString(", "))
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlaces, onBack: () -> Unit) {
@@ -75,7 +83,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
                 stringResource(MR.string.filesync_delete_forever_confirm, name)
             } else {
                 pluralStringResource(MR.plurals.filesync_delete_forever_confirm_many, ids.size, ids.size)
-            },
+            } + roleFoldersReturn(uiState.items.map { it.node }.filter { it.nodeId in ids }),
             confirmLabel = stringResource(MR.string.filesync_delete_forever),
             destructive = true,
             onConfirm = {
@@ -88,7 +96,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     if (askEmpty) {
         FilesyncConfirmDialog(
             title = stringResource(MR.string.filesync_empty_trash),
-            text = stringResource(MR.string.filesync_empty_trash_confirm),
+            text = stringResource(MR.string.filesync_empty_trash_confirm) + roleFoldersReturn(uiState.items.map { it.node }),
             confirmLabel = stringResource(MR.string.filesync_empty_trash),
             destructive = true,
             onConfirm = {

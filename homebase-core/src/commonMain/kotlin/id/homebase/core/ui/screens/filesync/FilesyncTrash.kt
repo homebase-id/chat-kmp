@@ -3,53 +3,82 @@ package id.homebase.core.ui.screens.filesync
 import androidx.compose.runtime.Immutable
 import kotlin.uuid.Uuid
 
-/** A topmost item of Recently deleted; [count] is how many removed items below it come back with it. */
+/** An item of Recently deleted, deleted on its own; [count] is how many below it were deleted with it. */
 @Immutable
 data class FilesyncTrashItem(val node: FilesyncNode, val count: Int)
 
-/** Recently deleted the way the desktop reads it (filesync deleted.rs, tray pages.rs); every map holds removed nodes only. */
+/**
+ * Recently deleted by the server's time (filesync node schema, "Recently deleted"). Every map holds the removed nodes
+ * and the live ones below removed folders: a folder's delete removes the folder first, so what it takes along may
+ * still be live, and counts as deleted with it when written no later than the folder's removal.
+ */
 internal object FilesyncTrash {
 
-    /** The items whose parent isn't removed too, newest first. */
-    fun topmost(removed: Map<Uuid, FilesyncNode>): List<FilesyncTrashItem> {
+    /** The items deleted on their own, newest first. */
+    fun items(nodes: Map<Uuid, FilesyncNode>): List<FilesyncTrashItem> {
         val counts = mutableMapOf<Uuid, Int>()
-        for (node in removed.values) {
-            val top = removedParents(node, removed).firstOrNull() ?: continue
-            if (top.removal?.root == node.removal?.root) counts[top.nodeId] = (counts[top.nodeId] ?: 0) + 1
+        val items = mutableListOf<FilesyncNode>()
+        for (node in nodes.values) {
+            val item = itemOf(node, nodes) ?: continue
+            if (item.nodeId == node.nodeId) items += node else counts[item.nodeId] = (counts[item.nodeId] ?: 0) + 1
         }
-        return removed.values
-            .filter { it.parentId !in removed }
-            .sortedWith(compareByDescending<FilesyncNode> { it.removal?.atMs }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        return items
+            .sortedWith(compareByDescending<FilesyncNode> { it.removedMs }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
             .map { FilesyncTrashItem(it, counts[it.nodeId] ?: 0) }
     }
 
-    /** [top] and the removed items below it that its delete took along, each after its folder. */
-    fun group(top: FilesyncNode, removed: Map<Uuid, FilesyncNode>): List<FilesyncNode> {
-        val children = removed.values.groupBy { it.parentId }
-        val result = mutableListOf(top)
-        val seen = mutableSetOf(top.nodeId)
-        var level = listOf(top)
-        while (level.isNotEmpty()) {
-            level = level.flatMap { children[it.nodeId].orEmpty() }
-                .filter { it.removal?.root == top.removal?.root && seen.add(it.nodeId) }
-            result += level
+    /** The item whose delete took [node]: itself when deleted on its own, null when it isn't deleted at all. */
+    fun itemOf(node: FilesyncNode, nodes: Map<Uuid, FilesyncNode>): FilesyncNode? {
+        val seen = mutableSetOf(node.nodeId)
+        var current = node
+        while (true) {
+            val folder = removedFolderOf(current, nodes, seen)
+            val folderRemovedMs = folder?.removedMs ?: return current.takeIf { it.removedMs != null }
+            val removedMs = current.removedMs
+            val withFolder = if (removedMs != null) removedMs >= folderRemovedMs else current.updatedMs <= folderRemovedMs
+            if (!withFolder) return current.takeIf { removedMs != null }
+            current = folder
         }
-        return result
+    }
+
+    /** Every deleted node: the removed ones and the live ones a folder's delete took along. */
+    fun deleted(nodes: Map<Uuid, FilesyncNode>): Map<Uuid, FilesyncNode> = nodes.filterValues { itemOf(it, nodes) != null }
+
+    /** [item] and what was deleted with it, removed or still live, each after its folder. */
+    fun group(item: FilesyncNode, nodes: Map<Uuid, FilesyncNode>): List<FilesyncNode> {
+        val children = nodes.values.groupBy { it.parentId }
+        val below = mutableListOf<FilesyncNode>()
+        val seen = mutableSetOf(item.nodeId)
+        var level = listOf(item)
+        while (level.isNotEmpty()) {
+            level = level.flatMap { children[it.nodeId].orEmpty() }.filter { seen.add(it.nodeId) }
+            below += level
+        }
+        return listOf(item) + below.filter { itemOf(it, nodes)?.nodeId == item.nodeId }
     }
 
     /** The removed folders above [node], outermost first; a groupId cycle from a bad row ends where it repeats. */
-    fun removedParents(node: FilesyncNode, removed: Map<Uuid, FilesyncNode>): List<FilesyncNode> {
+    fun removedParents(node: FilesyncNode, nodes: Map<Uuid, FilesyncNode>): List<FilesyncNode> {
         val chain = mutableListOf<FilesyncNode>()
         val seen = mutableSetOf(node.nodeId)
-        var parent = removed[node.parentId]
+        var parent = nodes[node.parentId]
         while (parent != null && seen.add(parent.nodeId)) {
-            chain += parent
-            parent = removed[parent.parentId]
+            if (parent.removedMs != null) chain += parent
+            parent = nodes[parent.parentId]
         }
         return chain.asReversed()
     }
 
-    /** What restoring [top] writes, in order: its removed folders first, so each item has a folder to go back to. */
-    fun restorePlan(top: FilesyncNode, removed: Map<Uuid, FilesyncNode>): List<FilesyncNode> =
-        removedParents(top, removed) + group(top, removed)
+    /** What restoring [item] writes, in order: the removed folders above it alone, then it and what was removed with it. */
+    fun restorePlan(item: FilesyncNode, nodes: Map<Uuid, FilesyncNode>): List<FilesyncNode> =
+        removedParents(item, nodes) + group(item, nodes).filter { it.removedMs != null }
+
+    private fun removedFolderOf(node: FilesyncNode, nodes: Map<Uuid, FilesyncNode>, seen: MutableSet<Uuid>): FilesyncNode? {
+        var parent = nodes[node.parentId]
+        while (parent != null && seen.add(parent.nodeId)) {
+            if (parent.removedMs != null) return parent
+            parent = nodes[parent.parentId]
+        }
+        return null
+    }
 }

@@ -45,11 +45,11 @@ class FilesyncEditor(
 
     /** Brings each of [nodeIds] back with the items its delete took along, and the removed folders above it first. */
     suspend fun restore(nodeIds: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
-        val removed = repository.listRemoved()
-        val tops = nodeIds.mapNotNull { removed.nodes[it] }
+        val deleted = repository.listDeleted()
+        val tops = nodeIds.mapNotNull { id -> deleted.nodes[id]?.takeIf { it.removedMs != null } }
         // One already live was restored by an earlier tap or another device: nothing to do, nothing to report.
-        val gone = (nodeIds - removed.nodes.keys).let { it.size - repository.findNodes(it, ArchivalStatus.None).nodes.size }
-        val plan = tops.flatMap { FilesyncTrash.restorePlan(it, removed.nodes) }.distinctBy { it.nodeId }
+        val gone = (nodeIds - tops.map { it.nodeId }.toSet()).let { it.size - repository.findNodes(it, ArchivalStatus.None).nodes.size }
+        val plan = tops.flatMap { FilesyncTrash.restorePlan(it, deleted.nodes) }.distinctBy { it.nodeId }
         val planned = plan.mapTo(mutableSetOf()) { it.nodeId }
         val outsideParents = plan.map { it.parentId }.filter { it !in planned }
         val liveParents = repository.findNodes(outsideParents, ArchivalStatus.None).nodes.keys
@@ -72,7 +72,7 @@ class FilesyncEditor(
                 repository.listFolder(target).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
             }
             val name = FilesyncNames.restoredName(node.name, taken)
-            val handle = removed.handles.getValue(node.nodeId)
+            val handle = deleted.handles.getValue(node.nodeId)
             if (name == null || !handle.writable || !write(node.nodeId, handle, restoredContent(handle.content, name), target)) {
                 skipped++
                 continue
@@ -85,11 +85,14 @@ class FilesyncEditor(
     }
 
     /**
-     * Deletes [shown] for good, files before folders. Each is read again first and left alone if it changed since
-     * the user saw it; the server's batch delete has no version guard, so a change in the moment between is not caught.
+     * Deletes [shown] for good, files before folders, the live ones a folder's delete took along included. Each is read
+     * again first and left alone if it changed since the user saw it; the server's batch delete has no version guard,
+     * so a change in the moment between is not caught.
      */
     suspend fun deleteForGood(shown: FilesyncNodes): FilesyncWriteResult = writeLock.withLock {
-        val current = repository.findNodes(shown.nodes.keys, ArchivalStatus.Removed)
+        val (removed, live) = shown.nodes.values.partition { it.removedMs != null }
+        val current = repository.findNodes(removed.map { it.nodeId }, ArchivalStatus.Removed) +
+            repository.findNodes(live.map { it.nodeId }, ArchivalStatus.None)
         val unchanged = shown.nodes.values.filter { node ->
             val now = current.handles[node.nodeId] ?: return@filter false
             now.writable && now.versionTag == shown.handles[node.nodeId]?.versionTag

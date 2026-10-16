@@ -124,7 +124,7 @@ import org.jetbrains.compose.resources.stringResource
 @Stable
 internal class FilesyncBrowserActions(val onAction: (FilesyncUiAction) -> Unit, private val onAskRestore: (FilesyncNode) -> Unit) {
     fun click(node: FilesyncNode) {
-        if (node.removal != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
+        if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
     }
 }
 
@@ -140,7 +140,7 @@ internal class FilesyncBrowserScope(
     val places: FilesyncPlaces,
 ) {
     val onAction get() = actions.onAction
-    val currentRemoved get() = uiState.path.last().removed
+    val currentRemoved get() = uiState.path.last().removedMs != null
 }
 
 // Whatever lands in a deleted folder is out of sight on every device.

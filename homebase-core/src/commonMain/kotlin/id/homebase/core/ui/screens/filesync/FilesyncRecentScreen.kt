@@ -105,7 +105,7 @@ private fun RecentList(
     uiState: FilesyncRecentUiState,
     onAction: (FilesyncRecentAction) -> Unit,
 ) {
-    val timeOf = { node: FilesyncNode -> node.removal?.atMs ?: node.addedMs }
+    val timeOf = { node: FilesyncNode -> node.removedMs ?: node.addedMs }
     val days = remember(files) {
         val zone = TimeZone.currentSystemDefault()
         files.groupBy { Instant.fromEpochMilliseconds(timeOf(it)).toLocalDateTime(zone).date }.values.toList()

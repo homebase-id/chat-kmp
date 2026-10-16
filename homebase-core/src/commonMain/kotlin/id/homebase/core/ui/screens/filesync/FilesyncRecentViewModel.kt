@@ -85,15 +85,16 @@ class FilesyncRecentViewModel(
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
-                val (added, removed) = coroutineScope {
+                val (added, deleted) = coroutineScope {
                     val added = async { repository.listRecentlyAdded() }
-                    val removed = async { repository.listRemoved() }
-                    added.await() to removed.await()
+                    val deleted = async { repository.listDeleted() }
+                    added.await() to deleted.await()
                 }
-                val addedFiles = added.nodes.values.toList()
-                val deletedFiles = removed.nodes.values.filter { !it.isFolder }.sortedByDescending { it.removal?.atMs }
+                val inTrash = FilesyncTrash.deleted(deleted.nodes)
+                val addedFiles = added.nodes.values.filter { it.nodeId !in inTrash }
+                val deletedFiles = deleted.nodes.values.filter { !it.isFolder && it.removedMs != null }.sortedByDescending { it.removedMs }
                 val parents = (addedFiles + deletedFiles).mapTo(mutableSetOf()) { it.parentId }
-                val names = repository.folderNames(parents, removed.nodes)
+                val names = repository.folderNames(parents, deleted.nodes)
                 transfers.handles = added.handles
                 _uiState.update { it.copy(isLoading = false, added = addedFiles, deleted = deletedFiles, folderNames = names) }
             } catch (e: CancellationException) {

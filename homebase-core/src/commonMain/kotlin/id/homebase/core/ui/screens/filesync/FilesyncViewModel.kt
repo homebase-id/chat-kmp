@@ -162,7 +162,7 @@ class FilesyncViewModel(
             FilesyncUiAction.ToggleShowDeleted -> {
                 val show = !_uiState.value.showDeleted
                 // A removed folder can only be browsed while deleted files show.
-                val path = if (show) _uiState.value.path else _uiState.value.path.takeWhile { !it.removed }
+                val path = if (show) _uiState.value.path else _uiState.value.path.takeWhile { it.removedMs == null }
                 arrange { it.copy(showDeleted = show, path = path).withNodes(if (path == it.path) it.nodes else emptyList()) }
                 loadCurrentFolder()
             }
@@ -170,7 +170,7 @@ class FilesyncViewModel(
             is FilesyncUiAction.Restore -> viewModelScope.launch {
                 if (reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }) {
                     // Its removed folders came back with it.
-                    _uiState.update { state -> state.copy(path = state.path.map { it.copy(removed = false) }) }
+                    _uiState.update { state -> state.copy(path = state.path.map { it.copy(removedMs = null) }) }
                 }
             }
         }
@@ -178,9 +178,9 @@ class FilesyncViewModel(
 
     private fun open(node: FilesyncNode) {
         when {
-            node.isFolder -> openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, removed = node.removal != null))
+            node.isFolder -> openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, node.removedMs))
             // A deleted file is restored, not opened; the screen asks first.
-            node.removal == null -> transfers.open(node)
+            node.removedMs == null -> transfers.open(node)
         }
     }
 
@@ -193,14 +193,18 @@ class FilesyncViewModel(
     private fun arrange(change: (FilesyncUiState) -> FilesyncUiState) = _uiState.update { change(it).arrange() }
 
     private fun loadCurrentFolder() {
-        val folderId = _uiState.value.path.last().nodeId
+        val path = _uiState.value.path
+        val folderId = path.last().nodeId
+        // In a removed folder, what is still live but written before the folder's removal was deleted with it.
+        val removedAboveMs = path.lastOrNull { it.removedMs != null }?.removedMs
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
                 val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
                 transfers.handles = folder.handles
-                arrange { it.copy(isLoading = false).withNodes(folder.nodes.values.toList()) }
+                val nodes = folder.nodes.values.filter { removedAboveMs == null || it.removedMs != null || it.updatedMs > removedAboveMs }
+                arrange { it.copy(isLoading = false).withNodes(nodes) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -33,8 +33,19 @@ class FilesyncRepository(
                 .copy(groupId = listOf(folderId))
         )
 
-    /** Everything in Recently deleted, across the whole drive. */
-    suspend fun listRemoved(): FilesyncNodes = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
+    /** Every removed node across the drive, and the live ones below removed folders, level by level (see [FilesyncTrash]). */
+    suspend fun listDeleted(): FilesyncNodes {
+        var all = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
+        var folders = all.nodes.values.filter { it.isFolder }.map { it.nodeId }
+        while (folders.isNotEmpty()) {
+            val live = folders.chunked(PAGE_SIZE).fold(FilesyncNodes(emptyMap(), emptyMap())) { acc, ids ->
+                acc + queryAll(nodeParams(listOf(ArchivalStatus.None)).copy(groupId = ids))
+            }
+            folders = live.nodes.values.filter { it.isFolder && it.nodeId !in all.nodes }.map { it.nodeId }
+            all += live
+        }
+        return all
+    }
 
     /** The newest live files, newest first. */
     suspend fun listRecentlyAdded(limit: Int = RECENT_LIMIT): FilesyncNodes =
