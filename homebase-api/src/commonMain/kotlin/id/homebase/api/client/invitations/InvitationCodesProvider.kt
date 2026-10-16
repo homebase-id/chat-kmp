@@ -9,11 +9,8 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.content.TextContent
-import io.ktor.http.isSuccess
 
 class InvitationCodesProvider(
     httpClient: HttpClient,
@@ -34,32 +31,40 @@ class InvitationCodesProvider(
     // PROTOTYPE (#1908): create and list any identity's codes on bleeding edge with the hard-coded key
 
     suspend fun createInvitationCode(owner: String, maxUses: Int): OwnedInvitationCode {
-        val response = httpClient.post(prototypeUrl()) {
-            header(InvitationCodePrototype.API_KEY_HEADER, InvitationCodePrototype.API_KEY)
-            setBody(
-                TextContent(
-                    OdinSystemSerializer.serialize(CreateInvitationCodeRequest(owner, maxUses)),
-                    ContentType.Application.Json,
-                )
-            )
-        }
-        return deserialize(requireSuccess(response))
+        val response = request(
+            {
+                httpClient.post(PROTOTYPE_URL) {
+                    header(InvitationCodePrototype.API_KEY_HEADER, InvitationCodePrototype.API_KEY)
+                    setBody(
+                        TextContent(
+                            OdinSystemSerializer.serialize(CreateInvitationCodeRequest(owner, maxUses)),
+                            ContentType.Application.Json,
+                        )
+                    )
+                }
+            },
+            secret = null,
+        )
+        throwForFailure(response)
+        return deserialize(response.body)
     }
 
     suspend fun listInvitationCodes(owner: String): List<OwnedInvitationCode> {
-        val response = httpClient.get(prototypeUrl()) {
-            header(InvitationCodePrototype.API_KEY_HEADER, InvitationCodePrototype.API_KEY)
-            parameter("owner", owner)
-        }
-        return deserialize(requireSuccess(response))
+        val response = request(
+            {
+                httpClient.get(PROTOTYPE_URL) {
+                    header(InvitationCodePrototype.API_KEY_HEADER, InvitationCodePrototype.API_KEY)
+                    parameter("owner", owner)
+                }
+            },
+            secret = null,
+        )
+        throwForFailure(response)
+        return deserialize(response.body)
     }
 
-    private fun prototypeUrl() =
-        "https://${InvitationCodePrototype.BLEEDING_EDGE_PROVISIONING_DOMAIN}/api/registration/v1/invitation-codes"
-
-    private suspend fun requireSuccess(response: HttpResponse): String {
-        val body = response.bodyAsText()
-        check(response.status.isSuccess()) { "Invitation codes: ${response.status.value} $body" }
-        return body
+    private companion object {
+        const val PROTOTYPE_URL =
+            "https://${InvitationCodePrototype.BLEEDING_EDGE_PROVISIONING_DOMAIN}/api/registration/v1/invitation-codes"
     }
 }
