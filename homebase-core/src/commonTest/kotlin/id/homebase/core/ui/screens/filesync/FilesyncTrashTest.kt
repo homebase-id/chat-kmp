@@ -115,6 +115,23 @@ class FilesyncTrashTest {
     }
 
     @Test
+    fun aDeleteForGoodTakesTheFilesThenTheFoldersFromTheDeepest() {
+        val inner = removed("2024", photosId, folder = true, at = 250)
+        val deep = removed("b.jpg", inner.nodeId, folder = false, at = 250)
+        assertEquals(listOf(listOf(a, deep), listOf(inner), listOf(photos)), trash(nodes.plus(inner, deep)).deleteOrder(listOf(photos, inner, a, deep)))
+    }
+
+    @Test
+    fun aLiveNodeWasDeletedWhenTheFolderItWentWithWasRemoved() {
+        val inner = removed("2024", photosId, folder = true, at = 250)
+        val b = live("b.jpg", inner.nodeId, folder = false, written = 10)
+        val trash = trash(nodes.plus(inner, b))
+        assertEquals(250, trash.removalMs(b))
+        assertEquals(200, trash.removalMs(photos))
+        assertNull(trash.removalMs(live("c.jpg", FilesyncProtocol.RootNodeId, folder = false, written = 10)))
+    }
+
+    @Test
     fun aParentCycleEnds() {
         val x = Uuid.random()
         val y = Uuid.random()

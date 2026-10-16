@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
@@ -14,9 +15,10 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.uuid.Uuid
 
-/** Nodes with what writing or downloading each one needs. */
-class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
-    operator fun plus(other: FilesyncNodes) = FilesyncNodes(nodes + other.nodes, handles + other.handles)
+/** Nodes with what writing or downloading each one needs; [readAtMs] is the server's clock when the listing began. */
+class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>, val readAtMs: Long? = null) {
+    operator fun plus(other: FilesyncNodes) =
+        FilesyncNodes(nodes + other.nodes, handles + other.handles, listOfNotNull(readAtMs, other.readAtMs).minOrNull())
 }
 
 /** Network only: the drive is never synced, so every listing is fetched fresh. */
@@ -46,6 +48,34 @@ class FilesyncRepository(
             all += live
         }
         return all
+    }
+
+    /** The tombstones last written before [beforeMs], by the server's clock, each at its version. */
+    suspend fun listTombstones(beforeMs: Long): List<FileVersionTag> {
+        val params = FileQueryParams(
+            fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType),
+            fileState = listOf(FileState.Deleted),
+        )
+        val found = mutableListOf<FileVersionTag>()
+        var cursor: String? = null
+        do {
+            val response = driveQueryProvider.queryBatch(
+                driveId = FilesyncProtocol.DriveAlias,
+                request = QueryBatchRequest(
+                    queryParams = params,
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(
+                        cursorState = cursor,
+                        maxRecords = PAGE_SIZE,
+                        ordering = QueryBatchSortOrder.OldestFirst,
+                        sorting = QueryBatchSortField.AnyChangeDate,
+                    ),
+                ),
+            )
+            val old = response.searchResults.takeWhile { it.fileMetadata.updated.milliseconds < beforeMs }
+            old.mapNotNullTo(found) { file -> file.fileMetadata.versionTag?.let { FileVersionTag(file.fileId, it) } }
+            cursor = response.cursorState?.takeIf { response.hasMoreRows && old.size == response.searchResults.size && it != cursor }
+        } while (cursor != null)
+        return found
     }
 
     /** The newest live files, newest first. */
@@ -111,7 +141,7 @@ class FilesyncRepository(
             nodes[node.nodeId] = node
             handles[node.nodeId] = handle
         }
-        return FilesyncNodes(nodes, handles) to response.cursorState?.takeIf { response.hasMoreRows }
+        return FilesyncNodes(nodes, handles, response.queryTime.milliseconds) to response.cursorState?.takeIf { response.hasMoreRows }
     }
 
     /**

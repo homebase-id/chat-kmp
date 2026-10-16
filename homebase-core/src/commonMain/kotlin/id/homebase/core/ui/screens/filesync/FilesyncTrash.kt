@@ -86,6 +86,16 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
     fun removedBefore(beforeMs: Long): Set<Uuid> =
         itemOf.values.filterTo(mutableSetOf()) { item -> all.nodes.getValue(item).removedMs?.let { it < beforeMs } == true }
 
+    /** When [node] was deleted: its own removal, or the removal of the folder whose delete it went with. */
+    fun removalMs(node: FilesyncNode): Long? = node.removedMs ?: wentWithParentAt[node.nodeId]
+
+    /** [nodes] in the passes a delete for good takes: the files, then the folders from the deepest. */
+    fun deleteOrder(nodes: Collection<FilesyncNode>): List<List<FilesyncNode>> {
+        val (folders, files) = nodes.partition { it.isFolder }
+        return listOf(files).filter { it.isNotEmpty() } +
+            folders.groupBy { ancestorsOf(it).size }.entries.sortedByDescending { it.key }.map { it.value }
+    }
+
     /** [items] and what was deleted with each. */
     fun deletedWith(items: Set<Uuid>): Set<Uuid> = itemOf.filterValues { it in items }.keys
 
