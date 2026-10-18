@@ -13,12 +13,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import coil3.ImageLoader
@@ -117,7 +120,41 @@ class ViewOnceBubbleThreadTest {
     }
 
     private fun List<ConversationListUiAction>.views() = filter {
-        it is ConversationListUiAction.MediaClicked || it is ConversationListUiAction.ViewOnceViewerClosed
+        it is ConversationListUiAction.MediaClicked ||
+            it is ConversationListUiAction.ViewOnceViewerClosed ||
+            it is ConversationListUiAction.DecryptFile
+    }
+
+    private fun ComposeUiTest.hoverThenClick(contentDescription: String) {
+        onNodeWithText("Photo").performMouseInput { moveTo(center) }
+        waitForIdle()
+        onNodeWithContentDescription(contentDescription).performMouseInput { click(center) }
+        waitForIdle()
+    }
+
+    @Test
+    fun hoverReplyOnTheUnopenedPillQuotesIt_andIsNotAView() = runComposeUiTest {
+        val actions = mutableListOf<ConversationListUiAction>()
+        renderInThread(actions)
+
+        hoverThenClick("Reply")
+
+        assertEquals(message.id, actions.filterIsInstance<ConversationListUiAction.ReplyToMessage>().single().message.id)
+        assertTrue(actions.views().isEmpty(), "replying never opens or loads the media: $actions")
+    }
+
+    @Test
+    fun hoverReactOnTheUnopenedPillOffersTheStrip_andIsNotAView() = runComposeUiTest {
+        val actions = mutableListOf<ConversationListUiAction>()
+        renderInThread(actions)
+
+        hoverThenClick("Reaction")
+        onAllNodesWithText(thumbsUp).onFirst().performClick()
+        waitForIdle()
+
+        val reaction = actions.filterIsInstance<ConversationListUiAction.ToggleReaction>().single()
+        assertEquals(message.id, reaction.messageId)
+        assertTrue(actions.views().isEmpty(), "reacting never opens or loads the media: $actions")
     }
 
     @Test
