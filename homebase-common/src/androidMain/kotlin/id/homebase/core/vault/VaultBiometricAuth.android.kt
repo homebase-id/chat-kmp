@@ -56,6 +56,8 @@ actual suspend fun authenticateBiometric(title: String, subtitle: String): Biome
             .setAllowedAuthenticators(DEVICE_AUTHENTICATORS)
             .build()
 
-        activity.runOnUiThread { prompt.authenticate(info) }
+        cont.invokeOnCancellation { activity.runOnUiThread { prompt.cancelAuthentication() } }
+        // Checked on the UI thread too: a cancel posted from it can run before this queued show.
+        activity.runOnUiThread { if (cont.isActive) prompt.authenticate(info) }
     }
 }

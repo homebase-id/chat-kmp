@@ -103,7 +103,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.sp
+import id.homebase.chat.services.sticker.StickerStream
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
@@ -274,6 +276,8 @@ fun ConversationContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
+    val savedStickers by koinInject<StickerStream>().stickers.collectAsStateWithLifecycle()
+    val savedStickerSourceIds = remember(savedStickers) { savedStickers.mapNotNullTo(HashSet()) { it.sourceFileId } }
     val focusRequester = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     val enterSendsMessage = rememberEnterSendsMessage()
@@ -1257,6 +1261,7 @@ fun ConversationContent(
                                                 chainCap = chainCap,
                                                 ownLiveShareUntilMs = uiState.ownLiveShareUntilMs,
                                                 onCopyText = copyToClipboard,
+                                                savedStickerSourceIds = savedStickerSourceIds,
                                             )
                                         }
                                     }

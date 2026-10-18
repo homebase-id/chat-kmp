@@ -620,3 +620,5 @@ private class HomebaseVideoDataSource(
     override fun addTransferListener(transferListener: TransferListener) {}
     override fun close() { buffer = ByteArray(0) }
 }
+
+actual val nativeVideoControlsOwnTopCorners: Boolean = false

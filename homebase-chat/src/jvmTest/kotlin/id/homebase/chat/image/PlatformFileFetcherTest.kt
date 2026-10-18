@@ -40,6 +40,7 @@ class PlatformFileFetcherTest {
         assertTrue(result is SourceFetchResult, "expected a SourceFetchResult")
         val readBack = result.source.source().readByteArray()
         assertContentEquals(payload, readBack, "fetched bytes must round-trip the file content")
+        assertEquals(tmp.path, result.source.fileOrNull()?.toString(), "a local file is read in place, not copied")
     }
 
     @Test

@@ -63,13 +63,13 @@ expect fun PlatformFile.modifiedAtMs(): Long?
 internal fun isUnderDir(dir: String, path: String): Boolean = path.startsWith(dir.trimEnd('/') + "/")
 
 /**
- * Destination for a pick-time sandbox copy: `<PICKER_COPIES>/<uuid>/<original name>`. Uniqueness
+ * Path of a pick-time sandbox copy: `<PICKER_COPIES>/<uuid>/<original name>`. Uniqueness
  * lives in the per-copy directory so `file.name` stays the picked name, which the send path
  * stores as the recipient-visible name. An extension derived from [mimeType] is appended when
  * the picker's name has none (#1149).
  */
-internal fun FileOperationsProvider.sandboxCopyDest(name: String, mimeType: String?): PlatformFile =
-    PlatformFile("${scratchDir("${AppCacheDirs.PICKER_COPIES}/${Uuid.random()}")}/${sandboxCopyName(name, mimeType)}")
+internal fun FileOperationsProvider.sandboxCopyDest(name: String, mimeType: String?): String =
+    "${scratchDir("${AppCacheDirs.PICKER_COPIES}/${Uuid.random()}")}/${sandboxCopyName(name, mimeType)}"
 
 internal fun sandboxCopyName(name: String, mimeType: String?): String {
     val hasExtension = name.substringAfterLast('.', "").isNotEmpty()
