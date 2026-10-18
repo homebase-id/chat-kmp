@@ -4,13 +4,11 @@ import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DecodeResult
-import coil3.decode.DecodeUtils
 import coil3.decode.Decoder
 import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.request.maxBitmapSize
-import coil3.size.Precision
 import id.homebase.api.image.convertHeicToJpeg
 import okio.use
 import org.jetbrains.skia.Bitmap
@@ -41,14 +39,9 @@ class HeicDecoder(
 
         val srcW = image.width
         val srcH = image.height
-        @OptIn(coil3.annotation.ExperimentalCoilApi::class)
-        val dstSize = DecodeUtils.computeDstSize(srcW, srcH, options.size, options.scale, options.maxBitmapSize)
-        @OptIn(coil3.annotation.ExperimentalCoilApi::class)
-        var multiplier = DecodeUtils.computeSizeMultiplier(srcW, srcH, dstSize.first, dstSize.second, options.scale, options.maxBitmapSize)
-        if (options.precision == Precision.INEXACT) multiplier = multiplier.coerceAtMost(1.0)
-
-        val outW = (multiplier * srcW).toInt()
-        val outH = (multiplier * srcH).toInt()
+        val (outW, outH) = decodeOutputSize(
+            srcW, srcH, options.size, options.scale, options.maxBitmapSize, options.precision,
+        )
 
         val bitmap = Bitmap()
         if (!bitmap.allocN32Pixels(outW, outH)) {
