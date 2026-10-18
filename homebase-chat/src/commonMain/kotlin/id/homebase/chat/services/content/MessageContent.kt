@@ -267,6 +267,8 @@ data class ActionPolicy(
             allowReactionDetails = true,
         )
 
+        val Sticker = Standard.copy(allowEdit = false, allowShare = false, allowCopy = false)
+
         val StructuredOneShot = ActionPolicy(
             allowEdit = false,
             allowReply = false,

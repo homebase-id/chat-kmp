@@ -85,7 +85,6 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
-import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.ViewOnceRules
 import id.homebase.api.common.OdinId
@@ -208,6 +207,7 @@ fun SentMessageBubble(
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
+    stickerActions: StickerMenuActions? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
@@ -222,7 +222,7 @@ fun SentMessageBubble(
     // frame then snaps to bubble width on the next composition.
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val haptics = rememberHaptics()
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val policy = message.actionPolicy
     val openReactionBar: (() -> Unit)? =
         if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
             { popupMode = MessagePopupMode.Reaction }
@@ -315,6 +315,13 @@ fun SentMessageBubble(
                         onCopy = {
                             popupMode = MessagePopupMode.None
                             onCopyText(message.content)
+                        },
+                        stickerActions = stickerActions?.let { a ->
+                            StickerMenuActions(
+                                isSaved = a.isSaved,
+                                onToggleSaved = { popupMode = MessagePopupMode.None; a.onToggleSaved() },
+                                onSaveToDevice = { popupMode = MessagePopupMode.None; a.onSaveToDevice() },
+                            )
                         },
                         onEdit = onEdit?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
@@ -534,6 +541,7 @@ fun ReceivedMessageBubble(
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
+    stickerActions: StickerMenuActions? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
@@ -556,7 +564,7 @@ fun ReceivedMessageBubble(
     val isVoiceNote = mediaOnly &&
         filteredPayloads.singleOrNull()?.isAudio() == true
     val haptics = rememberHaptics()
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val policy = message.actionPolicy
     val openReactionBar: (() -> Unit)? =
         if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
             { popupMode = MessagePopupMode.Reaction }
@@ -774,6 +782,13 @@ fun ReceivedMessageBubble(
                         onCopy = {
                             popupMode = MessagePopupMode.None
                             onCopyText(message.content)
+                        },
+                        stickerActions = stickerActions?.let { a ->
+                            StickerMenuActions(
+                                isSaved = a.isSaved,
+                                onToggleSaved = { popupMode = MessagePopupMode.None; a.onToggleSaved() },
+                                onSaveToDevice = { popupMode = MessagePopupMode.None; a.onSaveToDevice() },
+                            )
                         },
                         onDelete = {
                             popupMode = MessagePopupMode.None
