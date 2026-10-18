@@ -228,6 +228,26 @@ class ViewOnceBubbleThreadTest {
     }
 
     @Test
+    fun aRealDeletedMessageWithKeptReactionsOffersNoAddChip() = runComposeUiTest {
+        val thumbsJson = """{\"emoji\":\"$thumbsUp\"}"""
+        val reacted = runBlocking {
+            assertNotNull(
+                mapToMessageData(
+                    viewOnceHeader(
+                        fileState = "deleted", createdMs = now - DAY_MS, dataType = 0, content = "", payloadsJson = "null",
+                        reactionPreviewJson = """{"reactions":{"a":{"key":"a","count":1,"reactionContent":"$thumbsJson"}}}""",
+                    ),
+                    ownerCredentials(),
+                ),
+            )
+        }
+        renderInThread(mutableListOf(), reacted, VO_OWNER)
+
+        onNodeWithText(thumbsUp).assertExists()
+        onNodeWithContentDescription("Reaction").assertDoesNotExist()
+    }
+
+    @Test
     fun longPressOffersTheQuickReactionsAndReply_andReactingIsNotAView() = runComposeUiTest {
         val actions = mutableListOf<ConversationListUiAction>()
         renderInThread(actions)

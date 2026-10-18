@@ -416,7 +416,7 @@ fun SentMessageBubble(
                         message = message,
                         bubbleWidthPx = bubbleWidthPx,
                         onReactionClick = { onShowReactions?.invoke() },
-                        onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                        onAddEmoji = openReactionBar,
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                     )
                     if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction && message.acceptsActions) {
@@ -680,7 +680,7 @@ fun ReceivedMessageBubble(
                             message = message,
                             bubbleWidthPx = bubbleWidthPx,
                             onReactionClick = { onShowReactions?.invoke() },
-                            onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
+                            onAddEmoji = openReactionBar,
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
                         )
                         if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction &&
