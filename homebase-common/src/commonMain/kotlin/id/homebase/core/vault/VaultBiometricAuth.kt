@@ -12,6 +12,7 @@ sealed interface BiometricResult {
  * [BiometricResult.Failure] on explicit cancellation or failure,
  * [BiometricResult.Unavailable] when the platform has no biometric hardware
  * configured — in which case the caller should proceed without the gate.
+ * Cancelling the calling coroutine dismisses the system prompt, so it never outlives its caller.
  */
 expect suspend fun authenticateBiometric(title: String, subtitle: String): BiometricResult
 
