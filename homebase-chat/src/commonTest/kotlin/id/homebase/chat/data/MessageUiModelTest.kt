@@ -7,6 +7,8 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.content.ActionPolicy
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 import kotlin.test.Test
 import kotlinx.collections.immutable.toImmutableList
 import kotlin.test.assertEquals
@@ -86,12 +88,23 @@ class MessageUiModelTest {
         assertEquals(ActionPolicy.Standard, captioned.actionPolicy)
     }
 
+    @Test
+    fun viewOnceWithStickerPayload_isNotASticker() {
+        val msg = message(
+            alice, alice, Uuid.random(), content = "", payloads = listOf(payload(true)),
+            messageContent = MessageContent.ViewOnce(ViewOnceDescriptor(kind = ViewOnceDescriptor.KIND_IMAGE)),
+        )
+        assertEquals(null, msg.stickerPayloadKey)
+        assertEquals(msg.messageContent?.actions, msg.actionPolicy)
+    }
+
     private fun message(
         sender: OdinId?,
         originalAuthor: OdinId?,
         conversationId: Uuid,
         content: String = "x",
         payloads: List<PayloadDescriptor>? = null,
+        messageContent: MessageContent? = null,
     ): MessageUiModel = MessageUiModel(
         id = Uuid.random(),
         globalTransitId = null,
@@ -115,5 +128,6 @@ class MessageUiModelTest {
         versionTag = Uuid.random(),
         isPendingSend = false,
         hasMore = false,
+        messageContent = messageContent,
     )
 }

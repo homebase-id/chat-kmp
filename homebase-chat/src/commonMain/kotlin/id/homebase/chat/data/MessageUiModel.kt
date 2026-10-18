@@ -121,7 +121,8 @@ data class MessageUiModel(
 
     /** Key of the payload when this is a media-only sticker message (solo ImageFile(isSticker = true)). */
     val stickerPayloadKey: String? by lazy {
-        if (!content.isBlank()) return@lazy null
+        // A typed message (view-once above all) owns its payload; the sticker menu would leak it.
+        if (messageContent != null || content.isNotBlank()) return@lazy null
         payloads
             ?.filter {
                 it.key != ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB &&
