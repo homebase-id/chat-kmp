@@ -72,7 +72,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -104,7 +103,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.sp
+import id.homebase.chat.services.sticker.StickerStream
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
@@ -236,7 +237,6 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import id.homebase.chat.services.sticker.StickerStream
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
