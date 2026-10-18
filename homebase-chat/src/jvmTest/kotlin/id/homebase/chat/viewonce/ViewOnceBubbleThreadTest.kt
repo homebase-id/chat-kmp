@@ -11,12 +11,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -35,6 +40,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.mapToMessageData
 import id.homebase.chat.widget.MessageItem
 import id.homebase.chat.widget.SwipeDistance
 import id.homebase.chat.widget.SwipeRevealBox
@@ -42,6 +48,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.runBlocking
 import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
@@ -49,11 +56,12 @@ import java.util.prefs.Preferences
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
-/** The recipient's bubble in the thread reacts and replies like any message, and neither is a view. */
+/** The recipient's bubble, unopened or opened, reacts and replies like any message, and neither is a view. */
 @OptIn(ExperimentalTestApi::class, ExperimentalSharedTransitionApi::class)
 class ViewOnceBubbleThreadTest {
 
@@ -100,7 +108,11 @@ class ViewOnceBubbleThreadTest {
         KoinIsolatedContext(koin) { HomebaseTheme(darkTheme = false) { content() } }
     }
 
-    private fun ComposeUiTest.renderInThread(actions: MutableList<ConversationListUiAction>) = setContent {
+    private fun ComposeUiTest.renderInThread(
+        actions: MutableList<ConversationListUiAction>,
+        message: MessageUiModel = this@ViewOnceBubbleThreadTest.message,
+        currentOdinId: String = me.domainName,
+    ) = setContent {
         Host {
             SharedTransitionLayout {
                 AnimatedVisibility(visible = true) {
@@ -108,7 +120,7 @@ class ViewOnceBubbleThreadTest {
                         message = message,
                         userDefaultReactions = persistentListOf(thumbsUp),
                         decryptedFiles = persistentMapOf(),
-                        currentOdinId = me.domainName,
+                        currentOdinId = currentOdinId,
                         animatedVisibilityScope = this@AnimatedVisibility,
                         sharedTransitionScope = this@SharedTransitionLayout,
                         onUiAction = { actions += it },
@@ -125,36 +137,94 @@ class ViewOnceBubbleThreadTest {
             it is ConversationListUiAction.DecryptFile
     }
 
-    private fun ComposeUiTest.hoverThenClick(contentDescription: String) {
-        onNodeWithText("Photo").performMouseInput { moveTo(center) }
+    private fun ComposeUiTest.hoverThenClick(text: String, contentDescription: String) {
+        onNodeWithText(text).performMouseInput { moveTo(center) }
         waitForIdle()
-        onNodeWithContentDescription(contentDescription).performMouseInput { click(center) }
+        // The reaction pill's own add chip shares the label, so take the hover icon button.
+        onNode(hasContentDescription(contentDescription) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .performMouseInput { click(center) }
         waitForIdle()
     }
 
-    @Test
-    fun hoverReplyOnTheUnopenedPillQuotesIt_andIsNotAView() = runComposeUiTest {
-        val actions = mutableListOf<ConversationListUiAction>()
-        renderInThread(actions)
+    private val now = Clock.System.now().toEpochMilliseconds()
 
-        hoverThenClick("Reply")
+    // The recipient's copy once the viewer closed: tombstoned, media gone, the in-viewer emoji kept.
+    private val openedPlaceholder by lazy {
+        val thumbsJson = """{\"emoji\":\"$thumbsUp\"}"""
+        runBlocking {
+            assertNotNull(
+                mapToMessageData(
+                    viewOnceHeader(
+                        fileState = "deleted",
+                        createdMs = now - DAY_MS,
+                        updatedMs = now - DAY_MS + 60_000,
+                        payloadsJson = "null",
+                        reactionPreviewJson = """{"reactions":{"a":{"key":"a","count":1,"reactionContent":"$thumbsJson"}}}""",
+                        localReactions = listOf("""{"emoji":"$thumbsUp"}"""),
+                    ),
+                    ownerCredentials(),
+                ),
+            )
+        }
+    }
 
-        assertEquals(message.id, actions.filterIsInstance<ConversationListUiAction.ReplyToMessage>().single().message.id)
-        assertTrue(actions.views().isEmpty(), "replying never opens or loads the media: $actions")
+    private val deletedText by lazy {
+        runBlocking {
+            assertNotNull(
+                mapToMessageData(
+                    viewOnceHeader(fileState = "deleted", createdMs = now - DAY_MS, dataType = 0, content = "", payloadsJson = "null"),
+                    ownerCredentials(),
+                ),
+            )
+        }
     }
 
     @Test
-    fun hoverReactOnTheUnopenedPillOffersTheStrip_andIsNotAView() = runComposeUiTest {
+    fun hoverReplyOnTheOpenedPlaceholderQuotesIt_andIsNotAView() = runComposeUiTest {
         val actions = mutableListOf<ConversationListUiAction>()
-        renderInThread(actions)
+        renderInThread(actions, openedPlaceholder, VO_OWNER)
 
-        hoverThenClick("Reaction")
-        onAllNodesWithText(thumbsUp).onFirst().performClick()
+        hoverThenClick("Photo", "Reply")
+
+        assertEquals(openedPlaceholder.id, actions.filterIsInstance<ConversationListUiAction.ReplyToMessage>().single().message.id)
+        assertTrue(actions.views().isEmpty(), "replying never reloads the media: $actions")
+    }
+
+    @Test
+    fun hoverReactOnTheOpenedPlaceholderOffersTheStrip_andIsNotAView() = runComposeUiTest {
+        val actions = mutableListOf<ConversationListUiAction>()
+        renderInThread(actions, openedPlaceholder, VO_OWNER)
+
+        hoverThenClick("Photo", "Reaction")
+        // The pill already shows the kept 👍; the strip's own sits in the popup, the last root.
+        onAllNodesWithText(thumbsUp).onLast().performClick()
         waitForIdle()
 
-        val reaction = actions.filterIsInstance<ConversationListUiAction.ToggleReaction>().single()
-        assertEquals(message.id, reaction.messageId)
-        assertTrue(actions.views().isEmpty(), "reacting never opens or loads the media: $actions")
+        assertEquals(openedPlaceholder.id, actions.filterIsInstance<ConversationListUiAction.ToggleReaction>().single().messageId)
+        assertTrue(actions.views().isEmpty(), "reacting never reloads the media: $actions")
+    }
+
+    @Test
+    fun theOpenedPlaceholderShowsTheInViewerReaction() = runComposeUiTest {
+        renderInThread(mutableListOf(), openedPlaceholder, VO_OWNER)
+
+        onNodeWithText("Opened").assertExists()
+        onNodeWithText(thumbsUp).assertExists()
+    }
+
+    @Test
+    fun aRealDeletedMessageOffersNoReplyOrReaction() = runComposeUiTest {
+        val actions = mutableListOf<ConversationListUiAction>()
+        renderInThread(actions, deletedText, VO_OWNER)
+
+        onNodeWithText("This message was deleted").performMouseInput { moveTo(center) }
+        waitForIdle()
+        onNodeWithContentDescription("Reply").assertDoesNotExist()
+        onNodeWithContentDescription("Reaction").assertDoesNotExist()
+        onNodeWithText("This message was deleted").performTouchInput { longClick() }
+        waitForIdle()
+        onNodeWithText("Reply").assertDoesNotExist()
+        assertTrue(actions.none { it is ConversationListUiAction.ReplyToMessage || it is ConversationListUiAction.ToggleReaction })
     }
 
     @Test
