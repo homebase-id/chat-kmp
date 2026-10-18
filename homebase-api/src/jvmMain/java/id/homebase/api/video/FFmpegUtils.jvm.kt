@@ -534,38 +534,36 @@ actual object FFmpegUtils {
                 "-movflags", "+faststart",
                 outputPath,
             )
-            val process = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true).start()
-            val tail = ArrayDeque<String>()
-            val reader = Thread {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
-                        synchronized(tail) {
-                            tail.addLast(line)
-                            if (tail.size > REMUX_LOG_TAIL_LINES) tail.removeFirst()
-                        }
+            val logFile = File(scratchDirPath, "remux_${UUID.randomUUID()}.log")
+            try {
+                val process = FFmpegBinaryManager.processBuilder(command)
+                    .redirectErrorStream(true)
+                    .redirectOutput(logFile)
+                    .start()
+                val exitCode = process.waitForOrDestroy()
+                val ok = exitCode == 0 && File(outputPath).length() > 0L
+                if (!ok) {
+                    Logger.e(LOG_TAG) {
+                        "Remux HLS->MP4 failed, exit=$exitCode, output tail:\n" +
+                            logFile.readLines().takeLast(20).joinToString("\n")
                     }
+                    deleteFailedFfmpegOutput(outputPath)
                 }
-            }.apply { isDaemon = true; start() }
-            // Interruptible, so a cancelled caller kills ffmpeg instead of waiting it out.
-            val exitCode = try {
-                runInterruptible { process.waitFor() }
+                ok
             } finally {
-                process.destroyForcibly()
+                logFile.delete()
             }
-            reader.join(1_000)
-            val ok = exitCode == 0 && File(outputPath).length() > 0L
-            if (!ok) {
-                Logger.e(LOG_TAG) {
-                    "Remux HLS->MP4 failed, exit=$exitCode, output tail:\n" +
-                        synchronized(tail) { tail.joinToString("\n") }
-                }
-                deleteFailedFfmpegOutput(outputPath)
-            }
-            ok
         }
 
     private const val LOG_TAG = "FFmpegUtils"
-    private const val REMUX_LOG_TAIL_LINES = 20
+
+    // Interruptible, so a cancelled or timed-out caller kills ffmpeg instead of waiting it out.
+    private suspend fun Process.waitForOrDestroy(): Int =
+        try {
+            runInterruptible { waitFor() }
+        } finally {
+            destroyForcibly()
+        }
 
     actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
         withContext(Dispatchers.IO) {
@@ -581,13 +579,7 @@ actual object FFmpegUtils {
                     .redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .start()
-                // Interruptible, so a cancelled or timed-out caller kills ffmpeg instead of waiting it out.
-                val exitCode = try {
-                    runInterruptible { process.waitFor() }
-                } finally {
-                    process.destroyForcibly()
-                }
-                if (exitCode == 0) outFile.readBytes() else null
+                if (process.waitForOrDestroy() == 0) outFile.readBytes() else null
             } finally {
                 inFile.delete()
                 outFile.delete()
