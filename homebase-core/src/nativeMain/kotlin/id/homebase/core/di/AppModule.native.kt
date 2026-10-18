@@ -24,7 +24,7 @@ import id.homebase.core.gallery.IOSGalleryLibraryObserver
 import id.homebase.core.gallery.IOSGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.AnimatedSkiaDecoder
-import id.homebase.core.image.HeicDecoder
+import id.homebase.core.image.ImageIODecoder
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PHAssetFetcher
@@ -83,7 +83,7 @@ actual fun platformModule(): Module = module {
                     // Animates multi-frame GIF/WebP in-house via skiko; static
                     // images fall through to Coil's default Skia decoder.
                     add(AnimatedSkiaDecoder.Factory())
-                    add(HeicDecoder.Factory())
+                    add(ImageIODecoder.Factory())
                 }
                 .diskCache(null)
                 .build()
