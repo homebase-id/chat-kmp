@@ -2,11 +2,13 @@ package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.content.ActionPolicy
@@ -115,8 +117,25 @@ data class MessageUiModel(
 ) {
     fun isAuthoredBy(domain: OdinId?): Boolean = (originalAuthor == domain)
 
-    fun isEditableBy(domain: OdinId?): Boolean =
-        isAuthoredBy(domain) && (messageContent?.actions ?: ActionPolicy.Standard).allowEdit
+    fun isEditableBy(domain: OdinId?): Boolean = isAuthoredBy(domain) && actionPolicy.allowEdit
+
+    /** Key of the payload when this is a media-only sticker message (solo ImageFile(isSticker = true)). */
+    val stickerPayloadKey: String? by lazy {
+        if (!content.isBlank()) return@lazy null
+        payloads
+            ?.filter {
+                it.key != ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB &&
+                    it.key != ChatProtocol.DefaultPayloadKey &&
+                    !it.isInternalDescriptor()
+            }
+            ?.singleOrNull()
+            ?.takeIf { (it.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true }
+            ?.key
+    }
+
+    val actionPolicy: ActionPolicy
+        get() = messageContent?.actions
+            ?: if (stickerPayloadKey != null) ActionPolicy.Sticker else ActionPolicy.Standard
 
     // The exit cutoff, asked by the rendered list, the pinned bar and the jump
     // coordinator alike — three copies of `userDate <= exitedAt` would drift.

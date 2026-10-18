@@ -72,6 +72,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -235,6 +236,7 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import id.homebase.chat.services.sticker.StickerStream
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -274,6 +276,8 @@ fun ConversationContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
+    val savedStickers by koinInject<StickerStream>().stickers.collectAsStateWithLifecycle()
+    val savedStickerSourceIds = remember(savedStickers) { savedStickers.mapNotNullTo(HashSet()) { it.sourceFileId } }
     val focusRequester = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     val enterSendsMessage = rememberEnterSendsMessage()
@@ -1257,6 +1261,7 @@ fun ConversationContent(
                                                 chainCap = chainCap,
                                                 ownLiveShareUntilMs = uiState.ownLiveShareUntilMs,
                                                 onCopyText = copyToClipboard,
+                                                savedStickerSourceIds = savedStickerSourceIds,
                                             )
                                         }
                                     }
