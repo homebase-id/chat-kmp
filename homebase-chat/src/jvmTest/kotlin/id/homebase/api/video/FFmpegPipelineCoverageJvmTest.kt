@@ -173,7 +173,7 @@ class FFmpegPipelineCoverageJvmTest {
             FFmpegBinaryManager.isAvailable(),
         )
 
-        val proc = ProcessBuilder(FFmpegBinaryManager.ffmpegPath(), "-version")
+        val proc = FFmpegBinaryManager.processBuilder(FFmpegBinaryManager.ffmpegPath(), "-version")
             .redirectErrorStream(true)
             .start()
         val output = proc.inputStream.bufferedReader().use { it.readText() }

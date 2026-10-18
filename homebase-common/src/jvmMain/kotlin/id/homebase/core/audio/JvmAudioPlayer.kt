@@ -134,7 +134,7 @@ open class JvmAudioPlayer : AudioPlayer {
             return null
         }
         val command = buildFfmpegCommand(filePath, seekMs, speed)
-        process = ProcessBuilder(command)
+        process = FFmpegBinaryManager.processBuilder(command)
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
         drainStderr(process!!)
@@ -266,7 +266,7 @@ open class JvmAudioPlayer : AudioPlayer {
             return estimateDurationFromFileSize(filePath)
         }
         return try {
-            val proc = ProcessBuilder(
+            val proc = FFmpegBinaryManager.processBuilder(
                 FFmpegBinaryManager.ffprobePath(),
                 "-v", "error",
                 "-show_entries", "format=duration",

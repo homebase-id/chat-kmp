@@ -425,7 +425,7 @@ actual object FFmpegUtils {
         }
 
     private fun runProcess(command: List<String>): Int {
-        val processBuilder = ProcessBuilder(command).redirectErrorStream(true)
+        val processBuilder = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true)
 
         println("Running: ${command.joinToString(" ")}")
 
@@ -441,7 +441,7 @@ actual object FFmpegUtils {
     }
 
     private fun runProcessWithOutput(command: List<String>): String {
-        val processBuilder = ProcessBuilder(command).redirectErrorStream(true)
+        val processBuilder = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true)
 
         val process = processBuilder.start()
         val output = process.inputStream.bufferedReader().use(BufferedReader::readText)
@@ -487,7 +487,7 @@ actual object FFmpegUtils {
         totalDurationMs: Long,
         onProgress: ((Float) -> Unit)?
     ): ProcessResult {
-        val process = ProcessBuilder(command)
+        val process = FFmpegBinaryManager.processBuilder(command)
             .redirectErrorStream(true)
             .start()
 
@@ -524,24 +524,17 @@ actual object FFmpegUtils {
                 Logger.e(LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
                 return@withContext false
             }
-            // The static Linux ffmpeg build segfaults (exit 139) in the hls demuxer, so read the
-            // segments ourselves and feed them through the concat protocol instead.
-            val segments = hlsSegmentFiles(playlistPath)
-            if (segments.isNullOrEmpty()) {
-                Logger.e(LOG_TAG) { "Remux HLS->MP4 failed: no readable segments in $playlistPath" }
-                return@withContext false
-            }
-            val input = segments.singleOrNull() ?: segments.joinToString("|", prefix = "concat:")
             val command = listOf(
                 FFmpegBinaryManager.ffmpegPath(),
                 "-y",
-                "-i", input,
+                "-allowed_extensions", "ALL",
+                "-i", playlistPath,
                 "-c", "copy",
                 "-bsf:a", "aac_adtstoasc",
                 "-movflags", "+faststart",
                 outputPath,
             )
-            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val process = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true).start()
             val tail = ArrayDeque<String>()
             val reader = Thread {
                 process.inputStream.bufferedReader().useLines { lines ->
@@ -571,19 +564,6 @@ actual object FFmpegUtils {
             ok
         }
 
-    // Distinct segment files in playlist order: a single_file playlist lists one file many times
-    // with byte ranges, and those ranges tile the whole file, so the file itself is the input.
-    private fun hlsSegmentFiles(playlistPath: String): List<String>? {
-        val playlist = File(playlistPath)
-        if (!playlist.isFile) return null
-        val dir = playlist.absoluteFile.parentFile
-        return playlist.readLines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
-            .map { uri -> File(uri).let { if (it.isAbsolute) it else File(dir, uri) }.absolutePath }
-            .distinct()
-    }
-
     private const val LOG_TAG = "FFmpegUtils"
     private const val REMUX_LOG_TAIL_LINES = 20
 
@@ -597,7 +577,7 @@ actual object FFmpegUtils {
                 inFile.writeBytes(input)
                 val command = listOf(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", inFile.absolutePath) +
                     outputArgs + outFile.absolutePath
-                val process = ProcessBuilder(command)
+                val process = FFmpegBinaryManager.processBuilder(command)
                     .redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .start()

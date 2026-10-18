@@ -17,7 +17,7 @@ class RemuxHlsToMp4JvmTest {
         val dir = Files.createTempDirectory("remux_hls_test").toFile()
         try {
             val playlist = File(dir, "index.m3u8")
-            val gen = ProcessBuilder(
+            val gen = FFmpegBinaryManager.processBuilder(
                 FFmpegBinaryManager.ffmpegPath(), "-y",
                 "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10:duration=2",
                 "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
@@ -47,7 +47,7 @@ class RemuxHlsToMp4JvmTest {
         val dir = Files.createTempDirectory("remux_hls_single").toFile()
         try {
             val generated = File(dir, "gen.m3u8")
-            val gen = ProcessBuilder(
+            val gen = FFmpegBinaryManager.processBuilder(
                 FFmpegBinaryManager.ffmpegPath(), "-y",
                 "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10:duration=4",
                 "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
