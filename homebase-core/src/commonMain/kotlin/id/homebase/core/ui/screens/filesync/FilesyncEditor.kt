@@ -123,13 +123,10 @@ class FilesyncEditor(
             deleteListed(trash, trash.removedBefore(before), seen = null, hard = true)
         }
         // A delete for good by hand leaves a tombstone, the feed's trace of it; once every desktop had 30 days to read it, it goes too.
-        FilesyncWriteResult(expired.done + hardDelete(repository.listTombstones(before)).size, expired.skipped)
+        FilesyncWriteResult(expired.done + delete(repository.listTombstones(before), hard = true).size, expired.skipped)
     }
 
-    /**
-     * Deletes the removed nodes of [items] in [now], a fresh listing, for good, [hard] ones without a trace at their
-     * version; a soft batch delete has no version guard, so a change in the moment between is not caught.
-     */
+    /** Deletes the removed nodes of [items] in [now], a fresh listing, for good, each at its version: [hard] without a trace. */
     private suspend fun deleteListed(
         now: FilesyncTrash,
         items: Set<Uuid>,
@@ -161,9 +158,8 @@ class FilesyncEditor(
                     repository.holdingLive(folders).forEach { id -> doomed.remove(id)?.let(::stays) }
                 }
                 val handles = pass.filter { it.nodeId in doomed }.associateWith { now.all.handles.getValue(it.nodeId) }
-                val versioned = if (hard) handles.values.mapNotNull { h -> h.versionTag?.let { FileVersionTag(h.fileId, it) } } else emptyList()
-                val hardIds = versioned.mapTo(mutableSetOf()) { it.fileId }
-                val gone = hardDelete(versioned) + softDelete(handles.values.filter { it.fileId !in hardIds })
+                val versioned = handles.values.mapNotNull { h -> h.versionTag?.let { FileVersionTag(h.fileId, it) } }
+                val gone = delete(versioned, hard)
                 for ((node, handle) in handles) {
                     if (handle.fileId in gone) deleted++ else stays(node)
                 }
@@ -174,19 +170,18 @@ class FilesyncEditor(
         return FilesyncWriteResult(deleted, changed + kept)
     }
 
-    /** The [files] gone now; one written since its versionTag stays, and any other refusal fails the purge. */
-    private suspend fun hardDelete(files: List<FileVersionTag>): Set<Uuid> =
-        files.chunked(DriveFileHttpProvider.HARD_DELETE_BATCH).flatMapTo(mutableSetOf()) { chunk ->
-            val byCode = driveFileProvider.hardDeleteFiles(FilesyncProtocol.DriveAlias, chunk).results.groupBy({ it.errorCode }, { it.fileId })
+    /** The [files] gone now, [hard] without a trace; one written since its versionTag stays, and any other refusal fails. */
+    private suspend fun delete(files: List<FileVersionTag>, hard: Boolean): Set<Uuid> =
+        files.chunked(DriveFileHttpProvider.FILE_BATCH).flatMapTo(mutableSetOf()) { chunk ->
+            val answers = if (hard) {
+                driveFileProvider.hardDeleteFiles(FilesyncProtocol.DriveAlias, chunk)
+            } else {
+                driveFileProvider.softDeleteFiles(FilesyncProtocol.DriveAlias, chunk)
+            }
+            val byCode = answers.results.groupBy({ it.errorCode }, { it.fileId })
             val refused = byCode.keys - setOf(null, OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound)
-            check(refused.isEmpty()) { "hard delete refused: $refused" }
+            check(refused.isEmpty()) { "delete refused: $refused" }
             byCode[null].orEmpty() + repository.goneForGood(byCode[OdinClientErrorCode.FileNotFound].orEmpty())
-        }
-
-    private suspend fun softDelete(handles: List<FilesyncHandle>): Set<Uuid> =
-        handles.chunked(DELETE_BATCH).flatMapTo(mutableSetOf()) { chunk ->
-            val results = driveFileProvider.deleteFiles(FilesyncProtocol.DriveAlias, chunk.map { it.fileId }).results
-            results.filter { it.localFileDeleted }.map { it.fileId } + repository.goneForGood(results.filter { it.localFileNotFound }.map { it.fileId })
         }
 
     /** False when the node changed or went since it was read; that's another device's newer word, not a failure. */
@@ -200,10 +195,6 @@ class FilesyncEditor(
             if (e.errorCode != OdinClientErrorCode.FileNotFound) throw e
             false
         }.also { if (!it) Logger.i(TAG) { "node $nodeId changed elsewhere; left as it is" } }
-    }
-
-    private companion object {
-        const val DELETE_BATCH = 100
     }
 }
 

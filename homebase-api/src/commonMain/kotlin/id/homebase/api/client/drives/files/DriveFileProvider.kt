@@ -742,14 +742,14 @@ data class DeleteFileIdBatchResult (
 data class FileVersionTag(val fileId: Uuid, val versionTag: Uuid)
 
 @Serializable
-data class HardDeleteBatchRequest(val files: List<FileVersionTag>)
+data class FileVersionTagBatch(val files: List<FileVersionTag>)
 
 /** [errorCode] is null when the file is gone. */
 @Serializable
-data class HardDeleteResult(val fileId: Uuid, val errorCode: OdinClientErrorCode? = null)
+data class PerFileResult(val fileId: Uuid, val errorCode: OdinClientErrorCode? = null)
 
 @Serializable
-data class HardDeleteBatchResult(val results: List<HardDeleteResult>)
+data class PerFileBatchResult(val results: List<PerFileResult>)
 
 @Serializable
 data class DeleteFilesByGroupIdBatchResult(
