@@ -8,7 +8,6 @@ import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.request.maxBitmapSize
-import id.homebase.api.image.readImageMetadata
 import okio.use
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
@@ -31,17 +30,18 @@ class ImageIODecoder(
 
     override suspend fun decode(): DecodeResult? {
         val bytes = source.source().use { it.readByteArray() }
-        val metadata = readImageMetadata(bytes) ?: return null
-        val storedW = metadata.pixelWidth ?: return null
-        val storedH = metadata.pixelHeight ?: return null
-        val quarterTurn = metadata.orientation in 5..8
-        val srcW = if (quarterTurn) storedH else storedW
-        val srcH = if (quarterTurn) storedW else storedH
-
-        val (outW, outH) = decodeOutputSize(
-            srcW, srcH, options.size, options.scale, options.maxBitmapSize, options.precision,
-        )
-        val image = NativeImageDecoder.decodeThumbnail(bytes, maxOf(outW, outH)) ?: return null
+        var srcW = 0
+        var srcH = 0
+        var outW = 0
+        var outH = 0
+        val image = NativeImageDecoder.decodeThumbnail(bytes) { width, height ->
+            srcW = width
+            srcH = height
+            val out = decodeOutputSize(width, height, options.size, options.scale, options.maxBitmapSize, options.precision)
+            outW = out.first
+            outH = out.second
+            maxOf(outW, outH)
+        } ?: return null
 
         val bitmap = Bitmap()
         if (!bitmap.allocN32Pixels(outW, outH)) {
