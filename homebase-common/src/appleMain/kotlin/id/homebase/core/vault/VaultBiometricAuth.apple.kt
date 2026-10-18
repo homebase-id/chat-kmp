@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 import platform.LocalAuthentication.LAContext
 import platform.LocalAuthentication.LAPolicyDeviceOwnerAuthentication
 import platform.LocalAuthentication.LAPolicyDeviceOwnerAuthenticationWithBiometrics
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 import kotlin.coroutines.resume
 
 @OptIn(ExperimentalForeignApi::class)
@@ -29,6 +31,7 @@ actual suspend fun authenticateBiometric(title: String, subtitle: String): Biome
 
     return withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { cont ->
+            cont.invokeOnCancellation { dispatch_async(dispatch_get_main_queue()) { context.invalidate() } }
             context.evaluatePolicy(
                 policy,
                 localizedReason = subtitle.ifBlank { title }
