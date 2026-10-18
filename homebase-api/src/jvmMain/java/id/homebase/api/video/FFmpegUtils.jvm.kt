@@ -524,11 +524,18 @@ actual object FFmpegUtils {
                 Logger.e(LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
                 return@withContext false
             }
+            // The static Linux ffmpeg build segfaults (exit 139) in the hls demuxer, so read the
+            // segments ourselves and feed them through the concat protocol instead.
+            val segments = hlsSegmentFiles(playlistPath)
+            if (segments.isNullOrEmpty()) {
+                Logger.e(LOG_TAG) { "Remux HLS->MP4 failed: no readable segments in $playlistPath" }
+                return@withContext false
+            }
+            val input = segments.singleOrNull() ?: segments.joinToString("|", prefix = "concat:")
             val command = listOf(
                 FFmpegBinaryManager.ffmpegPath(),
                 "-y",
-                "-allowed_extensions", "ALL",
-                "-i", playlistPath,
+                "-i", input,
                 "-c", "copy",
                 "-bsf:a", "aac_adtstoasc",
                 "-movflags", "+faststart",
@@ -563,6 +570,19 @@ actual object FFmpegUtils {
             }
             ok
         }
+
+    // Distinct segment files in playlist order: a single_file playlist lists one file many times
+    // with byte ranges, and those ranges tile the whole file, so the file itself is the input.
+    private fun hlsSegmentFiles(playlistPath: String): List<String>? {
+        val playlist = File(playlistPath)
+        if (!playlist.isFile) return null
+        val dir = playlist.absoluteFile.parentFile
+        return playlist.readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .map { uri -> File(uri).let { if (it.isAbsolute) it else File(dir, uri) }.absolutePath }
+            .distinct()
+    }
 
     private const val LOG_TAG = "FFmpegUtils"
     private const val REMUX_LOG_TAIL_LINES = 20
