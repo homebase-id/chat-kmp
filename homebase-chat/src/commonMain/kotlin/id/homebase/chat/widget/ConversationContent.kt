@@ -757,7 +757,7 @@ fun ConversationContent(
                                     options = AvatarOptions(size = 36.dp, fontSize = 14.sp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
                                     val conversationTitle =
                                         if (conversation.conversation.isWithSelf)
                                             stringResource(MR.string.chat_note_to_self)
@@ -767,7 +767,9 @@ fun ConversationContent(
                                     Text(
                                         text = conversationTitle.withEmojiFont(),
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
