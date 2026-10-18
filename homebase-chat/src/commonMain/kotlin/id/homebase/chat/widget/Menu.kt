@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Casino
@@ -72,7 +73,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
@@ -100,6 +100,9 @@ import id.homebase.resources.chat_pin
 import id.homebase.resources.chat_pin_message
 import id.homebase.resources.chat_unpin_message
 import id.homebase.resources.chat_save_sticker
+import id.homebase.resources.chat_sticker_add_to_library
+import id.homebase.resources.chat_sticker_remove_from_library
+import id.homebase.resources.chat_sticker_save_to_device
 import id.homebase.resources.chat_settings
 import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_unpin
@@ -227,6 +230,31 @@ fun ConversationMenu(
     }
 }
 
+class StickerMenuActions(
+    val isSaved: Boolean,
+    val onToggleSaved: () -> Unit,
+    val onSaveToDevice: () -> Unit,
+)
+
+@Composable
+private fun StickerMenuItems(actions: StickerMenuActions) {
+    ListItemActionNormalIcon(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = actions.onToggleSaved,
+        text = stringResource(
+            if (actions.isSaved) MR.string.chat_sticker_remove_from_library
+            else MR.string.chat_sticker_add_to_library
+        ),
+        imageVector = if (actions.isSaved) Icons.Filled.Delete else Icons.Filled.Add,
+    )
+    ListItemActionNormalIcon(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = actions.onSaveToDevice,
+        text = stringResource(MR.string.chat_sticker_save_to_device),
+        imageVector = Icons.Filled.Download,
+    )
+}
+
 @Composable
 internal fun ReceivedMessagePopup(
     transition: Transition<MessagePopupMode>,
@@ -241,13 +269,14 @@ internal fun ReceivedMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    stickerActions: StickerMenuActions? = null,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
     onBlock: () -> Unit,
     onReport: () -> Unit,
 ) {
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy, onBattle, message.isPinned) {
+    val policy = message.actionPolicy
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -290,6 +319,7 @@ internal fun ReceivedMessagePopup(
                             imageVector = HomebaseIcons.MessageForward,
                         )
                     }
+                    if (stickerActions != null) StickerMenuItems(stickerActions)
                     if (policy.allowCopy) {
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
@@ -399,13 +429,14 @@ internal fun SentMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    stickerActions: StickerMenuActions? = null,
     onShare: (() -> Unit)?,
     onEdit: (() -> Unit)?,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
 ) {
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy, onBattle, message.isPinned) {
+    val policy = message.actionPolicy
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -448,6 +479,7 @@ internal fun SentMessagePopup(
                             imageVector = HomebaseIcons.MessageForward,
                         )
                     }
+                    if (stickerActions != null) StickerMenuItems(stickerActions)
                     if (policy.allowCopy) {
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
@@ -654,7 +686,7 @@ fun BubbleReactionPopup(
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
 ) {
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val policy = message.actionPolicy
     if (!policy.allowInlineReactions) return
     val growsFromRight = alignToBubbleEnd == (LocalLayoutDirection.current == LayoutDirection.Ltr)
     Popup(
