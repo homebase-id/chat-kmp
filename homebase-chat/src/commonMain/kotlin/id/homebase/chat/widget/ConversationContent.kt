@@ -103,7 +103,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.sp
+import id.homebase.chat.services.sticker.StickerStream
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
@@ -274,6 +276,8 @@ fun ConversationContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
+    val savedStickers by koinInject<StickerStream>().stickers.collectAsStateWithLifecycle()
+    val savedStickerSourceIds = remember(savedStickers) { savedStickers.mapNotNullTo(HashSet()) { it.sourceFileId } }
     val focusRequester = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     val enterSendsMessage = rememberEnterSendsMessage()
@@ -757,7 +761,7 @@ fun ConversationContent(
                                     options = AvatarOptions(size = 36.dp, fontSize = 14.sp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
                                     val conversationTitle =
                                         if (conversation.conversation.isWithSelf)
                                             stringResource(MR.string.chat_note_to_self)
@@ -767,7 +771,9 @@ fun ConversationContent(
                                     Text(
                                         text = conversationTitle.withEmojiFont(),
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -1255,6 +1261,7 @@ fun ConversationContent(
                                                 chainCap = chainCap,
                                                 ownLiveShareUntilMs = uiState.ownLiveShareUntilMs,
                                                 onCopyText = copyToClipboard,
+                                                savedStickerSourceIds = savedStickerSourceIds,
                                             )
                                         }
                                     }

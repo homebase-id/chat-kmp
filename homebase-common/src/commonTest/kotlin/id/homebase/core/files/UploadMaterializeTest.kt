@@ -66,15 +66,14 @@ class UploadMaterializeTest {
     @Test
     fun sandboxCopyNameAppendsExtensionWhenPickerNameHasNone() {
         val name = sandboxCopyName("photopicker-1000022602", "image/jpeg")
-        assertTrue(name.endsWith(".jpg"), "expected a .jpg suffix, got: $name")
-        assertTrue(name.startsWith("chat_attach_"))
+        assertEquals("photopicker-1000022602.jpg", name)
     }
 
     @Test
     fun sandboxCopyNameKeepsAnExistingExtensionAndSurvivesAnUnmappedMime() {
-        assertTrue(sandboxCopyName("IMG_2026.jpeg", "image/jpeg").endsWith("_IMG_2026.jpeg"))
-        assertTrue(sandboxCopyName("raw-shot", "image/x-not-a-real-mime").endsWith("_raw-shot"))
-        assertTrue(sandboxCopyName("raw-shot", null).endsWith("_raw-shot"))
+        assertEquals("IMG_2026.jpeg", sandboxCopyName("IMG_2026.jpeg", "image/jpeg"))
+        assertEquals("raw-shot", sandboxCopyName("raw-shot", "image/x-not-a-real-mime"))
+        assertEquals("raw-shot", sandboxCopyName("raw-shot", null))
     }
 }
 

@@ -1,6 +1,8 @@
 package id.homebase.core.files
 
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.scratchDir
 import id.homebase.core.util.extensionForMimeType
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
@@ -61,17 +63,18 @@ expect fun PlatformFile.modifiedAtMs(): Long?
 internal fun isUnderDir(dir: String, path: String): Boolean = path.startsWith(dir.trimEnd('/') + "/")
 
 /**
- * Name for the pick-time sandbox copy: the original name behind a collision-proof prefix, plus an
- * extension derived from [mimeType] when the picker's name has none. Belt to
- * `PlatformFile.contentType`'s braces — it keeps the copy self-describing for anything that only
- * sees the file (#1149). The prefix is historical (the helper grew up in chat) and is deliberately
- * kept: CacheSweeper reaps it as untracked either way, and a rename would orphan nothing but
- * grep results.
+ * Path of a pick-time sandbox copy: `<PICKER_COPIES>/<uuid>/<original name>`. Uniqueness
+ * lives in the per-copy directory so `file.name` stays the picked name, which the send path
+ * stores as the recipient-visible name. An extension derived from [mimeType] is appended when
+ * the picker's name has none (#1149).
  */
+internal fun FileOperationsProvider.sandboxCopyDest(name: String, mimeType: String?): String =
+    "${scratchDir("${AppCacheDirs.PICKER_COPIES}/${Uuid.random()}")}/${sandboxCopyName(name, mimeType)}"
+
 internal fun sandboxCopyName(name: String, mimeType: String?): String {
     val hasExtension = name.substringAfterLast('.', "").isNotEmpty()
     val ext = if (hasExtension) null else mimeType?.let(::extensionForMimeType)
-    return "chat_attach_${Uuid.random()}_$name" + if (ext != null) ".$ext" else ""
+    return if (ext != null) "$name.$ext" else name
 }
 
 /**
