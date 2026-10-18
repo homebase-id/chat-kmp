@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
-// Temporary #1865 instrumentation; set from the app's DiagnosticsCrashTrigger.enabled (dev/debug builds only).
+// Temporary ghost-bubble instrumentation; set from the app's DiagnosticsCrashTrigger.enabled (dev/debug builds only).
 object GhostProbe {
     var enabled = false
 }
@@ -40,11 +40,11 @@ internal fun GhostProbeEffect(conversationKey: Any, items: List<Any>, listState:
     val state = remember(conversationKey) { ProbeState() }
     val scope = rememberCoroutineScope()
     val currentItems by rememberUpdatedState(items)
-    var openDrops by remember { mutableIntStateOf(0) }
+    var tracking by remember { mutableStateOf(false) }
 
     // Counts frames only while a placeholder's key is missing, so an idle list requests no frames.
-    LaunchedEffect(openDrops > 0) {
-        if (openDrops == 0) return@LaunchedEffect
+    LaunchedEffect(tracking) {
+        if (!tracking) return@LaunchedEffect
         while (state.drops.isNotEmpty()) {
             withFrameNanos { state.frame++ }
             state.drops.entries.removeAll { (key, drop) ->
@@ -53,7 +53,7 @@ internal fun GhostProbeEffect(conversationKey: Any, items: List<Any>, listState:
                 }
             }
         }
-        openDrops = 0
+        tracking = false
     }
 
     SideEffect {
@@ -61,8 +61,8 @@ internal fun GhostProbeEffect(conversationKey: Any, items: List<Any>, listState:
         if (previous === items) return@SideEffect
         state.previous = items
         if (previous == null) return@SideEffect
-        val pendingBefore = previous.filterIsInstance<PendingOutgoingMessage>().mapTo(HashSet()) { it.id.toString() }
-        val pendingNow = items.filterIsInstance<PendingOutgoingMessage>().mapTo(HashSet()) { it.id.toString() }
+        val pendingBefore = previous.filterIsInstance<PendingOutgoingMessage>().mapTo(HashSet(), ::messageListKey)
+        val pendingNow = items.filterIsInstance<PendingOutgoingMessage>().mapTo(HashSet(), ::messageListKey)
         val keysNow = items.mapTo(HashSet(), ::messageListKey)
 
         val landed = mutableListOf<String>()
@@ -86,7 +86,7 @@ internal fun GhostProbeEffect(conversationKey: Any, items: List<Any>, listState:
                 }
             }
         }
-        openDrops = state.drops.size
+        tracking = state.drops.isNotEmpty()
 
         for (key in landed) scope.launch {
             delay(2_000)
