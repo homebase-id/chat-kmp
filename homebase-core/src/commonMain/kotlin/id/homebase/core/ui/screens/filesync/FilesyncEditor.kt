@@ -147,6 +147,7 @@ class FilesyncEditor(
         val changed = items.count { it !in doomed }
         var deleted = 0
         var kept = 0
+        var sent = false
         fun stays(node: FilesyncNode) {
             kept++
             keep(node)
@@ -159,13 +160,15 @@ class FilesyncEditor(
                 }
                 val handles = pass.filter { it.nodeId in doomed }.associateWith { now.all.handles.getValue(it.nodeId) }
                 val versioned = handles.values.mapNotNull { h -> h.versionTag?.let { FileVersionTag(h.fileId, it) } }
+                sent = sent || versioned.isNotEmpty()
                 val gone = delete(versioned, hard)
                 for ((node, handle) in handles) {
                     if (handle.fileId in gone) deleted++ else stays(node)
                 }
             }
         } finally {
-            if (deleted > 0) _changed.tryEmit(Unit)
+            // A failed request may still have deleted some of its files.
+            if (sent) _changed.tryEmit(Unit)
         }
         return FilesyncWriteResult(deleted, changed + kept)
     }
