@@ -103,6 +103,11 @@ class CardContentTest {
         vm.await { !it.isContentBusy }
     }
 
+    private suspend fun Rig.rendered(until: (CardPayload) -> Boolean): CardPayload = withContext(Dispatchers.Default) {
+        withTimeout(10.seconds) { while (host.rendered.lastOrNull()?.let(until) != true) delay(10) }
+        host.rendered.last()
+    }
+
     private fun Rig.item(type: String) = vm.uiState.value.contentItems.single { it.type == type }
 
     private fun Rig.circleIds() = wire.putBodies.last().jsonObject["circleIds"]?.jsonArray?.map { it.jsonPrimitive.content }
@@ -237,12 +242,12 @@ class CardContentTest {
         rig.write { rig.vm.onContentToggled(bio, true) }
         assertEquals("anonymous", wire.putBodies.last().jsonObject.str("visibility"))
         assertNull(rig.circleIds())
-        assertEquals("Second breakfast", rig.host.rendered.last().data.bio)
+        assertEquals("Second breakfast", rig.rendered { it.data.bio != null }.data.bio)
 
         rig.write { rig.vm.onContentToggled(bio, false) }
         assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
         assertEquals(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID), rig.circleIds()!!.toSet())
-        assertNull(rig.host.rendered.last().data.bio)
+        assertNull(rig.rendered { it.data.bio == null }.data.bio)
     }
 
     @Test
@@ -323,7 +328,7 @@ class CardContentTest {
         assertTrue(rig.item(ProfileAttributeTypes.PHONE).shown)
         assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
         assertFalse(rig.item(ProfileAttributeTypes.TWITTER).shown)
-        assertEquals(listOf("https://shire.example/f"), rig.host.rendered.last().data.links.map { it.target })
+        assertEquals(listOf("https://shire.example/f"), rig.rendered { p -> p.data.links.size == 1 }.data.links.map { it.target })
         assertTrue(rig.vm.uiState.value.importSources.none { it.audience == friends })
     }
 
@@ -666,7 +671,7 @@ class CardContentTest {
         assertEquals(listOf(FRIENDS_CIRCLE_ID), bodies[0]["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals(ProfileAttributeTypes.LINK, bodies[1].str("type"))
         assertEquals("owner", bodies[1].str("visibility"))
-        assertEquals(listOf("https://shire.example/p"), rig.host.rendered.last().data.links.map { it.target })
+        assertEquals(listOf("https://shire.example/p"), rig.rendered { p -> p.data.links.size == 1 }.data.links.map { it.target })
         rig.open(CardAudience.Public)
         assertEquals(publicBefore.data, rig.host.rendered.last().data)
         assertEquals(publicBefore.design, rig.host.rendered.last().design)
@@ -684,7 +689,7 @@ class CardContentTest {
         rig.write { rig.vm.onContentToggled(link.id, true) }
 
         assertEquals(setOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID), rig.circleIds()!!.toSet())
-        assertEquals(listOf("https://shire.example/w"), rig.host.rendered.last().data.links.map { it.target })
+        assertEquals(listOf("https://shire.example/w"), rig.rendered { p -> p.data.links.size == 1 }.data.links.map { it.target })
         rig.open(family)
         assertTrue(rig.host.rendered.last().data.links.isEmpty())
         rig.open(CardAudience.Public)
