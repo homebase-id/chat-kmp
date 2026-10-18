@@ -148,25 +148,26 @@ private class CardTapShareServer(
     private val service = ComponentName(activity, CardNfcApduService::class.java)
     private var enabled = activity.packageManager.getComponentEnabledSetting(service) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
     private var preferred = false
+    private val isResumed get() = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 
     fun apply() {
-        val resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        val resumed = isResumed
         CardNfcTagHolder.resumed = resumed
         run(hceSteps(resumed, tapShare.servedUrl.value, enabled, preferred))
     }
 
     fun stop() {
         CardNfcTagHolder.resumed = false
-        run(hceSteps(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED), null, enabled, preferred))
+        run(hceSteps(isResumed, null, enabled, preferred))
     }
 
     private fun run(steps: List<HceStep>) {
         for (step in steps) when (step) {
-            HceStep.Enable -> setServiceEnabled(activity, service, true).also { enabled = true }
+            HceStep.Enable -> { setServiceEnabled(activity, service, true); enabled = true }
             // The NFC service re-reads its cache for a service it doesn't know yet, so this works right after Enable.
             HceStep.Prefer -> preferred = emulation.setPreferredService(activity, service)
-            HceStep.Unprefer -> emulation.unsetPreferredService(activity).also { preferred = false }
-            HceStep.Disable -> setServiceEnabled(activity, service, false).also { enabled = false; preferred = false }
+            HceStep.Unprefer -> { emulation.unsetPreferredService(activity); preferred = false }
+            HceStep.Disable -> { setServiceEnabled(activity, service, false); enabled = false; preferred = false }
         }
     }
 }
