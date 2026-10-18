@@ -109,15 +109,17 @@ fun CallOverlay(
     val gate = LocalCallPermissionGate.current
     val inPip = rememberInPictureInPicture()
     KeepScreenOn(ui.keepScreenAwake)
-    CallPictureInPictureEffect(
-        eligible = ui.pipEligible,
-        remote = ui.videos.remote,
-        local = ui.videos.local.takeIf { ui.localVideo },
-        muted = ui.muted,
-        onToggleMute = viewModel::toggleMute,
-        onHangup = viewModel::hangup,
-        onRestore = viewModel::restore,
-    )
+    if (ui.visible) {
+        CallPictureInPictureEffect(
+            eligible = ui.pipEligible,
+            remote = ui.videos.remote,
+            local = ui.videos.local.takeIf { ui.localVideo },
+            muted = ui.muted,
+            onToggleMute = viewModel::toggleMute,
+            onHangup = viewModel::hangup,
+            onRestore = viewModel::restore,
+        )
+    }
     val events = rememberCallEvents(viewModel)
     val snackbar = events.snackbar
     val deviceMenu = events.deviceMenu

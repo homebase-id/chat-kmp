@@ -111,3 +111,11 @@ expect fun VideoPlayerSurface(
      */
     onError: (String) -> Unit = {},
 )
+
+/**
+ * True when the native playback controls of [VideoPlayerSurface] and [LocalVideoPlayerSurface]
+ * occupy the surface's top corners, so a caller must lay its own top bar out above the surface
+ * instead of overlaying it. iOS's AVPlayerViewController puts its pills there; ExoPlayer, VLC and
+ * the web `<video>` keep theirs centred and at the bottom.
+ */
+expect val nativeVideoControlsOwnTopCorners: Boolean

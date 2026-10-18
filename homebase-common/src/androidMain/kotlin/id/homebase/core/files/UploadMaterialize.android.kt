@@ -12,7 +12,7 @@ import io.github.vinceglb.filekit.path
 // send path can always read — equivalent to the downstream resolveToFilePath copy, just earlier.
 actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile {
     if (isUnderDir(fileOps.getCacheDirectory(), path)) return this
-    val dest = fileOps.sandboxCopyDest(name, mimeType()?.toString())
+    val dest = PlatformFile(fileOps.sandboxCopyDest(name, mimeType()?.toString()))
     copyTo(dest)
     return dest
 }

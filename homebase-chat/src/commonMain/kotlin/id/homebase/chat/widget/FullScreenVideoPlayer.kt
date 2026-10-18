@@ -3,7 +3,9 @@ package id.homebase.chat.widget
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -39,6 +41,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoPlayerSurface
+import id.homebase.chat.widget.video.nativeVideoControlsOwnTopCorners
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -55,7 +58,6 @@ import id.homebase.resources.upload_uploading
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenVideoPlayer(
     data: FullScreenOverlay.VideoPlayerData,
@@ -69,7 +71,6 @@ fun FullScreenVideoPlayer(
 ) {
     var isPlaying by remember(data) { mutableStateOf(true) }
     var progress by remember(data) { mutableFloatStateOf(0f) }
-    var showMenu by remember { mutableStateOf(false) }
 
     val payloadIv = remember(data.payload.iv) {
         data.payload.iv?.let { Base64.decode(it) }
@@ -83,183 +84,209 @@ fun FullScreenVideoPlayer(
         localVideoContextStore.get(it, data.payloadKey) as? LocalAttachmentContext.Video
     }
 
-    Box(
+    val topBar = @Composable { barModifier: Modifier ->
+        FullScreenVideoTopBar(
+            onDismiss = onDismiss,
+            onSave = onSave.takeIf { !isLocalPlayback },
+            isDownloading = isDownloading,
+            uploadStatus = uploadStatus,
+            modifier = barModifier,
+        )
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Video player surface - prefer local file when available, and clip to the
-        // sender-chosen trim range so the bubble matches what the receiver gets.
-        if (isLocalPlayback) {
-            // data.localFilePath is smart-cast to non-null here via isLocalPlayback,
-            // so localPath is inferred as String. No explicit null check needed.
-            val localPath = data.localFilePath
-            val hasTrim = localCtx != null &&
-                (localCtx.trimStartMs != null || localCtx.trimEndMs != null)
-            val clipDuration = localCtx?.durationMs ?: 0L
-            if (hasTrim && clipDuration > 0L) {
-                val clipStart = localCtx.trimStartMs ?: 0L
-                val clipEnd = localCtx.trimEndMs ?: clipDuration
-                TrimmableVideoPlayerSurface(
-                    filePath = localPath,
-                    clipStartMs = clipStart,
-                    clipEndMs = clipEnd,
-                    isPlaying = isPlaying,
-                    seekRequestMs = null,
-                    onPositionMs = { /* no-op; bubble has no scrubber */ },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                LocalVideoPlayerSurface(
-                    filePath = data.localFilePath,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        } else {
-            VideoPlayerSurface(
-                data = data,
-                modifier = Modifier.fillMaxSize(),
-                onProgress = { progress = it },
-            )
-        }
-
-        // Download/playback progress (only for server-based playback)
-        if (!isLocalPlayback && progress < 1f) {
-            val progressString = "${(progress * 100).toInt()}%"
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .align(Alignment.Center),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color.White,
-                    trackColor = Color.White.copy(alpha = 0.3f),
-                )
-                Text(
-                    text = progressString,
-                    color = Color.White,
-                    fontSize = 12.sp,
-                )
-            }
-        }
-
-        // Thumbnail + play button overlay, hidden once user taps play
-        if (!isPlaying) {
-            // An unencrypted (public) payload carries no IV — that means plaintext, not
-            // "not uploaded yet", so it still has a poster frame worth requesting.
-            if (payloadIv != null || !data.isEncrypted) {
-                val imageData = remember(
-                    data.driveId,
-                    data.fileId,
-                    data.payloadKey,
-                    data.payload.lastModified
-                ) {
-                    HomebaseImageData.from(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        descriptor = data.payload,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
-                        // Video payloads never carry server thumbnails; request the measured size.
-                        availableThumbSizes = emptyList(),
-                        isEncrypted = payloadIv != null,
-                        keyHeader = payloadIv
-                            ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
-                            ?: KeyHeader.empty(),
+        if (nativeVideoControlsOwnTopCorners) topBar(Modifier)
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Video player surface - prefer local file when available, and clip to the
+            // sender-chosen trim range so the bubble matches what the receiver gets.
+            if (isLocalPlayback) {
+                // data.localFilePath is smart-cast to non-null here via isLocalPlayback,
+                // so localPath is inferred as String. No explicit null check needed.
+                val localPath = data.localFilePath
+                val hasTrim = localCtx != null &&
+                    (localCtx.trimStartMs != null || localCtx.trimEndMs != null)
+                val clipDuration = localCtx?.durationMs ?: 0L
+                if (hasTrim && clipDuration > 0L) {
+                    val clipStart = localCtx.trimStartMs ?: 0L
+                    val clipEnd = localCtx.trimEndMs ?: clipDuration
+                    TrimmableVideoPlayerSurface(
+                        filePath = localPath,
+                        clipStartMs = clipStart,
+                        clipEndMs = clipEnd,
+                        isPlaying = isPlaying,
+                        seekRequestMs = null,
+                        onPositionMs = { /* no-op; bubble has no scrubber */ },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    LocalVideoPlayerSurface(
+                        filePath = data.localFilePath,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
-                HomebaseImage(
-                    imageData = imageData,
+            } else {
+                VideoPlayerSurface(
+                    data = data,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                    contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                    onProgress = { progress = it },
                 )
-            } else if (isLocalPlayback) {
-                // Show local thumbnail when paused during local playback
-                val localBitmap = localCtx?.thumbnailBytes?.let { bytes ->
-                    remember(bytes) { bytes.toImageBitmap() }
+            }
+
+            // Download/playback progress (only for server-based playback)
+            if (!isLocalPlayback && progress < 1f) {
+                val progressString = "${(progress * 100).toInt()}%"
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .align(Alignment.Center),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxSize(),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.3f),
+                    )
+                    Text(
+                        text = progressString,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                    )
                 }
-                if (localBitmap != null) {
-                    androidx.compose.foundation.Image(
-                        bitmap = localBitmap,
-                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+            }
+
+            // Thumbnail + play button overlay, hidden once user taps play
+            if (!isPlaying) {
+                // An unencrypted (public) payload carries no IV — that means plaintext, not
+                // "not uploaded yet", so it still has a poster frame worth requesting.
+                if (payloadIv != null || !data.isEncrypted) {
+                    val imageData = remember(
+                        data.driveId,
+                        data.fileId,
+                        data.payloadKey,
+                        data.payload.lastModified
+                    ) {
+                        HomebaseImageData.from(
+                            driveId = data.driveId,
+                            fileId = data.fileId,
+                            descriptor = data.payload,
+                            requestedSize = ImageSize.THUMB_MEDIUM,
+                            // Video payloads never carry server thumbnails; request the measured size.
+                            availableThumbSizes = emptyList(),
+                            isEncrypted = payloadIv != null,
+                            keyHeader = payloadIv
+                                ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
+                                ?: KeyHeader.empty(),
+                        )
+                    }
+                    HomebaseImage(
+                        imageData = imageData,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
+                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
                     )
-                }
-            }
-
-            Icon(
-                imageVector = Icons.Default.PlayCircle,
-                contentDescription = stringResource(MR.string.chat_message_play_video),
-                modifier = Modifier
-                    .size(72.dp)
-                    .align(Alignment.Center)
-                    .clickable { isPlaying = true },
-                tint = Color.White.copy(alpha = 0.85f)
-            )
-        }
-
-        TopAppBar(
-            modifier = Modifier.align(Alignment.TopStart),
-            title = {},
-            navigationIcon = {
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(MR.string.menu_back),
-                        tint = Color.White
-                    )
-                }
-            },
-            actions = {
-                if (isDownloading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .size(16.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp,
-                    )
-                }
-                if (uploadStatus != null) {
-                    val statusText = when (uploadStatus) {
-                        UploadStatus.Preparing -> stringResource(MR.string.upload_preparing)
-                        is UploadStatus.Processing -> "${stringResource(MR.string.upload_compressing)} ${(uploadStatus.progress * 100).toInt()}%"
-                        UploadStatus.Sending -> stringResource(MR.string.upload_sending)
-                        is UploadStatus.Uploading -> "${stringResource(MR.string.upload_uploading)} ${(uploadStatus.progress * 100).toInt()}%"
-                        UploadStatus.Completed -> stringResource(MR.string.upload_done)
+                } else if (isLocalPlayback) {
+                    // Show local thumbnail when paused during local playback
+                    val localBitmap = localCtx?.thumbnailBytes?.let { bytes ->
+                        remember(bytes) { bytes.toImageBitmap() }
                     }
-                    Text(
-                        text = statusText,
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(end = 8.dp),
-                    )
-                }
-                if (!isLocalPlayback && onSave != null) {
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = stringResource(MR.string.chat_options),
-                                tint = Color.White
-                            )
-                        }
-                        FullScreenMediaMenu(
-                            showMenu = showMenu,
-                            dismissMenu = { showMenu = false },
-                            onSave = {
-                                showMenu = false
-                                onSave()
-                            },
+                    if (localBitmap != null) {
+                        androidx.compose.foundation.Image(
+                            bitmap = localBitmap,
+                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
                         )
                     }
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-        )
+
+                Icon(
+                    imageVector = Icons.Default.PlayCircle,
+                    contentDescription = stringResource(MR.string.chat_message_play_video),
+                    modifier = Modifier
+                        .size(72.dp)
+                        .align(Alignment.Center)
+                        .clickable { isPlaying = true },
+                    tint = Color.White.copy(alpha = 0.85f)
+                )
+            }
+
+            if (!nativeVideoControlsOwnTopCorners) topBar(Modifier.align(Alignment.TopStart))
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FullScreenVideoTopBar(
+    onDismiss: () -> Unit,
+    onSave: (() -> Unit)?,
+    isDownloading: Boolean,
+    uploadStatus: UploadStatus?,
+    modifier: Modifier = Modifier,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    TopAppBar(
+        modifier = modifier,
+        title = {},
+        navigationIcon = {
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(MR.string.menu_back),
+                    tint = Color.White
+                )
+            }
+        },
+        actions = {
+            if (isDownloading) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .size(16.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                )
+            }
+            if (uploadStatus != null) {
+                val statusText = when (uploadStatus) {
+                    UploadStatus.Preparing -> stringResource(MR.string.upload_preparing)
+                    is UploadStatus.Processing -> "${stringResource(MR.string.upload_compressing)} ${(uploadStatus.progress * 100).toInt()}%"
+                    UploadStatus.Sending -> stringResource(MR.string.upload_sending)
+                    is UploadStatus.Uploading -> "${stringResource(MR.string.upload_uploading)} ${(uploadStatus.progress * 100).toInt()}%"
+                    UploadStatus.Completed -> stringResource(MR.string.upload_done)
+                }
+                Text(
+                    text = statusText,
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+            }
+            if (onSave != null) {
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(MR.string.chat_options),
+                            tint = Color.White
+                        )
+                    }
+                    FullScreenMediaMenu(
+                        showMenu = showMenu,
+                        dismissMenu = { showMenu = false },
+                        onSave = {
+                            showMenu = false
+                            onSave()
+                        },
+                    )
+                }
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+    )
 }

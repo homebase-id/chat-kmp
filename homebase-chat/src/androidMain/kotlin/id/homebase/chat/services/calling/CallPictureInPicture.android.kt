@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PendingIntentCompat
 import androidx.core.util.Consumer
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.resources.MR
@@ -115,7 +116,9 @@ actual fun CallPictureInPictureEffect(
         leave?.let(activity::addOnUserLeaveHintListener)
         onDispose {
             leave?.let(activity::removeOnUserLeaveHintListener)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // On activity destroy the params die with it, and window manager may already have dropped its token.
+            val destroying = activity.lifecycle.currentState == Lifecycle.State.DESTROYED
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !destroying) {
                 activity.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(false).build())
             }
         }
