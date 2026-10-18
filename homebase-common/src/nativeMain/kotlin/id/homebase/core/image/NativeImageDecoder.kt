@@ -17,6 +17,7 @@ import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 import platform.CoreFoundation.CFDataRef
+import platform.CoreFoundation.CFURLRef
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryGetValue
 import platform.CoreFoundation.CFDictionaryRef
@@ -44,6 +45,7 @@ import platform.CoreGraphics.CGRectMake
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSNumber
+import platform.Foundation.NSURL
 import platform.Foundation.dataWithBytes
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
 import platform.ImageIO.CGImageSourceCreateThumbnailAtIndex
@@ -52,6 +54,7 @@ import platform.ImageIO.kCGImagePropertyOrientation
 import platform.ImageIO.kCGImagePropertyPixelHeight
 import platform.ImageIO.kCGImagePropertyPixelWidth
 import platform.ImageIO.CGImageSourceCreateWithData
+import platform.ImageIO.CGImageSourceCreateWithURL
 import platform.ImageIO.kCGImageSourceCreateThumbnailFromImageAlways
 import platform.ImageIO.kCGImageSourceCreateThumbnailWithTransform
 import platform.ImageIO.kCGImageSourceShouldCacheImmediately
@@ -104,40 +107,56 @@ object NativeImageDecoder {
         val cfData = CFBridgingRetain(nsData) as CFDataRef? ?: return null
         try {
             val source = CGImageSourceCreateWithData(cfData, null) ?: return null
-            try {
-                val (width, height) = orientedPixelSize(source) ?: return null
-                val maxPixelSize = maxPixelSizeFor(width, height)
-                if (maxPixelSize <= 0) return null
-                val options = CFDictionaryCreateMutable(
-                    null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr,
-                ) ?: return null
-                val maxSize = CFBridgingRetain(NSNumber(int = maxPixelSize))
-                CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
-                CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
-                CFDictionarySetValue(options, kCGImageSourceShouldCacheImmediately, kCFBooleanTrue)
-                CFDictionarySetValue(options, kCGImageSourceThumbnailMaxPixelSize, maxSize)
-                val cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0u, options)
-                CFRelease(maxSize)
-                CFRelease(options)
-                cgImage ?: return null
-                try {
-                    val thumbWidth = CGImageGetWidth(cgImage).toInt()
-                    val thumbHeight = CGImageGetHeight(cgImage).toInt()
-                    return rasterize(thumbWidth, thumbHeight) { context ->
-                        CGContextDrawImage(
-                            context,
-                            CGRectMake(0.0, 0.0, thumbWidth.toDouble(), thumbHeight.toDouble()),
-                            cgImage,
-                        )
-                    }
-                } finally {
-                    CGImageRelease(cgImage)
-                }
-            } finally {
-                CFRelease(source)
-            }
+            return decodeThumbnail(source, maxPixelSizeFor)
         } finally {
             CFRelease(cfData)
+        }
+    }
+
+    /** As above, but ImageIO reads the file at [path] in place instead of a copy of its bytes. */
+    fun decodeThumbnail(path: String, maxPixelSizeFor: (width: Int, height: Int) -> Int): SkiaImage? {
+        @Suppress("UNCHECKED_CAST")
+        val url = CFBridgingRetain(NSURL.fileURLWithPath(path)) as CFURLRef? ?: return null
+        try {
+            val source = CGImageSourceCreateWithURL(url, null) ?: return null
+            return decodeThumbnail(source, maxPixelSizeFor)
+        } finally {
+            CFRelease(url)
+        }
+    }
+
+    private fun decodeThumbnail(source: CGImageSourceRef, maxPixelSizeFor: (width: Int, height: Int) -> Int): SkiaImage? {
+        try {
+            val (width, height) = orientedPixelSize(source) ?: return null
+            val maxPixelSize = maxPixelSizeFor(width, height)
+            if (maxPixelSize <= 0) return null
+            val options = CFDictionaryCreateMutable(
+                null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr,
+            ) ?: return null
+            val maxSize = CFBridgingRetain(NSNumber(int = maxPixelSize))
+            CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
+            CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
+            CFDictionarySetValue(options, kCGImageSourceShouldCacheImmediately, kCFBooleanTrue)
+            CFDictionarySetValue(options, kCGImageSourceThumbnailMaxPixelSize, maxSize)
+            val cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0u, options)
+            CFRelease(maxSize)
+            CFRelease(options)
+            cgImage ?: return null
+            try {
+                val thumbWidth = CGImageGetWidth(cgImage).toInt()
+                val thumbHeight = CGImageGetHeight(cgImage).toInt()
+                return rasterize(thumbWidth, thumbHeight) { context ->
+                    CGContextDrawImage(
+                        context,
+                        CGRectMake(0.0, 0.0, thumbWidth.toDouble(), thumbHeight.toDouble()),
+                        cgImage,
+                    )
+                }
+            } finally {
+                CGImageRelease(cgImage)
+            }
+        } finally {
+            CFRelease(source)
         }
     }
 

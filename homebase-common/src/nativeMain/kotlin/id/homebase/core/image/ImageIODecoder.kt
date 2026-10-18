@@ -8,6 +8,7 @@ import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.request.maxBitmapSize
+import okio.FileSystem
 import okio.use
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
@@ -29,18 +30,23 @@ class ImageIODecoder(
 ) : Decoder {
 
     override suspend fun decode(): DecodeResult? {
-        val bytes = source.source().use { it.readByteArray() }
         var srcW = 0
         var srcH = 0
         var outW = 0
         var outH = 0
-        val image = NativeImageDecoder.decodeThumbnail(bytes) { width, height ->
+        val maxPixelSizeFor = { width: Int, height: Int ->
             srcW = width
             srcH = height
             val out = decodeOutputSize(width, height, options.size, options.scale, options.maxBitmapSize, options.precision)
             outW = out.first
             outH = out.second
             maxOf(outW, outH)
+        }
+        val file = source.fileOrNull()?.takeIf { source.fileSystem == FileSystem.SYSTEM }
+        val image = if (file != null) {
+            NativeImageDecoder.decodeThumbnail(file.toString(), maxPixelSizeFor)
+        } else {
+            NativeImageDecoder.decodeThumbnail(source.source().use { it.readByteArray() }, maxPixelSizeFor)
         } ?: return null
 
         val bitmap = Bitmap()
