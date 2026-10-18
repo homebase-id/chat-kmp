@@ -13,7 +13,7 @@ import io.github.vinceglb.filekit.path
 // scope-less path read always succeeds.
 actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile {
     if (isUnderDir(fileOps.getCacheDirectory(), path)) return this
-    val dest = fileOps.sandboxCopyDest(name, mimeType()?.toString())
+    val dest = PlatformFile(fileOps.sandboxCopyDest(name, mimeType()?.toString()))
     copyTo(dest)
     return dest
 }
