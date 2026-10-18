@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.JvmFileSystemUtil
@@ -517,10 +518,54 @@ actual object FFmpegUtils {
         )
     }
 
-    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean {
-        // Desktop HLS→MP4 export not implemented yet (VLC-J, no bundled FFmpeg).
-        return false
-    }
+    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!FFmpegBinaryManager.isAvailable()) {
+                Logger.e(LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
+                return@withContext false
+            }
+            val command = listOf(
+                FFmpegBinaryManager.ffmpegPath(),
+                "-y",
+                "-allowed_extensions", "ALL",
+                "-i", playlistPath,
+                "-c", "copy",
+                "-bsf:a", "aac_adtstoasc",
+                "-movflags", "+faststart",
+                outputPath,
+            )
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val tail = ArrayDeque<String>()
+            val reader = Thread {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        synchronized(tail) {
+                            tail.addLast(line)
+                            if (tail.size > REMUX_LOG_TAIL_LINES) tail.removeFirst()
+                        }
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+            // Interruptible, so a cancelled caller kills ffmpeg instead of waiting it out.
+            val exitCode = try {
+                runInterruptible { process.waitFor() }
+            } finally {
+                process.destroyForcibly()
+            }
+            reader.join(1_000)
+            val ok = exitCode == 0 && File(outputPath).length() > 0L
+            if (!ok) {
+                Logger.e(LOG_TAG) {
+                    "Remux HLS->MP4 failed, exit=$exitCode, output tail:\n" +
+                        synchronized(tail) { tail.joinToString("\n") }
+                }
+                deleteFailedFfmpegOutput(outputPath)
+            }
+            ok
+        }
+
+    private const val LOG_TAG = "FFmpegUtils"
+    private const val REMUX_LOG_TAIL_LINES = 20
 
     actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
         withContext(Dispatchers.IO) {
