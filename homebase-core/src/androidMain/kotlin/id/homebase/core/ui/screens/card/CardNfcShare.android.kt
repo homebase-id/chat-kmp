@@ -124,6 +124,20 @@ private class AndroidCardNfc(private val activity: Activity, private val adapter
     }
 }
 
+/** Clears a tap-share registration a crash or kill left behind while the app was in front. */
+fun resetCardNfcService(context: Context) {
+    val service = ComponentName(context, CardNfcApduService::class.java)
+    if (context.packageManager.getComponentEnabledSetting(service) != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
+        setServiceEnabled(context, service, false)
+    }
+}
+
+// DEFAULT falls back to the manifest's android:enabled="false".
+private fun setServiceEnabled(context: Context, service: ComponentName, enabled: Boolean) {
+    val state = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+    context.packageManager.setComponentEnabledSetting(service, state, PackageManager.DONT_KILL_APP)
+}
+
 private class CardTapShareServer(
     private val activity: Activity,
     private val lifecycle: Lifecycle,
@@ -132,24 +146,27 @@ private class CardTapShareServer(
 ) {
     private val emulation = CardEmulation.getInstance(adapter)
     private val service = ComponentName(activity, CardNfcApduService::class.java)
+    private var enabled = activity.packageManager.getComponentEnabledSetting(service) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
     private var preferred = false
 
     fun apply() {
         val resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         CardNfcTagHolder.resumed = resumed
-        val serving = resumed && tapShare.servedUrl.value != null
-        // CardEmulation throws unless the activity is resumed; the system drops the preference itself once the app leaves the foreground.
-        if (serving && !preferred) {
-            preferred = emulation.setPreferredService(activity, service)
-        } else if (!serving && preferred) {
-            if (resumed) emulation.unsetPreferredService(activity)
-            preferred = false
-        }
+        run(hceSteps(resumed, tapShare.servedUrl.value, enabled, preferred))
     }
 
     fun stop() {
         CardNfcTagHolder.resumed = false
-        if (preferred && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) emulation.unsetPreferredService(activity)
-        preferred = false
+        run(hceSteps(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED), null, enabled, preferred))
+    }
+
+    private fun run(steps: List<HceStep>) {
+        for (step in steps) when (step) {
+            HceStep.Enable -> setServiceEnabled(activity, service, true).also { enabled = true }
+            // The NFC service re-reads its cache for a service it doesn't know yet, so this works right after Enable.
+            HceStep.Prefer -> preferred = emulation.setPreferredService(activity, service)
+            HceStep.Unprefer -> emulation.unsetPreferredService(activity).also { preferred = false }
+            HceStep.Disable -> setServiceEnabled(activity, service, false).also { enabled = false; preferred = false }
+        }
     }
 }
