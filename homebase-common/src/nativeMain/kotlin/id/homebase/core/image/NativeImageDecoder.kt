@@ -115,7 +115,6 @@ object NativeImageDecoder {
 
     /** As above, but ImageIO reads the file at [path] in place instead of a copy of its bytes. */
     fun decodeThumbnail(path: String, maxPixelSizeFor: (width: Int, height: Int) -> Int): SkiaImage? {
-        @Suppress("UNCHECKED_CAST")
         val url = CFBridgingRetain(NSURL.fileURLWithPath(path)) as CFURLRef? ?: return null
         try {
             val source = CGImageSourceCreateWithURL(url, null) ?: return null
