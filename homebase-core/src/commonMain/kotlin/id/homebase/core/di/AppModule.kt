@@ -973,7 +973,7 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
-    single { FilesyncRepository(get(), get(), get()) }
+    single { FilesyncRepository(get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }

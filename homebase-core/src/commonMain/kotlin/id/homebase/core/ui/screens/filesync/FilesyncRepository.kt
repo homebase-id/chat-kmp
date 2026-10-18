@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadDownloadService
@@ -14,6 +15,8 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.filesync.FilesyncProtocol
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
 /** Nodes with what writing or downloading each one needs. */
@@ -26,6 +29,7 @@ class FilesyncRepository(
     private val driveQueryProvider: DriveQueryProvider,
     private val payloadDownloadService: PayloadDownloadService,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val driveFileProvider: DriveFileProvider,
 ) {
 
     /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
@@ -63,6 +67,31 @@ class FilesyncRepository(
         }
         return found
     }
+
+    /**
+     * The [folderIds] holding a file that isn't removed, of any type, ours or not, written before this call. A row that
+     * doesn't read (no groupId) is there all the same, so its chunk's folders all hold.
+     */
+    suspend fun holdingLive(folderIds: List<Uuid>): Set<Uuid> {
+        // The server's queries leave out what changed in their last second.
+        delay(HOLD_BACK)
+        val holding = mutableSetOf<Uuid>()
+        for (chunk in folderIds.chunked(PAGE_SIZE)) {
+            forEachPage(FileQueryParams(groupId = chunk, fileState = listOf(FileState.Active)), QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE)) { page ->
+                for (file in page.searchResults) {
+                    val folder = file.fileMetadata.appData.groupId
+                    if (folder == null) holding += chunk
+                    else if (file.fileMetadata.appData.archivalStatus != ArchivalStatus.Removed) holding += folder
+                }
+                !holding.containsAll(chunk)
+            }
+        }
+        return holding
+    }
+
+    /** Of [fileIds] a delete didn't find, those gone for good: their header isn't found either, or is a tombstone's. */
+    suspend fun goneForGood(fileIds: List<Uuid>): List<Uuid> =
+        fileIds.filter { id -> driveFileProvider.getFileHeader(FilesyncProtocol.DriveAlias, id)?.let { it.fileState == FileState.Deleted } ?: true }
 
     /** The newest live files, newest first. */
     suspend fun listRecentlyAdded(limit: Int = RECENT_LIMIT): FilesyncNodes =
@@ -172,6 +201,7 @@ class FilesyncRepository(
 
     private companion object {
         const val PAGE_SIZE = 1000
+        val HOLD_BACK = 1100.milliseconds
         const val RECENT_LIMIT = 100
     }
 }

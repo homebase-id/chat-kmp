@@ -67,13 +67,14 @@ class FilesyncTrashTest {
     }
 
     @Test
-    fun thePurgeTakesAnExpiredItemWithEverythingDeletedWithItAndNothingNewer() {
+    fun thePurgeTakesAnItemOnceEveryNodeRemovedInItIsOld() {
         val year = live("2024", photosId, folder = true, written = 150)
-        val lateA = removed("late.jpg", photosId, folder = false, at = 500)
+        val lateA = removed("late.jpg", year.nodeId, folder = false, at = 500)
         val trash = trash(nodes.plus(year, lateA))
-        assertEquals(setOf(old.nodeId), trash.removedBefore(200))
-        assertEquals(setOf(old.nodeId, photosId, a.nodeId, year.nodeId, lateA.nodeId), trash.deletedWith(trash.removedBefore(201)))
-        assertEquals(trash.itemOf.keys, trash.deletedWith(trash.removedBefore(301)))
+        assertEquals(photosId, trash.itemOf[lateA.nodeId])
+        assertEquals(setOf(old.nodeId), trash.removedBefore(211))
+        assertEquals(setOf(old.nodeId, notes.nodeId), trash.removedBefore(500))
+        assertEquals(setOf(old.nodeId, photosId, a.nodeId, year.nodeId, lateA.nodeId), trash.deletedWith(trash.removedBefore(501)) - notes.nodeId)
     }
 
     @Test
@@ -119,16 +120,6 @@ class FilesyncTrashTest {
         val inner = removed("2024", photosId, folder = true, at = 250)
         val deep = removed("b.jpg", inner.nodeId, folder = false, at = 250)
         assertEquals(listOf(listOf(a, deep), listOf(inner), listOf(photos)), trash(nodes.plus(inner, deep)).deleteOrder(listOf(photos, inner, a, deep)))
-    }
-
-    @Test
-    fun aLiveNodeWasDeletedWhenTheFolderItWentWithWasRemoved() {
-        val inner = removed("2024", photosId, folder = true, at = 250)
-        val b = live("b.jpg", inner.nodeId, folder = false, written = 10)
-        val trash = trash(nodes.plus(inner, b))
-        assertEquals(250, trash.removalMs(b))
-        assertEquals(200, trash.removalMs(photos))
-        assertNull(trash.removalMs(live("c.jpg", FilesyncProtocol.RootNodeId, folder = false, written = 10)))
     }
 
     @Test

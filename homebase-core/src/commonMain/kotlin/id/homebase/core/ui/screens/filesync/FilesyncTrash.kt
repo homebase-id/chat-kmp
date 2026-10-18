@@ -15,8 +15,8 @@ data class FilesyncTrashItem(val node: FilesyncNode, val count: Int)
 internal class FilesyncTrash(val all: FilesyncNodes) {
     private val children = all.nodes.values.groupBy { it.parentId }
 
-    // When the delete each node went with happened; a live folder passes a delete on only if it went too.
-    private val wentWithParentAt: Map<Uuid, Long> = run {
+    // The nodes that went with their folder's delete; a live folder passes a delete on only if it went too.
+    private val wentWithParent: Set<Uuid> = run {
         val memo = mutableMapOf<Uuid, Long?>()
         fun at(node: FilesyncNode, seen: MutableSet<Uuid>): Long? {
             if (node.nodeId in memo) return memo[node.nodeId]
@@ -24,7 +24,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
             val folderAt = parent?.let { if (it.removed) it.updatedMs else at(it, seen) }
             return folderAt?.takeIf { wentWith(node, it) }.also { memo[node.nodeId] = it }
         }
-        buildMap { for (node in all.nodes.values) at(node, mutableSetOf(node.nodeId))?.let { put(node.nodeId, it) } }
+        all.nodes.keys.filterTo(mutableSetOf()) { id -> at(all.nodes.getValue(id), mutableSetOf(id)) != null }
     }
 
     /** Each deleted node's item: itself when deleted on its own. A node not in here isn't deleted. */
@@ -32,7 +32,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         val memo = mutableMapOf<Uuid, Uuid?>()
         fun item(node: FilesyncNode, seen: MutableSet<Uuid>): Uuid? {
             if (node.nodeId in memo) return memo[node.nodeId]
-            val parent = all.nodes[node.parentId]?.takeIf { node.nodeId in wentWithParentAt && seen.add(it.nodeId) }
+            val parent = all.nodes[node.parentId]?.takeIf { node.nodeId in wentWithParent && seen.add(it.nodeId) }
             return (parent?.let { item(it, seen) } ?: node.nodeId.takeIf { node.removed }).also { memo[node.nodeId] = it }
         }
         buildMap { for (node in all.nodes.values) item(node, mutableSetOf(node.nodeId))?.let { put(node.nodeId, it) } }
@@ -52,7 +52,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         val seen = mutableSetOf(node.nodeId)
         var level = listOf(node)
         while (level.isNotEmpty()) {
-            level = level.flatMap { children[it.nodeId].orEmpty() }.filter { it.nodeId in wentWithParentAt && seen.add(it.nodeId) }
+            level = level.flatMap { children[it.nodeId].orEmpty() }.filter { it.nodeId in wentWithParent && seen.add(it.nodeId) }
             result += level
         }
         return result
@@ -62,7 +62,7 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
     fun chainOf(node: FilesyncNode): List<FilesyncNode> {
         val chain = mutableListOf(node)
         val seen = mutableSetOf(node.nodeId)
-        while (chain.last().nodeId in wentWithParentAt) {
+        while (chain.last().nodeId in wentWithParent) {
             val parent = all.nodes.getValue(chain.last().parentId)
             if (!seen.add(parent.nodeId)) break
             chain += parent
@@ -82,12 +82,11 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
         return chain
     }
 
-    /** The items removed before [beforeMs]: what the purge deletes for good. */
-    fun removedBefore(beforeMs: Long): Set<Uuid> =
-        itemOf.values.filterTo(mutableSetOf()) { item -> all.nodes.getValue(item).removedMs?.let { it < beforeMs } == true }
-
-    /** When [node] was deleted: its own removal, or the removal of the folder whose delete it went with. */
-    fun removalMs(node: FilesyncNode): Long? = node.removedMs ?: wentWithParentAt[node.nodeId]
+    /** The items the purge deletes for good: each whose every removed node was removed before [beforeMs], each by its own removal. */
+    fun removedBefore(beforeMs: Long): Set<Uuid> {
+        val waiting = itemOf.filterKeys { id -> all.nodes.getValue(id).removedMs?.let { it >= beforeMs } == true }.values
+        return itemOf.values.toSet() - waiting.toSet()
+    }
 
     /** [nodes] in the passes a delete for good takes: the files, then the folders from the deepest. */
     fun deleteOrder(nodes: Collection<FilesyncNode>): List<List<FilesyncNode>> {

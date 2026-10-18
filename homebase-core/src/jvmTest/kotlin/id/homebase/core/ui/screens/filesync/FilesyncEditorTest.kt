@@ -63,12 +63,9 @@ class FilesyncEditorTest {
         }
         val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, Files.createTempDirectory("filesync-editor").toString())
         val http = HttpClient(engine)
+        val files = DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, fileOps))
         editor = FilesyncEditor(
-            FilesyncRepository(
-                DriveQueryProvider(http, credentials),
-                PayloadDownloadService(DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, fileOps)), fileOps),
-                fileOps,
-            ),
+            FilesyncRepository(DriveQueryProvider(http, credentials), PayloadDownloadService(files, fileOps), fileOps, files),
             DriveUploadProvider(http, credentials, fileOps),
             DriveFileHttpProvider(http, credentials),
         )
