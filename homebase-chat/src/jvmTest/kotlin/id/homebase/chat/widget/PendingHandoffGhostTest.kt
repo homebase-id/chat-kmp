@@ -44,7 +44,12 @@ class PendingHandoffGhostTest {
 
     private enum class Handoff { SameFrame, KeyAbsentForAFewFrames }
 
-    private class Outcome(val placeholderPixels: Int, val placeholderPixelsAfterScroll: Int, val stranded: Int)
+    private class Outcome(
+        val placeholderPixels: Int,
+        val placeholderPixelsAfterScroll: Int,
+        val stranded: Int,
+        val laidOutKeysNotInList: Int,
+    )
 
     private val placeholderColor = Color(0xFF0000FF)
     private val history: List<Item> = List(30) { i -> Msg("m$i", 60 + (i * 37) % 140, i % 3 == 0, Color.Red) }
@@ -140,9 +145,11 @@ class PendingHandoffGhostTest {
 
         val settled = placeholderPixels()
         val stranded = strandedDisappearingItems()
+        val listKeys = rows.mapTo(HashSet()) { it.key }
+        val laidOutKeysNotInList = listState.layoutInfo.visibleItemsInfo.count { it.key !in listKeys }
         runOnUiThread { listState.dispatchRawDelta(-200f) }
         waitForIdle()
-        return Outcome(settled, placeholderPixels(), stranded)
+        return Outcome(settled, placeholderPixels(), stranded, laidOutKeysNotInList)
     }
 
     @Test
@@ -160,12 +167,14 @@ class PendingHandoffGhostTest {
         assertEquals(0, outcome.placeholderPixels)
     }
 
-    // The key returning mid fade-out takes over the fading animation, whose layer the follow scroll then
-    // releases while it is still in the disappearing list. Skiko paints nothing for it.
+    // Characterizes current (buggy) Compose behaviour, not a contract: the returning key takes over the
+    // fading animation, whose layer the follow scroll releases while it is still in the disappearing list.
+    // Skiko paints nothing for it, and layoutInfo cannot see it, so GhostProbe on a device cannot either.
     @Test
-    fun aKeyThatReturnsDuringItsFadeOutStrandsAnAnimatorEntry() = runComposeUiTest {
+    fun currentlyAKeyThatReturnsDuringItsFadeOutStrandsAnAnimatorEntry() = runComposeUiTest {
         val outcome = sendImage(Handoff.KeyAbsentForAFewFrames)
-        assertEquals(1, outcome.stranded)
+        assertEquals(1, outcome.stranded, "Compose no longer strands the entry; revisit #1865")
+        assertEquals(0, outcome.laidOutKeysNotInList)
         assertEquals(0, outcome.placeholderPixels)
         assertEquals(0, outcome.placeholderPixelsAfterScroll)
     }
