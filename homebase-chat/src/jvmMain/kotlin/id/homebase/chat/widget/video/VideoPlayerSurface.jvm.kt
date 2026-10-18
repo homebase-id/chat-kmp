@@ -658,3 +658,5 @@ private fun formatMs(ms: Long): String {
     val seconds = totalSeconds % 60
     return "%d:%02d".format(minutes, seconds)
 }
+
+actual val nativeVideoControlsOwnTopCorners: Boolean = false

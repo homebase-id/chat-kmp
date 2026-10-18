@@ -731,3 +731,5 @@ private fun kickAssetMetadataLoad(asset: AVURLAsset, fileId: String) {
     }
     Logger.d(tag = "VideoHLS") { "asset.loadValuesAsynchronouslyForKeys kicked for fileId=$fileId at ${kickedAtMs.toLong()}ms" }
 }
+
+actual val nativeVideoControlsOwnTopCorners: Boolean = true
