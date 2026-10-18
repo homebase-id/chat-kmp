@@ -97,6 +97,19 @@ class CardTapShare(
     }.stateIn(scope, SharingStarted.Eagerly, null)
 }
 
+internal enum class HceStep { Enable, Prefer, Unprefer, Disable }
+
+/**
+ * Keeps the HCE service registered with the NFC stack only while serving, so a backgrounded or
+ * killed app never sits in the routing table. `unsetPreferredService` throws unless resumed.
+ */
+internal fun hceSteps(resumed: Boolean, servedUrl: String?, enabled: Boolean, preferred: Boolean): List<HceStep> =
+    if (resumed && servedUrl != null) {
+        listOfNotNull(HceStep.Enable.takeUnless { enabled }, HceStep.Prefer.takeUnless { preferred })
+    } else {
+        listOfNotNull(HceStep.Unprefer.takeIf { preferred && resumed }, HceStep.Disable.takeIf { enabled })
+    }
+
 /** Serves [CardTapShare] as an NFC tag while the app is in front; a no-op where there is no HCE. */
 @Composable
 expect fun CardTapShareDriver(onShared: () -> Unit)
