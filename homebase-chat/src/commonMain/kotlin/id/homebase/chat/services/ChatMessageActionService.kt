@@ -383,7 +383,7 @@ class ChatMessageActionService(
         val keyHeader = KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey)
         val unencryptedMetadata = UploadFileMetadata(
             allowDistribution = false,
-            isEncrypted = metadata.isEncrypted,
+            isEncrypted = file.serverFileIsEncrypted,
             accessControlList = file.serverMetadata.accessControlList,
             versionTag = metadata.versionTag,
             appData = UploadAppFileMetaData(
