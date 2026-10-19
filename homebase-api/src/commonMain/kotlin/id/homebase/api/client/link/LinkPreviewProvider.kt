@@ -8,11 +8,11 @@ import id.homebase.api.util.sanitizePreviewText
 import id.homebase.api.util.truncateToCodePoints
 import io.ktor.client.HttpClient
 
-class LinkPreviewProvider(
+open class LinkPreviewProvider(
     httpClient: HttpClient, credentialsManager: CredentialsManager
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
-    suspend fun getLinkPreview(url: String): LinkPreview? {
+    open suspend fun getLinkPreview(url: String): LinkPreview? {
 
         val standardisedUrl = if (url.startsWith("http")) url else "https://${url}"
 

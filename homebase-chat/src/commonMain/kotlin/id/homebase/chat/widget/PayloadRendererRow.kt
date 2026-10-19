@@ -38,3 +38,12 @@ fun PayloadRendererRow(
         )
     }
 }
+
+@Composable
+fun LoadingLinkPreviewRow(url: String, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    LinkPreviewLoadingCard(
+        url = url,
+        onCancel = onCancel,
+        modifier = modifier.fillMaxWidth().padding(bottom = 8.dp),
+    )
+}

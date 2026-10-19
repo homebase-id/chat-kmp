@@ -75,6 +75,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -169,6 +170,7 @@ import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.slide_to_cancel
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -238,49 +240,50 @@ fun MessageInputBar(
     // URL-detector private state. Lives here (not in the parent) because it's an
     // implementation detail of how LinkPreviewRenderer gets produced from typed text:
     //  - cancelledUrls: URLs the user explicitly dismissed; don't auto-refetch.
-    //  - lastFetchedUrl: debounce memory; don't spam refetch on every keystroke.
     val linkPreviewProvider: LinkPreviewProvider = koinInject()
     var cancelledUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var lastFetchedUrl by remember { mutableStateOf<String?>(null) }
+    var loadingLinkUrl by remember { mutableStateOf<String?>(null) }
+    val currentPayloadRenderers by rememberUpdatedState(payloadRenderers)
+    val currentOnPayloadRenderersChange by rememberUpdatedState(onPayloadRenderersChange)
+    val detectedUrl by remember(textFieldState) {
+        derivedStateOf { URL_REGEX.find(textFieldState.annotatedString.text)?.value }
+    }
 
-    LaunchedEffect(textFieldState.annotatedString.text) {
-        val text = textFieldState.annotatedString.text
-        val match = URL_REGEX.find(text)
+    // Keyed on the URL, not the text: typing around the link must not cancel an in-flight fetch.
+    LaunchedEffect(detectedUrl) {
+        val url = detectedUrl
+        val withoutLink = { currentPayloadRenderers.filterNot { it is LinkPreviewRenderer } }
 
-        if (match != null) {
-            val url = match.value
-
-            // If the user modifies the URL, immediately hide the old preview while we
-            // wait to fetch the new one.
-            val existingLink = payloadRenderers.firstOrNull { it is LinkPreviewRenderer } as? LinkPreviewRenderer
-            if (existingLink != null && existingLink.preview.url != url) {
-                onPayloadRenderersChange(payloadRenderers.filterNot { it is LinkPreviewRenderer })
-            }
-
-            if (url !in cancelledUrls && url != lastFetchedUrl) {
-                delay(250)
-                lastFetchedUrl = url
-                try {
-                    val preview = linkPreviewProvider.getLinkPreview(url)
-                    // Ensure the URL wasn't cancelled during the network request delay.
-                    if (preview != null && url !in cancelledUrls) {
-                        onPayloadRenderersChange(
-                            payloadRenderers.filterNot { it is LinkPreviewRenderer } +
-                                LinkPreviewRenderer(preview)
-                        )
-                    }
-                } catch (_: Exception) {
-                    // Ignore API errors, but because it's in lastFetchedUrl, we
-                    // won't spam retry it on every keystroke.
-                }
-            }
-        } else {
-            // URL was completely removed, so clean up preview and reset memory.
-            if (payloadRenderers.any { it is LinkPreviewRenderer }) {
-                onPayloadRenderersChange(payloadRenderers.filterNot { it is LinkPreviewRenderer })
+        if (url == null) {
+            if (currentPayloadRenderers.any { it is LinkPreviewRenderer }) {
+                currentOnPayloadRenderersChange(withoutLink())
             }
             cancelledUrls = emptySet()
             lastFetchedUrl = null
+            return@LaunchedEffect
+        }
+
+        val existingLink = currentPayloadRenderers.filterIsInstance<LinkPreviewRenderer>().firstOrNull()
+        if (existingLink != null && existingLink.preview.url != url) {
+            currentOnPayloadRenderersChange(withoutLink())
+        }
+        if (url in cancelledUrls || url == lastFetchedUrl) return@LaunchedEffect
+
+        delay(250)
+        loadingLinkUrl = url
+        try {
+            val preview = linkPreviewProvider.getLinkPreview(url)
+            if (preview != null && url !in cancelledUrls) {
+                lastFetchedUrl = url
+                currentOnPayloadRenderersChange(withoutLink() + LinkPreviewRenderer(preview))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Link preview fetch failed" }
+        } finally {
+            if (loadingLinkUrl == url) loadingLinkUrl = null
         }
     }
 
@@ -295,6 +298,12 @@ fun MessageInputBar(
             cancelledUrls = cancelledUrls + att.preview.url
         }
         onPayloadRenderersChange(payloadRenderers.filterNot { it.id == id })
+    }
+
+    fun cancelLoadingLink() {
+        val url = loadingLinkUrl ?: return
+        cancelledUrls = cancelledUrls + url
+        loadingLinkUrl = null
     }
 
     fun sendMessage() {
@@ -327,6 +336,8 @@ fun MessageInputBar(
                 mentionTargets = mentionTargets,
                 payloadRenderers = payloadRenderers,
                 onCancelAttachment = ::cancelRenderer,
+                loadingLinkUrl = loadingLinkUrl,
+                onCancelLoadingLink = ::cancelLoadingLink,
                 editExistingMode = editExistingMode,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -355,6 +366,8 @@ fun MessageInputBar(
                 payloadRenderers = payloadRenderers,
                 recordingData = recordingData,
                 onCancelAttachment = ::cancelRenderer,
+                loadingLinkUrl = loadingLinkUrl,
+                onCancelLoadingLink = ::cancelLoadingLink,
                 showingEmojiSheet = showingEmojiSheet,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -391,6 +404,8 @@ fun MessageTextFieldExpanded(
     editExistingMode: Boolean,
     payloadRenderers: List<PayloadRenderer>,
     onCancelAttachment: (id: String) -> Unit,
+    loadingLinkUrl: String? = null,
+    onCancelLoadingLink: () -> Unit = {},
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
@@ -441,6 +456,9 @@ fun MessageTextFieldExpanded(
                 attachment = att,
                 onCancel = { onCancelAttachment(att.id) },
             )
+        }
+        if (loadingLinkUrl != null) {
+            LoadingLinkPreviewRow(url = loadingLinkUrl, onCancel = onCancelLoadingLink)
         }
         val pasteModifier = if (onPasteImage != null) {
             clipboardImageReceiverModifier { bytes -> onPasteImage.invoke(bytes) }
@@ -572,6 +590,8 @@ fun MessageTextFieldCompact(
     payloadRenderers: List<PayloadRenderer>,
     recordingData: RecordingData?,
     onCancelAttachment: (id: String) -> Unit,
+    loadingLinkUrl: String? = null,
+    onCancelLoadingLink: () -> Unit = {},
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
@@ -714,6 +734,9 @@ fun MessageTextFieldCompact(
                         attachment = att,
                         onCancel = { onCancelAttachment(att.id) },
                     )
+                }
+                if (loadingLinkUrl != null) {
+                    LoadingLinkPreviewRow(url = loadingLinkUrl, onCancel = onCancelLoadingLink)
                 }
             }
         }
