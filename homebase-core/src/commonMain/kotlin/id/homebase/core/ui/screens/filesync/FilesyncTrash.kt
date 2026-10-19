@@ -3,7 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import androidx.compose.runtime.Immutable
 import kotlin.uuid.Uuid
 
-/** An item of Recently deleted, deleted on its own; [count] is how many below it were deleted with it. */
+/** An item of Recently deleted, deleted on its own; [count] is how many removed nodes are below it, whenever each was removed. */
 @Immutable
 data class FilesyncTrashItem(val node: FilesyncNode, val count: Int)
 
@@ -39,20 +39,25 @@ internal class FilesyncTrash(val all: FilesyncNodes) {
     }
 
     /** The items deleted on their own, newest first. */
-    fun items(): List<FilesyncTrashItem> {
-        val sizes = itemOf.values.groupingBy { it }.eachCount()
-        return itemOf.filter { (node, item) -> node == item }.keys.map { all.nodes.getValue(it) }
+    fun items(): List<FilesyncTrashItem> =
+        itemOf.filter { (node, item) -> node == item }.keys.map { all.nodes.getValue(it) }
             .sortedWith(compareByDescending<FilesyncNode> { it.removedMs }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
-            .map { FilesyncTrashItem(it, sizes.getValue(it.nodeId) - 1) }
-    }
+            .map { FilesyncTrashItem(it, inside(setOf(it.nodeId)).size - 1) }
+
+    /** [items] and every removed node below them through removed folders, whenever each was removed: what emptying them takes. */
+    fun inside(items: Set<Uuid>): Set<Uuid> =
+        below(items.mapNotNull { id -> all.nodes[id]?.takeIf { it.removed } }) { it.removed }.mapTo(mutableSetOf()) { it.nodeId }
 
     /** [node] and what was deleted with it, removed or still live, each after its folder. */
-    fun group(node: FilesyncNode): List<FilesyncNode> {
-        val result = mutableListOf(node)
-        val seen = mutableSetOf(node.nodeId)
-        var level = listOf(node)
+    fun group(node: FilesyncNode): List<FilesyncNode> = below(listOf(node)) { it.nodeId in wentWithParent }
+
+    /** [starts] and the nodes below them that [follow] takes, level by level, each once (a parent cycle ends). */
+    private fun below(starts: List<FilesyncNode>, follow: (FilesyncNode) -> Boolean): List<FilesyncNode> {
+        val result = starts.toMutableList()
+        val seen = starts.mapTo(mutableSetOf()) { it.nodeId }
+        var level = starts
         while (level.isNotEmpty()) {
-            level = level.flatMap { children[it.nodeId].orEmpty() }.filter { it.nodeId in wentWithParent && seen.add(it.nodeId) }
+            level = level.flatMap { children[it.nodeId].orEmpty() }.filter { follow(it) && seen.add(it.nodeId) }
             result += level
         }
         return result

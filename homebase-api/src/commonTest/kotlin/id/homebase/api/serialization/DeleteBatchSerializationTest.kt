@@ -1,6 +1,7 @@
 package id.homebase.api.serialization
 
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.FileVersionTagBatch
 import id.homebase.api.client.drives.files.PerFileBatchResult
@@ -8,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 
-/** odin-core's hard- and soft-delete-batch: `{files: [{fileId, versionTag}]}` in, one `{fileId, errorCode}` per file out. */
+/** odin-core's hard-, soft-delete- and update-archival-status-batch: `{files: [{fileId, versionTag}]}` in, one `{fileId, errorCode}` per file out. */
 class DeleteBatchSerializationTest {
 
     private val file = Uuid.parse("11111111-2222-3333-4444-555555555555")
@@ -19,6 +20,14 @@ class DeleteBatchSerializationTest {
         assertEquals(
             """{"files":[{"fileId":"$file","versionTag":"$tag"}]}""",
             OdinSystemSerializer.serialize(FileVersionTagBatch(listOf(FileVersionTag(file, tag)))),
+        )
+    }
+
+    @Test
+    fun anArchivalStatusBatchNamesTheStatus() {
+        assertEquals(
+            """{"files":[{"fileId":"$file","versionTag":"$tag"}],"archivalStatus":0}""",
+            OdinSystemSerializer.serialize(FileVersionTagBatch(listOf(FileVersionTag(file, tag)), ArchivalStatus.None)),
         )
     }
 
