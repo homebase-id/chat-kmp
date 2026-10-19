@@ -10,6 +10,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.viewonce.ViewOnceRules
+import id.homebase.chat.viewonce.ViewOnceState
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.resources.MR
 import id.homebase.resources.someone
@@ -172,7 +174,7 @@ suspend fun mapToMessageData(
             // The tombstone keeps only the kind, never the payloads or caption.
             val isViewOnce = appData.dataType == ChatProtocol.ChatViewOnceMessageDataType
 
-            return MessageUiModel(
+            val tombstone = MessageUiModel(
                 id = appData.uniqueId ?: header.fileId,
                 globalTransitId = metadata.globalTransitId,
                 fileId = header.fileId,
@@ -203,6 +205,9 @@ suspend fun mapToMessageData(
                 messageContent = if (isViewOnce) spentViewOnceContent(content) else null,
                 hasMore = hasMore
             )
+            val opened = isViewOnce && !tombstone.isFromActiveUser(domain) &&
+                ViewOnceRules.stateOf(tombstone, metadata.updated.milliseconds, domain) == ViewOnceState.Opened
+            return if (opened) tombstone.copy(isOpenedViewOnce = true) else tombstone
         }
 
         require(content != null)
