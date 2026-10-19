@@ -195,9 +195,11 @@
         // ComposerAutocompleteProbe (#1859): written before any trap, so it survives one.
         const mismatch = homebaseErrors.autocompleteMismatch;
         const trace = homebaseErrors.autocompleteTrace;
+        const composing = homebaseErrors.autocompleteComposing;
         return firstText +
             (mismatch ? "\n\n" + mismatch : "") +
-            (trace ? "\n\nautocomplete trace (oldest first):\n" + trace : "");
+            (trace ? "\n\nautocomplete trace (oldest first):\n" + trace : "") +
+            (composing ? "\n\nautocomplete last composition:\n" + composing : "");
     };
 
     // A reload wipes the above, and reloading is what a frozen page gets.

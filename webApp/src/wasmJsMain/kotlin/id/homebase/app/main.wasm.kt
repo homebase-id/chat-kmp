@@ -43,6 +43,9 @@ private fun recordAutocompleteTrace(trace: String): Unit =
 private fun recordAutocompleteMismatch(report: String): Unit =
     js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteMismatch = report; }")
 
+private fun recordAutocompleteComposing(composing: String): Unit =
+    js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteComposing = composing; }")
+
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
@@ -53,6 +56,7 @@ fun main() {
     ComposerAutocompleteProbe.install(object : ComposerAutocompleteProbe.Reporter {
         override fun onTrace(trace: String) = recordAutocompleteTrace(trace)
         override fun onMismatch(report: String) = recordAutocompleteMismatch(report)
+        override fun onComposing(composing: String) = recordAutocompleteComposing(composing)
     })
     // sql.js compiles its wasm asynchronously; finish that and build the in-memory database
     // before Koin (and the DriveSync graph behind the login screen) ever touches DatabaseManager.
