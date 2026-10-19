@@ -6,6 +6,8 @@ import androidx.compose.ui.Modifier
 import id.homebase.chat.calling.CallChrome
 import id.homebase.chat.calling.CallHost
 import id.homebase.chat.calling.CallWindowModel
+import id.homebase.chat.widget.GhostProbe
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +43,8 @@ fun App(
     val navController = rememberNavController()
     val youAuthFlowManager: YouAuthFlowManager = koinInject()
     val userPreferences: UserPreferences = koinInject()
+    val crashTrigger: DiagnosticsCrashTrigger = koinInject()
+    LaunchedEffect(crashTrigger) { GhostProbe.enabled = crashTrigger.enabled }
     remember { StartupLogger.checkpoint("App() Koin injections done") }
 
     val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()

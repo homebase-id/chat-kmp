@@ -1048,6 +1048,8 @@ fun ConversationContent(
                     }
                 }
 
+                GhostProbeEffect(conversation.conversation.id, mergedItems, listState)
+
                 val currentMergedItems by rememberUpdatedState(mergedItems)
                 // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
                 // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
