@@ -142,7 +142,6 @@ private fun CompactLinkPreviewCancelButton(onCancel: () -> Unit) {
     }
 }
 
-/** Compact placeholder for a link whose preview is still being fetched. */
 @Composable
 fun LinkPreviewLoadingCard(
     url: String,

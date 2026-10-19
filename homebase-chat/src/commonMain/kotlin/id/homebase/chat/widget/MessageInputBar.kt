@@ -240,8 +240,6 @@ fun MessageInputBar(
     // URL-detector private state. Lives here (not in the parent) because it's an
     // implementation detail of how LinkPreviewRenderer gets produced from typed text:
     //  - cancelledUrls: URLs the user explicitly dismissed; don't auto-refetch.
-    //  - lastFetchedUrl: last URL whose preview was staged.
-    //  - loadingLinkUrl: URL whose preview is being fetched, shown as a loading card.
     val linkPreviewProvider: LinkPreviewProvider = koinInject()
     var cancelledUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var lastFetchedUrl by remember { mutableStateOf<String?>(null) }
@@ -266,7 +264,7 @@ fun MessageInputBar(
             return@LaunchedEffect
         }
 
-        val existingLink = currentPayloadRenderers.firstOrNull { it is LinkPreviewRenderer } as? LinkPreviewRenderer
+        val existingLink = currentPayloadRenderers.filterIsInstance<LinkPreviewRenderer>().firstOrNull()
         if (existingLink != null && existingLink.preview.url != url) {
             currentOnPayloadRenderersChange(withoutLink())
         }
