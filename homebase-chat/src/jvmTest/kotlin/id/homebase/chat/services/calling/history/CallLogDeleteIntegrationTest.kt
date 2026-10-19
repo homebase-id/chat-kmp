@@ -148,7 +148,11 @@ class CallLogDeleteIntegrationTest {
             advanceUntilIdle()
 
             assertTrue(history.entries.first { it.isEmpty() }.isEmpty())
-            assertTrue(actions.isDeletedLocally(id), "DriveMainIndex row is soft-deleted")
+            val identityId = f.credentialsManager.requireActiveCredentials().getIdentityId()
+            assertTrue(
+                f.dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, f.chatDriveId, id)?.isSoftDeleted() == true,
+                "DriveMainIndex row is soft-deleted",
+            )
             val inChat = stream.messageInWindow(convo, id)
             assertTrue(inChat == null || inChat.isDeleted, "the chat window drops the message or keeps only a deleted tombstone")
             val deletes = f.drainOutbox().filter { it.uploadType == DriveOutboxUploader.DeleteFile }

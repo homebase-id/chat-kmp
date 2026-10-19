@@ -148,19 +148,18 @@ class ViewOnceBubbleThreadTest {
 
     private val now = Clock.System.now().toEpochMilliseconds()
 
-    // The recipient's copy once the viewer closed: tombstoned, media gone, the in-viewer emoji kept.
+    // The recipient's copy once the viewer closed: still live, media and caption gone, the in-viewer emoji kept.
     private val openedPlaceholder by lazy {
         val thumbsJson = """{\"emoji\":\"$thumbsUp\"}"""
         runBlocking {
             assertNotNull(
                 mapToMessageData(
                     viewOnceHeader(
-                        fileState = "deleted",
                         createdMs = now - DAY_MS,
                         updatedMs = now - DAY_MS + 60_000,
                         payloadsJson = "null",
                         reactionPreviewJson = """{"reactions":{"a":{"key":"a","count":1,"reactionContent":"$thumbsJson"}}}""",
-                        localReactions = listOf("""{"emoji":"$thumbsUp"}"""),
+                        localReactions = listOf("""{"emoji":"$thumbsUp"}""", """{"emoji":"${ViewOnceSignal.OPENED_CODE}"}"""),
                     ),
                     ownerCredentials(),
                 ),
