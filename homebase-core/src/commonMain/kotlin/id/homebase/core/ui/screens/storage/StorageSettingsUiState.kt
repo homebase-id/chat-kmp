@@ -1,8 +1,12 @@
 package id.homebase.core.ui.screens.storage
 
+import id.homebase.api.client.storage.StorageUsage
 import kotlin.uuid.Uuid
 
 data class StorageSettingsUiState(
+    /** The identity's storage on its Homebase; null when the server has no hosting plans. */
+    val account: StorageUsage? = null,
+    val accountStorageFull: Boolean = false,
     val caches: List<CacheRowState> = emptyList(),
     val coilMemoryCache: CacheRowState? = null,
     val drives: List<DriveRowState> = emptyList(),

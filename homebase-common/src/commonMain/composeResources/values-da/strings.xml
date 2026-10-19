@@ -59,6 +59,13 @@
     <string name="msg_send_attempt">Forsøg %1$d af %2$d</string>
     <string name="msg_waiting_on_earlier_message">Venter på, at en tidligere besked bliver sendt først</string>
     <string name="msg_stuck_reason">Kunne ikke sende: %1$s</string>
+    <string name="msg_storage_full">Ikke sendt: din Homebase-lagerplads er fuld. Den sendes, når du har frigjort plads.</string>
+    <string name="storage_full_upload_failed">Din Homebase-lagerplads er fuld. Slet filer for at gøre plads.</string>
+    <string name="storage_account_title">Homebase-lagerplads</string>
+    <string name="storage_account_usage">%1$s af %2$s brugt</string>
+    <string name="storage_account_usage_unlimited">%1$s brugt</string>
+    <string name="storage_account_plan">Abonnement: %1$s</string>
+    <string name="storage_account_full">Din lagerplads er fuld. Nye billeder, videoer og filer uploades ikke, før du frigør plads.</string>
     <string name="msg_outbox_checked_out_stuck">Fastlåst — uploaden blev ikke færdig og er stadig tjekket ud</string>
     <string name="msg_outbox_entry_lingering">En afventende udbakkepost findes stadig for denne besked</string>
     <string name="msg_waiting_for_connection">Venter på forbindelse</string>

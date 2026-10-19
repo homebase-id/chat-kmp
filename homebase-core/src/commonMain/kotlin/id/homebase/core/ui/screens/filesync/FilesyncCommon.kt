@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -137,6 +138,7 @@ internal fun FilesyncEventsEffect(
                         FilesyncError.Damaged -> MR.string.filesync_damaged
                         FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
                         FilesyncError.TooLarge -> MR.string.filesync_too_large
+                        FilesyncError.StorageFull -> MR.string.storage_full_upload_failed
                         FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
                         FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
                         FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed

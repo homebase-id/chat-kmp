@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.card
 
+import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -208,6 +209,7 @@ fun ProfileCardEditorScreen(
     val uriHandler = getUriHandler()
     val errAvatarUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
     val errAvatarTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
+    val errStorageFull = stringResource(MR.string.storage_full_upload_failed)
     val errAvatarDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
     val importUndo = stringResource(MR.string.profile_card_import_undo)
     val publicLabel = stringResource(MR.string.profile_card_audience_public)
@@ -307,6 +309,7 @@ fun ProfileCardEditorScreen(
                 is ProfileAvatarEditEvent.PhotoSaved -> viewModel.onPhotoChanged()
                 is ProfileAvatarEditEvent.UploadFailed -> launch { snackbarHostState.showSnackbar(errAvatarUpload) }
                 is ProfileAvatarEditEvent.UploadTooLarge -> launch { snackbarHostState.showSnackbar(errAvatarTooLarge) }
+                is ProfileAvatarEditEvent.StorageFull -> launch { snackbarHostState.showSnackbar(errStorageFull) }
                 is ProfileAvatarEditEvent.DeleteFailed -> launch { snackbarHostState.showSnackbar(errAvatarDelete) }
                 ProfileAvatarEditEvent.Back -> Unit
             }

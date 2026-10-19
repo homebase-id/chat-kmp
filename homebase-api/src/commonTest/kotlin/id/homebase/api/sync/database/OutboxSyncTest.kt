@@ -1427,6 +1427,34 @@ class OutboxSyncTest {
     }
 
     @Test
+    fun storageFull_keepsTheRowUnchargedUntilRetryAfter() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader().apply {
+            failureException = id.homebase.api.client.StorageFullException(retryAfter = 3600.seconds, problem = null)
+        }
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+
+        val itemFailed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().first()
+        }
+        testScheduler.runCurrent()
+
+        val (drive, uid) = db.insertRow(priority = 0)
+        val before = id.homebase.api.common.time.UnixTimeUtc.now().milliseconds
+
+        assertTrue(sync.send(force = true))
+        assertEquals(uid, itemFailed.await().uniqueId)
+        sync.clearCheckout(timeoutMs = 5_000)
+
+        val row = db.outbox.selectByDriveAndUnique(drive, uid)
+        assertNotNull(row, "a storage-full message must not be dropped")
+        assertEquals(0L, row.checkOutCount, "storage full must not use up the retry budget")
+        assertTrue(row.nextRunTime >= before + 3_590_000, "it waits out Retry-After, not the 30s backoff")
+        assertTrue(sync.pendingRowSnapshot(drive, uid)!!.storageFull)
+        assertEquals(0, uploader.uploaded.size)
+    }
+
+    @Test
     fun forcedDrain_lowerPriorityNumberDrainsFirst() = runOutboxTest { db ->
         val eventBus = EventBus()
         val uploader = TestUploader()

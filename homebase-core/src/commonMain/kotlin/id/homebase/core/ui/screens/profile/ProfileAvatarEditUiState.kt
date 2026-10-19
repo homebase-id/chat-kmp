@@ -84,6 +84,7 @@ sealed interface ProfileAvatarEditEvent {
     /** The server rejected the photo as too large (400 maxContentLengthExceeded) — distinct from
      *  [UploadFailed] so the UI can prompt for a smaller photo instead of a generic error. */
     data class UploadTooLarge(val visibility: ProfileVisibility) : ProfileAvatarEditEvent
+    data class StorageFull(val visibility: ProfileVisibility) : ProfileAvatarEditEvent
     data class DeleteFailed(val visibility: ProfileVisibility) : ProfileAvatarEditEvent
     /** A photo was stored or removed on the server, so anything built from the attribute list is stale. */
     data class PhotoSaved(val visibility: ProfileVisibility, val circleId: String?) : ProfileAvatarEditEvent

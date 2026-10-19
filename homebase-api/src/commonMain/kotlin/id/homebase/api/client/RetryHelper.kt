@@ -103,7 +103,8 @@ suspend fun <T> withRetryResult(
             lastException = e
 
             // Check if we should retry this specific exception
-            val shouldRetry = config.retryOn?.invoke(e) ?: true
+            // Storage full lasts until files are deleted, far beyond any backoff here
+            val shouldRetry = !e.isStorageFull() && (config.retryOn?.invoke(e) ?: true)
             if (!shouldRetry) {
                 // Warn, not error: the caller's retryOn predicate has already
                 // classified this as an expected/handled failure mode (e.g.

@@ -3,6 +3,8 @@ package id.homebase.api.sync.database
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.isTransientNetworkFailure
+import id.homebase.api.client.storage.StorageQuota
+import id.homebase.api.client.storageFullOrNull
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
@@ -130,6 +132,7 @@ class OutboxSync(
     scope: CoroutineScope? = null,
     private val beginBackgroundAssertion: () -> BackgroundExecutionAssertion =
         { beginBackgroundExecutionAssertion("outbox-drain") },
+    private val storageQuota: StorageQuota? = null,
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: supervisedScope("outbox-sync", ioDispatcher)
@@ -311,6 +314,27 @@ class OutboxSync(
                     )
                     eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Network unreachable"))
                     break // the finally below runs markCheckoutDone
+                }
+
+                // Storage full: the row stays (dropping would lose the message) and is not charged,
+                // since it lasts until files are deleted, far past the backoff budget. It waits out
+                // the server's Retry-After instead of re-uploading the same bytes on the backoff.
+                val storageFull = e.storageFullOrNull()
+                if (storageFull != null) {
+                    val waitSeconds = storageFull.retryAfter?.inWholeSeconds ?: STORAGE_FULL_RETRY_SECONDS
+                    Logger.w(
+                        "OutboxSync: storage full — uniqueId=${outboxRecord.uniqueId} " +
+                            "uploadType=${outboxRecord.uploadTypeLabel()} checked back in uncharged, retry in $waitSeconds s"
+                    )
+                    databaseManager.outbox.checkInUncharged(
+                        outboxRecord.checkOutStamp!!,
+                        UnixTimeUtc.now().addSeconds(waitSeconds).milliseconds
+                    )
+                    recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message, storageFull = true)
+                    storageQuota?.reportStorageFull()
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
+                    eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Storage full"))
+                    continue
                 }
 
                 val attempts = outboxRecord.checkOutCount + 1
@@ -584,23 +608,41 @@ class OutboxSync(
     // (written on the drain worker, read from the UI).
     private val lastErrorMutex = Mutex()
     private val lastUploadErrorByRow = mutableMapOf<Pair<Uuid, Uuid>, String>()
+    private val storageFullRows = mutableSetOf<Pair<Uuid, Uuid>>()
 
-    private suspend fun recordLastUploadError(driveId: Uuid, uniqueId: Uuid, message: String?) {
+    private suspend fun recordLastUploadError(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        message: String?,
+        storageFull: Boolean = false,
+    ) {
         val reason = message?.takeIf { it.isNotBlank() } ?: return
-        lastErrorMutex.withLock { lastUploadErrorByRow[driveId to uniqueId] = reason }
+        lastErrorMutex.withLock {
+            lastUploadErrorByRow[driveId to uniqueId] = reason
+            if (storageFull) storageFullRows.add(driveId to uniqueId) else storageFullRows.remove(driveId to uniqueId)
+        }
     }
 
     private suspend fun clearLastUploadError(driveId: Uuid, uniqueId: Uuid) {
-        lastErrorMutex.withLock { lastUploadErrorByRow.remove(driveId to uniqueId) }
+        lastErrorMutex.withLock {
+            lastUploadErrorByRow.remove(driveId to uniqueId)
+            storageFullRows.remove(driveId to uniqueId)
+        }
     }
 
     private suspend fun lastUploadErrorFor(driveId: Uuid, uniqueId: Uuid): String? =
         lastErrorMutex.withLock { lastUploadErrorByRow[driveId to uniqueId] }
 
+    private suspend fun lastFailureWasStorageFull(driveId: Uuid, uniqueId: Uuid): Boolean =
+        lastErrorMutex.withLock { (driveId to uniqueId) in storageFullRows }
+
     public companion object {
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
+
+        // When a 507 carries no Retry-After; the server sends an hour
+        private const val STORAGE_FULL_RETRY_SECONDS = 3600L
     }
 
     // Checkout stamps of rows currently held by a LIVE upload worker in THIS
@@ -656,6 +698,8 @@ class OutboxSync(
         /** Reason the last upload attempt failed (server message), or null when
          *  no attempt has failed yet this session. */
         val lastError: String? = null,
+        /** The last attempt was refused because the identity's storage is full. */
+        val storageFull: Boolean = false,
     )
 
     public suspend fun pendingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
@@ -674,6 +718,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             dependencyPending = dependencyPending,
             lastError = lastUploadErrorFor(driveId, uniqueId),
+            storageFull = lastFailureWasStorageFull(driveId, uniqueId),
         )
     }
 

@@ -566,6 +566,11 @@ abstract class OdinApiProviderBase(
 
             404 -> throw NotFoundException(parseProblemOrNull(response.body))
 
+            507 -> throw StorageFullException(
+                retryAfter = retryAfterOrNull(response.headers[HttpHeaders.RetryAfter]),
+                problem = parseProblemOrNull(response.body),
+            )
+
             in 500..599 -> {
                 val problem = runCatching {
                     deserialize<ProblemDetails>(response.body)

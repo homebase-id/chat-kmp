@@ -110,6 +110,8 @@ data class MessageInfoUiState(
     val waitingOnEarlierMessage: Boolean = false,
     /** Reason the last send attempt failed — the "why it's stuck" line. */
     val stuckReason: String? = null,
+    /** The last send attempt was refused because the identity's storage is full. */
+    val storageFull: Boolean = false,
     /** Snapshot of the earlier message this one is blocked on (when
      *  [waitingOnEarlierMessage]) — its progress is what's shown, since it's the
      *  message that actually has to send before this one can. */

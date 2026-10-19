@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.api.client.isStorageFull
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.eventbus.BackendEvent
@@ -183,7 +184,7 @@ class FilesyncUploadQueue(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "$what failed" }
             onFailure()
-            _errors.tryEmit(error)
+            _errors.tryEmit(if (e.isStorageFull()) FilesyncError.StorageFull else error)
         }
     }
 

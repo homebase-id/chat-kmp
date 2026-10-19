@@ -197,6 +197,7 @@ class MessageInfoViewModel(
                 nextAttemptAtMs = effective?.let { nextAttemptDeadlineMs(it.isCheckedOut, it.nextRunTime) },
                 waitingOnEarlierMessage = waiting,
                 stuckReason = effective?.lastError,
+                storageFull = effective?.storageFull == true,
                 blockingRow = state.blockingRow,
                 isCheckedOut = effective?.isCheckedOut == true,
                 isActivelyUploading = effective?.isActivelyUploading == true,

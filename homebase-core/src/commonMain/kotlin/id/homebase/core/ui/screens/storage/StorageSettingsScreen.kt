@@ -31,6 +31,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.cache.CacheStats
+import id.homebase.api.client.storage.StorageUsage
 import id.homebase.common.util.formatBytes
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
@@ -57,6 +59,12 @@ import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.settings_data_storage
+import id.homebase.resources.storage_account_full
+import id.homebase.resources.storage_account_plan
+import id.homebase.resources.storage_account_title
+import id.homebase.resources.storage_account_usage
+import id.homebase.resources.storage_account_usage_unlimited
+import id.homebase.resources.storage_full_upload_failed
 import id.homebase.resources.storage_orphan_coil_body
 import id.homebase.resources.storage_orphan_coil_title
 import id.homebase.resources.storage_cache_coil_memory
@@ -157,6 +165,20 @@ fun StorageSettingsUi(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            uiState.account?.let { account ->
+                SettingsSectionHeader(
+                    title = stringResource(MR.string.storage_account_title),
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                AccountStorageCard(account = account)
+                if (uiState.accountStorageFull) {
+                    ErrorCard(
+                        title = stringResource(MR.string.storage_full_upload_failed),
+                        body = stringResource(MR.string.storage_account_full),
+                    )
+                }
+            }
+
             SettingsSectionHeader(
                 title = stringResource(MR.string.storage_caches_header),
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -498,6 +520,40 @@ private fun DriveRow(state: DriveRowState) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun AccountStorageCard(account: StorageUsage) {
+    val quota = account.quotaBytes
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = if (quota != null) {
+                    stringResource(MR.string.storage_account_usage, formatBytes(account.usedBytes), formatBytes(quota))
+                } else {
+                    stringResource(MR.string.storage_account_usage_unlimited, formatBytes(account.usedBytes))
+                },
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (quota != null && quota > 0) {
+                LinearProgressIndicator(
+                    progress = { (account.usedBytes.toFloat() / quota).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = if (account.isOverQuota) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+            }
+            account.planId?.let { plan ->
+                Text(
+                    text = stringResource(MR.string.storage_account_plan, plan),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

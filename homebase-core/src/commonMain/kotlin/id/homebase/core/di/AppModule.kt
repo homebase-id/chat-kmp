@@ -1342,7 +1342,7 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModel {
         val cards = get<ProfileCardSource>()
-        ProfileAvatarEditViewModel(OwnerSessionAvatar(get()), get(), get(), get()) { cards.circles() }
+        ProfileAvatarEditViewModel(OwnerSessionAvatar(get()), get(), get(), get(), storageQuota = get()) { cards.circles() }
     }
     viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)

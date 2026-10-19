@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.profile
 
+import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandHorizontally
@@ -90,6 +91,7 @@ fun ProfileAvatarEditScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val errUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
     val errTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
+    val errStorageFull = stringResource(MR.string.storage_full_upload_failed)
     val errDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
 
     val anonymousPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
@@ -106,6 +108,7 @@ fun ProfileAvatarEditScreen(
                 ProfileAvatarEditEvent.Back -> onBack()
                 is ProfileAvatarEditEvent.UploadFailed -> snackbarHostState.showSnackbar(errUpload)
                 is ProfileAvatarEditEvent.UploadTooLarge -> snackbarHostState.showSnackbar(errTooLarge)
+                is ProfileAvatarEditEvent.StorageFull -> snackbarHostState.showSnackbar(errStorageFull)
                 is ProfileAvatarEditEvent.DeleteFailed -> snackbarHostState.showSnackbar(errDelete)
                 is ProfileAvatarEditEvent.PhotoSaved -> Unit
             }

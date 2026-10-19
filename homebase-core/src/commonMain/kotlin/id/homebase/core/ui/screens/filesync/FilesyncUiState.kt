@@ -90,7 +90,7 @@ sealed interface FilesyncUiAction {
     data class MoveSelection(val by: Int) : FilesyncUiAction
 }
 
-enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, FolderFailed, RestoreFailed, DeleteFailed }
+enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, StorageFull, FolderFailed, RestoreFailed, DeleteFailed }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
 enum class FilesyncNotice { Restored, DeletedForever, ChangedElsewhere }
