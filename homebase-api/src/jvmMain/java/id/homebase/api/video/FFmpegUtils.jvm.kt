@@ -431,7 +431,7 @@ actual object FFmpegUtils {
             cacheFile.absolutePath
         }
 
-    internal suspend fun runProcess(command: List<String>, timeoutMs: Long = PROCESS_TIMEOUT_MS): Int {
+    internal suspend fun runProcess(command: List<String>, timeoutMs: Long? = null): Int {
         Logger.d(LOG_TAG) { "Running: ${command.joinToString(" ")}" }
         val result = runCapturing(command, timeoutMs, onLine = null)
         if (result.exitCode != 0) {
@@ -479,7 +479,7 @@ actual object FFmpegUtils {
         command: List<String>,
         totalDurationMs: Long,
         onProgress: ((Float) -> Unit)?,
-        timeoutMs: Long = PROCESS_TIMEOUT_MS,
+        timeoutMs: Long? = null,
     ): ProcessResult = runCapturing(command, timeoutMs) { line ->
         if (onProgress != null && line.startsWith("out_time_ms=")) {
             val outMs = line.removePrefix("out_time_ms=").toLongOrNull()
@@ -487,14 +487,15 @@ actual object FFmpegUtils {
         }
     }
 
-    // Timeout and cancellation both destroy the process; a timeout reports exitCode -1.
+    // Encodes have no timeout (a long video legitimately runs for many minutes); cancellation and an
+    // explicit timeout both destroy the process, and a timeout reports exitCode -1.
     private suspend fun runCapturing(
         command: List<String>,
-        timeoutMs: Long,
+        timeoutMs: Long?,
         onLine: ((String) -> Unit)?,
     ): ProcessResult {
         val output = StringBuffer()
-        val exitCode = withTimeoutOrNull(timeoutMs) {
+        val exitCode = withTimeoutOrNull(timeoutMs ?: Long.MAX_VALUE) {
             coroutineScope {
                 val process = FFmpegBinaryManager.processBuilder(command)
                     .redirectErrorStream(true)
@@ -555,7 +556,6 @@ actual object FFmpegUtils {
         }
 
     private const val LOG_TAG = "FFmpegUtils"
-    private const val PROCESS_TIMEOUT_MS = 5 * 60 * 1000L
     private const val PROBE_TIMEOUT_MS = 30 * 1000L
 
     // Interruptible, so a cancelled or timed-out caller kills ffmpeg instead of waiting it out.
