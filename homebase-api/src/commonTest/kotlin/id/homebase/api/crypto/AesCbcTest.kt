@@ -4,6 +4,7 @@ package id.homebase.api.crypto
 import id.homebase.api.common.SecureByteArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlinx.coroutines.flow.flowOf
@@ -396,5 +397,69 @@ class AesCbcTest {
         val a = ByteArray(16) { it.toByte() }
         val b = ByteArray(16) { (it + 16).toByte() }
         assertStreamMatchesBulk(a + b, listOf(a, ByteArray(0), b))
+    }
+
+    private suspend fun assertStreamDecryptSplitAt(plaintext: ByteArray, pieceSizes: List<Int>) {
+        val key = ByteArrayUtil.getRndByteArray(16)
+        val iv = ByteArrayUtil.getRndByteArray(16)
+        val ciphertext = AesCbc.encrypt(plaintext, key, iv)
+
+        val pieces = mutableListOf<ByteArray>()
+        var offset = 0
+        var i = 0
+        while (offset < ciphertext.size) {
+            val end = minOf(offset + pieceSizes[i++ % pieceSizes.size], ciphertext.size)
+            pieces += ciphertext.copyOfRange(offset, end)
+            offset = end
+        }
+
+        val decrypted = AesCbc.streamDecryptWithCbc(flowOf(*pieces.toTypedArray()), key, iv).toList()
+            .fold(ByteArray(0)) { acc, b -> acc + b }
+        assertEquals(plaintext.contentToString(), decrypted.contentToString())
+    }
+
+    @Test
+    fun streamDecrypt_unalignedPieces_matchesPlaintext() = runTest {
+        // Network reads arrive in whatever sizes the socket delivers.
+        val plaintext = ByteArray(408_800) { (it * 31).toByte() }
+        assertStreamDecryptSplitAt(plaintext, listOf(8133, 16384, 1, 4097, 65536, 17))
+    }
+
+    @Test
+    fun streamDecrypt_subBlockPieces_matchesPlaintext() = runTest {
+        listOf(1, 7, 15, 17, 31).forEach { size ->
+            assertStreamDecryptSplitAt(ByteArray(100) { it.toByte() }, listOf(size))
+        }
+    }
+
+    @Test
+    fun streamDecrypt_finalPieceOnlyPadding_matchesPlaintext() = runTest {
+        val plaintext = ByteArray(64) { it.toByte() }
+        assertStreamDecryptSplitAt(plaintext, listOf(plaintext.size, 16))
+    }
+
+    @Test
+    fun streamDecrypt_emptyPieceInMiddle_matchesPlaintext() = runTest {
+        val key = ByteArrayUtil.getRndByteArray(16)
+        val iv = ByteArrayUtil.getRndByteArray(16)
+        val plaintext = ByteArray(40) { it.toByte() }
+        val ciphertext = AesCbc.encrypt(plaintext, key, iv)
+        val pieces = arrayOf(ciphertext.copyOfRange(0, 9), ByteArray(0), ciphertext.copyOfRange(9, ciphertext.size))
+
+        val decrypted = AesCbc.streamDecryptWithCbc(flowOf(*pieces), key, iv).toList()
+            .fold(ByteArray(0)) { acc, b -> acc + b }
+        assertEquals(plaintext.contentToString(), decrypted.contentToString())
+    }
+
+    @Test
+    fun streamDecrypt_truncatedCiphertext_throws() = runTest {
+        val key = ByteArrayUtil.getRndByteArray(16)
+        val iv = ByteArrayUtil.getRndByteArray(16)
+        val ciphertext = AesCbc.encrypt(ByteArray(64) { it.toByte() }, key, iv)
+        val truncated = ciphertext.copyOfRange(0, ciphertext.size - 5)
+
+        assertFails {
+            AesCbc.streamDecryptWithCbc(flowOf(truncated.copyOfRange(0, 20), truncated.copyOfRange(20, truncated.size)), key, iv).toList()
+        }
     }
 }

@@ -131,21 +131,7 @@ object AesCbc {
             iv: ByteArray
     ): Flow<ByteArray> = streamEncryptWithCbc(dataStream, key.toByteArray(), iv)
 
-    /**
-     * Stream decrypt data with AES-CBC. Assumes each chunk (apart from last one) is a multiple of
-     * 16 bytes.
-     *
-     * The algorithm:
-     * 1. For each chunk, add artificial padding to enable decryption
-     * 2. Decrypt using the previous block as IV (or initial IV for first chunk)
-     * 3. If decryption fails (last block with real padding), retry without artificial padding
-     * 4. Store the last encrypted block to use as IV for next chunk
-     *
-     * @param dataStream Flow of byte arrays representing the encrypted data stream
-     * @param key Decryption key
-     * @param iv Initialization vector (16 bytes)
-     * @return Flow of decrypted byte arrays
-     */
+    /** Stream decrypt data with AES-CBC. Chunks may be any size, as network reads deliver them. */
     fun streamDecryptWithCbc(
             dataStream: Flow<ByteArray>,
             key: ByteArray,
@@ -154,48 +140,29 @@ object AesCbc {
         require(key.isNotEmpty()) { "Key cannot be empty" }
         require(iv.size == BLOCK_SIZE) { "IV must be $BLOCK_SIZE bytes" }
 
-        val aesKey = aes.keyDecoder().decodeFromByteArray(AES.Key.Format.RAW, key)
-
-        // Padding block filled with 16s (PKCS7 padding for a full block)
+        val cipher = aes.keyDecoder().decodeFromByteArray(AES.Key.Format.RAW, key).cipher()
         val padding = ByteArray(BLOCK_SIZE) { BLOCK_SIZE.toByte() }
+        var carry = ByteArray(0)
+        var chainIv = iv
 
-        var previousIv: ByteArray = iv
-        var bufferedChunk: ByteArray? = null
-
-        dataStream.collect { chunk ->
-            // Process the buffered chunk (if any) - this is NOT the last chunk
-            bufferedChunk?.let { prevChunk ->
-                val cipher = aesKey.cipher()
-
-                // Create artificial padding using the chunk's last block as IV
-                val paddingIv = prevChunk.copyOfRange(prevChunk.size - BLOCK_SIZE, prevChunk.size)
-                val encryptedPadding =
-                        cipher.encryptWithIv(paddingIv, padding).copyOfRange(0, BLOCK_SIZE)
-
-                // Decrypt with artificial padding - PKCS7 will strip the artificial padding
-                val decrypted =
-                        cipher.decryptWithIv(
-                                previousIv,
-                                ByteArrayUtil.combine(prevChunk, encryptedPadding)
-                        )
-
-                // Update IV for next chunk (CBC chaining)
-                previousIv = prevChunk.copyOfRange(prevChunk.size - BLOCK_SIZE, prevChunk.size)
-
-                send(decrypted)
+        dataStream.collect { incoming ->
+            if (incoming.isEmpty()) return@collect
+            val combined = if (carry.isEmpty()) incoming else carry + incoming
+            // Hold back 1..BLOCK_SIZE bytes: the stream's last block carries the real PKCS7 pad.
+            val processSize = ((combined.size - 1) / BLOCK_SIZE) * BLOCK_SIZE
+            if (processSize > 0) {
+                val lastBlock = combined.copyOfRange(processSize - BLOCK_SIZE, processSize)
+                // A full pad block encrypted after lastBlock, so the cipher's unpad strips exactly it.
+                val fakePad = cipher.encryptWithIv(lastBlock, padding).copyOfRange(0, BLOCK_SIZE)
+                send(cipher.decryptWithIv(chainIv, combined.copyOfRange(0, processSize) + fakePad))
+                chainIv = lastBlock
+                carry = combined.copyOfRange(processSize, combined.size)
+            } else {
+                carry = combined
             }
-
-            // Buffer the current chunk for next iteration
-            bufferedChunk = chunk
         }
 
-        // Process the last buffered chunk WITHOUT artificial padding
-        // This lets the library naturally handle the real PKCS7 padding
-        bufferedChunk?.let { lastChunk ->
-            val cipher = aesKey.cipher()
-            val decrypted = cipher.decryptWithIv(previousIv, lastChunk)
-            send(decrypted)
-        }
+        if (carry.isNotEmpty()) send(cipher.decryptWithIv(chainIv, carry))
     }
 
     /** Stream decrypt data with AES-CBC using SecureByteArray key. */

@@ -24,6 +24,7 @@ import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
+import id.homebase.core.ui.screens.card.resetCardNfcService
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.logging.LoggerConfig
@@ -72,6 +73,7 @@ class MainApplication : Application(), KoinComponent {
         // so even an init-time crash gets a written report + the native recovery
         // screen. It needs only Context + PackageManager + static BuildConfig.
         GlobalCrashHandler.install(this)
+        resetCardNfcService(this)
 
         // Initialize storage (must be done before App() which may access storage)
         SecureStorage.initialize(this)

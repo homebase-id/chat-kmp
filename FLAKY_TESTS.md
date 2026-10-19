@@ -90,9 +90,9 @@ even after you fix it. The point is twofold:
     `homebase-chat`-only (Stopped-gate widening); zero overlap with the
     failing test. Passed on retry. Expected until #623 merges to main.
 
-## CardContentTest — `addingAnExistingHiddenItemShowsItOnFriendsOnly` (JVM)
+## CardContentTest — `rendered.last()` read before the redraw (JVM)
 
-- **Status:** Open. Seen once, not reproduced locally (3 of 3 passes).
+- **Status:** Watching. Fixed in the test (#1952); also seen at `publicCardTurnsAnItemOnLiveAndOffBackToItsPreviousCircles` (PR #1951).
 - **Where:** `homebase-core/src/jvmTest/.../ui/screens/card/CardContentTest.kt`
 - **Target:** `homebase-core:jvmTest` in the "Run unittests" CI job.
 - **Symptom:**
@@ -102,10 +102,11 @@ even after you fix it. The point is twofold:
   ```
   The circle assertion on the line before passed: the item was saved to Friends, but the last card
   the fake host drew didn't show the link yet.
-- **Suspected cause (unconfirmed):** `Rig.write` waits for the PUT and for `isContentBusy` to clear,
+- **Cause:** `Rig.write` waits for the PUT and for `isContentBusy` to clear,
   not for the host to redraw. `host.rendered.last()` can still be the Friends card that `open()`
-  waited for, drawn before the toggle. A fix would make `write` (or this assertion) wait for a
-  render that includes the change, the way `open()` waits on the audience.
+  waited for, drawn before the toggle. `ProfileCardViewModel.renderJob` draws in its own coroutine after the
+  state the test waits on settles. Fix: assertions after a write wait on the expected card via
+  `Rig.rendered { }`, the way `open()` waits on the audience.
 - **Recurrences observed:**
   - **2026-10-15, PR #1943 — `filesync-browser-doc-pointer`** (docs only, no overlap).
     [Run unittests](https://github.com/homebase-id/chat-kmp/actions/runs/38699026506/job/116302422721)

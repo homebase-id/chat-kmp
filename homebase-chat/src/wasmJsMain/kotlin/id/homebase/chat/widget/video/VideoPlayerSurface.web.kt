@@ -205,3 +205,5 @@ actual fun VideoPlayerSurface(
         }
     }
 }
+
+actual val nativeVideoControlsOwnTopCorners: Boolean = false
