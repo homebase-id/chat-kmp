@@ -1584,6 +1584,7 @@
     <string name="cd_upload_failed">Upload failed</string>
     <string name="cd_location_pin">Location</string>
     <string name="cd_link_preview_image">Link preview image</string>
+    <string name="cd_link_preview_loading">Loading link preview</string>
     <string name="cd_reply_thumbnail">Reply thumbnail</string>
     <string name="cd_selected">Selected</string>
     <string name="cd_not_selected">Not selected</string>
