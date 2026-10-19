@@ -28,6 +28,7 @@ class ComposerAutocompleteProbeTest {
 
     private val mismatches = mutableListOf<String>()
     private var trace = ""
+    private var composing = ""
 
     @BeforeTest
     fun setUp() = ComposerAutocompleteProbe.install(object : ComposerAutocompleteProbe.Reporter {
@@ -37,6 +38,10 @@ class ComposerAutocompleteProbeTest {
 
         override fun onMismatch(report: String) {
             mismatches += report
+        }
+
+        override fun onComposing(composing: String) {
+            this@ComposerAutocompleteProbeTest.composing = composing
         }
     })
 
@@ -90,6 +95,29 @@ class ComposerAutocompleteProbeTest {
     }
 
     @Test
+    fun aCompositionNamesTheParamsThatDifferFromTheLastApply() {
+        val state = RichTextState()
+        val suggestionsFor = {}
+        fun params(enabled: Boolean, suggestions: Any): List<Pair<String, Any?>> =
+            listOf("state" to state, "suggestionsFor" to suggestions, "enabled" to enabled)
+
+        ComposerAutocompleteProbe.whileComposing("mention", enabled = false, queryPresent = false, params = params(false, suggestionsFor))
+        assertTrue("mention enabled=false query=false, params changed since its last apply: none applied yet" in composing, composing)
+
+        ComposerAutocompleteProbe.check("mention", enabled = false, queryPresent = false, slots = listOf(RecomposeScopeImpl()))
+        ComposerAutocompleteProbe.markApplied("mention")
+        ComposerAutocompleteProbe.whileComposing("mention", enabled = false, queryPresent = false, params = params(false, suggestionsFor))
+        assertTrue("params changed since its last apply: none" in composing, composing)
+
+        ComposerAutocompleteProbe.whileComposing("emoji", enabled = true, queryPresent = false, params = params(true, {}))
+        ComposerAutocompleteProbe.whileComposing("mention", enabled = true, queryPresent = false, params = params(true, {}))
+        val lines = composing.lines()
+        assertEquals(2, lines.size, composing)
+        assertTrue(lines[0].endsWith("mention enabled=true query=false, params changed since its last apply: suggestionsFor, enabled"), composing)
+        assertTrue(lines[1].startsWith("after apply #1: emoji"), composing)
+    }
+
+    @Test
     fun aNullSlotMatchesAnyType() {
         assertTrue(sameLayout(listOf("A", null, "C"), listOf("A", "B", "C")))
         assertTrue(sameLayout(listOf("A", "B", "C"), listOf("A", null, "C")))
@@ -130,6 +158,7 @@ class ComposerAutocompleteProbeTest {
         waitForIdle()
 
         assertTrue(mismatches.isEmpty(), mismatches.joinToString())
+        assertTrue(composing.endsWith("test enabled=true query=false, params changed since its last apply: enabled"), composing)
         assertTrue("MutableTransitionState(true->true)" in trace, trace)
         assertTrue("enabled=false query=false [" in trace, trace)
     }
