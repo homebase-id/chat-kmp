@@ -11,6 +11,9 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.drives.upload.FileIdFileIdentifier
+import id.homebase.api.client.drives.upload.PayloadDeleteKey
+import id.homebase.api.client.drives.upload.UploadAppFileMetaData
+import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
@@ -18,10 +21,12 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.CancelOutcome
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.TombstoneRetention
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.convo.ConversationParticipantLookup
@@ -232,6 +237,9 @@ class ChatMessageActionService(
         fun reactionSetRowKey(messageId: Uuid, scope: String): Uuid =
             Md5.toGuidId("reaction-set:$messageId:$scope")
 
+        // Not the messageId: the reaction rows it waits for themselves wait for any row keyed by the messageId.
+        fun viewOnceStripRowKey(messageId: Uuid): Uuid = Md5.toGuidId("viewonce-strip:$messageId")
+
         private const val TAG = "MarkAsRead"
         private const val REACTIONS_TAG = "ChatReactions"
     }
@@ -357,6 +365,53 @@ class ChatMessageActionService(
         }
 
         optimisticWriter.deleteFile(chatDrive, messageId, recipients, hardDelete, runAfter)
+    }
+
+    /**
+     * Drops every payload of this identity's own copy of a view-once and keeps only its kind,
+     * on this identity alone: the header, its reactions and the opened signal stay. A no-op
+     * once the stored row has no payloads left. [runAfter] as for [deleteMessage].
+     */
+    suspend fun stripViewOnceMedia(messageId: Uuid, runAfter: Uuid? = null) {
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, messageId) ?: return
+        val metadata = file.fileMetadata
+        val payloadKeys = metadata.payloads.orEmpty().map { it.key }
+        if (file.isSoftDeleted() || payloadKeys.isEmpty()) return
+
+        val appData = metadata.appData
+        val keyHeader = KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey)
+        val unencryptedMetadata = UploadFileMetadata(
+            allowDistribution = false,
+            isEncrypted = metadata.isEncrypted,
+            accessControlList = file.serverMetadata.accessControlList,
+            versionTag = metadata.versionTag,
+            appData = UploadAppFileMetaData(
+                uniqueId = messageId,
+                tags = appData.tags,
+                groupId = appData.groupId,
+                fileType = appData.fileType,
+                dataType = appData.dataType,
+                userDate = appData.userDate,
+                archivalStatus = appData.archivalStatus,
+                content = TombstoneRetention.viewOnceKindOnly(appData.content),
+            ),
+        )
+        val request = buildResendUpdateRequest(
+            driveId = chatDrive,
+            messageId = messageId,
+            keyHeader = keyHeader,
+            unencryptedMetadata = unencryptedMetadata,
+            recipients = emptyList(),
+            payloads = emptyList(),
+            toDeletePayloads = payloadKeys.map(::PayloadDeleteKey),
+            thumbnails = emptyList(),
+        )
+        val enqueued = outboxSync.replaceEnqueue(
+            request, priority = 1, dependencyUniqueId = runAfter, uniqueId = viewOnceStripRowKey(messageId),
+        )
+        check(enqueued.enqueued) { "view-once strip not queued (outbox: $enqueued)" }
+        optimisticWriter.writeUpdate(chatDrive, keyHeader, unencryptedMetadata, payloadDescriptors = emptyList())
     }
 
     

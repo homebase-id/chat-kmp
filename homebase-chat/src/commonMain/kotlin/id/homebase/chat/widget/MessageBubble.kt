@@ -224,7 +224,7 @@ fun SentMessageBubble(
     val haptics = rememberHaptics()
     val policy = message.actionPolicy
     val openReactionBar: (() -> Unit)? =
-        if (onAddReaction != null && policy.allowInlineReactions && message.acceptsActions) {
+        if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
             { popupMode = MessagePopupMode.Reaction }
         } else null
 
@@ -245,7 +245,7 @@ fun SentMessageBubble(
             // align with the colored bubble's center, not the bubble+pill.
             val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
             Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
-                if (onMessageInfo != null && isDesktopOrWeb() && message.acceptsActions) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -258,7 +258,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktopOrWeb() && message.acceptsActions) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply.invoke() },
@@ -271,7 +271,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onAddReaction != null && isDesktopOrWeb() && message.acceptsActions) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -284,7 +284,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (popupTransition.shownMode != MessagePopupMode.None && message.acceptsActions) {
+                if (popupTransition.shownMode != MessagePopupMode.None && !message.isDeleted) {
                     SentMessagePopup(
                         transition = popupTransition,
                         handback = handback,
@@ -419,7 +419,7 @@ fun SentMessageBubble(
                         onAddEmoji = openReactionBar,
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                     )
-                    if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction && message.acceptsActions) {
+                    if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction && !message.isDeleted) {
                         BubbleReactionPopup(
                             transition = popupTransition,
                             message = message,
@@ -566,7 +566,7 @@ fun ReceivedMessageBubble(
     val haptics = rememberHaptics()
     val policy = message.actionPolicy
     val openReactionBar: (() -> Unit)? =
-        if (onAddReaction != null && policy.allowInlineReactions && message.acceptsActions) {
+        if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
             { popupMode = MessagePopupMode.Reaction }
         } else null
 
@@ -684,7 +684,7 @@ fun ReceivedMessageBubble(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
                         )
                         if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction &&
-                            message.acceptsActions
+                            !message.isDeleted
                         ) {
                             BubbleReactionPopup(
                                 transition = popupTransition,
@@ -711,7 +711,7 @@ fun ReceivedMessageBubble(
             Row(
                 modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
-                if (onAddReaction != null && isDesktopOrWeb() && message.acceptsActions) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -724,7 +724,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktopOrWeb() && message.acceptsActions) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply() },
@@ -737,7 +737,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onMessageInfo != null && isDesktopOrWeb() && message.acceptsActions) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -751,7 +751,7 @@ fun ReceivedMessageBubble(
                     }
                 }
 
-                if (popupTransition.shownMode != MessagePopupMode.None && message.acceptsActions) {
+                if (popupTransition.shownMode != MessagePopupMode.None && !message.isDeleted) {
                     ReceivedMessagePopup(
                         transition = popupTransition,
                         handback = handback,

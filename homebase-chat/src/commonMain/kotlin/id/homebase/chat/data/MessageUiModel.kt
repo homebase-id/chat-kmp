@@ -74,8 +74,6 @@ data class MessageUiModel(
 
     val keyHeader: KeyHeader,
     val isDeleted: Boolean = false,
-    /** A received view-once this identity opened: its tombstone is a placeholder, not a deletion. */
-    val isOpenedViewOnce: Boolean = false,
     val versionTag: Uuid,
 
     /** When true the item exists in the local-sync database only, most likey because it
@@ -135,9 +133,6 @@ data class MessageUiModel(
             ?.takeIf { (it.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true }
             ?.key
     }
-
-    /** Reply, react and the message menu; [actionPolicy] still decides which of them the kind allows. */
-    val acceptsActions: Boolean get() = !isDeleted || isOpenedViewOnce
 
     val actionPolicy: ActionPolicy
         get() = messageContent?.actions

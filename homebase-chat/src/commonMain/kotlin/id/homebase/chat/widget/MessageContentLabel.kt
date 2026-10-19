@@ -86,13 +86,13 @@ fun messageContentLabel(
     firstPayload: PayloadDescriptor?,
     hasMultiplePayloads: Boolean,
     messageContent: MessageContent? = null,
-    // Null reads the opened variant off [isDeleted]: a received view-once item is deleted once it is spent.
+    // Null reads the opened variant off a missing payload: a received view-once copy loses its media once spent.
     viewOnceOpened: Boolean? = null,
 ): ContentLabel? {
     // Before the deleted check: a spent view-once item keeps its view-once label instead of reading as deleted; "Media" only when this device never stored the live row.
     if (messageContent is MessageContent.ViewOnce) {
         val word = stringResource(messageContent.descriptor.kindLabel())
-        return ContentLabel(word, if (viewOnceOpened ?: isDeleted) ViewOnceOpenedIcon else ViewOnceIcon)
+        return ContentLabel(word, if (viewOnceOpened ?: (firstPayload == null)) ViewOnceOpenedIcon else ViewOnceIcon)
     }
     if (isDeleted) {
         return ContentLabel(

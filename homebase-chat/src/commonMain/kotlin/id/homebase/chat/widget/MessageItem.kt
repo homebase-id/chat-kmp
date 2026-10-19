@@ -189,7 +189,7 @@ fun MessageItem(
         } else null
 
         SwipeableMessageWrapper(
-            enabled = isMobile() && message.acceptsActions,
+            enabled = isMobile() && !message.isDeleted,
             onSwipeRight = onReply,
             onSwipeLeft = onMessageInfo,
         ) {
@@ -250,7 +250,7 @@ fun MessageItem(
         }
 
         SwipeableMessageWrapper(
-            enabled = isMobile() && message.acceptsActions,
+            enabled = isMobile() && !message.isDeleted,
             onSwipeRight = onReply,
             onSwipeLeft = onMessageInfo,
         ) {
