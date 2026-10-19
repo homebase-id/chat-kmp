@@ -59,6 +59,9 @@ public class DriveFileHttpProvider(
 
     companion object {
         private const val TAG = "DriveFileHttpProvider"
+
+        // odin-core's FileVersionTagBatchV2.MaxFiles.
+        const val FILE_BATCH = 1000
     }
 
     // ==================== GET METHODS ====================
@@ -373,6 +376,32 @@ public class DriveFileHttpProvider(
 
         return deserialize<DeleteFileIdBatchResult>(response.body)
 
+    }
+
+    /** Deletes [files] for good, payloads and all, leaving no tombstone: each only at its versionTag. */
+    suspend fun hardDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): PerFileBatchResult =
+        perFileBatch(driveId, "hard-delete-batch", files)
+
+    /** Deletes [files], leaving tombstones: each only at its versionTag. */
+    suspend fun softDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): PerFileBatchResult =
+        perFileBatch(driveId, "soft-delete-batch", files)
+
+    /** One answer per file, in order; one file's answer never stops the others. At most [FILE_BATCH] per call. */
+    private suspend fun perFileBatch(driveId: Uuid, endpoint: String, files: List<FileVersionTag>): PerFileBatchResult {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        require(files.size in 1..FILE_BATCH) { "1 to $FILE_BATCH files, not ${files.size}" }
+        val creds = requireCreds()
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, "/drives/$driveId/files/$endpoint"),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(FileVersionTagBatch(files)),
+            secret = creds.secret
+        )
+
+        throwForFailure(response)
+
+        return deserialize<PerFileBatchResult>(response.body)
     }
 
     /** Deletes files from the drive by group IDs. */

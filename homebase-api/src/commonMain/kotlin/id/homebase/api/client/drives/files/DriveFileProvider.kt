@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
@@ -735,6 +736,20 @@ data class DeleteFileResult(
 data class DeleteFileIdBatchResult (
     val results: List<DeleteFileResult>
 )
+
+/** A file at the version the caller knows: a guarded write leaves it alone once it changed. */
+@Serializable
+data class FileVersionTag(val fileId: Uuid, val versionTag: Uuid)
+
+@Serializable
+data class FileVersionTagBatch(val files: List<FileVersionTag>)
+
+/** [errorCode] is null when the file is gone. */
+@Serializable
+data class PerFileResult(val fileId: Uuid, val errorCode: OdinClientErrorCode? = null)
+
+@Serializable
+data class PerFileBatchResult(val results: List<PerFileResult>)
 
 @Serializable
 data class DeleteFilesByGroupIdBatchResult(

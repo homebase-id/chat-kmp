@@ -13,9 +13,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
+import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -35,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.common.util.formatBytes
+import id.homebase.core.filesync.FilesyncRoleFolder
 import id.homebase.core.ui.screens.vault.components.fileKindIcon
 import id.homebase.core.util.FileKind
 import id.homebase.core.util.formatMediumDate
@@ -158,7 +164,7 @@ internal fun FilesyncNodeRow(
     dimDeleted: Boolean = true,
     trailing: @Composable () -> Unit = {},
 ) {
-    val dim = if (dimDeleted && node.removal != null) Modifier.alpha(DELETED_ALPHA) else Modifier
+    val dim = if (dimDeleted && node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier
     val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
     ListItem(
         modifier = modifier,
@@ -205,12 +211,20 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = node.kind?.let(::fileKindIcon) ?: Icons.Outlined.Folder,
+            imageVector = node.role?.let(::roleFolderIcon) ?: node.kind?.let(::fileKindIcon) ?: Icons.Outlined.Folder,
             contentDescription = null,
             tint = content,
             modifier = Modifier.size(size * 0.55f),
         )
     }
+}
+
+private fun roleFolderIcon(role: FilesyncRoleFolder): ImageVector = when (role) {
+    FilesyncRoleFolder.Documents -> Icons.AutoMirrored.Outlined.LibraryBooks
+    FilesyncRoleFolder.Pictures -> Icons.Outlined.PhotoLibrary
+    FilesyncRoleFolder.Music -> Icons.Outlined.LibraryMusic
+    FilesyncRoleFolder.Videos -> Icons.Outlined.VideoLibrary
+    FilesyncRoleFolder.Downloads -> Icons.Outlined.Download
 }
 
 // Each dot is ringed in [ringColor] so overlapping neighbours stay apart.
@@ -270,8 +284,8 @@ private fun ExecutableBadge() {
 /** A file's size and date, nothing for a folder; a deleted node says when it was deleted instead. */
 @Composable
 internal fun nodeDetails(node: FilesyncNode): String {
-    val removal = node.removal
-    if (removal != null) return deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(removal.atMs)))
+    val removedMs = node.removedMs
+    if (removedMs != null) return deletedAt(formatTimestamp(Instant.fromEpochMilliseconds(removedMs)))
     if (node.isFolder) return ""
     return listOfNotNull(
         node.sizeBytes?.let { formatBytes(it) },

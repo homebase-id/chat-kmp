@@ -6,6 +6,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
@@ -13,7 +14,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,6 +81,7 @@ class FilesyncViewModel(
                     if (installed == true && !wasInstalled) {
                         _uiState.update { it.copy(setupInitiated = false) }
                         loadCurrentFolder()
+                        launch { editor.purgeOnce() }
                     }
                 }
         }
@@ -162,25 +166,22 @@ class FilesyncViewModel(
             FilesyncUiAction.ToggleShowDeleted -> {
                 val show = !_uiState.value.showDeleted
                 // A removed folder can only be browsed while deleted files show.
-                val path = if (show) _uiState.value.path else _uiState.value.path.takeWhile { !it.removed }
+                val path = if (show) _uiState.value.path else _uiState.value.path.takeWhile { it.removedMs == null }
                 arrange { it.copy(showDeleted = show, path = path).withNodes(if (path == it.path) it.nodes else emptyList()) }
                 loadCurrentFolder()
             }
 
             is FilesyncUiAction.Restore -> viewModelScope.launch {
-                if (reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }) {
-                    // Its removed folders came back with it.
-                    _uiState.update { state -> state.copy(path = state.path.map { it.copy(removed = false) }) }
-                }
+                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
             }
         }
     }
 
     private fun open(node: FilesyncNode) {
         when {
-            node.isFolder -> openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, removed = node.removal != null))
+            node.isFolder -> openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, node.removedMs))
             // A deleted file is restored, not opened; the screen asks first.
-            node.removal == null -> transfers.open(node)
+            node.removedMs == null -> transfers.open(node)
         }
     }
 
@@ -193,14 +194,29 @@ class FilesyncViewModel(
     private fun arrange(change: (FilesyncUiState) -> FilesyncUiState) = _uiState.update { change(it).arrange() }
 
     private fun loadCurrentFolder() {
-        val folderId = _uiState.value.path.last().nodeId
+        val path = _uiState.value.path
+        val folderId = path.last().nodeId
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
-                val folder = repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted)
+                val removed = path.filter { it.removedMs != null }.map { it.nodeId }
+                val (folder, now) = coroutineScope {
+                    val folder = async { repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted) }
+                    // A restore from anywhere makes a removed crumb live again: ask the drive, not the trail.
+                    val now = async { if (removed.isEmpty()) emptyMap() else repository.findNodes(removed, ArchivalStatus.Removed, ArchivalStatus.None).nodes }
+                    folder.await() to now.await()
+                }
                 transfers.handles = folder.handles
-                arrange { it.copy(isLoading = false).withNodes(folder.nodes.values.toList()) }
+                // One deleted for good stays removed: nothing may be uploaded into it.
+                val current = path.map { crumb ->
+                    val node = now[crumb.nodeId]
+                    if (crumb.removedMs == null || node == null) crumb else crumb.copy(removedMs = node.removedMs)
+                }
+                // In a removed folder, what is still live but written before its removal was deleted with it.
+                val folderDeletedMs = current.last().removedMs
+                val nodes = folder.nodes.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
+                arrange { state -> state.copy(isLoading = false, path = if (state.path == path) current else state.path).withNodes(nodes) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

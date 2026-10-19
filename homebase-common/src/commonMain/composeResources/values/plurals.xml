@@ -72,6 +72,10 @@
         <item quantity="one">Delete %1$d item forever? It will be gone from all your devices.</item>
         <item quantity="other">Delete %1$d items forever? They will be gone from all your devices.</item>
     </plurals>
+    <plurals name="filesync_role_folder_returns">
+        <item quantity="one">A computer that syncs %2$s brings it back, with what was in it, at its next sync. To delete it for good, stop syncing it on every computer first.</item>
+        <item quantity="other">A computer that syncs %2$s brings them back, with what was in them, at its next sync. To delete them for good, stop syncing them on every computer first.</item>
+    </plurals>
     <plurals name="profile_card_import_count">
         <item quantity="one">%1$d new item</item>
         <item quantity="other">%1$d new items</item>

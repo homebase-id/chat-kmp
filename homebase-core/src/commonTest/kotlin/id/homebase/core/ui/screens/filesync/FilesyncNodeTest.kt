@@ -70,7 +70,7 @@ class FilesyncNodeTest {
         assertEquals("Photos", node.name)
         assertEquals(nodeId, node.nodeId)
         assertNull(handle.payload)
-        assertNull(node.removal)
+        assertNull(node.removedMs)
     }
 
     @Test
@@ -150,36 +150,22 @@ class FilesyncNodeTest {
         assertEquals(setOf("v", "name", "mtime", "size", "x", "ct", "later"), handle.content.keys)
     }
 
-    // The content of filesync's fixture removed-node.json.
     @Test
-    fun aRemovedNodeTakesItsRemovalFromRm() {
-        val content = """{"v":1,"name":"Résumé.txt","mtime":1759920000123,"size":1025,"rm":{"at":1759920005000,"root":"c9f0f895-fb98-4b91-9b5e-0a1b2c3d4e60"}}"""
-        val (node, _) = row(FilesyncProtocol.FileFileType, content, listOf(syncData), status = ArchivalStatus.Removed).toFilesyncNode()!!
-        assertEquals(FilesyncRemoval(1759920005000, Uuid.parse("c9f0f895-fb98-4b91-9b5e-0a1b2c3d4e60")), node.removal)
-    }
-
-    @Test
-    fun aRemovedNodeWithoutAReadableRmIsRemovedOnItsOwnAtItsUpdate() {
-        for (rm in listOf("", ""","rm":{"at":"soon","root":"x"}""", ""","rm":{"at":5}""")) {
+    fun aRemovedNodeWasRemovedAtItsUpdateWhateverItsRmSays() {
+        for (rm in listOf("", ""","rm":{"at":5,"root":"${Uuid.random()}"}""")) {
             val content = """{"v":1,"name":"a"$rm}"""
             val (node, _) = row(FilesyncProtocol.FolderFileType, content, status = ArchivalStatus.Removed).toFilesyncNode()!!
-            assertEquals(FilesyncRemoval(UPDATED_MS, nodeId), node.removal, rm)
+            assertEquals(UPDATED_MS, node.removedMs, rm)
         }
     }
 
     @Test
-    fun aFractionalRemovalTimeIsRounded() {
-        val root = Uuid.random()
-        val content = """{"v":1,"name":"a","rm":{"at":1759920005000.6,"root":"$root"}}"""
-        val (node, _) = row(FilesyncProtocol.FolderFileType, content, status = ArchivalStatus.Removed).toFilesyncNode()!!
-        assertEquals(FilesyncRemoval(1759920005001, root), node.removal)
-    }
-
-    @Test
     fun onlyStatusTwoRemoves() {
-        val content = """{"v":1,"name":"a","rm":{"at":5,"root":"${Uuid.random()}"}}"""
+        val content = """{"v":1,"name":"a"}"""
         for (status in listOf(null, ArchivalStatus.None, ArchivalStatus.Archived)) {
-            assertNull(row(FilesyncProtocol.FolderFileType, content, status = status).toFilesyncNode()!!.first.removal)
+            val node = row(FilesyncProtocol.FolderFileType, content, status = status).toFilesyncNode()!!.first
+            assertNull(node.removedMs)
+            assertEquals(UPDATED_MS, node.updatedMs)
         }
     }
 

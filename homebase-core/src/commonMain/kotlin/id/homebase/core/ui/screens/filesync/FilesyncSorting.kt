@@ -17,7 +17,7 @@ data class FilesyncSort(val key: FilesyncSortKey = FilesyncSortKey.Name, val asc
 data class FilesyncTotals(val folders: Int = 0, val files: Int = 0, val bytes: Long = 0)
 
 /**
- * What the list shows: [query] and [tag] narrow it, then folders come first in either direction.
+ * What the list shows: [query] and [tag] narrow it, then folders come first in either direction, role folders first of all.
  * A missing date or size sorts last, and ties fall back to the name.
  */
 internal fun List<FilesyncNode>.arranged(sort: FilesyncSort, query: String = "", tag: String? = null): List<FilesyncNode> {
@@ -31,7 +31,7 @@ internal fun List<FilesyncNode>.arranged(sort: FilesyncSort, query: String = "",
     }
     return filter { node ->
         (needle.isEmpty() || needle in node.nameKey) && (tag == null || node.tags.any { it.name == tag })
-    }.sortedWith(compareBy<FilesyncNode> { !it.isFolder }.then(byKey))
+    }.sortedWith(compareBy<FilesyncNode> { !it.isFolder }.thenBy(nullsLast()) { it.role }.then(byKey))
 }
 
 // By family, not by label: documents, then media, then the rest; the labels are translated, the order isn't.
