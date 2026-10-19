@@ -85,11 +85,11 @@ class FilesyncEditor(
                         else -> FilesyncProtocol.RootNodeId
                     }
                     val handle = trash.all.handles.getValue(node.nodeId)
-                    val versionTag = handle.versionTag
+                    val version = handle.fileVersionTag
                     when {
                         target == null || !handle.writable -> skipped++
-                        target == node.parentId && versionTag != null && taken(target).add(FilesyncNames.key(node.name)) ->
-                            batch += FileVersionTag(handle.fileId, versionTag) to node
+                        target == node.parentId && version != null && taken(target).add(FilesyncNames.key(node.name)) ->
+                            batch += version to node
                         else -> rewrites += node to target
                     }
                 }
@@ -217,14 +217,16 @@ class FilesyncEditor(
             kept++
             keep(node)
         }
+        // Rows going in this delete don't hold their folders, else a cycle of removed folders, all in one pass, never goes.
+        val going = doomed.keys.mapNotNull { now.all.handles.getValue(it).fileVersionTag }.toSet()
         try {
             for (pass in now.deleteOrder(doomed.values)) {
                 val folders = pass.filter { it.isFolder && it.nodeId in doomed }.map { it.nodeId }
                 if (folders.isNotEmpty()) {
-                    repository.holdingLive(folders).forEach { id -> doomed.remove(id)?.let(::stays) }
+                    repository.holding(folders, except = going).forEach { id -> doomed.remove(id)?.let(::stays) }
                 }
                 val handles = pass.filter { it.nodeId in doomed }.associateWith { now.all.handles.getValue(it.nodeId) }
-                val versioned = handles.values.mapNotNull { h -> h.versionTag?.let { FileVersionTag(h.fileId, it) } }
+                val versioned = handles.values.mapNotNull { it.fileVersionTag }
                 sent = sent || versioned.isNotEmpty()
                 val gone = delete(versioned, hard, refused)
                 for ((node, handle) in handles) {
