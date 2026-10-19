@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.JvmFileSystemUtil
@@ -424,7 +425,7 @@ actual object FFmpegUtils {
         }
 
     private fun runProcess(command: List<String>): Int {
-        val processBuilder = ProcessBuilder(command).redirectErrorStream(true)
+        val processBuilder = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true)
 
         println("Running: ${command.joinToString(" ")}")
 
@@ -440,7 +441,7 @@ actual object FFmpegUtils {
     }
 
     private fun runProcessWithOutput(command: List<String>): String {
-        val processBuilder = ProcessBuilder(command).redirectErrorStream(true)
+        val processBuilder = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true)
 
         val process = processBuilder.start()
         val output = process.inputStream.bufferedReader().use(BufferedReader::readText)
@@ -486,7 +487,7 @@ actual object FFmpegUtils {
         totalDurationMs: Long,
         onProgress: ((Float) -> Unit)?
     ): ProcessResult {
-        val process = ProcessBuilder(command)
+        val process = FFmpegBinaryManager.processBuilder(command)
             .redirectErrorStream(true)
             .start()
 
@@ -517,10 +518,52 @@ actual object FFmpegUtils {
         )
     }
 
-    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean {
-        // Desktop HLS→MP4 export not implemented yet (VLC-J, no bundled FFmpeg).
-        return false
-    }
+    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!FFmpegBinaryManager.isAvailable()) {
+                Logger.e(LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
+                return@withContext false
+            }
+            val command = listOf(
+                FFmpegBinaryManager.ffmpegPath(),
+                "-y",
+                "-allowed_extensions", "ALL",
+                "-i", playlistPath,
+                "-c", "copy",
+                "-bsf:a", "aac_adtstoasc",
+                "-movflags", "+faststart",
+                outputPath,
+            )
+            val logFile = File(scratchDirPath, "remux_${UUID.randomUUID()}.log")
+            try {
+                val process = FFmpegBinaryManager.processBuilder(command)
+                    .redirectErrorStream(true)
+                    .redirectOutput(logFile)
+                    .start()
+                val exitCode = process.waitForOrDestroy()
+                val ok = exitCode == 0 && File(outputPath).length() > 0L
+                if (!ok) {
+                    Logger.e(LOG_TAG) {
+                        "Remux HLS->MP4 failed, exit=$exitCode, output tail:\n" +
+                            logFile.readLines().takeLast(20).joinToString("\n")
+                    }
+                    deleteFailedFfmpegOutput(outputPath)
+                }
+                ok
+            } finally {
+                logFile.delete()
+            }
+        }
+
+    private const val LOG_TAG = "FFmpegUtils"
+
+    // Interruptible, so a cancelled or timed-out caller kills ffmpeg instead of waiting it out.
+    private suspend fun Process.waitForOrDestroy(): Int =
+        try {
+            runInterruptible { waitFor() }
+        } finally {
+            destroyForcibly()
+        }
 
     actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
         withContext(Dispatchers.IO) {
@@ -532,17 +575,11 @@ actual object FFmpegUtils {
                 inFile.writeBytes(input)
                 val command = listOf(FFmpegBinaryManager.ffmpegPath(), "-y", "-i", inFile.absolutePath) +
                     outputArgs + outFile.absolutePath
-                val process = ProcessBuilder(command)
+                val process = FFmpegBinaryManager.processBuilder(command)
                     .redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .start()
-                // Interruptible, so a cancelled or timed-out caller kills ffmpeg instead of waiting it out.
-                val exitCode = try {
-                    runInterruptible { process.waitFor() }
-                } finally {
-                    process.destroyForcibly()
-                }
-                if (exitCode == 0) outFile.readBytes() else null
+                if (process.waitForOrDestroy() == 0) outFile.readBytes() else null
             } finally {
                 inFile.delete()
                 outFile.delete()

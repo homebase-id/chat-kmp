@@ -62,7 +62,7 @@ internal class FFmpegSubprocessVideoDecoder : VideoDecoder {
                 File(outputDir, "f_%04d.jpg").absolutePath,
             )
 
-            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val process = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true).start()
 
             // Watch the dir while ffmpeg runs; emit frames as they appear.
             val emitted = HashSet<Int>()

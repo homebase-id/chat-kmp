@@ -615,7 +615,10 @@ internal class MediaDownloadHandler(
             outputPath = tsPath,
             fileOps = fileOperationsProvider,
         )
-        if (!tsOk) return null
+        if (!tsOk) {
+            Logger.e(tag = "HlsSave") { "HLS save failed at download/decrypt of payload $payloadKey (file $fileId)" }
+            return null
+        }
 
         // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite segment
         // references to point at the local .ts file we just wrote.
@@ -638,7 +641,10 @@ internal class MediaDownloadHandler(
         runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
         runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
 
-        if (!ok) return null
+        if (!ok) {
+            Logger.e(tag = "HlsSave") { "HLS save failed at remux to mp4 (payload $payloadKey, file $fileId)" }
+            return null
+        }
 
         val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
         val safeBase = base.replace('/', '_').replace('\\', '_').replace('\u0000', '_')
