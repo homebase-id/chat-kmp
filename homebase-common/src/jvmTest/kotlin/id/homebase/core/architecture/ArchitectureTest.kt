@@ -23,6 +23,20 @@ class ArchitectureTest {
     }
 
     @Test
+    fun `ffmpeg is launched only through FFmpegBinaryManager`() {
+        Konsist.scopeFromProject()
+            .files
+            .filter { it.path.replace('\\', '/').contains("/homebase-api/src/jvmMain/") }
+            .filter { !it.hasNameEndingWith("FFmpegBinaryManager") }
+            .assertFalse(
+                additionalMessage = "A raw ProcessBuilder( skips the GCONV_PATH guard that stops the " +
+                    "Linux ffmpeg SIGSEGV. Use FFmpegBinaryManager.processBuilder."
+            ) {
+                it.text.contains("ProcessBuilder(")
+            }
+    }
+
+    @Test
     fun `No hardcoded strings in Composables`() {
         Konsist.scopeFromProject()
             .files
