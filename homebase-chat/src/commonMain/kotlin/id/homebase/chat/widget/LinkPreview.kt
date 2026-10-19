@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -28,6 +29,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -46,6 +49,7 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_link_preview_image
+import id.homebase.resources.cd_link_preview_loading
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
@@ -126,6 +130,42 @@ private fun LinkPreviewTextContent(
     )
 }
 
+@Composable
+private fun Modifier.compactLinkPreviewContainer(): Modifier = fillMaxWidth()
+    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp))
+    .clip(RoundedCornerShape(12.dp))
+
+@Composable
+private fun CompactLinkPreviewCancelButton(onCancel: () -> Unit) {
+    IconButton(onClick = onCancel, modifier = Modifier.padding(8.dp)) {
+        Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(MR.string.cancel))
+    }
+}
+
+/** Compact placeholder for a link whose preview is still being fetched. */
+@Composable
+fun LinkPreviewLoadingCard(
+    url: String,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val loadingDescription = stringResource(MR.string.cd_link_preview_loading)
+    Row(
+        modifier = modifier.compactLinkPreviewContainer(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.padding(start = 12.dp).size(20.dp)
+                .semantics { contentDescription = loadingDescription },
+            strokeWidth = 2.dp,
+        )
+        Column(modifier = Modifier.weight(1f).padding(12.dp)) {
+            LinkPreviewTextContent(title = "", description = "", domain = extractDomain(url), maxTitleLines = 1)
+        }
+        CompactLinkPreviewCancelButton(onCancel)
+    }
+}
+
 // ─── Sender-side card (base64 images from LinkPreview) ──────────────────────
 
 /**
@@ -164,9 +204,7 @@ fun LinkPreviewCard(
 
     if (isCompact) {
         Row(
-            modifier = modifier.fillMaxWidth().background(
-                MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)
-            ).clip(RoundedCornerShape(12.dp)).clickable { uriHandler.openUri(linkPreview.url) },
+            modifier = modifier.compactLinkPreviewContainer().clickable { uriHandler.openUri(linkPreview.url) },
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f).padding(12.dp)) {
@@ -206,9 +244,7 @@ fun LinkPreviewCard(
                     }
                 }
             } else if (onCancel != null) {
-                IconButton(onClick = onCancel, modifier = Modifier.padding(8.dp)) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(MR.string.cancel))
-                }
+                CompactLinkPreviewCancelButton(onCancel)
             }
         }
     } else {

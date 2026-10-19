@@ -1191,6 +1191,7 @@
     <string name="cd_upload_failed">Upload mislykkedes</string>
     <string name="cd_location_pin">Placering</string>
     <string name="cd_link_preview_image">Linkforhåndsvisningsbillede</string>
+    <string name="cd_link_preview_loading">Indlæser linkforhåndsvisning</string>
     <string name="cd_reply_thumbnail">Svarminiature</string>
     <string name="cd_selected">Valgt</string>
     <string name="cd_not_selected">Ikke valgt</string>
