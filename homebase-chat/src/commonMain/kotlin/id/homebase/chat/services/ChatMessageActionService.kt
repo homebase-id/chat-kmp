@@ -294,12 +294,6 @@ class ChatMessageActionService(
 
     // -------------------- DELETE --------------------
 
-    /** The stored row's state, not a caller's possibly stale copy: a queued delete tombstones it at once. */
-    suspend fun isDeletedLocally(messageId: Uuid): Boolean {
-        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
-        return dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, messageId)?.isSoftDeleted() == true
-    }
-
     /**
      * [runAfter] is an outbox row key (see [reactionSetRowKey]) the server delete must wait for,
      * for a caller whose earlier queued write would otherwise race the delete and lose.
@@ -367,11 +361,7 @@ class ChatMessageActionService(
         optimisticWriter.deleteFile(chatDrive, messageId, recipients, hardDelete, runAfter)
     }
 
-    /**
-     * Drops every payload of this identity's own copy of a view-once and keeps only its kind,
-     * on this identity alone: the header, its reactions and the opened signal stay. A no-op
-     * once the stored row has no payloads left. [runAfter] as for [deleteMessage].
-     */
+    // An update, not a delete, so the server keeps the header's reactions and the `_vo` opened signal.
     suspend fun stripViewOnceMedia(messageId: Uuid, runAfter: Uuid? = null) {
         val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
         val file = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, messageId) ?: return
