@@ -201,11 +201,19 @@ class FilesyncViewModel(
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
                 val removed = path.filter { it.removedMs != null }.map { it.nodeId }
+                val showDeleted = _uiState.value.showDeleted
                 val (folder, now) = coroutineScope {
-                    val folder = async { repository.listFolder(folderId, includeRemoved = _uiState.value.showDeleted) }
+                    val folder = async { repository.listFolder(folderId, includeRemoved = showDeleted) }
                     // A restore from anywhere makes a removed crumb live again: ask the drive, not the trail.
                     val now = async { if (removed.isEmpty()) emptyMap() else repository.findNodes(removed, ArchivalStatus.Removed, ArchivalStatus.None).nodes }
                     folder.await() to now.await()
+                }
+                // Recovered files stays hidden until a computer moves something into it; nothing removes it when empty.
+                val recovered = FilesyncProtocol.RecoveredFilesNodeId
+                val listed = if (folderId == FilesyncProtocol.RootNodeId && recovered in folder.nodes && !repository.holdsAny(recovered, showDeleted)) {
+                    folder.nodes - recovered
+                } else {
+                    folder.nodes
                 }
                 transfers.handles = folder.handles
                 // One deleted for good stays removed: nothing may be uploaded into it.
@@ -215,7 +223,7 @@ class FilesyncViewModel(
                 }
                 // In a removed folder, what is still live but written before its removal was deleted with it.
                 val folderDeletedMs = current.last().removedMs
-                val nodes = folder.nodes.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
+                val nodes = listed.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
                 arrange { state -> state.copy(isLoading = false, path = if (state.path == path) current else state.path).withNodes(nodes) }
             } catch (e: CancellationException) {
                 throw e
