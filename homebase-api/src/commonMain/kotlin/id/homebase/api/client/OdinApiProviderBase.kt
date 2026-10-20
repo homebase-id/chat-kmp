@@ -128,19 +128,14 @@ abstract class OdinApiProviderBase(
         // response headers from cross-origin (CORS) responses unless the server sends
         // `Access-Control-Expose-Headers: X-SSE`, so on web we fall back to detecting the
         // {"iv","data"} envelope by shape and decrypt it anyway.
-        val body =
-            if (secret != null &&
-                (response.headers["X-SSE"] == "1" || looksLikeEncryptedEnvelope(rawBody))
-            ) {
-                CryptoHelper.decryptContentAsString(rawBody, secret.unsafeBytes)
-            } else {
-                rawBody
-            }
+        val key = secret?.takeIf { response.headers["X-SSE"] == "1" || looksLikeEncryptedEnvelope(rawBody) }
+        val body = key?.let { CryptoHelper.decryptContentAsString(rawBody, it.unsafeBytes) } ?: rawBody
 
         return ApiResponse(
             status = response.status.value,
             headers = response.headers,
-            body = body
+            body = body,
+            sealed = key != null
         )
     }
 
@@ -534,6 +529,10 @@ abstract class OdinApiProviderBase(
     private fun parseProblemOrNull(body: String): ProblemDetails? =
         runCatching { deserialize<ProblemDetails>(body) }.getOrNull()
 
+    /** odin-core answered, not a proxy in front of it: its version header, and a body sealed or ProblemDetails of this status. */
+    protected fun ApiResponse.fromIdentity(problem: ProblemDetails? = parseProblemOrNull(body)): Boolean =
+        "X-Odin-Version" in headers && (sealed || problem?.status == status)
+
     protected fun throwForFailure(response: ApiResponse) {
         if (response.status in 200..299) return
 
@@ -564,7 +563,7 @@ abstract class OdinApiProviderBase(
                 throw ForbiddenException(problem)
             }
 
-            404 -> throw NotFoundException(parseProblemOrNull(response.body))
+            404 -> parseProblemOrNull(response.body).let { throw NotFoundException(it, response.fromIdentity(it)) }
 
             in 500..599 -> {
                 val problem = runCatching {

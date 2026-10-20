@@ -5,5 +5,6 @@ import io.ktor.http.Headers
 data class ApiResponse(
     val status: Int,
     val headers: Headers,
-    val body: String
+    val body: String,
+    val sealed: Boolean = false
 )

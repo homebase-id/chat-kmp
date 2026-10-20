@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -51,6 +52,7 @@ class FilesyncEditorTest {
     private val handle = FilesyncHandle(Uuid.random(), versionTag, FilesyncProtocol.FileFileType, fileKey, removedContent, payload = null)
 
     private var reply: () -> Pair<HttpStatusCode, String> = { HttpStatusCode.OK to """{"newVersionTag":"${Uuid.random()}"}""" }
+    private var headers = headersOf(HttpHeaders.ContentType to listOf("application/json"), "X-Odin-Version" to listOf("1.0"))
     private lateinit var editor: FilesyncEditor
 
     @BeforeTest
@@ -59,7 +61,7 @@ class FilesyncEditorTest {
         credentials.setActiveCredentials(ApiCredentials.create(OdinId("frodo.dotyou.cloud"), "token", SecureByteArray(ByteArray(16) { 3 })))
         val engine = MockEngine {
             val (status, body) = reply()
-            respond(body, status, headersOf(HttpHeaders.ContentType, "application/json"))
+            respond(body, status, headers)
         }
         val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, Files.createTempDirectory("filesync-editor").toString())
         val http = HttpClient(engine)
@@ -99,6 +101,13 @@ class FilesyncEditorTest {
             reply = { HttpStatusCode.fromValue(error.first) to """{"title":"no","status":${error.first},"errorCode":${error.second}}""" }
             assertFalse(editor.write(nodeId, handle, removedContent, FilesyncProtocol.RootNodeId), "$error")
         }
+    }
+
+    @Test
+    fun aNotFoundFromInFrontOfTheIdentityIsAnError() = runTest {
+        headers = headersOf(HttpHeaders.ContentType, "text/html")
+        reply = { HttpStatusCode.NotFound to "<html>maintenance</html>" }
+        assertFailsWith<NotFoundException> { editor.write(nodeId, handle, removedContent, FilesyncProtocol.RootNodeId) }
     }
 
     @Test
