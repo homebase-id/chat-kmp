@@ -44,6 +44,8 @@ class AvatarResolver(private val contacts: StateFlow<List<Contact>>) {
             .distinctUntilChanged()
 }
 
+private const val SVG_CONTENT_TYPE = "image/svg+xml"
+
 internal fun resolveAvatar(
     odinId: OdinId,
     contacts: List<Contact>,
@@ -55,7 +57,8 @@ internal fun resolveAvatar(
         ?: displayName?.let { ContactName(displayName = it).initials().takeUnless { i -> i == "?" } }
         ?: odinId.domainName.truncateToCodePoints(1).uppercase()
 
-    val image = matches.firstNotNullOfOrNull { it.image }
+    // A synced SVG is the server's generated initials placeholder, and Skia drops its text.
+    val image = matches.firstNotNullOfOrNull { it.image?.takeUnless { img -> img.payload.contentType == SVG_CONTENT_TYPE } }
         ?.takeIf { capability == AvatarCapability.Any || !it.isEncrypted }
 
     return if (image != null) {

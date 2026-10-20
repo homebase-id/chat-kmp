@@ -11,10 +11,10 @@ class AvatarResolverTest {
 
     private val frodo = OdinId("frodo.dotyou.cloud")
 
-    private fun image(encrypted: Boolean) = ContactImageRef(
+    private fun image(encrypted: Boolean, contentType: String = "image/webp") = ContactImageRef(
         driveId = Uuid.random(),
         fileId = Uuid.random(),
-        payload = PayloadDescriptor(key = "prfl_pic"),
+        payload = PayloadDescriptor(key = "prfl_pic", contentType = contentType),
         previewThumbnail = null,
         keyHeader = null,
         isEncrypted = encrypted,
@@ -51,6 +51,24 @@ class AvatarResolverTest {
     fun unencryptedOnlyKeepsAnUnencryptedStoredPhoto() {
         val source = resolveAvatar(frodo, listOf(contact(image = image(encrypted = false))), AvatarCapability.UnencryptedOnly)
         assertIs<AvatarSource.StoredPhoto>(source)
+    }
+
+    @Test
+    fun aSyncedSvgPlaceholderFallsBackToThePublicAvatar() {
+        val source = resolveAvatar(frodo, listOf(contact(image = image(encrypted = true, contentType = "image/svg+xml"))), AvatarCapability.Any)
+        assertEquals(AvatarSource.PublicPhoto(frodo, "FB"), source)
+    }
+
+    @Test
+    fun aRealPhotoOnADuplicateWinsOverAnSvgPlaceholder() {
+        val photo = image(encrypted = true)
+        val source = resolveAvatar(
+            frodo,
+            listOf(contact(image = image(encrypted = true, contentType = "image/svg+xml")), contact(image = photo)),
+            AvatarCapability.Any,
+        )
+        assertIs<AvatarSource.StoredPhoto>(source)
+        assertEquals(photo, source.image)
     }
 
     @Test
