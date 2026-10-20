@@ -52,6 +52,10 @@ data class ContactImageRef(
     val isEncrypted: Boolean,
 )
 
+// A peer with no photo syncs the server's generated initials as SVG, which Skia renders without its text.
+internal val ContactImageRef.isGeneratedInitials: Boolean
+    get() = payload.contentType == "image/svg+xml"
+
 /**
  * Parses a Contacts-drive [HomebaseFile] into a [Contact], or null when there's no usable header
  * content (missing `uniqueId`/`content`, or unparseable JSON). The V2 controller always embeds the

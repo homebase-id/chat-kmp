@@ -37,7 +37,7 @@ class ContactInfoGateway internal constructor(
     // The synced prfl_pic first: a peer with no public picture serves a generated initials image.
     suspend fun avatarBytes(odinId: OdinId): ByteArray? {
         val contact = localContact(odinId)
-        contact?.image?.let { ref -> localAvatarBytes(contact, ref)?.let { return it } }
+        contact?.image?.takeUnless { it.isGeneratedInitials }?.let { ref -> localAvatarBytes(contact, ref)?.let { return it } }
         return publicProfiles.getPublicImage(odinId)
     }
 
