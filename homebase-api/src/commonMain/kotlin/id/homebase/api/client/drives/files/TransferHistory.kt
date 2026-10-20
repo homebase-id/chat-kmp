@@ -19,7 +19,8 @@ data class RecipientTransferSummary(
 data class RecipientTransferHistoryEntry(
     val recipient: String,
     val lastUpdated: Long,
-    val latestTransferStatus: TransferStatus,
+    // Defaulted so a status this app does not know yet decodes as None (coerceInputValues) instead of failing the list
+    val latestTransferStatus: TransferStatus = TransferStatus.None,
     val isInOutbox: Boolean,
     val latestSuccessfullyDeliveredVersionTag: String? = null,
     val isReadByRecipient: Boolean = false, //TODO: remove when is in production readByRecipientTimestamp

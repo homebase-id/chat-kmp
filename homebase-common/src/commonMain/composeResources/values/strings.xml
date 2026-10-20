@@ -67,6 +67,8 @@
     <string name="storage_account_usage_unlimited">%1$s used</string>
     <string name="storage_account_plan">Plan: %1$s</string>
     <string name="storage_account_full">Your storage is full. New photos, videos and files won't upload until you free up space.</string>
+    <string name="storage_full_banner_title">Your Homebase storage is full. Messages with photos or files are waiting.</string>
+    <string name="storage_full_banner_body">Messages without photos or files still send and arrive.</string>
     <string name="msg_outbox_checked_out_stuck">Stuck — the upload didn't finish and is still checked out</string>
     <string name="msg_outbox_entry_lingering">A pending outbox entry is still present for this message</string>
     <string name="msg_waiting_for_connection">Waiting for connection</string>
@@ -79,6 +81,7 @@
     <string name="error_access_denied">Access denied</string>
     <string name="error_too_many_attempts">Too many attempts</string>
     <string name="error_delivery_failed">Delivery failed</string>
+    <string name="error_recipient_storage_full">Waiting: their storage is full. It will be delivered when they make room.</string>
     <string name="connect">Connect</string>
     <string name="auto_connect_blocked">Cannot connect with %1$s.</string>
     <string name="auto_connect_recipient_unreachable">Couldn't reach %1$s. Try again later.</string>

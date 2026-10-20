@@ -219,6 +219,7 @@ import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
+import id.homebase.core.ui.screens.storage.StorageFullHost
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
@@ -1332,98 +1333,101 @@ fun AppNavHost(
                                         onSaved = { name, uniqueId -> savedContact = name to uniqueId },
                                     )
                                     val connectRequestViewModel: ConnectRequestViewModel = koinViewModel()
-                                    ConversationListScreen(
-                                        viewModel = conversationListViewModel,
-                                        archivedConversationsViewModel = koinViewModel(),
-                                        extendPermissionViewModel = koinViewModel(),
-                                        onOpenConnectRequest = {
-                                            connectRequestViewModel.onAction(
-                                                ConnectRequestAction.OpenDialogWithRecipient(it)
-                                            )
-                                        },
-                                        connectRequestSheet = { snackbar ->
-                                            ConnectRequestBottomSheet(connectRequestViewModel, snackbar)
-                                        },
-                                        onNavigateBack = { navController.popBackStack() },
-                                        onNavigateToSettingsScreen = {
-                                            navController.navigate(Route.Settings)
-                                        },
-                                        onNavigateToNewConversation = {
-                                            navController.navigate(Route.CreateConversation)
-                                        },
-                                        onNavigateToLiveLocationMap = {
-                                            navController.navigate(Route.LocationLive)
-                                        },
-                                        // Reuse the same entry the Location nav icon uses: onboarding when
-                                        // the add-on isn't activated, else the dashboard (which requests
-                                        // permission) — covers both "not set up" gate-fail cases.
-                                        onNavigateToLocationSetup = openLocation,
-                                        onNavigateToShareLocation = { conversationId ->
-                                            navController.navigate(Route.LocationShare(conversationId))
-                                        },
-                                        onNavigateToShareContact = { conversationId ->
-                                            navController.navigate(Route.ShareContact(conversationId))
-                                        },
-                                        onNavigateToContactInfo = {
-                                            // 1:1 contact info is the full contact-detail screen
-                                            // (keyed by the contact uniqueId = md5(odinId)).
-                                            navController.navigate(
-                                                Route.ContactBookDetail(
-                                                    uniqueId = Md5.toGuidId(it.lowercase()).toString(),
-                                                    odinId = it,
+                                    // The list and the open conversation share this route, so one banner covers both
+                                    StorageFullHost(onOpenStorage = { navController.navigate(Route.StorageSettings) }) {
+                                        ConversationListScreen(
+                                            viewModel = conversationListViewModel,
+                                            archivedConversationsViewModel = koinViewModel(),
+                                            extendPermissionViewModel = koinViewModel(),
+                                            onOpenConnectRequest = {
+                                                connectRequestViewModel.onAction(
+                                                    ConnectRequestAction.OpenDialogWithRecipient(it)
                                                 )
-                                            )
-                                        },
-                                        onNavigateToConversationSettings = {
-                                            navController.navigate(Route.ConversationSettings(it))
-                                        },
-                                        onNavigateToGroupSettings = {
-                                            navController.navigate(Route.GroupSettings(it))
-                                        },
-                                        onNavigateToMessageInfo = { conversationId, messageId, fileId ->
-                                            navController.navigate(
-                                                Route.MessageInfo(
-                                                    conversationId = conversationId.toString(),
-                                                    messageId = messageId.toString(),
-                                                    fileId = fileId.toString()
+                                            },
+                                            connectRequestSheet = { snackbar ->
+                                                ConnectRequestBottomSheet(connectRequestViewModel, snackbar)
+                                            },
+                                            onNavigateBack = { navController.popBackStack() },
+                                            onNavigateToSettingsScreen = {
+                                                navController.navigate(Route.Settings)
+                                            },
+                                            onNavigateToNewConversation = {
+                                                navController.navigate(Route.CreateConversation)
+                                            },
+                                            onNavigateToLiveLocationMap = {
+                                                navController.navigate(Route.LocationLive)
+                                            },
+                                            // Reuse the same entry the Location nav icon uses: onboarding when
+                                            // the add-on isn't activated, else the dashboard (which requests
+                                            // permission) — covers both "not set up" gate-fail cases.
+                                            onNavigateToLocationSetup = openLocation,
+                                            onNavigateToShareLocation = { conversationId ->
+                                                navController.navigate(Route.LocationShare(conversationId))
+                                            },
+                                            onNavigateToShareContact = { conversationId ->
+                                                navController.navigate(Route.ShareContact(conversationId))
+                                            },
+                                            onNavigateToContactInfo = {
+                                                // 1:1 contact info is the full contact-detail screen
+                                                // (keyed by the contact uniqueId = md5(odinId)).
+                                                navController.navigate(
+                                                    Route.ContactBookDetail(
+                                                        uniqueId = Md5.toGuidId(it.lowercase()).toString(),
+                                                        odinId = it,
+                                                    )
                                                 )
-                                            )
-                                        },
-                                        onNavigateToCropper = { requestId ->
-                                            navController.navigate(Route.Crop(requestId.toString()))
-                                        },
-                                        onNavigateToDrawer = { requestId ->
-                                            navController.navigate(Route.Draw(requestId.toString()))
-                                        },
-                                        onComposerVisibilityChanged = {
-                                            @Suppress("AssignedValueIsNeverRead")
-                                            isChatComposerOpen = it
-                                        },
-                                        onSaveContactCard = { card, alreadySaved ->
-                                            pendingContactCard = card
-                                            pendingContactCardSaved = alreadySaved
-                                        },
-                                        newConversationPane = { onDismiss, onConversationOpened ->
-                                            NewConversationPaneHost(
-                                                onDismiss = onDismiss,
-                                                onShowConversation = onConversationOpened,
-                                                onCreateGroup = { ids ->
-                                                    // Closed before the hand-off: naming the group is
-                                                    // a destination, so returning from it lands on the
-                                                    // list, not a half-finished picker behind it.
-                                                    onDismiss()
-                                                    navController.navigate(
-                                                        Route.CreateConversationGroup(ids)
+                                            },
+                                            onNavigateToConversationSettings = {
+                                                navController.navigate(Route.ConversationSettings(it))
+                                            },
+                                            onNavigateToGroupSettings = {
+                                                navController.navigate(Route.GroupSettings(it))
+                                            },
+                                            onNavigateToMessageInfo = { conversationId, messageId, fileId ->
+                                                navController.navigate(
+                                                    Route.MessageInfo(
+                                                        conversationId = conversationId.toString(),
+                                                        messageId = messageId.toString(),
+                                                        fileId = fileId.toString()
                                                     )
-                                                },
-                                                onAddContact = {
-                                                    navController.navigate(
-                                                        Route.AddContact(identityOnly = true)
-                                                    )
-                                                },
-                                            )
-                                        },
-                                    )
+                                                )
+                                            },
+                                            onNavigateToCropper = { requestId ->
+                                                navController.navigate(Route.Crop(requestId.toString()))
+                                            },
+                                            onNavigateToDrawer = { requestId ->
+                                                navController.navigate(Route.Draw(requestId.toString()))
+                                            },
+                                            onComposerVisibilityChanged = {
+                                                @Suppress("AssignedValueIsNeverRead")
+                                                isChatComposerOpen = it
+                                            },
+                                            onSaveContactCard = { card, alreadySaved ->
+                                                pendingContactCard = card
+                                                pendingContactCardSaved = alreadySaved
+                                            },
+                                            newConversationPane = { onDismiss, onConversationOpened ->
+                                                NewConversationPaneHost(
+                                                    onDismiss = onDismiss,
+                                                    onShowConversation = onConversationOpened,
+                                                    onCreateGroup = { ids ->
+                                                        // Closed before the hand-off: naming the group is
+                                                        // a destination, so returning from it lands on the
+                                                        // list, not a half-finished picker behind it.
+                                                        onDismiss()
+                                                        navController.navigate(
+                                                            Route.CreateConversationGroup(ids)
+                                                        )
+                                                    },
+                                                    onAddContact = {
+                                                        navController.navigate(
+                                                            Route.AddContact(identityOnly = true)
+                                                        )
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
                             }
 
