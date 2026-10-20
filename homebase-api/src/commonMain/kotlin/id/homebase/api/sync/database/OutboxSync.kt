@@ -331,6 +331,13 @@ class OutboxSync(
                         UnixTimeUtc.now().addSeconds(waitSeconds).milliseconds
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message, storageFull = true)
+                    // Messages chained on it for ordering go on without it: a held photo must not hold back the
+                    // texts after it, which the server still takes
+                    databaseManager.outbox.repointNewFilesQueuedBehind(
+                        outboxRecord.uniqueId,
+                        skipStorageFullHolds(outboxRecord.dependencyUniqueId),
+                        DriveOutboxUploader.UploadNewFile,
+                    )
                     storageQuota?.reportStorageFull()
                     eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
                     eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Storage full"))
@@ -636,6 +643,22 @@ class OutboxSync(
     private suspend fun lastFailureWasStorageFull(driveId: Uuid, uniqueId: Uuid): Boolean =
         lastErrorMutex.withLock { (driveId to uniqueId) in storageFullRows }
 
+    /**
+     * [dependency], or if it is a row held for storage full, what that row waits on, and so on down the chain: the
+     * first dependency that is not held. Held rows are known in memory only, so after a restart a row counts again
+     * once its next attempt is refused.
+     */
+    private suspend fun skipStorageFullHolds(dependency: Uuid?): Uuid? {
+        var current = dependency
+        repeat(MAX_HELD_CHAIN) {
+            val held = current ?: return null
+            val isHeld = lastErrorMutex.withLock { storageFullRows.any { it.second == held } }
+            if (!isHeld) return held
+            current = databaseManager.outbox.selectByUniqueId(held)?.dependencyUniqueId
+        }
+        return current
+    }
+
     public companion object {
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
@@ -643,6 +666,9 @@ class OutboxSync(
 
         // When a 507 carries no Retry-After; the server sends an hour
         private const val STORAGE_FULL_RETRY_SECONDS = 3600L
+
+        // Bounds the walk past held rows; a chain of held rows is at most the uploads queued while full
+        private const val MAX_HELD_CHAIN = 100
     }
 
     // Checkout stamps of rows currently held by a LIVE upload worker in THIS
@@ -968,10 +994,16 @@ class OutboxSync(
         json: String
     ): EnqueueResult {
         try {
+            // A new file queued behind one held for storage full waits on what that one waits on instead
+            val dependency = if (uploadType == DriveOutboxUploader.UploadNewFile && dependencyUniqueId != uniqueId) {
+                skipStorageFullHolds(dependencyUniqueId)
+            } else {
+                dependencyUniqueId
+            }
             databaseManager.outbox.insert(
                 driveId,
                 uniqueId,
-                dependencyUniqueId = dependencyUniqueId,
+                dependencyUniqueId = dependency,
                 priority = priority,
                 uploadType = uploadType,
                 json = json.toUtf8ByteArray(),
