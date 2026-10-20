@@ -69,9 +69,7 @@ class FilesyncEditor(
         val wentForGood = mutableSetOf<Uuid>()
         val intoRecovered = mutableSetOf<Uuid>()
         val takenByFolder = mutableMapOf<Uuid, MutableSet<String>>()
-        suspend fun taken(folder: Uuid) = takenByFolder.getOrPut(folder) {
-            repository.listFolder(folder).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
-        }
+        suspend fun taken(folder: Uuid) = takenByFolder.getOrPut(folder) { repository.takenNames(folder) }
         var skipped = gone
         var sent = false
         try {

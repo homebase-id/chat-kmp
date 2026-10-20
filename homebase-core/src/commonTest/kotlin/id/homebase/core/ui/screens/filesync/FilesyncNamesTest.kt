@@ -1,8 +1,10 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.uuid.Uuid
 
 class FilesyncNamesTest {
 
@@ -86,5 +88,13 @@ class FilesyncNamesTest {
 
         val all = taken("x.txt", "x (restored).txt") + (2..99).map { FilesyncNames.key("x (restored $it).txt") }
         assertEquals(null, FilesyncNames.restoredName("x.txt", all))
+    }
+
+    @Test
+    fun recoveredFilesLeavesItsNameFreeForAPlainFolder() {
+        fun folder(id: Uuid, name: String) = FilesyncNode(id, FilesyncProtocol.RootNodeId, true, name, null, null, updatedMs = 1)
+        val nodes = listOf(folder(FilesyncProtocol.RecoveredFilesNodeId, "Recovered files"), folder(Uuid.random(), "Photos"))
+        assertEquals("Recovered files", FilesyncNames.freeName("Recovered files", FilesyncNames.takenKeys(nodes)))
+        assertEquals(setOf(FilesyncNames.key("Photos")), FilesyncNames.takenKeys(nodes))
     }
 }

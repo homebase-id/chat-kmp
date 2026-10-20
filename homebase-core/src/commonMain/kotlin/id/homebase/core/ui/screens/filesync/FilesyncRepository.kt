@@ -35,10 +35,17 @@ class FilesyncRepository(
 
     /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
-        queryAll(
-            nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
-                .copy(groupId = listOf(folderId))
-        ).first
+        queryAll(folderParams(folderId, includeRemoved)).first
+
+    suspend fun takenNames(folderId: Uuid): MutableSet<String> = FilesyncNames.takenKeys(listFolder(folderId).nodes.values)
+
+    /** Whether [listFolder] would find anything in [folderId]. */
+    suspend fun holdsAny(folderId: Uuid, includeRemoved: Boolean): Boolean =
+        queryPage(folderParams(folderId, includeRemoved), QueryBatchResultOptionsRequest(maxRecords = 1)).searchResults.isNotEmpty()
+
+    private fun folderParams(folderId: Uuid, includeRemoved: Boolean) =
+        nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
+            .copy(groupId = listOf(folderId))
 
     /** Every removed node across the drive, and the server's clock when the listing began. */
     suspend fun listRemoved(): Pair<FilesyncNodes, Long> = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
