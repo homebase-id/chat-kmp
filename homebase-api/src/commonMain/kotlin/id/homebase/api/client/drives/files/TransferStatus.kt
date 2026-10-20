@@ -19,6 +19,9 @@ enum class TransferStatus(val value: String) {
     RecipientServerNotResponding("recipientservernotresponding"),
     @SerialName("recipientidentityreturnedservererror")
     RecipientIdentityReturnedServerError("recipientidentityreturnedservererror"),
+    /** The recipient is out of storage: still in the outbox, delivered once they have room. Waiting, not failed. */
+    @SerialName("recipientidentityoutofstorage")
+    RecipientIdentityOutOfStorage("recipientidentityoutofstorage"),
     @SerialName("recipientidentityreturnedbadrequest")
     RecipientIdentityReturnedBadRequest("recipientidentityreturnedbadrequest"),
     @SerialName("unknownservererror") UnknownServerError("unknownservererror"),

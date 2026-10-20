@@ -565,6 +565,11 @@ abstract class OdinApiProviderBase(
 
             404 -> parseProblemOrNull(response.body).let { throw NotFoundException(it, response.fromIdentity(it)) }
 
+            507 -> throw StorageFullException(
+                retryAfter = retryAfterOrNull(response.headers[HttpHeaders.RetryAfter]),
+                problem = parseProblemOrNull(response.body),
+            )
+
             // 5xx, and any other status odin-core answers with a ProblemDetails (e.g. 408 for a request
             // body sent too slowly): keep its correlation id so the failure can be found in the server logs
             else -> parseProblemOrNull(response.body).let {
