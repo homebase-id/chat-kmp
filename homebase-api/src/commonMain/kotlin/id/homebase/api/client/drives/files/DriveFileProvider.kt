@@ -79,7 +79,7 @@ public class DriveFileProvider(
      * @param driveId The target drive id containing the file
      * @param fileId The ID of the file
      * @param options Optional operation options
-     * @return The HomebaseFile or null if not found
+     * @return The HomebaseFile, or null when the identity itself says it isn't there
      */
 
     suspend fun getFileHeader(
@@ -102,7 +102,7 @@ public class DriveFileProvider(
             secret = creds.secret
         )
 
-        if (response.status == 404) {
+        if (response.status == 404 && response.fromIdentity()) {
             return null
         }
 

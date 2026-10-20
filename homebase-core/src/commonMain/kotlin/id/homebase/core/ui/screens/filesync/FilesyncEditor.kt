@@ -275,6 +275,7 @@ class FilesyncEditor(
         return try {
             driveUploadProvider.updateFileByFileId(request, onVersionConflict = { null }) != null
         } catch (e: NotFoundException) {
+            if (!e.fromIdentity) throw e
             false
         } catch (e: ClientException) {
             if (e.errorCode !in ChangedElsewhere) throw e
