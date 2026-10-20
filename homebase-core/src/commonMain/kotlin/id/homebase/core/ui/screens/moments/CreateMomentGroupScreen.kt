@@ -183,7 +183,7 @@ private fun MemberRow(
     ) {
         IdentityAvatar(
             odinId = contact.odinId,
-            displayName = contact.name,
+            displayName = contact.displayName,
             options = AvatarOptions(size = 40.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
