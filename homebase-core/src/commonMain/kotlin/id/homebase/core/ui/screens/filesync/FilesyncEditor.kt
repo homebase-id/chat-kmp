@@ -31,8 +31,11 @@ private const val TAG = "FilesyncEditor"
 // What another device's newer word looks like in a per-file answer: the node is left as it is.
 private val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound, OdinClientErrorCode.CannotUpdateNonActiveFile)
 
-/** [skipped]: items another device changed or deleted meanwhile, left as they are. */
-class FilesyncWriteResult(val done: Int, val skipped: Int)
+/**
+ * [skipped]: items another device changed or deleted meanwhile, left as they are. [recovered]: restored where no listing
+ * shows them until a computer moves them into Recovered files.
+ */
+class FilesyncWriteResult(val done: Int, val skipped: Int, val recovered: Int = 0)
 
 /** Restores and empties Recently deleted exactly as filesync's deleted.rs does, so every desktop agrees with the phone. */
 class FilesyncEditor(
@@ -62,6 +65,9 @@ class FilesyncEditor(
         val liveParents = repository.findNodes(plan.map { it.parentId }.filter { it !in level }, ArchivalStatus.None).nodes.keys
 
         val restored = mutableSetOf<Uuid>()
+        // Folders of the plan deleted for good while it ran.
+        val wentForGood = mutableSetOf<Uuid>()
+        val intoRecovered = mutableSetOf<Uuid>()
         val takenByFolder = mutableMapOf<Uuid, MutableSet<String>>()
         suspend fun taken(folder: Uuid) = takenByFolder.getOrPut(folder) {
             repository.listFolder(folder).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
@@ -73,24 +79,31 @@ class FilesyncEditor(
                 // Back under its own name in its own folder, a node needs only its archivalStatus set, many in one request,
                 // sent before the others pick names, so one a refused node leaves is free for them.
                 val batch = mutableListOf<Pair<FileVersionTag, FilesyncNode>>()
-                val rewrites = mutableListOf<Pair<FilesyncNode, Uuid>>()
+                val rewrites = mutableListOf<FilesyncNode>()
+                // By fileId: failed folders whose header tells whether they went for good.
+                val maybeGone = mutableMapOf<Uuid, Uuid>()
                 for (node in wave) {
-                    val target = when (node.parentId) {
-                        in level -> node.parentId.takeIf { it in restored }
-                        FilesyncProtocol.RootNodeId -> node.parentId
+                    // True when its folder went for good: it comes back as it was, without a name check (null: it stays).
+                    val orphan = when (node.parentId) {
+                        in restored -> false
+                        in wentForGood -> true
+                        in level -> null
+                        FilesyncProtocol.RootNodeId -> false
                         // A live folder that went with a delete is back only once the removed folders it went with are.
-                        in trash.itemOf -> node.parentId.takeIf { chainAbove(node).all { !it.removed || it.nodeId in restored } }
-                        in liveParents -> node.parentId
-                        // Its folder was deleted for good: it comes back at the top level.
-                        else -> FilesyncProtocol.RootNodeId
+                        in trash.itemOf -> chainAbove(node).let { chain ->
+                            if (chain.any { it.nodeId in wentForGood }) intoRecovered += node.nodeId
+                            false.takeIf { chain.all { !it.removed || it.nodeId in restored || it.nodeId in wentForGood } }
+                        }
+                        in liveParents -> false
+                        else -> true
                     }
+                    if (orphan == true) intoRecovered += node.nodeId
                     val handle = trash.all.handles.getValue(node.nodeId)
                     val version = handle.fileVersionTag
                     when {
-                        target == null || !handle.writable -> skipped++
-                        target == node.parentId && version != null && taken(target).add(FilesyncNames.key(node.name)) ->
-                            batch += version to node
-                        else -> rewrites += node to target
+                        orphan == null || !handle.writable -> skipped++
+                        version != null && (orphan || taken(node.parentId).add(FilesyncNames.key(node.name))) -> batch += version to node
+                        else -> rewrites += node
                     }
                 }
                 for (chunk in batch.chunked(DriveFileHttpProvider.FILE_BATCH)) {
@@ -103,7 +116,9 @@ class FilesyncEditor(
                             null -> restored += node.nodeId
                             in ChangedElsewhere -> {
                                 skipped++
-                                takenByFolder.getValue(node.parentId) -= FilesyncNames.key(node.name)
+                                takenByFolder[node.parentId]?.remove(FilesyncNames.key(node.name))
+                                if (node.isFolder && code == OdinClientErrorCode.FileNotFound) maybeGone[answer.fileId] = node.nodeId
+                                if (node.isFolder && code == OdinClientErrorCode.CannotUpdateNonActiveFile) wentForGood += node.nodeId
                                 Logger.i(TAG) { "node ${node.nodeId} changed elsewhere; left as it is" }
                             }
                             else -> refused += code
@@ -111,8 +126,8 @@ class FilesyncEditor(
                     }
                     check(refused.isEmpty()) { "restore refused: $refused" }
                 }
-                for ((node, target) in rewrites) {
-                    val taken = taken(target)
+                for (node in rewrites) {
+                    val taken = taken(node.parentId)
                     val name = FilesyncNames.restoredName(node.name, taken)
                     if (name == null) {
                         skipped++
@@ -120,19 +135,21 @@ class FilesyncEditor(
                     }
                     sent = true
                     val handle = trash.all.handles.getValue(node.nodeId)
-                    if (write(node.nodeId, handle, restoredContent(handle.content, name), target)) {
+                    if (write(node.nodeId, handle, restoredContent(handle.content, name), node.parentId)) {
                         restored += node.nodeId
                         taken += FilesyncNames.key(name)
                     } else {
                         skipped++
+                        if (node.isFolder) maybeGone[handle.fileId] = node.nodeId
                     }
                 }
+                repository.goneForGood(maybeGone.keys.toList()).mapTo(wentForGood) { maybeGone.getValue(it) }
             }
         } finally {
             // A failed request may still have restored some of its files.
             if (sent) _changed.tryEmit(Unit)
         }
-        FilesyncWriteResult(restored.size, skipped)
+        FilesyncWriteResult(restored.size, skipped, recovered = (intoRecovered intersect restored).size)
     }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */
@@ -307,6 +324,8 @@ internal suspend fun reportWrite(
     send(
         when {
             result == null -> FilesyncUiEvent.Error(failed)
+            // Nothing lists those until a computer syncs, so saying where comes first.
+            result.recovered > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered)
             result.skipped > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere)
             else -> FilesyncUiEvent.Notice(done)
         }
