@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.util.toNfc
+import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.util.trimToUtf8Boundary
 
 /** Filesync's name rules (filesync docs/spec/node-schema-v1.md): NFC, at most 255 UTF-8 bytes, no / or NUL, not . or .. */
@@ -11,6 +12,10 @@ internal object FilesyncNames {
 
     /** Two names collide in a folder when their keys match: case and Unicode form are ignored, as on macOS and Windows. */
     fun key(name: String): String = name.toNfc().lowercase()
+
+    /** Recovered files is left out: it is the one renamed in a clash. */
+    fun takenKeys(nodes: Collection<FilesyncNode>): MutableSet<String> =
+        nodes.filter { it.nodeId != FilesyncProtocol.RecoveredFilesNodeId }.mapTo(mutableSetOf()) { key(it.name) }
 
     /** [requested] made valid, then numbered "(1)", "(2)"… until no key in [takenKeys] uses it. */
     fun freeName(requested: String, takenKeys: Set<String>): String {

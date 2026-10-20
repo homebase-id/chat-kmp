@@ -18,6 +18,9 @@ object FilesyncProtocol {
     /** Never stored: a node whose groupId is this is at the top level. */
     val RootNodeId: Uuid = Uuid.parse("2a1c0d55-8ad3-417e-a5d7-42c3d0baba0e")
 
+    /** The top folder computers move a node into once its own folder is gone for good; told apart by id, never by name. */
+    val RecoveredFilesNodeId: Uuid = Uuid.parse("fa4646cb-2df0-4f18-a3c6-1fc2b2f6ac4b")
+
     const val PayloadKey = "sync_data"
 
     /** Recently deleted keeps an item this long after its removal; then any client deletes it for good. */

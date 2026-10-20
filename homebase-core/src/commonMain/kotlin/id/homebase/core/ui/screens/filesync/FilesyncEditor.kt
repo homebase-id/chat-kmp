@@ -74,9 +74,7 @@ class FilesyncEditor(
                 skipped++
                 continue
             }
-            val taken = takenByFolder.getOrPut(target) {
-                repository.listFolder(target).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
-            }
+            val taken = takenByFolder.getOrPut(target) { repository.takenNames(target) }
             val name = FilesyncNames.restoredName(node.name, taken)
             val handle = trash.all.handles.getValue(node.nodeId)
             if (name == null || !handle.writable || !write(node.nodeId, handle, restoredContent(handle.content, name), target)) {
