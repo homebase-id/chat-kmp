@@ -565,23 +565,13 @@ abstract class OdinApiProviderBase(
 
             404 -> parseProblemOrNull(response.body).let { throw NotFoundException(it, response.fromIdentity(it)) }
 
-            in 500..599 -> {
-                val problem = runCatching {
-                    deserialize<ProblemDetails>(response.body)
-                }.getOrNull()
-
+            // 5xx, and any other status odin-core answers with a ProblemDetails (e.g. 408 for a request
+            // body sent too slowly): keep its correlation id so the failure can be found in the server logs
+            else -> parseProblemOrNull(response.body).let {
                 throw ServerException(
                     status = response.status,
-                    correlationId = problem?.correlationId(),
-                    problem = problem
-                )
-            }
-
-            else -> {
-                throw ServerException(
-                    status = response.status,
-                    correlationId = null,
-                    problem = null
+                    correlationId = it?.correlationId(),
+                    problem = it
                 )
             }
         }
