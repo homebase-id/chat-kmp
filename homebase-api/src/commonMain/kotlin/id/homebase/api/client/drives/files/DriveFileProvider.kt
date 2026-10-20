@@ -79,7 +79,7 @@ public class DriveFileProvider(
      * @param driveId The target drive id containing the file
      * @param fileId The ID of the file
      * @param options Optional operation options
-     * @return The HomebaseFile or null if not found
+     * @return The HomebaseFile, or null when the identity itself says it isn't there
      */
 
     suspend fun getFileHeader(
@@ -102,7 +102,7 @@ public class DriveFileProvider(
             secret = creds.secret
         )
 
-        if (response.status == 404) {
+        if (response.status == 404 && response.fromIdentity()) {
             return null
         }
 
@@ -742,9 +742,9 @@ data class DeleteFileIdBatchResult (
 data class FileVersionTag(val fileId: Uuid, val versionTag: Uuid)
 
 @Serializable
-data class FileVersionTagBatch(val files: List<FileVersionTag>)
+data class FileVersionTagBatch(val files: List<FileVersionTag>, val archivalStatus: ArchivalStatus? = null)
 
-/** [errorCode] is null when the file is gone. */
+/** [errorCode] is null when the write went through: the file is gone, or at the status asked for. */
 @Serializable
 data class PerFileResult(val fileId: Uuid, val errorCode: OdinClientErrorCode? = null)
 

@@ -3,7 +3,6 @@ package id.homebase.api.util
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 
 /**
@@ -26,7 +25,7 @@ fun String.withChatHardLineBreaks(): String {
     val text = replace("\r\n", "\n").replace('\r', '\n')
 
     val softBreakOffsets: Set<Int> = try {
-        val tree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(text)
+        val tree = MarkdownParser(ChatMarkdownFlavour).buildMarkdownTreeFromString(text)
         HashSet<Int>().also { collectParagraphSoftBreaks(tree, insideParagraph = false, out = it) }
     } catch (_: Throwable) {
         return text

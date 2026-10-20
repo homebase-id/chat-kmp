@@ -134,6 +134,19 @@ class ServerExceptionMessageTest {
     }
 
     @Test
+    fun requestTimeout_408_carriesCorrelationId() = runTest {
+        val provider = providerRespondingWith(
+            HttpStatusCode.RequestTimeout,
+            problemJson(408, "Reading the request body timed out", "unhandledScenario"),
+        )
+
+        val e = assertFailsWith<ServerException> { provider.follow(request) }
+
+        assertEquals(cid, e.correlationId)
+        assertTrue(e.message!!.contains("correlationId=$cid"))
+    }
+
+    @Test
     fun notFound_emptyBody_hasStatusOnly() = runTest {
         val provider = providerRespondingWith(HttpStatusCode.NotFound, "")
 

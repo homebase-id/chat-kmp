@@ -43,6 +43,7 @@ import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownDimens
 import com.mikepenz.markdown.model.markdownPadding
 import com.mikepenz.markdown.model.rememberMarkdownState
+import id.homebase.api.util.ChatMarkdownFlavour
 import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.api.util.withChatHardLineBreaks
@@ -293,6 +294,7 @@ fun ChatMarkdown(
     val markdownState = rememberMarkdownState(
         content = parsedContent,
         immediate = true,
+        flavour = ChatMarkdownFlavour,
     )
     Markdown(
         markdownState = markdownState,
@@ -360,7 +362,7 @@ fun ChatMarkdown(
  * autolink behaviour are unit-testable without a bubble. Pixel-equivalent to what the
  * block path renders for the same inline content.
  *
- * mikepenz's String overload parses with the default GFM flavour (matching the block
+ * mikepenz's String overload parses with [ChatMarkdownFlavour] (matching the block
  * `Markdown()` path), finds the single paragraph/inline run, and applies the base
  * [style]'s SpanStyle — including the [androidx.compose.ui.text.LinkAnnotation]s that
  * let a plain Text handle taps natively (opened via `LocalUriHandler` by the default
@@ -422,6 +424,7 @@ internal fun buildChatInlineAnnotatedString(
         parsedContent.buildMarkdownAnnotatedString(
             style = style,
             annotatorSettings = settings,
+            flavour = ChatMarkdownFlavour,
         ).withEmojiFont(emojiFamily)
     }
 }

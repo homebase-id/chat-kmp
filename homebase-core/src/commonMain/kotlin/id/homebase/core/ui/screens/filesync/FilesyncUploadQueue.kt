@@ -121,7 +121,7 @@ class FilesyncUploadQueue(
             reporting(FilesyncError.FolderFailed, "creating a folder in $parentId") {
                 // Listed fresh: a folder isn't part of an upload batch.
                 val name = namingLock.withLock {
-                    val taken = listedKeys(parentId)
+                    val taken = repository.takenNames(parentId)
                     FilesyncNames.freeName(requestedName, taken).also { batchTakenKeys[parentId]?.add(FilesyncNames.key(it)) }
                 }
                 uploader.createFolder(parentId, name)
@@ -159,7 +159,7 @@ class FilesyncUploadQueue(
         val name = upload.name ?: namingLock.withLock {
             val taken = batchTakenKeys.getOrPut(upload.parentId) {
                 // A failed upload's name never reached the server, but its retry will still use it.
-                listedKeys(upload.parentId).apply {
+                repository.takenNames(upload.parentId).apply {
                     _uploads.value.forEach { if (it.parentId == upload.parentId) it.name?.let { name -> add(FilesyncNames.key(name)) } }
                 }
             }
@@ -172,9 +172,6 @@ class FilesyncUploadQueue(
         finish(upload)
         _changedFolders.emit(upload.parentId)
     }
-
-    private suspend fun listedKeys(folderId: Uuid): MutableSet<String> =
-        repository.listFolder(folderId).nodes.values.mapTo(mutableSetOf()) { FilesyncNames.key(it.name) }
 
     private suspend fun reporting(error: FilesyncError, what: String, onFailure: () -> Unit = {}, block: suspend () -> Unit) {
         try {

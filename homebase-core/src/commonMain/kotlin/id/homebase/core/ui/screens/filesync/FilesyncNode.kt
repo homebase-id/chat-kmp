@@ -5,6 +5,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -73,6 +74,8 @@ class FilesyncHandle(
     val payload: FilesyncPayload?,
     version: Int = CONTENT_VERSION,
 ) {
+    val fileVersionTag: FileVersionTag? get() = versionTag?.let { FileVersionTag(fileId, it) }
+
     /** A node from a newer content version is shown but never changed. */
     val writable = version == CONTENT_VERSION
 }

@@ -76,6 +76,7 @@ import id.homebase.resources.filesync_open_failed
 import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_failed
 import id.homebase.resources.filesync_restored
+import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_save
 import id.homebase.resources.filesync_save_failed
@@ -147,6 +148,7 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.Notice -> show(
                     when (event.notice) {
                         FilesyncNotice.Restored -> MR.string.filesync_restored
+                        FilesyncNotice.RestoredToRecovered -> MR.string.filesync_restored_to_recovered
                         FilesyncNotice.DeletedForever -> MR.string.filesync_deleted_forever
                         FilesyncNotice.ChangedElsewhere -> MR.string.filesync_changed_elsewhere
                     }

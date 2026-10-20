@@ -4,13 +4,16 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.JvmFileSystemUtil
-import java.io.BufferedReader
 import java.io.File
+import java.io.IOException
 import java.util.UUID
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 actual object FFmpegUtils {
 
@@ -31,12 +34,16 @@ actual object FFmpegUtils {
         val v = if (!FFmpegBinaryManager.isAvailable()) {
             null
         } else {
-            runCatching {
+            try {
                 val output = runProcessWithOutput(
                     listOf(FFmpegBinaryManager.ffmpegPath(), "-version")
                 )
                 parseFfmpegVersionBanner(output)
-            }.getOrNull()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
         }
         cachedFfmpegVersion = v
         ffmpegVersionProbed = true
@@ -72,7 +79,7 @@ actual object FFmpegUtils {
     suspend fun grabThumbnail(inputPath: String): String? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
-                println("FFmpeg binaries not available for this platform")
+                Logger.w(LOG_TAG) { "FFmpeg binaries not available for this platform" }
                 return@withContext null
             }
 
@@ -255,7 +262,7 @@ actual object FFmpegUtils {
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
-                println("FFmpeg binaries not available for this platform")
+                Logger.w(LOG_TAG) { "FFmpeg binaries not available for this platform" }
                 return@withContext null
             }
 
@@ -285,7 +292,7 @@ actual object FFmpegUtils {
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
-                println("FFmpeg binaries not available for this platform")
+                Logger.w(LOG_TAG) { "FFmpeg binaries not available for this platform" }
                 throw VideoSegmentException(
                     message = "Binaries not found",
                     command = emptyList(),
@@ -424,31 +431,17 @@ actual object FFmpegUtils {
             cacheFile.absolutePath
         }
 
-    private fun runProcess(command: List<String>): Int {
-        val processBuilder = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true)
-
-        println("Running: ${command.joinToString(" ")}")
-
-        val process = processBuilder.start()
-
-        // Consume output to prevent blocking
-        process.inputStream.bufferedReader().use { reader ->
-            reader.forEachLine { line -> println("[FFmpeg] $line") }
+    internal suspend fun runProcess(command: List<String>, timeoutMs: Long? = null): Int {
+        Logger.d(LOG_TAG) { "Running: ${command.joinToString(" ")}" }
+        val result = runCapturing(command, timeoutMs, onLine = null)
+        if (result.exitCode != 0) {
+            Logger.w(LOG_TAG) { "Exit ${result.exitCode}, output tail:\n${result.output.lines().takeLast(20).joinToString("\n")}" }
         }
-
-        val completed = process.waitFor(5, TimeUnit.MINUTES)
-        return if (completed) process.exitValue() else -1
+        return result.exitCode
     }
 
-    private fun runProcessWithOutput(command: List<String>): String {
-        val processBuilder = FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true)
-
-        val process = processBuilder.start()
-        val output = process.inputStream.bufferedReader().use(BufferedReader::readText)
-
-        process.waitFor(30, TimeUnit.SECONDS)
-        return output
-    }
+    internal suspend fun runProcessWithOutput(command: List<String>, timeoutMs: Long = PROBE_TIMEOUT_MS): String =
+        runCapturing(command, timeoutMs, onLine = null).output
 
     fun generateHlsKeyInfoFile(
         outputDir: File,
@@ -482,40 +475,47 @@ actual object FFmpegUtils {
         return keyInfoFile
     }
 
-    private fun runProcessWithLogs(
+    internal suspend fun runProcessWithLogs(
         command: List<String>,
         totalDurationMs: Long,
-        onProgress: ((Float) -> Unit)?
+        onProgress: ((Float) -> Unit)?,
+        timeoutMs: Long? = null,
+    ): ProcessResult = runCapturing(command, timeoutMs) { line ->
+        if (onProgress != null && line.startsWith("out_time_ms=")) {
+            val outMs = line.removePrefix("out_time_ms=").toLongOrNull()
+            if (outMs != null) onProgress((outMs.toFloat() / totalDurationMs).coerceIn(0f, 1f))
+        }
+    }
+
+    // Encodes have no timeout (a long video legitimately runs for many minutes); cancellation and an
+    // explicit timeout both destroy the process, and a timeout reports exitCode -1.
+    private suspend fun runCapturing(
+        command: List<String>,
+        timeoutMs: Long?,
+        onLine: ((String) -> Unit)?,
     ): ProcessResult {
-        val process = FFmpegBinaryManager.processBuilder(command)
-            .redirectErrorStream(true)
-            .start()
-
-        val output = StringBuilder()
-
-        val readerThread = Thread {
-            process.inputStream.bufferedReader().useLines { lines ->
-                lines.forEach { line ->
-                    output.appendLine(line)
-
-                    if (onProgress != null && line.startsWith("out_time_ms=")) {
-                        val outMs =
-                            line.removePrefix("out_time_ms=").toLongOrNull() ?: return@forEach
-                        val pct = (outMs.toFloat() / totalDurationMs).coerceIn(0f, 1f)
-                        onProgress(pct)
+        val output = StringBuffer()
+        val exitCode = withTimeoutOrNull(timeoutMs ?: Long.MAX_VALUE) {
+            coroutineScope {
+                val process = FFmpegBinaryManager.processBuilder(command)
+                    .redirectErrorStream(true)
+                    .start()
+                launch(Dispatchers.IO) {
+                    try {
+                        process.inputStream.bufferedReader().useLines { lines ->
+                            lines.forEach { line ->
+                                output.append(line).append('\n')
+                                onLine?.invoke(line)
+                            }
+                        }
+                    } catch (_: IOException) {
+                        // destroyForcibly on cancel/timeout closes the stream under the reader
                     }
                 }
+                process.waitForOrDestroy()
             }
-        }
-
-        readerThread.start()
-        process.waitFor(5, TimeUnit.MINUTES)
-        readerThread.join()
-
-        return ProcessResult(
-            exitCode = process.exitValue(),
-            output = output.toString()
-        )
+        } ?: -1
+        return ProcessResult(exitCode, output.toString())
     }
 
     actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
@@ -556,13 +556,14 @@ actual object FFmpegUtils {
         }
 
     private const val LOG_TAG = "FFmpegUtils"
+    private const val PROBE_TIMEOUT_MS = 30 * 1000L
 
     // Interruptible, so a cancelled or timed-out caller kills ffmpeg instead of waiting it out.
     private suspend fun Process.waitForOrDestroy(): Int =
         try {
             runInterruptible { waitFor() }
         } finally {
-            destroyForcibly()
+            if (isAlive) destroyForcibly()
         }
 
     actual suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =

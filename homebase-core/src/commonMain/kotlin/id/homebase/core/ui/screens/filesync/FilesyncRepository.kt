@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
@@ -34,10 +35,17 @@ class FilesyncRepository(
 
     /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
-        queryAll(
-            nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
-                .copy(groupId = listOf(folderId))
-        ).first
+        queryAll(folderParams(folderId, includeRemoved)).first
+
+    suspend fun takenNames(folderId: Uuid): MutableSet<String> = FilesyncNames.takenKeys(listFolder(folderId).nodes.values)
+
+    /** Whether [listFolder] would find anything in [folderId]. */
+    suspend fun holdsAny(folderId: Uuid, includeRemoved: Boolean): Boolean =
+        queryPage(folderParams(folderId, includeRemoved), QueryBatchResultOptionsRequest(maxRecords = 1)).searchResults.isNotEmpty()
+
+    private fun folderParams(folderId: Uuid, includeRemoved: Boolean) =
+        nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
+            .copy(groupId = listOf(folderId))
 
     /** Every removed node across the drive, and the server's clock when the listing began. */
     suspend fun listRemoved(): Pair<FilesyncNodes, Long> = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
@@ -62,26 +70,27 @@ class FilesyncRepository(
             QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE, ordering = QueryBatchSortOrder.OldestFirst, sorting = QueryBatchSortField.AnyChangeDate),
         ) { page ->
             val old = page.searchResults.takeWhile { it.fileMetadata.updated.milliseconds < beforeMs }
-            old.mapNotNullTo(found) { file -> file.fileMetadata.versionTag?.let { FileVersionTag(file.fileId, it) } }
+            old.mapNotNullTo(found) { it.fileVersionTag() }
             old.size == page.searchResults.size
         }
         return found
     }
 
     /**
-     * The [folderIds] holding a file that isn't removed, of any type, ours or not, written before this call. A row that
-     * doesn't read (no groupId) is there all the same, so its chunk's folders all hold.
+     * The [folderIds] holding a file that isn't deleted, live or removed, of any type, ours or not, written before this
+     * call, but [except] at their versions. A row that doesn't read (no groupId) is there all the same, so its chunk's
+     * folders all hold.
      */
-    suspend fun holdingLive(folderIds: List<Uuid>): Set<Uuid> {
+    suspend fun holding(folderIds: List<Uuid>, except: Set<FileVersionTag>): Set<Uuid> {
         // The server's queries leave out what changed in their last second.
         delay(HOLD_BACK)
         val holding = mutableSetOf<Uuid>()
         for (chunk in folderIds.chunked(PAGE_SIZE)) {
             forEachPage(FileQueryParams(groupId = chunk, fileState = listOf(FileState.Active)), QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE)) { page ->
                 for (file in page.searchResults) {
+                    if (file.fileVersionTag() in except) continue
                     val folder = file.fileMetadata.appData.groupId
-                    if (folder == null) holding += chunk
-                    else if (file.fileMetadata.appData.archivalStatus != ArchivalStatus.Removed) holding += folder
+                    if (folder == null) holding += chunk else holding += folder
                 }
                 !holding.containsAll(chunk)
             }
@@ -205,3 +214,5 @@ class FilesyncRepository(
         const val RECENT_LIMIT = 100
     }
 }
+
+private fun HomebaseFile.fileVersionTag() = fileMetadata.versionTag?.let { FileVersionTag(fileId, it) }
