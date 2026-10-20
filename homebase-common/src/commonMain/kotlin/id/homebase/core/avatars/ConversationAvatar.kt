@@ -59,11 +59,16 @@ fun ConversationAvatar(
 
         ConversationAvatarModel.Type.Owner -> {
             avatarModel.odinId?.let {
+                // The owner model carries no imageData, so OwnerAvatar draws the public avatar.
+                val ownerOptions = remember(options, it, onOpenImage) {
+                    if (onOpenImage == null) options
+                    else options.copy(onClick = { onOpenImage(SubSamplingImageSource.Avatar(it)) }, onClickNeedsImage = true)
+                }
                 OwnerAvatar(
                     odinId = it,
                     profileImageData = avatarModel.imageData,
                     initials = avatarModel.initials,
-                    options = options,
+                    options = ownerOptions,
                     modifier = modifier,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope
