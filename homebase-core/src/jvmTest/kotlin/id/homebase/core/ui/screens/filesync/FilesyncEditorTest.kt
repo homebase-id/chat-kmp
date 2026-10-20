@@ -6,11 +6,7 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.ArchivalStatus
-import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.PayloadDownloadService
-import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.common.OdinId
@@ -65,9 +61,8 @@ class FilesyncEditorTest {
         }
         val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, Files.createTempDirectory("filesync-editor").toString())
         val http = HttpClient(engine)
-        val files = DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, fileOps))
         editor = FilesyncEditor(
-            FilesyncRepository(DriveQueryProvider(http, credentials), PayloadDownloadService(files, fileOps), fileOps, files),
+            testFilesyncRepository(http, credentials),
             DriveUploadProvider(http, credentials, fileOps),
             DriveFileHttpProvider(http, credentials),
         )

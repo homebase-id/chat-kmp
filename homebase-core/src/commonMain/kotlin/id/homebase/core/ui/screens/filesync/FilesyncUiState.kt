@@ -93,7 +93,7 @@ sealed interface FilesyncUiAction {
 enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, FolderFailed, RestoreFailed, DeleteFailed }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
-enum class FilesyncNotice { Restored, DeletedForever, ChangedElsewhere }
+enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent
