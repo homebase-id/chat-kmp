@@ -25,7 +25,7 @@ actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
                 "-q:v", "2",
                 outputFile.absolutePath
             )
-            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val process = id.homebase.api.video.FFmpegBinaryManager.processBuilder(command).redirectErrorStream(true).start()
             process.inputStream.bufferedReader().use { it.readText() }
             val completed = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
             if (completed && process.exitValue() == 0 && outputFile.exists()) {

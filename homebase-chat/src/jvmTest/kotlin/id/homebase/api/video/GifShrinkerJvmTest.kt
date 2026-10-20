@@ -41,7 +41,7 @@ class GifShrinkerJvmTest {
     }
 
     private fun exec(vararg command: String): String {
-        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val process = FFmpegBinaryManager.processBuilder(*command).redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText()
         check(process.waitFor() == 0) { "${command.first()} failed: $output" }
         return output

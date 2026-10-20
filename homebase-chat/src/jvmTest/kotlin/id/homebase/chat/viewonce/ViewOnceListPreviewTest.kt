@@ -87,14 +87,15 @@ class ViewOnceListPreviewTest {
         ),
     )
 
+    // The recipient's copy after the strip: live, kind only, no media.
     private suspend fun spentLocally(kind: String) = assertNotNull(
         mapToMessageData(
             viewOnceHeader(
-                fileState = "deleted",
                 createdMs = now - DAY_MS,
                 updatedMs = now,
                 content = TombstoneRetention.viewOnceKindOnly(descriptorJson(kind, "gone").replace("\\\"", "\"")).replace("\"", "\\\""),
                 payloadsJson = "null",
+                localReactions = listOf("""{"emoji":"${ViewOnceSignal.OPENED_CODE}"}"""),
             ),
             ownerCredentials(),
         ),
@@ -116,7 +117,7 @@ class ViewOnceListPreviewTest {
         val photo = lastMessageOf(spentLocally("image"))
         val video = lastMessageOf(spentLocally("video"))
 
-        assertTrue(photo.lastMessageIsDeleted)
+        assertFalse(photo.lastMessageIsDeleted)
         assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(photo)?.text)
         assertEquals(viewOnceWord(MR.string.chat_view_once_video), labelOf(video)?.text)
         assertEquals(ViewOnceOpenedIcon, labelOf(photo)?.icon)
@@ -134,7 +135,7 @@ class ViewOnceListPreviewTest {
     }
 
     @Test
-    fun theLocalTombstoneKeepsTheKindButNeverTheCaption() = runTest {
+    fun theStrippedCopyKeepsTheKindButNeverTheCaption() = runTest {
         val model = spentLocally("video")
         val descriptor = (model.messageContent as MessageContent.ViewOnce).descriptor
 
@@ -178,7 +179,7 @@ class ViewOnceListPreviewTest {
     }
 
     @Test
-    fun aSpentItemReadsPhotoAfterALocalReEmitAndMediaAfterTheServerTombstoneSync() = runTest {
+    fun aSpentItemReadsPhotoAfterTheStripAndMediaAfterAServerTombstone() = runTest {
         val convo = conversation()
         val sent = unopened("image")
         val first = assertNotNull(
@@ -190,7 +191,7 @@ class ViewOnceListPreviewTest {
         val afterOpen = assertNotNull(
             applyIncomingMessageBump(first, convo.id, spent, Instant.fromEpochMilliseconds(5), me),
         ).single()
-        assertTrue(afterOpen.lastMessageIsDeleted)
+        assertFalse(afterOpen.lastMessageIsDeleted)
         assertEquals(viewOnceWord(MR.string.chat_view_once_photo), labelOf(afterOpen)?.text)
         assertEquals(ViewOnceOpenedIcon, labelOf(afterOpen)?.icon)
 

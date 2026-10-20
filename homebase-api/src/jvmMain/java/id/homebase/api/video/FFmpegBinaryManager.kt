@@ -17,6 +17,8 @@ object FFmpegBinaryManager {
         dir
     }
 
+    private val emptyGconvDir: File by lazy { File(tempDir, "gconv-empty").apply { mkdirs() } }
+
     private val platformKey: String by lazy {
         val os = System.getProperty("os.name").lowercase()
         val arch = System.getProperty("os.arch").lowercase()
@@ -53,6 +55,17 @@ object FFmpegBinaryManager {
      * present.
      */
     fun ffprobePath(): String = extractBinary("ffprobe$binaryExtension").absolutePath
+
+    /** Every launch of a bundled ffmpeg/ffprobe must go through here. */
+    fun processBuilder(command: List<String>): ProcessBuilder =
+        ProcessBuilder(command).also {
+            // The static-glibc Linux build segfaults if iconv dlopens the host's gconv modules.
+            if (platformKey.startsWith("linux")) {
+                it.environment()["GCONV_PATH"] = emptyGconvDir.absolutePath
+            }
+        }
+
+    fun processBuilder(vararg command: String): ProcessBuilder = processBuilder(command.toList())
 
     /** Checks if FFmpeg binaries are available for the current platform. */
     fun isAvailable(): Boolean {

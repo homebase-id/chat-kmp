@@ -105,6 +105,7 @@ class EmailSetupViewModel(
                     // what just happened, and looping would redo the work — which for the key step
                     // means rotating again on every pass.
                     if (currentStep() == step) {
+                        Logger.w(tag = TAG) { "Setup stalled: $step did not advance" }
                         _uiState.update { it.copy(error = EmailSetupError.Stalled) }
                         break
                     }

@@ -462,12 +462,13 @@ class OutboxSync(
         request: UpdateFileByUniqueIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
-        sendNow: Boolean = true
+        sendNow: Boolean = true,
+        uniqueId: Uuid = request.metadata.appData.uniqueId
+            ?: error("unique id required to place in outbox"),
     ): EnqueueResult = kickIfEnqueued(
         replaceEnqueue(
             driveId = request.driveId,
-            uniqueId = request.metadata.appData.uniqueId
-                ?: error("unique id required to place in outbox"),
+            uniqueId = uniqueId,
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,

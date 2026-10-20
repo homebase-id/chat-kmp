@@ -1,19 +1,23 @@
 package id.homebase.chat.viewonce
 
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
+import id.homebase.api.client.drives.upload.PayloadOperationType
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.Outbox
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.mapToMessageData
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -82,10 +86,24 @@ class ViewOnceActionsTest {
         ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.OPENED_SCOPE)
     }
 
-    private fun List<Outbox>.deletes() = filter { it.uploadType == DriveOutboxUploader.DeleteFile }
+    private fun List<Outbox>.strips() = filter { it.uploadType == DriveOutboxUploader.UpdateFile }
+
+    private fun Scenario.assertStripsOnlyTheMedia(row: Outbox) {
+        assertEquals(ChatMessageActionService.viewOnceStripRowKey(messageId), row.uniqueId)
+        val request = OutboxSerializer.decode<UpdateFileByUniqueIdRequest>(row)
+        assertEquals(messageId, request.uniqueId)
+        assertEquals(UpdateLocale.Local, request.instructions.locale)
+        assertTrue(request.instructions.recipients.isEmpty(), "the strip never reaches the sender's copy")
+        assertFalse(request.metadata.allowDistribution)
+        assertEquals(
+            listOf(PayloadOperationType.DeletePayload to VIEW_ONCE_PAYLOAD_KEY),
+            request.instructions.manifest.payloadDescriptors.orEmpty().map { it.operationType to it.payloadKey },
+        )
+        assertTrue(request.payloads.isNullOrEmpty())
+    }
 
     @Test
-    fun closingTheViewerQueuesTheOpenedSignalFirstThenALocalSoftDelete() = runTest {
+    fun closingTheViewerQueuesTheOpenedSignalFirstThenALocalMediaStrip() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val s = scenario(this, fixture)
 
@@ -100,47 +118,49 @@ class ViewOnceActionsTest {
             val signal = OutboxSerializer.decode<SetReactionsOutboxRequest>(reactionRow)
             assertEquals(1, signal.add.size)
             assertTrue(signal.add.single().contains(ViewOnceSignal.OPENED_CODE))
-            assertEquals(2L, fixture.dbm.outbox.count(), "one reaction row and one delete row")
+            assertEquals(2L, fixture.dbm.outbox.count(), "one reaction row and one strip row")
 
             val first = fixture.drainOutbox()
             assertEquals(
                 listOf(DriveOutboxUploader.SetReactions), first.map { it.uploadType },
-                "the delete must wait for the opened signal to leave the outbox",
+                "the strip must wait for the opened signal to leave the outbox",
             )
             fixture.dbm.outbox.deleteByRowId(first.single().rowId)
-            val deleteRow = fixture.drainOutbox().deletes().single()
-            assertEquals(reactionRowKey(s.messageId), deleteRow.dependencyUniqueId)
-            val delete = OutboxSerializer.decode<DeleteLocalFilesByFileIdRequest>(deleteRow)
-            assertEquals(null, delete.recipients)
-            assertEquals(false, delete.hardDelete)
-            assertEquals(listOf(s.fileId), delete.fileIds)
+            val stripRow = fixture.drainOutbox().strips().single()
+            assertEquals(reactionRowKey(s.messageId), stripRow.dependencyUniqueId)
+            s.assertStripsOnlyTheMedia(stripRow)
         }
     }
 
     @Test
-    fun theLocalRowReadsOpenedAtOnceAndAfterTheTombstoneLands() = runTest {
+    fun theOpenedCopyStaysAnUndeletedMessageWithNoMediaOrCaption() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val s = scenario(this, fixture)
             assertEquals(ViewOnceState.Unopened, s.state())
 
             s.service.setReactions(s.conversationId, s.messageId, ViewOnceSignal.openedChange())
-            assertEquals(ViewOnceState.Opened, s.state(), "own _vo flips the bubble before any delete")
+            assertEquals(ViewOnceState.Opened, s.state(), "own _vo flips the bubble before the strip")
 
             s.actions.onViewerClosed(s.conversationId, s.messageId)
-            val tombstone = s.stored()
-            assertTrue(tombstone.isDeleted)
-            assertNull(tombstone.payloads)
+            val opened = s.stored()
+            assertFalse(opened.isDeleted)
+            assertTrue(opened.payloads.isNullOrEmpty())
+            val descriptor = assertNotNull((opened.messageContent as MessageContent.ViewOnce).descriptor)
+            assertEquals(ViewOnceDescriptor.KIND_IMAGE, descriptor.kind)
+            assertNull(descriptor.caption)
+            assertTrue(ViewOnceSignal.OPENED_CODE in opened.ownReactions)
             assertEquals(ViewOnceState.Opened, s.state())
+            assertNull(viewOnceViewerFor(opened, now, fixture.credentialsManager.requireActiveDomain(), mobile = true))
         }
     }
 
     @Test
-    fun aCrashBetweenTheTwoEnqueuesIsRepairedWithExactlyOneDelete() = runTest {
+    fun aCrashBetweenTheTwoEnqueuesIsRepairedWithExactlyOneStrip() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val s = scenario(this, fixture)
             s.service.setReactions(s.conversationId, s.messageId, ViewOnceSignal.openedChange())
             val stale = s.stored()
-            assertTrue(!stale.isDeleted)
+            assertFalse(stale.payloads.isNullOrEmpty())
 
             val restarted = ViewOnceActions(s.service, fixture.credentialsManager)
             restarted.sweep(listOf(stale), now)
@@ -148,8 +168,9 @@ class ViewOnceActionsTest {
             ViewOnceActions(s.service, fixture.credentialsManager).sweep(listOf(stale), now)
 
             fixture.dbm.outbox.deleteBy(fixture.chatDriveId, reactionRowKey(s.messageId))
-            val deleteRow = fixture.drainOutbox().deletes().single()
-            assertEquals(reactionRowKey(s.messageId), deleteRow.dependencyUniqueId, "the re-enqueued delete waits for the _vo row")
+            val stripRow = fixture.drainOutbox().strips().single()
+            assertEquals(reactionRowKey(s.messageId), stripRow.dependencyUniqueId, "the re-enqueued strip waits for the _vo row")
+            s.assertStripsOnlyTheMedia(stripRow)
         }
     }
 
@@ -165,9 +186,11 @@ class ViewOnceActionsTest {
 
             s.actions.sweep(listOf(model), created + ViewOnceRules.MAX_LIFESPAN_MS)
             val rows = fixture.drainOutbox()
-            assertEquals(1, rows.deletes().size)
+            s.assertStripsOnlyTheMedia(rows.strips().single())
+            assertNull(rows.strips().single().dependencyUniqueId)
             assertTrue(rows.none { it.uploadType == DriveOutboxUploader.SetReactions }, "an expiry never signals opened")
-            assertTrue(s.stored().isDeleted)
+            assertFalse(s.stored().isDeleted)
+            assertTrue(s.stored().payloads.isNullOrEmpty())
             assertEquals(ViewOnceState.Expired, s.state())
         }
     }
@@ -185,7 +208,7 @@ class ViewOnceActionsTest {
             s.actions.sweep(listOf(own), now)
 
             assertTrue(fixture.drainOutbox().isEmpty())
-            assertTrue(!s.stored().isDeleted)
+            assertFalse(s.stored().payloads.isNullOrEmpty())
         }
     }
 
@@ -254,7 +277,7 @@ class ViewOnceActionsTest {
                 fixture.dbm.outbox.selectByDriveAndUnique(fixture.chatDriveId, s.shotKey()),
                 "the opened signal must not clobber the pending screenshot signal",
             )
-            assertEquals(3L, fixture.dbm.outbox.count(), "screenshot, opened and delete rows")
+            assertEquals(3L, fixture.dbm.outbox.count(), "screenshot, opened and strip rows")
         }
     }
 
@@ -262,7 +285,7 @@ class ViewOnceActionsTest {
         ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.REACTION_SCOPE)
 
     @Test
-    fun reactThenCloseChainsEmojiThenOpenedThenDelete_soTheDeleteCannotOvertakeTheEmoji() = runTest {
+    fun reactThenCloseChainsEmojiThenOpenedThenStrip_soTheStripCannotOvertakeTheEmoji() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val s = scenario(this, fixture)
 
@@ -285,13 +308,13 @@ class ViewOnceActionsTest {
             val second = fixture.drainOutbox()
             assertEquals(listOf(openedRow.rowId), second.map { it.rowId })
             fixture.dbm.outbox.deleteByRowId(openedRow.rowId)
-            val deleteRow = fixture.drainOutbox().deletes().single()
-            assertEquals(reactionRowKey(s.messageId), deleteRow.dependencyUniqueId, "the delete waits for _vo, which waited for the emoji")
+            val stripRow = fixture.drainOutbox().strips().single()
+            assertEquals(reactionRowKey(s.messageId), stripRow.dependencyUniqueId, "the strip waits for _vo, which waited for the emoji")
         }
     }
 
     @Test
-    fun screenshotThenCloseChainsTheShotBeforeOpenedAndTheDelete_soTheDeleteCannotDrainFirst() = runTest {
+    fun screenshotThenCloseChainsTheShotBeforeOpenedAndTheStrip_soTheStripCannotDrainFirst() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val s = scenario(this, fixture)
 
@@ -306,7 +329,7 @@ class ViewOnceActionsTest {
             fixture.dbm.outbox.deleteByRowId(shotRow.rowId)
             assertEquals(listOf(openedRow.rowId), fixture.drainOutbox().map { it.rowId })
             fixture.dbm.outbox.deleteByRowId(openedRow.rowId)
-            assertEquals(1, fixture.drainOutbox().deletes().size)
+            assertEquals(1, fixture.drainOutbox().strips().size)
         }
     }
 
@@ -336,7 +359,7 @@ class ViewOnceActionsTest {
                 }
                 fixture.dbm.outbox.deleteByRowId(runnable.single().rowId)
             }
-            assertEquals(listOf(EMOJI, SHOT, OPENED, DriveOutboxUploader.DeleteFile), order)
+            assertEquals(listOf(EMOJI, SHOT, OPENED, DriveOutboxUploader.UpdateFile), order)
         }
     }
 

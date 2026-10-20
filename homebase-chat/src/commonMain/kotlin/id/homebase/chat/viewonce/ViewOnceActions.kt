@@ -22,7 +22,7 @@ class ViewOnceActions(
     private val claimed = mutableSetOf<Uuid>()
 
     // The viewer's screenshot and emoji rows chain in the order they were queued, and `_vo` waits
-    // for the last of them: the outbox is not FIFO, so a delete that drains first loses them.
+    // for the last of them: the outbox is not FIFO, so a strip that drains first loses them.
     private val signalMutex = Mutex()
     private val shotSent = mutableSetOf<Uuid>()
     private val reacted = mutableSetOf<Uuid>()
@@ -88,7 +88,7 @@ class ViewOnceActions(
         }
     }
 
-    /** The viewer's screenshot and emoji rows (if any), then `_vo`, then the soft delete, each waiting for the one before. */
+    /** The viewer's screenshot and emoji rows (if any), then `_vo`, then the media strip, each waiting for the one before. */
     suspend fun onViewerClosed(conversationId: Uuid, messageId: Uuid) {
         if (!claim(messageId)) return
         releasingOnFailure(messageId, "viewer close failed") {
@@ -98,34 +98,31 @@ class ViewOnceActions(
                     .also { if (it == MutationOutcome.Queued) lastSignalRow.remove(messageId) }
             }
             Logger.i(TAG) { "viewer closed msg=$messageId opened-signal=$outcome" }
-            actionService.deleteMessage(
+            actionService.stripViewOnceMedia(
                 messageId = messageId,
-                deleteForEveryone = false,
                 runAfter = ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.OPENED_SCOPE),
             )
         }
     }
 
     /**
-     * Re-runnable: an opened copy whose delete never got queued gets it now, and an unopened copy
-     * past [ViewOnceRules.MAX_LIFESPAN_MS] is deleted without an `_vo`. Own messages are never touched.
-     * A delete already queued has already tombstoned the local row, so it is not queued twice.
+     * Re-runnable: an opened copy whose strip never got queued gets it now, and an unopened copy
+     * past [ViewOnceRules.MAX_LIFESPAN_MS] is stripped without an `_vo`. Own messages are never touched.
+     * A queued strip has already emptied the local row's payloads, so it is not queued twice.
      */
     suspend fun sweep(messages: List<MessageUiModel>, nowMs: Long) {
-        if (messages.none { it.messageContent is MessageContent.ViewOnce && !it.isDeleted }) return
+        if (messages.none { it.messageContent is MessageContent.ViewOnce && !it.payloads.isNullOrEmpty() }) return
         val me = credentialsManager.requireActiveDomain()
         for (message in messages) {
             if (message.messageContent !is MessageContent.ViewOnce) continue
-            if (message.isDeleted || message.isPendingSend || message.isFromActiveUser(me)) continue
+            if (message.payloads.isNullOrEmpty() || message.isPendingSend || message.isFromActiveUser(me)) continue
             val state = ViewOnceRules.stateOf(message, nowMs, me)
             if (state == ViewOnceState.Unopened) continue
             val opened = state == ViewOnceState.Opened
             if (!claim(message.id)) continue
-            releasingOnFailure(message.id, "sweep delete failed") {
-                if (actionService.isDeletedLocally(message.id)) return@releasingOnFailure
-                actionService.deleteMessage(
+            releasingOnFailure(message.id, "sweep strip failed") {
+                actionService.stripViewOnceMedia(
                     messageId = message.id,
-                    deleteForEveryone = false,
                     runAfter = if (opened) {
                         ChatMessageActionService.reactionSetRowKey(message.id, ViewOnceSignal.OPENED_SCOPE)
                     } else null,

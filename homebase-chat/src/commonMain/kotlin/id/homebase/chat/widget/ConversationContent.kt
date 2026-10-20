@@ -76,6 +76,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -398,39 +399,7 @@ fun ConversationContent(
             else -> null to false
         }
     })
-    LaunchedEffect(listState, conversation.conversation.id) {
-        var previousTotal = 0
-        var wasAtBottom = false
-        var previousBottomKey: Uuid? = null
-        snapshotFlow {
-            val info = listState.layoutInfo
-            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
-        }.collect { (total, lastVisibleIndex) ->
-            val (bottomKey, bottomMine) = bottomItem.value
-            val grew = total > previousTotal && previousTotal > 0
-            // Own-send: the bottom item is the user's AND it just changed (a new
-            // message/placeholder landed at the end), so follow it down even when
-            // the user had scrolled up into history.
-            val myNewBottom = bottomMine && bottomKey != null && bottomKey != previousBottomKey
-            if (grew && (wasAtBottom || myNewBottom) &&
-                !hasNewerForAutoFollow.value
-            ) {
-                listState.animateScrollToItem(total - 1)
-            }
-            previousBottomKey = bottomKey
-            // "At the bottom" = the last item is currently visible. This mirrors
-            // the scroll-to-bottom FAB's own visibility test (line ~341) and,
-            // unlike canScrollForward, does NOT require scrolling the final pixels
-            // into the 24.dp bottom content padding — so a fully-visible last
-            // message already counts as "at the bottom" and a newly-arrived
-            // message auto-follows. Recorded BEFORE the next snapshot so a
-            // subsequent growth sees the pre-growth scroll state (at the moment
-            // the new item lands, lastVisibleIndex still points at the old last
-            // item, which is why we read it from the prior emission here).
-            wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
-            previousTotal = total
-        }
-    }
+    AutoFollowNewItems(listState, conversation.conversation.id, bottomItem, hasNewerForAutoFollow)
     KeepListEndInView(listState, conversation.conversation.id)
 
     // One-time own-send follow: every send arm sets scrollToLatestRequest so the
@@ -462,7 +431,7 @@ fun ConversationContent(
                         laidOutItemCount = listState.layoutInfo.totalItemsCount,
                     ) ?: -1
                 }.first { it > 0 }
-                listState.animateScrollToItem(target - 1)
+                listState.animateScrollToItemUnlessPreempted(target - 1)
             }
         }
         onUiAction(ConversationListUiAction.ConsumeScrollToLatestRequest)
@@ -1047,6 +1016,8 @@ fun ConversationContent(
                         listState.requestScrollToItem(newIndex, -anchor.offset)
                     }
                 }
+
+                GhostProbeEffect(conversation.conversation.id, mergedItems, listState)
 
                 val currentMergedItems by rememberUpdatedState(mergedItems)
                 // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
@@ -2249,6 +2220,48 @@ internal fun LazyListState.requestJumpStart(index: Int) {
 
 private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean, val firstIndex: Int, val firstOffset: Int)
 
+@Composable
+internal fun AutoFollowNewItems(
+    listState: LazyListState,
+    key: Any?,
+    bottomItem: State<Pair<Uuid?, Boolean>>,
+    hasNewerMessages: State<Boolean>,
+) {
+    LaunchedEffect(listState, key) {
+        var previousTotal = 0
+        var wasAtBottom = false
+        var previousBottomKey: Uuid? = null
+        snapshotFlow {
+            val info = listState.layoutInfo
+            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
+        }.collect { (total, lastVisibleIndex) ->
+            val (bottomKey, bottomMine) = bottomItem.value
+            val grew = total > previousTotal && previousTotal > 0
+            // Own-send: the bottom item is the user's AND it just changed (a new
+            // message/placeholder landed at the end), so follow it down even when
+            // the user had scrolled up into history.
+            val myNewBottom = bottomMine && bottomKey != null && bottomKey != previousBottomKey
+            if (grew && (wasAtBottom || myNewBottom) &&
+                !hasNewerMessages.value
+            ) {
+                listState.animateScrollToItemUnlessPreempted(total - 1)
+            }
+            previousBottomKey = bottomKey
+            // "At the bottom" = the last item is currently visible. This mirrors
+            // the scroll-to-bottom FAB's own visibility test (line ~341) and,
+            // unlike canScrollForward, does NOT require scrolling the final pixels
+            // into the 24.dp bottom content padding — so a fully-visible last
+            // message already counts as "at the bottom" and a newly-arrived
+            // message auto-follows. Recorded BEFORE the next snapshot so a
+            // subsequent growth sees the pre-growth scroll state (at the moment
+            // the new item lands, lastVisibleIndex still points at the old last
+            // item, which is why we read it from the prior emission here).
+            wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
+            previousTotal = total
+        }
+    }
+}
+
 // A list that sat at its end stays there when anything pushes its end down without adding a row: a row
 // growing in place (reaction pill, preview, media) or the viewport shrinking from above (pinned bar,
 // banners). LazyColumn keeps its first item anchored, so either would slide the newest row under the composer.
@@ -2304,14 +2317,18 @@ private suspend fun LazyListState.animateScrollToNewestItem() {
     repeat(SCROLL_TO_NEWEST_ATTEMPTS) {
         val target = layoutInfo.totalItemsCount - 1
         if (target < 0) return
-        try {
-            animateScrollToItem(target)
-        } catch (e: CancellationException) {
-            // Compose's MutationInterruptedException is internal; a still-active context
-            // means the prepend compensation took the scroll, not the caller going away.
-            if (!currentCoroutineContext().isActive) throw e
-        }
+        animateScrollToItemUnlessPreempted(target)
         if (layoutInfo.visibleItemsInfo.lastOrNull()?.index == layoutInfo.totalItemsCount - 1) return
+    }
+}
+
+private suspend fun LazyListState.animateScrollToItemUnlessPreempted(index: Int) {
+    try {
+        animateScrollToItem(index)
+    } catch (e: CancellationException) {
+        // Compose's MutationInterruptedException is internal; a still-active context means
+        // another scroll took the list over, not the caller going away.
+        if (!currentCoroutineContext().isActive) throw e
     }
 }
 
