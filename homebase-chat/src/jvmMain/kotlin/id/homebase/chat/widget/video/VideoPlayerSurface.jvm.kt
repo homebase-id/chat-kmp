@@ -75,6 +75,8 @@ import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCall
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.RenderCallback
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.format.RV32BufferFormat
 import java.io.File
+import java.net.Inet6Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.util.UUID
@@ -198,7 +200,7 @@ actual fun VideoPlayerSurface(
                         progressJob.cancel()
                         val m = content.metadata
                         state = VpsState.Playing(
-                            "http://localhost:${server.address.port}/index.m3u8",
+                            server.playlistUrl("index.m3u8"),
                             if (m.widthPx > 0 && m.heightPx > 0) m.widthPx.toFloat() / m.heightPx else null,
                         )
                     }
@@ -250,7 +252,7 @@ internal fun startLocalHlsServer(
     dir: File,
     totalSize: Long,
     fetchRange: (start: Long, length: Long) -> ByteArray?,
-): HttpServer = HttpServer.create(InetSocketAddress(0), 0).apply {
+): HttpServer = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
     createContext("/") { exchange ->
         val name = exchange.requestURI.path.trimStart('/')
         if (name.endsWith(".m3u8")) {
@@ -286,6 +288,12 @@ internal fun startLocalHlsServer(
     }
     executor = Executors.newFixedThreadPool(4)
     start()
+}
+
+internal fun HttpServer.playlistUrl(name: String): String {
+    val host = address.address
+    val authority = if (host is Inet6Address) "[${host.hostAddress}]" else host.hostAddress
+    return "http://$authority:${address.port}/$name"
 }
 
 // Discovery dlopens libvlccore; a broken or ABI-mismatched JNA raises UnsatisfiedLinkError,
