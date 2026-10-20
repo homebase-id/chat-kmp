@@ -742,9 +742,9 @@ data class DeleteFileIdBatchResult (
 data class FileVersionTag(val fileId: Uuid, val versionTag: Uuid)
 
 @Serializable
-data class FileVersionTagBatch(val files: List<FileVersionTag>)
+data class FileVersionTagBatch(val files: List<FileVersionTag>, val archivalStatus: ArchivalStatus? = null)
 
-/** [errorCode] is null when the file is gone. */
+/** [errorCode] is null when the write went through: the file is gone, or at the status asked for. */
 @Serializable
 data class PerFileResult(val fileId: Uuid, val errorCode: OdinClientErrorCode? = null)
 

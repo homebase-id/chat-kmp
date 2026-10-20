@@ -29,9 +29,9 @@ class FilesyncTrashTest {
     private fun trash(nodes: Map<Uuid, FilesyncNode>) = FilesyncTrash(FilesyncNodes(nodes, emptyMap()))
 
     @Test
-    fun theItemsComeNewestFirstCountingWhatWasDeletedWithThem() {
+    fun theItemsComeNewestFirstCountingWhatIsRemovedBelowThem() {
         assertEquals(
-            listOf(FilesyncTrashItem(notes, 0), FilesyncTrashItem(photos, 1), FilesyncTrashItem(old, 0)),
+            listOf(FilesyncTrashItem(notes, 0), FilesyncTrashItem(photos, 2), FilesyncTrashItem(old, 0)),
             trash(nodes).items(),
         )
     }
@@ -52,7 +52,7 @@ class FilesyncTrashTest {
         val b = live("b.jpg", year.nodeId, folder = false, written = 200)
         val trash = trash(nodes.plus(year, b))
         assertEquals(photosId, trash.itemOf[b.nodeId])
-        assertEquals(listOf(FilesyncTrashItem(notes, 0), FilesyncTrashItem(photos, 3), FilesyncTrashItem(old, 0)), trash.items())
+        assertEquals(listOf(FilesyncTrashItem(notes, 0), FilesyncTrashItem(photos, 2), FilesyncTrashItem(old, 0)), trash.items())
         assertEquals(listOf(photos, a, year, b), trash.group(photos))
         assertEquals(listOf(photos, a), trash.restorePlan(photos))
     }
@@ -75,6 +75,21 @@ class FilesyncTrashTest {
         assertEquals(setOf(old.nodeId), trash.removedBefore(211))
         assertEquals(setOf(old.nodeId, notes.nodeId), trash.removedBefore(500))
         assertEquals(setOf(old.nodeId, photosId, a.nodeId, year.nodeId, lateA.nodeId), trash.deletedWith(trash.removedBefore(501)) - notes.nodeId)
+    }
+
+    @Test
+    fun emptyingAnItemTakesWhatWasRemovedFromItBeforeThroughRemovedFoldersOnly() {
+        val sub = removed("2023", photosId, folder = true, at = 50)
+        val subFile = removed("s.jpg", sub.nodeId, folder = false, at = 40)
+        val year = live("2024", photosId, folder = true, written = 150)
+        val underLive = removed("u.jpg", year.nodeId, folder = false, at = 220)
+        val trash = trash(nodes.plus(sub, subFile, year, underLive))
+        assertEquals(sub.nodeId, trash.itemOf[sub.nodeId])
+        assertEquals(setOf(photosId, a.nodeId, old.nodeId, sub.nodeId, subFile.nodeId), trash.inside(setOf(photosId)))
+        assertEquals(setOf(sub.nodeId, subFile.nodeId), trash.inside(setOf(sub.nodeId)))
+        assertEquals(4, trash.items().single { it.node == photos }.count)
+        assertEquals(setOf(underLive.nodeId), trash.deletedWith(setOf(photosId)) - trash.inside(setOf(photosId)) - year.nodeId)
+        assertEquals(emptySet(), trash.inside(setOf(Uuid.random(), year.nodeId)))
     }
 
     @Test
