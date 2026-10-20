@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.profile
 
+import id.homebase.api.client.storage.StorageQuota
+import id.homebase.api.client.StorageFullException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -93,6 +95,7 @@ class ProfileAvatarEditViewModel(
     private val cropResultBus: CropResultBus,
     private val fileOperationsProvider: FileOperationsProvider,
     private val circlePhotosSupported: Boolean = SERVER_STORES_CIRCLE_PHOTOS,
+    private val storageQuota: StorageQuota? = null,
     private val loadCircles: suspend () -> List<CardCircle> = { emptyList() },
 ) : ViewModel() {
 
@@ -338,6 +341,12 @@ class ProfileAvatarEditViewModel(
                 pendingCroppedBytes.remove(slot)
                 updateTier(slot) { it.copy(isUploading = false, pendingCroppedAvatar = null) }
                 _events.tryEmit(ProfileAvatarEditEvent.UploadTooLarge(slot.visibility))
+            } catch (e: StorageFullException) {
+                Logger.w(tag = TAG) { "Profile photo refused, storage full, for $slot" }
+                pendingCroppedBytes.remove(slot)
+                updateTier(slot) { it.copy(isUploading = false, pendingCroppedAvatar = null) }
+                storageQuota?.reportStorageFull()
+                _events.tryEmit(ProfileAvatarEditEvent.StorageFull(slot.visibility))
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "Profile photo upload failed for $slot" }
                 pendingCroppedBytes.remove(slot)

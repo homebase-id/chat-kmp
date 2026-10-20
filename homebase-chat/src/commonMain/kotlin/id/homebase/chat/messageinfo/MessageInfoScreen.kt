@@ -73,6 +73,7 @@ import id.homebase.resources.msg_outbox_checked_out_stuck
 import id.homebase.resources.msg_outbox_entry_lingering
 import id.homebase.resources.msg_send_attempt
 import id.homebase.resources.msg_stuck_reason
+import id.homebase.resources.msg_storage_full
 import id.homebase.resources.msg_waiting_for_connection
 import id.homebase.resources.msg_waiting_on_earlier_message
 import id.homebase.resources.msg_status_delivery_details_unavailable
@@ -342,7 +343,8 @@ fun MessageInfoUi(
                                 }
                                 uiState.stuckReason?.let { reason ->
                                     Text(
-                                        text = stringResource(MR.string.msg_stuck_reason, reason),
+                                        text = if (uiState.storageFull) stringResource(MR.string.msg_storage_full)
+                                        else stringResource(MR.string.msg_stuck_reason, reason),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(top = 2.dp),
@@ -416,7 +418,8 @@ fun MessageInfoUi(
                             }
                             uiState.stuckReason?.let { reason ->
                                 Text(
-                                    text = stringResource(MR.string.msg_stuck_reason, reason),
+                                    text = if (uiState.storageFull) stringResource(MR.string.msg_storage_full)
+                                    else stringResource(MR.string.msg_stuck_reason, reason),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(top = 2.dp),

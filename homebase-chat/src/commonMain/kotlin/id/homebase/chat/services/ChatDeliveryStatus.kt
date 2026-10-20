@@ -6,11 +6,13 @@ import id.homebase.resources.MR
 import id.homebase.resources.error_access_denied
 import id.homebase.resources.error_delivery_failed
 import id.homebase.resources.error_server_not_responding
+import id.homebase.resources.error_recipient_storage_full
 import id.homebase.resources.error_too_many_attempts
 import org.jetbrains.compose.resources.StringResource
 
 fun RecipientTransferHistoryEntry.toChatDeliveryStatus(): ChatDeliveryStatus = when {
-    TransferStatus.isFailedStatus(latestTransferStatus) -> ChatDeliveryStatus.Failed
+    // Still in the outbox is still trying, whatever the last attempt said
+    !isInOutbox && TransferStatus.isFailedStatus(latestTransferStatus) -> ChatDeliveryStatus.Failed
     isRead -> ChatDeliveryStatus.Read
     latestTransferStatus == TransferStatus.Delivered -> ChatDeliveryStatus.Delivered
     isInOutbox -> ChatDeliveryStatus.Sending
@@ -21,6 +23,7 @@ fun TransferStatus.toErrorDetailRes(): StringResource? = when (this) {
     TransferStatus.RecipientServerNotResponding -> MR.string.error_server_not_responding
     TransferStatus.RecipientIdentityReturnedAccessDenied -> MR.string.error_access_denied
     TransferStatus.SendingServerTooManyAttempts -> MR.string.error_too_many_attempts
+    TransferStatus.RecipientIdentityOutOfStorage -> MR.string.error_recipient_storage_full
     else -> if (TransferStatus.isFailedStatus(this)) MR.string.error_delivery_failed else null
 }
 

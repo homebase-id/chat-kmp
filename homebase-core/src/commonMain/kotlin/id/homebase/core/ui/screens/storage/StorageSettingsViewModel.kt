@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.storage
 
+import id.homebase.api.client.storage.StorageQuota
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -39,6 +40,7 @@ class StorageSettingsViewModel(
     private val databaseSizeProbe: DatabaseSizeProbe,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveRegistry: DriveRegistry,
+    private val storageQuota: StorageQuota,
 ) : ViewModel() {
 
     private val fileSystem = systemFileSystem
@@ -99,6 +101,8 @@ class StorageSettingsViewModel(
 
             val driveRows = loadDriveRows()
 
+            val account = storageQuota.refresh()
+
             val orphanCoilBytes = withContext(Dispatchers.Default) {
                 probeOrphanCoilDiskCache()
             }
@@ -117,6 +121,8 @@ class StorageSettingsViewModel(
 
             _uiState.update {
                 it.copy(
+                    account = account,
+                    accountStorageFull = storageQuota.state.value.isFull,
                     caches = caches,
                     coilMemoryCache = coilRow,
                     drives = driveRows,

@@ -16,6 +16,8 @@ import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactPayloadReader
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.storage.StorageQuota
+import id.homebase.api.client.storage.StorageUsageProvider
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
@@ -104,12 +106,15 @@ val apiModule = module {
     single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
     // Explicit `single` (not `singleOf`) because the ctor's background-assertion factory is
     // an intentional Kotlin default the container can't resolve reflectively.
+    factoryOf(::StorageUsageProvider)
+    singleOf(::StorageQuota)
     single {
         OutboxSync(
             databaseManager = get(),
             uploader = get(),
             eventBus = get(),
             scope = get<CoroutineScope>(),
+            storageQuota = get(),
         )
     }
 

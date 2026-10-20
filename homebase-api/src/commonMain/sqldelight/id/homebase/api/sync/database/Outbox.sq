@@ -45,6 +45,14 @@ WHERE checkOutStamp IS NULL AND
 )
 RETURNING rowId, driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
 
+-- Point new files queued behind a held row at what it waits on instead (OutboxSync, storage full)
+repointNewFilesQueuedBehind:
+UPDATE Outbox
+SET dependencyUniqueId = :newDependency
+WHERE dependencyUniqueId = :heldUniqueId
+    AND uniqueId != :heldUniqueId
+    AND uploadType = :uploadNewFile;
+
 -- What's the lowest timestamp of the next item to process in the outbox?
 nextScheduled:
 SELECT nextRunTime

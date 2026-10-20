@@ -112,6 +112,10 @@ sealed class Route {
     data object StorageSettings : Route()
 
     @Serializable
+    @SerialName("plan-settings")
+    data object PlanSettings : Route()
+
+    @Serializable
     @SerialName("media-settings")
     data object MediaSettings : Route()
 
