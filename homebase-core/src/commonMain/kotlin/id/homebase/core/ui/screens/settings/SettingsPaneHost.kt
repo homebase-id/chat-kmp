@@ -67,6 +67,7 @@ internal data class SettingsPaneActions(
     val onNavigateToCropper: (Uuid) -> Unit,
     val onNavigateToDeveloperMenu: () -> Unit,
     val onNavigateToDefragmenter: () -> Unit,
+    val onNavigateToPlan: () -> Unit,
 )
 
 private enum class ProfilePage { Avatar, Card, CardEditor }
@@ -281,6 +282,7 @@ private fun CategoryPage(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onNavigateToDefragmenter = actions.onNavigateToDefragmenter,
+            onNavigateToPlan = actions.onNavigateToPlan,
         )
 
         SettingsCategory.Help -> HelpScreen(

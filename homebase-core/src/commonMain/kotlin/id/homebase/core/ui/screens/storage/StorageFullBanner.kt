@@ -19,12 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,9 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import id.homebase.api.client.storage.StorageQuota
 import id.homebase.resources.MR
-import id.homebase.resources.cd_navigate_forward
-import id.homebase.resources.storage_full_banner_body
-import id.homebase.resources.storage_full_banner_title
+import id.homebase.resources.storage_full_banner
+import id.homebase.resources.storage_full_banner_action
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -51,11 +51,11 @@ private val FULL_RECHECK_INTERVAL = 1.minutes
 /**
  * Puts a banner over [content] while the identity's storage is full: a 507 refused an upload, or the
  * server says it is over its plan's quota. Photos and files wait in the outbox; text still goes.
- * Tapping it calls [onOpenStorage]. While shown it asks the server again every minute, so it goes on
+ * Tapping it calls [onOpenPlan]. While shown it asks the server again every minute, so it goes on
  * its own once enough was deleted.
  */
 @Composable
-fun StorageFullHost(onOpenStorage: () -> Unit, content: @Composable () -> Unit) {
+fun StorageFullHost(onOpenPlan: () -> Unit, content: @Composable () -> Unit) {
     val storageQuota = koinInject<StorageQuota>()
     val quotaState by storageQuota.state.collectAsStateWithLifecycle()
     val isFull = quotaState.isFull
@@ -81,7 +81,7 @@ fun StorageFullHost(onOpenStorage: () -> Unit, content: @Composable () -> Unit) 
         ) {
             StorageFullBanner(
                 modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
-                onClick = onOpenStorage,
+                onClick = onOpenPlan,
             )
         }
         Box(
@@ -114,23 +114,18 @@ private fun StorageFullBanner(modifier: Modifier = Modifier, onClick: () -> Unit
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onErrorContainer,
             )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(MR.string.storage_full_banner_title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
-                Text(
-                    text = stringResource(MR.string.storage_full_banner_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = stringResource(MR.string.cd_navigate_forward),
-                tint = MaterialTheme.colorScheme.onErrorContainer,
+            Text(
+                text = stringResource(MR.string.storage_full_banner),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
             )
+            TextButton(
+                onClick = onClick,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer),
+            ) {
+                Text(stringResource(MR.string.storage_full_banner_action))
+            }
         }
     }
 }

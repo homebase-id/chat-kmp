@@ -12,6 +12,8 @@ data class StorageUsage(
     val usedBytes: Long = 0,
     val quotaBytes: Long? = null,
     val isOverQuota: Boolean = false,
+    /** Whether the identity has a public home page; null when the server does not say */
+    val publicWebPresence: Boolean? = null,
 )
 
 /** GET /api/v2/plan: the identity's hosting plan, what it gives, and how much of its storage is used. */
@@ -47,6 +49,8 @@ class StorageUsageProvider(
         if (response.status == 404) return null
         throwForFailure(response)
         val plan = deserialize<IdentityPlan>(response.body)
-        return StorageUsage(plan.id, plan.storage.usedBytes, plan.storage.quotaBytes, plan.storage.isOverQuota)
+        return StorageUsage(
+            plan.id, plan.storage.usedBytes, plan.storage.quotaBytes, plan.storage.isOverQuota, plan.publicWebPresence
+        )
     }
 }

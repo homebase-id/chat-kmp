@@ -233,6 +233,7 @@ import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.LiveDefragSource
+import id.homebase.core.ui.screens.storage.PlanSettingsViewModel
 import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
 import id.homebase.core.upgrade.PendingUpgradeManager
 import org.koin.core.module.Module
@@ -1353,6 +1354,7 @@ val appModule = module {
     viewModelOf(::MediaSettingsViewModel)
     viewModelOf(::KeyboardSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
+    viewModelOf(::PlanSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
     viewModelOf(::ConnectRequestViewModel)

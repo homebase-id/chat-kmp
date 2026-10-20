@@ -220,6 +220,7 @@ import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageFullHost
+import id.homebase.core.ui.screens.storage.PlanSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
@@ -1334,7 +1335,7 @@ fun AppNavHost(
                                     )
                                     val connectRequestViewModel: ConnectRequestViewModel = koinViewModel()
                                     // The list and the open conversation share this route, so one banner covers both
-                                    StorageFullHost(onOpenStorage = { navController.navigate(Route.StorageSettings) }) {
+                                    StorageFullHost(onOpenPlan = { navController.navigate(Route.PlanSettings) }) {
                                         ConversationListScreen(
                                             viewModel = conversationListViewModel,
                                             archivedConversationsViewModel = koinViewModel(),
@@ -1684,6 +1685,9 @@ fun AppNavHost(
                                                 },
                                                 onNavigateToDefragmenter = {
                                                     navController.navigate(Route.Defragmenter)
+                                                },
+                                                onNavigateToPlan = {
+                                                    navController.navigate(Route.PlanSettings)
                                                 },
                                             ),
                                             profileCardEnabled = profileCardEnabled,
@@ -2375,6 +2379,18 @@ fun AppNavHost(
                                         onNavigateToDefragmenter = {
                                             navController.navigate(Route.Defragmenter)
                                         },
+                                        onNavigateToPlan = {
+                                            navController.navigate(Route.PlanSettings)
+                                        },
+                                    )
+                                }
+                            }
+
+                            composable<Route.PlanSettings> {
+                                if (isAuthenticated) {
+                                    PlanSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
                                     )
                                 }
                             }
