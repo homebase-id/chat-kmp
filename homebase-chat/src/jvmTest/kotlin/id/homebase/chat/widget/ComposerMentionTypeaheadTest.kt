@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -64,7 +66,7 @@ private val GroupMembers = listOf(
 )
 
 /**
- * The row's `ContactAvatar` resolves its Coil loader through Koin, so a bare `runComposeUiTest`
+ * The row's `IdentityAvatar` resolves its Coil loader through Koin, so a bare `runComposeUiTest`
  * dies with "KoinApplication has not been started". This one fails every request, which puts every
  * row on the initials fallback: deterministic, and it dials nobody.
  */
@@ -91,7 +93,7 @@ private class OfflineImageLoader : ImageLoader {
 }
 
 private val TestKoin = koinApplication {
-    modules(module { single<ImageLoader> { OfflineImageLoader() } })
+    modules(module { single { AvatarResolver(MutableStateFlow(emptyList())) }; single<ImageLoader> { OfflineImageLoader() } })
 }
 
 @OptIn(ExperimentalTestApi::class, ExperimentalRichTextApi::class)

@@ -47,11 +47,12 @@ internal fun ContactCardDescriptor.subtitleLine(): String =
         .orEmpty()
 
 // Blank for a card carrying only a phone/email/identity — the caller falls back to an icon.
-internal fun ContactCardDescriptor.avatarInitials(): String =
+internal fun ContactCardDescriptor.avatarName(): String =
     displayName
         .ifBlank { listOf(givenName, surname).filter { it.isNotBlank() }.joinToString(" ") }
         .ifBlank { organization }
-        .initials()
+
+internal fun ContactCardDescriptor.avatarInitials(): String = avatarName().initials()
 
 // `Char.isDigit()` would let Arabic-Indic and Devanagari digits through, producing a `tel:` URI no
 // dialer can parse.

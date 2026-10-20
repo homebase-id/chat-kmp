@@ -31,7 +31,7 @@ import org.koin.compose.koinInject
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun PublicAvatar(
+internal fun PublicAvatar(
     odinId: OdinId,
     initials: String?,
     options: AvatarOptions,

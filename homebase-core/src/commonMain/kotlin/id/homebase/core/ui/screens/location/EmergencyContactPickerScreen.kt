@@ -53,8 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.createconversation.ContactItem
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.ui.screens.contactbook.CircleAddFailureReason
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.StyledSearchTextField
@@ -206,10 +206,9 @@ private fun EmergencyContactPickerUi(
                             },
                             selected = true,
                             leadingIcon = {
-                                ContactAvatar(
+                                IdentityAvatar(
                                     odinId = contact.odinId,
-                                    profileImageData = null,
-                                    initials = contact.avatarInitials,
+                                    displayName = contact.name,
                                     options = AvatarOptions(size = 28.dp, fontSize = 12.sp),
                                     sharedTransitionScope = null,
                                     animatedVisibilityScope = null,
@@ -278,7 +277,6 @@ private fun EmergencyContactPickerUi(
                             isSelectionEnabled = eligible,
                             isSelected = uiState.selectedContacts.contains(contact),
                             odinId = contact.odinId,
-                            avatarInitials = contact.avatarInitials,
                             onContactClick = {
                                 onUiAction(EmergencyContactPickerUiAction.ContactClicked(contact))
                             },

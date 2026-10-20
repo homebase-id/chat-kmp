@@ -1,5 +1,7 @@
 package id.homebase.chat.selectmembers
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -26,6 +28,7 @@ class SelectedMemberChipTest {
     private val koin = koinApplication {
         modules(
             module {
+                single { AvatarResolver(MutableStateFlow(emptyList())) }
                 single {
                     ImageLoader.Builder(PlatformContext.INSTANCE)
                         .components {

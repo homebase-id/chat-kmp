@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
@@ -41,6 +43,7 @@ class PostCardLinkPreviewSizeTest {
     private val koin = koinApplication {
         modules(
             module {
+                single { AvatarResolver(MutableStateFlow(emptyList())) }
                 single {
                     ImageLoader.Builder(PlatformContext.INSTANCE)
                         .components {

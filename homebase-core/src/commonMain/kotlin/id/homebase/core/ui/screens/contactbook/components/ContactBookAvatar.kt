@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -25,14 +25,12 @@ import id.homebase.resources.avatar_contact
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Avatar for a contact-book entry, in priority order:
- *  1. An uploaded photo stored on the contact drive ([ContactBookEntry.profileImageData]).
- *  2. An identity contact's published public avatar ([ContactAvatar]).
- *  3. Coloured initials ([FallbackAvatar]).
+ * Avatar for a contact-book entry. An entry with an identity resolves through [IdentityAvatar] so it
+ * shows what every other screen shows for that person; a manual (identity-less) entry can only have
+ * its stored photo or initials.
  *
  * [onClick] receives the source of whichever image was actually rendered, so a caller can open it
- * full screen without re-deriving that priority. The initials fallback never calls it, and the
- * public avatar only does once Coil has the image.
+ * full screen. The initials fallback never calls it.
  *
  * Pass both scopes to morph whichever image branch rendered into the full-screen viewer.
  */
@@ -46,6 +44,19 @@ fun ContactBookAvatar(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val options = AvatarOptions(size = size, fontSize = (size.value * 0.4f).sp)
+
+    val odinId = remember(entry.odinId) { entry.odinId?.takeIf { it.isNotBlank() }?.let { runCatching { OdinId(it) }.getOrNull() } }
+    if (odinId != null) {
+        IdentityAvatar(
+            odinId = odinId,
+            options = options,
+            displayName = entry.displayName,
+            onOpenImage = onClick,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
+        return
+    }
 
     val imageData = remember(entry.uniqueId, entry.imagePayload?.lastModified) {
         entry.profileImageData()
@@ -67,30 +78,6 @@ fun ContactBookAvatar(
             animatedVisibilityScope = animatedVisibilityScope,
         )
         return
-    }
-
-    val odinId = entry.odinId
-    if (!odinId.isNullOrBlank()) {
-        val parsed = remember(odinId) { runCatching { OdinId(odinId) }.getOrNull() }
-        if (parsed != null) {
-            // Remembered for the same reason as the drive-photo branch above: a fresh lambda each
-            // recomposition makes options.copy() unequal, so the avatar can never skip.
-            val avatarOptions = remember(options, parsed, onClick) {
-                options.copy(
-                    onClick = onClick?.let { open -> { open(SubSamplingImageSource.Avatar(parsed)) } },
-                    onClickNeedsImage = true,
-                )
-            }
-            ContactAvatar(
-                odinId = parsed,
-                profileImageData = null,
-                initials = entry.avatarInitials,
-                options = avatarOptions,
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-            )
-            return
-        }
     }
     FallbackAvatar(initials = entry.avatarInitials, options = options)
 }

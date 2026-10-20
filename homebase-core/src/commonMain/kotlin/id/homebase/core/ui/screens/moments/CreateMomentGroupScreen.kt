@@ -39,8 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
@@ -181,12 +181,9 @@ private fun MemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Render the contact avatar the same way chat does: resolve the
-        // public profile image from the odinId via PublicAvatar (see
-        // ConversationAvatar.kt / PublicAvatar.kt).
-        PublicAvatar(
+        IdentityAvatar(
             odinId = contact.odinId,
-            initials = contact.avatarInitials,
+            displayName = contact.name,
             options = AvatarOptions(size = 40.dp),
         )
         Column(modifier = Modifier.weight(1f)) {

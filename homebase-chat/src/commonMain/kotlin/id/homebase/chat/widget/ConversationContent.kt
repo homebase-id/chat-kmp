@@ -147,15 +147,14 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.chat.calling.CallActionButtons
 import id.homebase.chat.calling.LocalCallStarter
 import id.homebase.chat.calling.rememberCallStarter
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
-import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
@@ -2064,10 +2063,9 @@ private fun ConnectIdentityRow(
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ContactAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            profileImageData = null,
-            initials = resolvedName.initials(),
+            displayName = resolvedName,
             options = AvatarOptions(size = 36.dp, fontSize = 14.sp),
             sharedTransitionScope = null,
             animatedVisibilityScope = null,
@@ -2146,7 +2144,6 @@ fun RecipientItem(
                 selectionMode = true,
                 isSelected = isSelected,
                 odinId = recipientModel.contact.odinId,
-                avatarInitials = recipientModel.contact.avatarInitials,
                 onContactClick = {
                     onRecipientSelected(recipientModel)
                 },

@@ -92,8 +92,8 @@ import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.subsample.SubSamplingImageSource
@@ -453,7 +453,7 @@ fun GroupSettingsUi(
                             onAvatarClick = conversation.avatarModel
                                 .takeIf { it.type == ConversationAvatarModel.Type.ConversationImage }
                                 ?.imageData
-                                ?.let { imageData -> { onAvatarClick(imageData) } },
+                                ?.let { imageData -> { _ -> onAvatarClick(imageData) } },
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
                         )
@@ -524,7 +524,6 @@ fun GroupSettingsUi(
                                 subTitle = odinId.domainName,
                                 annotation = if (uiState.isCurrentUserGroupAdmin) stringResource(MR.string.chat_group_admin) else null,
                                 odinId = odinId,
-                                avatarInitials = "HU",
                                 onContactClick = {},
                             )
                         }
@@ -545,7 +544,6 @@ fun GroupSettingsUi(
                             annotation = if (conversation.isCurrentUserAdmin(contact.odinId)) stringResource(
                                 MR.string.chat_group_admin
                             ) else null,
-                            avatarInitials = contact.avatarInitials,
                             odinId = contact.odinId,
                             onClick = {
                                 onUiAction(
@@ -580,7 +578,6 @@ fun GroupSettingsUi(
                                 subTitle = contact.odinId.domainName,
                                 annotation = stringResource(MR.string.connect),
                                 annotationColor = MaterialTheme.colorScheme.primary,
-                                avatarInitials = contact.avatarInitials,
                                 odinId = contact.odinId,
                                 onClick = {
                                     onUiAction(
@@ -1062,7 +1059,6 @@ private fun GroupParticipantRow(
     subTitle: String?,
     annotation: String?,
     annotationColor: Color? = null,
-    avatarInitials: String,
     odinId: OdinId,
     onClick: () -> Unit,
     mainStatus: RecipientFileStatus?,
@@ -1088,16 +1084,14 @@ private fun GroupParticipantRow(
             .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ContactAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            profileImageData = null,
-            initials = avatarInitials,
             options = AvatarOptions(
                 size = 28.dp,
                 fontSize = 12.sp,
             ),
             sharedTransitionScope = null,
-            animatedVisibilityScope = null
+            animatedVisibilityScope = null,
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

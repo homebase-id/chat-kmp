@@ -42,9 +42,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
@@ -302,9 +302,9 @@ private fun ReactionRow(
                 animatedVisibilityScope = null,
             )
         } else {
-            PublicAvatar(
+            IdentityAvatar(
                 odinId = OdinId(item.odinId),
-                initials = item.displayName.initials(),
+                displayName = item.displayName,
                 options = avatarOptions,
             )
         }

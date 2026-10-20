@@ -10,6 +10,7 @@ import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
+import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.contacts.ContactHeaderReader
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactPayloadReader
@@ -169,6 +170,7 @@ val apiModule = module {
     }
     singleOf(::ContactsProvider)
     singleOf(::ContactRepository)
+    single { AvatarResolver(get<ContactRepository>().contacts) }
     // Owner profile-attribute editor: write client + read/orchestration (queries the ProfileDrive
     // on demand; the drive is not in mandatorySyncDrives). Needs the ManageProfile permission +
     // ProfileDrive Read grant from AppConfig.

@@ -49,8 +49,8 @@ import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.ReceivedMessageBubbleDisplayOnly
 import id.homebase.chat.widget.SentMessageBubbleDisplayOnly
 import id.homebase.chat.widget.deliveryFailureTint
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.util.formateDateTime
 import id.homebase.core.widget.SettingsSectionHeader
@@ -637,9 +637,9 @@ private fun RecipientRow(recipient: RecipientStatusUiModel, modifier: Modifier =
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            initials = recipient.displayName.firstOrNull()?.toString(),
+            displayName = recipient.displayName,
             options = AvatarOptions(size = 40.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
@@ -671,9 +671,9 @@ private fun ReactionRow(reaction: ReactionUiModel, modifier: Modifier = Modifier
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            initials = reaction.displayName.firstOrNull()?.toString(),
+            displayName = reaction.displayName,
             options = AvatarOptions(size = 40.dp),
         )
         Text(

@@ -241,7 +241,6 @@ fun SelectMembersUi(
                             selectionMode = true,
                             isSelected = uiState.selectedContacts.contains(contact),
                             odinId = contact.odinId,
-                            avatarInitials = contact.avatarInitials,
                             onContactClick = {
                                 onUiAction(
                                     SelectMembersUiAction.ContactClicked(contact)
