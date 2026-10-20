@@ -105,7 +105,7 @@ fun IdentityAvatar(
 }
 
 /** The IV is per-payload, the AES key is the file's. Null until the payload is decodable. */
-internal fun ContactImageRef.toImageData(): HomebaseImageData? {
+fun ContactImageRef.toImageData(): HomebaseImageData? {
     val kh = keyHeader ?: return null
     val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
     return HomebaseImageData.from(
