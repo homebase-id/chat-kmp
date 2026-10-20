@@ -56,7 +56,7 @@ class AvatarResolverTest {
     @Test
     fun aSyncedSvgPlaceholderFallsBackToThePublicAvatar() {
         val source = resolveAvatar(frodo, listOf(contact(image = image(encrypted = true, contentType = "image/svg+xml"))), AvatarCapability.Any)
-        assertEquals(AvatarSource.PublicPhoto(frodo, "FB"), source)
+        assertEquals(AvatarSource.PublicPhoto("FB"), source)
     }
 
     @Test
@@ -74,13 +74,13 @@ class AvatarResolverTest {
     @Test
     fun noContactFallsBackToPublicAvatarWithDomainInitial() {
         val source = resolveAvatar(frodo, emptyList(), AvatarCapability.Any)
-        assertEquals(AvatarSource.PublicPhoto(frodo, "F"), source)
+        assertEquals(AvatarSource.PublicPhoto("F"), source)
     }
 
     @Test
     fun contactWithoutAPhotoKeepsItsNameInitials() {
         val source = resolveAvatar(frodo, listOf(contact()), AvatarCapability.Any)
-        assertEquals(AvatarSource.PublicPhoto(frodo, "FB"), source)
+        assertEquals(AvatarSource.PublicPhoto("FB"), source)
     }
 
     @Test

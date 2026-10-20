@@ -129,7 +129,6 @@ class MomentsRecipientLookupService(
                 id = MomentsRecipientId(Uuid.random()),
                 displayName = contact.name.ifBlank { contact.odinId.domainName },
                 odinIds = listOf(contact.odinId),
-                avatarInitials = contact.avatarInitials,
             )
             contactsRaw += recipient to "contact:${contact.odinId.domainName}"
         }

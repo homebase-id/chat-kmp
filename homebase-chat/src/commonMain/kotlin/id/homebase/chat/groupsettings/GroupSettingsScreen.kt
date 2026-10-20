@@ -95,7 +95,6 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatarModel
-import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.ContactName
@@ -289,7 +288,7 @@ fun GroupSettingsScreen(
 
     // Group photo opened full-screen (zoomable). Held here in the outer Box so
     // the viewer covers the whole screen, including the top bar. Null = closed.
-    var fullScreenAvatar by remember { mutableStateOf<HomebaseImageData?>(null) }
+    var fullScreenAvatar by remember { mutableStateOf<SubSamplingImageSource?>(null) }
 
     // A shared-media tile opened full-screen. Separate from [fullScreenAvatar]:
     // that one is the group photo and uses the zoomable avatar viewer, this one
@@ -333,7 +332,7 @@ fun GroupSettingsScreen(
                 }
             } else {
                 AvatarFullScreenViewer(
-                    source = SubSamplingImageSource.Remote(avatar.copy(loadFullPayload = true)),
+                    source = avatar,
                     title = uiState.conversation?.name.orEmpty(),
                     onDismiss = { fullScreenAvatar = null },
                     sharedTransitionScope = this@SharedTransitionLayout,
@@ -394,7 +393,7 @@ fun GroupSettingsUi(
     conversationId: String,
     mediaHero: SharedMediaHero,
     onUiAction: (GroupSettingsUiAction) -> Unit,
-    onAvatarClick: (HomebaseImageData) -> Unit = {},
+    onAvatarClick: (SubSamplingImageSource) -> Unit = {},
     onMediaClick: (SharedMediaItem) -> Unit = {},
     onSeeAllMedia: (conversationId: String) -> Unit = {},
     sharedTransitionScope: SharedTransitionScope? = null,
@@ -447,13 +446,7 @@ fun GroupSettingsUi(
                                 .padding(horizontal = 16.dp),
                             displayName = conversation.name,
                             avatarModel = conversation.avatarModel,
-                            // Only a real uploaded group photo opens full screen;
-                            // initials / People-icon fallbacks have no image, so
-                            // onAvatarClick stays null and the avatar isn't tappable.
-                            onAvatarClick = conversation.avatarModel
-                                .takeIf { it.type == ConversationAvatarModel.Type.ConversationImage }
-                                ?.imageData
-                                ?.let { imageData -> { _ -> onAvatarClick(imageData) } },
+                            onAvatarClick = onAvatarClick,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
                         )

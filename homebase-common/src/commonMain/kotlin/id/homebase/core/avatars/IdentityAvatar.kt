@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalEncodingApi::class)
-
 package id.homebase.core.avatars
 
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -16,11 +14,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.contacts.AvatarCapability
 import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.contacts.AvatarSource
 import id.homebase.api.client.contacts.ContactImageRef
+import id.homebase.api.client.contacts.payloadKeyHeader
 import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -29,16 +27,10 @@ import id.homebase.resources.MR
 import id.homebase.resources.avatar_contact
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
- * The avatar for any identity. [AvatarResolver] picks the picture so every surface shows the same
- * one; a surface only declares what it can render via [capability]. Pass [displayName] when the
- * surface knows a name for an identity that isn't a saved contact; the initials are derived here.
- *
- * [onOpenImage] receives the source of whichever image actually rendered, so a caller can open it
- * full screen; it never fires on the initials fallback.
+ * The avatar for any identity, as [AvatarResolver] picks it. [onOpenImage] receives whichever image
+ * actually rendered and never fires on the initials fallback.
  */
 @Composable
 fun IdentityAvatar(
@@ -66,12 +58,7 @@ fun IdentityAvatar(
     var storedFailed by remember(imageData) { mutableStateOf(false) }
 
     if (imageData != null && !storedFailed) {
-        // Remembered: HomebaseImage keys its tap detector on this lambda, and HomebaseImageData is
-        // not a stable type, so a fresh one each recomposition would restart the detector mid-gesture.
-        val onClick = remember(imageData, onOpenImage, options.onClick) {
-            onOpenImage?.let { open -> { open(SubSamplingImageSource.Remote(imageData.copy(loadFullPayload = true))) } }
-                ?: options.onClick
-        }
+        val onClick = rememberOpenStoredImage(imageData, onOpenImage, options.onClick)
         HomebaseImage(
             imageData = imageData,
             modifier = modifier.size(options.size).clip(CircleShape),
@@ -90,31 +77,35 @@ fun IdentityAvatar(
         return
     }
 
-    val publicOptions = remember(options, odinId, onOpenImage) {
-        if (onOpenImage == null) options
-        else options.copy(onClick = { onOpenImage(SubSamplingImageSource.Avatar(odinId)) }, onClickNeedsImage = true)
-    }
     PublicAvatar(
         odinId = odinId,
         initials = source.initials,
-        options = publicOptions,
+        options = options,
         modifier = modifier,
+        onOpenImage = onOpenImage,
         sharedTransitionScope = sharedTransitionScope,
         animatedVisibilityScope = animatedVisibilityScope,
     )
 }
 
-/** The IV is per-payload, the AES key is the file's. Null until the payload is decodable. */
+// Remembered: HomebaseImage keys its tap detector on this lambda, and HomebaseImageData is not stable.
+@Composable
+fun rememberOpenStoredImage(
+    imageData: HomebaseImageData,
+    onOpenImage: ((SubSamplingImageSource) -> Unit)?,
+    fallback: (() -> Unit)?,
+): (() -> Unit)? = remember(imageData, onOpenImage, fallback) {
+    onOpenImage?.let { open -> { open(SubSamplingImageSource.Remote(imageData.copy(loadFullPayload = true))) } } ?: fallback
+}
+
 fun ContactImageRef.toImageData(): HomebaseImageData? {
-    val kh = keyHeader ?: return null
-    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    val keyHeader = payloadKeyHeader() ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
         descriptor = payload,
-        // The contact file's own preview, not the payload's.
         previewThumbnail = previewThumbnail,
         isEncrypted = isEncrypted,
-        keyHeader = KeyHeader(iv = iv, aesKey = kh.aesKey),
+        keyHeader = keyHeader,
     )
 }

@@ -17,6 +17,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.avatars.IdentityAvatar
+import id.homebase.core.avatars.rememberOpenStoredImage
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -24,16 +25,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.avatar_contact
 import org.jetbrains.compose.resources.stringResource
 
-/**
- * Avatar for a contact-book entry. An entry with an identity resolves through [IdentityAvatar] so it
- * shows what every other screen shows for that person; a manual (identity-less) entry can only have
- * its stored photo or initials.
- *
- * [onClick] receives the source of whichever image was actually rendered, so a caller can open it
- * full screen. The initials fallback never calls it.
- *
- * Pass both scopes to morph whichever image branch rendered into the full-screen viewer.
- */
+// A manual (identity-less) entry can only have its stored photo or initials.
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ContactBookAvatar(
@@ -62,12 +54,7 @@ fun ContactBookAvatar(
         entry.profileImageData()
     }
     if (imageData != null) {
-        // Remembered: HomebaseImage keys its tap detector on this lambda, and
-        // HomebaseImageData is not a stable type, so a fresh one each recomposition
-        // would restart the detector mid-gesture.
-        val openPhoto = remember(imageData, onClick) {
-            onClick?.let { { it(SubSamplingImageSource.Remote(imageData.copy(loadFullPayload = true))) } }
-        }
+        val openPhoto = rememberOpenStoredImage(imageData, onClick, fallback = null)
         HomebaseImage(
             imageData = imageData,
             modifier = Modifier.size(size).clip(CircleShape),

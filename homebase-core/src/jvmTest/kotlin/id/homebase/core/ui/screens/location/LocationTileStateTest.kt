@@ -96,8 +96,8 @@ class LocationTileStateTest {
 
     @Test
     fun liveOnForEitherDirection() {
-        val outgoing = OutgoingShareRow("bob.example", "Bob", "B", untilMs = 1L)
-        val incoming = IncomingShareRow("bob.example", "Bob", "B", ageMs = 0L)
+        val outgoing = OutgoingShareRow("bob.example", "Bob", untilMs = 1L)
+        val incoming = IncomingShareRow("bob.example", "Bob", ageMs = 0L)
         assertFalse(deriveLocationTiles(LocationUiState(), now).liveOn)
         assertTrue(deriveLocationTiles(LocationUiState(outgoingShares = listOf(outgoing)), now).liveOn)
         assertTrue(deriveLocationTiles(LocationUiState(incomingShares = listOf(incoming)), now).liveOn)
