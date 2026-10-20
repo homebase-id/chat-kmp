@@ -14,21 +14,39 @@ data class StorageUsage(
     val isOverQuota: Boolean = false,
 )
 
+/** GET /api/v2/plan: the identity's hosting plan, what it gives, and how much of its storage is used. */
+@Serializable
+private data class IdentityPlan(
+    /** The plan the identity gets; null while the server has no plans. */
+    val id: String? = null,
+    val isDefault: Boolean = false,
+    val publicWebPresence: Boolean = false,
+    val storage: PlanStorage = PlanStorage(),
+)
+
+@Serializable
+private data class PlanStorage(
+    val usedBytes: Long = 0,
+    val quotaBytes: Long? = null,
+    val isOverQuota: Boolean = false,
+)
+
 class StorageUsageProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
-    /** GET /api/v2/storage/usage. Null on a server without hosting plans, which answers 404. */
+    /** From GET /api/v2/plan. Null on a server from before hosting plans, which answers 404. */
     suspend fun getUsage(): StorageUsage? {
         val creds = requireCreds()
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "/storage/usage"),
+            url = apiUrl(creds.domain, "/plan"),
             token = creds.accessToken,
             secret = creds.secret,
         )
         if (response.status == 404) return null
         throwForFailure(response)
-        return deserialize(response.body)
+        val plan = deserialize<IdentityPlan>(response.body)
+        return StorageUsage(plan.id, plan.storage.usedBytes, plan.storage.quotaBytes, plan.storage.isOverQuota)
     }
 }
