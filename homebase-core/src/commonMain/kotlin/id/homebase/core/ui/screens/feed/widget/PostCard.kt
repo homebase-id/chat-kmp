@@ -40,8 +40,8 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.widget.LinkPreviewCard
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
@@ -53,7 +53,6 @@ import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.ui.screens.moments.widget.feedMediaMaxHeight
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.util.initials
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -278,9 +277,9 @@ private fun QuotedPost(
                     if (author != null) {
                         val name = authorName?.takeIf { it.isNotBlank() } ?: author.domainName
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            PublicAvatar(
+                            IdentityAvatar(
                                 odinId = author,
-                                initials = name.initials(),
+                                displayName = name,
                                 options = AvatarOptions(size = 28.dp),
                             )
                             Spacer(modifier = Modifier.width(8.dp))

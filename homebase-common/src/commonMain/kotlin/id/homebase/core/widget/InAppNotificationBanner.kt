@@ -24,11 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.ui.theme.withEmojiFont
-import id.homebase.core.util.initials
 
 /**
  * Signal-style in-app notification banner displayed at the top of the screen.
@@ -66,9 +65,9 @@ fun InAppNotificationBanner(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // Sender avatar (circular, loaded via URL)
-                    PublicAvatar(
+                    IdentityAvatar(
                         odinId = OdinId(notification.senderId),
-                        initials = notification.senderName.initials(),
+                        displayName = notification.senderName,
                         options = AvatarOptions(size = 40.dp),
                     )
 

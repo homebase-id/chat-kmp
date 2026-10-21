@@ -30,7 +30,6 @@ import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.localDayStart
 import id.homebase.core.ui.screens.location.history.shiftDay
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
-import id.homebase.core.util.initials
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -270,7 +269,6 @@ class LocationViewModel(
                         OutgoingShareRow(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
-                            avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
                             untilMs = entries.maxOf { it.endTimeMs },
                         )
                     }
@@ -286,7 +284,6 @@ class LocationViewModel(
                         IncomingShareRow(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
-                            avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
                             ageMs = now - lp.receivedAtMs,
                         )
                     }
@@ -307,7 +304,7 @@ class LocationViewModel(
 
     /**
      * Resolve a peer odinId to its display model via the contact repository, or null when the
-     * identity isn't a saved contact (the share rows fall back to the raw odinId / initials).
+     * identity isn't a saved contact (the share rows fall back to the raw odinId).
      * Matching is by [OdinId] equality (normalized hash), mirroring ContactService's by-id map.
      */
     private fun resolveContact(odinId: OdinId): ContactUiModel? =

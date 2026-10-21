@@ -49,9 +49,8 @@ import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.CallVideoRenderers
 import id.homebase.chat.services.calling.LocalCallVideoRenderers
 import id.homebase.chat.services.calling.rememberInPictureInPicture
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
-import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.call_end_confirm_body
 import id.homebase.resources.call_end_confirm_title
@@ -314,10 +313,9 @@ internal fun rememberPeerName(odinId: String, displayName: suspend (OdinId) -> S
 
 @Composable
 internal fun PeerAvatar(odinId: String, name: String, size: Dp) {
-    ContactAvatar(
+    IdentityAvatar(
         odinId = OdinId(odinId),
-        profileImageData = null,
-        initials = name.initials(),
+        displayName = name,
         options = AvatarOptions(size = size, fontSize = (size.value / 3).sp),
     )
 }

@@ -64,8 +64,8 @@ import id.homebase.chat.calling.callEventVisual
 import id.homebase.chat.calling.imageVector
 import id.homebase.core.util.formatHms
 import id.homebase.chat.calling.stringRes
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.formatTime
@@ -351,7 +351,7 @@ private fun CallRowAvatar(row: CallRowUi) {
     if (model != null) {
         ConversationAvatar(model, options = AvatarOptions())
     } else {
-        ContactAvatar(odinId = row.entry.peer, profileImageData = null, initials = row.avatarInitials, options = AvatarOptions())
+        IdentityAvatar(odinId = row.entry.peer, displayName = row.displayName, options = AvatarOptions())
     }
 }
 

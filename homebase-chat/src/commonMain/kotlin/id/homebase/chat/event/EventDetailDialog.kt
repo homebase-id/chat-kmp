@@ -64,9 +64,9 @@ import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.chat.widget.MediaItem
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
@@ -507,9 +507,9 @@ private fun OrganizerRow(
                 animatedVisibilityScope = null,
             )
         } else {
-            PublicAvatar(
+            IdentityAvatar(
                 odinId = odinId,
-                initials = resolvedName.initials(),
+                displayName = resolvedName,
                 options = avatarOptions,
             )
         }
@@ -556,9 +556,9 @@ private fun ReactorRow(
                 animatedVisibilityScope = null,
             )
         } else {
-            PublicAvatar(
+            IdentityAvatar(
                 odinId = odinId,
-                initials = resolvedName.initials(),
+                displayName = resolvedName,
                 options = avatarOptions,
             )
         }

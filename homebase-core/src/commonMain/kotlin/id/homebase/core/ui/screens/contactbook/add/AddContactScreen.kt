@@ -66,11 +66,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.displayNameOrDomain
-import id.homebase.api.client.identity.initials
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.cleanDomain
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -285,10 +284,9 @@ private fun AddContactAvatar(uiState: AddContactUiState, photoBytes: ByteArray?)
                 contentDescription = null,
                 modifier = Modifier.size(size).clip(CircleShape),
             )
-            is RecipientResolution.Resolved -> ContactAvatar(
+            is RecipientResolution.Resolved -> IdentityAvatar(
                 odinId = avatar.identity.odinId,
-                profileImageData = null,
-                initials = avatar.identity.initials(),
+                displayName = avatar.identity.displayName,
                 options = AvatarOptions(size = size),
             )
             else -> Box(

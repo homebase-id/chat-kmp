@@ -55,9 +55,9 @@ import id.homebase.chat.services.convo.contact.ContactService
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.util.initials
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
@@ -488,9 +488,9 @@ private fun PollVoterRow(
                 animatedVisibilityScope = null,
             )
         } else {
-            PublicAvatar(
+            IdentityAvatar(
                 odinId = odinId,
-                initials = resolvedName.initials(),
+                displayName = resolvedName,
                 options = avatarOptions,
             )
         }

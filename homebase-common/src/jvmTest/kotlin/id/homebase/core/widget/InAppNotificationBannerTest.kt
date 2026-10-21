@@ -1,5 +1,7 @@
 package id.homebase.core.widget
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +23,7 @@ class InAppNotificationBannerTest {
     private val koin = koinApplication {
         modules(
             module {
+                single { AvatarResolver(MutableStateFlow(emptyList())) }
                 single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() }
             },
         )
