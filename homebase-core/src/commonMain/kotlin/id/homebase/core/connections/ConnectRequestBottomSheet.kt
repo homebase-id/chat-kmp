@@ -40,10 +40,9 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.util.cleanDomain
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.displayNameOrDomain
-import id.homebase.api.client.identity.initials
 import id.homebase.chat.services.requests.RefusedCircles
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionContent
 import id.homebase.core.util.getUriHandler
@@ -346,10 +345,9 @@ private fun RecipientResolutionIndicator(resolution: RecipientResolution) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    ContactAvatar(
+                    IdentityAvatar(
                         odinId = identity.odinId,
-                        profileImageData = null,
-                        initials = identity.initials(),
+                        displayName = identity.displayName,
                         options = AvatarOptions(size = 36.dp),
                     )
                     Column(modifier = Modifier.weight(1f)) {

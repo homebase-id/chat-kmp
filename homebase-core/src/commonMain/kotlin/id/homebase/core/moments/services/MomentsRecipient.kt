@@ -26,13 +26,10 @@ sealed interface MomentsRecipient {
     /** OdinIds the moment will be sent to. Always at least one. */
     val odinIds: List<OdinId>
 
-    val avatarInitials: String
-
     data class Individual(
         override val id: MomentsRecipientId,
         override val displayName: String,
         override val odinIds: List<OdinId>,
-        override val avatarInitials: String,
     ) : MomentsRecipient {
         val odinId: OdinId get() = odinIds.single()
     }
@@ -41,7 +38,7 @@ sealed interface MomentsRecipient {
         override val id: MomentsRecipientId,
         override val displayName: String,
         override val odinIds: List<OdinId>,
-        override val avatarInitials: String,
+        val avatarInitials: String,
         val memberCount: Int,
         /** The underlying `MomentGroup.id` so callers can preserve group
          *  provenance on the moment's [MomentSource.Audience]. */
@@ -57,7 +54,7 @@ sealed interface MomentsRecipient {
         override val id: MomentsRecipientId,
         override val displayName: String,
         override val odinIds: List<OdinId>,
-        override val avatarInitials: String,
+        val avatarInitials: String,
         val memberCount: Int,
         /** The underlying circle's id (32-char N-format). */
         val circleId: String,

@@ -1,5 +1,7 @@
 package id.homebase.chat.viewonce
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -76,7 +78,7 @@ internal class ViewOnceFakeServer(
     @Composable
     fun Provide(content: @Composable () -> Unit) {
         val koin = remember {
-            koinApplication { modules(module { single { coil }; single { homebaseImageLoader } }) }
+            koinApplication { modules(module { single { AvatarResolver(MutableStateFlow(emptyList())) }; single { coil }; single { homebaseImageLoader } }) }
         }
         KoinIsolatedContext(koin, content = content)
     }

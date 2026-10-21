@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUuidApi::class, ExperimentalEncodingApi::class)
+@file:OptIn(ExperimentalUuidApi::class)
 
 package id.homebase.api.client.contacts
 
@@ -10,8 +10,6 @@ import id.homebase.api.client.profile.ProfileCard
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 
 private const val TAG = "ContactInfoGateway"
@@ -34,10 +32,15 @@ class ContactInfoGateway internal constructor(
             ?.takeIf { it.isNotBlank() }
     }
 
-    // The synced prfl_pic first: a peer with no public picture serves a generated initials image.
     suspend fun avatarBytes(odinId: OdinId): ByteArray? {
-        val contact = localContact(odinId)
-        contact?.image?.let { ref -> localAvatarBytes(contact, ref)?.let { return it } }
+        val repository = contactRepository()
+        repository.ensureLoaded()
+        val contacts = repository.contacts.value
+        val stored = resolveAvatar(odinId, contacts, AvatarCapability.Any) as? AvatarSource.StoredPhoto
+        stored?.let { source ->
+            val contact = contacts.first { it.image == source.image }
+            localAvatarBytes(contact, source.image)?.let { return it }
+        }
         return publicProfiles.getPublicImage(odinId)
     }
 
@@ -86,26 +89,18 @@ class ContactInfoGateway internal constructor(
     // The response's payloadencrypted header decides, not ref.isEncrypted: decrypting the header
     // content clears fileMetadata.isEncrypted, so a synced contact always reads as unencrypted.
     private suspend fun readAvatar(ref: ContactImageRef): ByteArray {
-        val payload = ref.payload
-        val iv = payload.iv?.let { Base64.decode(it) }
-        val keyHeader =
-            if (iv != null && ref.keyHeader != null) KeyHeader(iv = iv, aesKey = ref.keyHeader.aesKey)
-            else KeyHeader.empty()
         return checkNotNull(driveFiles.getPayloadBytesDecrypted(
             driveId = ref.driveId,
             fileId = ref.fileId,
-            key = payload.key,
-            keyHeader = keyHeader,
-            lastModified = payload.lastModified,
+            key = ref.payload.key,
+            keyHeader = ref.payloadKeyHeader() ?: KeyHeader.empty(),
+            lastModified = ref.payload.lastModified,
         )).bytes
     }
 
     private suspend fun localContact(odinId: OdinId): Contact? {
         val repository = contactRepository()
         repository.ensureLoaded()
-        val domain = odinId.domainName
-        return repository.contacts.value.firstOrNull {
-            it.content.odinId?.equals(domain, ignoreCase = true) == true
-        }
+        return repository.contacts.value.matching(odinId).firstOrNull()
     }
 }

@@ -1,5 +1,6 @@
 package id.homebase.chat.calling
 
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -377,7 +378,7 @@ class CallWindowTest {
     fun callWindowContentProvidesItsOwnPermissionGate() {
         withModel(connectedState(video = false)) { model, _, _ ->
             runDesktopComposeUiTest(420, 560) {
-                val koin = koinApplication { modules(module { single { ImageLoader.Builder(PlatformContext.INSTANCE).build() } }) }
+                val koin = koinApplication { modules(module { single { AvatarResolver(MutableStateFlow(emptyList())) }; single { ImageLoader.Builder(PlatformContext.INSTANCE).build() } }) }
                 setContent { KoinIsolatedContext(koin) { HomebaseTheme { CallWindowContent(model, onMinimize = {}, topInset = 0.dp) } } }
                 onNodeWithText("Samwise Gamgee", substring = true).assertExists()
             }

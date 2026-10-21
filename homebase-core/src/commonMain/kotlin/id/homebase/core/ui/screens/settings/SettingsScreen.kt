@@ -73,10 +73,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.OwnerSession
-import id.homebase.api.client.auth.initials
 import id.homebase.common.util.formatBytes
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -549,7 +548,7 @@ private fun IdentityHeader(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .size(72.dp)
-                    // ContactAvatar hardcodes its own contentDescription; unsilenced it would
+                    // IdentityAvatar hardcodes its own contentDescription; unsilenced it would
                     // be read before the person's name.
                     .clearAndSetSemantics {},
             ) {
@@ -560,10 +559,9 @@ private fun IdentityHeader(
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 )
                 session?.let {
-                    ContactAvatar(
+                    IdentityAvatar(
                         odinId = it.odinId,
-                        profileImageData = null,
-                        initials = it.initials(),
+                        displayName = it.displayName,
                         options = AvatarOptions(size = 72.dp),
                         sharedTransitionScope = null,
                         animatedVisibilityScope = null,

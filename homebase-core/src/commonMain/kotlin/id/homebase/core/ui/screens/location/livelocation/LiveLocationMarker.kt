@@ -15,9 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.FallbackAvatar
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.resources.MR
 import id.homebase.resources.live_location_age_minutes
 import id.homebase.resources.live_location_marker_cd
@@ -43,9 +43,8 @@ fun LiveLocationMarker(marker: LiveMarker, modifier: Modifier = Modifier) {
         val avatarOptions = AvatarOptions(size = LiveMarkerSize)
         val odinId = marker.odinId
         if (odinId != null) {
-            PublicAvatar(
+            IdentityAvatar(
                 odinId = odinId,
-                initials = marker.initials,
                 options = avatarOptions,
                 modifier = ringModifier,
             )

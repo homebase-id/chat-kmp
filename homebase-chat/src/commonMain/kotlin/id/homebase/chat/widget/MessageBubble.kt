@@ -88,8 +88,8 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.ViewOnceRules
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.image.HomebaseImage
@@ -103,7 +103,6 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 
 import id.homebase.core.util.getOdinIdColor
-import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -588,12 +587,9 @@ fun ReceivedMessageBubble(
                     .size(Dimens.Message.senderAvatarSize),
             ) {
                 if (showAvatar && message.originalAuthor != null) {
-                    val initials = remember(message.displayName) {
-                        message.displayName.initials()
-                    }
-                    PublicAvatar(
+                    IdentityAvatar(
                         odinId = message.originalAuthor,
-                        initials = initials,
+                        displayName = message.displayName,
                         options = GroupMessageAvatarOptions,
                     )
                 }

@@ -1,5 +1,7 @@
 package id.homebase.chat.viewonce
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -50,6 +52,7 @@ class ViewOnceSenderReactionTest {
     private val koin = koinApplication {
         modules(
             module {
+                single { AvatarResolver(MutableStateFlow(emptyList())) }
                 single { UserPreferences(PreferencesSettings(Preferences.userRoot().node("/id/homebase/test/viewonce-sender"))) }
                 single { ImageLoader.Builder(PlatformContext.INSTANCE).build() }
             },

@@ -52,8 +52,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.widget.ContactName
@@ -243,7 +243,6 @@ fun CreateConversationUi(
                                         name = contact.name,
                                         subTitle = contact.odinId.domainName,
                                         odinId = contact.odinId,
-                                        avatarInitials = contact.avatarInitials,
                                         onContactClick = {
                                             onUiAction(
                                                 CreateConversationUiAction.ContactClicked(contact)
@@ -264,7 +263,6 @@ fun CreateConversationUi(
                                         name = stringResource(MR.string.contactbook_self_you, self.name),
                                         subTitle = stringResource(MR.string.chat_note_to_self),
                                         odinId = self.odinId,
-                                        avatarInitials = self.initials,
                                         onContactClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) },
                                     )
                                 } else {
@@ -343,7 +341,6 @@ fun ContactItem(
     isSelectionEnabled: Boolean= true,
     isSelected: Boolean = false,
     odinId: OdinId,
-    avatarInitials: String,
     onContactClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -358,16 +355,14 @@ fun ContactItem(
             .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ContactAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            profileImageData = null,
-            initials = avatarInitials,
             options = AvatarOptions(
                 size = 28.dp,
                 fontSize = 12.sp,
             ),
             sharedTransitionScope = null,
-            animatedVisibilityScope = null
+            animatedVisibilityScope = null,
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

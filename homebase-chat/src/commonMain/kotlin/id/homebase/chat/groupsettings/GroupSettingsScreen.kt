@@ -92,10 +92,9 @@ import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
-import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.ContactName
@@ -289,7 +288,7 @@ fun GroupSettingsScreen(
 
     // Group photo opened full-screen (zoomable). Held here in the outer Box so
     // the viewer covers the whole screen, including the top bar. Null = closed.
-    var fullScreenAvatar by remember { mutableStateOf<HomebaseImageData?>(null) }
+    var fullScreenAvatar by remember { mutableStateOf<SubSamplingImageSource?>(null) }
 
     // A shared-media tile opened full-screen. Separate from [fullScreenAvatar]:
     // that one is the group photo and uses the zoomable avatar viewer, this one
@@ -333,7 +332,7 @@ fun GroupSettingsScreen(
                 }
             } else {
                 AvatarFullScreenViewer(
-                    source = SubSamplingImageSource.Remote(avatar.copy(loadFullPayload = true)),
+                    source = avatar,
                     title = uiState.conversation?.name.orEmpty(),
                     onDismiss = { fullScreenAvatar = null },
                     sharedTransitionScope = this@SharedTransitionLayout,
@@ -394,7 +393,7 @@ fun GroupSettingsUi(
     conversationId: String,
     mediaHero: SharedMediaHero,
     onUiAction: (GroupSettingsUiAction) -> Unit,
-    onAvatarClick: (HomebaseImageData) -> Unit = {},
+    onAvatarClick: (SubSamplingImageSource) -> Unit = {},
     onMediaClick: (SharedMediaItem) -> Unit = {},
     onSeeAllMedia: (conversationId: String) -> Unit = {},
     sharedTransitionScope: SharedTransitionScope? = null,
@@ -447,13 +446,7 @@ fun GroupSettingsUi(
                                 .padding(horizontal = 16.dp),
                             displayName = conversation.name,
                             avatarModel = conversation.avatarModel,
-                            // Only a real uploaded group photo opens full screen;
-                            // initials / People-icon fallbacks have no image, so
-                            // onAvatarClick stays null and the avatar isn't tappable.
-                            onAvatarClick = conversation.avatarModel
-                                .takeIf { it.type == ConversationAvatarModel.Type.ConversationImage }
-                                ?.imageData
-                                ?.let { imageData -> { onAvatarClick(imageData) } },
+                            onAvatarClick = onAvatarClick,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
                         )
@@ -524,7 +517,6 @@ fun GroupSettingsUi(
                                 subTitle = odinId.domainName,
                                 annotation = if (uiState.isCurrentUserGroupAdmin) stringResource(MR.string.chat_group_admin) else null,
                                 odinId = odinId,
-                                avatarInitials = "HU",
                                 onContactClick = {},
                             )
                         }
@@ -545,7 +537,6 @@ fun GroupSettingsUi(
                             annotation = if (conversation.isCurrentUserAdmin(contact.odinId)) stringResource(
                                 MR.string.chat_group_admin
                             ) else null,
-                            avatarInitials = contact.avatarInitials,
                             odinId = contact.odinId,
                             onClick = {
                                 onUiAction(
@@ -580,7 +571,6 @@ fun GroupSettingsUi(
                                 subTitle = contact.odinId.domainName,
                                 annotation = stringResource(MR.string.connect),
                                 annotationColor = MaterialTheme.colorScheme.primary,
-                                avatarInitials = contact.avatarInitials,
                                 odinId = contact.odinId,
                                 onClick = {
                                     onUiAction(
@@ -1062,7 +1052,6 @@ private fun GroupParticipantRow(
     subTitle: String?,
     annotation: String?,
     annotationColor: Color? = null,
-    avatarInitials: String,
     odinId: OdinId,
     onClick: () -> Unit,
     mainStatus: RecipientFileStatus?,
@@ -1088,16 +1077,14 @@ private fun GroupParticipantRow(
             .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ContactAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            profileImageData = null,
-            initials = avatarInitials,
             options = AvatarOptions(
                 size = 28.dp,
                 fontSize = 12.sp,
             ),
             sharedTransitionScope = null,
-            animatedVisibilityScope = null
+            animatedVisibilityScope = null,
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

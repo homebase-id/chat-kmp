@@ -11,7 +11,7 @@ data class LiveMarker(
     val key: String,
     val lat: Double,
     val lon: Double,
-    /** Whose avatar to render (via PublicAvatar); null only when own identity is unknown. */
+    /** Whose avatar to render (via IdentityAvatar); null only when own identity is unknown. */
     val odinId: OdinId?,
     val initials: String,
     /** Age of this position (now − receivedAt) in ms; drives the staleness label. */
