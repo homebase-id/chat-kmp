@@ -99,6 +99,7 @@ fun HomebaseImage(
     // against, so they fall through to the raw data + embedded preview.
     val platformContext = LocalPlatformContext.current
     val model: Any = remember(imageData, platformContext) {
+        ImageFrameWork.imagesComposed++
         if (!imageData.isPending) {
             ImageRequest.Builder(platformContext)
                 .data(imageData)
@@ -114,8 +115,7 @@ fun HomebaseImage(
         remember(imageData.previewThumbnail) {
             imageData.previewThumbnail?.content?.let {
                 try {
-                    val bytes = Base64.decode(it)
-                    bytes.decodeToImageBitmap()
+                    ImageFrameWork.timePreviewDecode { Base64.decode(it).decodeToImageBitmap() }
                 } catch (_: Exception) {
                     null
                 }
@@ -165,6 +165,7 @@ fun HomebaseImage(
         colorFilter = colorFilter
     ) {
         val state by painter.state.collectAsStateWithLifecycle()
+        remember(state::class) { ImageFrameWork.stateChanges++ }
 
         // Blur only the low-res embedded preview; cached thumbnails and full
         // images are already sharp so the target is 0f for those states.
@@ -180,7 +181,8 @@ fun HomebaseImage(
 
         // Applied to every branch so the animation transitions smoothly
         // across state changes (e.g. blurred preview → sharp full image).
-        val blurMod = Modifier.animatedBlur(blurRadius)
+        val blurCount = remember { BlurredImageCount() }
+        val blurMod = Modifier.animatedBlur(blurRadius, blurCount)
 
         when (state) {
             is AsyncImagePainter.State.Loading -> {
@@ -265,9 +267,11 @@ fun HomebaseImage(
 }
 
 // Same effect as Modifier.blur, but the radius is read in the draw phase so the fade doesn't recompose the image.
-private fun Modifier.animatedBlur(radiusDp: State<Float>): Modifier = graphicsLayer {
+private fun Modifier.animatedBlur(radiusDp: State<Float>, blurCount: BlurredImageCount): Modifier = graphicsLayer {
     val radius = radiusDp.value
+    blurCount.blurred = radius >= 0.5f
     if (radius >= 0.5f) {
+        ImageFrameWork.blurSteps++
         val px = radius.dp.toPx()
         renderEffect = BlurEffect(px, px, TileMode.Clamp)
         clip = true

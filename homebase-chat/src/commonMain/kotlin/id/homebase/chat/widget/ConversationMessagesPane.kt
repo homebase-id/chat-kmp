@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import associateNotNull
 import co.touchlab.kermit.Logger
+import id.homebase.core.image.ScrollJankLogger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
@@ -147,6 +148,8 @@ fun ConversationMessagesPane(
             LazyListState(firstVisibleItemIndex = Int.MAX_VALUE, firstVisibleItemScrollOffset = 0)
         }
     }
+
+    ScrollJankLogger(listState, tag = "ChatScrollJank")
 
     // The LaunchedEffect below is keyed only on `listState`, so its captured
     // `uiState.messages` would freeze at composition time. `rememberUpdatedState`
