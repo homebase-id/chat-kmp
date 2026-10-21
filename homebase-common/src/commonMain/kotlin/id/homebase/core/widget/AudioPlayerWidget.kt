@@ -41,10 +41,9 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.core.audio.VoiceNotePlayback
 import id.homebase.core.audio.rememberWaveformAmplitudes
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.ui.theme.Dimens
-import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.audio_pause
 import id.homebase.resources.audio_play
@@ -172,18 +171,17 @@ fun AudioPlayerWidget(
             .padding(horizontal = 12.dp, vertical = 12.dp)
     ) {
         if (sender != null) {
-            val senderInitials = remember(sender.displayName) { sender.displayName.initials() }
             val senderLabel = if (sender.isYou) {
                 stringResource(MR.string.audio_sender_avatar_you)
             } else {
                 stringResource(MR.string.audio_sender_avatar, sender.displayName)
             }
-            // PublicAvatar hard-codes a generic description; clearAndSetSemantics replaces the
+            // IdentityAvatar hard-codes a generic description; clearAndSetSemantics replaces the
             // whole subtree's so a screen reader names the person instead.
             Box(modifier = Modifier.clearAndSetSemantics { contentDescription = senderLabel }) {
-                PublicAvatar(
+                IdentityAvatar(
                     odinId = sender.odinId,
-                    initials = senderInitials,
+                    displayName = sender.displayName,
                     options = SenderAvatarOptions,
                 )
             }

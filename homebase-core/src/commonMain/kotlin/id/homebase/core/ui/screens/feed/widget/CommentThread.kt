@@ -38,13 +38,12 @@ import androidx.compose.ui.window.PopupProperties
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.ChatMarkdown
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.PostCommentItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.util.formatTimestamp
-import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.delete
@@ -167,9 +166,9 @@ private fun CommentRow(
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         if (avatarOdinId != null) {
-            PublicAvatar(
+            IdentityAvatar(
                 odinId = avatarOdinId,
-                initials = displayName.initials(),
+                displayName = displayName,
                 options = AvatarOptions(size = 28.dp),
             )
             Spacer(modifier = Modifier.width(8.dp))

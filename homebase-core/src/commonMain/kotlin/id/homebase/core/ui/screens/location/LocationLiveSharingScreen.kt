@@ -47,8 +47,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import id.homebase.core.ui.screens.location.livelocation.AGE_LABEL_AFTER_MS
 import id.homebase.core.util.formatUntilTime
@@ -249,9 +249,9 @@ private fun OutgoingShareRowItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = OdinId(row.odinId),
-            initials = row.avatarInitials,
+            displayName = row.name,
             options = AvatarOptions(size = 40.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
@@ -291,9 +291,9 @@ private fun IncomingShareRowItem(row: IncomingShareRow) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = OdinId(row.odinId),
-            initials = row.avatarInitials,
+            displayName = row.name,
             options = AvatarOptions(size = 40.dp),
         )
         Text(

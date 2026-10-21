@@ -46,7 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
@@ -115,7 +114,7 @@ fun ConversationSettingsUi(
     var fullScreenItem by remember { mutableStateOf<SharedMediaItem?>(null) }
     // The contact's photo opened full-screen. Kept out of [fullScreenItem]: that
     // one is a chat attachment, this is a profile image. Null = closed.
-    var fullScreenAvatar by remember { mutableStateOf<OdinId?>(null) }
+    var fullScreenAvatar by remember { mutableStateOf<SubSamplingImageSource?>(null) }
 
     val isWithSelf = uiState.conversation?.isWithSelf == true
     // Larger primary line = resolved full name; smaller line = the raw odinId.
@@ -135,7 +134,7 @@ fun ConversationSettingsUi(
         ) { avatar ->
             if (avatar != null) {
                 AvatarFullScreenViewer(
-                    source = SubSamplingImageSource.Avatar(avatar),
+                    source = avatar,
                     title = displayName,
                     onDismiss = { fullScreenAvatar = null },
                     sharedTransitionScope = this@SharedTransitionLayout,
@@ -203,11 +202,7 @@ fun ConversationSettingsUi(
                                     // No drill-in: the overview below already shows everything
                                     // ContactInfo would, for this conversation.
                                     onClick = null,
-                                    // The identity's public photo. One that serves none renders
-                                    // initials, which PublicAvatar leaves un-tappable.
-                                    onAvatarClick = conversation.avatarModel.odinId?.let { odinId ->
-                                        { fullScreenAvatar = odinId }
-                                    },
+                                    onAvatarClick = { fullScreenAvatar = it },
                                     sharedTransitionScope = this@SharedTransitionLayout,
                                     animatedVisibilityScope = this@AnimatedContent,
                                 )

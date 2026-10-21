@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.widget.ComposerAutocomplete
 import id.homebase.core.widget.ComposerAutocompleteController
 
@@ -101,10 +101,9 @@ private fun MentionSuggestionRow(target: ContactUiModel, selected: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ContactAvatar(
+        IdentityAvatar(
             odinId = target.odinId,
-            profileImageData = null,
-            initials = target.avatarInitials,
+            displayName = target.name,
             options = MentionAvatarOptions,
         )
         Text(

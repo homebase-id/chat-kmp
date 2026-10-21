@@ -4,12 +4,11 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.People
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_conversation
 import org.jetbrains.compose.resources.stringResource
@@ -19,12 +18,14 @@ fun ConversationAvatar(
     avatarModel: ConversationAvatarModel,
     modifier: Modifier = Modifier,
     options: AvatarOptions = AvatarOptions(),
+    onOpenImage: ((SubSamplingImageSource) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
     when (avatarModel.type) {
         ConversationAvatarModel.Type.ConversationImage -> {
             val imageData = avatarModel.imageData ?: return
+            val onClick = rememberOpenStoredImage(imageData, onOpenImage, options.onClick)
             HomebaseImage(
                 imageData = imageData,
                 modifier = modifier
@@ -32,7 +33,7 @@ fun ConversationAvatar(
                     .clip(CircleShape),
                 contentDescription = stringResource(MR.string.avatar_conversation),
                 contentScale = options.contentScale,
-                onClick = options.onClick,
+                onClick = onClick,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope
             )
@@ -40,11 +41,11 @@ fun ConversationAvatar(
 
         ConversationAvatarModel.Type.Connection -> {
             avatarModel.odinId?.let {
-                PublicAvatar(
+                IdentityAvatar(
                     odinId = it,
-                    initials = avatarModel.initials,
                     options = options,
                     modifier = modifier,
+                    onOpenImage = onOpenImage,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
@@ -59,6 +60,7 @@ fun ConversationAvatar(
                     initials = avatarModel.initials,
                     options = options,
                     modifier = modifier,
+                    onOpenImage = onOpenImage,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope
                 )
@@ -66,12 +68,7 @@ fun ConversationAvatar(
         }
 
         ConversationAvatarModel.Type.GroupFallback -> {
-            FallbackAvatar(
-                initials = avatarModel.initials,
-                options = options,
-                modifier = modifier,
-                imageVector = Icons.Default.People
-            )
+            GroupAvatar(initials = avatarModel.initials, options = options, modifier = modifier)
         }
     }
 }

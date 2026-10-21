@@ -97,7 +97,6 @@ data class OutgoingShareRow(
     /** Identity domain string (OdinId.domainName) — stable list key and stop target. */
     val odinId: String,
     val name: String,
-    val avatarInitials: String,
     /** Longest end-time across this person's overlapping shares (UTC epoch-ms). */
     val untilMs: Long,
 )
@@ -106,7 +105,6 @@ data class OutgoingShareRow(
 data class IncomingShareRow(
     val odinId: String,
     val name: String,
-    val avatarInitials: String,
     /** Age of their last received fix (ms); the label only shows past AGE_LABEL_AFTER_MS. */
     val ageMs: Long,
 )

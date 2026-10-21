@@ -12,8 +12,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 
 /**
  * Small dark-translucent circular badge showing a moment author's avatar,
@@ -34,9 +34,8 @@ internal fun SenderAvatarBadge(
             .background(Color.Black.copy(alpha = 0.45f)),
         contentAlignment = Alignment.Center,
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            initials = odinId.toString().firstOrNull()?.toString()?.uppercase(),
             options = AvatarOptions(size = 24.dp, fontSize = 10.sp),
         )
     }
