@@ -2925,6 +2925,7 @@
     <string name="filesync_desktop_download">Download Filesync</string>
     <string name="filesync_day_time">%1$s, %2$s</string>
     <string name="filesync_executable">runs</string>
+    <string name="filesync_not_on_computers">not on computers</string>
     <string name="filesync_open">Open</string>
     <string name="filesync_send_webdrop">Send with WebDrop</string>
     <string name="filesync_share_failed">Couldn't share the file.</string>
