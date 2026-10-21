@@ -1,13 +1,9 @@
 package id.homebase.core.ui.screens.settings
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,18 +17,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Folder
@@ -48,12 +41,10 @@ import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -62,7 +53,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -70,7 +60,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.initials
@@ -82,10 +71,6 @@ import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
-import id.homebase.core.widget.DialogButtons
-import id.homebase.core.widget.DialogCard
-import id.homebase.core.widget.DialogText
-import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
@@ -99,7 +84,6 @@ import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
 import id.homebase.resources.settings_calls_beta
 import id.homebase.resources.settings_calls_beta_desc
-import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.location_settings_section
@@ -108,21 +92,16 @@ import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_appearance_theme
 import id.homebase.resources.settings_contactbook_desc
-import id.homebase.resources.settings_delete_account
-import id.homebase.resources.settings_delete_account_desc
-import id.homebase.resources.settings_delete_account_dialog_text
-import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.profile_card_intro_title
 import id.homebase.resources.settings_edit_profile
 import id.homebase.core.ui.screens.card.CardTapShareSettingsRow
+import id.homebase.resources.settings_account
+import id.homebase.resources.settings_account_desc
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
 import id.homebase.resources.settings_keyboard
 import id.homebase.resources.settings_keyboard_desc
 import id.homebase.resources.settings_location_desc
-import id.homebase.resources.settings_logout
-import id.homebase.resources.settings_logout_desc
-import id.homebase.resources.settings_logout_in_progress
 import id.homebase.resources.settings_media
 import id.homebase.resources.settings_media_desc
 import id.homebase.resources.settings_moments_desc
@@ -131,8 +110,6 @@ import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_status_checking
 import id.homebase.resources.settings_notifications_status_error
 import id.homebase.resources.settings_notifications_status_on
-import id.homebase.resources.settings_open_owner_console
-import id.homebase.resources.settings_section_account_actions
 import id.homebase.resources.settings_section_apps
 import id.homebase.resources.settings_section_device
 import id.homebase.resources.settings_section_preferences
@@ -180,88 +157,11 @@ fun SettingsScreen(
         }
     }
 
-    when (uiState.uiDialog) {
-        null -> {}
-        is SettingsUiDialog.DeleteAccount -> {
-            Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
-                DialogCard(
-                    buttons = {
-                        DialogButtons(
-                            primaryText = stringResource(MR.string.cancel),
-                            onPrimaryClick = { viewModel.dialogClosed() },
-                            secondaryText = stringResource(MR.string.settings_open_owner_console),
-                            onSecondaryClick = {
-                                viewModel.dialogClosed()
-                                viewModel.onAction(SettingsUiAction.OpenOwnerConsoleClicked)
-                            },
-                        )
-                    }) {
-                    DialogTitle(
-                        text = stringResource(MR.string.settings_delete_account_dialog_title),
-                    )
-                    DialogText(
-                        text = stringResource(MR.string.settings_delete_account_dialog_text),
-                    )
-                }
-            }
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        SettingsUi(
-            uiState = uiState,
-            onAction = viewModel::onAction,
-            actions = actions,
-        )
-
-        AnimatedVisibility(
-            visible = uiState.isLoggingOut,
-            enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()),
-        ) {
-            LogoutOverlay()
-        }
-    }
-}
-
-@OptIn(ExperimentalComposeUiApi::class)
-@Composable
-private fun LogoutOverlay() {
-    // Swallow the system back gesture so the user can't navigate mid-wipe.
-    @Suppress("DEPRECATION")
-    BackHandler(enabled = true) { /* no-op */ }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f))
-            // Absorb every tap so the underlying Settings row never receives it.
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) { awaitPointerEvent() }
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 8.dp,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                CircularProgressIndicator()
-                Text(
-                    text = stringResource(MR.string.settings_logout_in_progress),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-    }
+    SettingsUi(
+        uiState = uiState,
+        onAction = viewModel::onAction,
+        actions = actions,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -479,6 +379,15 @@ fun SettingsUi(
             }
             item {
                 SettingsRow(
+                    modifier = Modifier.testTag("accountButton"),
+                    icon = Icons.Outlined.ManageAccounts,
+                    title = stringResource(MR.string.settings_account),
+                    supportingText = stringResource(MR.string.settings_account_desc),
+                    action = SettingsRowAction.Navigate(actions.onAccount),
+                )
+            }
+            item {
+                SettingsRow(
                     modifier = Modifier.testTag("helpButton"),
                     icon = Icons.AutoMirrored.Outlined.HelpOutline,
                     title = stringResource(MR.string.settings_help),
@@ -492,32 +401,6 @@ fun SettingsUi(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 56.dp, end = 16.dp, top = 8.dp),
-                )
-            }
-
-            item { HubSectionHeader(stringResource(MR.string.settings_section_account_actions)) }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("logoutButton"),
-                    icon = Icons.AutoMirrored.Outlined.Logout,
-                    title = stringResource(MR.string.settings_logout),
-                    supportingText = stringResource(MR.string.settings_logout_desc),
-                    action = SettingsRowAction.Invoke {
-                        onAction(SettingsUiAction.LogoutClicked)
-                    },
-                )
-            }
-            item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("deleteAccountButton"),
-                    icon = Icons.Outlined.Delete,
-                    title = stringResource(MR.string.settings_delete_account),
-                    supportingText = stringResource(MR.string.settings_delete_account_desc),
-                    isDestructive = true,
-                    action = SettingsRowAction.Invoke {
-                        onAction(SettingsUiAction.DeleteAccount)
-                    },
                 )
             }
 
@@ -662,6 +545,7 @@ fun SettingsUiPreview() {
                 onMedia = {},
                 onKeyboard = {},
                 onStorage = {},
+                onAccount = {},
                 onHelp = {},
                 onMomentsSettings = {},
                 onVaultSettings = {},

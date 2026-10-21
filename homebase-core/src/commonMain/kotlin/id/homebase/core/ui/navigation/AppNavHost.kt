@@ -193,7 +193,10 @@ import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
+import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
+import id.homebase.core.ui.screens.settings.SettingsCategory
+import id.homebase.core.ui.screens.settings.SettingsPaneRequest
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
 import id.homebase.core.ui.screens.settings.SettingsPaneHost
 import id.homebase.core.ui.screens.settings.SettingsScreen
@@ -220,7 +223,6 @@ import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageFullHost
-import id.homebase.core.ui.screens.storage.PlanSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
@@ -1334,8 +1336,17 @@ fun AppNavHost(
                                         onSaved = { name, uniqueId -> savedContact = name to uniqueId },
                                     )
                                     val connectRequestViewModel: ConnectRequestViewModel = koinViewModel()
+                                    // Where Settings shows as a pane, the banner opens it on Account; elsewhere the Account page
+                                    val settingsIsPane = isDesktopOrWeb() && isExpandedLayout()
                                     // The list and the open conversation share this route, so one banner covers both
-                                    StorageFullHost(onOpenPlan = { navController.navigate(Route.PlanSettings) }) {
+                                    StorageFullHost(onOpenAccount = {
+                                        if (settingsIsPane) {
+                                            SettingsPaneRequest.open(SettingsCategory.Account)
+                                            navController.navigate(Route.Settings)
+                                        } else {
+                                            navController.navigate(Route.AccountSettings)
+                                        }
+                                    }) {
                                         ConversationListScreen(
                                             viewModel = conversationListViewModel,
                                             archivedConversationsViewModel = koinViewModel(),
@@ -1686,9 +1697,6 @@ fun AppNavHost(
                                                 onNavigateToDefragmenter = {
                                                     navController.navigate(Route.Defragmenter)
                                                 },
-                                                onNavigateToPlan = {
-                                                    navController.navigate(Route.PlanSettings)
-                                                },
                                             ),
                                             profileCardEnabled = profileCardEnabled,
                                             emailMailboxMode = emailMailboxMode,
@@ -1717,6 +1725,9 @@ fun AppNavHost(
                                             },
                                             onStorage = {
                                                 navController.navigate(Route.StorageSettings)
+                                            },
+                                            onAccount = {
+                                                navController.navigate(Route.AccountSettings)
                                             },
                                             onHelp = {
                                                 navController.navigate(Route.Help)
@@ -2379,17 +2390,21 @@ fun AppNavHost(
                                         onNavigateToDefragmenter = {
                                             navController.navigate(Route.Defragmenter)
                                         },
-                                        onNavigateToPlan = {
-                                            navController.navigate(Route.PlanSettings)
+                                        onOpenAccount = {
+                                            navController.navigate(Route.AccountSettings)
                                         },
                                     )
                                 }
                             }
 
-                            composable<Route.PlanSettings> {
+                            composable<Route.AccountSettings> { entry ->
                                 if (isAuthenticated) {
-                                    PlanSettingsScreen(
+                                    AccountSettingsScreen(
                                         viewModel = koinViewModel(),
+                                        // The hub's, when Settings is under this page, for log out and delete account
+                                        settingsViewModel = koinViewModel(
+                                            viewModelStoreOwner = rememberSettingsOwner(navController, entry),
+                                        ),
                                         onBackClick = { navController.popBackStack() },
                                     )
                                 }
@@ -2432,6 +2447,13 @@ private fun NavHostController.navigateToIdentity(odinId: String) {
         )
     )
 }
+
+// The Settings entry when it is on the back stack, so a page under it shares the hub's view models.
+@Composable
+private fun rememberSettingsOwner(navController: NavHostController, entry: NavBackStackEntry): ViewModelStoreOwner =
+    remember(entry) {
+        navController.currentBackStack.value.lastOrNull { it.destination.hasRoute(Route.Settings::class) } ?: entry
+    }
 
 // The card host lives with the Settings entry, so it is warm before the card opens and survives it.
 @Composable

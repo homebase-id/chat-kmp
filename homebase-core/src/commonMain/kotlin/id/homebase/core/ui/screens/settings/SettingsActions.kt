@@ -11,6 +11,7 @@ data class SettingsActions(
     val onMedia: () -> Unit,
     val onKeyboard: () -> Unit,
     val onStorage: () -> Unit,
+    val onAccount: () -> Unit,
     val onHelp: () -> Unit,
     val onMomentsSettings: () -> Unit,
     val onVaultSettings: () -> Unit,

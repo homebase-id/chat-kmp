@@ -69,8 +69,10 @@
     <string name="storage_account_full">Your storage is full. New photos, videos and files won't upload until you free up space.</string>
     <string name="storage_full_banner">Your Homebase storage is full. Messages with photos or files are waiting; messages without them still send and arrive.</string>
     <string name="storage_full_banner_action">Fix it</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_account_desc">Plan, storage and log out</string>
+    <string name="settings_danger_zone">Danger zone</string>
     <string name="plan_title">Plan &amp; storage</string>
-    <string name="plan_your_plan">Your plan</string>
     <string name="plan_public_page_on">Public home page: On</string>
     <string name="plan_public_page_off">Public home page: Off</string>
     <string name="plan_free_up_title">Free up space</string>
@@ -1655,7 +1657,6 @@
     <string name="settings_section_preferences">Preferences</string>
     <string name="settings_section_apps">Apps</string>
     <string name="settings_section_device">Device</string>
-    <string name="settings_section_account_actions">Account actions</string>
     <string name="settings_edit_profile">Edit profile</string>
     <string name="settings_security_setup_desc">Password and recovery key</string>
     <string name="settings_notifications_status_checking">Checking…</string>

@@ -112,8 +112,8 @@ sealed class Route {
     data object StorageSettings : Route()
 
     @Serializable
-    @SerialName("plan-settings")
-    data object PlanSettings : Route()
+    @SerialName("account-settings")
+    data object AccountSettings : Route()
 
     @Serializable
     @SerialName("media-settings")

@@ -40,7 +40,7 @@ class StorageSettingsUiTest {
                     onAction = {},
                     onBackClick = {},
                     onNavigateToDefragmenter = {},
-                    onNavigateToPlan = {},
+                    onOpenAccount = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
             }
@@ -62,7 +62,7 @@ class StorageSettingsUiTest {
                     onAction = {},
                     onBackClick = {},
                     onNavigateToDefragmenter = {},
-                    onNavigateToPlan = {},
+                    onOpenAccount = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
             }
@@ -84,7 +84,7 @@ class StorageSettingsUiTest {
                     onAction = {},
                     onBackClick = {},
                     onNavigateToDefragmenter = {},
-                    onNavigateToPlan = {},
+                    onOpenAccount = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
             }
@@ -106,7 +106,7 @@ class StorageSettingsUiTest {
                     onAction = {},
                     onBackClick = {},
                     onNavigateToDefragmenter = {},
-                    onNavigateToPlan = {},
+                    onOpenAccount = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
             }

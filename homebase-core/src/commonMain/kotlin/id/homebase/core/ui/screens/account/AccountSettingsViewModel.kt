@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.storage
+package id.homebase.core.ui.screens.account
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,16 +11,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * The identity's plan and storage, and where to go about it: the owner console's per-app usage to free up
- * space, and its plan page's upgrade instructions to get more.
+ * The plan & storage half of Settings > Account: the identity's plan and storage, and where to go about it,
+ * the owner console's per-app usage to free up space and its plan page's upgrade instructions to get more.
+ * Log out and delete account on the same screen stay with [id.homebase.core.ui.screens.settings.SettingsViewModel].
  */
-class PlanSettingsViewModel(
+class AccountSettingsViewModel(
     private val storageQuota: StorageQuota,
     private val credentialsManager: CredentialsManager,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(PlanSettingsUiState())
-    val uiState: StateFlow<PlanSettingsUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(AccountSettingsUiState())
+    val uiState: StateFlow<AccountSettingsUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -31,10 +32,10 @@ class PlanSettingsViewModel(
         }
     }
 
-    fun onAction(action: PlanSettingsUiAction) {
+    fun onAction(action: AccountSettingsUiAction) {
         when (action) {
-            PlanSettingsUiAction.SeeWhatEachAppStoresClicked -> openOwnerConsole("/owner/apps")
-            PlanSettingsUiAction.HowToUpgradeClicked -> openOwnerConsole("/owner/settings/plan?upgrade=1")
+            AccountSettingsUiAction.SeeWhatEachAppStoresClicked -> openOwnerConsole("/owner/apps")
+            AccountSettingsUiAction.HowToUpgradeClicked -> openOwnerConsole("/owner/settings/plan?upgrade=1")
         }
     }
 
@@ -45,7 +46,7 @@ class PlanSettingsViewModel(
     private fun openOwnerConsole(path: String) {
         viewModelScope.launch {
             val domain = credentialsManager.getActiveDomain() ?: return@launch
-            _uiState.update { it.copy(uiEvent = PlanSettingsUiEvent.OpenUrl("https://${domain.domainName}$path")) }
+            _uiState.update { it.copy(uiEvent = AccountSettingsUiEvent.OpenUrl("https://${domain.domainName}$path")) }
         }
     }
 }

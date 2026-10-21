@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
@@ -49,6 +50,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.email_settings_section
 import id.homebase.resources.moments_settings_section
+import id.homebase.resources.settings_account
 import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_category_general
 import id.homebase.resources.settings_data_storage
@@ -76,7 +78,22 @@ internal enum class SettingsCategory(
     Email(MR.string.email_settings_section, Icons.Outlined.MailOutline),
     Contacts(MR.string.contactbook_settings_section, Icons.Outlined.People),
     Storage(MR.string.settings_data_storage, Icons.Outlined.Storage),
+    Account(MR.string.settings_account, Icons.Outlined.ManageAccounts),
     Help(MR.string.settings_help, Icons.AutoMirrored.Outlined.HelpOutline),
+}
+
+/**
+ * The category the settings pane opens on next, for a link from outside Settings (the storage-full banner's
+ * "Fix it" opens Account). Taken once, by the pane as it opens; without one it opens on General.
+ */
+internal object SettingsPaneRequest {
+    private var pending: SettingsCategory? = null
+
+    fun open(category: SettingsCategory) {
+        pending = category
+    }
+
+    fun take(): SettingsCategory? = pending.also { pending = null }
 }
 
 @Composable
