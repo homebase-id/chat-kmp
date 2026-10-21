@@ -91,6 +91,12 @@ kotlin {
         jvmMain.get().dependsOn(nonWebMain)
         nativeMain.get().dependsOn(nonWebMain)
 
+        // Tests that build a PlatformFile from a path, which the web has no constructor for.
+        val nonWebTest by creating { dependsOn(commonTest.get()) }
+        getByName("androidHostTest").dependsOn(nonWebTest)
+        jvmTest.get().dependsOn(nonWebTest)
+        nativeTest.get().dependsOn(nonWebTest)
+
         commonMain.dependencies {
             api(project(":homebase-api"))
             api(project(":homebase-notifshared"))
@@ -213,4 +219,9 @@ kotlin {
 // to jvmTest/.
 tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
     enabled = false
+}
+
+// stringResource stays "" in the wasm test browser, so a click label built from it never arrives.
+tasks.withType<org.jetbrains.kotlin.gradle.targets.js.testing.KotlinJsTest>().configureEach {
+    filter.excludeTestsMatching("*SettingsRowTest.*ClickLabel*")
 }

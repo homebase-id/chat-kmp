@@ -23,6 +23,7 @@ import id.homebase.core.di.allModules
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.ui.navigation.AppLink
 import id.homebase.core.widget.ComposerAutocompleteProbe
+import id.homebase.core.widget.initLazyStabilityFlags
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -49,6 +50,7 @@ private fun recordAutocompleteComposing(composing: String): Unit =
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
+    initLazyStabilityFlags()
     WebAppLink.captureFromUrl()
     configureWebResources {
         resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
