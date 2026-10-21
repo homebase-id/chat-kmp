@@ -12,10 +12,10 @@ internal object FilesyncNames {
     private const val FALLBACK = "untitled"
     private const val MAX_RESTORED = 99
 
-    /** Two names collide in a folder when their keys match: case and Unicode form are ignored, as on macOS and Windows. */
-    // The desktop's full case fold: ß, ẞ and ss alike, ſ and s, ς and σ anywhere; dotless ı stays apart from i.
+    /** Two names collide in a folder when their keys match: the desktop's full case fold on NFC (ß/ẞ/ss, ſ/s, ς/σ; ı stays apart from i). */
     fun key(name: String): String =
-        name.toNfc().split('ı').joinToString("ı") { it.lowercase().uppercase().lowercase() }.replace('ς', 'σ').toNfc()
+        if (name.all { it < '\u0080' }) name.lowercase()
+        else name.toNfc().split('ı').joinToString("ı") { it.lowercase().uppercase().lowercase() }.replace('ς', 'σ').toNfc()
 
     /** Each computer's own state folder at the top of what it syncs, which no computer syncs: nothing may take its name there. */
     val stateFolderKey = key(".hbsync")
@@ -25,7 +25,7 @@ internal object FilesyncNames {
 
     /** Recovered files is left out: it is the one renamed in a clash. */
     fun takenKeys(folderId: Uuid, nodes: Collection<FilesyncNode>): MutableSet<String> =
-        nodes.filter { it.nodeId != FilesyncProtocol.RecoveredFilesNodeId }.mapTo(mutableSetOf()) { key(it.name) }
+        nodes.filter { it.nodeId != FilesyncProtocol.RecoveredFilesNodeId }.mapTo(mutableSetOf()) { it.nameKey }
             .apply { if (isSyncTop(folderId)) add(stateFolderKey) }
 
     /** [requested] made valid, then numbered "(1)", "(2)"… until no key in [takenKeys] uses it. */
