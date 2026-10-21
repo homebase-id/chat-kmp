@@ -107,7 +107,7 @@ fun StorageSettingsScreen(
     viewModel: StorageSettingsViewModel,
     onBackClick: () -> Unit,
     onNavigateToDefragmenter: () -> Unit,
-    onNavigateToPlan: () -> Unit,
+    onOpenAccount: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -128,7 +128,7 @@ fun StorageSettingsScreen(
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
         onNavigateToDefragmenter = onNavigateToDefragmenter,
-        onNavigateToPlan = onNavigateToPlan,
+        onOpenAccount = onOpenAccount,
         snackbarHostState = snackbarHostState,
         crashTrigger = koinInject(),
     )
@@ -141,7 +141,7 @@ fun StorageSettingsUi(
     onAction: (StorageSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToDefragmenter: () -> Unit,
-    onNavigateToPlan: () -> Unit,
+    onOpenAccount: () -> Unit,
     snackbarHostState: SnackbarHostState,
     crashTrigger: DiagnosticsCrashTrigger = NoOpDiagnosticsCrashTrigger,
 ) {
@@ -177,7 +177,7 @@ fun StorageSettingsUi(
                     title = stringResource(MR.string.storage_account_title),
                     modifier = Modifier.padding(horizontal = 4.dp),
                 )
-                AccountStorageCard(account = account, onClick = onNavigateToPlan)
+                AccountStorageCard(account = account, onClick = onOpenAccount)
                 if (uiState.accountStorageFull) {
                     ErrorCard(
                         title = stringResource(MR.string.storage_full_upload_failed),
@@ -531,8 +531,8 @@ private fun DriveRow(state: DriveRowState) {
 }
 
 /**
- * The identity's storage on its Homebase against its plan. Here it leads to the Plan screen ([onClick]); the
- * Plan screen shows it with the public home page too ([showPublicPage]).
+ * The identity's storage on its Homebase against its plan. Here it leads to Settings > Account ([onClick]);
+ * Account shows it with the public home page too ([showPublicPage]).
  */
 @Composable
 internal fun AccountStorageCard(

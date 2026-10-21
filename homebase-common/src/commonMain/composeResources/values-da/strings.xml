@@ -68,8 +68,10 @@
     <string name="storage_account_full">Din lagerplads er fuld. Nye billeder, videoer og filer uploades ikke, før du frigør plads.</string>
     <string name="storage_full_banner">Din Homebase-lagerplads er fuld. Beskeder med billeder eller filer venter; beskeder uden bliver stadig sendt og modtaget.</string>
     <string name="storage_full_banner_action">Løs det</string>
+    <string name="settings_account">Konto</string>
+    <string name="settings_account_desc">Abonnement, lagerplads og log ud</string>
+    <string name="settings_danger_zone">Farezone</string>
     <string name="plan_title">Abonnement og lagerplads</string>
-    <string name="plan_your_plan">Dit abonnement</string>
     <string name="plan_public_page_on">Offentlig forside: Til</string>
     <string name="plan_public_page_off">Offentlig forside: Fra</string>
     <string name="plan_free_up_title">Frigør plads</string>
@@ -1225,7 +1227,6 @@
     <string name="settings_section_preferences">Præferencer</string>
     <string name="settings_section_apps">Apps</string>
     <string name="settings_section_device">Enhed</string>
-    <string name="settings_section_account_actions">Kontohandlinger</string>
     <string name="settings_edit_profile">Rediger profil</string>
     <string name="settings_security_setup_desc">Adgangskode og gendannelsesnøgle</string>
     <string name="settings_notifications_status_checking">Kontrollerer…</string>

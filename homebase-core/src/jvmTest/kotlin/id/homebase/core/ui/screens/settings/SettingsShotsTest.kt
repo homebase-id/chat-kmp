@@ -27,7 +27,7 @@ class SettingsShotsTest {
 
     private val actions = SettingsActions(
         onBack = {}, onNotifications = {}, onAppearance = {}, onMedia = {}, onKeyboard = {}, onStorage = {},
-        onHelp = {}, onMomentsSettings = {}, onVaultSettings = {}, onEmailSettings = {}, onOpenWebDrop = {},
+        onAccount = {}, onHelp = {}, onMomentsSettings = {}, onVaultSettings = {}, onEmailSettings = {}, onOpenWebDrop = {},
         onLocation = {}, onContactBookSettings = {}, onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
     )
 
