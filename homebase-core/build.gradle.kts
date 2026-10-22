@@ -80,6 +80,17 @@ kotlin {
     }
 
     sourceSets {
+        val nonWebMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                // composenativewebview has no wasmJs artifact — must stay off commonMain.
+                implementation(libs.composenativewebview)
+            }
+        }
+        androidMain.get().dependsOn(nonWebMain)
+        jvmMain.get().dependsOn(nonWebMain)
+        nativeMain.get().dependsOn(nonWebMain)
+
         commonMain.dependencies {
             // Use api so it can be exported to Swift
             api(project(":homebase-api"))
@@ -150,20 +161,14 @@ kotlin {
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native.driver)
-            // composenativewebview has no wasmJs artifact — must stay off
-            // commonMain. The FeedWebView facade (commonMain) is bridged to
-            // kdroidfilter types in `FeedWebView.native.kt`.
-            implementation(libs.composenativewebview)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.koin.android)
             implementation(libs.play.app.update)
-            implementation(libs.composenativewebview)
         }
         jvmMain.dependencies {
                 implementation(libs.conveyor.control)
-                implementation(libs.composenativewebview)
                 // Declared here because desktopApp consumes homebase-chat as a repackaged jar that strips its external deps.
                 implementation(libs.webrtc.java)
                 listOf("macos-aarch64", "macos-x86_64", "windows-x86_64", "linux-x86_64", "linux-aarch64").forEach {
