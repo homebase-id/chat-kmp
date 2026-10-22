@@ -1240,36 +1240,32 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
     val cameraSlot = routeSlot + if (showRoute) 1 else 0
     val flipSlot = cameraSlot + if (showCamera) 1 + split else 0
     val micDevice = currentDeviceName(ui, MediaDeviceKind.Mic)
-    val muteTip = shortcutTip(stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute), callShortcutKeys("D"))
-    val cameraTip = shortcutTip(stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on), callShortcutKeys("E"))
     val muteDescription = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
     val cameraDescription = stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on)
+    val flipDescription = stringResource(MR.string.call_switch_camera)
+    val muteTip = shortcutTip(muteDescription, callShortcutKeys("D"))
+    val cameraTip = shortcutTip(cameraDescription, callShortcutKeys("E"))
     val toggles: ButtonGroupScope.() -> Unit = {
-        customItem(
-            buttonGroupContent = {
-                val muteInteraction = remember { MutableInteractionSource() }
-                CallToggle(
-                    tooltip = muteTip,
-                    checked = ui.muted,
-                    onCheckedChange = { actions.toggleMute() },
-                    icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
-                    label = stringResource(MR.string.call_label_mute).takeIf { showLabels },
-                    description = muteDescription,
-                    state = when {
-                        ui.muted -> stringResource(MR.string.call_state_muted)
-                        micDevice != null -> stringResource(MR.string.call_state_mic_on_device, micDevice)
-                        else -> stringResource(MR.string.call_state_mic_on)
-                    },
-                    shapes = segmentShapes(0, count),
-                    interaction = muteInteraction,
-                    modifier = Modifier.animateWidth(muteInteraction),
-                    level = LocalMicLevel.current.takeIf { pickers && !ui.muted && ui.micLevelSeen },
-                )
-            },
-            menuContent = { menu ->
-                OverflowItem(if (ui.muted) Icons.Default.Mic else Icons.Default.MicOff, muteDescription, menu, actions.toggleMute)
-            },
-        )
+        dockItem(if (ui.muted) Icons.Default.Mic else Icons.Default.MicOff, muteDescription, actions.toggleMute) {
+            val muteInteraction = remember { MutableInteractionSource() }
+            CallToggle(
+                tooltip = muteTip,
+                checked = ui.muted,
+                onCheckedChange = { actions.toggleMute() },
+                icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
+                label = stringResource(MR.string.call_label_mute).takeIf { showLabels },
+                description = muteDescription,
+                state = when {
+                    ui.muted -> stringResource(MR.string.call_state_muted)
+                    micDevice != null -> stringResource(MR.string.call_state_mic_on_device, micDevice)
+                    else -> stringResource(MR.string.call_state_mic_on)
+                },
+                shapes = segmentShapes(0, count),
+                interaction = muteInteraction,
+                modifier = Modifier.animateWidth(muteInteraction),
+                level = LocalMicLevel.current.takeIf { pickers && !ui.muted && ui.micLevelSeen },
+            )
+        }
         if (pickers) {
             customItem(
                 buttonGroupContent = { DeviceMenuSegment(ui, MediaDeviceKind.Mic, actions, segmentShapes(1, count)) },
@@ -1294,26 +1290,21 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
         }
         if (showCamera) {
             val off = !ui.localVideo
-            customItem(
-                buttonGroupContent = {
-                    val cameraInteraction = remember { MutableInteractionSource() }
-                    CallToggle(
-                        tooltip = cameraTip,
-                        checked = off,
-                        onCheckedChange = { actions.toggleVideo() },
-                        icon = if (off) Icons.Default.VideocamOff else Icons.Default.Videocam,
-                        label = stringResource(MR.string.call_label_camera).takeIf { showLabels },
-                        description = cameraDescription,
-                        state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on),
-                        shapes = segmentShapes(cameraSlot, count),
-                        interaction = cameraInteraction,
-                        modifier = Modifier.animateWidth(cameraInteraction),
-                    )
-                },
-                menuContent = { menu ->
-                    OverflowItem(if (off) Icons.Default.Videocam else Icons.Default.VideocamOff, cameraDescription, menu, actions.toggleVideo)
-                },
-            )
+            dockItem(if (off) Icons.Default.Videocam else Icons.Default.VideocamOff, cameraDescription, actions.toggleVideo) {
+                val cameraInteraction = remember { MutableInteractionSource() }
+                CallToggle(
+                    tooltip = cameraTip,
+                    checked = off,
+                    onCheckedChange = { actions.toggleVideo() },
+                    icon = if (off) Icons.Default.VideocamOff else Icons.Default.Videocam,
+                    label = stringResource(MR.string.call_label_camera).takeIf { showLabels },
+                    description = cameraDescription,
+                    state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on),
+                    shapes = segmentShapes(cameraSlot, count),
+                    interaction = cameraInteraction,
+                    modifier = Modifier.animateWidth(cameraInteraction),
+                )
+            }
             if (pickers) {
                 customItem(
                     buttonGroupContent = { DeviceMenuSegment(ui, MediaDeviceKind.Camera, actions, segmentShapes(cameraSlot + 1, count)) },
@@ -1322,23 +1313,18 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
             }
         }
         if (showFlip) {
-            customItem(
-                buttonGroupContent = {
-                    val flipInteraction = remember { MutableInteractionSource() }
-                    CallAction(
-                        icon = Icons.Default.Cameraswitch,
-                        label = stringResource(MR.string.call_label_flip).takeIf { showLabels },
-                        description = stringResource(MR.string.call_switch_camera),
-                        onClick = actions.switchCamera,
-                        shapes = segmentShapes(flipSlot, count),
-                        interaction = flipInteraction,
-                        modifier = Modifier.animateWidth(flipInteraction),
-                    )
-                },
-                menuContent = { menu ->
-                    OverflowItem(Icons.Default.Cameraswitch, stringResource(MR.string.call_switch_camera), menu, actions.switchCamera)
-                },
-            )
+            dockItem(Icons.Default.Cameraswitch, flipDescription, actions.switchCamera) {
+                val flipInteraction = remember { MutableInteractionSource() }
+                CallAction(
+                    icon = Icons.Default.Cameraswitch,
+                    label = stringResource(MR.string.call_label_flip).takeIf { showLabels },
+                    description = flipDescription,
+                    onClick = actions.switchCamera,
+                    shapes = segmentShapes(flipSlot, count),
+                    interaction = flipInteraction,
+                    modifier = Modifier.animateWidth(flipInteraction),
+                )
+            }
         }
     }
     val overflow: @Composable (ButtonGroupMenuState) -> Unit = { menu ->
@@ -1595,6 +1581,9 @@ private fun MediaDeviceKind.dockMenuKinds(): List<MediaDeviceKind> =
 private fun OverflowDeviceItems(ui: CallUiState, kind: MediaDeviceKind, actions: CallScreenActions, menu: ButtonGroupMenuState) {
     Column { CallDeviceMenuItems(menu::dismiss, ui, kind.dockMenuKinds(), actions.selectDevice) }
 }
+
+private fun ButtonGroupScope.dockItem(menuIcon: ImageVector, menuText: String, onMenuClick: () -> Unit, content: @Composable () -> Unit) =
+    customItem(buttonGroupContent = content, menuContent = { menu -> OverflowItem(menuIcon, menuText, menu, onMenuClick) })
 
 @Composable
 private fun OverflowItem(icon: ImageVector, text: String, menu: ButtonGroupMenuState, onClick: () -> Unit) {

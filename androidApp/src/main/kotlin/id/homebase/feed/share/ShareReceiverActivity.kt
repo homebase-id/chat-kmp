@@ -978,8 +978,6 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
         return when {
             names.isEmpty() -> getString(R.string.share_preview_title_single)
-            names.size == 1 && remaining == 0 -> names.first()
-            names.size == 1 && remaining > 0 -> resources.getQuantityString(R.plurals.share_preview_title_others, remaining, names.first(), remaining)
             remaining > 0 -> resources.getQuantityString(R.plurals.share_preview_title_others, remaining, names.joinToString(", "), remaining)
             else -> names.joinToString(", ")
         }

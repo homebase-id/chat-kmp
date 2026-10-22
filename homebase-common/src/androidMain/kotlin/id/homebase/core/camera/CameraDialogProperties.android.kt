@@ -29,10 +29,10 @@ internal actual fun CameraWindowEffect() {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                window.isNavigationBarContrastEnforced = false
-                // A no-op from API 35, where edge-to-edge never scrims the status bar; still needed on 29-34.
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) window.isStatusBarContrastEnforced = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
+            // A no-op from API 35, where edge-to-edge never scrims the status bar; still needed on 29-34.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                window.isStatusBarContrastEnforced = false
             }
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = false
