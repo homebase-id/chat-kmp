@@ -47,11 +47,16 @@ class CallForegroundService : Service() {
             .setContentIntent(open)
             .setStyle(NotificationCompat.CallStyle.forOngoingCall(caller, hangup))
             .build()
+        // ServiceCompat already drops types below API 29; the gates only keep each type to the release that defines it.
+        var types = 0
         // phoneCall keeps the service startable when Telecom answers from the background (headset, watch, car).
-        var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-        // Android 14 throws SecurityException for a camera-typed service without CAMERA; setLive restarts it once video is allowed.
-        if (video && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) types = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            // Android 14 throws SecurityException for a camera-typed service without CAMERA; setLive restarts it once video is allowed.
+            if (video && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            }
         }
         ServiceCompat.startForeground(this, ID, notification, types)
         return START_NOT_STICKY

@@ -1,6 +1,7 @@
 package id.homebase.feed.share
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -883,9 +884,10 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
         // Method 2: EXTRA_SHORTCUT_ID set by Android's ChooserActivity (API 29+)
         // Format: "share_{uuid}" as defined in ShareShortcutPublisher
-        @Suppress("DEPRECATION")
-        intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.let { shortcutId ->
-            return shortcutId.removePrefix("share_")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.let { shortcutId ->
+                return shortcutId.removePrefix("share_")
+            }
         }
 
         return null
