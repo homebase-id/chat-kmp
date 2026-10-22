@@ -6,3 +6,5 @@ config.files = (config.files || []).concat([
 config.proxies = Object.assign({}, config.proxies || {}, {
     "/composeResources/": "/base/kotlin/composeResources/",
 });
+// runComposeUiTest never yields to the event loop, so fetch never resolves; this selects Compose's sync-XHR test reader.
+config.files.unshift(require("path").resolve(config.basePath, "kotlin", "compose-resources-testing.js"));
