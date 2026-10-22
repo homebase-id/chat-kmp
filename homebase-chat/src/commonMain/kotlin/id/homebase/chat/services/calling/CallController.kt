@@ -7,6 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -427,6 +428,8 @@ class CallController(
         republishJob = null
     }
 
+    // ATOMIC: teardown runs this while the scope is cancelling, and a DEFAULT launch would then never close the engine, leaving camera and mic held.
+    @OptIn(DelicateCoroutinesApi::class)
     private fun releaseEngine() {
         trickleJob?.cancel()
         trickleJob = null

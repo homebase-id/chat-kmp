@@ -5,15 +5,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.toImageBitmap
-import id.homebase.core.ui.navigation.Route
 import id.homebase.imageeditor.core.Bounds
 import id.homebase.imageeditor.core.Matrix2D
 import id.homebase.imageeditor.core.RectF
@@ -49,14 +46,9 @@ import kotlin.uuid.Uuid
  * bytes.
  */
 class DrawEditorViewModel(
-    savedStateHandle: SavedStateHandle,
+    val requestId: Uuid,
     private val resultBus: DrawResultBus,
 ) : ViewModel() {
-
-    // Arrives as a nav arg (main app, via Route.Draw) or a directly-seeded handle key
-    // (the share editor mounts this screen without a NavHost). Raw key first, then route.
-    val requestId: Uuid = (savedStateHandle.get<String>("requestId")
-        ?: savedStateHandle.toRoute<Route.Draw>().requestId).let(Uuid::parse)
 
     /** Free the bus entry when the draw screen goes away — confirmed or aborted.
      *  postResult() closes the channel on the confirm path; this covers the back-out

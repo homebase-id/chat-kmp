@@ -64,7 +64,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 class CallDesktopErgonomicsTest {
     private val outDir = File("build/call-shots").apply { mkdirs() }
-    private val hidden = SemanticsMatcher.keyIsDefined(SemanticsProperties.InvisibleToUser)
+    private val hidden = SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility)
 
     private class Recorder {
         val calls = mutableListOf<String>()
