@@ -170,11 +170,12 @@ private fun probeConnection(hostname: String, targetIp: String): ConnResult {
 
     // Stage 3 — HTTP ping (SNI-preserving via custom Dns; redirects not followed so a captive
     // portal shows as a 3xx rather than being chased).
+    val pinnedHost = hostname
     val client = OkHttpClient.Builder()
         .dns(object : Dns {
-            override fun lookup(h: String): List<InetAddress> =
-                if (h.equals(hostname, ignoreCase = true)) listOf(InetAddress.getByName(targetIp))
-                else Dns.SYSTEM.lookup(h)
+            override fun lookup(hostname: String): List<InetAddress> =
+                if (hostname.equals(pinnedHost, ignoreCase = true)) listOf(InetAddress.getByName(targetIp))
+                else Dns.SYSTEM.lookup(hostname)
         })
         .followRedirects(false)
         .followSslRedirects(false)

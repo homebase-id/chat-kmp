@@ -4,12 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.core.ui.navigation.Route
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.toImageBitmap
 import id.homebase.imageeditor.core.AspectMode
@@ -33,19 +30,11 @@ import kotlin.uuid.Uuid
  * the gesture-rate matrix snapshot used by the canvas/overlay composables.
  */
 class CropEditorViewModel(
-    savedStateHandle: SavedStateHandle,
+    /** Keys both the source and the result. */
+    val requestId: Uuid,
+    private val lockedAspect: String?,
     private val resultBus: CropResultBus,
 ) : ViewModel() {
-
-    /** Keys both the source and the result. Arrives as a nav arg (main app, via
-     *  Route.Crop) or as a directly-seeded handle key (the share editor mounts this
-     *  screen without a NavHost). Read the raw key first, fall back to the typed route. */
-    val requestId: Uuid = (savedStateHandle.get<String>("requestId")
-        ?: savedStateHandle.toRoute<Route.Crop>().requestId).let(Uuid::parse)
-
-    /** Same dual-path read as [requestId] — the share editor mount has no typed route to fall back to. */
-    private val lockedAspect: String? = savedStateHandle.get<String>("lockedAspect")
-        ?: runCatching { savedStateHandle.toRoute<Route.Crop>() }.getOrNull()?.lockedAspect
 
     /** Free the bus entry when the cropper screen goes away — confirmed or aborted.
      *  postResult() closes the channel on the confirm path; this covers the back-out
