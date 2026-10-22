@@ -42,6 +42,10 @@ kotlin {
     }
 
     sourceSets {
+        val javaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(javaMain)
+        androidMain.get().dependsOn(javaMain)
+
         commonMain.dependencies {
             api(project(":homebase-api"))
             implementation(project(":homebase-common"))

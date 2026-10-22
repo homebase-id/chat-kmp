@@ -13,9 +13,6 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
-// NOTE: kept byte-for-byte identical to CertificateProbe.jvm.kt — Android and desktop both
-// use javax.net.ssl, but the KMP hierarchy gives them no shared parent source set, so the
-// implementation is duplicated. Change both together.
 internal actual suspend fun probeCertificateInfo(host: String): String? =
     withContext(Dispatchers.IO) {
         withTimeoutOrNull(8_000) {
