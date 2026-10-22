@@ -266,11 +266,6 @@ kotlin {
             implementation(libs.android.database.sqlcipher)
             implementation(libs.ffmpeg.kit)
             implementation(libs.smart.exception.java)
-            // MP4 atom-tree manipulation. Used by Mp4LocationStripper to drop
-            // EXIF / GPS location atoms from camera-recorded MP4s when the
-            // input passes through compressVideo's already-optimal check
-            // without re-encoding (re-encode naturally drops the atoms).
-            implementation(libs.mp4parser.isoparser)
             implementation(libs.androidsvg)
         }
         nativeMain.dependencies {
