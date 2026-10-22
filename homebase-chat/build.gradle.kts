@@ -40,6 +40,7 @@ kotlin {
             baseName = "homebase-chatKit"
             isStatic = true
         }
+        iosTarget.compilerOptions { optIn.add("kotlinx.cinterop.BetaInteropApi") }
     }
 
     compilerOptions {

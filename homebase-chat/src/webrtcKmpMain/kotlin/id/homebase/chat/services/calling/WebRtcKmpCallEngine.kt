@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.cinterop.BetaInteropApi::class)
-
 package id.homebase.chat.services.calling
 
 import kotlinx.coroutines.flow.receiveAsFlow

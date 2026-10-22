@@ -259,8 +259,7 @@ class FeedTimelineViewModel(
                 val reactors = reactionService.listReactors(post, null).map {
                     ReactionDisplayItem(
                         odinId = it.odinId.domainName,
-                        displayName = contactService.resolveByOdinId(it.odinId).name
-                            ?: it.odinId.domainName,
+                        displayName = contactService.resolveByOdinId(it.odinId).name,
                         emoji = it.emoji,
                     )
                 }
