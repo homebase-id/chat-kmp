@@ -448,7 +448,7 @@ fun MessageBubbleRaw(
     }
 
     // Old payload-format location messages (no header descriptor) still render via the media path.
-    val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
+    val locationDescriptor = message.messageContent?.descriptor
 
     val filteredPayloads = message.payloads.mediaPayloads()
     val hasMedia = filteredPayloads.isNotEmpty()

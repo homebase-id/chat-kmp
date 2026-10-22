@@ -181,7 +181,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                             CallEffect.CancelTimers,
                             relayToCalleeDevices(s, HangupReason.AnsweredElsewhere, chosen = sig.device),
                             CallEffect.ApplyRemoteAnswer(sig.sdp),
-                            CallEffect.StartTimer(CallTimer.Connect, s.callId!!),
+                            CallEffect.StartTimer(CallTimer.Connect, s.callId),
                         ),
                     )
                 } else {

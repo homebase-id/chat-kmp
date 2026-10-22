@@ -69,8 +69,8 @@ class ContactCardPhotoTest {
         val built = assertNotNull(data(listOf(photo())))
 
         assertEquals(key, built.payloadKey)
-        assertContentEqualsHex(Base64.decode(iv), built.keyHeader?.iv)
-        assertContentEqualsHex(ByteArray(16) { 7 }, built.keyHeader?.aesKey?.toByteArray())
+        assertContentEqualsHex(Base64.decode(iv), built.keyHeader.iv)
+        assertContentEqualsHex(ByteArray(16) { 7 }, built.keyHeader.aesKey?.toByteArray())
     }
 
     @Test

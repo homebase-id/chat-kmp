@@ -124,7 +124,7 @@ class FFmpegPipelineCoverageJvmTest {
                 trimStartMs = null,
                 trimEndMs = null,
             )
-            val toSegment = compressed ?: fixture
+            val toSegment = compressed
             if (compressed != null) cleanup += compressed
 
             val encResult = FFmpegUtils.segmentAndEncryptVideo(

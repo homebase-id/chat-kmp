@@ -95,7 +95,7 @@ private fun resolveDoH(hostname: String): ResolveOutcome {
             .header("accept", "application/dns-json")
             .build()
         client.newCall(request).execute().use { resp ->
-            val body = runCatching { resp.body?.string().orEmpty() }.getOrDefault("")
+            val body = runCatching { resp.body.string().orEmpty() }.getOrDefault("")
             val ips = runCatching {
                 diagJson.decodeFromString<DohResponse>(body).answer.filter { it.type == 1 }.map { it.data }
             }.getOrDefault(emptyList())
@@ -192,7 +192,7 @@ private fun probeConnection(hostname: String, targetIp: String): ConnResult {
             .build()
         client.newCall(request).execute().use { resp ->
             val code = resp.code
-            val body = runCatching { resp.body?.string().orEmpty() }.getOrDefault("")
+            val body = runCatching { resp.body.string().orEmpty() }.getOrDefault("")
             val identity = runCatching { diagJson.decodeFromString<PingResponse>(body).identity }.getOrNull()
             val httpMs = elapsedMs(httpStart)
             when {

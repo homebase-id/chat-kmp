@@ -214,7 +214,7 @@ class ViewOnceListPreviewTest {
         )
         val original = Locale.getDefault()
         try {
-            Locale.setDefault(Locale("da"))
+            Locale.setDefault(Locale.forLanguageTag("da"))
             assertEquals("Foto", labelOf(photo)?.text)
             assertEquals("Video", labelOf(video)?.text)
             assertEquals("Medie", labelOf(tombstone)?.text)

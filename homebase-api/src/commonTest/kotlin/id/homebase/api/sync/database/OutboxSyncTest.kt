@@ -935,7 +935,7 @@ class OutboxSyncTest {
         assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
         assertNotNull(dropped.reason, "a permanent drop must carry its classifier reason")
         assertTrue(
-            dropped.reason!!.contains("Cannot transfer to yourself"),
+            dropped.reason.contains("Cannot transfer to yourself"),
             "reason should surface the server message; was: ${dropped.reason}",
         )
 

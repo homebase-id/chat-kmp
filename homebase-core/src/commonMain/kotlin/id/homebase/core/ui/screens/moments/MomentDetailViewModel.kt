@@ -639,7 +639,7 @@ class MomentDetailViewModel(
             try {
                 val raw = actionService.getReactionsForMoment(momentId)
                 val resolved = raw.map { entry ->
-                    val displayName = contactService.resolveByOdinId(entry.odinId)?.name
+                    val displayName = contactService.resolveByOdinId(entry.odinId).name
                         ?.takeIf { it.isNotBlank() }
                         ?: entry.odinId.domainName
                     MomentReactionUiModel(
@@ -978,7 +978,7 @@ class MomentDetailViewModel(
                     .distinctBy { it.recipient.lowercase() }
                     .map { entry ->
                         val odinId = OdinId(entry.recipient)
-                        val displayName = contactService.resolveByOdinId(odinId)?.name
+                        val displayName = contactService.resolveByOdinId(odinId).name
                             ?.takeIf { it.isNotBlank() }
                             ?: odinId.domainName
                         RecipientDeliveryUiModel(

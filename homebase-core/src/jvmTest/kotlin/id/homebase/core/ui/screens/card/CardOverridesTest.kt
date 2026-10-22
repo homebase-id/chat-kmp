@@ -70,7 +70,7 @@ class CardOverridesTest {
         assertNull(read.palette)
         assertEquals("bar", read.socials)
         assertNull(read.portraits!!.first().tape)
-        assertNull(read.portraits!!.first().mono)
+        assertNull(read.portraits.first().mono)
         assertEquals(listOf(CardPortrait(shape = "circle", tilt = 2.5)), read.portraits)
         assertEquals(listOf(CardBlock("links"), CardBlock("posts")), read.blocks)
 

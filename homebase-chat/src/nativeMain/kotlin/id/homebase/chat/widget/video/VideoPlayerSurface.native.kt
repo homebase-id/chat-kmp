@@ -451,7 +451,7 @@ actual fun VideoPlayerSurface(
                     }
                 },
                 update = { controller ->
-                    (controller as? AVPlayerViewController)?.videoGravity =
+                    controller.videoGravity =
                         if (useZoomFill) {
                             AVLayerVideoGravityResizeAspectFill
                         } else {

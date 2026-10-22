@@ -59,7 +59,7 @@ class DesktopCallRingSinkTest {
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
         )
-        lateinit var coordinator: CallRingCoordinator
+        var coordinator: CallRingCoordinator
         val sink = DesktopCallRingSink(
             scope = scope.backgroundScope,
             notifier = notifier,
