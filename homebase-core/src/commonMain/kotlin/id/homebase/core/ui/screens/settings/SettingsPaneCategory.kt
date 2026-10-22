@@ -69,6 +69,7 @@ internal enum class SettingsCategory(
     val icon: ImageVector,
 ) {
     General(MR.string.settings_category_general, Icons.Outlined.Tune),
+    Account(MR.string.settings_account, Icons.Outlined.ManageAccounts),
     Notifications(MR.string.settings_notifications, Icons.Outlined.Notifications),
     Appearance(MR.string.settings_appearance, Icons.Outlined.Brightness6),
     Media(MR.string.settings_media, Icons.Outlined.PermMedia),
@@ -78,7 +79,6 @@ internal enum class SettingsCategory(
     Email(MR.string.email_settings_section, Icons.Outlined.MailOutline),
     Contacts(MR.string.contactbook_settings_section, Icons.Outlined.People),
     Storage(MR.string.settings_data_storage, Icons.Outlined.Storage),
-    Account(MR.string.settings_account, Icons.Outlined.ManageAccounts),
     Help(MR.string.settings_help, Icons.AutoMirrored.Outlined.HelpOutline),
 }
 

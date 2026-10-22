@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.storage.HostingProvider
 import id.homebase.core.ui.screens.settings.SettingsUiAction
 import id.homebase.core.ui.screens.settings.SettingsUiDialog
 import id.homebase.core.ui.screens.settings.SettingsUiEvent
@@ -57,9 +58,15 @@ import id.homebase.resources.cancel
 import id.homebase.resources.plan_free_up_body
 import id.homebase.resources.plan_free_up_button
 import id.homebase.resources.plan_free_up_title
+import id.homebase.resources.ok
 import id.homebase.resources.plan_more_body
+import id.homebase.resources.plan_more_body_provider
 import id.homebase.resources.plan_more_button
 import id.homebase.resources.plan_more_title
+import id.homebase.resources.plan_upgrade_continue
+import id.homebase.resources.plan_upgrade_dialog_body
+import id.homebase.resources.plan_upgrade_dialog_no_provider
+import id.homebase.resources.plan_upgrade_dialog_title
 import id.homebase.resources.plan_title
 import id.homebase.resources.plan_unavailable
 import id.homebase.resources.settings_account
@@ -158,6 +165,14 @@ fun AccountSettingsUi(
     onDeleteAccount: () -> Unit,
     onBackClick: () -> Unit,
 ) {
+    if (uiState.showUpgradeDialog) {
+        UpgradeDialog(
+            hostingProvider = uiState.usage?.hostingProvider,
+            onContinue = { onAction(AccountSettingsUiAction.UpgradeContinueClicked) },
+            onDismiss = { onAction(AccountSettingsUiAction.UpgradeDialogDismissed) },
+        )
+    }
+
     Scaffold(
         topBar = { SettingsTopBar(title = stringResource(MR.string.settings_account), onBack = onBackClick) },
     ) { innerPadding ->
@@ -242,9 +257,11 @@ private fun PlanAndStorage(uiState: AccountSettingsUiState, onAction: (AccountSe
         button = stringResource(MR.string.plan_free_up_button),
         onClick = { onAction(AccountSettingsUiAction.SeeWhatEachAppStoresClicked) },
     )
+    val provider = usage.hostingProvider?.takeIf { it.upgradeUrl != null }
     PlanSection(
         title = stringResource(MR.string.plan_more_title),
-        body = stringResource(MR.string.plan_more_body),
+        body = provider?.let { stringResource(MR.string.plan_more_body_provider, it.displayName) }
+            ?: stringResource(MR.string.plan_more_body),
         button = stringResource(MR.string.plan_more_button),
         onClick = { onAction(AccountSettingsUiAction.HowToUpgradeClicked) },
     )
@@ -265,6 +282,37 @@ private fun PlanSection(title: String, body: String, button: String, onClick: ()
             modifier = Modifier.padding(horizontal = 4.dp),
         )
         OutlinedButton(onClick = onClick) { Text(button) }
+    }
+}
+
+/**
+ * Before leaving the app for the hosting provider's upgrade page, say where the owner is going. With no hosting
+ * provider (or no upgrade page) there is nowhere to send them: say who to ask instead.
+ */
+@Composable
+private fun UpgradeDialog(hostingProvider: HostingProvider?, onContinue: () -> Unit, onDismiss: () -> Unit) {
+    val provider = hostingProvider?.takeIf { it.upgradeUrl != null }
+    Dialog(onDismissRequest = onDismiss) {
+        DialogCard(
+            modifier = Modifier.testTag("upgradeDialog"),
+            buttons = {
+                if (provider != null) {
+                    DialogButtons(
+                        primaryText = stringResource(MR.string.plan_upgrade_continue),
+                        onPrimaryClick = onContinue,
+                        secondaryText = stringResource(MR.string.cancel),
+                        onSecondaryClick = onDismiss,
+                    )
+                } else {
+                    DialogButtons(primaryText = stringResource(MR.string.ok), onPrimaryClick = onDismiss)
+                }
+            }) {
+            DialogTitle(text = stringResource(MR.string.plan_upgrade_dialog_title))
+            DialogText(
+                text = provider?.let { stringResource(MR.string.plan_upgrade_dialog_body, it.displayName) }
+                    ?: stringResource(MR.string.plan_upgrade_dialog_no_provider)
+            )
+        }
     }
 }
 

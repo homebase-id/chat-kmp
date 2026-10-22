@@ -219,6 +219,16 @@ fun SettingsUi(
                 )
             }
 
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("accountButton"),
+                    icon = Icons.Outlined.ManageAccounts,
+                    title = stringResource(MR.string.settings_account),
+                    supportingText = stringResource(MR.string.settings_account_desc),
+                    action = SettingsRowAction.Navigate(actions.onAccount),
+                )
+            }
+
             item { HubSectionHeader(stringResource(MR.string.settings_section_preferences)) }
             item {
                 SettingsRow(
@@ -374,15 +384,6 @@ fun SettingsUi(
                         ?.let { stringResource(MR.string.settings_storage_used, formatBytes(it)) }
                         ?: stringResource(MR.string.settings_storage_desc),
                     action = SettingsRowAction.Navigate(actions.onStorage),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("accountButton"),
-                    icon = Icons.Outlined.ManageAccounts,
-                    title = stringResource(MR.string.settings_account),
-                    supportingText = stringResource(MR.string.settings_account_desc),
-                    action = SettingsRowAction.Navigate(actions.onAccount),
                 )
             }
             item {

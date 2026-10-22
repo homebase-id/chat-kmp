@@ -7,12 +7,15 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
+import id.homebase.api.client.storage.HostingProvider
 import id.homebase.api.client.storage.StorageUsage
 import id.homebase.core.test.setTestLocale
 import kotlin.test.Test
@@ -74,6 +77,58 @@ class AccountSettingsUiTest {
         onNodeWithText("Plan: veterans", substring = true).assertExists()
         onNodeWithText("How to upgrade").performScrollTo().performClick()
         assertEquals(listOf(AccountSettingsUiAction.HowToUpgradeClicked.toString()), fired)
+    }
+
+    private val raven = HostingProvider(
+        displayName = "Raven Hosting",
+        upgradeUrl = "https://invites.example.com/upgrade?id=frodo.dotyou.cloud&host=provisioning.dotyou.cloud",
+    )
+
+    private fun withPlan(provider: HostingProvider?, dialog: Boolean = false) = AccountSettingsUiState(
+        usage = StorageUsage(planId = "free", usedBytes = 1024, quotaBytes = 4096, hostingProvider = provider),
+        isLoading = false,
+        showUpgradeDialog = dialog,
+    )
+
+    @Test
+    fun theUpgradeDialogSaysWhereTheOwnerIsGoing() = runComposeUiTest {
+        account(withPlan(raven, dialog = true))
+        onNodeWithText("We'll send you to Raven Hosting to upgrade your plan.").assertExists()
+        onNodeWithText("Continue").performClick()
+        onNodeWithText("Cancel").performClick()
+        assertEquals(
+            listOf(
+                AccountSettingsUiAction.UpgradeContinueClicked.toString(),
+                AccountSettingsUiAction.UpgradeDialogDismissed.toString(),
+            ),
+            fired,
+        )
+    }
+
+    @Test
+    fun withoutAHostingProviderTheDialogSaysWhoToAsk() = runComposeUiTest {
+        account(withPlan(null, dialog = true))
+        // On the page under Get more space, and in the dialog
+        onAllNodesWithText("To get more space, contact whoever runs your Homebase server.").assertCountEquals(2)
+        onNodeWithText("Continue").assertDoesNotExist()
+        onNodeWithText("Ok").performClick()
+        assertEquals(listOf(AccountSettingsUiAction.UpgradeDialogDismissed.toString()), fired)
+    }
+
+    @Test
+    fun getMoreSpaceNamesTheHostingProvider() = runComposeUiTest {
+        account(withPlan(raven))
+        onNodeWithText("To get more space, upgrade your plan with Raven Hosting.").assertExists()
+    }
+
+    @Test
+    fun continueOpensTheUpgradePageExactlyAsGiven() {
+        val after = withPlan(raven, dialog = true).afterUpgradeContinue()
+        assertEquals(AccountSettingsUiEvent.OpenUrl(raven.upgradeUrl!!), after.uiEvent)
+        assertEquals(false, after.showUpgradeDialog)
+
+        val nowhere = withPlan(raven.copy(upgradeUrl = null), dialog = true).afterUpgradeContinue()
+        assertEquals(null, nowhere.uiEvent)
     }
 
     @Test

@@ -78,8 +78,13 @@
     <string name="plan_free_up_body">Billeder, videoer og filer fra alle dine Homebase-apps tæller med i din lagerplads. Når du sletter dem, frigøres pladsen inden for cirka et minut.</string>
     <string name="plan_free_up_button">Se, hvad hver app gemmer</string>
     <string name="plan_more_title">Få mere plads</string>
-    <string name="plan_more_body">Kontakt din hostingudbyder for at få mere plads.</string>
+    <string name="plan_more_body">Kontakt den, der driver din Homebase-server, for at få mere plads.</string>
+    <string name="plan_more_body_provider">Opgrader dit abonnement hos %1$s for at få mere plads.</string>
     <string name="plan_more_button">Sådan opgraderer du</string>
+    <string name="plan_upgrade_dialog_title">Opgrader dit abonnement</string>
+    <string name="plan_upgrade_dialog_body">Vi sender dig videre til %1$s, så du kan opgradere dit abonnement.</string>
+    <string name="plan_upgrade_dialog_no_provider">Kontakt den, der driver din Homebase-server, for at få mere plads.</string>
+    <string name="plan_upgrade_continue">Fortsæt</string>
     <string name="plan_unavailable">Oplysninger om lagerplads er ikke tilgængelige på denne server.</string>
     <string name="msg_outbox_checked_out_stuck">Fastlåst — uploaden blev ikke færdig og er stadig tjekket ud</string>
     <string name="msg_outbox_entry_lingering">En afventende udbakkepost findes stadig for denne besked</string>

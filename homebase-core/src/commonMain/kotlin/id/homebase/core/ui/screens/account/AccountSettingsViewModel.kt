@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The plan & storage half of Settings > Account: the identity's plan and storage, and where to go about it,
- * the owner console's per-app usage to free up space and its plan page's upgrade instructions to get more.
+ * the owner console's per-app usage to free up space and the hosting provider's upgrade page to get more.
  * Log out and delete account on the same screen stay with [id.homebase.core.ui.screens.settings.SettingsViewModel].
  */
 class AccountSettingsViewModel(
@@ -35,7 +35,9 @@ class AccountSettingsViewModel(
     fun onAction(action: AccountSettingsUiAction) {
         when (action) {
             AccountSettingsUiAction.SeeWhatEachAppStoresClicked -> openOwnerConsole("/owner/apps")
-            AccountSettingsUiAction.HowToUpgradeClicked -> openOwnerConsole("/owner/settings/plan?upgrade=1")
+            AccountSettingsUiAction.HowToUpgradeClicked -> _uiState.update { it.copy(showUpgradeDialog = true) }
+            AccountSettingsUiAction.UpgradeDialogDismissed -> _uiState.update { it.copy(showUpgradeDialog = false) }
+            AccountSettingsUiAction.UpgradeContinueClicked -> _uiState.update { it.afterUpgradeContinue() }
         }
     }
 

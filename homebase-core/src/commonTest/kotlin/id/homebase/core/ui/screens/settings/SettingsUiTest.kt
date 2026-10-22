@@ -82,6 +82,12 @@ class SettingsUiTest {
         assertEquals(listOf("back"), routes.fired)
     }
 
+    /** Account sits right below General in the wide layout's sidebar, as it does near the top of the hub. */
+    @Test
+    fun accountComesRightAfterGeneralInTheSidebar() {
+        assertEquals(listOf(SettingsCategory.General, SettingsCategory.Account), SettingsCategory.entries.take(2))
+    }
+
     /** Walks the hub top to bottom. */
     @Test
     fun everyNavigationRowReachesItsOwnRoute() = runComposeUiTest {
@@ -89,6 +95,7 @@ class SettingsUiTest {
         settings(routes = routes)
 
         val expected = listOf(
+            "accountButton" to "account",
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",
@@ -97,7 +104,6 @@ class SettingsUiTest {
             "locationSettingsButton" to "location",
             "contactBookSettingsButton" to "contactBook",
             "storageButton" to "storage",
-            "accountButton" to "account",
             "helpButton" to "help",
         )
         expected.forEach { (tag, route) ->
