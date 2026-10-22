@@ -71,7 +71,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
         val after = t.state
         if (before.phase == after.phase && before.callId == after.callId) return
         val hangup = t.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().firstOrNull()
-        Logger.i(TAG) {
+        Logger.i(tag = TAG) {
             "call=${after.callId} ${before.phase} -> ${after.phase} on ${describe(event)}" +
                 (hangup?.let { " sends hangup(${it.reason})" } ?: "")
         }
@@ -107,7 +107,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             else if (event.on && state.phase.isInCall && !state.localVideoTrack) addVideo(state)
             else control(state, CallEffect.SetVideo(event.on)) { it.copy(localVideo = event.on) }
         CallEvent.SwitchCamera -> {
-            Logger.i(TAG) { "call=${state.callId} SwitchCamera in ${state.phase}" }
+            Logger.i(tag = TAG) { "call=${state.callId} SwitchCamera in ${state.phase}" }
             control(state, CallEffect.SwitchCamera) {
                 it.copy(camera = if (it.camera == CameraFacing.Front) CameraFacing.Back else CameraFacing.Front)
             }
@@ -232,7 +232,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
 
     // A second device's answer means it missed the first relay (or raced it), so it is told again; anything else it sends is dropped.
     private fun otherCalleeDevice(s: CallState, sig: CallSignal): CallTransition {
-        Logger.i(TAG) { "call=${s.callId} dropped ${sig::class.simpleName} from unchosen device ${sig.device}" }
+        Logger.i(tag = TAG) { "call=${s.callId} dropped ${sig::class.simpleName} from unchosen device ${sig.device}" }
         if (sig !is CallSignal.Answer || !s.phase.isInCall) return CallTransition(s)
         return CallTransition(s, listOf(relayToCalleeDevices(s, HangupReason.AnsweredElsewhere, chosen = s.peerDevice)))
     }
@@ -240,7 +240,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     private fun offer(s: CallState, from: String, sig: CallSignal.Offer, receivedAtMs: Long, nowMs: Long): CallTransition {
         if (from == selfOdinId) return CallTransition(s)
         if (isStale(receivedAtMs, nowMs)) {
-            Logger.i(TAG) { "stale offer call=${sig.callId} age=${nowMs - receivedAtMs}ms dropped" }
+            Logger.i(tag = TAG) { "stale offer call=${sig.callId} age=${nowMs - receivedAtMs}ms dropped" }
             return CallTransition(s)
         }
         if (sig.callId == s.callId) return offerForPushedRing(s, from, sig)
@@ -266,10 +266,10 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
         val glare = s.phase == CallPhase.Outgoing && from == s.peer
         if (glare) {
             if (selfOdinId < from) {
-                Logger.i(TAG) { "glare: keeping own call=${s.callId}, ignoring peer offer call=${sig.callId}" }
+                Logger.i(tag = TAG) { "glare: keeping own call=${s.callId}, ignoring peer offer call=${sig.callId}" }
                 return CallTransition(s)
             }
-            Logger.i(TAG) { "glare: yielding own call=${s.callId} to peer offer call=${sig.callId}" }
+            Logger.i(tag = TAG) { "glare: yielding own call=${s.callId} to peer offer call=${sig.callId}" }
             val next = s.copy(
                 phase = CallPhase.Connecting,
                 callId = sig.callId,
@@ -290,7 +290,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 },
             )
         }
-        Logger.i(TAG) { "busy: refusing offer call=${sig.callId} from=$from while ${s.phase} call=${s.callId}" }
+        Logger.i(tag = TAG) { "busy: refusing offer call=${sig.callId} from=$from while ${s.phase} call=${s.callId}" }
         return CallTransition(s, listOf(CallEffect.SendSignal(from, CallSignal.Hangup(sig.callId, HangupReason.Busy))))
     }
 
@@ -342,7 +342,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 )
                 CallPhase.Reconnecting ->
                     if (s.restartPending) {
-                        Logger.i(TAG) { "call=${s.callId} link up while the ICE restart is unanswered; still reconnecting" }
+                        Logger.i(tag = TAG) { "call=${s.callId} link up while the ICE restart is unanswered; still reconnecting" }
                         CallTransition(s.copy(linkUp = true))
                     } else {
                         reconnected(s)
@@ -362,7 +362,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 }
             is MediaEvent.Failed -> failed(s, e.reason)
             is MediaEvent.RemoteVideoChanged -> {
-                if (e.on != s.media.remoteVideo) Logger.i(TAG) { "call=${s.callId} RemoteVideoChanged on=${e.on}" }
+                if (e.on != s.media.remoteVideo) Logger.i(tag = TAG) { "call=${s.callId} RemoteVideoChanged on=${e.on}" }
                 CallTransition(s.copy(media = s.media.copy(remoteVideo = e.on)))
             }
             is MediaEvent.RemoteMuteChanged -> CallTransition(s.copy(media = s.media.copy(remoteMuted = e.muted)))
@@ -405,7 +405,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     private fun pushRing(s: CallState, e: CallEvent.PushRing, nowMs: Long): CallTransition {
         if (e.from == selfOdinId || e.callId == s.callId || s.isActive) return CallTransition(s)
         if (isStale(e.sentAtMs, nowMs)) {
-            Logger.i(TAG) { "stale ring push call=${e.callId} age=${nowMs - e.sentAtMs}ms dropped" }
+            Logger.i(tag = TAG) { "stale ring push call=${e.callId} age=${nowMs - e.sentAtMs}ms dropped" }
             return CallTransition(s)
         }
         return CallTransition(

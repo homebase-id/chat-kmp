@@ -81,7 +81,7 @@ class FilesyncUploadQueue(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Logger.w(TAG, e) { "a picked file couldn't be copied for upload" }
+                    Logger.w(e, tag = TAG) { "a picked file couldn't be copied for upload" }
                     _errors.tryEmit(FilesyncError.UploadFailed)
                     continue
                 }

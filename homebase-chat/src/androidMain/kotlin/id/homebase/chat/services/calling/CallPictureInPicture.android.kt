@@ -49,7 +49,7 @@ actual fun rememberInPictureInPicture(): Boolean {
     DisposableEffect(activity) {
         val listener = Consumer<androidx.core.app.PictureInPictureModeChangedInfo> {
             inPip = it.isInPictureInPictureMode
-            Logger.i("CallPiP") { "pip mode changed inPip=${it.isInPictureInPictureMode}" }
+            Logger.i(tag = "CallPiP") { "pip mode changed inPip=${it.isInPictureInPictureMode}" }
         }
         activity.addOnPictureInPictureModeChangedListener(listener)
         onDispose { activity.removeOnPictureInPictureModeChangedListener(listener) }
@@ -77,7 +77,7 @@ actual fun CallPictureInPictureEffect(
     DisposableEffect(activity) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                Logger.i("CallPiP") { "pip action ${intent.action}" }
+                Logger.i(tag = "CallPiP") { "pip action ${intent.action}" }
                 when (intent.action) {
                     ACTION_MUTE -> toggleMute()
                     ACTION_HANGUP -> hangup()
@@ -95,7 +95,7 @@ actual fun CallPictureInPictureEffect(
     LaunchedEffect(inPip) { if (inPip) restore() }
     LaunchedEffect(inPip, eligible) {
         if (shouldLeavePictureInPicture(inPip, eligible)) {
-            Logger.i("CallPiP") { "leaving pip: call no longer pip-eligible" }
+            Logger.i(tag = "CallPiP") { "leaving pip: call no longer pip-eligible" }
             activity.startActivity(Intent(activity, activity.javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
         }
     }
@@ -107,10 +107,10 @@ actual fun CallPictureInPictureEffect(
         activity.setPictureInPictureParams(params)
         // Pre-31 there is no auto-enter, so the user-leave-hint hook is the only way in; from 31 auto-enter does it.
         val leave = Runnable {
-            Logger.i("CallPiP") { "user leave hint eligible=$eligible" }
+            Logger.i(tag = "CallPiP") { "user leave hint eligible=$eligible" }
             if (eligible) {
                 val entered = activity.enterPictureInPictureMode(params)
-                Logger.i("CallPiP") { "enterPictureInPictureMode=$entered" }
+                Logger.i(tag = "CallPiP") { "enterPictureInPictureMode=$entered" }
             }
         }.takeIf { Build.VERSION.SDK_INT < Build.VERSION_CODES.S }
         leave?.let(activity::addOnUserLeaveHintListener)

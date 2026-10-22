@@ -57,7 +57,7 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
     fun opened(send: (ByteArray) -> Boolean) {
         transport.store(send)
         val state = local.load().message()
-        Logger.i(tag) { "media-state channel open, sending video=${state.video} audio=${state.audio} seq=${state.seq}" }
+        Logger.i(tag = tag) { "media-state channel open, sending video=${state.video} audio=${state.audio} seq=${state.seq}" }
         transmit(state)
     }
 
@@ -67,14 +67,14 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
 
     fun received(bytes: ByteArray) {
         val message = runCatching { json.decodeFromString(MediaStateMessage.serializer(), bytes.decodeToString()) }
-            .onFailure { Logger.w(tag) { "media-state unreadable, dropped: ${it.message}" } }
+            .onFailure { Logger.w(tag = tag) { "media-state unreadable, dropped: ${it.message}" } }
             .getOrNull() ?: return
         while (true) {
             val before = remote.load()
             if (message.seq <= before.seq) return
             if (!remote.compareAndSet(before, before.copy(seq = message.seq, video = message.video, audio = message.audio))) continue
             if (before.video != message.video || before.audio != message.audio) {
-                Logger.i(tag) { "media-state received video=${message.video} audio=${message.audio} seq=${message.seq}" }
+                Logger.i(tag = tag) { "media-state received video=${message.video} audio=${message.audio} seq=${message.seq}" }
             }
             publisher.request()
             return
@@ -100,7 +100,7 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
             if (!changed) return
             val state = after.message()
             val open = transport.load() != null
-            Logger.i(tag) { "media-state sent video=${state.video} audio=${state.audio} seq=${state.seq} reason=$reason open=$open" }
+            Logger.i(tag = tag) { "media-state sent video=${state.video} audio=${state.audio} seq=${state.seq} reason=$reason open=$open" }
             transmit(state)
             return
         }
@@ -109,7 +109,7 @@ class MediaStateLink(private val tag: String, private val emit: (MediaEvent) -> 
     private fun transmit(state: MediaStateMessage) {
         val send = transport.load() ?: return
         if (!send(json.encodeToString(MediaStateMessage.serializer(), state).encodeToByteArray())) {
-            Logger.w(tag) { "media-state send refused by the data channel seq=${state.seq}" }
+            Logger.w(tag = tag) { "media-state send refused by the data channel seq=${state.seq}" }
         }
     }
 

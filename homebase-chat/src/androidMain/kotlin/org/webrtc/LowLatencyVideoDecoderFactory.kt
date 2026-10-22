@@ -66,7 +66,7 @@ internal class ResizeResettingDecoder(
         val w = frame.encodedWidth
         val h = frame.encodedHeight
         if (current != null && callback != null && decoderNeedsReset(current.width, current.height, w, h)) {
-            Logger.i("WebRtcKmp") { "decoder resize ${current.width}x${current.height} -> ${w}x$h: release + init" }
+            Logger.i(tag = "WebRtcKmp") { "decoder resize ${current.width}x${current.height} -> ${w}x$h: release + init" }
             release().takeIf { it != VideoCodecStatus.OK }?.let { return it }
             initDecode(VideoDecoder.Settings(current.numberOfCores, w, h), callback)
                 .takeIf { it != VideoCodecStatus.OK }?.let { return it }
@@ -88,7 +88,7 @@ private class LowLatencyCodec(private val codec: MediaCodec) : MediaCodecWrapper
         keys.forEach { (key, value) -> format.setInteger(key, value) }
         try {
             codec.configure(format, surface, crypto, flags)
-            Logger.i("WebRtcKmp") { "decoder ${codec.name} configured $mime with $keys" }
+            Logger.i(tag = "WebRtcKmp") { "decoder ${codec.name} configured $mime with $keys" }
         } catch (e: RuntimeException) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) throw e
             Logger.w(e, "WebRtcKmp") { "decoder ${codec.name} refused $keys; configuring without them" }
@@ -102,7 +102,7 @@ private class LowLatencyCodec(private val codec: MediaCodec) : MediaCodecWrapper
     override fun flush() = codec.flush()
     override fun stop() = codec.stop()
     override fun release() {
-        Logger.i("WebRtcKmp") { "decoder ${codec.name} released after $queued inputs, $output outputs" }
+        Logger.i(tag = "WebRtcKmp") { "decoder ${codec.name} released after $queued inputs, $output outputs" }
         codec.release()
     }
     override fun dequeueInputBuffer(timeoutUs: Long) = codec.dequeueInputBuffer(timeoutUs)

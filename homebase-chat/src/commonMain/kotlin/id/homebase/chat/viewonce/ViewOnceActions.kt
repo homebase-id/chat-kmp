@@ -63,10 +63,10 @@ class ViewOnceActions(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "$label failed msg=$messageId" }
+            Logger.e(e, tag = TAG) { "$label failed msg=$messageId" }
             return@withLock
         }
-        Logger.i(TAG) { "$label msg=$messageId outcome=$outcome" }
+        Logger.i(tag = TAG) { "$label msg=$messageId outcome=$outcome" }
         if (outcome == MutationOutcome.Queued) sent.add(messageId)
     }
 
@@ -84,7 +84,7 @@ class ViewOnceActions(
             throw e
         } catch (e: Exception) {
             release(messageId)
-            Logger.e(TAG, e) { "$failure msg=$messageId" }
+            Logger.e(e, tag = TAG) { "$failure msg=$messageId" }
         }
     }
 
@@ -97,7 +97,7 @@ class ViewOnceActions(
                 enqueueSignal(conversationId, messageId, ViewOnceSignal.openedChange())
                     .also { if (it == MutationOutcome.Queued) lastSignalRow.remove(messageId) }
             }
-            Logger.i(TAG) { "viewer closed msg=$messageId opened-signal=$outcome" }
+            Logger.i(tag = TAG) { "viewer closed msg=$messageId opened-signal=$outcome" }
             actionService.stripViewOnceMedia(
                 messageId = messageId,
                 runAfter = ChatMessageActionService.reactionSetRowKey(messageId, ViewOnceSignal.OPENED_SCOPE),

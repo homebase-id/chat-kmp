@@ -26,7 +26,7 @@ internal actual fun applyVideoSender(sender: RtpSender, state: SenderState) {
         state.maxFramerate?.let { encoding.maxFramerate = it }
         state.scaleDownBy?.let { encoding.scaleResolutionDownBy = it }
     }
-    if (!native.setParameters(params)) Logger.w("WebRtcKmp") { "video sender rejected $state: ${describeVideoSender(sender)}" }
+    if (!native.setParameters(params)) Logger.w(tag = "WebRtcKmp") { "video sender rejected $state: ${describeVideoSender(sender)}" }
 }
 
 internal actual fun observeDevicePressure(onChange: (DevicePressure) -> Unit): () -> Unit = {}

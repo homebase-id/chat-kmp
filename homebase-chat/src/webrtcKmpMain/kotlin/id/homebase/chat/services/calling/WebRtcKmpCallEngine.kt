@@ -102,7 +102,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     )
     private val stopPressureWatch = observeDevicePressure { pressure ->
         sendLadder.setPressure(pressure)
-        Logger.i("WebRtcKmp") { pressure.describe() }
+        Logger.i(tag = "WebRtcKmp") { pressure.describe() }
     }
 
     init {
@@ -134,8 +134,8 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             val stats = runCatching { peer.getStats()?.stats?.values }.getOrNull() ?: continue
             val entries = stats.map { StatsEntry(it.type, it.members, it.id) }
             videoStatsLines(entries, localTrack = videoTrack?.state?.value?.toString(), previous = previous)
-                .forEach { line -> Logger.i("WebRtcKmp") { line } }
-            sendLadder.onStats(entries)?.let { line -> Logger.i("WebRtcKmp") { line } }
+                .forEach { line -> Logger.i(tag = "WebRtcKmp") { line } }
+            sendLadder.onStats(entries)?.let { line -> Logger.i(tag = "WebRtcKmp") { line } }
             previous = entries
         }
     }
@@ -202,7 +202,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             )
         }
         publishLocal(track)
-        Logger.i("WebRtcKmp") { "local video settings=${track.settings}" }
+        Logger.i(tag = "WebRtcKmp") { "local video settings=${track.settings}" }
         watchCapturer(track, MAX_CAMERA_RECOVERIES)
     }
 
@@ -217,7 +217,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
     override suspend fun addVideo(): Boolean {
         if (closed.load()) return false
         if (videoTrack != null) return true
-        val sender = videoSender ?: return false.also { Logger.w("WebRtcKmp") { "no video transceiver was negotiated, the camera stays off" } }
+        val sender = videoSender ?: return false.also { Logger.w(tag = "WebRtcKmp") { "no video transceiver was negotiated, the camera stays off" } }
         val (track, media) = openCameraOnto(sender, enabled = true, "mid-call camera") ?: return false
         cameraStream = media
         videoWanted = true
@@ -256,7 +256,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         scope.launch {
             track.state.first { state -> state is MediaStreamTrackState.Ended }
             if (closed.load()) return@launch
-            Logger.w("WebRtcKmp") { "local video track ended by capturer device=${track.settings.deviceId} recoveriesLeft=$recoveriesLeft" }
+            Logger.w(tag = "WebRtcKmp") { "local video track ended by capturer device=${track.settings.deviceId} recoveriesLeft=$recoveriesLeft" }
             mediaState.capturerEnded()
             if (recoveriesLeft > 0) recoverCamera(recoveriesLeft - 1)
         }
@@ -269,7 +269,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         cameraStream = media
         videoTrack = fresh
         publishLocal(fresh)
-        Logger.i("WebRtcKmp") { "camera recovered settings=${fresh.settings}" }
+        Logger.i(tag = "WebRtcKmp") { "camera recovered settings=${fresh.settings}" }
         watchCapturer(fresh, recoveriesLeft)
         mediaState.capturerRestored()
     }
@@ -281,7 +281,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             id = MEDIA_STATE_CHANNEL_ID,
             ordered = true,
             negotiated = true,
-        ) ?: return Logger.w("WebRtcKmp") { "media-state data channel unavailable" }
+        ) ?: return Logger.w(tag = "WebRtcKmp") { "media-state data channel unavailable" }
         stateChannel = channel
         scope.launch(start = CoroutineStart.UNDISPATCHED) { channel.onOpen.collect { mediaState.opened(channel::send) } }
         scope.launch(start = CoroutineStart.UNDISPATCHED) { channel.onClose.collect { mediaState.closed() } }
@@ -317,7 +317,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
 
     private fun logVideoSender() {
         val sender = videoSender ?: return
-        Logger.i("WebRtcKmp") { "video sender ${describeVideoSender(sender)}" }
+        Logger.i(tag = "WebRtcKmp") { "video sender ${describeVideoSender(sender)}" }
     }
 
     override suspend fun restartIce(): String = offer(OfferAnswerOptions(iceRestart = true))
@@ -360,7 +360,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
             val current = track.settings.deviceId
             // Cycling (null) on Android walks into auxiliary lenses that may deliver no frames; a freeze then ends the track.
             val target = flipTarget(current, platformCameras())
-            Logger.i("WebRtcKmp") { "switchCamera from=$current to=${target ?: "next"}" }
+            Logger.i(tag = "WebRtcKmp") { "switchCamera from=$current to=${target ?: "next"}" }
             runCatching { track.switchCamera(target) }
                 .onSuccess { if (!closed.load()) publishLocal(track) }
                 .onFailure { Logger.w(it, "WebRtcKmp") { "switchCamera failed" } }
@@ -390,7 +390,7 @@ class WebRtcKmpCallEngine(stunUrls: List<String>) : CallEngine {
         router.stop()
         _local.value = null
         _remote.value = null
-        Logger.i("WebRtcKmp") {
+        Logger.i(tag = "WebRtcKmp") {
             "engine closed in ${start.elapsedNow().inWholeMilliseconds} ms: tracks=${tracks.inWholeMilliseconds} " +
                 "release=${(released - tracks).inWholeMilliseconds} peer=${(peerClosed - released).inWholeMilliseconds}"
         }

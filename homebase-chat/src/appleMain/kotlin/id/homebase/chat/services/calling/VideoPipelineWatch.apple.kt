@@ -40,11 +40,11 @@ internal actual fun watchVideoPipeline(onCameraInterrupted: (interrupted: Boolea
                     session.commitConfiguration()
                 }
                 pinCaptureFormat(session)
-                Logger.i("WebRtcKmp") {
+                Logger.i(tag = "WebRtcKmp") {
                     "capture session multitaskingSupported=${session.multitaskingCameraAccessSupported} multitaskingEnabled=${session.multitaskingCameraAccessEnabled}"
                 }
             }
-            Logger.w("WebRtcKmp") {
+            Logger.w(tag = "WebRtcKmp") {
                 "capture session $name reason=${info?.get(AVCaptureSessionInterruptionReasonKey)} error=${info?.get(AVCaptureSessionErrorKey)}"
             }
             val reason = (info?.get(AVCaptureSessionInterruptionReasonKey) as? NSNumber)?.longValue
@@ -57,7 +57,7 @@ internal actual fun watchVideoPipeline(onCameraInterrupted: (interrupted: Boolea
     }
     val native = RTCCallbackLogger().apply {
         severity = RTCLoggingSeverity.RTCLoggingSeverityWarning
-        start { message -> Logger.w("WebRTC") { message.orEmpty().trimEnd() } }
+        start { message -> Logger.w(tag = "WebRTC") { message.orEmpty().trimEnd() } }
     }
     return {
         native.stop()

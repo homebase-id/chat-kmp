@@ -51,7 +51,7 @@ class FilesyncUploader(
         } catch (e: ClientException) {
             // A hash rejection means the bytes changed under us or a bug: start over once from the source, never resend blindly.
             if (!e.isPayloadHashRejection()) throw e
-            Logger.w(TAG) { "hash rejected (${e.errorCode}); encrypting again" }
+            Logger.w(tag = TAG) { "hash rejected (${e.errorCode}); encrypting again" }
             uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
         }
     }
@@ -107,7 +107,7 @@ class FilesyncUploader(
                 driveUploadProvider.uploadFile(request, onProgress = onProgress?.let(::wholePercentBytes))
             } catch (e: ClientException) {
                 if (!e.isExistingFileWithUniqueId()) throw e
-                Logger.i(TAG) { "node $nodeId already landed on an earlier attempt" }
+                Logger.i(tag = TAG) { "node $nodeId already landed on an earlier attempt" }
             }
             Unit
         }.getOrThrow()

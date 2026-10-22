@@ -138,7 +138,7 @@ fun WebDropComposeSheet(
                             // per-file error if it still cannot read it.
                             val snapshot = runCatching { file.materializeForUpload(fileOps) }
                                 .getOrElse { e ->
-                                    Logger.w(TAG, e) { "snapshot-on-pick failed for ${file.name}" }
+                                    Logger.w(e, tag = TAG) { "snapshot-on-pick failed for ${file.name}" }
                                     file
                                 }
                             PickedDropFile(
