@@ -156,7 +156,7 @@ tasks.matching { it.name.contains("KotlinMetadata") }.configureEach {
 }
 
 // Generate version.properties into JVM resources so JvmPlatformInfo can read it at runtime
-val generateVersionProperties by tasks.registering {
+val generateVersionProperties = tasks.register("generateVersionProperties") {
     val outputDir = layout.buildDirectory.dir("generated/resources/version")
     // Resolve values at configuration time to be configuration-cache compatible
     val versionCode = (providers.gradleProperty("VERSION_CODE").orNull)

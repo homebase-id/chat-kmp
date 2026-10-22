@@ -303,7 +303,7 @@ class CallController(
                     answerSdp = sdp
                     send(state.peer!!, CallSignal.Answer(state.callId!!, sdp))
                     markRemoteReady()
-                    announceVerification(state.callId!!)
+                    announceVerification(state.callId)
                 }
                 is CallEffect.ApplyRemoteAnswer -> {
                     engine().applyRemote(effect.sdp)

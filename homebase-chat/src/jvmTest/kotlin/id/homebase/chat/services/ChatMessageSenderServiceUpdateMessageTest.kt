@@ -775,7 +775,7 @@ class ChatMessageSenderServiceUpdateMessageTest {
             val updateRow = rows.mapNotNull { it.asUpdateFileRequestOrNull() }.firstOrNull()
             assertNotNull(updateRow, "a caption edit on a delivered message must enqueue an UpdateFile row")
 
-            val manifestKeys = updateRow.instructions.manifest?.payloadDescriptors.orEmpty()
+            val manifestKeys = updateRow.instructions.manifest.payloadDescriptors.orEmpty()
             assertTrue(
                 manifestKeys.none { it.payloadKey == mediaKey },
                 "the media key must not appear in the update manifest — found ${manifestKeys.map { it.payloadKey to it.operationType }}",

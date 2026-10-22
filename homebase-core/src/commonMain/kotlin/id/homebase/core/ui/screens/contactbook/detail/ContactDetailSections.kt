@@ -477,8 +477,8 @@ fun ContactFieldsSection(
     // non-overridden part falls back to the entry's own value so the peek shows the whole name.
     val syncedName = if (o?.givenName != null || o?.surname != null) {
         listOfNotNull(
-            (o?.givenName ?: entry.givenName)?.ifBlank { null },
-            (o?.surname ?: entry.surname)?.ifBlank { null },
+            (o.givenName ?: entry.givenName)?.ifBlank { null },
+            (o.surname ?: entry.surname)?.ifBlank { null },
         ).joinToString(" ").ifBlank { null }
     } else {
         null

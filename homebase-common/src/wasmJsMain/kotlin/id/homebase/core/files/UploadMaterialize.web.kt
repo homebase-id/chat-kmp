@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package id.homebase.core.files
 
 import id.homebase.api.file.FileOperationsProvider

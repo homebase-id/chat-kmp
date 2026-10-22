@@ -107,7 +107,7 @@ fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrash
 
 // Files the symbols under the content-hashed name webpack gave the shipped .wasm, which is the name
 // a production stack trace shows. dist/wasmJs/symbols is a sibling of the deployed directory.
-val collectWasmCrashSymbols by tasks.registering {
+val collectWasmCrashSymbols = tasks.register("collectWasmCrashSymbols") {
     val workDir = wasmSymbolsWorkDir
     val shippedWasm = tasks.named<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>(
         productionOptimizeTask
@@ -149,7 +149,7 @@ val publicPath: String = (providers.gradleProperty("publicPath").orNull ?: "/").
     if (withLeading.endsWith("/")) withLeading else "$withLeading/"
 }
 
-val generateWebpackPublicPathConfig by tasks.registering {
+val generateWebpackPublicPathConfig = tasks.register("generateWebpackPublicPathConfig") {
     val outFile = layout.projectDirectory.file("webpack.config.d/00-publicPath.js").asFile
     inputs.property("publicPath", publicPath)
     outputs.file(outFile)
@@ -171,7 +171,7 @@ val generateWebpackPublicPathConfig by tasks.registering {
 // into processedResources -> dist) and instead pre-substitute @PUBLIC_PATH@ into a template under
 // build/generated, which HtmlWebpackPlugin reads as its template input.
 val htmlTemplateDir = layout.buildDirectory.dir("generated/html-template")
-val generateHtmlTemplate by tasks.registering(Copy::class) {
+val generateHtmlTemplate = tasks.register<Copy>("generateHtmlTemplate") {
     from(layout.projectDirectory.file("src/wasmJsMain/resources/index.html"))
     into(htmlTemplateDir)
     inputs.property("publicPath", publicPath)

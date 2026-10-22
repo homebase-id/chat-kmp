@@ -77,7 +77,7 @@ class Dice1d4RoundTripTest {
                 json,
             ) as MessageContent.DiceRoll
             assertNotNull(parsed.descriptor, "1d$faces round-trip must not produce null descriptor — wire JSON: $json")
-            assertTrue(parsed.descriptor!!.isValid(), "1d$faces round-tripped must validate — wire JSON: $json")
+            assertTrue(parsed.descriptor.isValid(), "1d$faces round-tripped must validate — wire JSON: $json")
         }
     }
 
@@ -133,7 +133,7 @@ class Dice1d4RoundTripTest {
             (MessageContentParser.parse(ChatProtocol.ChatDiceRollMessageDataType, oeJson) as MessageContent.DiceRoll)
                 .descriptor
         assertNotNull(oeParsed)
-        assertEquals(DiceRollMode.OpenEndedD100, oeParsed!!.mode, "OE mode must survive round-trip — JSON: $oeJson")
+        assertEquals(DiceRollMode.OpenEndedD100, oeParsed.mode, "OE mode must survive round-trip — JSON: $oeJson")
 
         val standard = build1d4(odinId = "alice.test", result = 3)
         val stdJson = MessageContentParser.serialize(MessageContent.DiceRoll(standard))
@@ -142,7 +142,7 @@ class Dice1d4RoundTripTest {
             (MessageContentParser.parse(ChatProtocol.ChatDiceRollMessageDataType, stdJson) as MessageContent.DiceRoll)
                 .descriptor
         assertNotNull(stdParsed)
-        assertEquals(DiceRollMode.Standard, stdParsed!!.mode, "Standard mode must survive round-trip — JSON: $stdJson")
+        assertEquals(DiceRollMode.Standard, stdParsed.mode, "Standard mode must survive round-trip — JSON: $stdJson")
     }
 
     @Test

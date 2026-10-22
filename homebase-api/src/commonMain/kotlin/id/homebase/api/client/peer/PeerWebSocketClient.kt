@@ -202,7 +202,7 @@ class PeerWebSocketClient(
         try {
             val decryptedJson = decryptData(frame.readText(), ss)
             val notification = OdinSystemSerializer
-                .deserialize<ClientNotificationPayload>(decryptedJson) ?: return
+                .deserialize<ClientNotificationPayload>(decryptedJson)
             dispatchNotification(notification, ss)
         } catch (e: Exception) {
             Logger.e(e) { "peer WS[$ownerOdinId] error handling frame" }

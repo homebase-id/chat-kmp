@@ -49,7 +49,7 @@ internal fun GhostProbeEffect(conversationKey: Any, items: List<Any>, listState:
             withFrameNanos { state.frame++ }
             state.drops.entries.removeAll { (key, drop) ->
                 (drop.at.elapsedNow().inWholeSeconds >= 10).also { expired ->
-                    if (expired) Logger.w(TAG) { "key=$key real message not in list 10s after placeholder drop" }
+                    if (expired) Logger.w(tag = TAG) { "key=$key real message not in list 10s after placeholder drop" }
                 }
             }
         }
@@ -68,17 +68,17 @@ internal fun GhostProbeEffect(conversationKey: Any, items: List<Any>, listState:
         val landed = mutableListOf<String>()
         for (key in pendingBefore - pendingNow) {
             if (key in keysNow) {
-                Logger.i(TAG) { "key=$key handoff same composition gapMs=0 gapFrames=0" }
+                Logger.i(tag = TAG) { "key=$key handoff same composition gapMs=0 gapFrames=0" }
                 landed += key
             } else {
                 state.drops[key] = Drop(TimeSource.Monotonic.markNow(), state.frame)
-                Logger.i(TAG) { "key=$key placeholder dropped, real message not in list yet" }
+                Logger.i(tag = TAG) { "key=$key placeholder dropped, real message not in list yet" }
             }
         }
         state.drops.entries.removeAll { (key, drop) ->
             (key in keysNow).also { returned ->
                 if (returned) {
-                    Logger.w(TAG) {
+                    Logger.w(tag = TAG) {
                         "key=$key real message landed after gap gapMs=${drop.at.elapsedNow().inWholeMilliseconds} " +
                             "gapFrames=${state.frame - drop.frame}"
                     }
@@ -93,7 +93,7 @@ internal fun GhostProbeEffect(conversationKey: Any, items: List<Any>, listState:
             val listKeys = currentItems.mapTo(HashSet(), ::messageListKey)
             val visible = listState.layoutInfo.visibleItemsInfo
             val orphaned = visible.count { it.key !in listKeys }
-            Logger.i(TAG) { "key=$key +2s visibleItems=${visible.size} laidOutKeysNotInList=$orphaned" }
+            Logger.i(tag = TAG) { "key=$key +2s visibleItems=${visible.size} laidOutKeysNotInList=$orphaned" }
         }
     }
 }

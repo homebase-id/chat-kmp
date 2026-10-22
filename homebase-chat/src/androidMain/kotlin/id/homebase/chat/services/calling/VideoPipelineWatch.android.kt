@@ -11,7 +11,7 @@ import org.webrtc.supportsLowLatency
 // claim to sustain the 720p30 a peer may send, and whether they offer a low-latency mode.
 // A lost Android camera ends webrtc-kmp's track instead, which the engine reports as capturer ended.
 internal actual fun watchVideoPipeline(onCameraInterrupted: (interrupted: Boolean, detail: String) -> Unit): () -> Unit {
-    avcDecoderCapabilities.forEach { Logger.i("WebRtcKmp") { it } }
+    avcDecoderCapabilities.forEach { Logger.i(tag = "WebRtcKmp") { it } }
     return {}
 }
 

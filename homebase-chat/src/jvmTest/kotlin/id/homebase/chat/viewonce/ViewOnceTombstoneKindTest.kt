@@ -197,7 +197,7 @@ class ViewOnceTombstoneKindTest {
             )
             val original = Locale.getDefault()
             try {
-                Locale.setDefault(Locale("da"))
+                Locale.setDefault(Locale.forLanguageTag("da"))
                 assertEquals("Foto", labelOf(photo)?.text)
                 assertEquals("Medie", labelOf(blank)?.text)
             } finally {

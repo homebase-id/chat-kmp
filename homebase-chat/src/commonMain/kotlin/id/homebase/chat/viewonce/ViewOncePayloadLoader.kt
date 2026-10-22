@@ -63,7 +63,7 @@ class ViewOncePayloadLoader(
     fun deleteTempAsync(path: String) {
         evictLocalImage(path)
         scope.launch(ioDispatcher) {
-            if (!fileOps.deleteTempFile(path)) Logger.w("ViewOnceLoader") { "temp delete failed" }
+            if (!fileOps.deleteTempFile(path)) Logger.w(tag = "ViewOnceLoader") { "temp delete failed" }
         }
     }
 
@@ -75,7 +75,7 @@ class ViewOncePayloadLoader(
     // Desktop and web only ever show "Open on your phone"; a read reaching here is a bug, and it must not start the clock.
     private fun requireViewable(fileId: Uuid) {
         if (canView()) return
-        Logger.e("ViewOnceLoader") { "refused view-once payload read on a non-mobile platform file=$fileId" }
+        Logger.e(tag = "ViewOnceLoader") { "refused view-once payload read on a non-mobile platform file=$fileId" }
         throw ViewOnceNotViewableHereException()
     }
 

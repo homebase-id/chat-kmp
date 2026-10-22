@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package id.homebase.chat.conversationlist
 
 import kotlinx.coroutines.CompletableDeferred

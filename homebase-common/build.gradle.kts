@@ -76,23 +76,23 @@ kotlin {
         // animates GIFs there via AnimatedImageDecoder; see PR #663). Lets the
         // in-house animated-GIF/WebP Skia decoder live in one place instead of
         // three near-identical per-platform copies.
-        val skiaMain by creating { dependsOn(commonMain.get()) }
+        val skiaMain = create("skiaMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(skiaMain)
         nativeMain.get().dependsOn(skiaMain)
         wasmJsMain.get().dependsOn(skiaMain)
 
-        val cameraStubMain by creating { dependsOn(commonMain.get()) }
+        val cameraStubMain = create("cameraStubMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(cameraStubMain)
         wasmJsMain.get().dependsOn(cameraStubMain)
 
         // FileKit's PlatformFile.path and lastModified() exist on every target but the web.
-        val nonWebMain by creating { dependsOn(commonMain.get()) }
+        val nonWebMain = create("nonWebMain") { dependsOn(commonMain.get()) }
         androidMain.get().dependsOn(nonWebMain)
         jvmMain.get().dependsOn(nonWebMain)
         nativeMain.get().dependsOn(nonWebMain)
 
         // Tests that build a PlatformFile from a path, which the web has no constructor for.
-        val nonWebTest by creating { dependsOn(commonTest.get()) }
+        val nonWebTest = create("nonWebTest") { dependsOn(commonTest.get()) }
         getByName("androidHostTest").dependsOn(nonWebTest)
         jvmTest.get().dependsOn(nonWebTest)
         nativeTest.get().dependsOn(nonWebTest)
