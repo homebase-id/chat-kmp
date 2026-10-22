@@ -26,6 +26,7 @@ import io.ktor.http.headersOf
 import io.ktor.http.content.TextContent
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -204,6 +205,9 @@ class CardWireHarness(
             request.url.encodedPath.endsWith("/query-batch") -> respond(searchResults(), HttpStatusCode.OK, json)
             else -> error("unexpected ${request.method} ${request.url}")
         }
+    }.apply {
+        // On Ktor's IO default the reply resumes the ViewModel's Main continuation on an IO worker, where no test can join it.
+        config.dispatcher = Dispatchers.Unconfined
     }
 
     suspend fun profileRepository(): ProfileRepository {

@@ -829,11 +829,8 @@ internal class MessageActionsHandler(
                             }.getOrNull()
                             LocalAttachmentContext.Video(
                                 thumbnailBytes = bytes,
-                                // On web file.file.toString() is a bare filename (no "://"), which
-                                // the web fileExists() heuristic rejects → the store drops the
-                                // context → the bubble degrades to a generic "1 attachment" with no
-                                // thumb/progress. playablePath is the blob: URL (contains "://") and
-                                // is a real local-preview source there. Native: == file.toString().
+                                // Web file.file.toString() is a bare filename that fileExists() rejects, so use the
+                                // blob: playablePath there. Native: == file.toString().
                                 localFilePath = file.playablePath ?: file.file.toString(),
                                 aspectRatio = aspect,
                                 trimStartMs = file.trimStartMs,
