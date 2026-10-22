@@ -1,8 +1,11 @@
 package id.homebase.chat.widget
 
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
+import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
+import com.mikepenz.markdown.model.markdownAnnotator
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -46,8 +49,11 @@ class MarkdownAnnotatorClasspathTest {
         // missing, this call site would throw NoClassDefFoundError at link time.
         val annotated = "**x** `c` [l](https://e.test)".buildMarkdownAnnotatedString(
             style = TextStyle.Default,
-            linkTextSpanStyle = SpanStyle(),
-            codeSpanStyle = SpanStyle(),
+            annotatorSettings = DefaultAnnotatorSettings(
+                linkTextSpanStyle = TextLinkStyles(SpanStyle()),
+                codeSpanStyle = SpanStyle(),
+                annotator = markdownAnnotator(),
+            ),
         )
         assertNotNull(annotated, "annotated string must be produced")
         // The visible text drops markdown syntax: "x c l" (link label kept, URL gone).

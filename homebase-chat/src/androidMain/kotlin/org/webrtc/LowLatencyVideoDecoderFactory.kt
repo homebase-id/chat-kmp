@@ -22,8 +22,7 @@ fun lowLatencyVideoDecoderFactory(sharedContext: EglBase.Context?): VideoDecoder
 private class LowLatencyHardwareDecoderFactory(private val sharedContext: EglBase.Context?) : HardwareVideoDecoderFactory(null) {
     override fun createDecoder(codecInfo: VideoCodecInfo): VideoDecoder? {
         val type = VideoCodecMimeType.valueOf(codecInfo.name)
-        val candidates = (0 until MediaCodecList.getCodecCount())
-            .mapNotNull { runCatching { MediaCodecList.getCodecInfoAt(it) }.getOrNull() }
+        val candidates = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
             .filter { !it.isEncoder && MediaCodecUtils.codecSupportsType(it, type) && !MediaCodecUtils.isSoftwareOnly(it) }
             .mapNotNull { info ->
                 val colorFormat = MediaCodecUtils.selectColorFormat(

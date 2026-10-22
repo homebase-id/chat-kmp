@@ -57,7 +57,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -463,7 +463,7 @@ private fun ContactDetailContent(
 
                             if (contactDetailTabs.size > 1) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                TabRow(selectedTabIndex = contactDetailTabs.indexOf(currentTab)) {
+                                PrimaryTabRow(selectedTabIndex = contactDetailTabs.indexOf(currentTab)) {
                                     contactDetailTabs.forEach { tab ->
                                         Tab(
                                             selected = tab == currentTab,

@@ -6,6 +6,7 @@ import java.io.File
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -116,19 +117,17 @@ class FFmpegPipelineCoverageJvmTest {
             // 8. End-to-end VideoPayloadProcessor mimic: replay the exact call
             //    sequence from VideoPayloadProcessor.kt:49,79,104,147 —
             //    grabThumbnail → compressVideo(null trim) → segmentAndEncryptVideo
-            //    → metadata read. sample.mp4 is already optimal so the compress
-            //    short-circuits to null, matching the production fall-back to
-            //    payload.filePath.
+            //    → metadata read. compressVideo always re-encodes to a new file.
             val compressed = FFmpegUtils.compressVideo(
                 inputPath = fixture,
                 trimStartMs = null,
                 trimEndMs = null,
             )
-            val toSegment = compressed ?: fixture
-            if (compressed != null) cleanup += compressed
+            cleanup += compressed
+            assertNotEquals(fixture, compressed, "compressVideo must never hand back its input")
 
             val encResult = FFmpegUtils.segmentAndEncryptVideo(
-                inputPath = toSegment,
+                inputPath = compressed,
                 keyHeader = KeyHeader.newRandom16(),
                 onProgress = null,
             )

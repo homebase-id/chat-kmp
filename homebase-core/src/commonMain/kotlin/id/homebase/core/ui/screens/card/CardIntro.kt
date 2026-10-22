@@ -108,7 +108,7 @@ internal fun CardIntro(
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainer) {
             Box {
                 // Occluded by the opaque content below: it only has to be attached and laid out for the snapshot.
-                if (capturing && host != null) {
+                if (capturing) {
                     CardHostView(
                         host = host,
                         modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
