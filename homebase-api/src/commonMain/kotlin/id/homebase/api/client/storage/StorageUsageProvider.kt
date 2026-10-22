@@ -5,29 +5,47 @@ import id.homebase.api.client.auth.CredentialsManager
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
 
-/** The identity's storage against its hosting plan. [quotaBytes] is null for an unlimited plan. */
+/** The identity's storage against its plan, and who to upgrade it with. */
 @Serializable
 data class StorageUsage(
     val planId: String? = null,
     val usedBytes: Long = 0,
+    /** Null on a server that does not say */
     val quotaBytes: Long? = null,
     val isOverQuota: Boolean = false,
     /** Whether the identity has a public home page; null when the server does not say */
     val publicWebPresence: Boolean? = null,
+    /** Who hosts the identity; null when the server names no hosting provider */
+    val hostingProvider: HostingProvider? = null,
 )
 
-/** GET /api/v2/plan: the identity's hosting plan, what it gives, and how much of its storage is used. */
+/** The company that hosts the identity, and its page for a bigger plan, ready to open (null when it has none). */
 @Serializable
-private data class IdentityPlan(
-    /** The plan the identity gets; null while the server has no plans. */
+data class HostingProvider(
+    val displayName: String = "",
+    val upgradeUrl: String? = null,
+)
+
+/** GET /api/v2/plan: the identity's plan, what it gives, how much of its storage is used, and its hosting provider. */
+@Serializable
+internal data class IdentityPlan(
     val id: String? = null,
-    val isDefault: Boolean = false,
-    val publicWebPresence: Boolean = false,
+    val publicWebPresence: Boolean? = null,
     val storage: PlanStorage = PlanStorage(),
-)
+    val hostingProvider: HostingProvider? = null,
+) {
+    fun toStorageUsage() = StorageUsage(
+        planId = id,
+        usedBytes = storage.usedBytes,
+        quotaBytes = storage.quotaBytes,
+        isOverQuota = storage.isOverQuota,
+        publicWebPresence = publicWebPresence,
+        hostingProvider = hostingProvider?.takeIf { it.displayName.isNotBlank() },
+    )
+}
 
 @Serializable
-private data class PlanStorage(
+internal data class PlanStorage(
     val usedBytes: Long = 0,
     val quotaBytes: Long? = null,
     val isOverQuota: Boolean = false,
@@ -48,9 +66,6 @@ class StorageUsageProvider(
         )
         if (response.status == 404) return null
         throwForFailure(response)
-        val plan = deserialize<IdentityPlan>(response.body)
-        return StorageUsage(
-            plan.id, plan.storage.usedBytes, plan.storage.quotaBytes, plan.storage.isOverQuota, plan.publicWebPresence
-        )
+        return deserialize<IdentityPlan>(response.body).toStorageUsage()
     }
 }

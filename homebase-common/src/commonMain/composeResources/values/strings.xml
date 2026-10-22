@@ -79,8 +79,13 @@
     <string name="plan_free_up_body">Photos, videos and files from all your Homebase apps count toward your storage. Deleting them frees space within about a minute.</string>
     <string name="plan_free_up_button">See what each app stores</string>
     <string name="plan_more_title">Get more space</string>
-    <string name="plan_more_body">To get more space, contact your hosting provider.</string>
+    <string name="plan_more_body">To get more space, contact whoever runs your Homebase server.</string>
+    <string name="plan_more_body_provider">To get more space, upgrade your plan with %1$s.</string>
     <string name="plan_more_button">How to upgrade</string>
+    <string name="plan_upgrade_dialog_title">Upgrade your plan</string>
+    <string name="plan_upgrade_dialog_body">We'll send you to %1$s to upgrade your plan.</string>
+    <string name="plan_upgrade_dialog_no_provider">To get more space, contact whoever runs your Homebase server.</string>
+    <string name="plan_upgrade_continue">Continue</string>
     <string name="plan_unavailable">Storage information isn't available on this server.</string>
     <string name="msg_outbox_checked_out_stuck">Stuck — the upload didn't finish and is still checked out</string>
     <string name="msg_outbox_entry_lingering">A pending outbox entry is still present for this message</string>
