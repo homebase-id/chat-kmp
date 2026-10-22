@@ -204,10 +204,8 @@ class FFmpegCompressionCommonTest {
                 trimEndMs = 1_500L,
                 quality = VideoQuality.STANDARD,
             )
-            if (out != null) {
-                produced += out
-                assertProgressReported("compress", compressProgress)
-            }
+            produced += out
+            assertProgressReported("compress", compressProgress)
 
             val segProgress = mutableListOf<Float>()
             VideoCompressionService.segmentAndEncrypt(
