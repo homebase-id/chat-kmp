@@ -106,7 +106,7 @@ kotlin {
             implementation(libs.filekit.dialogs.compose)
         }
         // Android + Apple share one webrtc-kmp engine; webrtc-kmp has no JVM variant, so it cannot live in commonMain.
-        val webrtcKmpMain by creating {
+        val webrtcKmpMain = create("webrtcKmpMain") {
             dependsOn(commonMain.get())
             dependencies { implementation(libs.webrtc.kmp) }
         }
