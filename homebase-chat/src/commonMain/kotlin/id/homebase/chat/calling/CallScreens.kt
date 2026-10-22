@@ -491,7 +491,7 @@ private fun CallStage(
         ),
     ) {
         if (videoMode) VideoStage(ui, large, avatar, chromeVisible)
-        if (swapped && local != null) SelfStage(local)
+        if (swapped) SelfStage(local)
         AnimatedVisibility(previewFills, Modifier.zIndex(ChromeLayer), enter = fadeIn(), exit = fadeOut()) {
             Box(
                 Modifier.fillMaxSize().background(
@@ -1196,7 +1196,7 @@ private fun BoxScope.LocalPreview(handle: VideoHandle, cameraOn: Boolean, large:
                         Text(stringResource(MR.string.you), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (tier != null) {
+                if (LocalCallLayout.current.windowed) {
                     val hide = stringResource(MR.string.call_hide_self_view)
                     AnimatedVisibility(hovered, Modifier.align(Alignment.TopEnd).padding(6.dp), enter = fadeIn(), exit = fadeOut()) {
                         DesktopTooltip(hide, TooltipAnchorPosition.Below) {
@@ -2044,7 +2044,7 @@ private fun PeerHeader(
             Text(
                 status,
                 style = MaterialTheme.typography.titleMedium.tabular(),
-                color = if (tier != null && !dimmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (LocalCallLayout.current.windowed && !dimmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
