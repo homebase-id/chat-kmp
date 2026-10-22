@@ -3,12 +3,8 @@ package id.homebase.core.notifications
 import com.mmk.kmpnotifier.notification.NotifierManager
 
 /**
- * Android implementation of [NotificationBackend] that delegates to
- * `com.mmk.kmpnotifier.notification.NotifierManager`. Assumes
- * `NotifierManager.initialize(...)` has already been called by the entry
- * point (`androidApp/MainApplication.kt`). Same shape duplicated across the
- * three real-platform actuals — see step 9c of the WASM pre-flight plan; no
- * common ancestor source set covers Android/JVM/Apple.
+ * [NotificationBackend] delegating to `NotifierManager`. The entry point initialises it
+ * (Android: `MainApplication`; desktop: `desktopApp/Main.kt`; iOS: the app delegate).
  */
 class KMPNotifierBackend : NotificationBackend {
     override fun addListener(listener: NotificationListener) {
