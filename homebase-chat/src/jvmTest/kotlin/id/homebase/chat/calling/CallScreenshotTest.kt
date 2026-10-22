@@ -260,7 +260,9 @@ class CallScreenshotTest {
         for ((name, video) in cases) runDesktopComposeUiTest(width, height) {
             show(false, shots.first { it.name == name }.state(base(video, Size.Phone)))
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(outDir, "$name-landscape-${if (video) "video" else "audio"}-phone.png"))
-            val buttons = onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+            // The ButtonGroup's overflow indicator is composed for measuring but left unplaced while everything fits.
+            val buttons = onAllNodes(hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes()
+                .filter { it.layoutInfo.isPlaced }.map { it.boundsInRoot }
             val names = onAllNodes(hasText("Samwise Gamgee"), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
             val preview = onAllNodes(hasContentDescription("Your camera preview", substring = true)).fetchSemanticsNodes().map { it.boundsInRoot }
             // boundsInRoot is clipped by ancestors, so a name pushed out of its container reports zero height.
