@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUuidApi::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@file:OptIn(ExperimentalUuidApi::class)
 
 package id.homebase.api.client.contacts
 

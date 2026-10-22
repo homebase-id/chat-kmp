@@ -12,7 +12,6 @@ import kotlinx.atomicfu.update
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -125,7 +124,6 @@ private fun clientException(
  * time split (each constructs its own real-dispatcher DatabaseManager and says why):
  * `testFailureAndRetry` and `testTryEnqueueDoesNotBlockOnSaturatedEventBus`.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class OutboxSyncTest {
 
     /**

@@ -23,6 +23,9 @@ kotlin {
             optIn("dev.whyoleg.cryptography.DelicateCryptographyApi")
         }
     }
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
 
     // Target declarations - add or remove as needed below. These define
     // which platforms this KMP module supports.

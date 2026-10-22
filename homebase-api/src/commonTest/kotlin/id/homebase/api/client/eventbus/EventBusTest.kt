@@ -1,7 +1,6 @@
 package id.homebase.api.client.eventbus
 
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -12,7 +11,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class EventBusTest {
 
     private val eventCount = 1_000

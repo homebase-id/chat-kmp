@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-
 package id.homebase.api.coroutines
 
 import co.touchlab.kermit.LogWriter

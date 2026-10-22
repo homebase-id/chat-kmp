@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.files.DriveOutboxUploader

@@ -22,7 +22,6 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpStatusCode
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -37,7 +36,6 @@ import kotlin.uuid.Uuid
 
 private const val CONVERSATION_FILE_TYPE = 8888
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class DriveSyncTest {
 
     // All credentials in this test use a 16-byte zero shared secret; the MockEngine
