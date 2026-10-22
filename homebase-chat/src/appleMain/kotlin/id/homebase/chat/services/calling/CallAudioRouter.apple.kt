@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.BetaInteropApi::class)
+
 package id.homebase.chat.services.calling
 
 import WebRTC.RTCAudioSession

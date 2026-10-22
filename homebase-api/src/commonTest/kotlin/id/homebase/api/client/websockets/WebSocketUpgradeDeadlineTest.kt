@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package id.homebase.api.client.websockets
 
 import kotlinx.coroutines.awaitCancellation

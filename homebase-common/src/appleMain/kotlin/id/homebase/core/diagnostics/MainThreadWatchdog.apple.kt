@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package id.homebase.core.diagnostics
 
 import kotlinx.cinterop.ExperimentalForeignApi
