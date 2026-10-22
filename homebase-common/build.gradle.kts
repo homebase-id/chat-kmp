@@ -99,6 +99,7 @@ kotlin {
 
         nonWebMain.dependencies {
             implementation(libs.kermit.io)
+            // No wasmJs artifact, so it stays off commonMain; api for androidApp/desktopApp/iOS export.
             api(libs.kmpnotifier)
         }
 
@@ -165,11 +166,6 @@ kotlin {
             // coil-gif is an Android-only aar in Coil 3.4.0 and Coil has no Skia animated decoder,
             // so the other targets animate through our AnimatedSkiaDecoder in skiaMain.
             api(libs.coil3.gif)
-            implementation(libs.kermit.io)
-            // kmpnotifier has no wasmJs artifact — must stay off commonMain.
-            // `api` so the dep cascades transitively to androidApp (which
-            // imports NotifierManager in MainApplication/MainActivity).
-            api(libs.kmpnotifier)
             // Location add-on tracker: fused provider (batched background
             // PendingIntent updates) + app-foreground observation.
             implementation(libs.play.services.location)
@@ -177,11 +173,6 @@ kotlin {
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
-            implementation(libs.kermit.io)
-            // `api` so the iOS framework `export(libs.kmpnotifier)` block above
-            // resolves the symbols for Swift consumption (iOSApp.swift calls
-            // `NotifierManager.shared.initialize(...)`).
-            api(libs.kmpnotifier)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
@@ -190,14 +181,9 @@ kotlin {
             implementation(libs.nucleus.notification.windows)
             implementation(libs.nucleus.notification.macos)
             implementation(libs.nucleus.notification.linux)
-            implementation(libs.kermit.io)
             implementation(libs.pdfbox)
             implementation(libs.jna)
             implementation(libs.jna.platform)
-            // `api` so desktopApp's existing direct kmpnotifier dep stays
-            // consistent and `RichNotificationDisplayer.jvm.kt` can reach the
-            // type from the same source set's classpath.
-            api(libs.kmpnotifier)
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
