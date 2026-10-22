@@ -85,7 +85,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PictureInPicture
-import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -1416,7 +1416,7 @@ internal fun Modifier.chromeFade(): Modifier {
                 while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
             }
         }
-        .semantics { if (!visible) invisibleToUser() }
+        .semantics { if (!visible) hideFromAccessibility() }
 }
 
 @Composable
