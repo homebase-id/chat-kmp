@@ -97,6 +97,11 @@ kotlin {
         jvmTest.get().dependsOn(nonWebTest)
         nativeTest.get().dependsOn(nonWebTest)
 
+        nonWebMain.dependencies {
+            implementation(libs.kermit.io)
+            api(libs.kmpnotifier)
+        }
+
         commonMain.dependencies {
             api(project(":homebase-api"))
             api(project(":homebase-notifshared"))
