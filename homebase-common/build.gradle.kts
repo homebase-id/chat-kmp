@@ -211,8 +211,3 @@ kotlin {
 tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
     enabled = false
 }
-
-// stringResource stays "" in the wasm test browser, so a click label built from it never arrives.
-tasks.withType<org.jetbrains.kotlin.gradle.targets.js.testing.KotlinJsTest>().configureEach {
-    filter.excludeTestsMatching("*SettingsRowTest.*ClickLabel*")
-}
