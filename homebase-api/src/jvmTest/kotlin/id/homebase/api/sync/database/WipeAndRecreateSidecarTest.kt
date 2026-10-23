@@ -1,11 +1,10 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.test.runTest
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Properties
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.exists
 import kotlin.io.path.fileSize
@@ -146,22 +145,12 @@ class WipeAndRecreateSidecarTest {
     }
 
     /**
-     * Open a JDBC SQLite driver and force the database into WAL journal mode
-     * so the test exercises the same on-disk layout that production
-     * (`SupportOpenHelperFactory` on Android, JDBC + WAL on JVM) uses. Without
-     * this step the test runs in DELETE journal mode and would never produce
-     * the `-wal` sidecar we're trying to verify.
-     *
-     * Per xerial sqlite-jdbc: a bare `PRAGMA journal_mode=WAL` issued through
-     * `driver.execute(..., parameters=0)` is a no-op because that path runs as
-     * a *statement* (executeUpdate) rather than a *query* — the driver discards
-     * any result rows the pragma emits, but more importantly some pragmas only
-     * take effect when consumed as a query. We issue it via `executeQuery` and
-     * actually read the returned mode string so we can `require(...)` that WAL
-     * is on before the rest of the test runs.
+     * Open the driver desktop ships, confirming WAL is on: the sidecar test is meaningless in
+     * any other journal mode. The pragma is read as a query because xerial drops a pragma's
+     * result on the statement path.
      */
-    private fun openWalDriver(path: String): JdbcSqliteDriver {
-        val driver = JdbcSqliteDriver("jdbc:sqlite:$path", Properties())
+    private fun openWalDriver(path: String): SqlDriver {
+        val driver = openSqliteDriver("jdbc:sqlite:$path")
         val resultingMode = driver.executeQuery(
             identifier = null,
             sql = "PRAGMA journal_mode=WAL;",
@@ -183,7 +172,7 @@ class WipeAndRecreateSidecarTest {
      * generated SQLDelight query API so the test stays focused on the wipe
      * behaviour even if column count drifts.
      */
-    private fun countDriveMainIndex(driver: JdbcSqliteDriver): Long {
+    private fun countDriveMainIndex(driver: SqlDriver): Long {
         return driver.executeQuery(
             identifier = null,
             sql = "SELECT COUNT(*) FROM DriveMainIndex",

@@ -1,7 +1,6 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.file.JvmFileSystemUtil
 import java.io.File
 
@@ -16,12 +15,7 @@ actual class DatabaseDriverFactory {
             SqlCipherKeyMode.jdbcUrl(dbFile, passphrase)
         }
 
-        // Apply the shared SQLITE_TUNING_PRAGMAS as JDBC connection properties — the
-        // Willena/xerial driver applies these to every connection it opens (reads and
-        // writes use different connections; see DatabaseManager). These are the same
-        // key/value pairs SQLiteConfig.toProperties() would emit, just sourced from the
-        // one cross-platform definition so desktop/Android/iOS can't drift.
-        return JdbcSqliteDriver(jdbcUrl, tuningProperties())
+        return openSqliteDriver(jdbcUrl)
     }
 
     actual fun dbFilePath(): String = resolveDbFile().absolutePath
@@ -42,3 +36,7 @@ actual class DatabaseDriverFactory {
         }
     }
 }
+
+// Shared pragmas as JDBC connection properties, applied to every pooled connection.
+internal fun openSqliteDriver(jdbcUrl: String): SqlDriver =
+    PooledJdbcSqliteDriver(jdbcUrl, tuningProperties())
