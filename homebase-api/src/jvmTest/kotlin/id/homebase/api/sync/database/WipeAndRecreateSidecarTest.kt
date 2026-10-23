@@ -144,26 +144,11 @@ class WipeAndRecreateSidecarTest {
         }
     }
 
-    /**
-     * Open the driver desktop ships, confirming WAL is on: the sidecar test is meaningless in
-     * any other journal mode. The pragma is read as a query because xerial drops a pragma's
-     * result on the statement path.
-     */
+    /** The driver desktop ships; the sidecar test is meaningless outside WAL. */
     private fun openWalDriver(path: String): SqlDriver {
         val driver = openSqliteDriver("jdbc:sqlite:$path")
-        val resultingMode = driver.executeQuery(
-            identifier = null,
-            sql = "PRAGMA journal_mode=WAL;",
-            mapper = { cursor ->
-                cursor.next()
-                QueryResult.Value(cursor.getString(0) ?: "")
-            },
-            parameters = 0,
-        ).value
-        require(resultingMode.equals("wal", ignoreCase = true)) {
-            "Could not switch driver to WAL journal mode (got '$resultingMode'). " +
-                "The sidecar test is meaningless in non-WAL modes."
-        }
+        val mode = driver.executeQuery(null, "PRAGMA journal_mode", { c -> c.next(); QueryResult.Value(c.getString(0)) }, 0).value
+        require(mode == "wal") { "Expected WAL journal mode, got '$mode'" }
         return driver
     }
 

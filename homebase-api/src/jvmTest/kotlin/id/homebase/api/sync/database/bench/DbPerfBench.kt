@@ -61,22 +61,18 @@ class DbPerfBench {
             val small = fixture.conversationIds.size - 10
             for ((label, c) in listOf("largest" to largest, "median" to median, "small" to small)) {
                 val id = fixture.conversationIds[c]
+                suspend fun page(cursor: QueryBatchCursor?) = qb.queryBatchAsync(
+                    dbm = dbm, driveId = fixture.chatDrive, noOfItems = 75, cursor = cursor,
+                    sortOrder = QueryBatchSortOrder.NewestFirst, sortField = QueryBatchSortField.UserDate,
+                    fileSystemType = 0, fileState = FileStateFilter.All,
+                    filetypesAnyOf = listOf(7878), groupIdAnyOf = listOf(id),
+                )
                 var olderCursor: QueryBatchCursor? = null
                 timed("open conversation, first page of 75 ($label, ${fixture.messageCounts[c]} msgs)", iterations) {
-                    olderCursor = qb.queryBatchAsync(
-                        dbm = dbm, driveId = fixture.chatDrive, noOfItems = 75,
-                        sortOrder = QueryBatchSortOrder.NewestFirst, sortField = QueryBatchSortField.UserDate,
-                        fileSystemType = 0, fileState = FileStateFilter.All,
-                        filetypesAnyOf = listOf(7878), groupIdAnyOf = listOf(id),
-                    ).cursor
+                    olderCursor = page(null).cursor
                 }
                 timed("scroll up, next page of 75 ($label)", iterations) {
-                    qb.queryBatchAsync(
-                        dbm = dbm, driveId = fixture.chatDrive, noOfItems = 75, cursor = olderCursor,
-                        sortOrder = QueryBatchSortOrder.NewestFirst, sortField = QueryBatchSortField.UserDate,
-                        fileSystemType = 0, fileState = FileStateFilter.All,
-                        filetypesAnyOf = listOf(7878), groupIdAnyOf = listOf(id),
-                    )
+                    page(olderCursor)
                 }
             }
 

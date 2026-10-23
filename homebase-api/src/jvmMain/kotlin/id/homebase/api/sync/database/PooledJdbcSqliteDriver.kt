@@ -6,6 +6,7 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.JdbcDriver
 import app.cash.sqldelight.driver.jdbc.JdbcPreparedStatement
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
@@ -28,7 +29,7 @@ internal class PooledJdbcSqliteDriver(
 ) : JdbcDriver() {
     init {
         // Each pooled connection to an in-memory URL would get its own empty database.
-        require(!url.contains(":memory:") && !url.contains("mode=memory") && url != "jdbc:sqlite:") {
+        require(!url.contains(":memory:") && !url.contains("mode=memory") && url != JdbcSqliteDriver.IN_MEMORY) {
             "PooledJdbcSqliteDriver needs a database file, got $url"
         }
     }
@@ -73,7 +74,7 @@ internal class PooledJdbcSqliteDriver(
         try {
             return connection.prepareStatement(sql).use { statement ->
                 JdbcPreparedStatement(statement)
-                    .apply { if (binders != null) this.binders() }
+                    .apply { binders?.invoke(this) }
                     .executeQuery(mapper)
             }
         } finally {
@@ -81,8 +82,6 @@ internal class PooledJdbcSqliteDriver(
         }
     }
 
-    // A connection whose END/ROLLBACK failed may still be inside a transaction, so it is closed
-    // instead of going back to the pool.
     override fun Connection.beginTransaction() {
         prepareStatement("BEGIN TRANSACTION").use(PreparedStatement::execute)
     }
@@ -91,6 +90,8 @@ internal class PooledJdbcSqliteDriver(
 
     override fun Connection.rollbackTransaction() = finishTransaction("ROLLBACK TRANSACTION")
 
+    // A connection whose END/ROLLBACK failed may still be inside a transaction, so it is closed
+    // instead of going back to the pool.
     private fun Connection.finishTransaction(sql: String) {
         try {
             prepareStatement(sql).use(PreparedStatement::execute)

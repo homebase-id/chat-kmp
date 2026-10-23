@@ -62,25 +62,18 @@ internal class ChatDbFixture(val shape: Shape = Shape()) {
             cursor = null,
         )
 
-        val pending = ArrayList<HomebaseFile>(BATCH)
         // Interleave conversations in time so the global timeline mixes them, like a real drive.
         val schedule = conversationIds.indices.flatMap { c -> List(messageCounts[c]) { c } }.shuffled(random)
-        schedule.forEachIndexed { n, c ->
-            val userDate = startMs + spanMs * n / schedule.size + random.nextLong(1000)
-            pending += messageHeader(conversationIds[c], userDate)
-            if (pending.size == BATCH) {
-                processor.performBaseUpsert(identityId, chatDrive, pending.toList(), cursor = null)
-                pending.clear()
+        schedule.asSequence()
+            .mapIndexed { n, c ->
+                messageHeader(conversationIds[c], startMs + spanMs * n / schedule.size + random.nextLong(1000))
             }
-        }
-        repeat(shape.otherDriveFiles) {
-            pending += otherHeader(startMs + random.nextLong(spanMs))
-            if (pending.size == BATCH) {
-                processor.performBaseUpsert(identityId, otherDrive, pending.toList(), cursor = null)
-                pending.clear()
-            }
-        }
-        if (pending.isNotEmpty()) processor.performBaseUpsert(identityId, otherDrive, pending.toList(), cursor = null)
+            .chunked(BATCH)
+            .forEach { processor.performBaseUpsert(identityId, chatDrive, it, cursor = null) }
+        generateSequence { otherHeader(startMs + random.nextLong(spanMs)) }
+            .take(shape.otherDriveFiles)
+            .chunked(BATCH)
+            .forEach { processor.performBaseUpsert(identityId, otherDrive, it, cursor = null) }
 
         // Most conversations read up to date; the first five carry unread messages.
         conversationIds.forEachIndexed { i, id ->
