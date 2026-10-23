@@ -3015,6 +3015,7 @@
     <string name="filesync_restored_to_recovered">Restored. Items whose folder was deleted for good will appear in Recovered files once one of your computers syncs.</string>
     <string name="filesync_restore_failed">Couldn't restore it.</string>
     <string name="filesync_changed_elsewhere">Some items changed on another device, so they were left as they are.</string>
+    <string name="filesync_restore_try_again">Some items couldn't be restored yet. Try again in a minute.</string>
     <string name="filesync_delete_forever">Delete forever</string>
     <string name="filesync_delete_forever_confirm">Delete %1$s forever? It will be gone from all your devices.</string>
     <string name="filesync_deleted_forever">Deleted forever</string>

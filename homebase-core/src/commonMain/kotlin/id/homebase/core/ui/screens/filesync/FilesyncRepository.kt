@@ -98,9 +98,13 @@ class FilesyncRepository(
         return holding
     }
 
-    /** Of [fileIds] a delete didn't find, those gone for good: their header isn't found either, or is a tombstone's. */
-    suspend fun goneForGood(fileIds: List<Uuid>): List<Uuid> =
-        fileIds.filter { id -> driveFileProvider.getFileHeader(FilesyncProtocol.DriveAlias, id)?.let { it.fileState == FileState.Deleted } ?: true }
+    /** Of [fileIds] a write didn't find, those the identity doesn't have: true for a tombstone, false when their header isn't found either. */
+    suspend fun notThere(fileIds: List<Uuid>): Map<Uuid, Boolean> = buildMap {
+        for (id in fileIds) {
+            val header = driveFileProvider.getFileHeader(FilesyncProtocol.DriveAlias, id)
+            if (header == null || header.fileState == FileState.Deleted) put(id, header != null)
+        }
+    }
 
     /** The newest live files, newest first. */
     suspend fun listRecentlyAdded(limit: Int = RECENT_LIMIT): FilesyncNodes =
@@ -137,7 +141,8 @@ class FilesyncRepository(
     private fun nodeParams(status: List<ArchivalStatus>?, state: FileState = FileState.Active) = FileQueryParams(
         fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType),
         fileState = listOf(state),
-        archivalStatus = status?.map { it.value },
+        // Another app's 1 or 3 is live too: every computer syncs it.
+        archivalStatus = status?.flatMap { if (it == ArchivalStatus.None) LiveStatuses else listOf(it.value) },
     )
 
     // Keyed by node: a node changed between two pages comes back on both. The time is the server's, at the first page.
@@ -212,6 +217,7 @@ class FilesyncRepository(
         const val PAGE_SIZE = 1000
         val HOLD_BACK = 1100.milliseconds
         const val RECENT_LIMIT = 100
+        val LiveStatuses = listOf(ArchivalStatus.None.value, ArchivalStatus.Archived.value, 3)
     }
 }
 

@@ -24,6 +24,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val TAG = "FilesyncEditor"
@@ -35,7 +39,7 @@ private val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, Odi
  * [skipped]: items another device changed or deleted meanwhile, left as they are. [recovered]: restored where no listing
  * shows them until a computer moves them into Recovered files.
  */
-class FilesyncWriteResult(val done: Int, val skipped: Int, val recovered: Int = 0)
+class FilesyncWriteResult(val done: Int, val skipped: Int, val recovered: Int = 0, val tryAgainSoon: Boolean = false)
 
 /** Restores and empties Recently deleted exactly as filesync's deleted.rs does, so every desktop agrees with the phone. */
 class FilesyncEditor(
@@ -49,6 +53,7 @@ class FilesyncEditor(
 
     // One write at a time: a restore picks names against the folder as it is, so two at once could pick the same one.
     private val writeLock = Mutex()
+    private val notFound = FilesyncNotFoundTwice()
 
     /** Brings each of [nodeIds] back with the items its delete took along, and the removed folders above it first. */
     suspend fun restore(nodeIds: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
@@ -72,6 +77,7 @@ class FilesyncEditor(
         suspend fun taken(folder: Uuid) = takenByFolder.getOrPut(folder) { repository.takenNames(folder) }
         var skipped = gone
         var sent = false
+        var tryAgainSoon = false
         try {
             for (wave in plan.sortedBy { level.getValue(it.nodeId) }.groupBy { level.getValue(it.nodeId) }.values) {
                 // Back under its own name in its own folder, a node needs only its archivalStatus set, many in one request,
@@ -141,13 +147,21 @@ class FilesyncEditor(
                         if (node.isFolder) maybeGone[handle.fileId] = node.nodeId
                     }
                 }
-                repository.goneForGood(maybeGone.keys.toList()).mapTo(wentForGood) { maybeGone.getValue(it) }
+                // A folder only said not found once stays, and what comes back into it waits for the next try.
+                val notThere = repository.notThere(maybeGone.keys.toList())
+                for ((fileId, folder) in maybeGone) {
+                    when (notThere[fileId]) {
+                        null -> notFound.found(fileId)
+                        true -> wentForGood += folder
+                        false -> if (notFound.confirms(fileId, trash.all.handles.getValue(folder).versionTag)) wentForGood += folder else tryAgainSoon = true
+                    }
+                }
             }
         } finally {
             // A failed request may still have restored some of its files.
             if (sent) _changed.tryEmit(Unit)
         }
-        FilesyncWriteResult(restored.size, skipped, recovered = (intoRecovered intersect restored).size)
+        FilesyncWriteResult(restored.size, skipped, recovered = (intoRecovered intersect restored).size, tryAgainSoon = tryAgainSoon)
     }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */
@@ -266,7 +280,7 @@ class FilesyncEditor(
             }
             val byCode = answers.results.groupBy({ it.errorCode }, { it.fileId })
             refused += byCode.keys.filterNotNull() - setOf(OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound)
-            byCode[null].orEmpty() + repository.goneForGood(byCode[OdinClientErrorCode.FileNotFound].orEmpty())
+            byCode[null].orEmpty() + repository.notThere(byCode[OdinClientErrorCode.FileNotFound].orEmpty()).keys
         }
 
     /** False when the node changed or went since it was read; that's another device's newer word, not a failure. */
@@ -305,6 +319,31 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
 internal fun restoredContent(content: JsonObject, name: String) =
     JsonObject(content - REMOVAL_KEY + ("name" to JsonPrimitive(name)))
 
+/** One 404 never makes a file gone: the identity's second "not there" does, a minute to an hour after the first, at the same version. */
+// Wall time, not monotonic: Android's monotonic clock stops in deep sleep, which would stretch the hour.
+internal class FilesyncNotFoundTwice(private val clock: Clock = Clock.System) {
+    private val first = mutableMapOf<Uuid, Pair<Uuid?, Instant>>()
+
+    /** Records that [fileId] at [version] wasn't found; true when that confirms an earlier time. */
+    fun confirms(fileId: Uuid, version: Uuid?): Boolean {
+        val now = clock.now()
+        first.values.removeAll { now - it.second > Window.endInclusive }
+        val since = first[fileId]?.takeIf { it.first == version }?.let { now - it.second }
+        if (since != null && since in Window) return true.also { first.remove(fileId) }
+        if (since == null) first[fileId] = version to now
+        return false
+    }
+
+    /** A header found meanwhile clears the doubt. */
+    fun found(fileId: Uuid) {
+        first.remove(fileId)
+    }
+
+    private companion object {
+        val Window = 1.minutes..1.hours
+    }
+}
+
 /** Runs [write] and turns its outcome into the one message the user sees; true when everything was written. */
 internal suspend fun reportWrite(
     done: FilesyncNotice,
@@ -325,9 +364,12 @@ internal suspend fun reportWrite(
             result == null -> FilesyncUiEvent.Error(failed)
             // Nothing lists those until a computer syncs, so saying where comes first.
             result.recovered > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered)
+            result.tryAgainSoon -> FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon)
             result.skipped > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere)
             else -> FilesyncUiEvent.Notice(done)
         }
     )
+    // A retry won't plan what this one brought back, so it can't say where that went: both are said now.
+    if (result != null && result.recovered > 0 && result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
     return result != null && result.skipped == 0
 }
