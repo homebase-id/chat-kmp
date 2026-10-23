@@ -255,7 +255,7 @@ class MailModelsSerializationTest {
         val settings = OdinSystemSerializer.deserialize<MailAppStatus>(json).clientSettings
         assertTrue(settings != null)
 
-        assertEquals("mx1.bleeding.ravenhosting.cloud", settings!!.incomingHost)
+        assertEquals("mx1.bleeding.ravenhosting.cloud", settings.incomingHost)
         assertEquals(993, settings.incomingPort)
         assertEquals(465, settings.outgoingPort)
         // Implicit TLS, not STARTTLS — the wrong pairing hangs rather than erroring.

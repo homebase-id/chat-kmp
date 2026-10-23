@@ -1,6 +1,7 @@
 package id.homebase.feed.share
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -43,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.net.toUri
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
@@ -459,17 +459,14 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
                 // Crop/draw editor, mounted over the preview. These screens normally
                 // live behind AppNavHost routes; this activity has no NavHost, so we
-                // drive their ViewModels directly with a seeded SavedStateHandle and the
+                // drive their ViewModels directly with the request id and the
                 // same result bus the in-app flow uses.
                 activeImageEdit?.let { edit ->
                     BackHandler { dismissImageEdit(edit) }
                     when (edit) {
                         is ActiveImageEdit.Crop -> {
                             val vm = remember(edit.requestId) {
-                                CropEditorViewModel(
-                                    SavedStateHandle(mapOf("requestId" to edit.requestId.toString())),
-                                    cropResultBus,
-                                )
+                                CropEditorViewModel(edit.requestId, lockedAspect = null, cropResultBus)
                             }
                             CropScreen(
                                 viewModel = vm,
@@ -484,10 +481,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                         }
                         is ActiveImageEdit.Draw -> {
                             val vm = remember(edit.requestId) {
-                                DrawEditorViewModel(
-                                    SavedStateHandle(mapOf("requestId" to edit.requestId.toString())),
-                                    drawResultBus,
-                                )
+                                DrawEditorViewModel(edit.requestId, drawResultBus)
                             }
                             DrawScreen(
                                 viewModel = vm,
@@ -648,7 +642,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 }
 
                 val countLabel = if (conversationIds.size > 1) {
-                    getString(R.string.share_sent_multiple, conversationIds.size)
+                    resources.getQuantityString(R.plurals.share_sent_multiple, conversationIds.size, conversationIds.size)
                 } else {
                     getString(R.string.share_sent)
                 }
@@ -890,9 +884,10 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
         // Method 2: EXTRA_SHORTCUT_ID set by Android's ChooserActivity (API 29+)
         // Format: "share_{uuid}" as defined in ShareShortcutPublisher
-        @Suppress("DEPRECATION")
-        intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.let { shortcutId ->
-            return shortcutId.removePrefix("share_")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.let { shortcutId ->
+                return shortcutId.removePrefix("share_")
+            }
         }
 
         return null
@@ -983,9 +978,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
         return when {
             names.isEmpty() -> getString(R.string.share_preview_title_single)
-            names.size == 1 && remaining == 0 -> names.first()
-            names.size == 1 && remaining > 0 -> getString(R.string.share_preview_title_others, names.first(), remaining)
-            remaining > 0 -> getString(R.string.share_preview_title_others, names.joinToString(", "), remaining)
+            remaining > 0 -> resources.getQuantityString(R.plurals.share_preview_title_others, remaining, names.joinToString(", "), remaining)
             else -> names.joinToString(", ")
         }
     }

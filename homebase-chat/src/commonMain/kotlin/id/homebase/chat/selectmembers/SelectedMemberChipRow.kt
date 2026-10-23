@@ -28,8 +28,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.resources.MR
 import id.homebase.resources.remove
 import org.jetbrains.compose.resources.stringResource
@@ -76,16 +76,15 @@ fun SelectedMemberChipRow(
                     },
                     selected = true,
                     leadingIcon = {
-                        ContactAvatar(
+                        IdentityAvatar(
                             odinId = contact.odinId,
-                            profileImageData = null,
-                            initials = contact.avatarInitials,
+                            displayName = contact.name,
                             options = AvatarOptions(
                                 size = 28.dp,
                                 fontSize = 12.sp,
                             ),
                             sharedTransitionScope = null,
-                            animatedVisibilityScope = null
+                            animatedVisibilityScope = null,
                         )
                     },
                     trailingIcon = {

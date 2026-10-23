@@ -54,7 +54,7 @@ class ProfileAttributeParseTest {
 
     @Test
     fun fullAttribute_preservesIdTagAndData() {
-        val attr = fileFor(nameContent())!!.toProfileAttribute()!!
+        val attr = fileFor(nameContent()).toProfileAttribute()!!
 
         assertEquals(uniqueId, attr.id)
         assertEquals(versionTag, attr.versionTag)

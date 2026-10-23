@@ -12,7 +12,6 @@ import kotlinx.atomicfu.update
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -125,7 +124,6 @@ private fun clientException(
  * time split (each constructs its own real-dispatcher DatabaseManager and says why):
  * `testFailureAndRetry` and `testTryEnqueueDoesNotBlockOnSaturatedEventBus`.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class OutboxSyncTest {
 
     /**
@@ -935,7 +933,7 @@ class OutboxSyncTest {
         assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
         assertNotNull(dropped.reason, "a permanent drop must carry its classifier reason")
         assertTrue(
-            dropped.reason!!.contains("Cannot transfer to yourself"),
+            dropped.reason.contains("Cannot transfer to yourself"),
             "reason should surface the server message; was: ${dropped.reason}",
         )
 

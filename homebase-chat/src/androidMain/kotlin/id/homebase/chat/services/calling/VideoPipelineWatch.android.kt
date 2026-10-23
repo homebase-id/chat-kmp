@@ -11,7 +11,7 @@ import org.webrtc.supportsLowLatency
 // claim to sustain the 720p30 a peer may send, and whether they offer a low-latency mode.
 // A lost Android camera ends webrtc-kmp's track instead, which the engine reports as capturer ended.
 internal actual fun watchVideoPipeline(onCameraInterrupted: (interrupted: Boolean, detail: String) -> Unit): () -> Unit {
-    avcDecoderCapabilities.forEach { Logger.i("WebRtcKmp") { it } }
+    avcDecoderCapabilities.forEach { Logger.i(tag = "WebRtcKmp") { it } }
     return {}
 }
 
@@ -24,14 +24,16 @@ private val avcDecoderCapabilities: List<String> by lazy {
 }
 
 private fun describeDecoder(info: MediaCodecInfo): String {
-    val video = info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities
     val w = SendVideoCap.WIDTH
     val h = SendVideoCap.HEIGHT
     val hardware = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) info.isHardwareAccelerated.toString() else "unknown"
+    val lowLatency = info.supportsLowLatency(MediaFormat.MIMETYPE_VIDEO_AVC) ?: "unknown"
+    val head = "avc decoder ${info.name} sdk=${Build.VERSION.SDK_INT} hardware=$hardware lowLatency=$lowLatency"
+    val video = info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities
+        ?: return "$head videoCapabilities=absent"
     val achievable = runCatching { video.getAchievableFrameRatesFor(w, h) }.getOrNull()
     val points = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) video.supportedPerformancePoints else null
-    val lowLatency = info.supportsLowLatency(MediaFormat.MIMETYPE_VIDEO_AVC) ?: "unknown"
-    return "avc decoder ${info.name} sdk=${Build.VERSION.SDK_INT} hardware=$hardware lowLatency=$lowLatency max=${video.supportedWidths.upper}x${video.supportedHeights.upper} " +
+    return "$head max=${video.supportedWidths.upper}x${video.supportedHeights.upper} " +
         "${w}x${h}@${SendVideoCap.FPS}=${video.areSizeAndRateSupported(w, h, SendVideoCap.FPS.toDouble())} " +
         "achievableFps@${h}p=$achievable performancePoints=$points"
 }

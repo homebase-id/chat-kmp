@@ -37,12 +37,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.feed.services.PostAudience
 import id.homebase.core.feed.services.isRestricted
 import id.homebase.core.util.formatTimestamp
-import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.feed_audience_auto_connected
@@ -85,9 +84,9 @@ fun PostAuthorHeader(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = authorOdinId,
-            initials = displayName.initials(),
+            displayName = displayName,
             options = AvatarOptions(size = 40.dp, onClick = onAuthorClick),
         )
 

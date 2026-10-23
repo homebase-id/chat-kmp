@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -87,6 +89,7 @@ class BubbleLayoutInvariantTest {
 
     private val koin = koinConfiguration {
         modules(module {
+            single { AvatarResolver(MutableStateFlow(emptyList())) }
             // The Koin singletons any rendered MediaItem resolves. An empty Coil
             // ImageLoader is enough — the images never need to decode; the invariants
             // are about the media container's laid-out bounds, not pixel content.

@@ -51,11 +51,11 @@ private val FULL_RECHECK_INTERVAL = 1.minutes
 /**
  * Puts a banner over [content] while the identity's storage is full: a 507 refused an upload, or the
  * server says it is over its plan's quota. Photos and files wait in the outbox; text still goes.
- * Tapping it calls [onOpenPlan]. While shown it asks the server again every minute, so it goes on
+ * Tapping it calls [onOpenAccount]. While shown it asks the server again every minute, so it goes on
  * its own once enough was deleted.
  */
 @Composable
-fun StorageFullHost(onOpenPlan: () -> Unit, content: @Composable () -> Unit) {
+fun StorageFullHost(onOpenAccount: () -> Unit, content: @Composable () -> Unit) {
     val storageQuota = koinInject<StorageQuota>()
     val quotaState by storageQuota.state.collectAsStateWithLifecycle()
     val isFull = quotaState.isFull
@@ -81,7 +81,7 @@ fun StorageFullHost(onOpenPlan: () -> Unit, content: @Composable () -> Unit) {
         ) {
             StorageFullBanner(
                 modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars),
-                onClick = onOpenPlan,
+                onClick = onOpenAccount,
             )
         }
         Box(

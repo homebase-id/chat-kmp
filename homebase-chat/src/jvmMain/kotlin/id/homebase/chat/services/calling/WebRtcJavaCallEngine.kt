@@ -227,7 +227,7 @@ class WebRtcJavaCallEngine(
 
     private fun applyDevice(device: MediaDevice) {
         val asked = System.nanoTime()
-        Logger.i("WebRtcJava") { "switch ${device.kind} to ${device.name} requested" }
+        Logger.i(tag = "WebRtcJava") { "switch ${device.kind} to ${device.name} requested" }
         var locked = asked
         try {
             synchronized(lock) {
@@ -236,7 +236,7 @@ class WebRtcJavaCallEngine(
             }
         } finally {
             val now = System.nanoTime()
-            Logger.i("WebRtcJava") { "switch ${device.kind} to ${device.name} returned: lockWait=${(locked - asked) / 1_000_000}ms native=${(now - locked) / 1_000_000}ms" }
+            Logger.i(tag = "WebRtcJava") { "switch ${device.kind} to ${device.name} returned: lockWait=${(locked - asked) / 1_000_000}ms native=${(now - locked) / 1_000_000}ms" }
         }
     }
 
@@ -294,9 +294,9 @@ class WebRtcJavaCallEngine(
                 if (closed || !cameraOn || capturedFrames.count.get() != seen) return@synchronized
                 val available = cameras()
                 val next = nextCameraAfterSilence(available.map { it.descriptor }, tried)
-                    ?: return@synchronized Logger.w("WebRtcJava") { "camera delivered no frames and no other camera is left" }
+                    ?: return@synchronized Logger.w(tag = "WebRtcJava") { "camera delivered no frames and no other camera is left" }
                 val device = available.first { it.descriptor == next }
-                Logger.w("WebRtcJava") { "camera delivered no frames in ${CAMERA_SILENCE_MS}ms, switching to ${device.name}" }
+                Logger.w(tag = "WebRtcJava") { "camera delivered no frames in ${CAMERA_SILENCE_MS}ms, switching to ${device.name}" }
                 runCatching { switchCaptureDevice(device, tried + next, fallback = true) }
                     .onFailure { Logger.w(it, "WebRtcJava") { "fallback camera ${device.name} failed" } }
             }
@@ -309,8 +309,8 @@ class WebRtcJavaCallEngine(
             peer.getStats { report ->
                 val entries = report.stats.values.map { StatsEntry(it.type.name.lowercase().replace('_', '-'), it.attributes, it.id) }
                 videoStatsLines(entries, localTrack = videoTrack?.let { if (it.isEnabled) "enabled" else "disabled" }, previous = previousStats)
-                    .forEach { line -> Logger.i("WebRtcJava") { line } }
-                if (!closed) sendLadder.onStats(entries)?.let { line -> Logger.i("WebRtcJava") { line } }
+                    .forEach { line -> Logger.i(tag = "WebRtcJava") { line } }
+                if (!closed) sendLadder.onStats(entries)?.let { line -> Logger.i(tag = "WebRtcJava") { line } }
                 previousStats = entries
             }
         }
@@ -406,10 +406,10 @@ class WebRtcJavaCallEngine(
         val available = cameras()
         val chosen = devices.selected.value[MediaDeviceKind.Camera]
         val device = available.firstOrNull { it.descriptor == chosen } ?: available.firstOrNull() ?: run {
-            Logger.w("WebRtcJava") { "no camera found, continuing audio-only" }
+            Logger.w(tag = "WebRtcJava") { "no camera found, continuing audio-only" }
             return null
         }
-        Logger.i("WebRtcJava") { "camera ${device.name} of ${available.map { it.name }}" }
+        Logger.i(tag = "WebRtcJava") { "camera ${device.name} of ${available.map { it.name }}" }
         val source = VideoDeviceSource().apply {
             setVideoCaptureDevice(device)
             captureCapability(device)?.let { setVideoCaptureCapability(it) }
@@ -559,7 +559,7 @@ class WebRtcJavaCallEngine(
         val caller = Thread.currentThread()
         val watchdog = Timer("call-close-watchdog", true)
         watchdog.schedule(timerTask {
-            Logger.e("WebRtcJava") { "$call still running after ${CLOSE_STALL_MS} ms on ${caller.name}:\n" + caller.stackTrace.joinToString("\n") { "\tat $it" } }
+            Logger.e(tag = "WebRtcJava") { "$call still running after ${CLOSE_STALL_MS} ms on ${caller.name}:\n" + caller.stackTrace.joinToString("\n") { "\tat $it" } }
         }, CLOSE_STALL_MS)
         try {
             return block()
@@ -623,7 +623,7 @@ class WebRtcJavaCallEngine(
 
         // The capturer reports a failed camera start only through the native log, which otherwise goes nowhere.
         val nativeLogs: Unit by lazy {
-            Logging.addLogSink(Logging.Severity.WARNING, LogSink { _, message -> Logger.w("WebRTC") { message.trimEnd() } })
+            Logging.addLogSink(Logging.Severity.WARNING, LogSink { _, message -> Logger.w(tag = "WebRTC") { message.trimEnd() } })
         }
     }
 }

@@ -56,7 +56,7 @@ internal actual fun observeDevicePressure(onChange: (DevicePressure) -> Unit): (
     val info = NSProcessInfo.processInfo
     val report = {
         // NSProcessInfoThermalState: Nominal 0, Fair 1, Serious 2, Critical 3 (the constants are not exported to Kotlin).
-        val thermal = when (info.thermalState.value.toLong()) {
+        val thermal = when (info.thermalState.value) {
             1L -> ThermalLevel.Fair
             2L -> ThermalLevel.Serious
             3L -> ThermalLevel.Critical

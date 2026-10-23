@@ -185,7 +185,7 @@ fun ViewOnceViewer(
         } catch (e: ViewOnceAlreadyConsumedException) {
             latestOnDismiss()
         } catch (e: Exception) {
-            Logger.w("ViewOnceViewer", e) { "load failed msg=${data.messageId}" }
+            Logger.w(e, tag = "ViewOnceViewer") { "load failed msg=${data.messageId}" }
             failed = true
         }
     }

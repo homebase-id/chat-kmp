@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.isStorageFull
@@ -81,7 +83,7 @@ class FilesyncUploadQueue(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Logger.w(TAG, e) { "a picked file couldn't be copied for upload" }
+                    Logger.w(e, tag = TAG) { "a picked file couldn't be copied for upload" }
                     _errors.tryEmit(FilesyncError.UploadFailed)
                     continue
                 }

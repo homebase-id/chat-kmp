@@ -247,24 +247,20 @@ fun MomentMediaItem(
                     SubSamplingImageSource.Remote(imageData)
                 }
             }
-            if (zoomSource != null) {
-                ZoomableSubSamplingImage(
-                    source = zoomSource,
-                    modifier = finalModifier,
-                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    // At base scale the component doesn't consume taps, so this
-                    // still opens comments/detail; while zoomed it pans instead.
-                    onTap = onClick,
-                    onZoomedChanged = onZoomedChanged,
-                    // Moments pass null hero aspect (container-level sharedBounds
-                    // path, like chat) — see ZoomableSubSamplingImage docs.
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    sharedContentStateKey = "image-${fileId}-${payload.key}",
-                )
-            } else {
-                Box(modifier = finalModifier)
-            }
+            ZoomableSubSamplingImage(
+                source = zoomSource,
+                modifier = finalModifier,
+                contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                // At base scale the component doesn't consume taps, so this
+                // still opens comments/detail; while zoomed it pans instead.
+                onTap = onClick,
+                onZoomedChanged = onZoomedChanged,
+                // Moments pass null hero aspect (container-level sharedBounds
+                // path, like chat) — see ZoomableSubSamplingImage docs.
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+                sharedContentStateKey = "image-${fileId}-${payload.key}",
+            )
         }
 
         payload.isImage() -> {

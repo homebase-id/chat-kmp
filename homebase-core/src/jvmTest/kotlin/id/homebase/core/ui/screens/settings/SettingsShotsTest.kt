@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.settings
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
@@ -25,11 +27,11 @@ class SettingsShotsTest {
 
     private val actions = SettingsActions(
         onBack = {}, onNotifications = {}, onAppearance = {}, onMedia = {}, onKeyboard = {}, onStorage = {},
-        onHelp = {}, onMomentsSettings = {}, onVaultSettings = {}, onEmailSettings = {}, onOpenWebDrop = {},
+        onAccount = {}, onHelp = {}, onMomentsSettings = {}, onVaultSettings = {}, onEmailSettings = {}, onOpenWebDrop = {},
         onLocation = {}, onContactBookSettings = {}, onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
     )
 
-    private val koin = koinApplication { modules(module { single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() } }) }
+    private val koin = koinApplication { modules(module { single { AvatarResolver(MutableStateFlow(emptyList())) }; single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() } }) }
 
     private val demoOwner = OwnerSession(
         odinId = OdinId("frodo.baggins.demo.rocks"), displayName = "Frodo Baggins", firstName = "Frodo", surName = "Baggins",

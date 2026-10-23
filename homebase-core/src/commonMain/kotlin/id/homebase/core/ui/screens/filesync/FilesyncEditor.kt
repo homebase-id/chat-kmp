@@ -117,7 +117,7 @@ class FilesyncEditor(
                                 takenByFolder[node.parentId]?.remove(node.nameKey)
                                 if (node.isFolder && code == OdinClientErrorCode.FileNotFound) maybeGone[answer.fileId] = node.nodeId
                                 if (node.isFolder && code == OdinClientErrorCode.CannotUpdateNonActiveFile) wentForGood += node.nodeId
-                                Logger.i(TAG) { "node ${node.nodeId} changed elsewhere; left as it is" }
+                                Logger.i(tag = TAG) { "node ${node.nodeId} changed elsewhere; left as it is" }
                             }
                             else -> refused += code
                         }
@@ -164,7 +164,7 @@ class FilesyncEditor(
         purged = true
         try {
             val result = purgeExpired()
-            if (result.done + result.skipped > 0) Logger.i(TAG) { "purge: ${result.done} deleted for good, ${result.skipped} changed meanwhile" }
+            if (result.done + result.skipped > 0) Logger.i(tag = TAG) { "purge: ${result.done} deleted for good, ${result.skipped} changed meanwhile" }
         } catch (e: Exception) {
             purged = false
             if (e is CancellationException) throw e
@@ -280,7 +280,7 @@ class FilesyncEditor(
         } catch (e: ClientException) {
             if (e.errorCode !in ChangedElsewhere) throw e
             false
-        }.also { if (!it) Logger.i(TAG) { "node $nodeId changed elsewhere; left as it is" } }
+        }.also { if (!it) Logger.i(tag = TAG) { "node $nodeId changed elsewhere; left as it is" } }
     }
 }
 

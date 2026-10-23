@@ -1,11 +1,15 @@
 package id.homebase.imageeditor.ui.di
 
+import androidx.lifecycle.SavedStateHandle
+import androidx.navigation.toRoute
+import id.homebase.core.ui.navigation.Route
 import id.homebase.imageeditor.ui.CropEditorViewModel
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawEditorViewModel
 import id.homebase.imageeditor.ui.DrawResultBus
-import org.koin.core.module.dsl.viewModelOf
+import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
+import kotlin.uuid.Uuid
 
 /**
  * Koin DI for the cropper and the draw editor. Install once from
@@ -19,6 +23,12 @@ import org.koin.dsl.module
 val imageEditorModule = module {
     single { CropResultBus() }
     single { DrawResultBus() }
-    viewModelOf(::CropEditorViewModel)
-    viewModelOf(::DrawEditorViewModel)
+    viewModel {
+        val route = get<SavedStateHandle>().toRoute<Route.Crop>()
+        CropEditorViewModel(Uuid.parse(route.requestId), route.lockedAspect, get())
+    }
+    viewModel {
+        val route = get<SavedStateHandle>().toRoute<Route.Draw>()
+        DrawEditorViewModel(Uuid.parse(route.requestId), get())
+    }
 }

@@ -1,5 +1,7 @@
 package id.homebase.auth.login
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,7 +37,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * A resolved preview swaps the mark for `PublicAvatar`, which pulls its Coil loader out of Koin —
+ * A resolved preview swaps the mark for `IdentityAvatar`, which pulls its Coil loader out of Koin —
  * a bare `runComposeUiTest` dies with "KoinApplication has not been started". This one refuses
  * every request, so the avatar lands on its initials fallback and dials nobody.
  */
@@ -62,7 +64,7 @@ private class OfflineImageLoader : ImageLoader {
 }
 
 private val TestKoin = koinApplication {
-    modules(module { single<ImageLoader> { OfflineImageLoader() } })
+    modules(module { single { AvatarResolver(MutableStateFlow(emptyList())) }; single<ImageLoader> { OfflineImageLoader() } })
 }
 
 @Composable

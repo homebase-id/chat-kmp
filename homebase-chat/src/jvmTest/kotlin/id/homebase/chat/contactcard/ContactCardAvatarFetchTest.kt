@@ -1,5 +1,7 @@
 package id.homebase.chat.contactcard
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -59,6 +61,7 @@ class ContactCardAvatarFetchTest {
     private val koin = koinApplication {
         modules(
             module {
+                single { AvatarResolver(MutableStateFlow(emptyList())) }
                 single { preferences }
                 single {
                     ImageLoader.Builder(PlatformContext.INSTANCE)

@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.storage.StorageUsage
 import id.homebase.common.util.formatBytes
+import id.homebase.common.util.planStorageText
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.widget.SettingsSectionHeader
@@ -64,10 +65,13 @@ import id.homebase.resources.plan_public_page_off
 import id.homebase.resources.plan_public_page_on
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.storage_account_full
+import id.homebase.resources.storage_account_less_than_one_percent
 import id.homebase.resources.storage_account_plan
 import id.homebase.resources.storage_account_title
+import id.homebase.resources.storage_account_under
 import id.homebase.resources.storage_account_usage
 import id.homebase.resources.storage_account_usage_unlimited
+import id.homebase.resources.storage_account_used_free
 import id.homebase.resources.storage_full_upload_failed
 import id.homebase.resources.storage_orphan_coil_body
 import id.homebase.resources.storage_orphan_coil_title
@@ -107,7 +111,7 @@ fun StorageSettingsScreen(
     viewModel: StorageSettingsViewModel,
     onBackClick: () -> Unit,
     onNavigateToDefragmenter: () -> Unit,
-    onNavigateToPlan: () -> Unit,
+    onOpenAccount: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -128,7 +132,7 @@ fun StorageSettingsScreen(
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
         onNavigateToDefragmenter = onNavigateToDefragmenter,
-        onNavigateToPlan = onNavigateToPlan,
+        onOpenAccount = onOpenAccount,
         snackbarHostState = snackbarHostState,
         crashTrigger = koinInject(),
     )
@@ -141,7 +145,7 @@ fun StorageSettingsUi(
     onAction: (StorageSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToDefragmenter: () -> Unit,
-    onNavigateToPlan: () -> Unit,
+    onOpenAccount: () -> Unit,
     snackbarHostState: SnackbarHostState,
     crashTrigger: DiagnosticsCrashTrigger = NoOpDiagnosticsCrashTrigger,
 ) {
@@ -177,7 +181,7 @@ fun StorageSettingsUi(
                     title = stringResource(MR.string.storage_account_title),
                     modifier = Modifier.padding(horizontal = 4.dp),
                 )
-                AccountStorageCard(account = account, onClick = onNavigateToPlan)
+                AccountStorageCard(account = account, onClick = onOpenAccount)
                 if (uiState.accountStorageFull) {
                     ErrorCard(
                         title = stringResource(MR.string.storage_full_upload_failed),
@@ -531,8 +535,8 @@ private fun DriveRow(state: DriveRowState) {
 }
 
 /**
- * The identity's storage on its Homebase against its plan. Here it leads to the Plan screen ([onClick]); the
- * Plan screen shows it with the public home page too ([showPublicPage]).
+ * The identity's storage on its Homebase against its plan. Here it leads to Settings > Account ([onClick]);
+ * Account shows it with the public home page too ([showPublicPage]).
  */
 @Composable
 internal fun AccountStorageCard(
@@ -541,6 +545,8 @@ internal fun AccountStorageCard(
     showPublicPage: Boolean = false,
 ) {
     val quota = account.quotaBytes
+    // "12% of 500 GB used", then what is used and free in the plan's own unit: no MB against GB to convert
+    val text = quota?.let { planStorageText(account.usedBytes, it) }
     Card(modifier = Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -548,8 +554,12 @@ internal fun AccountStorageCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (quota != null) {
-                        stringResource(MR.string.storage_account_usage, formatBytes(account.usedBytes), formatBytes(quota))
+                    text = if (text != null) {
+                        stringResource(
+                            MR.string.storage_account_usage,
+                            text.percent?.let { "$it%" } ?: stringResource(MR.string.storage_account_less_than_one_percent),
+                            text.size,
+                        )
                     } else {
                         stringResource(MR.string.storage_account_usage_unlimited, formatBytes(account.usedBytes))
                     },
@@ -569,6 +579,17 @@ internal fun AccountStorageCard(
                     progress = { (account.usedBytes.toFloat() / quota).coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth(),
                     color = if (account.isOverQuota) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+            }
+            text?.let {
+                Text(
+                    text = stringResource(
+                        MR.string.storage_account_used_free,
+                        if (it.usedIsUnder) stringResource(MR.string.storage_account_under, it.used) else it.used,
+                        it.free,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             account.planId?.let { plan ->

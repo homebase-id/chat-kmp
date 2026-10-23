@@ -34,8 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
@@ -174,10 +174,9 @@ private fun NewCallRowItem(
 
 @Composable
 private fun NewCallAvatar(row: NewCallRow) {
-    ContactAvatar(
+    IdentityAvatar(
         odinId = row.contact.odinId,
-        profileImageData = null,
-        initials = row.contact.avatarInitials,
+        displayName = row.contact.name,
         options = AvatarOptions(size = 40.dp, fontSize = 16.sp),
     )
 }

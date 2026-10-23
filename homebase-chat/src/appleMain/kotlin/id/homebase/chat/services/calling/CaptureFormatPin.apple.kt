@@ -40,7 +40,7 @@ internal fun pinCaptureFormat(session: AVCaptureSession) {
         val chosenDescription = chooseCaptureFormat(byDescription.keys.toList())
         val was = device.activeFormat.describe()
         if (chosenDescription == null) {
-            Logger.w("WebRtcKmp") { "capture format none usable, keeping ${was.label()}" }
+            Logger.w(tag = "WebRtcKmp") { "capture format none usable, keeping ${was.label()}" }
             return@dispatch_async
         }
         val chosen = byDescription.getValue(chosenDescription)
@@ -54,12 +54,12 @@ internal fun pinCaptureFormat(session: AVCaptureSession) {
             null
         }
         if (failed != null) {
-            Logger.w("WebRtcKmp") { "capture format lock failed $failed, keeping ${was.label()}" }
+            Logger.w(tag = "WebRtcKmp") { "capture format lock failed $failed, keeping ${was.label()}" }
             return@dispatch_async
         }
-        Logger.i("WebRtcKmp") { "capture format chosen ${chosenDescription.label(SendVideoCap.FPS)} (was ${was.label()})" }
+        Logger.i(tag = "WebRtcKmp") { "capture format chosen ${chosenDescription.label(SendVideoCap.FPS)} (was ${was.label()})" }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC.toLong()), queue) {
-            Logger.i("WebRtcKmp") { "capture format after 1s ${device.activeFormat.describe().label()}" }
+            Logger.i(tag = "WebRtcKmp") { "capture format after 1s ${device.activeFormat.describe().label()}" }
         }
     }
 }

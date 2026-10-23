@@ -106,7 +106,7 @@ actual class CallAudioRouter actual constructor() {
             rtc.unlockForConfiguration()
             if (ok) null else error.value?.localizedDescription ?: "unknown"
         }
-        if (failed != null) Logger.w(TAG) { "audio session configure failed: $failed" }
+        if (failed != null) Logger.w(tag = TAG) { "audio session configure failed: $failed" }
     }
 
     private fun applyRoute(route: AudioRoute) {
@@ -127,7 +127,7 @@ actual class CallAudioRouter actual constructor() {
 
     private fun log(event: String) {
         val outputs = session.currentRoute.outputs.joinToString(",") { (it as? AVAudioSessionPortDescription)?.portType.toString() }
-        Logger.i(TAG) { "audio session $event mode=${session.mode} category=${session.category} outputs=$outputs" }
+        Logger.i(tag = TAG) { "audio session $event mode=${session.mode} category=${session.category} outputs=$outputs" }
     }
 
     private companion object {

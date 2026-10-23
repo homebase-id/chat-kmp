@@ -1,7 +1,7 @@
 package id.homebase.core.util
 
 import java.text.DateFormat
-import java.text.SimpleDateFormat
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import kotlin.time.Instant
@@ -22,10 +22,7 @@ actual fun formatMediumDate(instant: Instant): String {
     return DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(date)
 }
 
-actual fun formatMediumDateNoYear(instant: Instant): String {
-    // Java has no skeleton-pattern API; "MMM d" is the best we can do.
-    // Reads correctly in English, slightly off in locales that prefer
-    // day-first ordering (de, fr) — those users see "May 8" instead of "8. Mai".
-    val date = Date.from(instant.toJavaInstant())
-    return SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
-}
+actual fun formatMediumDateNoYear(instant: Instant): String =
+    java.time.format.DateTimeFormatter.ofLocalizedPattern("MMMd")
+        .withLocale(Locale.getDefault())
+        .format(instant.toJavaInstant().atZone(ZoneId.systemDefault()))

@@ -17,6 +17,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.core.settings.ThemeState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -33,6 +34,7 @@ class SettingsUiTest {
             onMedia = { fired += "media" },
             onKeyboard = { fired += "keyboard" },
             onStorage = { fired += "storage" },
+            onAccount = { fired += "account" },
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },
             onVaultSettings = { fired += "vault" },
@@ -80,6 +82,12 @@ class SettingsUiTest {
         assertEquals(listOf("back"), routes.fired)
     }
 
+    /** Account sits right below General in the wide layout's sidebar, as it does near the top of the hub. */
+    @Test
+    fun accountComesRightAfterGeneralInTheSidebar() {
+        assertEquals(listOf(SettingsCategory.General, SettingsCategory.Account), SettingsCategory.entries.take(2))
+    }
+
     /** Walks the hub top to bottom. */
     @Test
     fun everyNavigationRowReachesItsOwnRoute() = runComposeUiTest {
@@ -87,6 +95,7 @@ class SettingsUiTest {
         settings(routes = routes)
 
         val expected = listOf(
+            "accountButton" to "account",
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",
@@ -156,22 +165,6 @@ class SettingsUiTest {
     }
 
     @Test
-    fun logoutFiresAction() = runComposeUiTest {
-        var fired = false
-        settings(onAction = { if (it is SettingsUiAction.LogoutClicked) fired = true })
-        tapRow("logoutButton")
-        assertTrue(fired)
-    }
-
-    @Test
-    fun deleteAccountFiresAction() = runComposeUiTest {
-        var fired = false
-        settings(onAction = { if (it is SettingsUiAction.DeleteAccount) fired = true })
-        tapRow("deleteAccountButton")
-        assertTrue(fired)
-    }
-
-    @Test
     fun notificationRowStatesItsHealthInWords() = runComposeUiTest {
         settings(uiState = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK))
         onNodeWithText("Push notifications are working").assertExists()
@@ -191,19 +184,16 @@ class SettingsUiTest {
         onNodeWithText("Theme: Dark").assertExists()
     }
 
-    /**
-     * Delete opens an in-app dialog, so it must not carry the external affordance or its
-     * "Open externally" click label — Security setup one section up genuinely does leave.
-     */
+    /** Log out and delete account moved to Settings > Account (AccountSettingsUiTest). */
     @Test
-    fun deleteAccountDoesNotClaimToLeaveTheApp() = runComposeUiTest {
+    fun theHubHasNoLogoutOrDeleteAccount() = runComposeUiTest {
         settings()
-        onNodeWithTag("settingsList").performScrollToNode(hasTestTag("deleteAccountButton"))
-        onNodeWithTag("deleteAccountButton").assert(
-            SemanticsMatcher("has no click label") { node ->
-                node.config.getOrNull(SemanticsActions.OnClick)?.label == null
+        // Scrolling the whole list for each, since a lazy row off screen would not exist yet either
+        listOf("logoutButton", "deleteAccountButton").forEach { tag ->
+            assertFailsWith<AssertionError>(tag) {
+                onNodeWithTag("settingsList").performScrollToNode(hasTestTag(tag))
             }
-        )
+        }
     }
 
     @Test

@@ -27,7 +27,6 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -46,7 +45,6 @@ import kotlin.uuid.Uuid
  * own-host drives, each section routed back into its DriveSync as a prefetched first page,
  * with resumeBatchedRound(null) as the per-drive fallback for every degraded path.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class DriveSyncCollectionTest {
 
     private val sharedSecret = ByteArray(16)

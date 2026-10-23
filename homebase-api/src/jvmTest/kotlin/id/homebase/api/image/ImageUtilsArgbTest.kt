@@ -28,7 +28,7 @@ class ImageUtilsArgbTest {
     @Test fun argb_round_trips_partial_alpha_and_transparent_rgb_exactly() {
         val w = 4; val h = 1
         val src = intArrayOf(
-            0x40DDEEFF.toInt(),  // partial alpha — drifts under premul round-trip
+            0x40DDEEFF,  // partial alpha — drifts under premul round-trip
             0x00778899,          // alpha 0 but RGB present — wiped to 0x00000000 under premul
             0x80445566.toInt(),  // half alpha
             0xFF010203.toInt(),  // opaque

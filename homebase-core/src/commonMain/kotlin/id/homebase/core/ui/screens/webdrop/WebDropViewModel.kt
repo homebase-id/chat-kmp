@@ -197,7 +197,7 @@ class WebDropViewModel(
             if (webDropService.revoke(dropFileId)) {
                 webDropStream.removeOptimistic(dropId)
             } else {
-                Logger.e(TAG) { "revoke failed for drop ${row.dropId}" }
+                Logger.e(tag = TAG) { "revoke failed for drop ${row.dropId}" }
             }
         }
     }

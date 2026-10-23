@@ -124,7 +124,7 @@ class EmailSecretsViewModel(
                 _events.tryEmit(
                     EmailSecretsUiEvent.SaveKeyFile(
                         path = path,
-                        suggestedName = "homebase-${key.userId ?: "key"}-private.asc",
+                        suggestedName = "homebase-${key.userId}-private.asc",
                     )
                 )
             } catch (e: Exception) {

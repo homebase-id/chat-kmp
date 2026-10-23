@@ -20,15 +20,15 @@ internal val configureWebRtcFactory: Unit by lazy {
     val builder = WebRtc.createPeerConnectionFactoryBuilder(initializationOptionsBuilder = options)
         .setVideoDecoderFactory(lowLatencyVideoDecoderFactory(WebRtc.rootEglBase.eglBaseContext))
     WebRtc.configure(peerConnectionFactoryBuilder = builder)
-    Logger.i("WebRtcKmp") { "libwebrtc logging at $severity, warnings to homebase.log; video decoders output textures in low-latency mode" }
+    Logger.i(tag = "WebRtcKmp") { "libwebrtc logging at $severity, warnings to homebase.log; video decoders output textures in low-latency mode" }
 }
 
 private object WebRtcLog : Loggable {
     override fun onLogMessage(message: String, severity: Logging.Severity, tag: String) {
         val line = message.trimEnd()
         when (severity) {
-            Logging.Severity.LS_ERROR -> Logger.e("WebRTC") { "$tag: $line" }
-            Logging.Severity.LS_WARNING -> Logger.w("WebRTC") { "$tag: $line" }
+            Logging.Severity.LS_ERROR -> Logger.e(tag = "WebRTC") { "$tag: $line" }
+            Logging.Severity.LS_WARNING -> Logger.w(tag = "WebRTC") { "$tag: $line" }
             else -> Log.i(tag, line)
         }
     }

@@ -79,7 +79,7 @@ actual object FFmpegUtils {
     suspend fun grabThumbnail(inputPath: String): String? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.w(LOG_TAG) { "FFmpeg binaries not available for this platform" }
+                Logger.w(tag = LOG_TAG) { "FFmpeg binaries not available for this platform" }
                 return@withContext null
             }
 
@@ -262,7 +262,7 @@ actual object FFmpegUtils {
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.w(LOG_TAG) { "FFmpeg binaries not available for this platform" }
+                Logger.w(tag = LOG_TAG) { "FFmpeg binaries not available for this platform" }
                 return@withContext null
             }
 
@@ -292,7 +292,7 @@ actual object FFmpegUtils {
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.w(LOG_TAG) { "FFmpeg binaries not available for this platform" }
+                Logger.w(tag = LOG_TAG) { "FFmpeg binaries not available for this platform" }
                 throw VideoSegmentException(
                     message = "Binaries not found",
                     command = emptyList(),
@@ -432,10 +432,10 @@ actual object FFmpegUtils {
         }
 
     internal suspend fun runProcess(command: List<String>, timeoutMs: Long? = null): Int {
-        Logger.d(LOG_TAG) { "Running: ${command.joinToString(" ")}" }
+        Logger.d(tag = LOG_TAG) { "Running: ${command.joinToString(" ")}" }
         val result = runCapturing(command, timeoutMs, onLine = null)
         if (result.exitCode != 0) {
-            Logger.w(LOG_TAG) { "Exit ${result.exitCode}, output tail:\n${result.output.lines().takeLast(20).joinToString("\n")}" }
+            Logger.w(tag = LOG_TAG) { "Exit ${result.exitCode}, output tail:\n${result.output.lines().takeLast(20).joinToString("\n")}" }
         }
         return result.exitCode
     }
@@ -521,7 +521,7 @@ actual object FFmpegUtils {
     actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
-                Logger.e(LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
+                Logger.e(tag = LOG_TAG) { "Remux HLS->MP4 skipped: no bundled ffmpeg for this platform" }
                 return@withContext false
             }
             val command = listOf(
@@ -543,7 +543,7 @@ actual object FFmpegUtils {
                 val exitCode = process.waitForOrDestroy()
                 val ok = exitCode == 0 && File(outputPath).length() > 0L
                 if (!ok) {
-                    Logger.e(LOG_TAG) {
+                    Logger.e(tag = LOG_TAG) {
                         "Remux HLS->MP4 failed, exit=$exitCode, output tail:\n" +
                             logFile.readLines().takeLast(20).joinToString("\n")
                     }

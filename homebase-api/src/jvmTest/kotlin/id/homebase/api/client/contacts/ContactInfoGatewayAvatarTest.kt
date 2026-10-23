@@ -124,6 +124,18 @@ class ContactInfoGatewayAvatarTest {
     }
 
     @Test
+    fun syncedSvgInitialsAreSkippedForThePublicImage() = runBlocking<Unit> {
+        val gateway = gateway(
+            synced = contactFile(isEncrypted = false, iv = null, lastModified = 1L, contentType = "image/svg+xml"),
+            payload = { error("the SVG placeholder must not be read") },
+        )
+
+        assertContentEquals(initials, gateway.avatarBytes(peer))
+        assertEquals(0, payloadRequests.size)
+        assertEquals(1, publicRequests)
+    }
+
+    @Test
     fun failedRetryFallsBackToThePublicImage() = runBlocking<Unit> {
         val iv = ByteArray(16) { 0x11 }
         val synced = contactFile(isEncrypted = true, iv = iv, lastModified = 1L)
@@ -142,7 +154,7 @@ class ContactInfoGatewayAvatarTest {
     private suspend fun encrypt(bytes: ByteArray, iv: ByteArray): ByteArray =
         KeyHeader(iv = iv, aesKey = SecureByteArray(aesKey.copyOf())).encryptDataAes(bytes)
 
-    private fun contactFile(isEncrypted: Boolean, iv: ByteArray?, lastModified: Long) = HomebaseFile(
+    private fun contactFile(isEncrypted: Boolean, iv: ByteArray?, lastModified: Long, contentType: String = "image/webp") = HomebaseFile(
         fileId = fileId,
         driveId = contactDriveId,
         fileState = FileState.Active,
@@ -158,7 +170,7 @@ class ContactInfoGatewayAvatarTest {
             payloads = listOf(
                 PayloadDescriptor(
                     key = ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY,
-                    contentType = "image/webp",
+                    contentType = contentType,
                     iv = iv?.let { Base64.encode(it) },
                     lastModified = lastModified,
                 ),

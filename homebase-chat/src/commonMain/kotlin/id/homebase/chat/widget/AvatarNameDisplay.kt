@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.resources.MR
 import id.homebase.resources.details
@@ -35,12 +36,9 @@ fun AvatarNameDisplay(
     avatarModel: ConversationAvatarModel,
     subtitle: String? = null,
     onClick: (() -> Unit)? = null,
-    // Makes the avatar itself tappable (e.g. open the photo full screen).
-    // Null leaves the avatar non-clickable — pass null for initials/placeholder
-    // avatars so there's nothing to open. A public (URL-backed) avatar only knows
-    // once Coil has loaded it, hence onClickNeedsImage. Independent of [onClick],
-    // which is the name-row tap.
-    onAvatarClick: (() -> Unit)? = null,
+    // Opens whichever photo rendered full screen; never fires on an initials fallback.
+    // Independent of [onClick], which is the name-row tap.
+    onAvatarClick: ((SubSamplingImageSource) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -52,12 +50,8 @@ fun AvatarNameDisplay(
             ConversationAvatar(
                 avatarModel = avatarModel,
                 modifier = Modifier.padding(8.dp),
-                options = AvatarOptions(
-                    size = 72.dp,
-                    fontSize = 24.sp,
-                    onClick = onAvatarClick,
-                    onClickNeedsImage = true,
-                ),
+                options = AvatarOptions(size = 72.dp, fontSize = 24.sp),
+                onOpenImage = onAvatarClick,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
             )

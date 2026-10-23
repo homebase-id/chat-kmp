@@ -35,15 +35,15 @@ actual fun CallPictureInPictureEffect(
     DisposableEffect(eligible, track, self) {
         val bridge = CallPictureInPictureBridgeHolder.bridge
         if (!eligible || track == null || bridge == null) {
-            Logger.i("CallPiP") { "pip not armed eligible=$eligible track=${track != null} bridge=${bridge != null}" }
+            Logger.i(tag = "CallPiP") { "pip not armed eligible=$eligible track=${track != null} bridge=${bridge != null}" }
             return@DisposableEffect onDispose { }
         }
-        Logger.i("CallPiP") { "pip arming bridge.start self=${self != null}" }
-        val selfRenderer = bridge.start(track, self != null, self?.mirrored == true, { restore() }) { Logger.i("CallPiP") { it } }
+        Logger.i(tag = "CallPiP") { "pip arming bridge.start self=${self != null}" }
+        val selfRenderer = bridge.start(track, self != null, self?.mirrored == true, { restore() }) { Logger.i(tag = "CallPiP") { it } }
             as? RTCVideoRendererProtocol
         selfRenderer?.let { self?.track?.addRenderer(it) }
         onDispose {
-            Logger.i("CallPiP") { "pip disarming bridge.stop" }
+            Logger.i(tag = "CallPiP") { "pip disarming bridge.stop" }
             bridge.stop()
             selfRenderer?.let { runCatching { self?.track?.removeRenderer(it) } }
         }

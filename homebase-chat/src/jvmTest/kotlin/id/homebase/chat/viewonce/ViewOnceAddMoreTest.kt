@@ -1,5 +1,7 @@
 package id.homebase.chat.viewonce
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
@@ -37,6 +39,7 @@ class ViewOnceAddMoreTest {
 
     private val koin = koinApplication {
         modules(module {
+            single { AvatarResolver(MutableStateFlow(emptyList())) }
             single { UserPreferences(InMemorySettings()) }
             single { ImageLoader.Builder(PlatformContext.INSTANCE).components { add(PlatformFileFetcher.Factory()) }.build() }
             single { LocalAttachmentContextStore(EventBus(), CoroutineScope(SupervisorJob())) }

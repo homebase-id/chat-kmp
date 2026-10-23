@@ -22,9 +22,10 @@ import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.contacts.AvatarCapability
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.FallbackAvatar
-import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.avatars.IdentityAvatar as SharedIdentityAvatar
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.HomebaseMark
 import id.homebase.core.ui.theme.HomebaseBrand
@@ -105,7 +106,7 @@ private fun BrandGlyph(size: Dp) {
 }
 
 /**
- * `PublicAvatar` spins while it loads, and a spinner here would read as "we are checking whether
+ * The identity avatar spins while it loads, and a spinner here would read as "we are checking whether
  * this identity exists" — which the public profile can never answer. Unresolved stays on the
  * initials, which already looks finished.
  */
@@ -122,15 +123,16 @@ internal fun IdentityAvatar(
         containerColor = containerColor,
         contentColor = contentColor,
     )
-    val initials = identity.label().initials()
     if (identity.isResolved) {
-        PublicAvatar(
+        SharedIdentityAvatar(
             odinId = identity.odinId,
-            initials = initials,
+            displayName = identity.label(),
+            // Before sign-in there are no drive keys to decrypt a stored photo with.
+            capability = AvatarCapability.UnencryptedOnly,
             options = options,
             modifier = modifier,
         )
     } else {
-        FallbackAvatar(initials = initials, options = options, modifier = modifier)
+        FallbackAvatar(initials = identity.label().initials(), options = options, modifier = modifier)
     }
 }

@@ -69,7 +69,7 @@ actual class CallAudioRouter actual constructor() {
             val device = available.firstOrNull { it.type in types }
             val accepted = device?.let { audio.setCommunicationDevice(it) }
             if (device == null) audio.clearCommunicationDevice()
-            Logger.i(TAG) {
+            Logger.i(tag = TAG) {
                 "route set $route device=${device?.type} accepted=$accepted active=${audio.communicationDevice?.type} " +
                     "available=${available.map { it.type }} mode=${audio.mode}"
             }

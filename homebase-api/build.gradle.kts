@@ -23,6 +23,9 @@ kotlin {
             optIn("dev.whyoleg.cryptography.DelicateCryptographyApi")
         }
     }
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
 
     // Target declarations - add or remove as needed below. These define
     // which platforms this KMP module supports.
@@ -69,7 +72,7 @@ kotlin {
     // source tree) keeps `gradle clean` honest and means an offline / partial build can't
     // silently feed off stale checked-in copies.
     val mirrorWebAppFfmpegAssetsForTestDir = layout.buildDirectory.dir("generated/wasmJsTestFfmpegAssets")
-    val mirrorWebAppFfmpegAssetsForTest by tasks.registering(Copy::class) {
+    val mirrorWebAppFfmpegAssetsForTest = tasks.register<Copy>("mirrorWebAppFfmpegAssetsForTest") {
         val webAppRes = project(":webApp").projectDir.resolve("src/wasmJsMain/resources")
         from(webAppRes.resolve("odin-ffmpeg.js"))
         from(webAppRes.resolve("ffmpeg-wrapper.js"))
@@ -193,12 +196,12 @@ kotlin {
         // Desktop/JVM, iOS/native, and Web/wasmJs. Android is intentionally excluded —
         // it uses android.graphics instead. Lets ImageUtils live in one place rather than
         // three near-identical per-platform copies (only convertHeicToJpeg stays per-platform).
-        val skiaMain by creating { dependsOn(commonMain.get()) }
+        val skiaMain = create("skiaMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(skiaMain)
         nativeMain.get().dependsOn(skiaMain)
         wasmJsMain.get().dependsOn(skiaMain)
 
-        val javaMain by creating { dependsOn(commonMain.get()) }
+        val javaMain = create("javaMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(javaMain)
         androidMain.get().dependsOn(javaMain)
 
@@ -243,7 +246,7 @@ kotlin {
         // wasmJs's kotlinx-coroutines has no blocking variants. Keeps the wasmJs test target
         // compilable for the cross-platform FfmpegDecoderCommonTest without losing JVM/iOS
         // coverage of these tests.
-        val jvmAndNativeTest by creating { dependsOn(commonTest.get()) }
+        val jvmAndNativeTest = create("jvmAndNativeTest") { dependsOn(commonTest.get()) }
         jvmTest.get().dependsOn(jvmAndNativeTest)
         nativeTest.get().dependsOn(jvmAndNativeTest)
         // androidHostTest is in the "test" source-set tree (runs on the host JVM with the
@@ -266,11 +269,6 @@ kotlin {
             implementation(libs.android.database.sqlcipher)
             implementation(libs.ffmpeg.kit)
             implementation(libs.smart.exception.java)
-            // MP4 atom-tree manipulation. Used by Mp4LocationStripper to drop
-            // EXIF / GPS location atoms from camera-recorded MP4s when the
-            // input passes through compressVideo's already-optimal check
-            // without re-encoding (re-encode naturally drops the atoms).
-            implementation(libs.mp4parser.isoparser)
             implementation(libs.androidsvg)
         }
         nativeMain.dependencies {

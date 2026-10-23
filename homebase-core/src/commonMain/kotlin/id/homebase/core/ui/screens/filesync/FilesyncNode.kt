@@ -106,7 +106,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
     }
     val nodeId = appData.uniqueId ?: return null
     if (!serverFileIsEncrypted) {
-        Logger.w(TAG) { "skipping node $nodeId: not encrypted" }
+        Logger.w(tag = TAG) { "skipping node $nodeId: not encrypted" }
         return null
     }
     val raw = runCatching { OdinSystemSerializer.json.parseToJsonElement(appData.content.orEmpty()).jsonObject }.getOrNull()
@@ -114,7 +114,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
     val name = content?.name?.takeIf { content.v >= 1 && FilesyncNames.isValid(it) }
     // Without its size a file's padded stored size would be taken for it, and every download would fail its hash.
     if (raw == null || name == null || (!isFolder && content.size == null)) {
-        Logger.w(TAG) { "skipping node $nodeId: unreadable content" }
+        Logger.w(tag = TAG) { "skipping node $nodeId: unreadable content" }
         return null
     }
 
@@ -123,7 +123,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         val iv = descriptor?.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
         val hash = descriptor?.hash
         if (iv == null || hash == null) {
-            Logger.w(TAG) { "skipping file $nodeId: no hashed ${FilesyncProtocol.PayloadKey} payload" }
+            Logger.w(tag = TAG) { "skipping file $nodeId: no hashed ${FilesyncProtocol.PayloadKey} payload" }
             return null
         }
         FilesyncPayload(fileId, KeyHeader(iv, keyHeader.aesKey), hash)

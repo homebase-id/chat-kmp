@@ -349,7 +349,7 @@ class ContactDetailViewModel(
                         needsReview = registration != null &&
                             contactStateOf(
                                 registration,
-                                domain?.let { d -> circ.personalCirclesFor(d) }.orEmpty(),
+                                domain.let { d -> circ.personalCirclesFor(d) }.orEmpty(),
                             ) == ContactState.New,
                         reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,

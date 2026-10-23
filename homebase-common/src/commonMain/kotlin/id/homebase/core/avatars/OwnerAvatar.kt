@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
@@ -43,6 +44,7 @@ fun OwnerAvatar(
     hasDriveError: Boolean = false,
     options: AvatarOptions,
     modifier: Modifier = Modifier,
+    onOpenImage: ((SubSamplingImageSource) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
@@ -104,6 +106,7 @@ fun OwnerAvatar(
                 odinId = odinId,
                 initials = initials,
                 options = options,
+                onOpenImage = onOpenImage,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
             )

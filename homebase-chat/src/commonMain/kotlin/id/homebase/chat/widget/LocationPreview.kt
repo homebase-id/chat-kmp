@@ -423,7 +423,7 @@ fun LocationPreviewCard(
                             Spacer(modifier = Modifier.height(6.dp))
                         }
                         MessageTimestampFooter(
-                            infoText = timestamp!!,
+                            infoText = timestamp,
                             contentColor = contentColor,
                             showDeliveryStatus = showDeliveryStatus,
                             isPendingSend = isPendingSend,
@@ -445,7 +445,7 @@ fun LocationPreviewCard(
                     .padding(12.dp),
             ) {
                 Text(
-                    text = descriptor.caption!!,
+                    text = descriptor.caption,
                     style = MaterialTheme.typography.bodyLarge,
                     color = captionContentColor,
                 )

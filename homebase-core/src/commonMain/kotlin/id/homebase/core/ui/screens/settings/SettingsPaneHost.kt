@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
@@ -67,7 +68,6 @@ internal data class SettingsPaneActions(
     val onNavigateToCropper: (Uuid) -> Unit,
     val onNavigateToDeveloperMenu: () -> Unit,
     val onNavigateToDefragmenter: () -> Unit,
-    val onNavigateToPlan: () -> Unit,
 )
 
 private enum class ProfilePage { Avatar, Card, CardEditor }
@@ -81,7 +81,7 @@ internal fun SettingsPaneHost(
 ) {
     // Plain remember, not rememberSaveable: the pane exists only on desktop/web, which have no
     // configuration change or process death to restore across.
-    var category by remember { mutableStateOf(SettingsCategory.General) }
+    var category by remember { mutableStateOf(SettingsPaneRequest.take() ?: SettingsCategory.General) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
     var editorOpenedFromCard by remember { mutableStateOf(false) }
     var editorOpensDesign by remember { mutableStateOf(false) }
@@ -219,6 +219,7 @@ private fun CategoryPage(
                 onMedia = { onSelectCategory(SettingsCategory.Media) },
                 onKeyboard = { onSelectCategory(SettingsCategory.Keyboard) },
                 onStorage = { onSelectCategory(SettingsCategory.Storage) },
+                onAccount = { onSelectCategory(SettingsCategory.Account) },
                 onHelp = { onSelectCategory(SettingsCategory.Help) },
                 onMomentsSettings = { onSelectCategory(SettingsCategory.Moments) },
                 onVaultSettings = { onSelectCategory(SettingsCategory.Vault) },
@@ -282,7 +283,14 @@ private fun CategoryPage(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onNavigateToDefragmenter = actions.onNavigateToDefragmenter,
-            onNavigateToPlan = actions.onNavigateToPlan,
+            onOpenAccount = { onSelectCategory(SettingsCategory.Account) },
+        )
+
+        // The hub (General) and this page share the pane's SettingsViewModel, for log out and delete account
+        SettingsCategory.Account -> AccountSettingsScreen(
+            viewModel = koinViewModel(),
+            settingsViewModel = koinViewModel(),
+            onBackClick = onDismiss,
         )
 
         SettingsCategory.Help -> HelpScreen(

@@ -1,6 +1,5 @@
 package id.homebase.imageeditor.ui
 
-import androidx.lifecycle.SavedStateHandle
 import id.homebase.imageeditor.core.AspectMode
 import id.homebase.imageeditor.core.Bounds
 import id.homebase.imageeditor.core.ControlPoint
@@ -19,10 +18,7 @@ import kotlin.uuid.Uuid
 class CropAnimationTest {
 
     private fun viewModel(): CropEditorViewModel {
-        val vm = CropEditorViewModel(
-            SavedStateHandle(mapOf("requestId" to Uuid.random().toString())),
-            CropResultBus(),
-        )
+        val vm = CropEditorViewModel(Uuid.random(), lockedAspect = null, CropResultBus())
         vm.model.onImageReady(Size(600, 450))
         vm.model.setVisibleViewPort(RectF(0f, 0f, 1080f, 1920f))
         vm.model.setCropAspectLock(false)

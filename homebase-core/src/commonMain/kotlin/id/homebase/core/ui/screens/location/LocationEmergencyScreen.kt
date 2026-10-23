@@ -53,8 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.contactbook.LocateVerifyStatus
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.SettingsSectionHeader
@@ -299,7 +299,7 @@ private fun PeopleListBody(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     AvatarStackRow(
-                        items = members.map { AvatarStackItem(it.odinId, it.avatarInitials) },
+                        items = members.map { AvatarStackItem(it.odinId, it.name) },
                         modifier = Modifier.weight(1f),
                     )
                     val chevronRotation by animateFloatAsState(
@@ -330,9 +330,9 @@ private fun PeopleListBody(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    PublicAvatar(
+                    IdentityAvatar(
                         odinId = member.odinId,
-                        initials = member.avatarInitials,
+                        displayName = member.name,
                         options = AvatarOptions(size = 40.dp),
                     )
                     Text(
@@ -349,7 +349,7 @@ private fun PeopleListBody(
     }
 }
 
-private data class AvatarStackItem(val odinId: OdinId, val initials: String)
+private data class AvatarStackItem(val odinId: OdinId, val name: String)
 
 @Composable
 private fun AvatarStackRow(
@@ -374,9 +374,9 @@ private fun AvatarStackRow(
                     .background(MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center,
             ) {
-                PublicAvatar(
+                IdentityAvatar(
                     odinId = item.odinId,
-                    initials = item.initials,
+                    displayName = item.name,
                     options = AvatarOptions(size = avatarSize),
                 )
             }

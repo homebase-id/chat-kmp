@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUuidApi::class, ExperimentalCoroutinesApi::class)
+@file:OptIn(ExperimentalUuidApi::class)
 
 package id.homebase.api.client.contacts
 
@@ -28,7 +28,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher

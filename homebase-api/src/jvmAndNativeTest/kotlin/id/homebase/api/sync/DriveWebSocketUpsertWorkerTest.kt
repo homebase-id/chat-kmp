@@ -10,7 +10,6 @@ import id.homebase.api.sync.database.createInMemoryDatabase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -104,7 +103,6 @@ class DriveWebSocketUpsertWorkerTest {
         collector.cancel()
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun submit_burst_batchesIntoSingleDrain() = runTest {
         // Why not the class-level `runBlocking` + `Dispatchers.Default` setup

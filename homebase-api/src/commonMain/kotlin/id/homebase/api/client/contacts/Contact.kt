@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUuidApi::class)
+@file:OptIn(ExperimentalUuidApi::class, ExperimentalEncodingApi::class)
 
 package id.homebase.api.client.contacts
 
@@ -7,6 +7,8 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -51,6 +53,16 @@ data class ContactImageRef(
     val keyHeader: KeyHeader?,
     val isEncrypted: Boolean,
 )
+
+internal val ContactImageRef.isSvg: Boolean
+    get() = payload.contentType == "image/svg+xml"
+
+/** The IV is per-payload, the AES key is the file's. Null until the payload is decodable. */
+fun ContactImageRef.payloadKeyHeader(): KeyHeader? {
+    val aesKey = keyHeader?.aesKey ?: return null
+    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    return KeyHeader(iv = iv, aesKey = aesKey)
+}
 
 /**
  * Parses a Contacts-drive [HomebaseFile] into a [Contact], or null when there's no usable header
