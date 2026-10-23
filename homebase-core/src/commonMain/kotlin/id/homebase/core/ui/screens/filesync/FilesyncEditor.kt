@@ -60,14 +60,14 @@ class FilesyncEditor(
         val trash = FilesyncTrash(repository.listDeleted())
         val tops = nodeIds.mapNotNull { id -> trash.all.nodes[id]?.takeIf { it.removed } }
         // One already live was restored by an earlier tap or another device: nothing to do, nothing to report.
-        val gone = (nodeIds - tops.map { it.nodeId }.toSet()).let { it.size - repository.findNodes(it, ArchivalStatus.None).nodes.size }
+        val gone = (nodeIds - tops.map { it.nodeId }.toSet()).let { it.size - repository.findNodes(it, FilesyncStatus.Live).nodes.size }
         val plan = tops.flatMap { trash.restorePlan(it) }.distinctBy { it.nodeId }
         val chains = mutableMapOf<Uuid, List<FilesyncNode>>()
         fun chainAbove(node: FilesyncNode) = chains.getOrPut(node.parentId) { trash.all.nodes[node.parentId]?.let(trash::chainOf).orEmpty() }
         // A node waits for the planned folders it comes back into, through live folders too: a level after the last of them.
         val level = mutableMapOf<Uuid, Int>()
         for (node in plan) level[node.nodeId] = chainAbove(node).mapNotNull { level[it.nodeId] }.maxOrNull()?.plus(1) ?: 0
-        val liveParents = repository.findNodes(plan.map { it.parentId }.filter { it !in level }, ArchivalStatus.None).nodes.keys
+        val liveParents = repository.findNodes(plan.map { it.parentId }.filter { it !in level }, FilesyncStatus.Live).nodes.keys
 
         val restored = mutableSetOf<Uuid>()
         // Folders of the plan deleted for good while it ran.
@@ -152,8 +152,8 @@ class FilesyncEditor(
                 for ((fileId, folder) in maybeGone) {
                     when (notThere[fileId]) {
                         null -> notFound.found(fileId)
-                        true -> wentForGood += folder
-                        false -> if (notFound.confirms(fileId, trash.all.handles.getValue(folder).versionTag)) wentForGood += folder else tryAgainSoon = true
+                        FilesyncNotThere.Tombstone -> wentForGood += folder
+                        FilesyncNotThere.NoHeader -> if (notFound.confirms(fileId, trash.all.handles.getValue(folder).versionTag)) wentForGood += folder else tryAgainSoon = true
                     }
                 }
             }
@@ -319,24 +319,28 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
 internal fun restoredContent(content: JsonObject, name: String) =
     JsonObject(content - REMOVAL_KEY + ("name" to JsonPrimitive(name)))
 
-/** One 404 never makes a file gone: the identity's second "not there" does, a minute to an hour after the first, at the same version. */
-// Wall time, not monotonic: Android's monotonic clock stops in deep sleep, which would stretch the hour.
+/**
+ * One 404 never makes a file gone: the identity's second "not there" does, a minute to an hour after the first, at the
+ * same version. Wall time, as Android's monotonic clock stops in deep sleep and would stretch the hour.
+ */
 internal class FilesyncNotFoundTwice(private val clock: Clock = Clock.System) {
-    private val first = mutableMapOf<Uuid, Pair<Uuid?, Instant>>()
+    private data class Sighting(val version: Uuid?, val at: Instant)
+
+    private val sightings = mutableMapOf<Uuid, Sighting>()
 
     /** Records that [fileId] at [version] wasn't found; true when that confirms an earlier time. */
     fun confirms(fileId: Uuid, version: Uuid?): Boolean {
         val now = clock.now()
-        first.values.removeAll { now - it.second > Window.endInclusive }
-        val since = first[fileId]?.takeIf { it.first == version }?.let { now - it.second }
-        if (since != null && since in Window) return true.also { first.remove(fileId) }
-        if (since == null) first[fileId] = version to now
+        sightings.values.removeAll { now - it.at > Window.endInclusive }
+        val since = sightings[fileId]?.takeIf { it.version == version }?.let { now - it.at }
+        if (since != null && since in Window) return true.also { sightings.remove(fileId) }
+        if (since == null) sightings[fileId] = Sighting(version, now)
         return false
     }
 
     /** A header found meanwhile clears the doubt. */
     fun found(fileId: Uuid) {
-        first.remove(fileId)
+        sightings.remove(fileId)
     }
 
     private companion object {
@@ -344,7 +348,7 @@ internal class FilesyncNotFoundTwice(private val clock: Clock = Clock.System) {
     }
 }
 
-/** Runs [write] and turns its outcome into the one message the user sees; true when everything was written. */
+/** Runs [write] and turns its outcome into the messages the user sees; true when everything was written. */
 internal suspend fun reportWrite(
     done: FilesyncNotice,
     failed: FilesyncError,
@@ -359,17 +363,13 @@ internal suspend fun reportWrite(
         Logger.e(e, TAG) { "$done failed" }
         null
     }
-    send(
-        when {
-            result == null -> FilesyncUiEvent.Error(failed)
-            // Nothing lists those until a computer syncs, so saying where comes first.
-            result.recovered > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered)
-            result.tryAgainSoon -> FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon)
-            result.skipped > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere)
-            else -> FilesyncUiEvent.Notice(done)
-        }
-    )
-    // A retry won't plan what this one brought back, so it can't say where that went: both are said now.
-    if (result != null && result.recovered > 0 && result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
-    return result != null && result.skipped == 0
+    if (result == null) {
+        send(FilesyncUiEvent.Error(failed))
+        return false
+    }
+    // Nothing lists those until a computer syncs, so saying where comes first; a retry won't plan them, so it's said now.
+    if (result.recovered > 0) send(FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered))
+    if (result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
+    if (result.recovered == 0 && !result.tryAgainSoon) send(FilesyncUiEvent.Notice(if (result.skipped > 0) FilesyncNotice.ChangedElsewhere else done))
+    return result.skipped == 0
 }
