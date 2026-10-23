@@ -100,7 +100,7 @@ class FilesyncEditor(
                     val version = handle.fileVersionTag
                     when {
                         orphan == null || !handle.writable -> skipped++
-                        version != null && (orphan || taken(node.parentId).add(FilesyncNames.key(node.name))) -> batch += version to node
+                        version != null && (orphan || taken(node.parentId).add(node.nameKey)) -> batch += version to node
                         else -> rewrites += node
                     }
                 }
@@ -114,7 +114,7 @@ class FilesyncEditor(
                             null -> restored += node.nodeId
                             in ChangedElsewhere -> {
                                 skipped++
-                                takenByFolder[node.parentId]?.remove(FilesyncNames.key(node.name))
+                                takenByFolder[node.parentId]?.remove(node.nameKey)
                                 if (node.isFolder && code == OdinClientErrorCode.FileNotFound) maybeGone[answer.fileId] = node.nodeId
                                 if (node.isFolder && code == OdinClientErrorCode.CannotUpdateNonActiveFile) wentForGood += node.nodeId
                                 Logger.i(tag = TAG) { "node ${node.nodeId} changed elsewhere; left as it is" }

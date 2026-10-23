@@ -37,7 +37,7 @@ class FilesyncRepository(
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
         queryAll(folderParams(folderId, includeRemoved)).first
 
-    suspend fun takenNames(folderId: Uuid): MutableSet<String> = FilesyncNames.takenKeys(listFolder(folderId).nodes.values)
+    suspend fun takenNames(folderId: Uuid): MutableSet<String> = FilesyncNames.takenKeys(folderId, listFolder(folderId).nodes.values)
 
     /** Whether [listFolder] would find anything in [folderId]. */
     suspend fun holdsAny(folderId: Uuid, includeRemoved: Boolean): Boolean =
