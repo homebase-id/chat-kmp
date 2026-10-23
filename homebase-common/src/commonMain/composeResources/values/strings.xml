@@ -65,6 +65,9 @@
     <string name="storage_account_title">Homebase storage</string>
     <string name="storage_account_usage">%1$s of %2$s used</string>
     <string name="storage_account_usage_unlimited">%1$s used</string>
+    <string name="storage_account_less_than_one_percent">Less than 1%</string>
+    <string name="storage_account_used_free">%1$s used · %2$s free</string>
+    <string name="storage_account_under">Under %1$s</string>
     <string name="storage_account_plan">Plan: %1$s</string>
     <string name="storage_account_full">Your storage is full. New photos, videos and files won't upload until you free up space.</string>
     <string name="storage_full_banner">Your Homebase storage is full. Messages with photos or files are waiting; messages without them still send and arrive.</string>
