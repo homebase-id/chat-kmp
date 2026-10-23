@@ -64,6 +64,9 @@
     <string name="storage_account_title">Homebase-lagerplads</string>
     <string name="storage_account_usage">%1$s af %2$s brugt</string>
     <string name="storage_account_usage_unlimited">%1$s brugt</string>
+    <string name="storage_account_less_than_one_percent">Mindre end 1%</string>
+    <string name="storage_account_used_free">%1$s brugt · %2$s ledig</string>
+    <string name="storage_account_under">Under %1$s</string>
     <string name="storage_account_plan">Abonnement: %1$s</string>
     <string name="storage_account_full">Din lagerplads er fuld. Nye billeder, videoer og filer uploades ikke, før du frigør plads.</string>
     <string name="storage_full_banner">Din Homebase-lagerplads er fuld. Beskeder med billeder eller filer venter; beskeder uden bliver stadig sendt og modtaget.</string>
