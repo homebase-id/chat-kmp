@@ -30,11 +30,9 @@ private object SecureStorageRawKeyStore : RawKeyStore {
  * (`key=x'<64 hex>'`) over passphrase mode (`key=<text>`).
  *
  * The distinction is the whole point: with a passphrase SQLCipher runs
- * PBKDF2-HMAC-SHA512 × 256,000 on *every* connection open, and SQLDelight's
- * [app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver] closes its connection
- * whenever no transaction is active — so a cold start pays that KDF ~30 times
- * (measured: 165 ms each, ~4 s of a desktop launch). A raw key is the KDF's *output*,
- * so handing it over directly skips the derivation and opens in ~1 ms.
+ * PBKDF2-HMAC-SHA512 × 256,000 (measured 165 ms) on *every* connection open. A raw key
+ * is the KDF's *output*, so handing it over directly skips the derivation and opens in
+ * ~1 ms.
  *
  * The 32-byte key is derived once from the existing passphrase and the file's own
  * 16-byte header salt, then cached. Same key, same ciphertext — the database file is

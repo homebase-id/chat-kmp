@@ -35,11 +35,10 @@ internal fun DatabaseDriverFactory.databaseFiles(): List<String> =
     databaseFilePaths(dbFilePath())
 
 /**
- * Shared SQLite tuning applied identically on every platform — the single source of
- * truth so the three [DatabaseDriverFactory] actuals can't drift. Each platform applies
- * it through its driver's native mechanism (desktop: JDBC connection [java.util.Properties];
- * Android: `execSQL` in the open-helper callback; iOS: `rawExecSql` in the sqliter
- * connection lifecycle), but the pragma set itself lives here.
+ * Shared SQLite tuning — the single source of truth so the [DatabaseDriverFactory] actuals
+ * can't drift. Desktop applies it as JDBC connection [java.util.Properties] and Android in the
+ * open-helper callback. iOS mirrors it with sqliter's typed config, which has no field for
+ * `temp_store` or `journal_size_limit`. wasmJs's in-memory sql.js takes none of it.
  *
  *  - `journal_mode=WAL` — readers and the single writer don't block each other. Reads
  *    bypass [DatabaseManager]'s single-writer dispatcher and run on separate connections,
@@ -50,12 +49,15 @@ internal fun DatabaseDriverFactory.databaseFiles(): List<String> =
  *  - `synchronous=NORMAL` — faster, WAL-safe durability (no corruption risk; at most the
  *    last committed transaction is lost on power loss).
  *  - `temp_store=MEMORY` — temp tables/indices in RAM.
+ *  - `journal_size_limit` — connections stay open, so nothing deletes the `-wal`; this trims
+ *    it back after a write burst. About the auto-checkpoint size (1000 pages of 4 KB).
  */
 internal val SQLITE_TUNING_PRAGMAS: Map<String, String> = linkedMapOf(
     "journal_mode" to "WAL",
     "busy_timeout" to "5000",
     "synchronous" to "NORMAL",
     "temp_store" to "MEMORY",
+    "journal_size_limit" to "4194304",
 )
 
 /**
@@ -67,6 +69,10 @@ internal fun sqliteTuningPragmaStatements(): List<String> =
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 expect class DatabaseDriverFactory {
+    /**
+     * Statements reuse the driver's open connections instead of opening one each, so the page
+     * cache and parsed schema survive between queries.
+     */
     fun createDriver(passphrase: String? = null): SqlDriver
 
     /**
