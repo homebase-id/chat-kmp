@@ -588,7 +588,7 @@ private fun parseSvgDimensions(svgBytes: ByteArray): Pair<Int, Int>? {
     return if (w != null && h != null) w to h else null
 }
 
-private val svgTextRegex = Regex("""<text\b([^>]*)>(.*?)</text>""", RegexOption.DOT_MATCHES_ALL)
+private val svgTextRegex = Regex("""<text\b([^>]*?)(?:/>|>(.*?)</text>)""", RegexOption.DOT_MATCHES_ALL)
 private val svgTagRegex = Regex("""<[^>]*>""")
 
 private fun svgAttr(attrs: String, name: String): String? =
@@ -605,13 +605,27 @@ private fun parseSvgColor(value: String?): Int {
 
 // skiko's SVGDOM has no FontMgr hook, so Skia's SVG module drops <text>; draw simple ones ourselves.
 private fun drawSvgText(canvas: org.jetbrains.skia.Canvas, svg: String, containerW: Float, containerH: Float) {
-    val viewBox = svgViewBox(svg)
+    val root = Regex("""<svg\b[^>]*>""").find(svg)?.value
+    val viewBox = root?.let(::svgViewBox)
     canvas.save()
-    if (viewBox != null) {
+    if (root != null && viewBox != null) {
         val (vx, vy, vw, vh) = viewBox
-        val s = minOf(containerW / vw, containerH / vh)
-        canvas.translate((containerW - vw * s) / 2 - vx * s, (containerH - vh * s) / 2 - vy * s)
-        canvas.scale(s, s)
+        val par = svgAttr(root, "preserveAspectRatio")?.trim()?.split(Regex("""\s+"""))
+            ?.filter { it != "defer" }.orEmpty()
+        val align = par.firstOrNull() ?: "xMidYMid"
+        if (align == "none") {
+            val sx = containerW / vw
+            val sy = containerH / vh
+            canvas.translate(-vx * sx, -vy * sy)
+            canvas.scale(sx, sy)
+        } else {
+            val s = if (par.getOrNull(1) == "slice") maxOf(containerW / vw, containerH / vh)
+            else minOf(containerW / vw, containerH / vh)
+            val fx = if (align.startsWith("xMin")) 0f else if (align.startsWith("xMax")) 1f else 0.5f
+            val fy = if (align.endsWith("YMin")) 0f else if (align.endsWith("YMax")) 1f else 0.5f
+            canvas.translate((containerW - vw * s) * fx - vx * s, (containerH - vh * s) * fy - vy * s)
+            canvas.scale(s, s)
+        }
     }
     try {
         drawSvgTextRuns(canvas, svg)
@@ -620,8 +634,7 @@ private fun drawSvgText(canvas: org.jetbrains.skia.Canvas, svg: String, containe
     }
 }
 
-private fun svgViewBox(svg: String): List<Float>? {
-    val root = Regex("""<svg\b[^>]*>""").find(svg)?.value ?: return null
+private fun svgViewBox(root: String): List<Float>? {
     val nums = svgAttr(root, "viewBox")?.trim()?.split(Regex("""[\s,]+"""))?.mapNotNull { it.toFloatOrNull() }
     return nums?.takeIf { it.size == 4 && it[2] > 0f && it[3] > 0f }
 }
@@ -631,7 +644,8 @@ private fun drawSvgTextRuns(canvas: org.jetbrains.skia.Canvas, svg: String) {
         val attrs = match.groupValues[1]
         val text = match.groupValues[2].replace(svgTagRegex, "").trim()
             .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&amp;", "&")
-        if (text.isEmpty()) continue
+        val fill = svgAttr(attrs, "fill")?.trim()?.lowercase()
+        if (text.isEmpty() || fill == "none" || fill == "transparent") continue
         val size = svgAttr(attrs, "font-size")?.removeSuffix("px")?.toFloatOrNull() ?: 16f
         val bold = svgAttr(attrs, "font-weight")?.let { it == "bold" || (it.toIntOrNull() ?: 400) >= 600 } == true
         val style = if (bold) org.jetbrains.skia.FontStyle.BOLD else org.jetbrains.skia.FontStyle.NORMAL
@@ -652,7 +666,7 @@ private fun drawSvgTextRuns(canvas: org.jetbrains.skia.Canvas, svg: String) {
         }
         val paint = Paint()
         try {
-            paint.color = parseSvgColor(svgAttr(attrs, "fill"))
+            paint.color = parseSvgColor(fill)
             paint.isAntiAlias = true
             canvas.drawString(text, x, y, font, paint)
         } finally {

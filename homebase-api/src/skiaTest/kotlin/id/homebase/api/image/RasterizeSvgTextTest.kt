@@ -66,4 +66,24 @@ class RasterizeSvgTextTest {
             <text x="50" y="35" font-size="30" fill="#ffffff" text-anchor="middle" font-family="sans-serif">M</text></svg>"""
         assertInside(lightPixelBox(svg), 0.3f, 0.7f, 0.3f, 0.7f)
     }
+
+    @Test
+    fun textFollowsPreserveAspectRatioAlign() = runTest {
+        val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 100 50" preserveAspectRatio="xMidYMin meet">
+            <rect width="100" height="50" fill="#112233"/>
+            <text x="50" y="35" font-size="30" fill="#ffffff" text-anchor="middle" font-family="sans-serif">M</text></svg>"""
+        assertInside(lightPixelBox(svg), 0.3f, 0.7f, 0.0f, 0.5f)
+    }
+
+    @Test
+    fun unfilledAndSelfClosingTextDrawsNothing() = runTest {
+        val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+            <rect width="200" height="200" fill="#ffffff"/>
+            <text x="10" y="100" font-size="80"/>
+            <text x="100" y="125" font-size="80" fill="none" stroke="#000000" text-anchor="middle">ME</text></svg>"""
+        val result = ImageUtils.rasterizeSvg(svg.encodeToByteArray(), 200, ImageFormat.PNG, 100)
+        val img = ImageUtils.decodeToArgb(result.bytes)!!
+        val dark = img.pixels.count { ((it shr 16) and 0xFF) < 100 }
+        assertTrue(dark == 0, "expected no glyph pixels, found $dark")
+    }
 }
