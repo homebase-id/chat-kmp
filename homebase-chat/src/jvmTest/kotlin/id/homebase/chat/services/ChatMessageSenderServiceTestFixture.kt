@@ -67,9 +67,9 @@ import kotlin.uuid.Uuid
  */
 class ChatMessageSenderServiceTestFixture : AutoCloseable {
 
-    val testIdentityId: Uuid = Uuid.parse("7b1be23b-48bb-4304-bc7b-db5910c09a92")
-    val chatDriveId: Uuid = Uuid.parse("9ff813af-f2d6-1e2f-9b9d-b189e72d1a11")
-    val testDomain: String = "owner.test"
+    val testIdentityId: Uuid = ChatMessageStreamTestFixture.testIdentityId
+    val chatDriveId: Uuid = ChatMessageStreamTestFixture.chatDriveId
+    val testDomain: String = ChatMessageStreamTestFixture.testDomain
 
     lateinit var dbm: DatabaseManager
         private set
@@ -122,38 +122,15 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             outboxSync = outboxSync,
         )
 
-        // Real DriveFileProvider with a scriptable mock engine (default: 500s
-        // every request — the send path doesn't call into it).
-        val httpClient = HttpClient(MockEngine { request -> engineHandler(request) })
-        val driveCache = DriveFileProviderCached(
-            httpClient,
-            credentialsManager,
-            SenderNoopFileOperationsProvider(),
-        )
-        val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache)
-
-        val cacheSeeder = PayloadCacheSeeder(driveFileProvider, SenderNoopFileOperationsProvider())
-        // Same wiring the app uses (UploadService over the same outbox/encryptor/optimistic
-        // writer/seeder), so these tests exercise the real shared send spine.
-        val uploadService = UploadService(
-            encryptor = encryptorOverride ?: payloadEncryptor,
-            outboxSync = outboxSync,
-            optimisticWriter = OptimisticWriterPort(optimisticWriter),
-            payloadCacheSeeder = cacheSeeder,
-        )
-
-        return ChatMessageSenderService(
-            outboxSync = outboxSync,
-            conversationStream = conversationLookup,
-            payloadBundleEncryptionService = encryptorOverride ?: payloadEncryptor,
+        return testChatMessageSenderService(
             scope = scope,
-            chatMessageStream = messageLookup?.invoke(dbm) ?: FakeMessageLookup(),
+            outboxSync = outboxSync,
             optimisticWriter = optimisticWriter,
-            fileOperationsProvider = SenderNoopFileOperationsProvider(),
-            driveFileProvider = driveFileProvider,
-            payloadCacheSeeder = cacheSeeder,
-            uploadService = uploadService,
-            shareSuggestionDonor = ShareSuggestionDonor(),
+            credentialsManager = credentialsManager,
+            conversations = conversationLookup,
+            messageLookup = messageLookup?.invoke(dbm) ?: FakeMessageLookup(),
+            encryptor = encryptorOverride ?: payloadEncryptor,
+            httpClient = HttpClient(MockEngine { request -> engineHandler(request) }),
         )
     }
 
@@ -167,24 +144,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         others: List<String>,
         isGroup: Boolean = others.size > 1,
     ): Uuid {
-        val participants = listOf(testDomain) + others
-        conversationLookup.register(
-            ConversationUiModel(
-                id = conversationId,
-                name = "test",
-                lastMessage = "",
-                latestMessageTimestamp = Instant.fromEpochMilliseconds(0),
-                admins = setOf(OdinId(testDomain)),
-                unreadCount = 0,
-                avatarTiny = null,
-                avatarInitials = "",
-                participants = participants.map { OdinId(it) },
-                lastRead = Instant.fromEpochMilliseconds(0),
-                avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
-                isGroup = isGroup,
-                conversationState = ConversationState.Active,
-            )
-        )
+        conversationLookup.register(testConversation(conversationId, testDomain, others, isGroup))
         return conversationId
     }
 
@@ -332,4 +292,63 @@ private object SenderThrowingOutboxUploader : OutboxUploader {
     override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
         error("OutboxUploader.upload should never be called in tests (setOnline(false))")
     }
+}
+
+internal fun testConversation(
+    conversationId: Uuid,
+    owner: String,
+    others: List<String>,
+    isGroup: Boolean = others.size > 1,
+): ConversationUiModel = ConversationUiModel(
+    id = conversationId,
+    name = "test",
+    lastMessage = "",
+    latestMessageTimestamp = Instant.fromEpochMilliseconds(0),
+    admins = setOf(OdinId(owner)),
+    unreadCount = 0,
+    avatarTiny = null,
+    avatarInitials = "",
+    participants = (listOf(owner) + others).map { OdinId(it) },
+    lastRead = Instant.fromEpochMilliseconds(0),
+    avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
+    isGroup = isGroup,
+    conversationState = ConversationState.Active,
+)
+
+/**
+ * The app's send spine over a test's own outbox and optimistic writer: one [PayloadCacheSeeder]
+ * shared by the service and its [UploadService], as in DI. [httpClient] backs [DriveFileProvider],
+ * which the send path doesn't call.
+ */
+internal fun testChatMessageSenderService(
+    scope: CoroutineScope,
+    outboxSync: OutboxSync,
+    optimisticWriter: OptimisticWriter,
+    credentialsManager: CredentialsManager,
+    conversations: ConversationParticipantLookup,
+    messageLookup: MessageLookup,
+    encryptor: PayloadBundleEncryptor = FakePayloadBundleEncryptor(),
+    httpClient: HttpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }),
+): ChatMessageSenderService {
+    val fileOps = SenderNoopFileOperationsProvider()
+    val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, DriveFileProviderCached(httpClient, credentialsManager, fileOps))
+    val cacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
+    return ChatMessageSenderService(
+        outboxSync = outboxSync,
+        conversationStream = conversations,
+        payloadBundleEncryptionService = encryptor,
+        scope = scope,
+        chatMessageStream = messageLookup,
+        optimisticWriter = optimisticWriter,
+        fileOperationsProvider = fileOps,
+        driveFileProvider = driveFileProvider,
+        payloadCacheSeeder = cacheSeeder,
+        uploadService = UploadService(
+            encryptor = encryptor,
+            outboxSync = outboxSync,
+            optimisticWriter = OptimisticWriterPort(optimisticWriter),
+            payloadCacheSeeder = cacheSeeder,
+        ),
+        shareSuggestionDonor = ShareSuggestionDonor(),
+    )
 }

@@ -1,0 +1,9 @@
+# The same read receipt, but its modified ties the stored row's (server-owned fields are adopted)
+# Regenerate: DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'
+reads 2, writes 2, transactions 1
+
+1x read              DriveLocalTagIndexWrapper.selectJsonHeadersByLocalTagInGroup < ChatMessageStream.getPinnedMessages SELECT m.jsonHeader FROM DriveLocalTagIndex t JOIN DriveMainIndex m ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId WHERE t.ide
+1x read in tx        HomebaseFileProcessor.adoptServerOwnedFields < HomebaseFileProcessor.performBaseUpsert SELECT DriveMainIndex.rowId, DriveMainIndex.identityId, DriveMainIndex.driveId, DriveMainIndex.fileId, DriveMainIndex.uniqueId, DriveMainIndex.globalTransitId,
+1x write in tx       HomebaseFileProcessor.adoptServerOwnedFields < HomebaseFileProcessor.performBaseUpsert UPDATE DriveMainIndex SET jsonHeader = ? WHERE rowId = ?
+1x write in tx       MainIndexMetaHelpers.upsertDriveMainIndex < HomebaseFileProcessor.performBaseUpsert INSERT INTO DriveMainIndex ( identityId,driveId,fileId, uniqueId,globalTransitId, groupId, senderId, originalAuthor, fileType,dataType,archivalStatus,fileState,
+1x transaction       HomebaseFileProcessor.performBaseUpsert < DriveWebSocketUpsertWorker.drainOnce BEGIN

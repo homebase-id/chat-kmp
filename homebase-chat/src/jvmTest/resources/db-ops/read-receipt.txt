@@ -1,0 +1,9 @@
+# The recipient reads a sent message in the open conversation; the push carries a newer modified
+# Regenerate: DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'
+reads 1, writes 3, transactions 1
+
+1x read              DriveLocalTagIndexWrapper.selectJsonHeadersByLocalTagInGroup < ChatMessageStream.getPinnedMessages SELECT m.jsonHeader FROM DriveLocalTagIndex t JOIN DriveMainIndex m ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId WHERE t.ide
+1x write in tx       HomebaseFileProcessor.rewriteTags < HomebaseFileProcessor.performBaseUpsert DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ? AND fileId = ?
+1x write in tx       HomebaseFileProcessor.rewriteTags < HomebaseFileProcessor.performBaseUpsert DELETE FROM DriveTagIndex WHERE identityId = ? AND driveId = ? AND fileId = ?
+1x write in tx       MainIndexMetaHelpers.upsertDriveMainIndex < HomebaseFileProcessor.performBaseUpsert INSERT INTO DriveMainIndex ( identityId,driveId,fileId, uniqueId,globalTransitId, groupId, senderId, originalAuthor, fileType,dataType,archivalStatus,fileState,
+1x transaction       HomebaseFileProcessor.performBaseUpsert < DriveWebSocketUpsertWorker.drainOnce BEGIN

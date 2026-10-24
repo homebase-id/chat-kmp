@@ -172,6 +172,7 @@ kotlin {
             }
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.kotlinx.coroutines.debug)
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
             implementation(libs.androidx.navigationevent)

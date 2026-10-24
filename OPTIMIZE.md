@@ -30,6 +30,26 @@ DB_BENCH=1 ./gradlew :homebase-api:jvmTest --tests '*DbPerfBench*' --rerun -q
 - Close to production but not identical: real headers carry fields the fixture doesn't
   (transfer history, link previews). Compare runs with each other, not with a device.
 
+### DB operations per flow (JVM, deterministic, runs in CI)
+
+```bash
+./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'
+DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'   # accept a change
+```
+
+- `CountingSqlDriver` (homebase-chat `jvmTest`) records every statement a flow runs, whether it
+  ran inside a transaction, and the app code that issued it ("helper < the code that called it").
+  The test reads the callers from the coroutine's async stack (kotlinx-coroutines-debug), since a
+  resumed coroutine's callers aren't on the thread's stack.
+- `DbOpsBaselineTest` drives each flow through the real services on an in-memory database and
+  compares the statements with `homebase-chat/src/jvmTest/resources/db-ops/<flow>.txt`. A change
+  fails the test; the diff in the PR shows what changed and why.
+- Counts, not time: they don't move with machine load, so CI can hold them.
+- Covered so far: opening a conversation (fresh, and around a saved message), an incoming
+  message, a read receipt, sending a message (offline outbox), a background wake (drive sync).
+  Not covered yet: ConversationListViewModel's own reads when opening (it needs Koin), the
+  push-tap path, mark-as-read, typed messages (polls, events) that auto-pin.
+
 ### On a device
 
 `homebase.log` already carries:
@@ -98,6 +118,25 @@ on desktop.
   header. The tap → first-messages time is already logged at Info:
   `messages first emission id=… sinceSelected=…` (ConversationListViewModel). Check that on
   the phone before changing anything.
+
+- **DB operations per flow** (2026-10-24, `DbOpsBaselineTest`, 100-message conversation):
+
+  | Flow | reads | writes | transactions |
+  |---|---|---|---|
+  | open a conversation | 2 | 0 | 0 |
+  | open around a saved message | 4 | 0 | 0 |
+  | incoming message (conversation open) | 1 | 3 | 1 |
+  | read receipt, newer `modified` | 1 | 3 | 1 |
+  | read receipt, equal `modified` (server-owned fields adopted) | 2 | 2 | 1 |
+  | send a text message | 1 | 5 | 1 |
+  | background wake, 3 new messages | 1 | 12 | 1 |
+
+  Every incoming batch, read receipt and send re-reads the pinned bar (`refreshPinnedFor`)
+  for the open conversation, whether or not anything pin-related changed. A send's outbox insert
+  runs outside the transaction of its optimistic write. A sync writes the drive cursor once per
+  file, not once per batch (3 of the background wake's 12 writes). Opening a conversation at the service
+  level is the message page and the pinned bar; the ViewModel adds `unpinExpiredPins` and the
+  pinned observer on top (not measured yet).
 
 ## Tried
 
