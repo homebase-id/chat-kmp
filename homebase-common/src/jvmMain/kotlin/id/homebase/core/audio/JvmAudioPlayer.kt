@@ -157,6 +157,7 @@ open class JvmAudioPlayer : AudioPlayer {
 
         try {
             val input = startDecoder(filePath, seekMs) ?: run {
+                stopPlayback()
                 observer?.onComplete()
                 return
             }
