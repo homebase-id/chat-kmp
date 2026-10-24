@@ -11,6 +11,16 @@ plugins {
 kotlin {
     applyDefaultHierarchyTemplate()
 
+    sourceSets.matching { it.name.startsWith("wasmJs") }.configureEach {
+        languageSettings.optIn("kotlin.js.ExperimentalWasmJsInterop")
+    }
+    sourceSets.matching { s -> listOf("native", "apple", "ios").any { s.name.startsWith(it) } }.configureEach {
+        languageSettings.optIn("kotlinx.cinterop.BetaInteropApi")
+    }
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+
     android {
         namespace = "id.homebase.chat"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
@@ -40,7 +50,6 @@ kotlin {
             baseName = "homebase-chatKit"
             isStatic = true
         }
-        iosTarget.compilerOptions { optIn.add("kotlinx.cinterop.BetaInteropApi") }
     }
 
     compilerOptions {

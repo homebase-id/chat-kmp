@@ -2,7 +2,6 @@ package id.homebase.imageeditor.ui
 
 import id.homebase.api.image.ImageResult
 import id.homebase.api.image.ImageSize
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -18,7 +17,6 @@ import kotlin.uuid.Uuid
  * `postResult` never closed the channel and the nav callers never `cancel()`ed —
  * leaking one coroutine + Channel per crop/draw for the ViewModel's lifetime.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class CropDrawResultBusTest {
 
     private fun result(b: Byte = 1) =

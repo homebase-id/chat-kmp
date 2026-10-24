@@ -1,7 +1,6 @@
 package id.homebase.chat.dice
 
 import androidx.compose.runtime.mutableStateListOf
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -9,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class DiceRollTumbleTest {
 
     /**

@@ -230,6 +230,10 @@ kotlin {
 
     applyDefaultHierarchyTemplate()
 
+    sourceSets.matching { it.name.startsWith("wasmJs") }.configureEach {
+        languageSettings.optIn("kotlin.js.ExperimentalWasmJsInterop")
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(project(":homebase-common"))

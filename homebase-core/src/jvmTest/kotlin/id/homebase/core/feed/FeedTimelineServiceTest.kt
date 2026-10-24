@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalCoroutinesApi::class)
-
 package id.homebase.core.feed
 
 import app.cash.sqldelight.Query
@@ -28,7 +26,6 @@ import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
