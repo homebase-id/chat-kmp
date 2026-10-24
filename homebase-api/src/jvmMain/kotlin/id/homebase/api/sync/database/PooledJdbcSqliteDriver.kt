@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class PooledJdbcSqliteDriver(
     private val url: String,
     private val properties: Properties,
-    maxIdle: Int = 8,
+    maxIdle: Int = 1 + SQLITE_READER_CONNECTIONS,
 ) : JdbcDriver() {
     init {
         // Each pooled connection to an in-memory URL would get its own empty database.

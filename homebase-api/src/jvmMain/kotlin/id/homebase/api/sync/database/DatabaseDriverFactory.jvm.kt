@@ -12,7 +12,7 @@ actual class DatabaseDriverFactory {
         val jdbcUrl = if (passphrase.isNullOrEmpty()) {
             "jdbc:sqlite:$dbFileName"
         } else {
-            SqlCipherKeyMode.jdbcUrl(dbFile, passphrase)
+            sqlCipherJdbcUrl(dbFile, passphrase)
         }
 
         return openSqliteDriver(jdbcUrl)

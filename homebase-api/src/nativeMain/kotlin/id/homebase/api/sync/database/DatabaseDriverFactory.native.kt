@@ -7,7 +7,6 @@ import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.kermit.Logger
 import co.touchlab.sqliter.DatabaseConfiguration
 import co.touchlab.sqliter.JournalMode
-import co.touchlab.sqliter.SynchronousFlag
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
@@ -24,41 +23,7 @@ import platform.Foundation.NSUserDomainMask
 
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
-        val driver = NativeSqliteDriver(
-            schema = OdinDatabase.Schema,
-            name = DB_FILE_NAME,
-            // Open a pool of reader connections (default is 1 = writer only) so reads
-            // dispatched off DatabaseManager's single write dispatcher run concurrently
-            // with the writer under WAL (configured below). This is the iOS half of the
-            // "reads don't queue behind writes" change — it's the same driver's internal
-            // pool, not a second managed SqlDriver. Kept in step with
-            // DatabaseManager.READ_PARALLELISM.
-            maxReaderConnections = 4,
-            onConfiguration = { config ->
-                // Configure via sqliter's typed DatabaseConfiguration fields — the idiomatic
-                // path for NativeSqliteDriver/SQLiter, not raw PRAGMA strings. This mirrors the
-                // shared SQLITE_TUNING_PRAGMAS values (desktop/Android use that map directly):
-                //   - journalMode=WAL  (already sqliter's default; set explicitly so it can't
-                //     drift) so reads don't block the writer.
-                //   - busyTimeout=5s   so contention waits instead of throwing SQLITE_BUSY.
-                //   - synchronousFlag=NORMAL  faster, WAL-safe durability.
-                // temp_store has no sqliter config field; it's the least-important tuning pragma
-                // so we omit it on iOS rather than reach for rawExecSql (which on Android we saw
-                // is finicky for result-returning pragmas).
-                //
-                // NOTE: native targets don't compile on Windows — verify on macOS/CI against the
-                // `DB pragmas: journal_mode=wal …` audit line.
-                config.copy(
-                    journalMode = JournalMode.WAL,
-                    extendedConfig = config.extendedConfig.copy(
-                        busyTimeout = 5_000,
-                        synchronousFlag = SynchronousFlag.NORMAL,
-                    ),
-                    encryptionConfig = DatabaseConfiguration.Encryption(
-                        key = passphrase ?: "", rekey = ""
-                    )
-                )
-            })
+        val driver = openNativeSqliteDriver(DB_FILE_NAME, passphrase)
 
         // Mark the SQLite files as ineligible for iCloud / Finder backup. Same
         // motivation as Android's allowBackup=false (AndroidManifest.xml): the
@@ -90,6 +55,28 @@ actual class DatabaseDriverFactory {
     // it pointed at a non-existent dir, so recovery and backup-exclusion silently no-op'd.)
     actual fun dbFilePath(): String = "${iosDatabasesDir()}/$DB_FILE_NAME"
 }
+
+internal fun openNativeSqliteDriver(name: String, passphrase: String?): SqlDriver = NativeSqliteDriver(
+    schema = OdinDatabase.Schema,
+    name = name,
+    maxReaderConnections = SQLITE_READER_CONNECTIONS,
+    onConfiguration = { config ->
+        config.copy(
+            journalMode = JournalMode.valueOf(SQLITE_JOURNAL_MODE),
+            lifecycleConfig = config.lifecycleConfig.copy(
+                onCreateConnection = { connection ->
+                    config.lifecycleConfig.onCreateConnection(connection)
+                    // Runs before sqliter sets the key, and synchronous reads the schema: fine while the
+                    // system SQLite ignores the key, wrong once iOS links SQLCipher.
+                    sqliteConnectionPragmaStatements().forEach(connection::rawExecSql)
+                },
+            ),
+            encryptionConfig = DatabaseConfiguration.Encryption(
+                key = passphrase ?: "", rekey = ""
+            )
+        )
+    },
+)
 
 /**
  * The directory sqliter stores databases in on Apple targets:

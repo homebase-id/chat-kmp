@@ -111,12 +111,9 @@ data class ReadTiming(
 class DatabaseManager(
     driverProvider: () -> SqlDriver,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
-    // Reads run off the single write [dispatcher] so they don't queue behind a long
-    // write transaction. True concurrency comes from each platform driver's reader
-    // pool under WAL (iOS NativeSqliteDriver.maxReaderConnections, Android's framework
-    // WAL pool, desktop's PooledJdbcSqliteDriver); where a platform can't serve a
-    // concurrent reader the reads simply serialize — benign, never incorrect. We still
-    // run on the *existing* single driver — no second managed SqlDriver/connection.
+    // Reads run off the single write [dispatcher] so they don't queue behind a long write
+    // transaction; the driver's reader connections (see DatabaseDriverFactory.createDriver)
+    // serve them concurrently.
     private val readDispatcher: CoroutineDispatcher =
         ioDispatcher.limitedParallelism(READ_PARALLELISM)
 ) : AutoCloseable {
@@ -203,18 +200,7 @@ class DatabaseManager(
         private const val DATABASE_VERSION =
             5  // Increase to wipe the database and rebuild all tables
 
-        // Max concurrent reads on [readDispatcher]. Kept in step with iOS
-        // NativeSqliteDriver.maxReaderConnections=4 so the dispatcher doesn't admit more
-        // readers than the platform connection pool can serve. On Android the SQLCipher WAL
-        // pool size is platform-determined (net.zetetic's SupportOpenHelperFactory exposes no
-        // knob, unlike iOS) — if it serves fewer than this, the extra reads block in
-        // SQLiteConnectionPool.waitForConnection, which is counted inside the read's `sql=`
-        // time (the wait happens inside driver.executeQuery), so it surfaces as an inflated
-        // `sql=` in a SlowDbRead line. That's the verification signal: if device logs show a
-        // normally-fast read with a large `sql=` during a read burst, lower this to match the
-        // pool. Since reads are off the Main thread (DriveMainIndexWrapper + the list readers
-        // both route through the read lane), such a wait queues a background read, not the UI.
-        private const val READ_PARALLELISM = 4
+        private const val READ_PARALLELISM = SQLITE_READER_CONNECTIONS
 
         // A read slower than this logs a SlowDbRead warn with its queueWait/sql split.
         private val SLOW_READ_THRESHOLD = 50.milliseconds
@@ -635,8 +621,7 @@ class DatabaseManager(
         val freelistAfter = readPragmaLong("PRAGMA freelist_count") ?: -1L
         if (checkpoint != null) {
             val (busy, logPages, ckptPages) = checkpoint
-            // busy=1 means another connection held the WAL — should never happen here
-            // because we're on the single-writer dbDispatcher with no other clients.
+            // busy=1 means a reader still held the WAL after busy_timeout.
             // logPages > 0 after wipe + VACUUM is the red flag: it means we VACUUMed
             // into a fresh main DB but the WAL still holds pages that a future open
             // would replay on top.

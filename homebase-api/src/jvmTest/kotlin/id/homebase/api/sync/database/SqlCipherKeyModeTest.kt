@@ -62,18 +62,18 @@ class SqlCipherKeyModeTest {
     fun `derives the raw key an existing passphrase database was encrypted with`() {
         val db = dbFile("migrate.db")
         val passphrase = "a-passphrase-that-is-not-a-raw-key"
-        createWith(SqlCipherKeyMode.passphraseUrl(db, passphrase), "kept")
+        createWith(cipherUrl(db, passphrase), "kept")
 
         val store = FakeStore()
-        val url = SqlCipherKeyMode.jdbcUrl(db, passphrase, store)
+        val url = sqlCipherJdbcUrl(db, passphrase, store)
 
         val cached = assertNotNull(store.value, "raw key should be cached after migration")
         assertTrue(SqlCipherKeyMode.isRawKeyHex(cached))
-        assertEquals(SqlCipherKeyMode.rawKeyUrl(db, cached), url)
+        assertEquals(rawKeyJdbcUrl(db, cached), url)
         assertEquals("kept", readMarker(url), "migrated URL must open the untouched file")
         assertEquals(
             "kept",
-            readMarker(SqlCipherKeyMode.passphraseUrl(db, passphrase)),
+            readMarker(cipherUrl(db, passphrase)),
             "the file must still open with the original passphrase — no re-encryption",
         )
     }
@@ -82,12 +82,12 @@ class SqlCipherKeyModeTest {
     fun `derivation is deterministic and reuses the cached key on later opens`() {
         val db = dbFile("cached.db")
         val passphrase = "another-passphrase"
-        createWith(SqlCipherKeyMode.passphraseUrl(db, passphrase), "kept")
+        createWith(cipherUrl(db, passphrase), "kept")
 
         val store = FakeStore()
-        val first = SqlCipherKeyMode.jdbcUrl(db, passphrase, store)
+        val first = sqlCipherJdbcUrl(db, passphrase, store)
         val writesAfterMigration = store.writes
-        val second = SqlCipherKeyMode.jdbcUrl(db, passphrase, store)
+        val second = sqlCipherJdbcUrl(db, passphrase, store)
 
         assertEquals(first, second)
         assertEquals(writesAfterMigration, store.writes, "a cached key must not be re-derived")
@@ -97,11 +97,11 @@ class SqlCipherKeyModeTest {
     fun `a corrupt cached key falls back to deriving from the passphrase`() {
         val db = dbFile("corrupt-cache.db")
         val passphrase = "yet-another-passphrase"
-        createWith(SqlCipherKeyMode.passphraseUrl(db, passphrase), "kept")
+        createWith(cipherUrl(db, passphrase), "kept")
 
         val wrongKey = "00".repeat(32)
         val store = FakeStore(wrongKey)
-        val url = SqlCipherKeyMode.jdbcUrl(db, passphrase, store)
+        val url = sqlCipherJdbcUrl(db, passphrase, store)
 
         assertEquals("kept", readMarker(url))
         assertEquals(
@@ -113,20 +113,20 @@ class SqlCipherKeyModeTest {
     @Test
     fun `an undecryptable database falls back to passphrase mode instead of being lost`() {
         val db = dbFile("foreign.db")
-        createWith(SqlCipherKeyMode.passphraseUrl(db, "the-real-passphrase"), "kept")
+        createWith(cipherUrl(db, "the-real-passphrase"), "kept")
 
         val store = FakeStore("11".repeat(32))
-        val url = SqlCipherKeyMode.jdbcUrl(db, "a-passphrase-that-was-never-used", store)
+        val url = sqlCipherJdbcUrl(db, "a-passphrase-that-was-never-used", store)
 
         assertEquals(
-            SqlCipherKeyMode.passphraseUrl(db, "a-passphrase-that-was-never-used"),
+            cipherUrl(db, "a-passphrase-that-was-never-used"),
             url,
             "must hand back the passphrase URL so DatabaseManager's recovery decides",
         )
         assertNull(store.value, "a key that cannot open the file must not stay cached")
         assertEquals(
             "kept",
-            readMarker(SqlCipherKeyMode.passphraseUrl(db, "the-real-passphrase")),
+            readMarker(cipherUrl(db, "the-real-passphrase")),
             "the file must be untouched by the failed probes",
         )
     }
@@ -136,16 +136,16 @@ class SqlCipherKeyModeTest {
         val db = dbFile("fresh.db")
         val store = FakeStore()
 
-        val url = SqlCipherKeyMode.jdbcUrl(db, "unused-passphrase", store)
+        val url = sqlCipherJdbcUrl(db, "unused-passphrase", store)
         val cached = assertNotNull(store.value)
         assertTrue(SqlCipherKeyMode.isRawKeyHex(cached))
-        assertEquals(SqlCipherKeyMode.rawKeyUrl(db, cached), url)
+        assertEquals(rawKeyJdbcUrl(db, cached), url)
 
         createWith(url, "born-raw")
 
         assertEquals(
             url,
-            SqlCipherKeyMode.jdbcUrl(db, "unused-passphrase", store),
+            sqlCipherJdbcUrl(db, "unused-passphrase", store),
             "reopening must reuse the cached key, not derive from the passphrase",
         )
         assertEquals("born-raw", readMarker(url))
