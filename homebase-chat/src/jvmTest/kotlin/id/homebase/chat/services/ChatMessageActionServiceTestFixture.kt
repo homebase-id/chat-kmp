@@ -715,9 +715,3 @@ class FakeConversationParticipantLookup :
         conversations[conversationId] = convo.clearedDirtyIfUnchanged(pushed.milliseconds)
     }
 }
-
-private object ThrowingOutboxUploader : OutboxUploader {
-    override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
-        error("OutboxUploader.upload should never be called in tests (setOnline(false))")
-    }
-}

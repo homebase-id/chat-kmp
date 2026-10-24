@@ -1,0 +1,10 @@
+# A background wake syncs the chat drive (cursor stored) and gets 3 new messages; no conversation is open
+# Regenerate: DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'
+reads 1, writes 12, transactions 1
+
+1x read              KeyValueWrapper.selectByKeyBootstrapSync < CursorStorage.loadCursor < DriveSync.<init> SELECT KeyValue.key, KeyValue.data FROM KeyValue WHERE key = ?
+3x write in tx       CursorStorage.saveCursor < HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap INSERT INTO KeyValue(key, data) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET data = excluded.data
+3x write in tx       HomebaseFileProcessor.rewriteTags < HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ? AND fileId = ?
+3x write in tx       HomebaseFileProcessor.rewriteTags < HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap DELETE FROM DriveTagIndex WHERE identityId = ? AND driveId = ? AND fileId = ?
+3x write in tx       MainIndexMetaHelpers.upsertDriveMainIndex < HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap INSERT INTO DriveMainIndex ( identityId,driveId,fileId, uniqueId,globalTransitId, groupId, senderId, originalAuthor, fileType,dataType,archivalStatus,fileState,
+1x transaction       HomebaseFileProcessor.performBaseUpsert < HomebaseFileProcessor.baseUpsertEntryZapZap < DriveSync.performSync BEGIN

@@ -26,6 +26,7 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +53,8 @@ class ChatMessageStream(
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
     private val serverHistory: ChatServerHistory,
+    // Where headers are mapped to messages; tests pass their own dispatcher to stay in virtual time.
+    private val mapDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
@@ -227,7 +230,7 @@ class ChatMessageStream(
             tagId = ChatProtocol.MessagePinnedTag,
             groupId = conversationId,
         )
-        return withContext(Dispatchers.Default) {
+        return withContext(mapDispatcher) {
             jsonHeaders.mapNotNull { json ->
                 val header = runCatching {
                     OdinSystemSerializer.deserialize<HomebaseFile>(json)
@@ -615,7 +618,7 @@ class ChatMessageStream(
 // ---------- EVENT HANDLING ----------
 
     private suspend fun processIncrementalBatch(files: List<HomebaseFile>) {
-        val messages = withContext(Dispatchers.Default) {
+        val messages = withContext(mapDispatcher) {
             files
                 .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
                 .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
@@ -873,7 +876,7 @@ class ChatMessageStream(
         val queryElapsed = queryStart.elapsedNow()
 
         val mapStart = TimeSource.Monotonic.markNow()
-        val records = withContext(Dispatchers.Default) {
+        val records = withContext(mapDispatcher) {
             result.records.mapNotNull { header ->
                 mapToMessageData(header, credentialsManager, ::resolveDisplayName)
             }
@@ -926,7 +929,7 @@ class ChatMessageStream(
 
         // TODO - remove simple content search filter when actual query does filtering
         return BatchResult(
-            records = withContext(Dispatchers.Default) {
+            records = withContext(mapDispatcher) {
                 result.records
                     .filter { matchesSearchQuery(it, searchQuery) }
                     .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
@@ -975,7 +978,7 @@ class ChatMessageStream(
             )
 
         return BatchResult(
-            records = withContext(Dispatchers.Default) {
+            records = withContext(mapDispatcher) {
                 result.records.mapNotNull {
                     mapToMessageData(
                         it,

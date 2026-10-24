@@ -2,33 +2,18 @@
 
 package id.homebase.chat.services.calling.history
 
-import id.homebase.api.client.connections.ConnectionNetworkProvider
-import id.homebase.api.client.contacts.ContactRepository
-import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DriveOutboxUploader
-import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.calling.history.CallLogDeleter
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
-import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.ChatServerHistory
-import id.homebase.chat.services.NoopFileOperationsProvider
-import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
-import id.homebase.chat.services.convo.contact.ConnectionService
-import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.services.testChatMessageStream
 import id.homebase.core.calling.CallsPreferences
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respondError
-import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -99,46 +84,12 @@ class CallLogDeleteIntegrationTest {
             runCurrent()
             assertEquals(listOf(id), history.entries.value.map { it.messageId })
 
-            val httpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
-            val stream = ChatMessageStream(
-                credentialsManager = f.credentialsManager,
-                contactService = ContactService(
-                    contactRepository = ContactRepository(
-                        contactsProvider = ContactsProvider(httpClient, f.credentialsManager) { _, _ -> null },
-                        contactPayloadReader = { _, _, _ -> null },
-                        databaseManager = f.dbm,
-                        credentialsManager = f.credentialsManager,
-                        eventBus = f.eventBus,
-                        scope = backgroundScope,
-                    ),
-                    connections = ConnectionService(
-                        provider = ConnectionNetworkProvider(httpClient, f.credentialsManager),
-                        eventBus = f.eventBus,
-                        scope = backgroundScope,
-                        cache = ConnectionCacheRepository(f.dbm, f.credentialsManager),
-                    ),
-                    scope = backgroundScope,
-                ),
-                ownerDisplayName = { null },
+            val stream = testChatMessageStream(
                 dbm = f.dbm,
+                credentialsManager = f.credentialsManager,
                 eventBus = f.eventBus,
+                optimisticWriter = OptimisticWriter(f.credentialsManager, f.dbm, f.eventBus, f.outboxSync),
                 scope = backgroundScope,
-                driveFileProvider = DriveFileProvider(
-                    httpClient,
-                    f.credentialsManager,
-                    DriveFileProviderCached(httpClient, f.credentialsManager, NoopFileOperationsProvider()),
-                ),
-                optimisticWriter = OptimisticWriter(
-                    credentialsManager = f.credentialsManager,
-                    dbm = f.dbm,
-                    eventBus = f.eventBus,
-                    outboxSync = f.outboxSync,
-                ),
-                serverHistory = ChatServerHistory(
-                    credentialsManager = f.credentialsManager,
-                    dbm = f.dbm,
-                    driveQueryProvider = DriveQueryProvider(httpClient, f.credentialsManager),
-                ),
             )
             stream.loadConversation(convo)
             advanceUntilIdle()
