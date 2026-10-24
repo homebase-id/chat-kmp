@@ -439,9 +439,7 @@ class ConversationMapper(
                         ?: appData.previewThumbnail,
                     keyHeader =
                         KeyHeader(
-                            iv = Base64.decode(
-                                imagePayload.iv ?: error("encrypted payload requires key header")
-                            ),
+                            iv = (imagePayload.iv ?: error("encrypted payload requires key header")).bytes,
                             aesKey = conversation.keyHeader.aesKey
                         ),
                     requestedSize = ImageSize.THUMB_MEDIUM,

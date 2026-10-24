@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.KeyHeader
@@ -206,7 +207,7 @@ class UploadValidationTest {
             pixelWidth = 20,
             pixelHeight = 20,
             contentType = "image/webp",
-            content = Base64.encode(payload),
+            content = Base64Bytes(payload),
         )
     }
 }

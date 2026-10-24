@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.layout.Box
@@ -117,7 +118,7 @@ class MentionAvatarFetchTest {
                 image = ContactImageRef(
                     driveId = Uuid.random(),
                     fileId = photoFileId,
-                    payload = PayloadDescriptor(key = "prfl_pic", iv = Base64.encode(ByteArray(16))),
+                    payload = PayloadDescriptor(key = "prfl_pic", iv = Base64Bytes(ByteArray(16))),
                     previewThumbnail = null,
                     keyHeader = KeyHeader.newRandom16(),
                     isEncrypted = true,

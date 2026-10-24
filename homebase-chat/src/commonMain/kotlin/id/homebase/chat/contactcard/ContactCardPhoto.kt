@@ -27,7 +27,7 @@ internal fun contactCardPhotoData(
     previewThumbnail: EmbeddedThumb?,
 ): HomebaseImageData? {
     val payload = contactCardPhotoPayload(payloads) ?: return null
-    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    val iv = payload.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

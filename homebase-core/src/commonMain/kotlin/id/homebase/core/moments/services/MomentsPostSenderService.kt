@@ -1,5 +1,6 @@
 package id.homebase.core.moments.services
 
+import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -297,7 +298,7 @@ class MomentsPostSenderService(
                             pixelWidth = resized.size.pixelWidth,
                             pixelHeight = resized.size.pixelHeight,
                             contentType = "image/jpeg",
-                            content = Base64.encode(resized.bytes),
+                            content = Base64Bytes(resized.bytes),
                         )
                     }.getOrNull()
                     if (thumb != null) put(keyForIndex(i), thumb)
@@ -778,7 +779,7 @@ class MomentsPostSenderService(
                     }
                     continue
                 }
-                val ivBytes = descriptor.iv?.let { Base64.decode(it) }
+                val ivBytes = descriptor.iv?.bytes
                 if (ivBytes == null) {
                     Logger.w(tag = TAG) {
                         "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — descriptor has no iv (fileId=${file.fileId})"

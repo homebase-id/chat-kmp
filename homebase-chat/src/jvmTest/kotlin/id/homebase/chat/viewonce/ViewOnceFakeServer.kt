@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.KeyHeader
@@ -151,7 +152,7 @@ internal class ViewOnceFakeServer(
             payload = PayloadDescriptor(
                 key = VIEW_ONCE_PAYLOAD_KEY,
                 contentType = "image/png",
-                iv = Base64.encode(iv),
+                iv = Base64Bytes(iv),
             ),
             keyHeader = keyHeader,
             kind = kind,

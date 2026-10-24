@@ -138,9 +138,7 @@ fun VaultEntry.imageDataFor(
     previewThumbnail: EmbeddedThumb? = null,
     requestedSize: ImageSize? = null,
 ): HomebaseImageData? {
-    val ivBytes = descriptor.iv?.let {
-        try { Base64.decode(it) } catch (_: Exception) { null }
-    } ?: return null
+    val ivBytes = descriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

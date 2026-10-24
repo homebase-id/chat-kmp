@@ -1,5 +1,6 @@
 package id.homebase.api.crypto
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.files.PayloadHash
@@ -27,8 +28,8 @@ suspend fun encryptedPayloadHash(
     payloadKey: KeyHeader,
 ): PayloadHash = PayloadHash(
     algorithm = algorithm.wireName,
-    storedHash = Base64.encode(storedDigest),
-    contentHash = Base64.encode(AesCbc.encrypt(contentDigest, payloadKey.aesKey, contentHashIv(payloadKey.iv))),
+    storedHash = Base64Bytes(storedDigest),
+    contentHash = Base64Bytes(AesCbc.encrypt(contentDigest, payloadKey.aesKey, contentHashIv(payloadKey.iv))),
 )
 
 /**
@@ -37,7 +38,7 @@ suspend fun encryptedPayloadHash(
  */
 suspend fun PayloadHash.plaintextContentHash(payloadKey: KeyHeader?): ByteArray? {
     if (knownAlgorithm == null) return null
-    val raw = runCatching { Base64.decode(contentHash) }.getOrNull() ?: return null
+    val raw = contentHash?.bytes ?: return null
     val plain = if (payloadKey == null) raw else {
         try {
             AesCbc.decrypt(raw, payloadKey.aesKey, contentHashIv(payloadKey.iv))

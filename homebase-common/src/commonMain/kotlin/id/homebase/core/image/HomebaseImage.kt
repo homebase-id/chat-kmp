@@ -114,8 +114,7 @@ fun HomebaseImage(
         remember(imageData.previewThumbnail) {
             imageData.previewThumbnail?.content?.let {
                 try {
-                    val bytes = Base64.decode(it)
-                    bytes.decodeToImageBitmap()
+                    it.bytes.decodeToImageBitmap()
                 } catch (_: Exception) {
                     null
                 }

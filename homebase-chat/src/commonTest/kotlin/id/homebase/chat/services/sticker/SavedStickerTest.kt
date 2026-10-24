@@ -2,6 +2,7 @@
 
 package id.homebase.chat.services.sticker
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileState
@@ -53,7 +54,7 @@ class SavedStickerTest {
             PayloadDescriptor(
                 key = StickerProtocol.STICKER_PAYLOAD_KEY,
                 contentType = "image/png",
-                iv = Base64.encode(ByteArray(16)),
+                iv = Base64Bytes(ByteArray(16)),
                 descriptorContent = DescriptorContent.descriptorContentFromImage(isSticker = true),
                 bytesWritten = 512L,
             )
@@ -211,13 +212,13 @@ class SavedStickerTest {
             PayloadDescriptor(
                 key = StickerProtocol.STICKER_PAYLOAD_KEY,
                 contentType = contentType,
-                iv = Base64.encode(ByteArray(16)),
+                iv = Base64Bytes(ByteArray(16)),
                 bytesWritten = bytesWritten,
             )
         ),
     ).toSavedSticker()!!
         // Every sticker ships a WebP preview, a GIF included.
-        .copy(previewThumbnail = EmbeddedThumb(20, 20, "image/webp", "AAAA"))
+        .copy(previewThumbnail = EmbeddedThumb(20, 20, "image/webp", Base64Bytes(ByteArray(3))))
         .toImageData()!!
 
     @Test

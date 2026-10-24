@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.layout.Box
@@ -171,9 +172,9 @@ class BubbleLayoutInvariantTest {
     private fun imagePayload(i: Int, aspect: Aspect = Aspect.LANDSCAPE) = PayloadDescriptor(
         key = "chat_img$i",
         contentType = "image/jpeg",
-        iv = Base64.encode(ByteArray(16)),
+        iv = Base64Bytes(ByteArray(16)),
         previewThumbnail = ThumbnailDescriptor(
-            pixelWidth = aspect.w, pixelHeight = aspect.h, contentType = "image/jpeg", content = "",
+            pixelWidth = aspect.w, pixelHeight = aspect.h, contentType = "image/jpeg", content = null,
         ),
     )
 
@@ -182,7 +183,7 @@ class BubbleLayoutInvariantTest {
     private fun documentPayload() = PayloadDescriptor(
         key = "chat_file0",
         contentType = "text/plain",
-        iv = Base64.encode(ByteArray(16)),
+        iv = Base64Bytes(ByteArray(16)),
         descriptorContent = "server.log",
         bytesWritten = 3_300_000,
     )
@@ -192,7 +193,7 @@ class BubbleLayoutInvariantTest {
     private fun audioPayload() = PayloadDescriptor(
         key = "chat_aud0",
         contentType = "audio/mp4",
-        iv = Base64.encode(ByteArray(16)),
+        iv = Base64Bytes(ByteArray(16)),
     )
 
     private val linkTitle = "Link title"
@@ -200,7 +201,7 @@ class BubbleLayoutInvariantTest {
     private fun linkPreviewPayload() = PayloadDescriptor(
         key = "chat_links",
         contentType = "application/json",
-        iv = Base64.encode(ByteArray(16)),
+        iv = Base64Bytes(ByteArray(16)),
         descriptorContent = OdinSystemSerializer.serialize(
             listOf(
                 LinkPreviewDescriptor(
@@ -210,7 +211,7 @@ class BubbleLayoutInvariantTest {
             ),
         ),
         previewThumbnail = ThumbnailDescriptor(
-            pixelWidth = 1200, pixelHeight = 600, contentType = "image/jpeg", content = "",
+            pixelWidth = 1200, pixelHeight = 600, contentType = "image/jpeg", content = null,
         ),
     )
 

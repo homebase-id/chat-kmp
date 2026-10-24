@@ -78,11 +78,9 @@ internal class MediaDownloadHandler(
                 val message = messageModel.message
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException(
+                val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
-                    )
-                )
+                    )).bytes
                 val extension = payload.contentType?.let { extensionForMimeType(it) }
                     ?: payload.contentType?.substringAfter("/")
                     ?: "bin"
@@ -155,11 +153,9 @@ internal class MediaDownloadHandler(
             try {
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException(
+                val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
-                    )
-                )
+                    )).bytes
 
                 val fullName = resolveDownloadFileName(
                     payload.filename(), payload.key, payload.contentType
@@ -268,11 +264,9 @@ internal class MediaDownloadHandler(
 
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException(
+                val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
-                    )
-                )
+                    )).bytes
 
                 val rawName = payload.filename() ?: payload.key
                 val filePath = if (rawName.contains('.')) {
@@ -438,7 +432,7 @@ internal class MediaDownloadHandler(
 
                     selectedPayload.isVideo() -> {
                         val localContext = localVideoContextStore.get(action.message.id, selectedPayload.key)
-                        val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
+                        val ivBytes = selectedPayload.iv?.bytes
 
                         if (ivBytes != null || localContext != null) {
                             messagesUiState.update {

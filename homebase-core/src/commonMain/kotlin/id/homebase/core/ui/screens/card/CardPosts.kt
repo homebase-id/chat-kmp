@@ -128,7 +128,7 @@ internal fun postImage(file: HomebaseFile, content: PostContent): HomebaseImageD
         return null
     }
     val payload = file.fileMetadata.getPayloadDescriptor(media.fileKey) ?: return null
-    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
+    val iv = payload.iv?.bytes
     return HomebaseImageData.from(
         driveId = file.driveId,
         fileId = file.fileId,

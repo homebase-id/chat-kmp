@@ -1,5 +1,7 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.serialization.LenientBase64BytesSerializer
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -18,8 +20,8 @@ import kotlinx.serialization.json.jsonPrimitive
 @Immutable
 data class PayloadHash(
     @Serializable(with = PayloadHashAlgorithmNameSerializer::class) val algorithm: String,
-    val storedHash: String,
-    val contentHash: String,
+    @Serializable(with = LenientBase64BytesSerializer::class) val storedHash: Base64Bytes? = null,
+    @Serializable(with = LenientBase64BytesSerializer::class) val contentHash: Base64Bytes? = null,
 ) {
     val knownAlgorithm: PayloadHashAlgorithm? get() = PayloadHashAlgorithm.fromWire(algorithm)
 }

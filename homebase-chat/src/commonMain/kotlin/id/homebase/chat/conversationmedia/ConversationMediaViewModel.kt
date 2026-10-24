@@ -153,10 +153,8 @@ class ConversationMediaViewModel(
         if (_uiState.value.decryptedFiles.containsKey(key) || !decryptingAudio.add(key)) return
         viewModelScope.launch {
             try {
-                val payloadIv = Base64.decode(
-                    item.payload.iv
-                        ?: throw IllegalStateException("encrypted payload requires key header")
-                )
+                val payloadIv = (item.payload.iv
+                        ?: throw IllegalStateException("encrypted payload requires key header")).bytes
                 val rawName = item.payload.filename() ?: item.payload.key
                 val filePath = if (rawName.contains('.')) {
                     "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName"

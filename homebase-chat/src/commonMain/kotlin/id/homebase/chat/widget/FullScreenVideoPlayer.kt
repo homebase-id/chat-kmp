@@ -73,7 +73,7 @@ fun FullScreenVideoPlayer(
     var progress by remember(data) { mutableFloatStateOf(0f) }
 
     val payloadIv = remember(data.payload.iv) {
-        data.payload.iv?.let { Base64.decode(it) }
+        data.payload.iv?.bytes
     }
     val isLocalPlayback = data.localFilePath != null
 

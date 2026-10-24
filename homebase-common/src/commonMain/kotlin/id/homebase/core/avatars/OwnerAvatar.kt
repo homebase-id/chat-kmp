@@ -57,9 +57,9 @@ fun OwnerAvatar(
     val previewOnlyBitmap = remember(profileImageData?.previewThumbnail, profileImageData?.fileId) {
         val data = profileImageData ?: return@remember null
         if (data.fileId != Uuid.NIL) return@remember null
-        data.previewThumbnail?.content?.takeIf { it.isNotBlank() }?.let { content ->
+        data.previewThumbnail?.content?.takeIf { it.bytes.isNotEmpty() }?.let { content ->
             try {
-                Base64.decode(content).decodeToImageBitmap()
+                content.bytes.decodeToImageBitmap()
             } catch (_: Exception) {
                 null
             }

@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException
@@ -275,7 +276,7 @@ class PayloadDownloadServiceTest {
     @Test
     fun `exportVerified refuses an unknown hash algorithm before downloading`() = runTest {
         val (keyHeader, _) = encryptedFixture(1_000)
-        val unknown = PayloadHash("sha3", "", "")
+        val unknown = PayloadHash("sha3")
 
         assertFailsWith<PayloadDamagedException> {
             service.exportVerified(driveId, fileId, key, keyHeader, unknown, ExportDestination.UploadTemp("fs_", ".bin"))

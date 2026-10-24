@@ -399,8 +399,7 @@ private fun PostLinkPreview(
     // governs the image fetch only — the descriptor text renders either way.
     val keyHeader = remember(payload.iv, post.keyHeader) {
         payload.iv
-            ?.let { runCatching { Base64.decode(it) }.getOrNull() }
-            ?.let { KeyHeader(it, post.keyHeader.aesKey) }
+            ?.let { KeyHeader(it.bytes, post.keyHeader.aesKey) }
             ?: post.keyHeader
     }
 

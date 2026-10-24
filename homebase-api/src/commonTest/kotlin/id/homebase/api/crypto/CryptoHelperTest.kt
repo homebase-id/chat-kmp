@@ -1,5 +1,6 @@
 package id.homebase.api.crypto
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.CryptoHelper
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.io.encoding.Base64
@@ -140,8 +141,8 @@ class CryptoHelperTest {
 
         val payload = CryptoHelper.encryptData(plainText, sharedSecret)
 
-        assertTrue(payload.iv.isNotEmpty())
-        assertTrue(payload.data.isNotEmpty())
+        assertTrue(payload.iv.bytes.isNotEmpty())
+        assertTrue(payload.data.bytes.isNotEmpty())
     }
 
     // ========================================================================

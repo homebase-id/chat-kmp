@@ -106,7 +106,7 @@ fun rememberWaveformAmplitudes(
 
         val decoded = withContext(Dispatchers.Default) {
             runCatching {
-                val payloadIv = payload.iv?.let { Base64.decode(it) }
+                val payloadIv = payload.iv?.bytes
                 val requestedSize = ImageSize(
                     pixelWidth = thumbnail.pixelWidth ?: 320,
                     pixelHeight = thumbnail.pixelHeight ?: 64,

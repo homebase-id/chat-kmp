@@ -1002,11 +1002,9 @@ class ChatMessageStream(
             return null
         }
 
-        val payloadIv = Base64.decode(
-            descriptor.iv ?: throw IllegalStateException(
+        val payloadIv = (descriptor.iv ?: throw IllegalStateException(
                 "encrypted payload requires key header"
-            )
-        )
+            )).bytes
 
         val fullMessage = withRetry(tag = "ChatMessageStream") {
 

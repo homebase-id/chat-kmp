@@ -1,5 +1,6 @@
 package id.homebase.api.image
 
+import id.homebase.api.serialization.Base64Bytes
 import kotlin.io.encoding.Base64
 import kotlin.math.max
 import kotlin.test.Test
@@ -26,7 +27,7 @@ class CreateThumbnailsTest {
         assertTrue(embeddedThumb.pixelWidth > 0)
         val content = embeddedThumb.content
         assertNotNull(content)
-        assertTrue(content.isNotEmpty())
+        assertTrue(content.bytes.isNotEmpty())
         assertTrue(thumbList.isNotEmpty())
     }
 
@@ -45,7 +46,7 @@ class CreateThumbnailsTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val (_, embeddedThumb, _) = createThumbnails(bytes, "key")
         assertNotNull(embeddedThumb)
-        val decoded = Base64.decode(embeddedThumb.content!!)
+        val decoded = embeddedThumb.content!!.bytes
         assertTrue(decoded.isNotEmpty(), "Decoded embedded thumb should not be empty")
         assertTrue(decoded.size <= tinyThumbSize.maxBytes, "Decoded embedded thumb ${decoded.size} > ${tinyThumbSize.maxBytes} bytes")
     }
@@ -284,7 +285,7 @@ class CreateThumbnailsTest {
         // The embedded thumb content is base64 of a webp; decoded size
         // must respect tinyThumbSize budget so the upload stays under
         // the server's MaxEmbeddedThumbBytes cap.
-        val decoded = Base64.decode(embeddedThumb.content!!)
+        val decoded = embeddedThumb.content!!.bytes
         assertTrue(
             decoded.size <= tinyThumbSize.maxBytes,
             "tiny embedded SVG-rasterized thumb is ${decoded.size} bytes > ${tinyThumbSize.maxBytes}"
@@ -314,7 +315,7 @@ class CreateThumbnailsTest {
 
         assertNotNull(embeddedThumb)
         assertEquals("image/webp", embeddedThumb.contentType)
-        val tinyDecoded = Base64.decode(embeddedThumb.content!!)
+        val tinyDecoded = embeddedThumb.content!!.bytes
         ImageTestHelper.assertValidWebp(tinyDecoded)
         assertTrue(
             tinyDecoded.size <= tinyThumbSize.maxBytes,
@@ -465,7 +466,7 @@ class CreateThumbnailsTest {
         val bytes = ImageTestHelper.loadImage("roof_test_800x600.jpg")
         val (_, embeddedThumb, _) = createThumbnails(bytes, "key")
         assertNotNull(embeddedThumb)
-        val decoded = Base64.decode(embeddedThumb.content!!)
+        val decoded = embeddedThumb.content!!.bytes
         val size = ImageUtils.getNaturalSize(decoded)
         assertTrue(size.pixelWidth > 0, "Decoded tiny thumb should have positive width")
         assertTrue(size.pixelHeight > 0, "Decoded tiny thumb should have positive height")
@@ -493,10 +494,10 @@ class CreateThumbnailsTest {
             assertNotNull(embeddedThumb, "createThumbnails($file): embedded thumb should not be null")
             val content = embeddedThumb.content
             assertNotNull(content, "createThumbnails($file): embedded thumb content should not be null")
-            assertTrue(content.isNotEmpty(), "createThumbnails($file): embedded thumb content should not be empty")
+            assertTrue(content.bytes.isNotEmpty(), "createThumbnails($file): embedded thumb content should not be empty")
 
             // Decode the embedded tiny thumb and verify it's valid
-            val tinyBytes = Base64.decode(content)
+            val tinyBytes = content.bytes
             assertTrue(
                 tinyBytes.isNotEmpty(),
                 "createThumbnails($file): decoded tiny thumb bytes should not be empty"

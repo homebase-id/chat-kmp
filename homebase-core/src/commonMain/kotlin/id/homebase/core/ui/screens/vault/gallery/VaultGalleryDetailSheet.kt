@@ -171,13 +171,7 @@ fun VaultGalleryDetailSheet(
                             }
                         } else {
                             val thumbImageData = remember(file.fileId, descriptor.key, descriptor.lastModified) {
-                                val payloadIv = descriptor.iv?.let {
-                                    try {
-                                        Base64.decode(it)
-                                    } catch (_: Exception) {
-                                        null
-                                    }
-                                } ?: return@remember null
+                                val payloadIv = descriptor.iv?.bytes ?: return@remember null
                                 HomebaseImageData.from(
                                     driveId = file.driveId,
                                     fileId = file.fileId,

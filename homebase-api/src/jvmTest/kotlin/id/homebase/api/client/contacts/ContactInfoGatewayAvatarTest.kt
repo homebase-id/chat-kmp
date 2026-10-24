@@ -2,6 +2,7 @@
 
 package id.homebase.api.client.contacts
 
+import id.homebase.api.serialization.Base64Bytes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
@@ -171,7 +172,7 @@ class ContactInfoGatewayAvatarTest {
                 PayloadDescriptor(
                     key = ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY,
                     contentType = contentType,
-                    iv = iv?.let { Base64.encode(it) },
+                    iv = iv?.let { Base64Bytes(it) },
                     lastModified = lastModified,
                 ),
             ),

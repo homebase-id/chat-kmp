@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadManifest
@@ -52,14 +53,14 @@ class PayloadHashTest {
             Triple(PayloadHashAlgorithm.Blake3, blake3, encryptedBlake3),
         )) {
             val hash = encryptedPayloadHash(algorithm, ByteArray(32), digest.hexToByteArray(), payloadKey)
-            assertEquals(encrypted, Base64.decode(hash.contentHash).toHexString(), "$algorithm")
+            assertEquals(encrypted, hash.contentHash!!.bytes.toHexString(), "$algorithm")
             assertEquals(digest, hash.plaintextContentHash(payloadKey)?.toHexString(), "$algorithm")
         }
     }
 
     @Test
     fun aContentHashThatDoesNotDecryptReadsAsNull() = runTest {
-        val hash = PayloadHash("blake3", "", Base64.encode(encryptedBlake3.hexToByteArray()))
+        val hash = PayloadHash("blake3", null, Base64Bytes(encryptedBlake3.hexToByteArray()))
         assertNull(hash.plaintextContentHash(KeyHeader(payloadKey.iv, SecureByteArray(ByteArray(32) { 7 }))))
     }
 
@@ -77,7 +78,7 @@ class PayloadHashTest {
         val ciphertext = fs.read("/in/cipher".toPath()) { readByteArray() }
         assertContentEquals(AesCbc.encrypt(input, payloadKey.aesKey, hashed.iv), ciphertext)
         val storedDigest = PayloadHashAlgorithm.Blake3.newHasher().apply { update(ciphertext) }.digest()
-        assertContentEquals(storedDigest, Base64.decode(hash.storedHash))
+        assertContentEquals(storedDigest, hash.storedHash!!.bytes)
         assertEquals(blake3, hash.plaintextContentHash(KeyHeader(hashed.iv, payloadKey.aesKey))?.toHexString())
     }
 
@@ -101,7 +102,7 @@ class PayloadHashTest {
 
     @Test
     fun anUploadRefusesAHashWithoutItsIv() {
-        val hashed = PayloadFile(key = "sync_data", filePath = "/x", hash = PayloadHash("blake3", "cw==", "Yw=="))
+        val hashed = PayloadFile(key = "sync_data", filePath = "/x", hash = PayloadHash("blake3", Base64Bytes(byteArrayOf(0x73)), Base64Bytes(byteArrayOf(0x63))))
         assertFailsWith<IllegalArgumentException> { UploadManifest.build(listOf(hashed), generatePayloadIv = true) }
         assertFailsWith<IllegalArgumentException> { UpdateManifest.build(listOf(hashed), generatePayloadIv = true) }
     }

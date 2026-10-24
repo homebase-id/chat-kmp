@@ -118,7 +118,7 @@ internal class StickerHandler(
                 val bytes = getPayloadBytes(
                     message.fileId,
                     action.payloadKey,
-                    KeyHeader(Base64.decode(iv), message.keyHeader.aesKey),
+                    KeyHeader(iv.bytes, message.keyHeader.aesKey),
                 )
                 if (bytes == null) {
                     sendEvent(ShowInfoMessage(MR.string.chat_sticker_save_failed))
@@ -169,7 +169,7 @@ internal class StickerHandler(
         val message = action.message
         val isAlreadySaved = findSavedFromMessage(message.fileId) != null
         val stickerPayload = message.payloads?.firstOrNull { it.key == action.payloadKey }
-        val payloadIv = stickerPayload?.iv?.let { Base64.decode(it) }
+        val payloadIv = stickerPayload?.iv?.bytes
         val stickerKeyHeader = if (payloadIv != null) {
             KeyHeader(iv = payloadIv, aesKey = message.keyHeader.aesKey)
         } else {

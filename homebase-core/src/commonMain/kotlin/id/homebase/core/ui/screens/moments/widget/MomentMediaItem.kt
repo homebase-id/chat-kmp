@@ -156,7 +156,7 @@ fun MomentMediaItem(
                 }
             }
 
-            val payloadIv = payload.iv?.let { Base64.decode(it) }
+            val payloadIv = payload.iv?.bytes
 
             if (payloadIv != null && linkDescriptors != null) {
                 LinkPreviewCard(
@@ -191,7 +191,7 @@ fun MomentMediaItem(
                 }
             }
 
-            val payloadIv = payload.iv?.let { Base64.decode(it) }
+            val payloadIv = payload.iv?.bytes
 
             if (payloadIv != null && locationDescriptors != null) {
                 LocationPreviewCard(
@@ -226,7 +226,7 @@ fun MomentMediaItem(
                     // A public (unencrypted) post carries no IV — build the source anyway (encrypted
                     // only when an IV is present). Bailing to null here left public feed images as a
                     // blank Box that never even requested bytes; matches the non-zoom builder below.
-                    val payloadIv = payload.iv?.let { Base64.decode(it) }
+                    val payloadIv = payload.iv?.bytes
                     val imageData = HomebaseImageData.from(
                         driveId = driveId,
                         fileId = fileId,
@@ -306,7 +306,7 @@ fun MomentMediaItem(
                         // `payloadencrypted=false` header makes the loader return the bytes
                         // as-is (keyHeader ignored). Encrypted payloads (chat, moments) still
                         // carry an IV, so they keep the encrypted path unchanged.
-                        val payloadIv = payload.iv?.let { Base64.decode(it) }
+                        val payloadIv = payload.iv?.bytes
                         HomebaseImageData.from(
                             driveId = driveId,
                             fileId = fileId,
@@ -342,7 +342,7 @@ fun MomentMediaItem(
             // bailing to a non-tappable placeholder with no route to the full-screen player —
             // same divergence the image branches above already make.
             val payloadIv = remember(payload.iv) {
-                payload.iv?.let { Base64.decode(it) }
+                payload.iv?.bytes
             }
             val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
                 payloadIv?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }

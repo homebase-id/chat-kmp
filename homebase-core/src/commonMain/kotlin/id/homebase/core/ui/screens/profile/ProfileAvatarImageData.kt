@@ -57,9 +57,7 @@ fun ProfileAttribute.photoImageData(): HomebaseImageData? {
     } else {
         val rawIv = descriptor.iv
             ?: return dropped("payload '$payloadKey' expected encrypted ($visibility) but has no iv")
-        runCatching { Base64.decode(rawIv) }.getOrElse {
-            return dropped("payload '$payloadKey' iv present but undecodable (raw=$rawIv)")
-        }
+        rawIv.bytes
     }
 
     return HomebaseImageData.from(

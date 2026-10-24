@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
@@ -72,7 +73,7 @@ class ResendablePayloadsTest {
     ) = PayloadDescriptor(
         key = key,
         contentType = "image/jpeg",
-        iv = if (withIv) Base64.encode(iv) else null,
+        iv = if (withIv) Base64Bytes(iv) else null,
         thumbnails = thumbs,
     )
 

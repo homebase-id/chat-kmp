@@ -30,11 +30,7 @@ fun PayloadDescriptor.replyQuoteImageData(
     aesKey: SecureByteArray,
     fallbackPreview: EmbeddedThumb?,
 ): HomebaseImageData? {
-    val payloadIv = try {
-        iv?.let { Base64.decode(it) }
-    } catch (_: Exception) {
-        null
-    } ?: return null
+    val payloadIv = iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

@@ -212,9 +212,7 @@ private fun AlbumMomentCell(
             // pass `previewThumbnail` so the embedded tiny thumb shows
             // immediately while the higher-res server thumb loads.
             val payloadIv = remember(firstImagePayload.iv) {
-                firstImagePayload.iv?.let {
-                    runCatching { Base64.decode(it) }.getOrNull()
-                }
+                firstImagePayload.iv?.bytes
             }
             if (payloadIv != null) {
                 HomebaseImage(

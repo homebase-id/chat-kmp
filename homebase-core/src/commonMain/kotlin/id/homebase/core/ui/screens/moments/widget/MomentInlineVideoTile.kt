@@ -174,7 +174,7 @@ fun MomentInlineVideoTile(
      */
     fitToContent: Boolean = false,
 ) {
-    val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
+    val payloadIv = remember(payload.iv) { payload.iv?.bytes }
     if (payloadIv == null) {
         Logger.w(tag = "MomentVideo") {
             "tile IV missing — falling back to thumbnail-only render: fileId=$fileId key=${payload.key}"

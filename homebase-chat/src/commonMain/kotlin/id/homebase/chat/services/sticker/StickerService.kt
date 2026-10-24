@@ -217,7 +217,7 @@ class StickerService(
             val iv = sticker.payloadDescriptor.iv
             val keyHeader = if (iv != null) {
                 try {
-                    KeyHeader(Base64.decode(iv), sticker.keyHeader.aesKey)
+                    KeyHeader(iv.bytes, sticker.keyHeader.aesKey)
                 } catch (_: Exception) {
                     sticker.keyHeader
                 }

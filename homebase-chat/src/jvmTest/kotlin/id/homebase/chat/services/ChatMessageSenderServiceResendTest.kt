@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
@@ -212,7 +213,7 @@ class ChatMessageSenderServiceResendTest {
                     PayloadDescriptor(
                         key = "img_key1",
                         contentType = "image/jpeg",
-                        iv = Base64.encode(ByteArray(16) { 7 }),
+                        iv = Base64Bytes(ByteArray(16) { 7 }),
                     ),
                 ),
             )

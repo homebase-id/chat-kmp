@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.serialization.Base64Bytes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -1091,10 +1092,9 @@ fun InlineReplyPreview(
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
     val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
         if (imageData != null || !showThumbnail) return@remember null
-        replyPreview.previewThumbnail?.content?.let { base64Content ->
+        replyPreview.previewThumbnail?.content?.let { thumbContent ->
             try {
-                val bytes = Base64.decode(base64Content)
-                bytes.decodeToImageBitmap()
+                thumbContent.bytes.decodeToImageBitmap()
             } catch (_: Exception) {
                 null
             }
@@ -1348,7 +1348,7 @@ private fun testMessageUiModel(message: String): MessageUiModel {
                     pixelWidth = 100,
                     pixelHeight = 100,
                     contentType = "image/png",
-                    content = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAMCAQAYnY20AAAAAE5ErkJggg==",
+                    content = Base64Bytes(Base64.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAMCAQAYnY20AAAAAE5ErkJggg==")),
                 )
             )
         ),

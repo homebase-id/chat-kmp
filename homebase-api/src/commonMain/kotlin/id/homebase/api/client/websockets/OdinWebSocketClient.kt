@@ -1,5 +1,6 @@
 package id.homebase.api.client.websockets
 
+import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.PlatformType
 import id.homebase.api.getPlatform
@@ -902,8 +903,8 @@ class OdinWebSocketClient(
 
         // Build and return the payload
         return SharedSecretEncryptedPayload(
-            iv = iv.toBase64(),
-            data = encryptedBytes.toBase64()
+            iv = Base64Bytes(iv),
+            data = Base64Bytes(encryptedBytes)
         )
     }
 
@@ -920,8 +921,8 @@ class OdinWebSocketClient(
         val encryptedPayload =
             OdinSystemSerializer.deserialize<SharedSecretEncryptedPayload>(envelope.payload)
 
-        val iv = Base64.decode(encryptedPayload.iv)
-        val encryptedData = Base64.decode(encryptedPayload.data)
+        val iv = encryptedPayload.iv.bytes
+        val encryptedData = encryptedPayload.data.bytes
         val decryptedBytes = AesCbc.decrypt(encryptedData, sharedSecret, iv)
 
         return decryptedBytes.decodeToString()

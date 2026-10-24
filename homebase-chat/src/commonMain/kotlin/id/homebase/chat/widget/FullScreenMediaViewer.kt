@@ -134,13 +134,7 @@ fun FullScreenMediaViewer(
             val payload = data.payloads[page]
             val isSettled = page == pagerState.settledPage
             val payloadIv = remember(payload.iv) {
-                payload.iv?.let {
-                    try {
-                        Base64.decode(it)
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+                payload.iv?.bytes
             }
 
             // Prefer a locally-available original (an image sent this session)
@@ -352,13 +346,7 @@ fun FullScreenMediaViewer(
                 ) { _, index, isSelected ->
                     val payload = data.payloads[index]
                     val railIv = remember(payload.iv) {
-                        payload.iv?.let {
-                            try {
-                                Base64.decode(it)
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
+                        payload.iv?.bytes
                     }
                     // Same plaintext rule as the page above: an unencrypted file has no
                     // rail IV either, and still has bytes to show.

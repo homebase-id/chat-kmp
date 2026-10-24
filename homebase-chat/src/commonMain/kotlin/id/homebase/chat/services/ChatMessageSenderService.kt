@@ -934,7 +934,7 @@ class ChatMessageSenderService(
         val previewThumbs = mutableListOf<EmbeddedThumb>()
 
         for (descriptor in mediaDescriptors) {
-            val ivBytes = descriptor.iv?.let { Base64.decode(it) } ?: continue
+            val ivBytes = descriptor.iv?.bytes ?: continue
             val keyHeader = KeyHeader(iv = ivBytes, aesKey = source.keyHeader.aesKey)
 
 

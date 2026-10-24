@@ -363,7 +363,7 @@ private fun LocationListTab(
                 }
             }
             val payloadIv = remember(item.payload.iv) {
-                item.payload.iv?.let { Base64.decode(it) }
+                item.payload.iv?.bytes
             }
             if (descriptor != null && payloadIv != null) {
                 val metaLine = remember(item.senderName, item.date) {

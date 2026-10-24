@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -399,7 +400,7 @@ class VaultUploaderService(
                 // fresh IV, so file.keyHeader.iv is stale for the new payload. Do NOT fall back
                 // to it on a malformed descriptor IV — decrypting with the wrong IV silently
                 // returns corrupt bytes. Let the failure hit the outer catch → null (issue #927).
-                KeyHeader(Base64.decode(iv), file.keyHeader.aesKey)
+                KeyHeader(iv.bytes, file.keyHeader.aesKey)
             } else {
                 file.keyHeader
             }
@@ -461,7 +462,7 @@ class VaultUploaderService(
                             pixelWidth = tinyThumb.pixelWidth,
                             pixelHeight = tinyThumb.pixelHeight,
                             contentType = tinyThumb.contentType,
-                            content = Base64.encode(tinyThumb.thumbnailBytes),
+                            content = Base64Bytes(tinyThumb.thumbnailBytes),
                         )
                         // Larger thumbnail for crisp card display
                         val naturalSize = ImageUtils.getNaturalSize(thumbBytes)

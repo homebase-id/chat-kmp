@@ -175,7 +175,7 @@ private fun SharedMediaViewer(
         onShare = { _, _ ->
             scope.launch {
                 try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
+                    val iv = item.payload.iv?.bytes ?: return@launch
                     // Stream-decrypt straight into share_outbound (#845) —
                     // bounded RAM for any payload size; the old byte path
                     // buffered the whole payload (~2×) in memory.
@@ -235,7 +235,7 @@ fun rememberSharedMediaSaver(
         { item ->
             scope.launch {
                 try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
+                    val iv = item.payload.iv?.bytes ?: return@launch
                     val ext = item.payload.contentType?.substringAfterLast('/')
                         ?.takeIf { it.isNotBlank() } ?: "bin"
                     val name = item.payload.filename() ?: "${item.payload.key}.$ext"

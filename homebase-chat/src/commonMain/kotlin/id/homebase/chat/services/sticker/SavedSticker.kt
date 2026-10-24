@@ -93,9 +93,7 @@ internal const val TRAY_ANIMATED_MAX_BYTES = 2L * 1024 * 1024
  */
 @OptIn(ExperimentalEncodingApi::class)
 fun SavedSticker.toImageData(requestedSize: ImageSize? = ImageSize.THUMB_SMALL): HomebaseImageData? {
-    val ivBytes = payloadDescriptor.iv?.let {
-        try { Base64.decode(it) } catch (_: Exception) { null }
-    } ?: return null
+    val ivBytes = payloadDescriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

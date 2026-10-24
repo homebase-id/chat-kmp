@@ -80,10 +80,7 @@ internal suspend fun resendablePayloads(
                 unavailableKeys += descriptor.key
                 continue
             }
-            val ivBytes = descriptor.iv?.let {
-                @OptIn(ExperimentalEncodingApi::class)
-                Base64.Default.decode(it)
-            }
+            val ivBytes = descriptor.iv?.bytes
             if (ivBytes == null) {
                 Logger.w(tag = logTag) {
                     "resendablePayloads: payload key=${descriptor.key} unavailable — descriptor has no iv (fileId=${file.fileId})"

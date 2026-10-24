@@ -120,7 +120,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
 
     val descriptor = if (isFolder) null else fileMetadata.getPayloadDescriptor(FilesyncProtocol.PayloadKey)
     val payload = if (isFolder) null else {
-        val iv = descriptor?.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
+        val iv = descriptor?.iv?.bytes
         val hash = descriptor?.hash
         if (iv == null || hash == null) {
             Logger.w(tag = TAG) { "skipping file $nodeId: no hashed ${FilesyncProtocol.PayloadKey} payload" }

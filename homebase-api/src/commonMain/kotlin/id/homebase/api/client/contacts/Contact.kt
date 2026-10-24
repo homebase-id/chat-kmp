@@ -60,7 +60,7 @@ internal val ContactImageRef.isSvg: Boolean
 /** The IV is per-payload, the AES key is the file's. Null until the payload is decodable. */
 fun ContactImageRef.payloadKeyHeader(): KeyHeader? {
     val aesKey = keyHeader?.aesKey ?: return null
-    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    val iv = payload.iv?.bytes ?: return null
     return KeyHeader(iv = iv, aesKey = aesKey)
 }
 

@@ -175,7 +175,7 @@ fun MediaItem(
                 }
             }
 
-            val payloadIv = payload.iv?.let { Base64.decode(it) }
+            val payloadIv = payload.iv?.bytes
 
             if (payloadIv != null && linkDescriptors != null) {
                 LinkPreviewCard(
@@ -216,7 +216,7 @@ fun MediaItem(
             }
             val descriptor = locationHeaderDescriptor ?: payloadDescriptor
 
-            val payloadIv = payload.iv?.let { Base64.decode(it) }
+            val payloadIv = payload.iv?.bytes
 
             if (payloadIv != null && descriptor != null) {
                 LocationPreviewCard(
@@ -283,7 +283,7 @@ fun MediaItem(
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
                     remember(driveId, fileId, payload.key, payload.lastModified, imageSize, contentType) {
-                        val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                        val payloadIv = payload.iv?.bytes ?: return@remember null
                         HomebaseImageData.from(
                             driveId = driveId,
                             fileId = fileId,
@@ -323,7 +323,7 @@ fun MediaItem(
 
         payload.isVideo() -> {
             val payloadIv = remember(payload.iv) {
-                payload.iv?.let { Base64.decode(it) }
+                payload.iv?.bytes
             }
             if (payloadIv != null) {
                 val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
@@ -548,7 +548,7 @@ fun MediaItem(
             val pdfPreviewData =
                 remember(driveId, fileId, payload.key, payload.lastModified) {
                     val previewThumb = payload.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail
-                    val payloadIv = payload.iv?.let { Base64.decode(it) }
+                    val payloadIv = payload.iv?.bytes
                     if (previewThumb == null || payloadIv == null) return@remember null
                     HomebaseImageData.from(
                         driveId = driveId,
