@@ -43,10 +43,15 @@ class CardsMenuTest {
         required = required,
     )
 
-    private fun ComposeUiTest.menu(item: CardContentItem, applied: MutableList<ProfileAudience>, dismissed: MutableList<Unit> = mutableListOf()) =
+    private fun ComposeUiTest.menu(
+        item: CardContentItem,
+        applied: MutableList<ProfileAudience>,
+        dismissed: MutableList<Unit> = mutableListOf(),
+        menuCircles: List<CardCircle> = circles,
+    ) =
         setContent {
             MaterialTheme {
-                Box { CardsMenu(item = item, circles = circles, onApply = { applied += it }, onDismiss = { dismissed += Unit }) }
+                Box { CardsMenu(item = item, circles = menuCircles, onApply = { applied += it }, onDismiss = { dismissed += Unit }) }
             }
         }
 
@@ -98,6 +103,16 @@ class CardsMenuTest {
 
         circle(FAMILY_CIRCLE_ID).performClick()
         onNodeWithTag("cards_menu_cancel").performClick()
+        assertEquals(emptyList(), applied)
+    }
+
+    @Test
+    fun doneWithNoCirclesAndEveryConnectionStoredCallsNothing() = runComposeUiTest {
+        val applied = mutableListOf<ProfileAudience>()
+        menu(item(ProfileAudience.Circles(emptySet(), emptySet())), applied, menuCircles = emptyList())
+
+        onNodeWithTag("cards_menu_done").performClick()
+
         assertEquals(emptyList(), applied)
     }
 

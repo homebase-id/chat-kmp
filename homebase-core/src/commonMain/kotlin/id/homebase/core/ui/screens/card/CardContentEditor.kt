@@ -444,17 +444,17 @@ internal fun CardsMenu(
     val stored = item.audience
     val otherIds = (stored as? ProfileAudience.Circles)?.otherIds.orEmpty()
     var public by remember { mutableStateOf(stored == ProfileAudience.Public) }
-    var ticked by remember {
-        mutableStateOf(
-            when (stored) {
-                ProfileAudience.Public -> allIds
-                ProfileAudience.OnlyMe -> emptySet()
-                is ProfileAudience.Circles -> stored.ids.filter { it in allIds }.toSet()
-            },
-        )
+    val initialTicked = remember {
+        when (stored) {
+            ProfileAudience.Public -> allIds
+            ProfileAudience.OnlyMe -> emptySet()
+            is ProfileAudience.Circles -> stored.ids.filter { it in allIds }.toSet()
+        }
     }
+    var ticked by remember { mutableStateOf(initialTicked) }
     var beforePublic by remember { mutableStateOf(emptySet<String>()) }
-    val draft = cardsDraftAudience(public, ticked, otherIds)
+    val untouched = public == (stored == ProfileAudience.Public) && ticked == initialTicked
+    val draft = if (untouched) stored else cardsDraftAudience(public, ticked, otherIds)
     DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
         CardsMenuRow(
             label = stringResource(MR.string.profile_card_cards_public),
