@@ -249,7 +249,10 @@ internal fun CardContentEditor(
             card = card,
             circles = circles,
             socials = if (type in CARD_SOCIAL_TYPES) missingSocials else emptyList(),
-            onAdd = onAdd,
+            onAdd = { t, updates ->
+                pendingId = null
+                onAdd(t, updates)
+            },
             onDismiss = { adding = null },
         )
     }
@@ -264,7 +267,14 @@ internal fun CardContentEditor(
         )
     }
     if (copying) {
-        CopyFromSheet(sources = importSources, onPick = onImport, onDismiss = { copying = false })
+        CopyFromSheet(
+            sources = importSources,
+            onPick = {
+                pendingId = null
+                onImport(it)
+            },
+            onDismiss = { copying = false },
+        )
     }
 }
 
