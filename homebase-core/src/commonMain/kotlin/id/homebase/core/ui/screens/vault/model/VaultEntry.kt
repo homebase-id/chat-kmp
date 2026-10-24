@@ -15,7 +15,6 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid

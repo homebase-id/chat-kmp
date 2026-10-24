@@ -77,7 +77,6 @@ import id.homebase.resources.moment_video_unmute
 import id.homebase.resources.moment_video_watch_again
 import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.delay
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**

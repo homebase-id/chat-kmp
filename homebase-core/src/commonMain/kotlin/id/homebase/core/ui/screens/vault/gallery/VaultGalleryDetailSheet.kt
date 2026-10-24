@@ -77,7 +77,6 @@ import id.homebase.resources.vault_gallery_add_page
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_label_placeholder
 import id.homebase.resources.vault_notes_placeholder
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource

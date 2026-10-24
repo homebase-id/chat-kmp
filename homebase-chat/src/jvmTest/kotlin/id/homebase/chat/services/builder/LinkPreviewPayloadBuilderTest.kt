@@ -1,6 +1,5 @@
 package id.homebase.chat.services.builder
 
-import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer

@@ -21,7 +21,6 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.math.abs
 import kotlin.uuid.Uuid

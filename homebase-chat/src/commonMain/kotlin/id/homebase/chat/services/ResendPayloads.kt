@@ -6,8 +6,6 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ResendPayloadByteSource
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.file.FileOperationsProvider
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
 /**

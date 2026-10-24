@@ -74,7 +74,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**

@@ -56,7 +56,6 @@ import id.homebase.resources.upload_preparing
 import id.homebase.resources.upload_sending
 import id.homebase.resources.upload_uploading
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 
 @Composable
 fun FullScreenVideoPlayer(

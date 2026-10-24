@@ -25,7 +25,6 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertContentEquals

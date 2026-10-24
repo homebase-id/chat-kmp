@@ -5,7 +5,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.image.HomebaseImageData
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 private const val TAG = "ProfileAvatarImageData"

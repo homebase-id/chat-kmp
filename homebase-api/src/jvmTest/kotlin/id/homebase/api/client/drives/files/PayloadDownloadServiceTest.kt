@@ -1,6 +1,5 @@
 package id.homebase.api.client.drives.files
 
-import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException

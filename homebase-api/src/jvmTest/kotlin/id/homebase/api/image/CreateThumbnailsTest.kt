@@ -1,7 +1,5 @@
 package id.homebase.api.image
 
-import id.homebase.api.serialization.Base64Bytes
-import kotlin.io.encoding.Base64
 import kotlin.math.max
 import kotlin.test.Test
 import kotlin.test.assertEquals

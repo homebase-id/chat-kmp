@@ -1,6 +1,5 @@
 package id.homebase.api.crypto
 
-import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.CryptoHelper
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.io.encoding.Base64

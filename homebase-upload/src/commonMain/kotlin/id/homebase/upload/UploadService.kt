@@ -14,7 +14,6 @@ import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OutboxSync
 import kotlinx.coroutines.CoroutineScope
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**

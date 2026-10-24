@@ -28,7 +28,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.io.files.Path
-import kotlin.io.encoding.Base64
 
 private const val TAG = "ChatMediaAutoSave"
 

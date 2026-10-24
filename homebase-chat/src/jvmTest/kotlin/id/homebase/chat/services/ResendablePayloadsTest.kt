@@ -12,7 +12,6 @@ import id.homebase.api.client.drives.files.ResendPayloadByteSource
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.chat.services.convo.FakeFileOperationsProvider
 import kotlinx.coroutines.test.runTest
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertContentEquals

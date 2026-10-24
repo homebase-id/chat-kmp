@@ -7,7 +7,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =

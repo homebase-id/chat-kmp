@@ -17,7 +17,6 @@ import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.image.HomebaseImageData
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.async

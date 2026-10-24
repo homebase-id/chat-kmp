@@ -48,7 +48,6 @@ import id.homebase.api.file.SourceUnavailableException
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 

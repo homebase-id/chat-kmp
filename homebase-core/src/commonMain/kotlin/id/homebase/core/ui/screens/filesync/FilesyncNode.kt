@@ -23,7 +23,6 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
-import kotlin.io.encoding.Base64
 import kotlin.math.roundToLong
 import kotlin.uuid.Uuid
 

@@ -74,7 +74,6 @@ import id.homebase.resources.conversation_media_tab_media
 import id.homebase.resources.menu_back
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.coroutines.launch
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.StringResource

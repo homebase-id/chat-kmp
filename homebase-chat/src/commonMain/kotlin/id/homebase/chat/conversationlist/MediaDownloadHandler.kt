@@ -45,7 +45,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**

@@ -105,7 +105,6 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid

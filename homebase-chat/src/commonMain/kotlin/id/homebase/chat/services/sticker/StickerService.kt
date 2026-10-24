@@ -26,7 +26,6 @@ import id.homebase.core.config.stickerLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi

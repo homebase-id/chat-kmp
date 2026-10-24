@@ -74,7 +74,6 @@ import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 // Moments-specific clone of `id.homebase.chat.widget.MediaItem`, free to diverge from chat's copy.

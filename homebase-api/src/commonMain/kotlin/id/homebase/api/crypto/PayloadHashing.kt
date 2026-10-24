@@ -7,7 +7,6 @@ import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.CancellationException
-import kotlin.io.encoding.Base64
 
 private const val PAYLOAD_HASH_LENGTH = 32
 private val CONTENT_HASH_IV_MASK = ByteArray(16) { 0xAA.toByte() }

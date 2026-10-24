@@ -76,7 +76,6 @@ import id.homebase.resources.share
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 import id.homebase.chat.services.collectContext
 

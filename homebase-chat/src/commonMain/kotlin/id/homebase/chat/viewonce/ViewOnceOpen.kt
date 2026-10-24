@@ -7,7 +7,6 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.util.isMobile
-import kotlin.io.encoding.Base64
 
 const val VIEW_ONCE_PAYLOAD_KEY = ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB + "0"
 

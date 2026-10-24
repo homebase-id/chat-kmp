@@ -10,7 +10,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.imageDataFor
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
