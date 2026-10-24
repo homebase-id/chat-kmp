@@ -6,7 +6,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
@@ -205,7 +204,7 @@ class FilesyncViewModel(
                 val (folder, now) = coroutineScope {
                     val folder = async { repository.listFolder(folderId, includeRemoved = showDeleted) }
                     // A restore from anywhere makes a removed crumb live again: ask the drive, not the trail.
-                    val now = async { if (removed.isEmpty()) emptyMap() else repository.findNodes(removed, ArchivalStatus.Removed, ArchivalStatus.None).nodes }
+                    val now = async { if (removed.isEmpty()) emptyMap() else repository.findNodes(removed, FilesyncStatus.Removed, FilesyncStatus.Live).nodes }
                     folder.await() to now.await()
                 }
                 // Recovered files stays hidden until a computer moves something into it; nothing removes it when empty.

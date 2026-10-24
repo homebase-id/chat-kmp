@@ -25,6 +25,15 @@ class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, F
     operator fun plus(other: FilesyncNodes) = FilesyncNodes(nodes + other.nodes, handles + other.handles)
 }
 
+/** What a query asks for: Live is every status the computers sync, another app's 1 or 3 too; Removed is Recently deleted. */
+enum class FilesyncStatus(internal val archivalStatus: List<Int>) {
+    Live(listOf(ArchivalStatus.None.value, ArchivalStatus.Archived.value, 3)),
+    Removed(listOf(ArchivalStatus.Removed.value)),
+}
+
+/** A tombstone is proof a file went for good; a header not found is only a first "not there". */
+enum class FilesyncNotThere { Tombstone, NoHeader }
+
 /** Network only: the drive is never synced, so every listing is fetched fresh. */
 class FilesyncRepository(
     private val driveQueryProvider: DriveQueryProvider,
@@ -37,25 +46,25 @@ class FilesyncRepository(
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
         queryAll(folderParams(folderId, includeRemoved)).first
 
-    suspend fun takenNames(folderId: Uuid): MutableSet<String> = FilesyncNames.takenKeys(listFolder(folderId).nodes.values)
+    suspend fun takenNames(folderId: Uuid): MutableSet<String> = FilesyncNames.takenKeys(folderId, listFolder(folderId).nodes.values)
 
     /** Whether [listFolder] would find anything in [folderId]. */
     suspend fun holdsAny(folderId: Uuid, includeRemoved: Boolean): Boolean =
         queryPage(folderParams(folderId, includeRemoved), QueryBatchResultOptionsRequest(maxRecords = 1)).searchResults.isNotEmpty()
 
     private fun folderParams(folderId: Uuid, includeRemoved: Boolean) =
-        nodeParams(if (includeRemoved) listOf(ArchivalStatus.None, ArchivalStatus.Removed) else listOf(ArchivalStatus.None))
+        nodeParams(if (includeRemoved) listOf(FilesyncStatus.Live, FilesyncStatus.Removed) else listOf(FilesyncStatus.Live))
             .copy(groupId = listOf(folderId))
 
     /** Every removed node across the drive, and the server's clock when the listing began. */
-    suspend fun listRemoved(): Pair<FilesyncNodes, Long> = queryAll(nodeParams(listOf(ArchivalStatus.Removed)))
+    suspend fun listRemoved(): Pair<FilesyncNodes, Long> = queryAll(nodeParams(listOf(FilesyncStatus.Removed)))
 
     /** [removed], and the live nodes below removed folders, level by level (see [FilesyncTrash]). */
     suspend fun listDeleted(removed: FilesyncNodes? = null): FilesyncNodes {
         var all = removed ?: listRemoved().first
         var folders = all.nodes.values.filter { it.isFolder }.map { it.nodeId }
         while (folders.isNotEmpty()) {
-            val live = queryChunked(folders, listOf(ArchivalStatus.None)) { copy(groupId = it) }
+            val live = queryChunked(folders, listOf(FilesyncStatus.Live)) { copy(groupId = it) }
             folders = live.nodes.values.filter { it.isFolder && it.nodeId !in all.nodes }.map { it.nodeId }
             all += live
         }
@@ -98,15 +107,22 @@ class FilesyncRepository(
         return holding
     }
 
-    /** Of [fileIds] a delete didn't find, those gone for good: their header isn't found either, or is a tombstone's. */
-    suspend fun goneForGood(fileIds: List<Uuid>): List<Uuid> =
-        fileIds.filter { id -> driveFileProvider.getFileHeader(FilesyncProtocol.DriveAlias, id)?.let { it.fileState == FileState.Deleted } ?: true }
+    /** Of [fileIds] a write didn't find, those the identity doesn't have, and how it says so; one whose header is found is left out. */
+    suspend fun notThere(fileIds: List<Uuid>): Map<Uuid, FilesyncNotThere> = buildMap {
+        for (id in fileIds) {
+            val header = driveFileProvider.getFileHeader(FilesyncProtocol.DriveAlias, id)
+            when {
+                header == null -> put(id, FilesyncNotThere.NoHeader)
+                header.fileState == FileState.Deleted -> put(id, FilesyncNotThere.Tombstone)
+            }
+        }
+    }
 
     /** The newest live files, newest first. */
     suspend fun listRecentlyAdded(limit: Int = RECENT_LIMIT): FilesyncNodes =
         nodesOf(
             queryPage(
-                nodeParams(listOf(ArchivalStatus.None)).copy(fileType = listOf(FilesyncProtocol.FileFileType)),
+                nodeParams(listOf(FilesyncStatus.Live)).copy(fileType = listOf(FilesyncProtocol.FileFileType)),
                 QueryBatchResultOptionsRequest(
                     maxRecords = limit,
                     includeMetadataHeader = true,
@@ -117,12 +133,12 @@ class FilesyncRepository(
         )
 
     /** The nodes among [nodeIds] that are in one of [status] now; one gone for good, or in another status, is left out. */
-    suspend fun findNodes(nodeIds: Collection<Uuid>, vararg status: ArchivalStatus): FilesyncNodes =
+    suspend fun findNodes(nodeIds: Collection<Uuid>, vararg status: FilesyncStatus): FilesyncNodes =
         queryChunked(nodeIds.distinct().filter { it != FilesyncProtocol.RootNodeId }, status.toList()) { copy(clientUniqueIdAtLeastOne = it) }
 
     private suspend fun queryChunked(
         ids: List<Uuid>,
-        status: List<ArchivalStatus>,
+        status: List<FilesyncStatus>,
         by: FileQueryParams.(List<Uuid>) -> FileQueryParams,
     ): FilesyncNodes =
         ids.chunked(PAGE_SIZE).fold(FilesyncNodes(emptyMap(), emptyMap())) { all, chunk -> all + queryAll(nodeParams(status).by(chunk)).first }
@@ -130,14 +146,14 @@ class FilesyncRepository(
     /** Folder names for "in Photos" lines, live or removed alike; the top level is left to the caller. */
     suspend fun folderNames(folderIds: Collection<Uuid>, known: Map<Uuid, FilesyncNode>): Map<Uuid, String> {
         val missing = folderIds.filter { it !in known && it != FilesyncProtocol.RootNodeId }
-        val live = if (missing.isEmpty()) emptyMap() else findNodes(missing, ArchivalStatus.None).nodes
+        val live = if (missing.isEmpty()) emptyMap() else findNodes(missing, FilesyncStatus.Live).nodes
         return (known + live).filterKeys { it in folderIds }.mapValues { it.value.name }
     }
 
-    private fun nodeParams(status: List<ArchivalStatus>?, state: FileState = FileState.Active) = FileQueryParams(
+    private fun nodeParams(status: List<FilesyncStatus>?, state: FileState = FileState.Active) = FileQueryParams(
         fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType),
         fileState = listOf(state),
-        archivalStatus = status?.map { it.value },
+        archivalStatus = status?.flatMap { it.archivalStatus },
     )
 
     // Keyed by node: a node changed between two pages comes back on both. The time is the server's, at the first page.

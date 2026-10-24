@@ -24,6 +24,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val TAG = "FilesyncEditor"
@@ -35,7 +39,7 @@ private val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, Odi
  * [skipped]: items another device changed or deleted meanwhile, left as they are. [recovered]: restored where no listing
  * shows them until a computer moves them into Recovered files.
  */
-class FilesyncWriteResult(val done: Int, val skipped: Int, val recovered: Int = 0)
+class FilesyncWriteResult(val done: Int, val skipped: Int, val recovered: Int = 0, val tryAgainSoon: Boolean = false)
 
 /** Restores and empties Recently deleted exactly as filesync's deleted.rs does, so every desktop agrees with the phone. */
 class FilesyncEditor(
@@ -49,20 +53,21 @@ class FilesyncEditor(
 
     // One write at a time: a restore picks names against the folder as it is, so two at once could pick the same one.
     private val writeLock = Mutex()
+    private val notFound = FilesyncNotFoundTwice()
 
     /** Brings each of [nodeIds] back with the items its delete took along, and the removed folders above it first. */
     suspend fun restore(nodeIds: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
         val trash = FilesyncTrash(repository.listDeleted())
         val tops = nodeIds.mapNotNull { id -> trash.all.nodes[id]?.takeIf { it.removed } }
         // One already live was restored by an earlier tap or another device: nothing to do, nothing to report.
-        val gone = (nodeIds - tops.map { it.nodeId }.toSet()).let { it.size - repository.findNodes(it, ArchivalStatus.None).nodes.size }
+        val gone = (nodeIds - tops.map { it.nodeId }.toSet()).let { it.size - repository.findNodes(it, FilesyncStatus.Live).nodes.size }
         val plan = tops.flatMap { trash.restorePlan(it) }.distinctBy { it.nodeId }
         val chains = mutableMapOf<Uuid, List<FilesyncNode>>()
         fun chainAbove(node: FilesyncNode) = chains.getOrPut(node.parentId) { trash.all.nodes[node.parentId]?.let(trash::chainOf).orEmpty() }
         // A node waits for the planned folders it comes back into, through live folders too: a level after the last of them.
         val level = mutableMapOf<Uuid, Int>()
         for (node in plan) level[node.nodeId] = chainAbove(node).mapNotNull { level[it.nodeId] }.maxOrNull()?.plus(1) ?: 0
-        val liveParents = repository.findNodes(plan.map { it.parentId }.filter { it !in level }, ArchivalStatus.None).nodes.keys
+        val liveParents = repository.findNodes(plan.map { it.parentId }.filter { it !in level }, FilesyncStatus.Live).nodes.keys
 
         val restored = mutableSetOf<Uuid>()
         // Folders of the plan deleted for good while it ran.
@@ -72,6 +77,7 @@ class FilesyncEditor(
         suspend fun taken(folder: Uuid) = takenByFolder.getOrPut(folder) { repository.takenNames(folder) }
         var skipped = gone
         var sent = false
+        var tryAgainSoon = false
         try {
             for (wave in plan.sortedBy { level.getValue(it.nodeId) }.groupBy { level.getValue(it.nodeId) }.values) {
                 // Back under its own name in its own folder, a node needs only its archivalStatus set, many in one request,
@@ -100,7 +106,7 @@ class FilesyncEditor(
                     val version = handle.fileVersionTag
                     when {
                         orphan == null || !handle.writable -> skipped++
-                        version != null && (orphan || taken(node.parentId).add(FilesyncNames.key(node.name))) -> batch += version to node
+                        version != null && (orphan || taken(node.parentId).add(node.nameKey)) -> batch += version to node
                         else -> rewrites += node
                     }
                 }
@@ -114,7 +120,7 @@ class FilesyncEditor(
                             null -> restored += node.nodeId
                             in ChangedElsewhere -> {
                                 skipped++
-                                takenByFolder[node.parentId]?.remove(FilesyncNames.key(node.name))
+                                takenByFolder[node.parentId]?.remove(node.nameKey)
                                 if (node.isFolder && code == OdinClientErrorCode.FileNotFound) maybeGone[answer.fileId] = node.nodeId
                                 if (node.isFolder && code == OdinClientErrorCode.CannotUpdateNonActiveFile) wentForGood += node.nodeId
                                 Logger.i(tag = TAG) { "node ${node.nodeId} changed elsewhere; left as it is" }
@@ -141,13 +147,21 @@ class FilesyncEditor(
                         if (node.isFolder) maybeGone[handle.fileId] = node.nodeId
                     }
                 }
-                repository.goneForGood(maybeGone.keys.toList()).mapTo(wentForGood) { maybeGone.getValue(it) }
+                // A folder only said not found once stays, and what comes back into it waits for the next try.
+                val notThere = repository.notThere(maybeGone.keys.toList())
+                for ((fileId, folder) in maybeGone) {
+                    when (notThere[fileId]) {
+                        null -> notFound.found(fileId)
+                        FilesyncNotThere.Tombstone -> wentForGood += folder
+                        FilesyncNotThere.NoHeader -> if (notFound.confirms(fileId, trash.all.handles.getValue(folder).versionTag)) wentForGood += folder else tryAgainSoon = true
+                    }
+                }
             }
         } finally {
             // A failed request may still have restored some of its files.
             if (sent) _changed.tryEmit(Unit)
         }
-        FilesyncWriteResult(restored.size, skipped, recovered = (intoRecovered intersect restored).size)
+        FilesyncWriteResult(restored.size, skipped, recovered = (intoRecovered intersect restored).size, tryAgainSoon = tryAgainSoon)
     }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */
@@ -266,7 +280,7 @@ class FilesyncEditor(
             }
             val byCode = answers.results.groupBy({ it.errorCode }, { it.fileId })
             refused += byCode.keys.filterNotNull() - setOf(OdinClientErrorCode.VersionTagMismatch, OdinClientErrorCode.FileNotFound)
-            byCode[null].orEmpty() + repository.goneForGood(byCode[OdinClientErrorCode.FileNotFound].orEmpty())
+            byCode[null].orEmpty() + repository.notThere(byCode[OdinClientErrorCode.FileNotFound].orEmpty()).keys
         }
 
     /** False when the node changed or went since it was read; that's another device's newer word, not a failure. */
@@ -305,7 +319,36 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
 internal fun restoredContent(content: JsonObject, name: String) =
     JsonObject(content - REMOVAL_KEY + ("name" to JsonPrimitive(name)))
 
-/** Runs [write] and turns its outcome into the one message the user sees; true when everything was written. */
+/**
+ * One 404 never makes a file gone: the identity's second "not there" does, a minute to an hour after the first, at the
+ * same version. Wall time, as Android's monotonic clock stops in deep sleep and would stretch the hour.
+ */
+internal class FilesyncNotFoundTwice(private val clock: Clock = Clock.System) {
+    private data class Sighting(val version: Uuid?, val at: Instant)
+
+    private val sightings = mutableMapOf<Uuid, Sighting>()
+
+    /** Records that [fileId] at [version] wasn't found; true when that confirms an earlier time. */
+    fun confirms(fileId: Uuid, version: Uuid?): Boolean {
+        val now = clock.now()
+        sightings.values.removeAll { now - it.at > Window.endInclusive }
+        val since = sightings[fileId]?.takeIf { it.version == version }?.let { now - it.at }
+        if (since != null && since in Window) return true.also { sightings.remove(fileId) }
+        if (since == null) sightings[fileId] = Sighting(version, now)
+        return false
+    }
+
+    /** A header found meanwhile clears the doubt. */
+    fun found(fileId: Uuid) {
+        sightings.remove(fileId)
+    }
+
+    private companion object {
+        val Window = 1.minutes..1.hours
+    }
+}
+
+/** Runs [write] and turns its outcome into the messages the user sees; true when everything was written. */
 internal suspend fun reportWrite(
     done: FilesyncNotice,
     failed: FilesyncError,
@@ -320,14 +363,13 @@ internal suspend fun reportWrite(
         Logger.e(e, TAG) { "$done failed" }
         null
     }
-    send(
-        when {
-            result == null -> FilesyncUiEvent.Error(failed)
-            // Nothing lists those until a computer syncs, so saying where comes first.
-            result.recovered > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered)
-            result.skipped > 0 -> FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere)
-            else -> FilesyncUiEvent.Notice(done)
-        }
-    )
-    return result != null && result.skipped == 0
+    if (result == null) {
+        send(FilesyncUiEvent.Error(failed))
+        return false
+    }
+    // Nothing lists those until a computer syncs, so saying where comes first; a retry won't plan them, so it's said now.
+    if (result.recovered > 0) send(FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered))
+    if (result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
+    if (result.recovered == 0 && !result.tryAgainSoon) send(FilesyncUiEvent.Notice(if (result.skipped > 0) FilesyncNotice.ChangedElsewhere else done))
+    return result.skipped == 0
 }
