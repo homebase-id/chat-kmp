@@ -9,6 +9,7 @@ import id.homebase.api.image.draw.StrokeKind
 import id.homebase.api.image.draw.stackBlur
 import id.homebase.api.lib.image.ImageFormatDetector
 import org.jetbrains.skia.Bitmap as SkiaBitmap
+import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Codec
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorInfo
@@ -17,6 +18,9 @@ import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Data
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Font
+import org.jetbrains.skia.FontMgr
+import org.jetbrains.skia.FontStyle
 import org.jetbrains.skia.IRect
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Paint
@@ -590,6 +594,9 @@ private fun parseSvgDimensions(svgBytes: ByteArray): Pair<Int, Int>? {
 
 private val svgTextRegex = Regex("""<text\b([^>]*?)(?:/>|>(.*?)</text>)""", RegexOption.DOT_MATCHES_ALL)
 private val svgTagRegex = Regex("""<[^>]*>""")
+private val svgRootRegex = Regex("""<svg\b[^>]*>""")
+private val whitespaceRegex = Regex("""\s+""")
+private val viewBoxSeparatorRegex = Regex("""[\s,]+""")
 
 private fun svgAttr(attrs: String, name: String): String? =
     Regex("""(?<![\w-])$name\s*=\s*["']([^"']*)["']""").find(attrs)?.groupValues?.get(1)
@@ -604,13 +611,13 @@ private fun parseSvgColor(value: String?): Int {
 }
 
 // skiko's SVGDOM has no FontMgr hook, so Skia's SVG module drops <text>; draw simple ones ourselves.
-private fun drawSvgText(canvas: org.jetbrains.skia.Canvas, svg: String, containerW: Float, containerH: Float) {
-    val root = Regex("""<svg\b[^>]*>""").find(svg)?.value
+private fun drawSvgText(canvas: Canvas, svg: String, containerW: Float, containerH: Float) {
+    val root = svgRootRegex.find(svg)?.value
     val viewBox = root?.let(::svgViewBox)
     canvas.save()
     if (root != null && viewBox != null) {
         val (vx, vy, vw, vh) = viewBox
-        val par = svgAttr(root, "preserveAspectRatio")?.trim()?.split(Regex("""\s+"""))
+        val par = svgAttr(root, "preserveAspectRatio")?.trim()?.split(whitespaceRegex)
             ?.filter { it != "defer" }.orEmpty()
         val align = par.firstOrNull() ?: "xMidYMid"
         if (align == "none") {
@@ -635,11 +642,12 @@ private fun drawSvgText(canvas: org.jetbrains.skia.Canvas, svg: String, containe
 }
 
 private fun svgViewBox(root: String): List<Float>? {
-    val nums = svgAttr(root, "viewBox")?.trim()?.split(Regex("""[\s,]+"""))?.mapNotNull { it.toFloatOrNull() }
+    val nums = svgAttr(root, "viewBox")?.trim()?.split(viewBoxSeparatorRegex)?.mapNotNull { it.toFloatOrNull() }
     return nums?.takeIf { it.size == 4 && it[2] > 0f && it[3] > 0f }
 }
 
-private fun drawSvgTextRuns(canvas: org.jetbrains.skia.Canvas, svg: String) {
+private fun drawSvgTextRuns(canvas: Canvas, svg: String) {
+    val mgr = FontMgr.default
     for (match in svgTextRegex.findAll(svg)) {
         val attrs = match.groupValues[1]
         val text = match.groupValues[2].replace(svgTagRegex, "").trim()
@@ -648,11 +656,10 @@ private fun drawSvgTextRuns(canvas: org.jetbrains.skia.Canvas, svg: String) {
         if (text.isEmpty() || fill == "none" || fill == "transparent") continue
         val size = svgAttr(attrs, "font-size")?.removeSuffix("px")?.toFloatOrNull() ?: 16f
         val bold = svgAttr(attrs, "font-weight")?.let { it == "bold" || (it.toIntOrNull() ?: 400) >= 600 } == true
-        val style = if (bold) org.jetbrains.skia.FontStyle.BOLD else org.jetbrains.skia.FontStyle.NORMAL
-        val mgr = org.jetbrains.skia.FontMgr.default
+        val style = if (bold) FontStyle.BOLD else FontStyle.NORMAL
         val typeface = mgr.matchFamilyStyle(null, style)
             ?: if (mgr.familiesCount > 0) mgr.matchFamilyStyle(mgr.getFamilyName(0), style) else null
-        val font = org.jetbrains.skia.Font(typeface, size)
+        val font = Font(typeface, size)
         // measureTextWidth returns a wrong width for multi-glyph strings on wasm; summing glyph advances is right everywhere
         val width = font.getWidths(font.getStringGlyphs(text)).sum()
         var x = svgAttr(attrs, "x")?.toFloatOrNull() ?: 0f
