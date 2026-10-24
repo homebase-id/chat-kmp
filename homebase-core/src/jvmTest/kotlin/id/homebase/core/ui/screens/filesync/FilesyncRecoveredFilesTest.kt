@@ -57,8 +57,8 @@ class FilesyncRecoveredFilesTest {
         val (live, withRemoved) = asked
         assertEquals(listOf(FilesyncProtocol.RecoveredFilesNodeId), live.queryParams.groupId)
         assertEquals(listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), live.queryParams.fileType)
-        assertEquals(listOf(0), live.queryParams.archivalStatus)
-        assertEquals(listOf(0, 2), withRemoved.queryParams.archivalStatus)
+        assertEquals(listOf(0, 1, 3), live.queryParams.archivalStatus)
+        assertEquals(listOf(0, 1, 3, 2), withRemoved.queryParams.archivalStatus)
         assertEquals(1, live.resultOptionsRequest.maxRecords)
     }
 }

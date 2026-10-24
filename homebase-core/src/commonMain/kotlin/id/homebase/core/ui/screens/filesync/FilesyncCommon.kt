@@ -61,6 +61,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.filesync_cancel_download
 import id.homebase.resources.filesync_changed_elsewhere
+import id.homebase.resources.filesync_restore_try_again
 import id.homebase.resources.filesync_damaged
 import id.homebase.resources.filesync_day_time
 import id.homebase.resources.filesync_delete_failed
@@ -152,6 +153,7 @@ internal fun FilesyncEventsEffect(
                         FilesyncNotice.RestoredToRecovered -> MR.string.filesync_restored_to_recovered
                         FilesyncNotice.DeletedForever -> MR.string.filesync_deleted_forever
                         FilesyncNotice.ChangedElsewhere -> MR.string.filesync_changed_elsewhere
+                        FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
                     }
                 )
             }
