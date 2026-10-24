@@ -27,6 +27,7 @@ private class WebAudioPlayer : AudioPlayer {
         val bytes = readWebFileBytes(filePath)
         if (bytes == null) {
             Logger.e(tag = TAG) { "No decrypted audio at $filePath" }
+            observer?.onComplete()
             return
         }
 

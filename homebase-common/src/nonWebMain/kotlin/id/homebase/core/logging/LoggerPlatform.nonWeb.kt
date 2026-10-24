@@ -21,7 +21,8 @@ internal actual fun createFileLogWriter(
 )
 
 internal actual fun listHomebaseLogFiles(logDirectory: Path): List<Path> =
-    SystemFileSystem.list(logDirectory)
+    if (!SystemFileSystem.exists(logDirectory)) emptyList()
+    else SystemFileSystem.list(logDirectory)
         .filter { it.name.startsWith("homebase") && it.name.endsWith(".log") }
 
 internal actual fun deleteHomebaseLogFiles(logDirectory: Path): Boolean =
