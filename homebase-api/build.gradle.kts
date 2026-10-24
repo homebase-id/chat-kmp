@@ -247,6 +247,10 @@ kotlin {
         // compilable for the cross-platform FfmpegDecoderCommonTest without losing JVM/iOS
         // coverage of these tests.
         val jvmAndNativeTest = create("jvmAndNativeTest") { dependsOn(commonTest.get()) }
+        val skiaTest = create("skiaTest") { dependsOn(commonTest.get()) }
+        jvmTest.get().dependsOn(skiaTest)
+        nativeTest.get().dependsOn(skiaTest)
+        wasmJsTest.get().dependsOn(skiaTest)
         jvmTest.get().dependsOn(jvmAndNativeTest)
         nativeTest.get().dependsOn(jvmAndNativeTest)
         // androidHostTest is in the "test" source-set tree (runs on the host JVM with the

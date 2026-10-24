@@ -563,7 +563,7 @@ actual object ImageUtils {
         val canvas = surface.canvas
         canvas.scale(targetW.toFloat() / naturalW, targetH.toFloat() / naturalH)
         dom.render(canvas)
-        drawSvgText(canvas, svgBytes.decodeToString())
+        drawSvgText(canvas, svgBytes.decodeToString(), naturalW.toFloat(), naturalH.toFloat())
 
         val rendered = surface.makeImageSnapshot()
         val encoded = rendered.encodeToData(encodedFormatFor(outputFormat), quality)
@@ -604,7 +604,29 @@ private fun parseSvgColor(value: String?): Int {
 }
 
 // skiko's SVGDOM has no FontMgr hook, so Skia's SVG module drops <text>; draw simple ones ourselves.
-private fun drawSvgText(canvas: org.jetbrains.skia.Canvas, svg: String) {
+private fun drawSvgText(canvas: org.jetbrains.skia.Canvas, svg: String, containerW: Float, containerH: Float) {
+    val viewBox = svgViewBox(svg)
+    canvas.save()
+    if (viewBox != null) {
+        val (vx, vy, vw, vh) = viewBox
+        val s = minOf(containerW / vw, containerH / vh)
+        canvas.translate((containerW - vw * s) / 2 - vx * s, (containerH - vh * s) / 2 - vy * s)
+        canvas.scale(s, s)
+    }
+    try {
+        drawSvgTextRuns(canvas, svg)
+    } finally {
+        canvas.restore()
+    }
+}
+
+private fun svgViewBox(svg: String): List<Float>? {
+    val root = Regex("""<svg\b[^>]*>""").find(svg)?.value ?: return null
+    val nums = svgAttr(root, "viewBox")?.trim()?.split(Regex("""[\s,]+"""))?.mapNotNull { it.toFloatOrNull() }
+    return nums?.takeIf { it.size == 4 && it[2] > 0f && it[3] > 0f }
+}
+
+private fun drawSvgTextRuns(canvas: org.jetbrains.skia.Canvas, svg: String) {
     for (match in svgTextRegex.findAll(svg)) {
         val attrs = match.groupValues[1]
         val text = match.groupValues[2].replace(svgTagRegex, "").trim()
@@ -617,7 +639,8 @@ private fun drawSvgText(canvas: org.jetbrains.skia.Canvas, svg: String) {
         val typeface = mgr.matchFamilyStyle(null, style)
             ?: if (mgr.familiesCount > 0) mgr.matchFamilyStyle(mgr.getFamilyName(0), style) else null
         val font = org.jetbrains.skia.Font(typeface, size)
-        val width = font.measureTextWidth(text)
+        // measureTextWidth returns a wrong width for multi-glyph strings on wasm; summing glyph advances is right everywhere
+        val width = font.getWidths(font.getStringGlyphs(text)).sum()
         var x = svgAttr(attrs, "x")?.toFloatOrNull() ?: 0f
         when (svgAttr(attrs, "text-anchor")) {
             "middle" -> x -= width / 2
