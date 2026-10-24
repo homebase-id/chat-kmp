@@ -166,6 +166,51 @@ class SqlCipherKeyModeTest {
         assertEquals("plain", readMarker("jdbc:sqlite:${db.absolutePath}"))
     }
 
+    // The driver hands this one key to every connection it opens, so it is what each connection
+    // pays for: a passphrase costs a PBKDF2 derivation per connection, a raw key doesn't.
+    private fun recordingOpen(db: File, keys: MutableList<String?>): (String?) -> SqlDriver = { key ->
+        keys += key
+        openSqliteDriver(if (key == null) "jdbc:sqlite:${db.absolutePath}" else cipherUrl(db, key))
+    }
+
+    private val noDerivation: (() -> Unit) -> Unit = { error("the raw key must not be derived again") }
+
+    @Test
+    fun `after the first launch only the raw key reaches SQLCipher`() {
+        val db = dbFile("keys-upgrade.db")
+        val passphrase = "a-passphrase-from-before-raw-key-mode"
+        createWith(cipherUrl(db, passphrase), "kept")
+        val store = FakeStore()
+        val keys = mutableListOf<String?>()
+
+        SqlCipherKeyMode.openDriver(db, passphrase, store, inline, recordingOpen(db, keys)).close()
+        assertEquals(listOf<String?>(passphrase), keys, "the first launch after the update opens with the passphrase, once")
+        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+
+        keys.clear()
+        repeat(3) {
+            assertEquals("kept", SqlCipherKeyMode.openDriver(db, passphrase, store, noDerivation, recordingOpen(db, keys)).marker())
+        }
+        assertEquals<List<String?>>(List(3) { raw }, keys, "every later launch opens once, with the raw key")
+    }
+
+    @Test
+    fun `a fresh install never hands SQLCipher the passphrase`() {
+        val db = dbFile("keys-fresh.db")
+        val passphrase = "a-passphrase-that-must-stay-unused"
+        val store = FakeStore()
+        val keys = mutableListOf<String?>()
+
+        SqlCipherKeyMode.openDriver(db, passphrase, store, noDerivation, recordingOpen(db, keys)).use { driver ->
+            driver.execute(null, "CREATE TABLE probe (v TEXT)", 0)
+            driver.execute(null, "INSERT INTO probe VALUES ('born-raw')", 0)
+        }
+        assertEquals("born-raw", SqlCipherKeyMode.openDriver(db, passphrase, store, noDerivation, recordingOpen(db, keys)).marker())
+
+        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        assertEquals(listOf<String?>(raw, raw), keys)
+    }
+
     @Test
     fun `raw key derivation matches SQLCipher for a known salt`() {
         val salt = ByteArray(16) { (it + 1).toByte() }
