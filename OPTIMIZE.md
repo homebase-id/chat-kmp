@@ -99,6 +99,9 @@ on desktop.
   `identifier`; Android's and iOS's drivers cache prepared statements per connection. Now that
   desktop connections live long, a per-connection cache keyed by `identifier` would save a
   prepare per statement. Not measured.
+- **Tag `DELETE`s per synced row** (not tried): one `DELETE … WHERE fileId IN (…)` per tag table
+  for a batch's written rows, chunked under SQLite's variable limit, would keep the UNIQUE safety
+  and drop most of the 2 statements per row. Measure with DbPerfBench first.
 - **`cache_size` is unset** (default about 2 MB per connection).
 - **Desktop cold start.** The 2026-10-18 log showed about 12 s on an empty DB (DB→Koin
   3.5 s), but that was a cold JVM. On 2026-10-23, with a warm build and the pooled driver:
@@ -130,12 +133,11 @@ on desktop.
   | read receipt, newer `modified` | 1 | 3 | 1 |
   | read receipt, equal `modified` (server-owned fields adopted) | 2 | 2 | 1 |
   | send a text message | 1 | 5 | 1 |
-  | background wake, 3 new messages | 1 | 12 | 1 |
+  | background wake, 3 new messages | 1 | 10 | 1 |
 
   Every incoming batch, read receipt and send re-reads the pinned bar (`refreshPinnedFor`)
   for the open conversation, whether or not anything pin-related changed. A send's outbox insert
-  runs outside the transaction of its optimistic write. A sync writes the drive cursor once per
-  file, not once per batch (3 of the background wake's 12 writes). Opening a conversation at the service
+  runs outside the transaction of its optimistic write. Opening a conversation at the service
   level is the message page and the pinned bar; the ViewModel adds `unpinExpiredPins` and the
   pinned observer on top (not measured yet).
 
@@ -149,3 +151,5 @@ on desktop.
 | 2026-10-23 | Orphan scan: `GROUP BY` in a subquery first, then `NOT EXISTS` per group (about 150 probes instead of 57K). Same rows, since the probe depends only on `groupId` | 340 → 28 ms | Yes |
 | 2026-10-23 | One connection contract (`DatabaseDriverFactory.createDriver`): one writer plus `SQLITE_READER_CONNECTIONS` (4) readers under WAL, every connection carrying `SQLITE_CONNECTION_PRAGMAS`. Android had a single connection: `SupportOpenHelperFactory(password)` leaves `enableWriteAheadLogging` off, so SQLCipher caps the pool at 1 whatever the file's journal mode, and every read, opening a conversation included, waited for the open sync write transaction. Now the WAL flag is on, the pool is 5, a per-connection hook sets the pragmas on readers and `onConfigure` re-applies them on the writer (SQLCipher overwrites `journal_size_limit` to 10 KB after the hook). iOS gets the pragmas it lacked (`temp_store`, `journal_size_limit`) through sqliter's per-connection callback | `DatabaseConnectionContractAndroidTest` on an API 36 emulator: before, "reads waited for the open write transaction" (15 s timeout); after, passes in 1.6 s. Without the hook readers had `busy_timeout` 2500; without `onConfigure` the writer had `journal_size_limit` 10000. Not yet measured on a phone | Yes |
 | 2026-10-24 | Android raw-key mode: the shared `SqlCipherKeyMode` (`javaMain`, desktop and Android) hands SQLCipher a cached raw key. The first launch after the update opens with the passphrase and derives the raw key on a background thread, because Android's PBKDF2 runs in Java: 3,261 ms on the main thread when tried inline, 1,705 ms in the background on an API 36 emulator. The database opens once; the old separate key probe also checkpointed the WAL on the main thread. The file isn't rewritten | Per fresh driver, passphrase → raw key: open plus first read 220–307 → 2–6 ms; 4 first reads during a write 766–988 → 5–9 ms (the pool opened 3 readers one after another, each deriving the key). Upgrade from the previous build on the emulator: migrated, salt unchanged, next launch silent | Yes |
+| 2026-10-24 | Sync batch: save the drive cursor once per batch, not once per file (`performBaseUpsert`) | `background-wake.txt` 12 → 10 writes for 3 files. Linux, Python's sqlite3 (no SQLCipher): 1,000 redundant upserts cost 6.8 ms per batch, plus serializing the cursor each time | Yes |
+| 2026-10-24 | Skip the two tag `DELETE`s (`DriveTagIndex`, `DriveLocalTagIndex`) for new rows | Same setup: 2,000 no-match deletes over 57K tag rows cost 4.0 ms per 1,000-file batch. Skipping needs proof that no tag rows exist for the fileId; if that is wrong, the tag `INSERT` breaks UNIQUE and the batch fails | No: risk outweighs 4 ms |
