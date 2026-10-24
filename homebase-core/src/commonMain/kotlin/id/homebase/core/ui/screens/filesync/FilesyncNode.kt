@@ -52,6 +52,7 @@ data class FilesyncNode(
     internal val nameKey: String = FilesyncNames.key(name)
     internal val kind: FileKind? = if (isFolder) null else fileKindOf(null, name)
     internal val role: FilesyncRoleFolder? = if (isFolder) FilesyncRoleFolder.of(nodeId) else null
+    internal val notOnComputers: Boolean = nameKey == FilesyncNames.stateFolderKey && FilesyncNames.isSyncTop(parentId)
 
     /** Set while it's in Recently deleted: nothing writes to a removed node, so its last write is its removal. */
     val removedMs: Long? get() = updatedMs.takeIf { removed }

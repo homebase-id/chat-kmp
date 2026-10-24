@@ -69,6 +69,7 @@ import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_deleted_forever
 import id.homebase.resources.filesync_download_failed
 import id.homebase.resources.filesync_executable
+import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import id.homebase.resources.filesync_folder_failed
@@ -198,7 +199,8 @@ internal fun NodeName(
             fontWeight = fontWeight,
             modifier = Modifier.weight(1f, fill = false),
         )
-        if (node.executable) ExecutableBadge()
+        if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
+        if (node.notOnComputers) NameBadge(stringResource(MR.string.filesync_not_on_computers))
         if (node.tags.isNotEmpty()) TagDots(node.tags, ringColor)
     }
 }
@@ -275,11 +277,12 @@ internal fun TagChip(tag: FilesyncTag, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ExecutableBadge() {
+private fun NameBadge(text: String) {
     Text(
-        text = stringResource(MR.string.filesync_executable),
+        text = text,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
