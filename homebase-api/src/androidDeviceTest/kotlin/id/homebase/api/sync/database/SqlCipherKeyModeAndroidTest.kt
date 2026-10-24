@@ -3,7 +3,9 @@ package id.homebase.api.sync.database
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import org.junit.After
@@ -19,7 +21,6 @@ import org.junit.runner.RunWith
 class SqlCipherKeyModeAndroidTest {
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val dbFile = context.getDatabasePath(DB)
 
     private class FakeStore(var value: String? = null) : RawKeyStore {
         override fun get(): String? = value
@@ -38,47 +39,49 @@ class SqlCipherKeyModeAndroidTest {
         context.deleteDatabase(DB)
     }
 
-    private fun createWith(key: String) = openAndroidSqliteDriver(context, DB, key).use { driver ->
+    private fun SqlDriver.createMarker() = use { driver ->
         driver.execute(null, "CREATE TABLE probe(v TEXT)", 0)
         driver.execute(null, "INSERT INTO probe VALUES ('kept')", 0)
     }
 
-    private fun readMarker(key: String): String? = openAndroidSqliteDriver(context, DB, key).use { driver ->
+    private fun SqlDriver.marker(): String? = use { driver ->
         driver.executeQuery(null, "SELECT v FROM probe", { c -> c.next(); QueryResult.Value(c.getString(0)) }, 0).value
     }
 
     @Test
-    fun anExistingPassphraseDatabaseOpensWithItsDerivedRawKey() {
-        createWith(PASSPHRASE)
+    fun anExistingPassphraseDatabaseGetsItsRawKeyForTheNextLaunch() {
+        openAndroidSqliteDriver(context, DB, PASSPHRASE).createMarker()
         val store = FakeStore()
 
-        val key = sqlCipherKey(dbFile, PASSPHRASE, store)
+        assertEquals("kept", openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.marker())
 
-        assertEquals(SqlCipherKeyMode.rawKey(assertNotNull(store.value)), key)
-        assertEquals("kept", readMarker(key))
-        assertEquals("kept", readMarker(PASSPHRASE), "the file must not be re-encrypted")
+        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        assertEquals("kept", openAndroidSqliteDriver(context, DB, raw).marker())
+        assertEquals("kept", openAndroidSqliteDriver(context, DB, PASSPHRASE).marker(), "the file must not be re-encrypted")
     }
 
     @Test
-    fun aDatabaseNoKeyOpensFallsBackToThePassphrase() {
-        createWith(PASSPHRASE)
+    fun aDatabaseNoKeyOpensFailsAndForgetsTheCachedKey() {
+        openAndroidSqliteDriver(context, DB, PASSPHRASE).createMarker()
         val store = FakeStore("11".repeat(32))
 
-        assertEquals("another-passphrase", sqlCipherKey(dbFile, "another-passphrase", store))
+        assertFailsWith<Exception> {
+            openKeyedAndroidSqliteDriver(context, DB, "another-passphrase", store) { error("must not derive") }
+        }
+
         assertNull(store.value)
-        assertEquals("kept", readMarker(PASSPHRASE))
+        assertEquals("kept", openAndroidSqliteDriver(context, DB, PASSPHRASE).marker())
     }
 
     @Test
     fun aFreshInstallStartsInRawKeyMode() {
         val store = FakeStore()
 
-        val key = sqlCipherKey(dbFile, PASSPHRASE, store)
-        createWith(key)
+        openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.createMarker()
+        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
 
-        assertEquals(SqlCipherKeyMode.rawKey(assertNotNull(store.value)), key)
-        assertEquals(key, sqlCipherKey(dbFile, PASSPHRASE, store))
-        assertEquals("kept", readMarker(key))
+        assertEquals("kept", openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.marker())
+        assertEquals("kept", openAndroidSqliteDriver(context, DB, raw).marker())
     }
 
     private companion object {

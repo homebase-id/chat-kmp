@@ -24,9 +24,10 @@ import kotlin.test.assertNotNull
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-/** The real platform driver on a scratch database. */
-internal expect fun openContractDriver(): ContractDriver
-
+/**
+ * The real platform driver on a scratch database, from openContractDriver() in jvmTest, nativeTest
+ * and androidDeviceTest; this directory is compiled into each of them.
+ */
 internal class ContractDriver(
     val driver: SqlDriver,
     // Android copies a query's rows into a cursor window and frees the connection before mapping.
@@ -34,10 +35,7 @@ internal class ContractDriver(
     val cleanup: () -> Unit,
 )
 
-/**
- * The [DatabaseDriverFactory.createDriver] contract on the real driver. Android runs a copy in
- * androidDeviceTest (instrumented tests can't depend on this source set); wasmJs is exempt.
- */
+/** The [DatabaseDriverFactory.createDriver] contract on the real driver; wasmJs is exempt. */
 class DatabaseConnectionContractTest {
 
     @Test
@@ -95,7 +93,7 @@ class DatabaseConnectionContractTest {
             val (count, busyTimeout, synchronous, tempStore, journalSizeLimit) = writerView
             assertEquals(2L, count)
             assertConnectionPragmas(busyTimeout, synchronous, tempStore)
-            assertEquals(SQLITE_CONNECTION_PRAGMAS.getValue("journal_size_limit").toLong(), journalSizeLimit)
+            assertEquals(SQLITE_WRITER_JOURNAL_SIZE_LIMIT.toLong(), journalSizeLimit)
             assertEquals(
                 SQLITE_JOURNAL_MODE.lowercase(),
                 driver.executeQuery(null, "PRAGMA journal_mode", { c -> c.next(); QueryResult.Value(c.getString(0)) }, 0).value,

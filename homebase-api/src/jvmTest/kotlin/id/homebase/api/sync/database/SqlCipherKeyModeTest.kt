@@ -1,20 +1,23 @@
 package id.homebase.api.sync.database
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import java.io.File
 import java.nio.file.Files
 import java.sql.DriverManager
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Guards the desktop passphrase → raw-key migration. Getting this wrong locks a user
- * out of their database permanently, so every case runs against a real SQLCipher file
- * written by the real driver rather than a mock.
+ * Guards the passphrase → raw-key migration. Getting this wrong locks a user out of their
+ * database permanently, so every case runs against a real SQLCipher file written by the real
+ * driver rather than a mock.
  */
 class SqlCipherKeyModeTest {
 
@@ -32,6 +35,8 @@ class SqlCipherKeyModeTest {
             value = null
         }
     }
+
+    private val inline: (() -> Unit) -> Unit = { it() }
 
     @AfterTest
     fun cleanup() {
@@ -58,6 +63,10 @@ class SqlCipherKeyModeTest {
             }
         }
 
+    private fun SqlDriver.marker(): String? = use { driver ->
+        driver.executeQuery(null, "SELECT v FROM probe", { c -> QueryResult.Value(if (c.next().value) c.getString(0) else null) }, 0).value
+    }
+
     @Test
     fun `derives the raw key an existing passphrase database was encrypted with`() {
         val db = dbFile("migrate.db")
@@ -65,12 +74,11 @@ class SqlCipherKeyModeTest {
         createWith(cipherUrl(db, passphrase), "kept")
 
         val store = FakeStore()
-        val url = sqlCipherJdbcUrl(db, passphrase, store)
+        assertEquals("kept", openKeyedSqliteDriver(db, passphrase, store, inline).marker())
 
-        val cached = assertNotNull(store.value, "raw key should be cached after migration")
-        assertTrue(SqlCipherKeyMode.isRawKeyHex(cached))
-        assertEquals(rawKeyJdbcUrl(db, cached), url)
-        assertEquals("kept", readMarker(url), "migrated URL must open the untouched file")
+        val cached = assertNotNull(store.value, "raw key should be cached for the next launch")
+        assertEquals(SqlCipherKeyMode.deriveRawKeyHex(passphrase, SqlCipherKeyMode.readSalt(db)), cached)
+        assertEquals("kept", readMarker(cipherUrl(db, SqlCipherKeyMode.rawKey(cached))))
         assertEquals(
             "kept",
             readMarker(cipherUrl(db, passphrase)),
@@ -79,17 +87,17 @@ class SqlCipherKeyModeTest {
     }
 
     @Test
-    fun `derivation is deterministic and reuses the cached key on later opens`() {
+    fun `a cached key is reused on later opens`() {
         val db = dbFile("cached.db")
         val passphrase = "another-passphrase"
         createWith(cipherUrl(db, passphrase), "kept")
 
         val store = FakeStore()
-        val first = sqlCipherJdbcUrl(db, passphrase, store)
+        openKeyedSqliteDriver(db, passphrase, store, inline).close()
         val writesAfterMigration = store.writes
-        val second = sqlCipherJdbcUrl(db, passphrase, store)
+        assertEquals(1, writesAfterMigration)
+        assertEquals("kept", openKeyedSqliteDriver(db, passphrase, store, inline).marker())
 
-        assertEquals(first, second)
         assertEquals(writesAfterMigration, store.writes, "a cached key must not be re-derived")
     }
 
@@ -99,35 +107,27 @@ class SqlCipherKeyModeTest {
         val passphrase = "yet-another-passphrase"
         createWith(cipherUrl(db, passphrase), "kept")
 
-        val wrongKey = "00".repeat(32)
-        val store = FakeStore(wrongKey)
-        val url = sqlCipherJdbcUrl(db, passphrase, store)
+        val store = FakeStore("00".repeat(32))
+        assertEquals("kept", openKeyedSqliteDriver(db, passphrase, store, inline).marker())
 
-        assertEquals("kept", readMarker(url))
-        assertEquals(
-            SqlCipherKeyMode.deriveRawKeyHex(passphrase, SqlCipherKeyMode.readSalt(db)),
-            store.value,
-        )
+        assertEquals(SqlCipherKeyMode.deriveRawKeyHex(passphrase, SqlCipherKeyMode.readSalt(db)), store.value)
     }
 
     @Test
-    fun `an undecryptable database falls back to passphrase mode instead of being lost`() {
+    fun `an undecryptable database fails in DatabaseManager's recovery instead of being lost here`() {
         val db = dbFile("foreign.db")
         createWith(cipherUrl(db, "the-real-passphrase"), "kept")
 
         val store = FakeStore("11".repeat(32))
-        val url = sqlCipherJdbcUrl(db, "a-passphrase-that-was-never-used", store)
+        assertFailsWith<Exception> {
+            openKeyedSqliteDriver(db, "a-passphrase-that-was-never-used", store) { error("must not derive") }
+        }
 
-        assertEquals(
-            cipherUrl(db, "a-passphrase-that-was-never-used"),
-            url,
-            "must hand back the passphrase URL so DatabaseManager's recovery decides",
-        )
         assertNull(store.value, "a key that cannot open the file must not stay cached")
         assertEquals(
             "kept",
             readMarker(cipherUrl(db, "the-real-passphrase")),
-            "the file must be untouched by the failed probes",
+            "the file must be untouched by the failed opens",
         )
     }
 
@@ -136,23 +136,34 @@ class SqlCipherKeyModeTest {
         val db = dbFile("fresh.db")
         val store = FakeStore()
 
-        val url = sqlCipherJdbcUrl(db, "unused-passphrase", store)
+        openKeyedSqliteDriver(db, "unused-passphrase", store, inline).use { driver ->
+            driver.execute(null, "CREATE TABLE probe (v TEXT)", 0)
+            driver.execute(null, "INSERT INTO probe VALUES ('born-raw')", 0)
+        }
         val cached = assertNotNull(store.value)
         assertTrue(SqlCipherKeyMode.isRawKeyHex(cached))
-        assertEquals(rawKeyJdbcUrl(db, cached), url)
 
-        createWith(url, "born-raw")
-
-        assertEquals(
-            url,
-            sqlCipherJdbcUrl(db, "unused-passphrase", store),
-            "reopening must reuse the cached key, not derive from the passphrase",
-        )
-        assertEquals("born-raw", readMarker(url))
+        assertEquals("born-raw", openKeyedSqliteDriver(db, "unused-passphrase", store, inline).marker())
+        assertEquals("born-raw", readMarker(cipherUrl(db, SqlCipherKeyMode.rawKey(cached))))
+        assertEquals(1, store.writes, "reopening must reuse the cached key")
         assertFalse(
             SqlCipherKeyMode.isRawKeyHex("not-hex"),
             "hex validation must reject a garbled cache entry",
         )
+    }
+
+    @Test
+    fun `an empty passphrase opens an unencrypted database and caches nothing`() {
+        val db = dbFile("plain.db")
+        val store = FakeStore()
+
+        openKeyedSqliteDriver(db, null, store, inline).use { driver ->
+            driver.execute(null, "CREATE TABLE probe (v TEXT)", 0)
+            driver.execute(null, "INSERT INTO probe VALUES ('plain')", 0)
+        }
+
+        assertNull(store.value)
+        assertEquals("plain", readMarker("jdbc:sqlite:${db.absolutePath}"))
     }
 
     @Test

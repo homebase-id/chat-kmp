@@ -41,23 +41,6 @@ class PooledJdbcSqliteDriverTest {
     }
 
     @Test
-    fun aSecondConnectionAlsoCarriesTheTuningPragmas() {
-        driver.execute(null, "CREATE TABLE t(x INTEGER)", 0)
-        driver.execute(null, "INSERT INTO t VALUES (1)", 0)
-        // Hold the first connection open in a query so the pragma reads open a second one.
-        driver.executeQuery(null, "SELECT x FROM t", { c ->
-            c.next()
-            assertEquals(5000L, driver.count("PRAGMA busy_timeout"))
-            assertEquals(1L, driver.count("PRAGMA synchronous"))
-            assertEquals(2L, driver.count("PRAGMA temp_store"))
-            assertEquals(4_194_304L, driver.count("PRAGMA journal_size_limit"))
-            QueryResult.Value(Unit)
-        }, 0)
-        assertEquals(2, driver.connectionsOpened)
-        assertEquals("wal", driver.string("PRAGMA journal_mode"))
-    }
-
-    @Test
     fun inMemoryUrlsAreRejected() {
         assertFailsWith<IllegalArgumentException> { PooledJdbcSqliteDriver("jdbc:sqlite::memory:", tuningProperties()) }
         assertFailsWith<IllegalArgumentException> { PooledJdbcSqliteDriver("jdbc:sqlite:", tuningProperties()) }
@@ -108,7 +91,4 @@ class PooledJdbcSqliteDriverTest {
 
     private fun SqlDriver.count(sql: String): Long =
         executeQuery(null, sql, { c -> c.next(); QueryResult.Value(c.getLong(0)!!) }, 0).value
-
-    private fun SqlDriver.string(sql: String): String =
-        executeQuery(null, sql, { c -> c.next(); QueryResult.Value(c.getString(0)!!) }, 0).value
 }

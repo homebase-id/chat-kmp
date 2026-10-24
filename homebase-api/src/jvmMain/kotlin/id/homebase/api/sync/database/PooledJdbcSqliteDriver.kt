@@ -19,13 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * File-backed SQLite driver that keeps its connections open. A statement borrows an idle
  * connection (or opens one) and hands it back afterwards; a transaction keeps its connection
  * for its whole span. Concurrency is bounded by [DatabaseManager]'s dispatchers, so the pool
- * settles at about writer + readers; a connection returned to a full pool of [maxIdle] is
- * closed.
+ * settles at about writer + readers; a connection returned to a full pool is closed.
  */
 internal class PooledJdbcSqliteDriver(
     private val url: String,
     private val properties: Properties,
-    maxIdle: Int = 1 + SQLITE_READER_CONNECTIONS,
 ) : JdbcDriver() {
     init {
         // Each pooled connection to an in-memory URL would get its own empty database.
@@ -34,7 +32,7 @@ internal class PooledJdbcSqliteDriver(
         }
     }
 
-    private val idle = LinkedBlockingDeque<Connection>(maxIdle)
+    private val idle = LinkedBlockingDeque<Connection>(1 + SQLITE_READER_CONNECTIONS)
     private val closed = AtomicBoolean(false)
     private val opened = AtomicInteger(0)
     private val listeners = linkedMapOf<String, MutableSet<Query.Listener>>()

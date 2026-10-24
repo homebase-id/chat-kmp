@@ -50,20 +50,23 @@ internal const val SQLITE_JOURNAL_MODE = "WAL"
  *  - `busy_timeout=5000` — a contended statement waits up to 5 s instead of throwing `SQLITE_BUSY`.
  *  - `synchronous=NORMAL` — WAL-safe durability; at most the last commit is lost on power loss.
  *  - `temp_store=MEMORY` — temp tables and indices in RAM.
- *  - `journal_size_limit` — connections stay open, so nothing deletes the `-wal`; this trims it
- *    after a write burst, to about the auto-checkpoint size (1000 pages of 4 KB). Only the writer
- *    resets the WAL, so only its value acts; Android's SQLCipher puts 10 KB on readers.
  */
 internal val SQLITE_CONNECTION_PRAGMAS: Map<String, String> = linkedMapOf(
     "busy_timeout" to "5000",
     "synchronous" to "NORMAL",
     "temp_store" to "MEMORY",
-    "journal_size_limit" to "4194304",
 )
 
 /** [SQLITE_CONNECTION_PRAGMAS] as `PRAGMA key=value` statements, for drivers that run raw SQL per connection. */
-internal fun sqliteConnectionPragmaStatements(): List<String> =
+internal val SQLITE_CONNECTION_PRAGMA_STATEMENTS: List<String> =
     SQLITE_CONNECTION_PRAGMAS.entries.map { (key, value) -> "PRAGMA $key=$value" }
+
+/**
+ * `journal_size_limit` for the writer, the only connection that resets the `-wal`. Connections
+ * stay open, so nothing deletes the file; this trims it after a write burst to about the
+ * auto-checkpoint size (1000 pages of 4 KB).
+ */
+internal const val SQLITE_WRITER_JOURNAL_SIZE_LIMIT = 4_194_304
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 expect class DatabaseDriverFactory {
@@ -71,7 +74,8 @@ expect class DatabaseDriverFactory {
      * Serves one writer plus [SQLITE_READER_CONNECTIONS] concurrent readers in
      * [SQLITE_JOURNAL_MODE], all kept open: reads never wait for an open write transaction, and
      * the page cache and parsed schema survive between statements. Every connection carries
-     * [SQLITE_CONNECTION_PRAGMAS]. DatabaseConnectionContractTest holds each platform to this.
+     * [SQLITE_CONNECTION_PRAGMAS], and the writer [SQLITE_WRITER_JOURNAL_SIZE_LIMIT].
+     * DatabaseConnectionContractTest holds each platform to this.
      *
      * wasmJs is the exception: sql.js is one in-memory connection on the browser's single
      * thread, with no journal and no pragmas.

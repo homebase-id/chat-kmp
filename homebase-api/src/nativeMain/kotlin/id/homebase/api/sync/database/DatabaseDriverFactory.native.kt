@@ -56,6 +56,31 @@ actual class DatabaseDriverFactory {
     actual fun dbFilePath(): String = "${iosDatabasesDir()}/$DB_FILE_NAME"
 }
 
+/**
+ * NOT ENCRYPTED TODAY. The iOS app links the system `libsqlite3`, which ignores `PRAGMA key`,
+ * so [passphrase] protects nothing and the database file is plaintext on disk. This is a known
+ * bug, deferred until existing installs can be migrated.
+ *
+ * When iOS links SQLCipher, this function must change with it:
+ *
+ *  1. **Swap to the shared raw-key code.** Desktop and Android hand SQLCipher a raw key
+ *     (`x'<64 hex>'`) chosen by `SqlCipherKeyMode` (javaMain), because a passphrase costs a
+ *     PBKDF2 derivation on *every* connection, and the writer plus [SQLITE_READER_CONNECTIONS]
+ *     readers each pay it (measured in OPTIMIZE.md). Move
+ *     `SqlCipherKeyMode` to commonMain (cryptography-kotlin has PBKDF2 on all targets) and use
+ *     it here instead of the passphrase. Existing iOS files are plaintext, so iOS only needs the
+ *     fresh-install path: a random raw key cached in SecureStorage.
+ *  2. **Drop `rekey = ""`.** With a non-null rekey sqliter runs `PRAGMA rekey = ''` after the
+ *     key on every connection. Harmless on the system SQLite; on SQLCipher it at best does
+ *     nothing and at worst tries to change the key to empty.
+ *  3. **Set the key before the pragmas.** sqliter runs `onCreateConnection` before it sets the
+ *     key, and `PRAGMA synchronous` reads the schema, so on an encrypted file every connection
+ *     would fail with "file is not a database" and recovery would wipe the database.
+ *  4. **Migrate existing installs** from plaintext to encrypted (`sqlcipher_export`) before
+ *     opening them with a key.
+ *
+ * DatabaseConnectionContractTest runs on the iOS simulator in CI and is the net for 3.
+ */
 internal fun openNativeSqliteDriver(name: String, passphrase: String?): SqlDriver = NativeSqliteDriver(
     schema = OdinDatabase.Schema,
     name = name,
@@ -66,9 +91,9 @@ internal fun openNativeSqliteDriver(name: String, passphrase: String?): SqlDrive
             lifecycleConfig = config.lifecycleConfig.copy(
                 onCreateConnection = { connection ->
                     config.lifecycleConfig.onCreateConnection(connection)
-                    // Runs before sqliter sets the key, and synchronous reads the schema: fine while the
-                    // system SQLite ignores the key, wrong once iOS links SQLCipher.
-                    sqliteConnectionPragmaStatements().forEach(connection::rawExecSql)
+                    // Runs before sqliter sets the key: see point 3 above.
+                    SQLITE_CONNECTION_PRAGMA_STATEMENTS.forEach(connection::rawExecSql)
+                    connection.rawExecSql("PRAGMA journal_size_limit=$SQLITE_WRITER_JOURNAL_SIZE_LIMIT")
                 },
             ),
             encryptionConfig = DatabaseConfiguration.Encryption(

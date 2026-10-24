@@ -256,6 +256,10 @@ kotlin {
         // If any of them ever genuinely needs device-side coverage, copy it directly into
         // androidDeviceTest rather than trying to wire the inheritance.
         getByName("androidHostTest").dependsOn(jvmAndNativeTest)
+        // DatabaseConnectionContractTest runs on the real driver of every target with a file
+        // database; a shared directory, since androidDeviceTest can't depend on a common test set.
+        listOf(jvmTest, nativeTest).forEach { it.get().kotlin.srcDir("src/dbContractTest/kotlin") }
+        getByName("androidDeviceTest").kotlin.srcDir("src/dbContractTest/kotlin")
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.exifinterface)

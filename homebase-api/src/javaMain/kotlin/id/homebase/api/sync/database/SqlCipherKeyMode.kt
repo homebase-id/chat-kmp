@@ -1,11 +1,15 @@
 package id.homebase.api.sync.database
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import co.touchlab.kermit.Logger
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.storage.SecureStorage
 import java.io.File
-import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
+import kotlin.concurrent.thread
+import kotlin.time.TimeSource
 
 internal interface RawKeyStore {
     fun get(): String?
@@ -22,17 +26,9 @@ internal object SecureStorageRawKeyStore : RawKeyStore {
 }
 
 /**
- * Chooses the key SQLCipher is handed for the database on desktop and Android, preferring a
- * **raw key** (`x'<64 hex>'`) over the passphrase.
- *
- * The distinction is the whole point: with a passphrase SQLCipher runs
- * PBKDF2-HMAC-SHA512 × 256,000 on *every* connection open (165 ms on desktop, 130–300 ms on
- * an emulator, where the pool opens readers one at a time). A raw key is the KDF's *output*,
- * so handing it over directly skips the derivation and opens in a few ms.
- *
- * The 32-byte key is derived once from the existing passphrase and the file's own
- * 16-byte header salt, then cached. Same key, same ciphertext — the database file is
- * never rewritten and the change is reversible by deleting the cached key.
+ * Opens the SQLCipher database on desktop and Android with a raw key (`x'<64 hex>'`) instead of
+ * the passphrase, so SQLCipher skips its PBKDF2 on every connection. The key is derived once
+ * from the passphrase and the file's 16-byte salt, then cached; the file is never rewritten.
  */
 internal object SqlCipherKeyMode {
     private const val SALT_BYTES = 16
@@ -44,46 +40,79 @@ internal object SqlCipherKeyMode {
 
     private val logger = Logger.withTag("SqlCipherKeyMode")
 
-    /** [opens] tries a key on [dbFile] and reports whether it decrypts it. */
-    fun cipherKey(
+    /**
+     * [open] builds the driver for a key, or for no encryption when it gets null (an empty
+     * [passphrase]). Without a cached raw key that decrypts the file, this launch opens with the
+     * passphrase and [deriveIn] derives the raw key for the next one: Android's PBKDF2 runs in
+     * Java, 3.3 s on an emulator. A file the passphrase can't open fails in DatabaseManager's
+     * recovery as before.
+     */
+    fun openDriver(
         dbFile: File,
-        passphrase: String,
-        store: RawKeyStore = SecureStorageRawKeyStore,
-        opens: (key: String) -> Boolean,
-    ): String {
+        passphrase: String?,
+        store: RawKeyStore,
+        deriveIn: (() -> Unit) -> Unit,
+        open: (key: String?) -> SqlDriver,
+    ): SqlDriver {
+        if (passphrase.isNullOrEmpty()) return open(null).verified()
         val cached = store.get()?.takeIf(::isRawKeyHex)
 
         if (!dbFile.isFile || dbFile.length() < SALT_BYTES) {
             // Store before the driver creates the file, so a crash in between leaves the
             // key that the next run will open it with.
-            val hex = cached ?: newRawKeyHex().also { store.put(it) }
-            return rawKey(hex)
+            val hex = cached ?: ByteArrayUtil.getRndByteArray(RAW_KEY_BYTES).toHexString().also(store::put)
+            return open(rawKey(hex)).verified()
         }
 
-        if (cached != null && opens(rawKey(cached))) return rawKey(cached)
-
-        val derived = deriveRawKeyHex(passphrase, readSalt(dbFile))
-        if (opens(rawKey(derived))) {
-            store.put(derived)
-            logger.i { "Database migrated to SQLCipher raw-key mode" }
-            return rawKey(derived)
+        if (cached != null) {
+            tryOpen(open, rawKey(cached))?.let { return it }
+            logger.w { "Cached raw key doesn't open the database; using the passphrase" }
+            store.remove()
         }
 
-        // Neither key decrypts the file. Hand back the passphrase so a genuinely broken
-        // database fails exactly where it used to, in DatabaseManager's recovery.
-        logger.w { "Raw-key open failed; falling back to passphrase mode" }
-        store.remove()
-        return passphrase
+        val driver = open(passphrase).verified()
+        deriveIn {
+            val started = TimeSource.Monotonic.markNow()
+            store.put(deriveRawKeyHex(passphrase, readSalt(dbFile)))
+            logger.i { "Derived the database's raw key in ${started.elapsedNow().inWholeMilliseconds} ms, used from the next launch" }
+        }
+        return driver
+    }
+
+    fun onDaemonThread(block: () -> Unit) {
+        thread(isDaemon = true, name = "sqlcipher-raw-key") {
+            try {
+                block()
+            } catch (e: Exception) {
+                logger.w(e) { "Deriving the raw key failed; the next launch tries again" }
+            }
+        }
     }
 
     fun rawKey(rawKeyHex: String): String = "x'$rawKeyHex'"
+
+    private fun tryOpen(open: (key: String?) -> SqlDriver, key: String): SqlDriver? = try {
+        open(key).verified()
+    } catch (e: Exception) {
+        logger.d { "Key rejected: ${e.message}" }
+        null
+    }
+
+    // Drivers open lazily; SQLCipher only finds out a key is wrong when it first reads the file.
+    private fun SqlDriver.verified(): SqlDriver = try {
+        executeQuery(null, "SELECT count(*) FROM sqlite_master", { QueryResult.Value(Unit) }, 0)
+        this
+    } catch (e: Exception) {
+        close()
+        throw e
+    }
 
     internal fun deriveRawKeyHex(passphrase: String, salt: ByteArray): String {
         val spec = PBEKeySpec(passphrase.toCharArray(), salt, KDF_ITERATIONS, RAW_KEY_BYTES * Byte.SIZE_BITS)
         return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
             .generateSecret(spec)
             .encoded
-            .toHex()
+            .toHexString()
     }
 
     internal fun readSalt(dbFile: File): ByteArray = dbFile.inputStream().use { stream ->
@@ -99,11 +128,4 @@ internal object SqlCipherKeyMode {
 
     internal fun isRawKeyHex(value: String): Boolean =
         value.length == RAW_KEY_HEX_LENGTH && value.all { it in '0'..'9' || it in 'a'..'f' }
-
-    private fun newRawKeyHex(): String =
-        ByteArray(RAW_KEY_BYTES).also { SecureRandom().nextBytes(it) }.toHex()
-
-    private fun ByteArray.toHex(): String = joinToString("") { byte ->
-        (byte.toInt() and 0xff).toString(16).padStart(2, '0')
-    }
 }

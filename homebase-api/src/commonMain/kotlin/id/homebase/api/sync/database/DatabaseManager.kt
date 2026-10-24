@@ -115,7 +115,7 @@ class DatabaseManager(
     // transaction; the driver's reader connections (see DatabaseDriverFactory.createDriver)
     // serve them concurrently.
     private val readDispatcher: CoroutineDispatcher =
-        ioDispatcher.limitedParallelism(READ_PARALLELISM)
+        ioDispatcher.limitedParallelism(SQLITE_READER_CONNECTIONS)
 ) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
@@ -191,7 +191,7 @@ class DatabaseManager(
         val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
         logger.i {
             "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms " +
-                "synchronous=$synchronous readParallelism=$READ_PARALLELISM"
+                "synchronous=$synchronous readParallelism=$SQLITE_READER_CONNECTIONS"
         }
         return database
     }
@@ -199,8 +199,6 @@ class DatabaseManager(
     companion object {
         private const val DATABASE_VERSION =
             5  // Increase to wipe the database and rebuild all tables
-
-        private const val READ_PARALLELISM = SQLITE_READER_CONNECTIONS
 
         // A read slower than this logs a SlowDbRead warn with its queueWait/sql split.
         private val SLOW_READ_THRESHOLD = 50.milliseconds
