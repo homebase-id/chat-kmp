@@ -69,7 +69,8 @@ actual class DatabaseDriverFactory {
  *     readers each pay it (measured in OPTIMIZE.md). Move
  *     `SqlCipherKeyMode` to commonMain (cryptography-kotlin has PBKDF2 on all targets) and use
  *     it here instead of the passphrase. Existing iOS files are plaintext, so iOS only needs the
- *     fresh-install path: a random raw key cached in SecureStorage.
+ *     fresh-install path: a random raw key cached in SecureStorage. Move SqlCipherKeyModeTest's
+ *     key-recording tests to commonTest with it, so iOS is held to passing only the raw key.
  *  2. **Drop `rekey = ""`.** With a non-null rekey sqliter runs `PRAGMA rekey = ''` after the
  *     key on every connection. Harmless on the system SQLite; on SQLCipher it at best does
  *     nothing and at worst tries to change the key to empty.
