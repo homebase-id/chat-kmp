@@ -42,13 +42,26 @@ private class WebAudioPlayer : AudioPlayer {
             }
         }
         addAudioEndedListener(el) { guardJsCallback("audio.ended") { observer?.onComplete() } }
+        var failed = false
+        val failOnce = {
+            if (!failed && element === el) {
+                failed = true
+                observer?.onComplete()
+            }
+        }
         addAudioErrorListener(el) { code ->
-            guardJsCallback("audio.error") { Logger.e(tag = TAG) { "Audio element error $code" } }
+            guardJsCallback("audio.error") {
+                Logger.e(tag = TAG) { "Audio element error $code" }
+                failOnce()
+            }
         }
         element = el
 
         playAudioElement(el) { reason ->
-            guardJsCallback("audio.play") { Logger.w(tag = TAG) { "play() rejected: $reason" } }
+            guardJsCallback("audio.play") {
+                Logger.w(tag = TAG) { "play() rejected: $reason" }
+                failOnce()
+            }
         }
     }
 
