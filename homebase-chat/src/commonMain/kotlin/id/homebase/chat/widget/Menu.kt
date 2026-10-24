@@ -81,7 +81,6 @@ import id.homebase.core.util.isMobile
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
-import id.homebase.resources.vault_save_to
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete

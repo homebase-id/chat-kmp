@@ -43,13 +43,13 @@ class VaultUploaderFileSaverTest {
     }
 
     @Test
-    fun uploadsPathAndContentTypeAndReturnsTrue() = runTest {
+    fun uploadsPathAndContentTypeThenDeletesPlaintextAndReturnsTrue() = runTest {
         assertTrue(saver(activated = true, result = Uuid.random()).save("/tmp/a.jpg", "image/jpeg", "Chat image"))
         val (name, files, scope) = uploads.single()
         assertEquals("Chat image", name)
         assertEquals(listOf("/tmp/a.jpg" to "image/jpeg"), files)
         assertTrue(scope === appScope)
-        assertTrue(deleted.isEmpty())
+        assertEquals(listOf("/tmp/a.jpg"), deleted)
     }
 
     @Test

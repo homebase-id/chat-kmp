@@ -30,20 +30,19 @@ class VaultUploaderFileSaver internal constructor(
     )
 
     override suspend fun save(localPath: String, contentType: String, entryName: String): Boolean {
-        if (!isActivated()) {
+        try {
+            if (!isActivated()) return false
+            return try {
+                upload(entryName, listOf(localPath to contentType), appScope) != null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+        } finally {
+            // The upload encrypts into its own file before returning, so the decrypted copy is spent either way.
             deleteQuietly(localPath)
-            return false
         }
-        val id = try {
-            upload(entryName, listOf(localPath to contentType), appScope)
-        } catch (e: CancellationException) {
-            deleteQuietly(localPath)
-            throw e
-        } catch (_: Exception) {
-            null
-        }
-        if (id == null) deleteQuietly(localPath)
-        return id != null
     }
 
     private fun deleteQuietly(path: String) {

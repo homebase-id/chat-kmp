@@ -164,8 +164,9 @@ private fun SharedMediaViewer(
     val actionService = org.koin.compose.koinInject<ChatMessageActionService>()
     val fileSystemHandler = getUriHandler()
     val saveItem = rememberSharedMediaSaver(driveId, snackbarHostState)
-    val vaultActive by org.koin.compose.koinInject<OptionalDriveActivation>()
-        .isActivatedFlow(vaultLabeledDrive).collectAsStateWithLifecycle(false)
+    val activation = org.koin.compose.koinInject<OptionalDriveActivation>()
+    val vaultActive by remember(activation) { activation.isActivatedFlow(vaultLabeledDrive) }
+        .collectAsStateWithLifecycle(false)
     val vaultFileSaver = org.koin.compose.koinInject<VaultFileSaver>()
 
     val ext = remember(item) {
