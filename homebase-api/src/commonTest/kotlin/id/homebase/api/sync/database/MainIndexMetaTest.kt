@@ -204,6 +204,46 @@ class MainIndexMetaTest {
      * exercise the persistence path when a cursor is supplied.
      */
     @Test
+    fun aBatchTheTimestampGuardRejectsStillAdvancesTheCursor() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val files = List(3) { minimalHeader(driveId, modifiedMs = 1_000L) }
+            val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+            processor.baseUpsertEntryZapZap(identityId, driveId, files, cursor = null)
+            val cursor = QueryBatchCursor.fromStartPoint(UnixTimeUtc(2_000L))
+
+            val written = processor.baseUpsertEntryZapZap(identityId, driveId, files, cursor)
+
+            assertTrue(written.isEmpty(), "an unchanged modified is rejected for every row")
+            assertEquals(cursor.toJson(), CursorStorage(dbm, driveId).loadCursor()?.toJson())
+        }
+    }
+
+    private fun minimalHeader(driveId: Uuid, modifiedMs: Long): HomebaseFile = OdinSystemSerializer.deserialize(
+        """{
+          "fileId": "${Uuid.random()}", "driveId": "$driveId", "fileState": "active",
+          "fileSystemType": "standard", "serverFileIsEncrypted": "false",
+          "keyHeader": {"iv": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], "aesKey": {"bytes": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}},
+          "fileMetadata": {
+            "globalTransitId": "${Uuid.random()}", "created": $modifiedMs, "updated": $modifiedMs,
+            "transitCreated": 0, "transitUpdated": 0, "isEncrypted": false,
+            "senderOdinId": "test.sender", "originalAuthor": "test.sender",
+            "appData": {"uniqueId": "${Uuid.random()}", "tags": null, "fileType": 1, "dataType": 0, "groupId": null,
+              "userDate": $modifiedMs, "content": "hi", "previewThumbnail": null, "archivalStatus": 0},
+            "localAppData": null, "referencedFile": null, "reactionPreview": null,
+            "versionTag": "${Uuid.random()}", "payloads": [], "dataSource": null
+          },
+          "serverMetadata": {
+            "accessControlList": {"requiredSecurityGroup": "owner", "circleIdList": null, "odinIdList": null},
+            "allowDistribution": true, "fileSystemType": "standard", "fileByteCount": 50,
+            "originalRecipientCount": 0, "transferHistory": null
+          },
+          "priority": 300, "fileByteCount": 50
+        }"""
+    )
+
+    @Test
     fun testBaseUpsertEntryZapZapWithCursor() = runTest {
         DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Create isolated database manager for this test

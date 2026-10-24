@@ -213,12 +213,11 @@ object MainIndexMetaHelpers {
                         written.add(fileHeader)
                         rewriteTags(db, identityId, driveId, fileHeader)
                     }
+                }
 
-                    // Even if we didn't update the record we advance the cursor
-                    if (cursor != null) {
-                        val cursorStorage = CursorStorage(databaseManager, driveId)
-                        cursorStorage.saveCursor(db, cursor)
-                    }
+                // Advances even when the timestamp guard rejected every row.
+                if (cursor != null) {
+                    CursorStorage(databaseManager, driveId).saveCursor(db, cursor)
                 }
             }
             return written

@@ -130,12 +130,11 @@ on desktop.
   | read receipt, newer `modified` | 1 | 3 | 1 |
   | read receipt, equal `modified` (server-owned fields adopted) | 2 | 2 | 1 |
   | send a text message | 1 | 5 | 1 |
-  | background wake, 3 new messages | 1 | 12 | 1 |
+  | background wake, 3 new messages | 1 | 10 | 1 |
 
   Every incoming batch, read receipt and send re-reads the pinned bar (`refreshPinnedFor`)
   for the open conversation, whether or not anything pin-related changed. A send's outbox insert
-  runs outside the transaction of its optimistic write. A sync writes the drive cursor once per
-  file, not once per batch (3 of the background wake's 12 writes). Opening a conversation at the service
+  runs outside the transaction of its optimistic write. Opening a conversation at the service
   level is the message page and the pinned bar; the ViewModel adds `unpinExpiredPins` and the
   pinned observer on top (not measured yet).
 
@@ -149,3 +148,5 @@ on desktop.
 | 2026-10-23 | Orphan scan: `GROUP BY` in a subquery first, then `NOT EXISTS` per group (about 150 probes instead of 57K). Same rows, since the probe depends only on `groupId` | 340 → 28 ms | Yes |
 | 2026-10-23 | One connection contract (`DatabaseDriverFactory.createDriver`): one writer plus `SQLITE_READER_CONNECTIONS` (4) readers under WAL, every connection carrying `SQLITE_CONNECTION_PRAGMAS`. Android had a single connection: `SupportOpenHelperFactory(password)` leaves `enableWriteAheadLogging` off, so SQLCipher caps the pool at 1 whatever the file's journal mode, and every read, opening a conversation included, waited for the open sync write transaction. Now the WAL flag is on, the pool is 5, a per-connection hook sets the pragmas on readers and `onConfigure` re-applies them on the writer (SQLCipher overwrites `journal_size_limit` to 10 KB after the hook). iOS gets the pragmas it lacked (`temp_store`, `journal_size_limit`) through sqliter's per-connection callback | `DatabaseConnectionContractAndroidTest` on an API 36 emulator: before, "reads waited for the open write transaction" (15 s timeout); after, passes in 1.6 s. Without the hook readers had `busy_timeout` 2500; without `onConfigure` the writer had `journal_size_limit` 10000. Not yet measured on a phone | Yes |
 | 2026-10-24 | Android raw-key mode: the shared `SqlCipherKeyMode` (`javaMain`, desktop and Android) hands SQLCipher a cached raw key. The first launch after the update opens with the passphrase and derives the raw key on a background thread, because Android's PBKDF2 runs in Java: 3,261 ms on the main thread when tried inline, 1,705 ms in the background on an API 36 emulator. The database opens once; the old separate key probe also checkpointed the WAL on the main thread. The file isn't rewritten | Per fresh driver, passphrase → raw key: open plus first read 220–307 → 2–6 ms; 4 first reads during a write 766–988 → 5–9 ms (the pool opened 3 readers one after another, each deriving the key). Upgrade from the previous build on the emulator: migrated, salt unchanged, next launch silent | Yes |
+| 2026-10-24 | Sync batch: save the drive cursor once per batch instead of once per file. `performBaseUpsert` saved it inside its per-file loop, so a 1,000-file batch wrote the same cursor 1,000 times inside the write transaction | `background-wake.txt` 12 → 10 writes for 3 files. Linux, Python's sqlite3 (no SQLCipher), throwaway script: 1,000 redundant upserts cost 6.8 ms per batch, plus serializing the cursor each time | Yes |
+| 2026-10-24 | Skip the two tag `DELETE`s (`DriveTagIndex`, `DriveLocalTagIndex`) for rows that are new | Same setup: 2,000 no-match deletes over 57K tag rows cost 4.0 ms per 1,000-file batch. Skipping them needs proof that no tag rows exist for the fileId; if that is ever wrong, the tag `INSERT` hits the UNIQUE constraint and the whole sync batch fails. The `DELETE` is the cheapest such check. Untried and safe: one `DELETE … WHERE fileId IN (…)` per tag table for the written rows, chunked under SQLite's variable limit; measure with DbPerfBench first | No: not worth the risk as tried |
