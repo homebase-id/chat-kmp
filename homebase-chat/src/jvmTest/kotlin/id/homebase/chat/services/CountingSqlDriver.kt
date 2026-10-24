@@ -10,12 +10,10 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Records the statements [delegate] runs after [startRecording], and the app code that issued
- * each: the first two of [frames] outside SQLDelight, the generated queries and [DatabaseManager].
+ * each: the first three stack frames outside SQLDelight, the generated queries and [DatabaseManager].
+ * Callers past a coroutine resume aren't on the stack, so run the flow on one dispatcher.
  */
-internal class CountingSqlDriver(
-    private val delegate: SqlDriver,
-    private val frames: () -> List<StackTraceElement> = { Thread.currentThread().stackTrace.asList() },
-) : SqlDriver by delegate {
+internal class CountingSqlDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
 
     enum class Kind { READ, WRITE, TRANSACTION }
 
@@ -66,22 +64,26 @@ internal class CountingSqlDriver(
         recorded += Op(kind, delegate.currentTransaction() != null, caller(), summary)
     }
 
-    private fun caller(): String = frames().asSequence()
-        .filter { frame -> SKIPPED.none { frame.className.startsWith(it) } && !GENERATED.containsMatchIn(frame.className) }
+    private fun caller(): String = Thread.currentThread().stackTrace.asSequence()
+        .filter { frame -> SKIPPED.none { frame.className.startsWith(it) } && !frame.isGeneratedQuery() }
         .map { it.displayName() }
         .distinct()
-        .take(2)
+        .take(3)
         .joinToString(" < ")
         .ifEmpty { "?" }
 
     private companion object {
         val SKIPPED = listOf(
-            "java.", "jdk.", "kotlin.", "kotlinx.", "app.cash.", "org.sqlite.", "org.junit.", "sun.",
+            "java.", "jdk.", "kotlin.", "kotlinx.", "app.cash.", "org.sqlite.", "org.junit.", "sun.", "io.ktor.",
             CountingSqlDriver::class.java.name, DatabaseManager::class.java.name,
         )
 
-        // SQLDelight's generated query classes share the database package.
-        val GENERATED = Regex("""\.\w+Queries(Impl)?(\$.*)?$""")
+        val WHITESPACE = Regex("""\s+""")
+        val BLOB = Regex("""x'[0-9a-fA-F]*'""")
+        val LONG_NUMBER = Regex("""\b\d{4,}\b""")
+
+        fun StackTraceElement.isGeneratedQuery(): Boolean =
+            className.substringBefore('$').let { it.endsWith("Queries") || it.endsWith("QueriesImpl") }
 
         // `Outer$Nested$method$2.invokeSuspend` and `Outer.method$lambda$1` both become `Nested.method`.
         fun StackTraceElement.displayName(): String {
@@ -98,9 +100,9 @@ internal class CountingSqlDriver(
         }
 
         fun String.normalized(): String = trim()
-            .replace(Regex("""\s+"""), " ")
-            .replace(Regex("""x'[0-9a-fA-F]*'"""), "x'?'")
-            .replace(Regex("""\b\d{4,}\b"""), "?")
+            .replace(WHITESPACE, " ")
+            .replace(BLOB, "x'?'")
+            .replace(LONG_NUMBER, "?")
 
         fun String.isRead(): Boolean {
             val verb = substringBefore(' ').uppercase()

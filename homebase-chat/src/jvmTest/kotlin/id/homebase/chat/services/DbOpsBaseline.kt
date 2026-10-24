@@ -3,10 +3,7 @@ package id.homebase.chat.services
 import java.io.File
 import kotlin.test.assertEquals
 
-/**
- * Compares a flow's statements with its checked-in baseline in `src/jvmTest/resources/db-ops/`.
- * `DB_OPS_UPDATE=1` rewrites the baselines; the diff then shows what changed.
- */
+/** Compares a flow's statements with its checked-in baseline in `src/jvmTest/resources/db-ops/`. */
 internal object DbOpsBaseline {
     // Gradle runs tests in the module directory, an IDE run configuration may use the repo root.
     private val dir: File by lazy {

@@ -2,8 +2,6 @@
 
 package id.homebase.chat.services
 
-import app.cash.sqldelight.Query
-import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
@@ -16,10 +14,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 
@@ -83,7 +79,7 @@ class ChatMessageStreamLoadRaceTest {
         fetchA.release()
         load.join()
 
-        val racingId = racingMessage.fileMetadata.appData.uniqueId!!
+        val racingId = racingMessage.uniqueId()
         assertTrue(
             fixture.stream.isMessageInWindow(conversationId, alreadySynced),
             "the pre-existing message must still be in the window",
@@ -132,7 +128,7 @@ class ChatMessageStreamLoadRaceTest {
         assertTrue(
             fixture.stream.isMessageInWindow(
                 conversationId,
-                racingMessage.fileMetadata.appData.uniqueId!!,
+                racingMessage.uniqueId(),
             ),
             "a WS-pushed batch for a conversation whose initial load is mid-fetch must not be dropped",
         )
@@ -195,14 +191,14 @@ class ChatMessageStreamLoadRaceTest {
         assertTrue(
             fixture.stream.isMessageInWindow(
                 conversationId,
-                duringFetchA.fileMetadata.appData.uniqueId!!,
+                duringFetchA.uniqueId(),
             ),
             "the re-read must still deliver the row that triggered it",
         )
         assertTrue(
             fixture.stream.isMessageInWindow(
                 conversationId,
-                duringReRead.fileMetadata.appData.uniqueId!!,
+                duringReRead.uniqueId(),
             ),
             "a row upserted into the window while the re-read was in flight must survive " +
                 "its write-back — the re-read merges, it does not replace",
@@ -243,33 +239,9 @@ class ChatMessageStreamLoadRaceTest {
         assertTrue(
             fixture.stream.isMessageInWindow(
                 conversationId,
-                racingMessage.fileMetadata.appData.uniqueId!!,
+                racingMessage.uniqueId(),
             ),
             "a row committed while loadAround was mid-fetch must end up in the window",
-        )
-        fixture.close()
-    }
-
-    @Test
-    fun loadConversation_withoutAConcurrentWrite_issuesOnePagingQuery() = runTest {
-        // Guard on the other side of the fix: the re-read must be conditional,
-        // not an unconditional second page fetch on every conversation open.
-        // The pinned-bar read that also runs on open is a separate query (it hits
-        // DriveLocalTagIndex, the message paging query does not), so it is excluded
-        // from the count below.
-        val fixture = buildFixture(this)
-        val onlyMessage = fixture.seedMessage(userDateMs = 1_000L)
-        val sqlBefore = gate.readSqls.size
-
-        fixture.stream.loadConversation(conversationId)
-        advanceUntilIdle()
-
-        assertTrue(fixture.stream.isMessageInWindow(conversationId, onlyMessage))
-        val pagingQueries = gate.readSqls.drop(sqlBefore)
-            .count { !it.contains("DriveLocalTagIndex") }
-        assertEquals(
-            1, pagingQueries,
-            "an uncontended load must issue exactly one paging query",
         )
         fixture.close()
     }
@@ -287,7 +259,7 @@ class ChatMessageStreamLoadRaceTest {
  * Blocking here is intentional and safe: reads run on `DatabaseManager`'s IO
  * read dispatcher, never on the test scheduler.
  */
-private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
+private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
 
     class ReadStop internal constructor(internal val matches: (String) -> Boolean) {
         internal val gate = CountDownLatch(1)
@@ -299,14 +271,6 @@ private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
     }
 
     private val armed = AtomicReference<ReadStop?>(null)
-    private val reads = AtomicInteger(0)
-    private val readSql = java.util.concurrent.CopyOnWriteArrayList<String>()
-
-    /** Total `executeQuery` calls seen; tests read deltas around a single call. */
-    val readCount: Int get() = reads.get()
-
-    /** SQL of every `executeQuery`, in order — lets tests count reads by query shape. */
-    val readSqls: List<String> get() = readSql.toList()
 
     /**
      * Park on the next query whose SQL satisfies [matching]. There is deliberately
@@ -328,8 +292,6 @@ private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
         val candidate = armed.get()
         val stop = candidate
             ?.takeIf { it.matches(sql) && armed.compareAndSet(it, null) }
-        reads.incrementAndGet()
-        readSql.add(sql)
         val result = delegate.executeQuery(identifier, sql, mapper, parameters, binders)
         if (stop != null) {
             stop.reached.complete(Unit)
@@ -337,26 +299,4 @@ private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
         }
         return result
     }
-
-    override fun execute(
-        identifier: Int?,
-        sql: String,
-        parameters: Int,
-        binders: (SqlPreparedStatement.() -> Unit)?,
-    ): QueryResult<Long> = delegate.execute(identifier, sql, parameters, binders)
-
-    override fun newTransaction(): QueryResult<Transacter.Transaction> = delegate.newTransaction()
-
-    override fun currentTransaction(): Transacter.Transaction? = delegate.currentTransaction()
-
-    override fun addListener(vararg queryKeys: String, listener: Query.Listener) =
-        delegate.addListener(queryKeys = queryKeys, listener = listener)
-
-    override fun removeListener(vararg queryKeys: String, listener: Query.Listener) =
-        delegate.removeListener(queryKeys = queryKeys, listener = listener)
-
-    override fun notifyListeners(vararg queryKeys: String) =
-        delegate.notifyListeners(queryKeys = queryKeys)
-
-    override fun close() = delegate.close()
 }

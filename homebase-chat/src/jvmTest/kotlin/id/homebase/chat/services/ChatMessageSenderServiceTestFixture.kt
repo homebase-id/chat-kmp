@@ -1,29 +1,25 @@
 package id.homebase.chat.services
-import id.homebase.upload.UploadService
-import id.homebase.chat.services.outbox.OptimisticWriterPort
-import id.homebase.upload.PayloadCacheSeeder
-import id.homebase.upload.PayloadBundleEncryptor
-
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
-import id.homebase.api.common.SecureByteArray
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.FakePayloadBundleEncryptor
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.services.outbox.OptimisticWriterPort
+import id.homebase.chat.viewonce.ownerCredentials
 import id.homebase.core.avatars.ConversationAvatarModel
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.UploadService
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -32,7 +28,6 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.TestScope
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -59,7 +54,7 @@ import kotlin.uuid.Uuid
  *     a non-null instance.
  *   - Real [DriveFileProvider] backed by a [MockEngine] that returns 500 for
  *     every request. Construction requires it; the send path doesn't call it.
- *   - [SenderNoopFileOperationsProvider] — only invoked for over-budget messages,
+ *   - [NoopFileOperationsProvider] — only invoked for over-budget messages,
  *     and the tests stay under the budget so it's never reached.
  *
  * Use via `ChatMessageSenderServiceTestFixture().use { fixture -> ... }` so
@@ -102,12 +97,12 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         },
     ): ChatMessageSenderService {
         dbm = createInMemoryDbm()
-        credentialsManager = createCredentialsManager(testDomain)
+        credentialsManager = ownerCredentials()
         eventBus = EventBus()
 
         outboxSync = OutboxSync(
             databaseManager = dbm,
-            uploader = SenderThrowingOutboxUploader,
+            uploader = ThrowingOutboxUploader,
             eventBus = eventBus,
             scope = scope,
         ).also { it.setOnline(false) }
@@ -210,17 +205,6 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         driver
     })
 
-    private suspend fun createCredentialsManager(domain: String): CredentialsManager {
-        val cm = CredentialsManager()
-        cm.setActiveCredentials(
-            ApiCredentials.create(
-                domain = OdinId(domain),
-                clientAccessToken = "test-token",
-                sharedSecret = SecureByteArray(ByteArray(16)),
-            )
-        )
-        return cm
-    }
 }
 
 // ---------- Test doubles (local to this fixture) ----------
@@ -270,29 +254,7 @@ class SeedableConversationLookup(private val testDomain: String) : ConversationP
     }
 }
 
-private class SenderNoopFileOperationsProvider : FileOperationsProvider {
-    // Per-instance unique dir so multiple test classes' Coil DiskCache instances
-    // don't contend on the same on-disk journal.
-    private val uniqueCacheDir: String =
-        java.nio.file.Files.createTempDirectory("hb-chat-sender-test-cache").toString()
-    private fun nope(): Nothing =
-        error("SenderNoopFileOperationsProvider: no file IO expected in chain-shape tests")
 
-    override fun openFileInput(path: String) = nope()
-    override suspend fun readFileBytes(path: String) = nope()
-    override fun deleteTempFile(path: String) = nope()
-    override fun getCacheDirectory(): String = uniqueCacheDir
-    override fun getFileSize(path: String) = nope()
-    override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String) = nope()
-    override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String) = nope()
-    override suspend fun writeStream(path: String, data: Flow<ByteArray>) = nope()
-}
-
-private object SenderThrowingOutboxUploader : OutboxUploader {
-    override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
-        error("OutboxUploader.upload should never be called in tests (setOnline(false))")
-    }
-}
 
 internal fun testConversation(
     conversationId: Uuid,
@@ -330,7 +292,7 @@ internal fun testChatMessageSenderService(
     encryptor: PayloadBundleEncryptor = FakePayloadBundleEncryptor(),
     httpClient: HttpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }),
 ): ChatMessageSenderService {
-    val fileOps = SenderNoopFileOperationsProvider()
+    val fileOps = NoopFileOperationsProvider()
     val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, DriveFileProviderCached(httpClient, credentialsManager, fileOps))
     val cacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
     return ChatMessageSenderService(

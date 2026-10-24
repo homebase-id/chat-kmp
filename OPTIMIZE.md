@@ -38,9 +38,9 @@ DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'  
 ```
 
 - `CountingSqlDriver` (homebase-chat `jvmTest`) records every statement a flow runs, whether it
-  ran inside a transaction, and the app code that issued it ("helper < the code that called it").
-  The test reads the callers from the coroutine's async stack (kotlinx-coroutines-debug), since a
-  resumed coroutine's callers aren't on the thread's stack.
+  ran inside a transaction, and the three app frames that issued it ("helper < caller < entry
+  point"). The flow runs on runTest's own dispatcher, `ChatMessageStream`'s `mapDispatcher`
+  included, so the callers stay on the thread's stack and nothing leaves virtual time.
 - `DbOpsBaselineTest` drives each flow through the real services on an in-memory database and
   compares the statements with `homebase-chat/src/jvmTest/resources/db-ops/<flow>.txt`. A change
   fails the test; the diff in the PR shows what changed and why.
@@ -119,7 +119,8 @@ on desktop.
   `messages first emission id=… sinceSelected=…` (ConversationListViewModel). Check that on
   the phone before changing anything.
 
-- **DB operations per flow** (2026-10-24, `DbOpsBaselineTest`, 100-message conversation):
+- **DB operations per flow**, snapshot of 2026-10-24 (the live counts head each
+  `homebase-chat/src/jvmTest/resources/db-ops/*.txt`), 100-message conversation:
 
   | Flow | reads | writes | transactions |
   |---|---|---|---|
