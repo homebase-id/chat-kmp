@@ -10,7 +10,12 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.isMobile
+import id.homebase.core.vault.VaultFileSaver
+import id.homebase.resources.vault_chat_image_name
+import id.homebase.resources.vault_save_failed
+import id.homebase.resources.vault_saved
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
@@ -64,6 +69,7 @@ internal class MediaDownloadHandler(
     private val viewOnceActions: ViewOnceActions,
     private val chatMessageStream: ChatMessageStream,
     private val localVideoContextStore: LocalAttachmentContextStore,
+    private val vaultFileSaver: VaultFileSaver? = null,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
     private val onMobile: () -> Boolean = { isMobile() },
@@ -118,6 +124,47 @@ internal class MediaDownloadHandler(
                     )
                 )
             }
+        }
+    }
+
+    fun handleSaveMediaToVault(action: ConversationListUiAction.SaveMediaToVault) {
+        val saver = vaultFileSaver ?: return
+        scope.launch {
+            val saved = try {
+                val message =
+                    messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
+                        .map { it.message }.find { it.id == action.messageId } ?: return@launch
+                val payload =
+                    message.payloads?.find { it.key == action.payloadKey } ?: return@launch
+                val contentType = payload.contentType ?: return@launch
+                val payloadIv = Base64.decode(
+                    payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
+                )
+                val extension = extensionForMimeType(contentType) ?: contentType.substringAfter("/")
+                val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
+                    message.fileId,
+                    action.payloadKey,
+                    KeyHeader(payloadIv, message.keyHeader.aesKey),
+                    "vault_",
+                    ".$extension",
+                )
+                tempPath != null && saver.save(
+                    tempPath,
+                    contentType,
+                    TranslationUtil.getString(MR.string.vault_chat_image_name, formatMediumDate(message.userDate)),
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                    "Failed to save media to Vault: ${e.message}"
+                }
+                false
+            }
+            sendEvent(
+                if (saved) ConversationListUiEvent.ShowInfoMessage(MR.string.vault_saved)
+                else ShowErrorMessage(MR.string.vault_save_failed)
+            )
         }
     }
 

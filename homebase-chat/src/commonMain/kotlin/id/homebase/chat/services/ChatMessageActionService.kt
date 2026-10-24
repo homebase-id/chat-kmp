@@ -586,4 +586,14 @@ class ChatMessageActionService(
         keyHeader = keyHeader,
         destination = ExportDestination.ShareOutbound(suffix),
     )
+
+    suspend fun streamPayloadToUploadTemp(
+        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader, prefix: String, suffix: String
+    ): String? = payloadDownloadService.exportToTemp(
+        driveId = chatTargetDrive.alias,
+        fileId = fileId,
+        key = payloadKey,
+        keyHeader = keyHeader,
+        destination = ExportDestination.UploadTemp(prefix, suffix),
+    )
 }
