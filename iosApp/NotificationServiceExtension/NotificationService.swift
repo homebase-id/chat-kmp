@@ -37,6 +37,16 @@ class NotificationService: UNNotificationServiceExtension {
             return
         }
 
+        // Redacted before any early return or the expiry path hands `content` over as-is; an
+        // empty field stays empty so a silent push isn't turned into a visible one.
+        let contentLevel = NotificationPreviewBridge.shared.contentLevel() ?? Self.fullContentLevel
+        if !Self.showsRealContent(contentLevel) {
+            if !content.body.isEmpty { content.body = Self.redactedBody }
+            if contentLevel == Self.noNameOrContentLevel, !content.title.isEmpty {
+                content.title = "Homebase"
+            }
+        }
+
         // Parse the push payload from the "data" field
         guard let dataString = request.content.userInfo["data"] as? String,
               let jsonData = dataString.data(using: .utf8),
@@ -60,7 +70,6 @@ class NotificationService: UNNotificationServiceExtension {
 
         let unEncryptedMessage = options["unEncryptedMessage"] as? String
         let appDisplayName = payload["appDisplayName"] as? String ?? "Homebase"
-        let contentLevel = NotificationPreviewBridge.shared.contentLevel() ?? Self.fullContentLevel
 
         // Sequenced ahead of the avatar fetch rather than raced with it: the tray read is a
         // local call that returns in milliseconds, so nesting costs almost nothing of the
