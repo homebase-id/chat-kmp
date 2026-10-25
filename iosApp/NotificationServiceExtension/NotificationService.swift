@@ -2,9 +2,7 @@ import UserNotifications
 import Intents
 import FirebaseCore
 import os
-#if canImport(HomebaseNotifKit)
 import HomebaseNotifKit
-#endif
 
 class NotificationService: UNNotificationServiceExtension {
 
@@ -52,6 +50,7 @@ class NotificationService: UNNotificationServiceExtension {
         let options = payload["options"] as? [String: Any] ?? [:]
         let appId = options["appId"] as? String ?? ""
         let typeId = options["typeId"] as? String ?? ""
+        let tagId = options["tagId"] as? String ?? ""
         let silent = options["silent"] as? Bool ?? false
 
         if silent {
@@ -61,6 +60,7 @@ class NotificationService: UNNotificationServiceExtension {
 
         let unEncryptedMessage = options["unEncryptedMessage"] as? String
         let appDisplayName = payload["appDisplayName"] as? String ?? "Homebase"
+        let contentLevel = NotificationPreviewBridge.shared.contentLevel() ?? Self.fullContentLevel
 
         // Sequenced ahead of the avatar fetch rather than raced with it: the tray read is a
         // local call that returns in milliseconds, so nesting costs almost nothing of the
@@ -71,16 +71,62 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(content)
                 return
             }
-            self.decorate(
-                content: content,
-                senderId: senderId,
+            self.resolveChatPreview(
                 appId: appId,
-                typeId: typeId,
-                unEncryptedMessage: unEncryptedMessage,
-                appDisplayName: appDisplayName,
-                contentHandler: contentHandler
-            )
+                conversationId: typeId,
+                messageId: tagId,
+                contentLevel: contentLevel
+            ) { preview in
+                self.decorate(
+                    content: content,
+                    senderId: senderId,
+                    appId: appId,
+                    typeId: typeId,
+                    unEncryptedMessage: preview ?? unEncryptedMessage,
+                    appDisplayName: appDisplayName,
+                    contentLevel: contentLevel,
+                    contentHandler: contentHandler
+                )
+            }
         }
+    }
+
+    // MARK: - Decrypted Content
+
+    /// Same contract as Android's in-app resolver: the message is fetched and decrypted here, on
+    /// the device, and any miss leaves the sender's placeholder in place.
+    private func resolveChatPreview(
+        appId: String,
+        conversationId: String,
+        messageId: String,
+        contentLevel: String,
+        completion: @escaping (String?) -> Void
+    ) {
+        guard Self.showsRealContent(contentLevel),
+              [Self.chatAppId, Self.chatAppIdUuid].contains(appId),
+              !conversationId.isEmpty, !messageId.isEmpty
+        else {
+            completion(nil)
+            return
+        }
+        NotificationPreviewBridge.shared.resolvePreview(
+            conversationId: conversationId,
+            messageId: messageId
+        ) { preview in
+            completion(preview)
+        }
+    }
+
+    // MARK: - Content Level
+
+    /// Codes must match `NotificationContentLevel` in the shared KMP code.
+    private static let fullContentLevel = "name_content_actions"
+    private static let nameOnlyLevel = "name_only"
+    private static let noNameOrContentLevel = "no_name_or_content"
+    private static let redactedBody = "New notification"
+
+    private static func showsRealContent(_ level: String) -> Bool {
+        level != nameOnlyLevel && level != noNameOrContentLevel
     }
 
     private func decorate(
@@ -90,27 +136,39 @@ class NotificationService: UNNotificationServiceExtension {
         typeId: String,
         unEncryptedMessage: String?,
         appDisplayName: String,
+        contentLevel: String,
         contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
+        let showsContent = Self.showsRealContent(contentLevel)
+
         // Set default content
         content.title = appDisplayName
-        content.body = formatBody(
-            senderId: senderId,
-            senderName: senderId,
-            appId: appId,
-            typeId: typeId,
-            unEncryptedMessage: unEncryptedMessage,
-            appDisplayName: appDisplayName
-        )
+        content.body = showsContent
+            ? formatBody(
+                senderId: senderId,
+                senderName: senderId,
+                appId: appId,
+                typeId: typeId,
+                unEncryptedMessage: unEncryptedMessage,
+                appDisplayName: appDisplayName
+            )
+            : Self.redactedBody
         content.sound = .default
 
         // Group by conversation for chat notifications. Content-less pushes get the
         // Reply-only category — no Mark as Read when there's nothing to read (#983).
         if isChatNotification(appId: appId) {
             content.threadIdentifier = typeId
-            content.categoryIdentifier = hasRealContent(unEncryptedMessage)
+            content.categoryIdentifier = showsContent && hasRealContent(unEncryptedMessage)
                 ? "MESSAGE_CATEGORY"
                 : "MESSAGE_NO_CONTENT_CATEGORY"
+        }
+
+        // No sender either: skip the avatar and the Communication style, which both name them.
+        if contentLevel == Self.noNameOrContentLevel {
+            content.title = "Homebase"
+            contentHandler(content)
+            return
         }
 
         // Fetch sender avatar and apply Communication style
@@ -122,14 +180,18 @@ class NotificationService: UNNotificationServiceExtension {
 
             let senderName = self.extractDisplayName(from: senderId)
 
-            content.body = self.formatBody(
-                senderId: senderId,
-                senderName: senderName,
-                appId: appId,
-                typeId: typeId,
-                unEncryptedMessage: unEncryptedMessage,
-                appDisplayName: appDisplayName
-            )
+            if showsContent {
+                content.body = self.formatBody(
+                    senderId: senderId,
+                    senderName: senderName,
+                    appId: appId,
+                    typeId: typeId,
+                    unEncryptedMessage: unEncryptedMessage,
+                    appDisplayName: appDisplayName
+                )
+            } else {
+                content.title = senderName
+            }
 
             // Apply Communication Notification style for chat messages
             if self.isChatNotification(appId: appId) {
@@ -380,50 +442,10 @@ class NotificationService: UNNotificationServiceExtension {
         }
     }
 
-    /// Wire-format sentinel that the chat sender writes for Event
-    /// messages instead of the title — kept in sync with
-    /// `EVENT_NOTIF_SENTINEL` in homebase-notifshared.
-    private static let eventNotifSentinel = "__hb_event__|"
-
-    /// Bridges to the shared KMP formatter (HomebaseNotifKit). Returns
-    /// nil for non-event payloads (caller falls back to today's
-    /// behavior).
-    ///
-    /// **Xcode wiring required for the full body format ("Event in 1
-    /// hour"):** the NSE target needs `HomebaseNotifKit.framework`
-    /// added to "Link Binary With Libraries" in its build settings.
-    /// The iosApp's "Compile Kotlin Framework" Run Script already
-    /// builds the framework via Gradle
-    /// (`:homebase-notifshared:embedAndSignAppleFrameworkForXcode`),
-    /// but linking it into the NSE is a manual Xcode-UI step that
-    /// must be done on a Mac. Until that lands, the `#else` branch
-    /// here renders a Swift-side fallback that strips the sentinel
-    /// token and shows a generic body so iOS users never see the raw
-    /// `__hb_event__|<ms>` string in their notification.
+    /// Privacy-aware Event token (`__hb_event__|<ms>`) rendered by the shared KMP formatter;
+    /// nil for any other body.
     private func tryFormatTypedEventBody(_ raw: String) -> String? {
-        #if canImport(HomebaseNotifKit)
-        return EventNotificationFormatterKt.tryFormatEventNotificationBodyNow(raw: raw)
-        #else
-        return fallbackEventBody(raw)
-        #endif
-    }
-
-    /// Last-resort body when HomebaseNotifKit isn't linked. Recognizes
-    /// the sentinel prefix and re-attaches a group suffix if present,
-    /// but doesn't try to compute relative time — that's the
-    /// framework's job. Shipped so iOS users get a usable notification
-    /// even before the framework linkage lands.
-    private func fallbackEventBody(_ raw: String) -> String? {
-        guard raw.hasPrefix(Self.eventNotifSentinel) else { return nil }
-        // Split off optional " in <groupName>" suffix. The body of the
-        // token (after the sentinel) is a numeric timestamp, so " in "
-        // can only appear as the group separator.
-        let afterSentinel = String(raw.dropFirst(Self.eventNotifSentinel.count))
-        if let inRange = afterSentinel.range(of: " in ") {
-            let groupName = String(afterSentinel[inRange.upperBound...])
-            return "Event in \(groupName)"
-        }
-        return "Event"
+        EventNotificationFormatterKt.tryFormatEventNotificationBodyNow(raw: raw)
     }
 
     /// Extracts a display name from the sender's domain.

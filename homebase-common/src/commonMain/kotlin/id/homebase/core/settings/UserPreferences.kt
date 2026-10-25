@@ -2,6 +2,7 @@ package id.homebase.core.settings
 
 import com.russhwolf.settings.Settings
 import id.homebase.api.image.MediaQuality
+import id.homebase.api.share.NotificationExtensionStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Clock
@@ -144,9 +145,17 @@ class UserPreferences(private val settings: Settings) {
         set(value) = settings.putBoolean("error_collection_enabled", value)
 
 
+    // Installs that chose a level before the extension could read it still need it mirrored.
+    init {
+        NotificationExtensionStore.publishContentLevel(notificationContentLevel)
+    }
+
     var notificationContentLevel: String
         get() = settings.getString("notification_content_level", "name_content_actions")
-        set(value) = settings.putString("notification_content_level", value)
+        set(value) {
+            settings.putString("notification_content_level", value)
+            NotificationExtensionStore.publishContentLevel(value)
+        }
 
     var includeMutedChatsInBadge: Boolean
         get() = settings.getBoolean("notification_include_muted_badge", false)
