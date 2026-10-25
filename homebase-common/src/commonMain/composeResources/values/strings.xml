@@ -3037,4 +3037,8 @@
     <string name="settings_calls_beta">Voice and video calls (beta)</string>
     <string name="settings_calls_beta_desc">Experimental and may crash. Restart the app to apply.</string>
     <string name="settings_filesync_icon_desc">Show Filesync in the navigation bar</string>
+    <string name="vault_save_to">Save to Vault</string>
+    <string name="vault_saved">Saved to Vault</string>
+    <string name="vault_save_failed">Couldn't save to Vault</string>
+    <string name="vault_chat_image_name">Chat image, %1$s</string>
 </resources>

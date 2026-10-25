@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
@@ -112,6 +113,7 @@ import id.homebase.resources.save
 import id.homebase.resources.search
 import id.homebase.resources.settings
 import id.homebase.resources.share
+import id.homebase.resources.vault_save_to
 import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
@@ -752,6 +754,7 @@ fun FullScreenMediaMenu(
     // saved-stickers library. Gated strictly to real stickers so it never appears on
     // ordinary photos (which would create a non-transparent "sticker").
     onSaveSticker: (() -> Unit)? = null,
+    onSaveToVault: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -775,6 +778,14 @@ fun FullScreenMediaMenu(
                 text = { Text(text = stringResource(MR.string.save)) },
                 leadingIcon = {
                     Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+                })
+        }
+        if (onSaveToVault != null) {
+            DropdownMenuItem(
+                onClick = onSaveToVault,
+                text = { Text(text = stringResource(MR.string.vault_save_to)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Filled.Lock, contentDescription = null)
                 })
         }
         if (onSaveSticker != null) {
