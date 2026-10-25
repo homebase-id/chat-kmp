@@ -31,7 +31,16 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.services.ChatMessageActionService
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
+import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.formatMediumDate
+import id.homebase.core.vault.VaultFileSaver
+import id.homebase.resources.vault_chat_image_name
+import id.homebase.resources.vault_save_failed
+import id.homebase.resources.vault_saved
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.error_unknown
@@ -154,6 +163,10 @@ private fun SharedMediaViewer(
     val actionService = org.koin.compose.koinInject<ChatMessageActionService>()
     val fileSystemHandler = getUriHandler()
     val saveItem = rememberSharedMediaSaver(driveId, snackbarHostState)
+    val activation = org.koin.compose.koinInject<OptionalDriveActivation>()
+    val vaultActive by remember(activation) { activation.isActivatedFlow(vaultLabeledDrive) }
+        .collectAsStateWithLifecycle(false)
+    val vaultFileSaver = org.koin.compose.koinInject<VaultFileSaver>()
 
     val ext = remember(item) {
         item.payload.contentType?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "bin"
@@ -207,6 +220,31 @@ private fun SharedMediaViewer(
             }
         },
         onSave = { _, _ -> saveItem(item) },
+        onSaveToVault = if (vaultActive) { _, _ ->
+            scope.launch {
+                val saved = try {
+                    val iv = item.payload.iv?.let { Base64.decode(it) }
+                    val contentType = item.payload.contentType
+                    val path = if (iv != null && contentType != null) {
+                        actionService.streamPayloadToUploadTemp(
+                            item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), "vault_", ".$ext"
+                        )
+                    } else null
+                    path != null && vaultFileSaver.save(
+                        path,
+                        contentType!!,
+                        TranslationUtil.getString(MR.string.vault_chat_image_name, formatMediumDate(item.date)),
+                    )
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    false
+                }
+                snackbarHostState.showSnackbar(
+                    TranslationUtil.getString(if (saved) MR.string.vault_saved else MR.string.vault_save_failed)
+                )
+            }
+        } else null,
         onDelete = { onDismiss() },
         onDismiss = onDismiss,
         onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },

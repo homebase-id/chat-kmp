@@ -87,6 +87,7 @@ fun ConversationMessagesPane(
     /** Two-pane layouts draw the read-only viewers above the scaffold instead; the pane still
      *  drops [ConversationContent] so the composer cannot hold focus behind one. */
     hoistMediaViewer: Boolean = false,
+    vaultActive: Boolean = false,
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 
@@ -333,6 +334,7 @@ fun ConversationMessagesPane(
                             ChatMediaViewer(
                                 data = data,
                                 uiState = uiState,
+                                vaultActive = vaultActive,
                                 onUiAction = onUiAction,
                                 animatedVisibilityScope = this@AnimatedContent,
                                 sharedTransitionScope = this@SharedTransitionLayout,

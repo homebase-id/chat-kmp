@@ -79,6 +79,9 @@ import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 import id.homebase.chat.services.collectContext
 
+internal fun vaultSaveMenuAction(contentType: String?, onSaveToVault: (() -> Unit)?): (() -> Unit)? =
+    onSaveToVault.takeIf { contentType?.startsWith("image/") == true }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenMediaViewer(
@@ -91,6 +94,7 @@ fun FullScreenMediaViewer(
     // Save a viewed sticker into the user's library. Default no-op for non-chat hosts
     // (Moments) that have no sticker library; the chat pane passes a real handler.
     onSaveSticker: (messageId: Uuid, payloadKey: String) -> Unit = { _, _ -> },
+    onSaveToVault: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onDelete: ((messageId: Uuid) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
@@ -255,8 +259,17 @@ fun FullScreenMediaViewer(
                         .firstOrNull { it.key == currentPayloadKey }
                         ?.descriptorInfo()
                         ?.let { it is DescriptorContent.ImageFile && it.isSticker } == true
+                    val vaultAction = vaultSaveMenuAction(
+                        contentType = data.payloads.firstOrNull { it.key == currentPayloadKey }?.contentType,
+                        onSaveToVault = onSaveToVault?.let { saveToVault ->
+                            {
+                                showMenu = false
+                                saveToVault(data.messageId, currentPayloadKey)
+                            }
+                        },
+                    )
                     val hasMenuItems = onSave != null || onDelete != null ||
-                        onNavigateToMessage != null || currentIsSticker
+                        onNavigateToMessage != null || currentIsSticker || vaultAction != null
                     if (hasMenuItems) {
                         Box {
                             IconButton(onClick = {
@@ -276,6 +289,7 @@ fun FullScreenMediaViewer(
                                         save(data.messageId, currentPayloadKey)
                                     }
                                 },
+                                onSaveToVault = vaultAction,
                                 onSaveSticker = if (currentIsSticker) {
                                     {
                                         showMenu = false
