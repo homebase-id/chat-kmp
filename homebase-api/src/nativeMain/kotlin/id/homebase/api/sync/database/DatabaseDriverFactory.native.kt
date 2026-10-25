@@ -6,12 +6,20 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.kermit.Logger
 import co.touchlab.sqliter.DatabaseConfiguration
+import co.touchlab.sqliter.DatabaseConnection
 import co.touchlab.sqliter.JournalMode
+import co.touchlab.sqliter.NO_VERSION_CHECK
+import co.touchlab.sqliter.createDatabaseManager
+import co.touchlab.sqliter.getVersion
+import co.touchlab.sqliter.longForQuery
+import co.touchlab.sqliter.stringForQuery
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
@@ -23,15 +31,12 @@ import platform.Foundation.NSUserDomainMask
 
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
-        val driver = openNativeSqliteDriver(DB_FILE_NAME, passphrase)
+        val driver = openKeyedNativeSqliteDriver(DB_FILE_NAME, passphrase, SecureStorageRawKeyStore)
 
-        // Mark the SQLite files as ineligible for iCloud / Finder backup. Same
-        // motivation as Android's allowBackup=false (AndroidManifest.xml): the
-        // DB is content-encrypted by SQLCipher, but the keychain holding its
-        // passphrase rides backup unless the keychain items use
-        // *ThisDeviceOnly* — so a restored device could decrypt a restored DB.
-        // Marking the files excluded breaks that cross-device chain at the
-        // file-system layer.
+        // Mark the SQLite files as ineligible for iCloud / Finder backup, like Android's
+        // allowBackup=false. The file is encrypted by SQLCipher and its key is a
+        // *ThisDeviceOnly* keychain item, so a restored backup couldn't be opened anyway;
+        // excluding the files keeps them off the backup altogether.
         //
         // The directory exclusion handles WAL/SHM sidecars that SQLite creates
         // lazily after this call. The per-file calls are belt-and-suspenders
@@ -53,36 +58,43 @@ actual class DatabaseDriverFactory {
     // shared recovery (deleteOnDiskFiles) and backup-exclusion target the file the driver
     // actually opened. (A previous "${NSHomeDirectory()}/databases" assumption was wrong —
     // it pointed at a non-existent dir, so recovery and backup-exclusion silently no-op'd.)
-    actual fun dbFilePath(): String = "${iosDatabasesDir()}/$DB_FILE_NAME"
+    actual fun dbFilePath(): String = databasePath(DB_FILE_NAME)
 }
 
 /**
- * NOT ENCRYPTED TODAY. The iOS app links the system `libsqlite3`, which ignores `PRAGMA key`,
- * so [passphrase] protects nothing and the database file is plaintext on disk. This is a known
- * bug, deferred until existing installs can be migrated.
+ * Opens [name] in SQLCipher's raw-key mode, like Android and desktop: a random 32-byte key cached
+ * in [store]. iOS never shipped an encrypted file, so there is no passphrase-derived key to carry
+ * over; an empty [passphrase] opens the file unencrypted, as on the other platforms.
  *
- * When iOS links SQLCipher, this function must change with it:
- *
- *  1. **Swap to the shared raw-key code.** Desktop and Android hand SQLCipher a raw key
- *     (`x'<64 hex>'`) chosen by `SqlCipherKeyMode` (javaMain), because a passphrase costs a
- *     PBKDF2 derivation on *every* connection, and the writer plus [SQLITE_READER_CONNECTIONS]
- *     readers each pay it (measured in OPTIMIZE.md). Move
- *     `SqlCipherKeyMode` to commonMain (cryptography-kotlin has PBKDF2 on all targets) and use
- *     it here instead of the passphrase. Existing iOS files are plaintext, so iOS only needs the
- *     fresh-install path: a random raw key cached in SecureStorage. Move SqlCipherKeyModeTest's
- *     key-recording tests to commonTest with it, so iOS is held to passing only the raw key.
- *  2. **Drop `rekey = ""`.** With a non-null rekey sqliter runs `PRAGMA rekey = ''` after the
- *     key on every connection. Harmless on the system SQLite; on SQLCipher it at best does
- *     nothing and at worst tries to change the key to empty.
- *  3. **Set the key before the pragmas.** sqliter runs `onCreateConnection` before it sets the
- *     key, and `PRAGMA synchronous` reads the schema, so on an encrypted file every connection
- *     would fail with "file is not a database" and recovery would wipe the database.
- *  4. **Migrate existing installs** from plaintext to encrypted (`sqlcipher_export`) before
- *     opening them with a key.
- *
- * DatabaseConnectionContractTest runs on the iOS simulator in CI and is the net for 3.
+ * A plaintext file from before iOS linked SQLCipher is encrypted in place first ([encrypt]). If
+ * that fails it is opened unencrypted as it is and the next launch tries again: the recovery in
+ * DatabaseManager would otherwise wipe a file the key can't open.
  */
-internal fun openNativeSqliteDriver(name: String, passphrase: String?): SqlDriver = NativeSqliteDriver(
+internal fun openKeyedNativeSqliteDriver(
+    name: String,
+    passphrase: String?,
+    store: RawKeyStore,
+    encrypt: (name: String, key: String) -> Unit = ::encryptPlaintextDatabase,
+): SqlDriver {
+    if (passphrase.isNullOrEmpty()) return openNativeSqliteDriver(name, key = null)
+    requireSqlCipher()
+    val hex = store.get()?.takeIf(SqlCipherRawKey::isHex) ?: SqlCipherRawKey.newHex().also(store::put)
+    val key = SqlCipherRawKey.format(hex)
+    if (isPlaintextDatabase(databasePath(name))) {
+        try {
+            encrypt(name, key)
+        } catch (e: Exception) {
+            logger.e(e) { "Encrypting the plaintext database failed; opening it unencrypted until the next launch" }
+            runCatching { deleteDatabaseFiles(exportPath(name)) }
+                .onFailure { logger.e(it) { "Couldn't delete the partial encrypted copy" } }
+            return openNativeSqliteDriver(name, key = null)
+        }
+    }
+    return openNativeSqliteDriver(name, key)
+}
+
+/** [key] is what SQLCipher is handed: a raw `x'<hex>'` key, or null for no encryption. */
+internal fun openNativeSqliteDriver(name: String, key: String?): SqlDriver = NativeSqliteDriver(
     schema = OdinDatabase.Schema,
     name = name,
     maxReaderConnections = SQLITE_READER_CONNECTIONS,
@@ -91,18 +103,113 @@ internal fun openNativeSqliteDriver(name: String, passphrase: String?): SqlDrive
             journalMode = JournalMode.valueOf(SQLITE_JOURNAL_MODE),
             lifecycleConfig = config.lifecycleConfig.copy(
                 onCreateConnection = { connection ->
+                    // Keyed here rather than through sqliter's encryptionConfig, which keys only
+                    // after onCreateConnection, and these pragmas already read the file.
+                    key?.let { connection.applyKey(it) }
                     config.lifecycleConfig.onCreateConnection(connection)
-                    // Runs before sqliter sets the key: see point 3 above.
                     SQLITE_CONNECTION_PRAGMA_STATEMENTS.forEach(connection::rawExecSql)
                     connection.rawExecSql("PRAGMA journal_size_limit=$SQLITE_WRITER_JOURNAL_SIZE_LIMIT")
                 },
             ),
-            encryptionConfig = DatabaseConfiguration.Encryption(
-                key = passphrase ?: "", rekey = ""
-            )
         )
     },
 )
+
+/**
+ * Rewrites the plaintext database [name] as a copy encrypted with [key] and swaps it in. Until
+ * the rename the plaintext file is untouched apart from a checkpoint, and a copy left by an
+ * interrupted run is discarded, so a crash at any step leaves a database that opens.
+ */
+internal fun encryptPlaintextDatabase(name: String, key: String) {
+    exportEncryptedCopy(name, key)
+    val path = databasePath(name)
+    // Checkpointed into the main file by the export, and a stale -wal would be replayed onto the encrypted file.
+    deleteSqliteFileIfExists("$path-wal")
+    deleteSqliteFileIfExists("$path-shm")
+    FileSystem.SYSTEM.atomicMove(exportPath(name).toPath(), path.toPath())
+    logger.i { "Encrypted the plaintext database in place" }
+}
+
+internal fun exportEncryptedCopy(name: String, key: String) {
+    val export = exportPath(name)
+    deleteDatabaseFiles(export)
+    val (version, tables) = withConnection(name, key = null, JournalMode.WAL) { connection ->
+        val busy = connection.longForQuery("PRAGMA wal_checkpoint(TRUNCATE)")
+        check(busy == 0L) { "The plaintext database's WAL couldn't be checkpointed" }
+        val version = connection.getVersion()
+        val tables = connection.longForQuery("SELECT count(*) FROM sqlite_master")
+        connection.rawExecSql("ATTACH DATABASE ${sqlString(export)} AS encrypted KEY ${sqlString(key)}")
+        try {
+            connection.rawExecSql("SELECT sqlcipher_export('encrypted')")
+            // sqlcipher_export copies the schema and rows but not the header's user_version.
+            connection.rawExecSql("PRAGMA encrypted.user_version = $version")
+        } finally {
+            connection.rawExecSql("DETACH DATABASE encrypted")
+        }
+        version to tables
+    }
+    withConnection(export.substringAfterLast('/'), key, JournalMode.DELETE) { connection ->
+        check(connection.getVersion() == version && connection.longForQuery("SELECT count(*) FROM sqlite_master") == tables) {
+            "The encrypted copy doesn't match the plaintext database"
+        }
+    }
+}
+
+internal fun exportPath(name: String): String = "${databasePath(name)}-encrypting"
+
+internal fun databasePath(name: String): String = "${iosDatabasesDir()}/$name"
+
+/** True for a file in SQLite's plaintext format; an encrypted file starts with its random salt. */
+internal fun isPlaintextDatabase(path: String): Boolean {
+    val file = path.toPath()
+    if ((FileSystem.SYSTEM.metadataOrNull(file)?.size ?: 0L) < PLAINTEXT_HEADER.size) return false
+    return FileSystem.SYSTEM.read(file) { readByteArray(PLAINTEXT_HEADER.size.toLong()) }.contentEquals(PLAINTEXT_HEADER)
+}
+
+private val PLAINTEXT_HEADER = "SQLite format 3\u0000".encodeToByteArray()
+
+private val logger = Logger.withTag("DatabaseDriverFactory")
+
+private fun sqlString(value: String) = "'${value.replace("'", "''")}'"
+
+private fun DatabaseConnection.applyKey(key: String) = rawExecSql("PRAGMA key = \"$key\"")
+
+private fun <T> withConnection(name: String, key: String?, journalMode: JournalMode, block: (DatabaseConnection) -> T): T {
+    val manager = createDatabaseManager(
+        DatabaseConfiguration(
+            name = name,
+            version = NO_VERSION_CHECK,
+            create = {},
+            journalMode = journalMode,
+            lifecycleConfig = DatabaseConfiguration.Lifecycle(onCreateConnection = { c -> key?.let { c.applyKey(it) } }),
+        ),
+    )
+    val connection = manager.createMultiThreadedConnection()
+    try {
+        return block(connection)
+    } finally {
+        connection.close()
+    }
+}
+
+private val sqlCipherVersion: String by lazy {
+    val connection = createDatabaseManager(
+        DatabaseConfiguration(name = null, inMemory = true, version = NO_VERSION_CHECK, create = {}),
+    ).createMultiThreadedConnection()
+    try {
+        connection.stringForQuery("PRAGMA cipher_version")
+    } finally {
+        connection.close()
+    }
+}
+
+/**
+ * The system libsqlite3 ignores `PRAGMA key` and writes plaintext without an error. An Error,
+ * not an Exception, so DatabaseManager's recovery doesn't wipe the database over a build fault.
+ */
+internal fun requireSqlCipher() {
+    if (sqlCipherVersion.isBlank()) throw AssertionError("SQLCipher isn't linked: PRAGMA cipher_version is empty")
+}
 
 /**
  * The directory sqliter stores databases in on Apple targets:
