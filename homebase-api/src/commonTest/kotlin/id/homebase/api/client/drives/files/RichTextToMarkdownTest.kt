@@ -38,11 +38,11 @@ class RichTextToMarkdownTest {
     @Test
     fun marks() {
         assertEquals("**b**", richTextToMarkdown(listOf(p(leaf("b", bold = true)))))
-        assertEquals("_i_", richTextToMarkdown(listOf(p(leaf("i", italic = true)))))
+        assertEquals("*i*", richTextToMarkdown(listOf(p(leaf("i", italic = true)))))
         assertEquals("~~s~~", richTextToMarkdown(listOf(p(leaf("s", strike = true)))))
         assertEquals("`c`", richTextToMarkdown(listOf(p(leaf("c", code = true)))))
         assertEquals("`k`", richTextToMarkdown(listOf(p(leaf("k", kbd = true)))))
-        assertEquals("**_bi_**", richTextToMarkdown(listOf(p(leaf("bi", bold = true, italic = true)))))
+        assertEquals("***bi***",richTextToMarkdown(listOf(p(leaf("bi", bold = true, italic = true)))))
     }
 
     @Test
@@ -160,7 +160,7 @@ class RichTextToMarkdownTest {
         val nodes = OdinSystemSerializer.json.decodeFromJsonElement<RichText>(Json.parseToJsonElement(json))
         assertEquals(
             "# Trip plan\n\n" +
-                "Hi @sam.gamgee.example, see [**the map**](https://shire.example/map) _and_ don't ~~forget~~\n\n" +
+                "Hi @sam.gamgee.example, see [**the map**](https://shire.example/map) *and* don't ~~forget~~\n\n" +
                 "- bread\n- cheese\n  - aged\n\n> quote me\n\n```\nrun()\n```",
             richTextToMarkdown(nodes),
         )
@@ -169,7 +169,7 @@ class RichTextToMarkdownTest {
     @Test
     fun bold_then_bold_italic_keeps_bold_open() {
         assertEquals(
-            "**a_b_**",
+            "**a*b***",
             richTextToMarkdown(listOf(p(leaf("a", bold = true), leaf("b", bold = true, italic = true)))),
         )
     }
@@ -180,5 +180,10 @@ class RichTextToMarkdownTest {
             "**`x`y**",
             richTextToMarkdown(listOf(p(leaf("x", bold = true, code = true), leaf("y", bold = true)))),
         )
+    }
+
+    @Test
+    fun italic_inside_a_word_uses_asterisks() {
+        assertEquals("un*bel*ievable", richTextToMarkdown(listOf(p(leaf("un"), leaf("bel", italic = true), leaf("ievable")))))
     }
 }

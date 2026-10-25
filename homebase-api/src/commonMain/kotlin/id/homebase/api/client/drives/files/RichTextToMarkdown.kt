@@ -166,7 +166,8 @@ private fun collectInline(nodes: List<RichTextNode>, out: MutableList<Inline>) {
 private val wrapperMarks = listOf<Pair<String, (Marks) -> Boolean>>(
     "~~" to { it.strike },
     "**" to { it.bold },
-    "_" to { it.italic },
+    // `_` cannot open or close inside a word, `*` can.
+    "*" to { it.italic },
 )
 
 private fun renderInline(nodes: List<RichTextNode>): String {
