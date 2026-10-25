@@ -142,7 +142,9 @@ import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewM
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
+import id.homebase.core.ui.screens.vault.VaultUploaderFileSaver
 import id.homebase.core.ui.screens.vault.VaultUploaderService
+import id.homebase.core.vault.VaultFileSaver
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.webdrop.WebDropService
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
@@ -971,6 +973,14 @@ val appModule = module {
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
+    single<VaultFileSaver> {
+        VaultUploaderFileSaver(
+            uploader = get<VaultUploaderService>(),
+            activation = get<OptionalDriveActivation>(),
+            fileOperationsProvider = get<FileOperationsProvider>(),
+            appScope = get<kotlinx.coroutines.CoroutineScope>(),
+        )
+    }
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
@@ -1118,6 +1128,8 @@ val appModule = module {
             liveShareReadiness = get(),
             locationService = get(),
             driveSyncManager = get(),
+            optionalDriveActivation = get(),
+            vaultFileSaver = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
