@@ -92,6 +92,8 @@ private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionS
         is MessageContent.Location -> "location" to (content.descriptor?.let { d ->
             "${d.lat},${d.lon}" + listOfNotNull(d.caption, d.address).firstOrNull { it.isNotBlank() }?.let { " ${it.oneLine(NAME_CODEPOINTS)}" }.orEmpty()
         } ?: content.displayLabel)
+        is MessageContent.CallEvent -> "call" to content.displayLabel
+        is MessageContent.ViewOnce -> return "[view-once media]"
         is MessageContent.Unknown -> return "[unsupported message kind ${content.dataType}]"
     }
     return "[$kind: ${body.oneLine(TYPED_LABEL_CODEPOINTS)}]"
