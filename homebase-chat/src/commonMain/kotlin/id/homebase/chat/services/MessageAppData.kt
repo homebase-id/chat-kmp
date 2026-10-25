@@ -36,7 +36,7 @@ data class MessageAppData(
 ) {
 
     val bodyIsMarkdown: Boolean
-        get() = if (version == null) message is JsonArray else version >= 1
+        get() = message is JsonArray || (version ?: 0) >= 1
 
     fun getMessage(): String {
         return when {
