@@ -62,6 +62,13 @@ class PdfContractJvmTest {
     }
 
     @Test
+    fun nonPositiveWidthOfAValidPdfGivesNoThumbnail() {
+        val bytes = pdfBytes(1)
+        assertNull(generatePdfThumbnail(bytes, 0))
+        withFile(bytes) { file -> assertNull(generatePdfThumbnailFromFile(file.absolutePath, -1)) }
+    }
+
+    @Test
     fun passwordProtectedPdfGivesNoThumbnailAndCannotBeOpened() {
         val bytes = pdfBytes(1, userPassword = "secret")
         assertNull(generatePdfThumbnail(bytes, 200))
