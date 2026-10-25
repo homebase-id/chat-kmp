@@ -186,4 +186,22 @@ class RichTextToMarkdownTest {
     fun italic_inside_a_word_uses_asterisks() {
         assertEquals("un*bel*ievable", richTextToMarkdown(listOf(p(leaf("un"), leaf("bel", italic = true), leaf("ievable")))))
     }
+
+    @Test
+    fun setext_underline_and_table_rows_are_escaped() {
+        assertEquals("title\n\\---", richTextToMarkdown(listOf(p("title\n---"))))
+        assertEquals("title\n\\===", richTextToMarkdown(listOf(p("title\n==="))))
+        assertEquals("\\| a \\|\n\\| --- \\|", richTextToMarkdown(listOf(p("| a |\n| --- |"))))
+    }
+
+    @Test
+    fun line_start_survives_a_whitespace_run_with_other_marks() {
+        assertEquals("\\# x", richTextToMarkdown(listOf(p(leaf(" ", bold = true), leaf("# x")))))
+        assertEquals("**a**\n \\- b", richTextToMarkdown(listOf(p(leaf("a", bold = true), leaf("\n ", italic = true), leaf("- b")))))
+    }
+
+    @Test
+    fun newline_inside_inline_code_becomes_space() {
+        assertEquals("`a # b`", richTextToMarkdown(listOf(p(leaf("a\n# b", code = true)))))
+    }
 }

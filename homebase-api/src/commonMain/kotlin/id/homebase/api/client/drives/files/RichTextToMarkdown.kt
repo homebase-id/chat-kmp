@@ -186,7 +186,7 @@ private fun renderInline(nodes: List<RichTextNode>): String {
     fun flush() {
         val marks = pendingMarks ?: return
         if (pending.isNotEmpty()) {
-            val atLineStart = out.isEmpty() || out.last() == '\n'
+            val atLineStart = out.substring(out.lastIndexOf('\n') + 1).isBlank()
             val body = if (marks.code) pending.toString() else escapeText(pending.toString(), atLineStart)
             val core = body.trim()
             if (core.isEmpty()) {
@@ -244,7 +244,9 @@ private fun longestBacktickRun(text: String): Int {
     return longest
 }
 
-private fun codeSpan(text: String): String {
+private fun codeSpan(raw: String): String {
+    // A code span renders a newline as a space anyway, and a raw one lets the next line start a block.
+    val text = raw.replace('\n', ' ')
     val fence = "`".repeat(longestBacktickRun(text) + 1)
     val pad = if (text.startsWith('`') || text.endsWith('`')) " " else ""
     return fence + pad + text + pad + fence
@@ -257,17 +259,13 @@ private fun escapeText(text: String, atLineStart: Boolean): String {
     while (i < text.length) {
         val c = text[i]
         when {
-            c == '\\' || c == '*' || c == '_' || c == '`' || c == '~' || c == '[' || c == ']' -> {
+            c == '\\' || c == '*' || c == '_' || c == '`' || c == '~' || c == '[' || c == ']' || c == '|' -> {
                 sb.append('\\').append(c)
                 lineStart = false
             }
 
-            (c == '#' || c == '>') && lineStart -> {
-                sb.append('\\').append(c)
-                lineStart = false
-            }
-
-            (c == '-' || c == '+') && lineStart && (i + 1 == text.length || text[i + 1] == ' ') -> {
+            // `-` and `=` also start setext underlines and thematic breaks, not only list items.
+            (c == '#' || c == '>' || c == '-' || c == '+' || c == '=') && lineStart -> {
                 sb.append('\\').append(c)
                 lineStart = false
             }
@@ -289,7 +287,7 @@ private fun escapeText(text: String, atLineStart: Boolean): String {
 
             else -> {
                 sb.append(c)
-                lineStart = c == '\n' || (c == ' ' && lineStart)
+                lineStart = c == '\n' || (c.isWhitespace() && lineStart)
             }
         }
         i++
