@@ -27,6 +27,7 @@ import id.homebase.chat.viewonce.ViewOnceViewer
 internal fun ChatMediaViewer(
     data: FullScreenOverlay.MediaViewer,
     uiState: MessageListUiState,
+    vaultActive: Boolean,
     onUiAction: (ConversationListUiAction) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -40,6 +41,9 @@ internal fun ChatMediaViewer(
             onSaveSticker = { message, key ->
                 onUiAction(ConversationListUiAction.SaveStickerFromMessage(message, key))
             },
+            onSaveToVault = if (vaultActive) { id, key ->
+                onUiAction(ConversationListUiAction.SaveMediaToVault(id, key))
+            } else null,
             onDelete = { onUiAction(DeleteMessage(it)) },
             onDismiss = { onUiAction(CloseFullScreenOverlay) },
             animatedVisibilityScope = animatedVisibilityScope,

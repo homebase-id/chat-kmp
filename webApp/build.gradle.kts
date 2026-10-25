@@ -189,11 +189,11 @@ val generateWebResourcesVersion = tasks.register("generateWebResourcesVersion") 
     ).asFileTree.matching { include("*/composeResources/**") }
     val composeVersion = libs.versions.composeMultiplatform.get()
     val outFile = webResourcesVersionDir.map { it.file("id/homebase/app/WebResourcesVersion.kt") }
+    val root = rootDir
     inputs.files(resources).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.property("composeVersion", composeVersion)
     outputs.file(outFile)
     doLast {
-        val root = rootDir
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(composeVersion.toByteArray())
         resources.files.sortedBy { it.relativeTo(root).invariantSeparatorsPath }.forEach { file ->

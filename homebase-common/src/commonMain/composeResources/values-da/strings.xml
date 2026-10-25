@@ -2017,4 +2017,8 @@
     <string name="chat_view_once_intro_row_disappears">Det forsvinder fra chatten, når det er lukket</string>
     <string name="chat_view_once_intro_row_protected">Det kan ikke deles, videresendes, kopieres eller gemmes</string>
     <string name="cd_view_once_intro">Vis én gang. Det forlader chatten, når det er lukket, og kan ikke deles, videresendes eller gemmes fra appen.</string>
+    <string name="vault_save_to">Gem i Vault</string>
+    <string name="vault_saved">Gemt i Vault</string>
+    <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
+    <string name="vault_chat_image_name">Chatbillede, %1$s</string>
 </resources>
