@@ -165,4 +165,20 @@ class RichTextToMarkdownTest {
             richTextToMarkdown(nodes),
         )
     }
+
+    @Test
+    fun bold_then_bold_italic_keeps_bold_open() {
+        assertEquals(
+            "**a_b_**",
+            richTextToMarkdown(listOf(p(leaf("a", bold = true), leaf("b", bold = true, italic = true)))),
+        )
+    }
+
+    @Test
+    fun bold_code_then_bold_keeps_bold_open() {
+        assertEquals(
+            "**`x`y**",
+            richTextToMarkdown(listOf(p(leaf("x", bold = true, code = true), leaf("y", bold = true)))),
+        )
+    }
 }

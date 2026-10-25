@@ -163,18 +163,51 @@ private fun collectInline(nodes: List<RichTextNode>, out: MutableList<Inline>) {
     }
 }
 
+private val wrapperMarks = listOf<Pair<String, (Marks) -> Boolean>>(
+    "~~" to { it.strike },
+    "**" to { it.bold },
+    "_" to { it.italic },
+)
+
 private fun renderInline(nodes: List<RichTextNode>): String {
     val items = mutableListOf<Inline>()
     collectInline(nodes, items)
 
     val out = StringBuilder()
+    val open = mutableListOf<Int>()
     var pendingMarks: Marks? = null
     val pending = StringBuilder()
+
+    fun closeFrom(depth: Int) {
+        while (open.size > depth) out.append(wrapperMarks[open.removeAt(open.lastIndex)].first)
+    }
 
     fun flush() {
         val marks = pendingMarks ?: return
         if (pending.isNotEmpty()) {
-            out.append(wrapText(pending.toString(), marks, out.isEmpty() || out.last() == '\n'))
+            val atLineStart = out.isEmpty() || out.last() == '\n'
+            val body = if (marks.code) pending.toString() else escapeText(pending.toString(), atLineStart)
+            val core = body.trim()
+            if (core.isEmpty()) {
+                closeFrom(0)
+                out.append(body)
+            } else {
+                val leading = body.substring(0, body.indexOf(core))
+                val trailing = body.substring(leading.length + core.length)
+                if (leading.isNotEmpty()) closeFrom(0)
+                out.append(leading)
+                val wanted = wrapperMarks.indices.filter { wrapperMarks[it].second(marks) }
+                var keep = 0
+                while (keep < open.size && keep < wanted.size && open[keep] == wanted[keep]) keep++
+                closeFrom(keep)
+                for (i in wanted.drop(keep)) {
+                    out.append(wrapperMarks[i].first)
+                    open.add(i)
+                }
+                out.append(if (marks.code) codeSpan(core) else core)
+                if (trailing.isNotEmpty()) closeFrom(0)
+                out.append(trailing)
+            }
         }
         pending.clear()
         pendingMarks = null
@@ -184,6 +217,7 @@ private fun renderInline(nodes: List<RichTextNode>): String {
         when (item) {
             is Inline.Raw -> {
                 flush()
+                closeFrom(0)
                 out.append(item.markdown)
             }
 
@@ -195,21 +229,8 @@ private fun renderInline(nodes: List<RichTextNode>): String {
         }
     }
     flush()
+    closeFrom(0)
     return out.toString()
-}
-
-private fun wrapText(text: String, marks: Marks, atLineStart: Boolean): String {
-    val body = if (marks.code) text else escapeText(text, atLineStart)
-    val core = body.trim()
-    if (core.isEmpty()) return body
-    val leading = body.substring(0, body.indexOf(core))
-    val trailing = body.substring(leading.length + core.length)
-
-    var result = if (marks.code) codeSpan(core) else core
-    if (marks.italic) result = "_${result}_"
-    if (marks.bold) result = "**$result**"
-    if (marks.strike) result = "~~$result~~"
-    return leading + result + trailing
 }
 
 private fun longestBacktickRun(text: String): Int {
