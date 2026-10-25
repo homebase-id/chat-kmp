@@ -3,6 +3,9 @@ package id.homebase.api.client.drives.files
 private val headingLevels = mapOf("h1" to 1, "h2" to 2, "h3" to 3, "h4" to 4, "h5" to 5, "h6" to 6)
 private val blockTypes = setOf("p", "paragraph", "blockquote", "code_block", "ul", "ol", "li") + headingLevels.keys
 
+private const val markdownSpecialChars = "\\*_`~[]|"
+private val newlineWithSpaces = Regex("\\s*\n\\s*")
+
 private data class Marks(val bold: Boolean, val italic: Boolean, val strike: Boolean, val code: Boolean)
 
 private sealed interface Inline {
@@ -58,7 +61,7 @@ private fun renderBlocks(nodes: List<RichTextNode>): List<String> {
 
             type in headingLevels -> {
                 flushRun()
-                val text = renderInline(node.children.orEmpty()).replace(Regex("\\s*\n\\s*"), " ").trim()
+                val text = renderInline(node.children.orEmpty()).replace(newlineWithSpaces, " ").trim()
                 if (text.isNotEmpty()) blocks.add("#".repeat(headingLevels.getValue(type)) + " " + text)
             }
 
@@ -259,7 +262,7 @@ private fun escapeText(text: String, atLineStart: Boolean): String {
     while (i < text.length) {
         val c = text[i]
         when {
-            c == '\\' || c == '*' || c == '_' || c == '`' || c == '~' || c == '[' || c == ']' || c == '|' -> {
+            c in markdownSpecialChars -> {
                 sb.append('\\').append(c)
                 lineStart = false
             }
