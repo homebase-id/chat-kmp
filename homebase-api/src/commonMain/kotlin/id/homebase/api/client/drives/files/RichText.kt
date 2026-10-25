@@ -9,7 +9,15 @@ data class RichTextNode(
     val id: String? = null,
     val value: String? = null,/**/
     val text: String? = null,
-    val children: List<RichTextNode>? = null
+    val children: List<RichTextNode>? = null,
+    val url: String? = null,
+    val bold: Boolean? = null,
+    val strong: Boolean? = null,
+    val italic: Boolean? = null,
+    val underline: Boolean? = null,
+    val strikethrough: Boolean? = null,
+    val code: Boolean? = null,
+    val kbd: Boolean? = null
 )
 
 /** Rich text type alias (list of RichTextNode). */
