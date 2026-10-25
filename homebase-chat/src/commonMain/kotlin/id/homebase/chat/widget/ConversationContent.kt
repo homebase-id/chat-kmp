@@ -76,6 +76,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -103,7 +104,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.sp
+import id.homebase.chat.services.sticker.StickerStream
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
@@ -141,15 +144,17 @@ import id.homebase.chat.createconversation.GroupOrConversationItem
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
+import id.homebase.chat.calling.CallActionButtons
+import id.homebase.chat.calling.LocalCallStarter
+import id.homebase.chat.calling.rememberCallStarter
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
-import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
@@ -271,6 +276,8 @@ fun ConversationContent(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
+    val savedStickers by koinInject<StickerStream>().stickers.collectAsStateWithLifecycle()
+    val savedStickerSourceIds = remember(savedStickers) { savedStickers.mapNotNullTo(HashSet()) { it.sourceFileId } }
     val focusRequester = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     val enterSendsMessage = rememberEnterSendsMessage()
@@ -391,39 +398,7 @@ fun ConversationContent(
             else -> null to false
         }
     })
-    LaunchedEffect(listState, conversation.conversation.id) {
-        var previousTotal = 0
-        var wasAtBottom = false
-        var previousBottomKey: Uuid? = null
-        snapshotFlow {
-            val info = listState.layoutInfo
-            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
-        }.collect { (total, lastVisibleIndex) ->
-            val (bottomKey, bottomMine) = bottomItem.value
-            val grew = total > previousTotal && previousTotal > 0
-            // Own-send: the bottom item is the user's AND it just changed (a new
-            // message/placeholder landed at the end), so follow it down even when
-            // the user had scrolled up into history.
-            val myNewBottom = bottomMine && bottomKey != null && bottomKey != previousBottomKey
-            if (grew && (wasAtBottom || myNewBottom) &&
-                !hasNewerForAutoFollow.value
-            ) {
-                listState.animateScrollToItem(total - 1)
-            }
-            previousBottomKey = bottomKey
-            // "At the bottom" = the last item is currently visible. This mirrors
-            // the scroll-to-bottom FAB's own visibility test (line ~341) and,
-            // unlike canScrollForward, does NOT require scrolling the final pixels
-            // into the 24.dp bottom content padding — so a fully-visible last
-            // message already counts as "at the bottom" and a newly-arrived
-            // message auto-follows. Recorded BEFORE the next snapshot so a
-            // subsequent growth sees the pre-growth scroll state (at the moment
-            // the new item lands, lastVisibleIndex still points at the old last
-            // item, which is why we read it from the prior emission here).
-            wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
-            previousTotal = total
-        }
-    }
+    AutoFollowNewItems(listState, conversation.conversation.id, bottomItem, hasNewerForAutoFollow)
     KeepListEndInView(listState, conversation.conversation.id)
 
     // One-time own-send follow: every send arm sets scrollToLatestRequest so the
@@ -455,7 +430,7 @@ fun ConversationContent(
                         laidOutItemCount = listState.layoutInfo.totalItemsCount,
                     ) ?: -1
                 }.first { it > 0 }
-                listState.animateScrollToItem(target - 1)
+                listState.animateScrollToItemUnlessPreempted(target - 1)
             }
         }
         onUiAction(ConversationListUiAction.ConsumeScrollToLatestRequest)
@@ -700,7 +675,9 @@ fun ConversationContent(
         )
     }
 
+    val callStarter = rememberCallStarter(conversation)
     CompositionLocalProvider(
+        LocalCallStarter provides callStarter,
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
         LocalMentionNames provides uiState.mentionNames,
         LocalUploadConnected provides uiState.isConnected,
@@ -752,7 +729,7 @@ fun ConversationContent(
                                     options = AvatarOptions(size = 36.dp, fontSize = 14.sp)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
                                     val conversationTitle =
                                         if (conversation.conversation.isWithSelf)
                                             stringResource(MR.string.chat_note_to_self)
@@ -762,7 +739,9 @@ fun ConversationContent(
                                     Text(
                                         text = conversationTitle.withEmojiFont(),
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -819,6 +798,7 @@ fun ConversationContent(
                                 onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                             },
                         )
+                        CallActionButtons(callStarter)
                         IconButton(onClick = { showConversationMenu = true }) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
@@ -1036,6 +1016,8 @@ fun ConversationContent(
                     }
                 }
 
+                GhostProbeEffect(conversation.conversation.id, mergedItems, listState)
+
                 val currentMergedItems by rememberUpdatedState(mergedItems)
                 // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
                 // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
@@ -1249,6 +1231,7 @@ fun ConversationContent(
                                                 chainCap = chainCap,
                                                 ownLiveShareUntilMs = uiState.ownLiveShareUntilMs,
                                                 onCopyText = copyToClipboard,
+                                                savedStickerSourceIds = savedStickerSourceIds,
                                             )
                                         }
                                     }
@@ -2080,10 +2063,9 @@ private fun ConnectIdentityRow(
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ContactAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            profileImageData = null,
-            initials = resolvedName.initials(),
+            displayName = resolvedName,
             options = AvatarOptions(size = 36.dp, fontSize = 14.sp),
             sharedTransitionScope = null,
             animatedVisibilityScope = null,
@@ -2162,7 +2144,6 @@ fun RecipientItem(
                 selectionMode = true,
                 isSelected = isSelected,
                 odinId = recipientModel.contact.odinId,
-                avatarInitials = recipientModel.contact.avatarInitials,
                 onContactClick = {
                     onRecipientSelected(recipientModel)
                 },
@@ -2228,14 +2209,55 @@ private const val JUMP_ANIMATED_ROWS = 3
 
 // Snap to a few rows short of the target and animate only the rest: a long animated scroll is slow, and
 // a page loading mid-flight shifts every index under it.
-internal suspend fun LazyListState.jumpToItem(index: Int, scrollOffset: Int = 0) {
+internal fun LazyListState.requestJumpStart(index: Int) {
     val from = firstVisibleItemIndex
-    if (index < from - JUMP_ANIMATED_ROWS) scrollToItem(index + JUMP_ANIMATED_ROWS)
-    else if (index > from + JUMP_ANIMATED_ROWS) scrollToItem(index - JUMP_ANIMATED_ROWS)
-    animateScrollToItem(index, scrollOffset)
+    if (index < from - JUMP_ANIMATED_ROWS) requestScrollToItem(index + JUMP_ANIMATED_ROWS)
+    else if (index > from + JUMP_ANIMATED_ROWS) requestScrollToItem(index - JUMP_ANIMATED_ROWS)
 }
 
 private data class ListEndSample(val total: Int, val overflow: Int?, val atEnd: Boolean, val firstIndex: Int, val firstOffset: Int)
+
+@Composable
+internal fun AutoFollowNewItems(
+    listState: LazyListState,
+    key: Any?,
+    bottomItem: State<Pair<Uuid?, Boolean>>,
+    hasNewerMessages: State<Boolean>,
+) {
+    LaunchedEffect(listState, key) {
+        var previousTotal = 0
+        var wasAtBottom = false
+        var previousBottomKey: Uuid? = null
+        snapshotFlow {
+            val info = listState.layoutInfo
+            info.totalItemsCount to (info.visibleItemsInfo.lastOrNull()?.index ?: -1)
+        }.collect { (total, lastVisibleIndex) ->
+            val (bottomKey, bottomMine) = bottomItem.value
+            val grew = total > previousTotal && previousTotal > 0
+            // Own-send: the bottom item is the user's AND it just changed (a new
+            // message/placeholder landed at the end), so follow it down even when
+            // the user had scrolled up into history.
+            val myNewBottom = bottomMine && bottomKey != null && bottomKey != previousBottomKey
+            if (grew && (wasAtBottom || myNewBottom) &&
+                !hasNewerMessages.value
+            ) {
+                listState.animateScrollToItemUnlessPreempted(total - 1)
+            }
+            previousBottomKey = bottomKey
+            // "At the bottom" = the last item is currently visible. This mirrors
+            // the scroll-to-bottom FAB's own visibility test (line ~341) and,
+            // unlike canScrollForward, does NOT require scrolling the final pixels
+            // into the 24.dp bottom content padding — so a fully-visible last
+            // message already counts as "at the bottom" and a newly-arrived
+            // message auto-follows. Recorded BEFORE the next snapshot so a
+            // subsequent growth sees the pre-growth scroll state (at the moment
+            // the new item lands, lastVisibleIndex still points at the old last
+            // item, which is why we read it from the prior emission here).
+            wasAtBottom = total > 0 && lastVisibleIndex >= total - 1
+            previousTotal = total
+        }
+    }
+}
 
 // A list that sat at its end stays there when anything pushes its end down without adding a row: a row
 // growing in place (reaction pill, preview, media) or the viewport shrinking from above (pinned bar,
@@ -2292,14 +2314,18 @@ private suspend fun LazyListState.animateScrollToNewestItem() {
     repeat(SCROLL_TO_NEWEST_ATTEMPTS) {
         val target = layoutInfo.totalItemsCount - 1
         if (target < 0) return
-        try {
-            animateScrollToItem(target)
-        } catch (e: CancellationException) {
-            // Compose's MutationInterruptedException is internal; a still-active context
-            // means the prepend compensation took the scroll, not the caller going away.
-            if (!currentCoroutineContext().isActive) throw e
-        }
+        animateScrollToItemUnlessPreempted(target)
         if (layoutInfo.visibleItemsInfo.lastOrNull()?.index == layoutInfo.totalItemsCount - 1) return
+    }
+}
+
+private suspend fun LazyListState.animateScrollToItemUnlessPreempted(index: Int) {
+    try {
+        animateScrollToItem(index)
+    } catch (e: CancellationException) {
+        // Compose's MutationInterruptedException is internal; a still-active context means
+        // another scroll took the list over, not the caller going away.
+        if (!currentCoroutineContext().isActive) throw e
     }
 }
 

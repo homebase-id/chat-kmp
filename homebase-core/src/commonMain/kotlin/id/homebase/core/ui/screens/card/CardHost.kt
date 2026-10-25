@@ -58,6 +58,8 @@ interface CardHost {
     fun exportPng()
     fun probeEdges()
     fun requestPaint()
+
+    // Callers keep the image (tiles, covers), so each call must return a new one, never a reused buffer.
     suspend fun snapshot(): ImageBitmap?
     fun dispose()
 }

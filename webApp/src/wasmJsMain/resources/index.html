@@ -189,8 +189,29 @@
     window.__homebaseErrors = homebaseErrors;
     window.__homebaseFirstError = function () {
         const first = homebaseErrors.first;
-        if (first == null) return "No uncaught error recorded.";
-        return first.message + "\n" + first.stack + "\n(" + homebaseErrors.total + " total)";
+        const firstText = first == null
+            ? "No uncaught error recorded."
+            : first.message + "\n" + first.stack + "\n(" + homebaseErrors.total + " total)";
+        // ComposerAutocompleteProbe (#1859): written before any trap, so it survives one.
+        const mismatch = homebaseErrors.autocompleteMismatch;
+        const trace = homebaseErrors.autocompleteTrace;
+        const composing = homebaseErrors.autocompleteComposing;
+        return firstText +
+            (mismatch ? "\n\n" + mismatch : "") +
+            (trace ? "\n\nautocomplete trace (oldest first):\n" + trace : "") +
+            (composing ? "\n\nautocomplete last composition:\n" + composing : "");
+    };
+
+    // A reload wipes the above, and reloading is what a frozen page gets.
+    const lastCrashKey = "homebase.lastCrash";
+    let lastCrash = null;
+    try {
+        lastCrash = localStorage.getItem(lastCrashKey);
+    } catch (e) {
+    }
+    if (lastCrash) console.warn("[homebase] a previous session crashed — read it with __homebaseLastCrash()");
+    window.__homebaseLastCrash = function () {
+        return lastCrash || "No crash recorded from a previous session.";
     };
 
     const unhandledError = (event, error) => {
@@ -204,6 +225,10 @@
                 "[homebase] first uncaught error — re-read it with __homebaseFirstError()",
                 error || event
             );
+            try {
+                localStorage.setItem(lastCrashKey, new Date().toISOString() + "\n" + window.__homebaseFirstError());
+            } catch (e) {
+            }
         }
 
         if (error instanceof WebAssembly.CompileError) {

@@ -190,7 +190,12 @@ object MainIndexMetaHelpers {
             val written = ArrayList<HomebaseFile>(fileHeaders.size)
             databaseManager.withWriteTransaction { db ->
 
-                fileHeaders.forEach { fileHeader ->
+                fileHeaders.forEach { incoming ->
+                    val fileHeader = TombstoneRetention.carryOver(incoming) {
+                        db.driveMainIndexQueries.selectByIdentityAndDriveAndFile(identityId, driveId, incoming.fileId)
+                            .executeAsOneOrNull()
+                            ?.let { OdinSystemSerializer.deserialize<HomebaseFile>(it.jsonHeader) }
+                    }
                     // Convert SharedSecretEncryptedFileHeader to extract DriveMainIndex fields and tag records
                     val driveMainIndexRecord =
                         convertFileHeaderToDriveMainIndexRecord(identityId, driveId, fileHeader)
@@ -208,12 +213,11 @@ object MainIndexMetaHelpers {
                         written.add(fileHeader)
                         rewriteTags(db, identityId, driveId, fileHeader)
                     }
+                }
 
-                    // Even if we didn't update the record we advance the cursor
-                    if (cursor != null) {
-                        val cursorStorage = CursorStorage(databaseManager, driveId)
-                        cursorStorage.saveCursor(db, cursor)
-                    }
+                // Advances even when the timestamp guard rejected every row.
+                if (cursor != null) {
+                    CursorStorage(databaseManager, driveId).saveCursor(db, cursor)
                 }
             }
             return written

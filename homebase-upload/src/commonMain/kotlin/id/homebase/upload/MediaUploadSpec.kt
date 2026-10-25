@@ -41,4 +41,6 @@ data class MediaUploadSpec(
     val optimisticFileId: Uuid = Uuid.random(),
     val writeOptimistic: Boolean = true,
     val seedCache: Boolean = true,
+    /** Drop every thumbnail and preview, including the ones video processing generates during encryption. */
+    val omitThumbnails: Boolean = false,
 )

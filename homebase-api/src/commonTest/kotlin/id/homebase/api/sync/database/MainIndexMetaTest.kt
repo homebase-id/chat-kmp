@@ -192,6 +192,23 @@ class MainIndexMetaTest {
         }
     }
 
+    @Test
+    fun aBatchTheTimestampGuardRejectsStillAdvancesTheCursor() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val files = List(3) { makeHeader(Uuid.random(), driveId, Uuid.random(), updatedMs = 1_000L, localReactions = null) }
+            val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+            processor.baseUpsertEntryZapZap(identityId, driveId, files, cursor = null)
+            val cursor = QueryBatchCursor.fromStartPoint(UnixTimeUtc(2_000L))
+
+            val written = processor.baseUpsertEntryZapZap(identityId, driveId, files, cursor)
+
+            assertTrue(written.isEmpty(), "an unchanged modified is rejected for every row")
+            assertEquals(cursor.toJson(), CursorStorage(dbm, driveId).loadCursor()?.toJson())
+        }
+    }
+
     /**
      * `baseUpsertEntryZapZap` is the per-batch sync-side upsert that lands a
      * `HomebaseFile` into DriveMainIndex and (when non-null) persists the

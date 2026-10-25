@@ -260,7 +260,7 @@ actual fun VideoPlayerSurface(
                 AudioSession.ensurePlaybackCapable()
                 val videoData = VideoPlayerData(
                     data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.scratchSub,
                 )
                 val videoAccess =
                     videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
@@ -451,7 +451,7 @@ actual fun VideoPlayerSurface(
                     }
                 },
                 update = { controller ->
-                    (controller as? AVPlayerViewController)?.videoGravity =
+                    controller.videoGravity =
                         if (useZoomFill) {
                             AVLayerVideoGravityResizeAspectFill
                         } else {
@@ -731,3 +731,5 @@ private fun kickAssetMetadataLoad(asset: AVURLAsset, fileId: String) {
     }
     Logger.d(tag = "VideoHLS") { "asset.loadValuesAsynchronouslyForKeys kicked for fileId=$fileId at ${kickedAtMs.toLong()}ms" }
 }
+
+actual val nativeVideoControlsOwnTopCorners: Boolean = true

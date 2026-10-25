@@ -46,7 +46,7 @@ class UploadService(
             encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
-        }
+        }.let { if (spec.omitThumbnails) it.withoutThumbnails() else it }
 
         // 2. Build the request with shared-secret-encrypted metadata content.
         val request = UploadFileRequest(

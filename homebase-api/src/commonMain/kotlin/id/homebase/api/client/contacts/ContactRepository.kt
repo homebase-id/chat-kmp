@@ -442,11 +442,11 @@ class ContactRepository(
             // user as a partial failure. Logged because they are otherwise indistinguishable from
             // each other and from a write that succeeded: the only other record is the request line.
             ContactWriteResult.NotFound -> {
-                Logger.w(TAG) { "$op: 404 for $uniqueId — nothing written" }
+                Logger.w(tag = TAG) { "$op: 404 for $uniqueId — nothing written" }
                 null
             }
             is ContactWriteResult.Conflict -> {
-                Logger.w(TAG) { "$op: 409 for $uniqueId — nothing written" }
+                Logger.w(tag = TAG) { "$op: 409 for $uniqueId — nothing written" }
                 null
             }
         }

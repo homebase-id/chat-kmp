@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.profile
 
+import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandHorizontally
@@ -10,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,17 +60,19 @@ import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
-import id.homebase.resources.profile_avatar_edit_acl_circles
-import id.homebase.resources.profile_avatar_edit_acl_connected
 import id.homebase.resources.profile_avatar_edit_anonymous_desc
-import id.homebase.resources.profile_avatar_edit_circles_desc
-import id.homebase.resources.profile_avatar_edit_connected_desc
+import id.homebase.resources.profile_avatar_edit_acl_only_me
+import id.homebase.resources.profile_avatar_edit_only_me_desc
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
 import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_avatar_edit_remove
+import id.homebase.resources.profile_photo_remove_message
+import id.homebase.resources.profile_photo_remove_message_shared
+import id.homebase.resources.profile_photo_remove_title
 import id.homebase.resources.profile_avatar_edit_title
 import id.homebase.resources.profile_avatar_edit_upload
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -85,13 +91,14 @@ fun ProfileAvatarEditScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val errUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
     val errTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
+    val errStorageFull = stringResource(MR.string.storage_full_upload_failed)
     val errDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
 
     val anonymousPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.ANONYMOUS, it)) }
     }
-    val connectedPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, it)) }
+    val onlyMePicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        file?.let { viewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.OWNER, it)) }
     }
 
     LaunchedEffect(Unit) {
@@ -101,7 +108,9 @@ fun ProfileAvatarEditScreen(
                 ProfileAvatarEditEvent.Back -> onBack()
                 is ProfileAvatarEditEvent.UploadFailed -> snackbarHostState.showSnackbar(errUpload)
                 is ProfileAvatarEditEvent.UploadTooLarge -> snackbarHostState.showSnackbar(errTooLarge)
+                is ProfileAvatarEditEvent.StorageFull -> snackbarHostState.showSnackbar(errStorageFull)
                 is ProfileAvatarEditEvent.DeleteFailed -> snackbarHostState.showSnackbar(errDelete)
+                is ProfileAvatarEditEvent.PhotoSaved -> Unit
             }
         }
     }
@@ -139,22 +148,18 @@ fun ProfileAvatarEditScreen(
             Spacer(Modifier.height(24.dp))
 
             PhotoTierSection(
-                title = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_acl_circles
-                    else MR.string.profile_avatar_edit_acl_connected
-                ),
-                description = stringResource(
-                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_circles_desc
-                    else MR.string.profile_avatar_edit_connected_desc
-                ),
-                tier = uiState.connected,
-                onPick = { connectedPicker.launch() },
-                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED)) },
-                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED)) },
+                title = stringResource(MR.string.profile_avatar_edit_acl_only_me),
+                description = stringResource(MR.string.profile_avatar_edit_only_me_desc),
+                tier = uiState.onlyMe,
+                onPick = { onlyMePicker.launch() },
+                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.OWNER)) },
+                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.OWNER)) },
             ) {
-                ExistingAvatarContent(uiState.connected.existing, "ProfileAvatarEditScreen")
+                ExistingAvatarContent(uiState.onlyMe.existing, "ProfileAvatarEditScreen")
             }
+
         }
+        PhotoRemovalConfirmDialog(uiState.removalToConfirm, viewModel::onAction)
     }
 }
 
@@ -206,6 +211,9 @@ internal fun PhotoTierSection(
     controlsVisible: Boolean = true,
     centered: Boolean = false,
     onPhotoTap: (() -> Unit)? = null,
+    shape: Shape = CircleShape,
+    idleBadge: Boolean = false,
+    canPick: Boolean = true,
     existingPhotoContent: @Composable () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
@@ -229,8 +237,15 @@ internal fun PhotoTierSection(
         ) {
             Box(contentAlignment = Alignment.BottomEnd) {
                 Box(
-                    modifier = Modifier.size(96.dp).clip(CircleShape).clickable(
-                        onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick)
+                    modifier = Modifier.size(96.dp).clip(shape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .clickable(
+                        enabled = canPick || onPhotoTap != null,
+                        onClick = when {
+                            !canPick -> onPhotoTap ?: {}
+                            controlsVisible -> onPick
+                            else -> onPhotoTap ?: onPick
+                        },
                     ),
                 ) {
                     val shown: Any? = tier.pendingCroppedAvatar ?: tier.existing.takeIf { !tier.pendingRemoval }
@@ -246,8 +261,8 @@ internal fun PhotoTierSection(
                         }
                     }
                 }
-                if (controlsVisible) {
-                    FilledIconButton(onClick = onPick, modifier = Modifier.size(32.dp)) {
+                if (canPick && (controlsVisible || idleBadge)) {
+                    FilledIconButton(onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick), modifier = Modifier.size(32.dp)) {
                         Icon(
                             imageVector = Icons.Filled.PhotoCamera,
                             contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
@@ -289,6 +304,32 @@ internal fun PhotoTierSection(
             }
         }
     }
+}
+
+@Composable
+internal fun PhotoRemovalConfirmDialog(removal: PhotoRemoval?, onAction: (ProfileAvatarEditAction) -> Unit) {
+    if (removal == null) return
+    AlertDialog(
+        onDismissRequest = { onAction(ProfileAvatarEditAction.RemoveCancelled) },
+        title = { Text(stringResource(MR.string.profile_photo_remove_title)) },
+        text = {
+            Text(
+                stringResource(
+                    if (removal.sharedByOtherCards) MR.string.profile_photo_remove_message_shared else MR.string.profile_photo_remove_message,
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onAction(ProfileAvatarEditAction.RemoveConfirmed) }) {
+                Text(stringResource(MR.string.profile_avatar_edit_remove), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onAction(ProfileAvatarEditAction.RemoveCancelled) }) {
+                Text(stringResource(MR.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable

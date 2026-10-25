@@ -1,6 +1,8 @@
 package id.homebase.core.permissions
 
 import androidx.compose.runtime.Composable
+import co.touchlab.kermit.Logger
+import id.homebase.core.util.presentWhenMainWindowIsKey
 import platform.AVFoundation.AVAuthorizationStatus
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusNotDetermined
@@ -124,6 +126,8 @@ private object MotionPermissionRequester {
     }
 }
 
+private val log = Logger.withTag("GalleryPermission")
+
 class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit) :
     PermissionsManager {
     override fun askPermission(permission: PermissionType) {
@@ -136,10 +140,6 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 // Use the new API that properly detects limited access
                 val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
                 askGalleryPermission(status, permission, onPermissionResult)
-            }
-
-            PermissionType.GALLERY_LIMITED -> {
-                // not implemented
             }
 
             PermissionType.NOTIFICATION -> {
@@ -273,6 +273,7 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
         permission: PermissionType,
         onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
     ) {
+        log.i { "askGalleryPermission $permission status=$status" }
         when (status) {
             PHAuthorizationStatusAuthorized -> {
                 onPermissionStatus(permission, PermissionStatus.GRANTED, false)
@@ -281,16 +282,18 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             PHAuthorizationStatusLimited -> {
                 // Show picker to select more photos when already in limited mode
                 if (permission == PermissionType.GALLERY_LIMITED) {
-                    val rootViewController = UIApplication.sharedApplication.keyWindow?.rootViewController
-                    rootViewController?.let {
-                        PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(it)
+                    presentWhenMainWindowIsKey { presenter ->
+                        log.i { "presenting limited picker from ${presenter::class.simpleName}" }
+                        PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(presenter) { ids ->
+                            log.i { "limited picker done, ${ids?.size ?: 0} selected" }
+                        }
                     }
                 }
-                onPermissionStatus(permission, PermissionStatus.GRANTED, true)
+                onPermissionStatus(PermissionType.GALLERY_LIMITED, PermissionStatus.GRANTED, true)
             }
 
             PHAuthorizationStatusNotDetermined -> {
-                PHPhotoLibrary.requestAuthorization { newStatus ->
+                PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { newStatus ->
                     askGalleryPermission(newStatus, permission, onPermissionStatus)
                 }
             }

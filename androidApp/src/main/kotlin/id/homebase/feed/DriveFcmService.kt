@@ -12,6 +12,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import id.homebase.api.diagnostics.BgTrace
 import id.homebase.core.location.PushLocationCapture
+import id.homebase.core.notifications.CallPushRouter
 import id.homebase.core.notifications.NotificationService
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -29,6 +30,8 @@ class DriveFcmService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        // Ring/hangup pushes go straight to the call stack: the WorkManager hop below is too slow for a ringing phone.
+        if (CallPushRouter.tryHandle(message.data)) return
         // Hop 1 of the push→capture chain (#988). priority vs originalPriority exposes an
         // FCM/Doze downgrade (high requested, normal delivered = deferred delivery, #986).
         // Kermit is initialized in MainApplication.onCreate, which always precedes service

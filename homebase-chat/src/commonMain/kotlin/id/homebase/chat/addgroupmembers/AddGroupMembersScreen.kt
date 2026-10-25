@@ -217,7 +217,6 @@ fun AddGroupMembersUi(
                                         isSelectionEnabled = !uiState.originalMembers.contains(contact.odinId),
                                         isSelected = uiState.originalMembers.contains(contact.odinId) || uiState.selectedContacts.contains(contact),
                                         odinId = contact.odinId,
-                                        avatarInitials = contact.avatarInitials,
                                         onContactClick = {
                                             onUiAction(
                                                 AddGroupMembersUiAction.ContactClicked(contact)

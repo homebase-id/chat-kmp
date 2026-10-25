@@ -1,6 +1,7 @@
 package id.homebase.chat.services.convo
 
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.upload.PayloadBundle
@@ -356,6 +357,7 @@ class ConversationServiceLifecycleTest {
             service.archiveConversation(convoId)
 
             assertEquals(2L, fixture.outboxRowCount() - before)
+            assertStampWaitsForTagWrite(fixture)
         }
     }
 
@@ -372,7 +374,17 @@ class ConversationServiceLifecycleTest {
             service.unarchiveConversation(convoId)
 
             assertEquals(2L, fixture.outboxRowCount() - before)
+            assertStampWaitsForTagWrite(fixture)
         }
+    }
+
+    private suspend fun assertStampWaitsForTagWrite(fixture: ConversationServiceTestFixture) {
+        val rows = fixture.drainOutboxInDependencyOrder()
+        assertEquals(
+            listOf(DriveOutboxUploader.UpdateLocalMetadataTags, DriveOutboxUploader.UpdateLocalMetadataContent),
+            rows.map { it.uploadType },
+        )
+        assertEquals(rows[0].uniqueId, rows[1].dependencyUniqueId)
     }
 
     @Test

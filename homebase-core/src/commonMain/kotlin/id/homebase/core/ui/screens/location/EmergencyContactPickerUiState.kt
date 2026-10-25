@@ -10,8 +10,6 @@ data class EmergencyContactPickerUiState(
     val displayItems: PersistentList<ContactGroup> = persistentListOf(),
     val selectedContacts: PersistentList<ContactUiModel> = persistentListOf(),
     val submitting: Boolean = false,
-    /** Dark launch: picks the eligibility rule and its reason text. */
-    val reviewEnabled: Boolean = false,
 )
 
 sealed interface EmergencyContactPickerUiAction {

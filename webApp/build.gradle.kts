@@ -1,3 +1,5 @@
+import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
 import org.apache.tools.ant.filters.ReplaceTokens
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
@@ -35,9 +37,108 @@ tasks.withType<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>()
         "--gufa",
         "-Oz",
     )
+    if (name == productionOptimizeTask) keepWasmCrashSymbols()
 }
 
-// Sub-path mount support. Pass -PpublicPath=/apps/chat-wasm/ to host the bundle under a sub-path
+// A production .wasm has no function names, so a trap reports only `wasm-function[N]:0xOFF`. The
+// optimizer run that makes the shipped binary also writes names (-g) and a source map, and the
+// names are then cut from the shipped copy, which changes no function index or code offset. They
+// must come from that same run: two wasm-opt runs on one input are not byte-identical. Adds
+// ~0.5 GB to wasm-opt's peak (5.4 GB measured 2026-10-08). See WASM_CRASH_SYMBOLS.md.
+val productionOptimizeTask: String get() = "compileProductionExecutableKotlinWasmJsOptimize"
+val wasmSymbolsWorkDir: File get() = layout.buildDirectory.dir("wasm-symbols").get().asFile
+
+fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrashSymbols() {
+    val linkedWasm = inputFileProperty
+    val workDir = wasmSymbolsWorkDir
+    val binaryenInputMap = File(workDir, "binaryen-input.wasm.map")
+    val namedWasm = File(workDir, "chat-kmp-webApp.wasm")
+    val namedMap = File(workDir, "chat-kmp-webApp.wasm.map")
+    val optimizedWasm = outputFileProperty
+
+    binaryenArgs = (binaryenArgs + listOf(
+        "-g",
+        "--input-source-map", binaryenInputMap.path,
+        "--output-source-map", namedMap.path,
+    )).toMutableList()
+    outputs.dir(workDir)
+
+    doFirst {
+        // binaryen asserts on the null sourcesContent entries Kotlin writes. parseText, not parse(File):
+        // over 2 MB, parse(File) switches to a reader parser that overruns its 10,000-char buffer.
+        workDir.mkdirs()
+        val kotlinMap = File(linkedWasm.get().asFile.path + ".map")
+        @Suppress("UNCHECKED_CAST")
+        val map = groovy.json.JsonSlurper().parseText(kotlinMap.readText()) as MutableMap<String, Any?>
+        map.keys.retainAll(listOf("version", "sources", "names", "mappings"))
+        binaryenInputMap.writeText(groovy.json.JsonOutput.toJson(map))
+    }
+    doLast {
+        fun leb(bytes: ByteArray, start: Int): Pair<Int, Int> {
+            var value = 0
+            var shift = 0
+            var at = start
+            while (true) {
+                val b = bytes[at++].toInt() and 0xff
+                value = value or ((b and 0x7f) shl shift)
+                if (b < 0x80) return value to at
+                shift += 7
+            }
+        }
+
+        val shippedWasm = optimizedWasm.get().asFile
+        val bytes = shippedWasm.readBytes()
+        shippedWasm.copyTo(namedWasm, overwrite = true)
+        val out = ByteArrayOutputStream(bytes.size)
+        out.write(bytes, 0, 8)
+        var at = 8
+        while (at < bytes.size) {
+            val (size, payload) = leb(bytes, at + 1)
+            val end = payload + size
+            val isNameSection = bytes[at].toInt() == 0 && leb(bytes, payload).let { (len, nameAt) ->
+                String(bytes, nameAt, len, Charsets.UTF_8) == "name"
+            }
+            if (!isNameSection) out.write(bytes, at, end - at)
+            at = end
+        }
+        shippedWasm.writeBytes(out.toByteArray())
+    }
+}
+
+// Files the symbols under the content-hashed name webpack gave the shipped .wasm, which is the name
+// a production stack trace shows. dist/wasmJs/symbols is a sibling of the deployed directory.
+val collectWasmCrashSymbols = tasks.register("collectWasmCrashSymbols") {
+    val workDir = wasmSymbolsWorkDir
+    val shippedWasm = tasks.named<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>(
+        productionOptimizeTask
+    ).flatMap { it.outputFileProperty }
+    val distDir = layout.buildDirectory.dir("dist/wasmJs/productionExecutable").get().asFile
+    val symbolsDir = layout.buildDirectory.dir("dist/wasmJs/symbols").get().asFile
+    dependsOn("wasmJsBrowserDistribution")
+    inputs.file(shippedWasm)
+    inputs.dir(workDir)
+    outputs.dir(symbolsDir)
+
+    doLast {
+        val shipped = shippedWasm.get().asFile.readBytes()
+        val deployed = distDir.listFiles().orEmpty().filter {
+            it.extension == "wasm" && it.length() == shipped.size.toLong() &&
+                it.readBytes().contentEquals(shipped)
+        }
+        val hash = deployed.singleOrNull()?.nameWithoutExtension
+            ?: error("Expected exactly one copy of the optimized .wasm in $distDir, found ${deployed.size}")
+        symbolsDir.deleteRecursively()
+        symbolsDir.mkdirs()
+        File(workDir, "chat-kmp-webApp.wasm").copyTo(File(symbolsDir, "$hash.wasm"))
+        File(workDir, "chat-kmp-webApp.wasm.map").copyTo(File(symbolsDir, "$hash.wasm.map"))
+    }
+}
+
+tasks.matching { it.name == "wasmJsBrowserDistribution" }.configureEach {
+    finalizedBy(collectWasmCrashSymbols)
+}
+
+// Sub-path mount support. Pass -PpublicPath=/apps/chat/ to host the bundle under a sub-path
 // (odin-core's CI does this); defaults to "/" for standalone runs. The normalized value flows to:
 //   - webpack `output.publicPath` (via the generated webpack.config.d/00-publicPath.js)
 //   - the <base href> injected into index.html (via processResources token substitution)
@@ -48,7 +149,7 @@ val publicPath: String = (providers.gradleProperty("publicPath").orNull ?: "/").
     if (withLeading.endsWith("/")) withLeading else "$withLeading/"
 }
 
-val generateWebpackPublicPathConfig by tasks.registering {
+val generateWebpackPublicPathConfig = tasks.register("generateWebpackPublicPathConfig") {
     val outFile = layout.projectDirectory.file("webpack.config.d/00-publicPath.js").asFile
     inputs.property("publicPath", publicPath)
     outputs.file(outFile)
@@ -70,11 +171,43 @@ val generateWebpackPublicPathConfig by tasks.registering {
 // into processedResources -> dist) and instead pre-substitute @PUBLIC_PATH@ into a template under
 // build/generated, which HtmlWebpackPlugin reads as its template input.
 val htmlTemplateDir = layout.buildDirectory.dir("generated/html-template")
-val generateHtmlTemplate by tasks.registering(Copy::class) {
+val generateHtmlTemplate = tasks.register<Copy>("generateHtmlTemplate") {
     from(layout.projectDirectory.file("src/wasmJsMain/resources/index.html"))
     into(htmlTemplateDir)
     inputs.property("publicPath", publicPath)
     filter<ReplaceTokens>("tokens" to mapOf("PUBLIC_PATH" to publicPath))
+}
+
+// The .wasm is content-hashed but composeResources/*.cvr are not, and each string accessor compiled
+// into the .wasm is a byte offset into its .cvr. A browser that serves a cached .cvr from the
+// previous deploy reads misaligned records, and the string load fails. This key goes on every
+// resource URL (main.wasm.kt), so a resource change is a new URL.
+val webResourcesVersionDir = layout.buildDirectory.dir("generated/webResourcesVersion/kotlin")
+val generateWebResourcesVersion = tasks.register("generateWebResourcesVersion") {
+    val resources = files(
+        rootProject.subprojects.map { it.layout.projectDirectory.dir("src") }
+    ).asFileTree.matching { include("*/composeResources/**") }
+    val composeVersion = libs.versions.composeMultiplatform.get()
+    val outFile = webResourcesVersionDir.map { it.file("id/homebase/app/WebResourcesVersion.kt") }
+    val root = rootDir
+    inputs.files(resources).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("composeVersion", composeVersion)
+    outputs.file(outFile)
+    doLast {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(composeVersion.toByteArray())
+        resources.files.sortedBy { it.relativeTo(root).invariantSeparatorsPath }.forEach { file ->
+            digest.update(file.relativeTo(root).invariantSeparatorsPath.toByteArray())
+            digest.update(file.readBytes())
+        }
+        val version = digest.digest().take(8).joinToString("") { "%02x".format(it) }
+        outFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                "package id.homebase.app\n\ninternal const val WEB_RESOURCES_VERSION = \"$version\"\n"
+            )
+        }
+    }
 }
 
 kotlin {
@@ -113,6 +246,9 @@ kotlin {
             implementation(libs.navigation.compose)
             implementation(libs.koin.core)
 
+        }
+        wasmJsMain {
+            kotlin.srcDir(generateWebResourcesVersion.map { webResourcesVersionDir.get() })
         }
         wasmJsMain.dependencies {
             // Used by webpack.config.d/html-plugin.js to inject the (content-hashed) bundle

@@ -86,7 +86,8 @@ sealed interface ConversationListUiAction {
     data class SendFile(
         val conversationId: Uuid,
         val message: String,
-        val attachments: List<AttachmentPendingFile>
+        val attachments: List<AttachmentPendingFile>,
+        val viewOnce: Boolean = false,
     ) : ConversationListUiAction
 
     data class AttachGalleryItem(
@@ -107,6 +108,8 @@ sealed interface ConversationListUiAction {
 
     data class ShareMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
+    data class SaveMediaToVault(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
+
     data class ShareMessage(val message: MessageUiModel) : ConversationListUiAction
     data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class DownloadVideoMedia(
@@ -125,6 +128,15 @@ sealed interface ConversationListUiAction {
         ConversationListUiAction
 
     data object CloseFullScreenOverlay : ConversationListUiAction
+
+    /** The view-once viewer went away, by any route; consumes the item. */
+    data class ViewOnceViewerClosed(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
+
+    data class ViewOnceReact(val conversationId: Uuid, val messageId: Uuid, val emoji: String) : ConversationListUiAction
+
+    data class ViewOnceScreenshot(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
+
+    data class ViewOnceReply(val messageId: Uuid) : ConversationListUiAction
 
     /**
      * Persist where the user is reading in this conversation. The anchor is

@@ -2,11 +2,11 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.isExistingFileWithUniqueId
 import id.homebase.api.client.KeyHeader
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.upload.CreateFileResult
@@ -124,16 +124,7 @@ class DriveOutboxUploader(
         // from a previous install), convert the failed UploadNewFile into an
         // UpdateFileByUniqueId so the client's fresh content lands on the server.
         } catch (e: ClientException) {
-            // Route through retryAsUpdate whenever the server reports the uniqueId
-            // already exists. The proper errorCode is ExistingFileWithUniqueId, but
-            // the server also reports this condition as errorCode=UnhandledScenario
-            // with title "File already exists with ClientUniqueId: [...]" — the
-            // title match is a defensive fallback for that case. Without it the
-            // recovery path is skipped and the outbox retries for 20 attempts.
-            val isExistingFileConflict = e.status == 400 && (
-                    e.errorCode == OdinClientErrorCode.ExistingFileWithUniqueId ||
-                            e.message?.startsWith("File already exists with ClientUniqueId") == true)
-            if (isExistingFileConflict) {
+            if (e.isExistingFileWithUniqueId()) {
                 Logger.w(
                     "$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} " +
                             "got ExistingFileWithUniqueId (server already has this file) — " +
@@ -370,7 +361,9 @@ class DriveOutboxUploader(
             }
             throw NotFoundException()
         }
-        val versionTag = request.versionTag ?: header.fileMetadata.localAppData?.versionTag?.toString()
+        // Never request.versionTag: a localAppData content write on the same file
+        // (e.g. leave's exitedAt stamp) can bump it before this row sends.
+        val versionTag = header.fileMetadata.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataTags(
             file = request.file.copy(fileId = header.fileId.toString()),
             localAppData = LocalAppData(versionTag = versionTag, tags = request.tags)

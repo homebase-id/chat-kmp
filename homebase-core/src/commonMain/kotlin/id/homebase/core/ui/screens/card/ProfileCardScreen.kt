@@ -1,8 +1,31 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.FilledTonalButton
+import id.homebase.resources.profile_card_read_only_ok
+import id.homebase.resources.profile_card_read_only
+import id.homebase.resources.profile_card_not_saved
+import id.homebase.resources.profile_card_read_only_title
+import id.homebase.resources.profile_card_read_only_why
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
@@ -24,7 +47,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -41,19 +63,17 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
@@ -72,15 +92,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -89,16 +109,11 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.foundation.layout.PaddingValues
@@ -106,7 +121,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
@@ -127,56 +141,36 @@ import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.close
 import id.homebase.resources.cancel
-import id.homebase.resources.delete
-import id.homebase.resources.profile_card_add_circle_card
-import id.homebase.resources.profile_card_add_circle_title
-import id.homebase.resources.profile_card_add_circle_hint
-import id.homebase.resources.profile_card_add_circle_none
-import id.homebase.resources.profile_card_add_circle_load_failed
-import id.homebase.resources.profile_card_delete_card
-import id.homebase.resources.profile_card_delete_title
-import id.homebase.resources.profile_card_delete_message
-import id.homebase.resources.profile_card_circle_failed
+import id.homebase.resources.profile_card_reset_failed
 import id.homebase.resources.profile_card_circle_unsupported
 import id.homebase.resources.file_saved_to
 import id.homebase.resources.profile_card_audience_circle
 import id.homebase.resources.profile_card_audience_description
 import id.homebase.resources.profile_card_audience_public
-import id.homebase.resources.profile_card_audience_switch
+import id.homebase.resources.profile_card_reset_card
+import id.homebase.resources.profile_card_reset_title
+import id.homebase.resources.profile_card_reset_message_public
+import id.homebase.resources.profile_card_reset_message_circle
+import id.homebase.resources.profile_card_reset_message_template
+import id.homebase.resources.profile_card_reset_confirm
 import id.homebase.resources.profile_card_design_board
 import id.homebase.resources.profile_card_design_collage
 import id.homebase.resources.profile_card_design_dossier
+import id.homebase.resources.profile_card_design_links
 import id.homebase.resources.profile_card_design_poster
-import id.homebase.resources.profile_card_edit
+import id.homebase.resources.edit
+import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_error
 import id.homebase.resources.profile_card_save
 import id.homebase.resources.profile_card_share
 import id.homebase.resources.profile_card_share_failed
 import id.homebase.resources.profile_card_unsupported
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MenuDefaults
-import id.homebase.core.widget.AdaptiveSheet
-import id.homebase.resources.profile_card_access_body
-import id.homebase.resources.profile_card_access_continue
-import id.homebase.resources.profile_card_access_later
-import id.homebase.resources.profile_card_access_title
-import id.homebase.resources.profile_card_add_circle_has_card
-import id.homebase.resources.profile_card_add_circle_no_circles
-import id.homebase.resources.profile_card_circle_members
 import id.homebase.resources.profile_card_save_public
 import id.homebase.resources.profile_card_share_public
 import id.homebase.resources.profile_card_share_public_message
 import id.homebase.resources.profile_card_share_public_title
 import id.homebase.resources.profile_card_save_public_message
 import id.homebase.resources.profile_card_save_public_title
-import org.jetbrains.compose.resources.pluralStringResource
 import kotlin.math.exp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -194,12 +188,8 @@ private val BAND_FADE_HEIGHT = 16.dp
 private val TOOLBAR_BAND_HEIGHT = 88.dp
 private val CHROME_GAP = 8.dp
 private val CHROME_CONTROL_SIZE = 40.dp
-private val PICKER_ROW_HEIGHT = 64.dp
-private val PICKER_AVATAR = 40.dp
-private val PICKER_FADE = 24.dp
-private const val PICKER_HALF_SHEET_ROWS = 5
-private const val DISABLED_ALPHA = 0.38f
 private val MAX_SHEET_PULL = 32.dp
+private const val UNSAVED_LABEL_ALPHA = 0.8f
 private val DISMISS_DRAG_DISTANCE = 96.dp
 private const val DISMISS_FLING_VELOCITY = 1500f
 private const val SKELETON_ALPHA_LOW = 0.35f
@@ -241,6 +231,54 @@ fun ProfileCardScreen(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
+) {
+    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
+    IntroViewerSwitch(viewModel = viewModel, onBack = onBack) { onClose ->
+        ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
+    }
+}
+
+@Composable
+internal fun IntroViewerSwitch(
+    viewModel: ProfileCardViewModel,
+    onBack: () -> Unit,
+    viewer: @Composable (onClose: () -> Unit) -> Unit,
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val motion = MaterialTheme.motionScheme
+    AnimatedContent(
+        targetState = uiState.viewing,
+        transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+        modifier = Modifier.fillMaxSize(),
+    ) { viewing ->
+        if (viewing) {
+            viewer(viewModel::onIntroReturned)
+        } else {
+            val tiles by viewModel.introTiles.collectAsStateWithLifecycle()
+            val revision by viewModel.introRevision.collectAsStateWithLifecycle()
+            val host by viewModel.host.collectAsStateWithLifecycle()
+            CardIntro(
+                uiState = uiState,
+                tiles = tiles,
+                host = host,
+                revision = revision,
+                onOpen = viewModel::onCardOpened,
+                onClose = onBack,
+                onRetry = viewModel::onRetry,
+                onCapture = viewModel::captureIntroTiles,
+                onTilePainted = viewModel::onIntroTilePainted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileCardViewer(
+    viewModel: ProfileCardViewModel,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
@@ -252,10 +290,8 @@ fun ProfileCardScreen(
     val nfc = rememberCardNfc()
     val errCard = stringResource(MR.string.profile_card_error)
     val errShare = stringResource(MR.string.profile_card_share_failed)
-    val errCircle = stringResource(MR.string.profile_card_circle_failed)
+    val errReset = stringResource(MR.string.profile_card_reset_failed)
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
-
-    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -285,9 +321,9 @@ fun ProfileCardScreen(
                 }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
-                ProfileCardEvent.CircleCardFailed -> launch { snackbarHostState.showSnackbar(errCircle) }
+                ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
-                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed -> Unit
+                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported, ProfileCardEvent.ImportUndoExpired -> Unit
             }
         }
     }
@@ -385,13 +421,6 @@ fun ProfileCardScreen(
                 }
                 SheetTopChrome(
                     uiState = uiState,
-                    onSelectCard = viewModel::onCardSelected,
-                    circleActions = CircleCardActions(
-                        onAdd = viewModel::onAddCardClicked,
-                        onPick = viewModel::onCircleChosen,
-                        onDismissPicker = viewModel::onAddCardDismissed,
-                        onDelete = viewModel::onDeleteCardConfirmed,
-                    ),
                     onClose = leave,
                     // Over a band the whole strip drags; floating over the card only the handle does, so the card keeps its taps.
                     bandDrag = if (bands.top) dismissDrag else Modifier,
@@ -399,16 +428,21 @@ fun ProfileCardScreen(
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
                 CardBottomChrome(
+                    audience = uiState.selectedAudience,
                     isExporting = uiState.isExporting,
                     canShare = uiState.canShare,
                     saveInsteadOfShare = saveInsteadOfShare,
+                    readOnly = uiState.isCircleReadOnly,
+                    showsReset = uiState.showsReset,
+                    canReset = uiState.canReset,
                     onShare = { if (uiState.isCircleSelected) confirmPublicShare = true else viewModel.onShareClicked() },
                     onEdit = onEdit,
+                    onChangeDesign = onChangeDesign,
+                    onReset = viewModel::onResetCardConfirmed,
                     extraActions = { nfc?.let { CardNfcAction(it) } },
                 )
             }
         }
-        DesignAccessPrompt(shown = uiState.isDesignAccessPromptShown, viewModel = viewModel)
         val circle = uiState.selectedAudience as? CardAudience.Circle
         if (confirmPublicShare && circle != null) {
             SharePublicCardDialog(
@@ -457,13 +491,22 @@ internal fun SharePublicCardDialog(circleLabel: String, saveInsteadOfShare: Bool
 
 @Composable
 internal fun BoxScope.CardBottomChrome(
+    audience: CardAudience,
     isExporting: Boolean,
     canShare: Boolean,
     saveInsteadOfShare: Boolean,
+    readOnly: Boolean,
+    showsReset: Boolean,
+    canReset: Boolean,
     onShare: () -> Unit,
     onEdit: () -> Unit,
+    onChangeDesign: () -> Unit,
+    onReset: () -> Unit,
     extraActions: @Composable () -> Unit,
 ) {
+    var confirmReset by remember { mutableStateOf(false) }
+    var explainReadOnly by remember { mutableStateOf(false) }
+    val motion = MaterialTheme.motionScheme
     Box(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -476,7 +519,7 @@ internal fun BoxScope.CardBottomChrome(
             .height(TOOLBAR_BAND_HEIGHT),
         contentAlignment = Alignment.Center,
     ) {
-        // One toolbar: the quick actions as icons, Edit as its labelled, filled lead action.
+        // One toolbar: the quick actions as icons, Edit and Design as its labelled lead actions.
         HorizontalFloatingToolbar(
             expanded = true,
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
@@ -492,43 +535,79 @@ internal fun BoxScope.CardBottomChrome(
                 onClick = onShare,
             )
             extraActions()
-            Spacer(Modifier.width(4.dp))
-            Button(
-                onClick = onEdit,
-                shapes = ButtonDefaults.shapes(),
-                contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+            // Absent on a card that's still its default, so nothing in the toolbar does nothing.
+            AnimatedVisibility(
+                visible = showsReset,
+                enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
             ) {
-                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(MR.string.profile_card_edit), maxLines = 1)
+                val resetLabel = stringResource(MR.string.profile_card_reset_card)
+                WithTooltip(resetLabel) {
+                    IconButton(onClick = { confirmReset = true }, enabled = canReset) {
+                        Icon(Icons.Outlined.RestartAlt, contentDescription = resetLabel)
+                    }
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+            // Read-only keeps the slot but turns quiet, so nothing promises an edit that can't be kept.
+            // Weighted without fill, a narrow screen or large text ellipsises the labels instead of clipping them.
+            AnimatedContent(
+                targetState = readOnly,
+                transitionSpec = {
+                    fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                },
+                modifier = Modifier.weight(1f, fill = false),
+            ) { locked ->
+                if (locked) {
+                    FilledTonalButton(
+                        onClick = { explainReadOnly = true },
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                    ) {
+                        Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(
+                            stringResource(MR.string.profile_card_read_only_why),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // The label's own script sets its direction, so a trailing "?" isn't flipped by the layout's.
+                            style = LocalTextStyle.current.copy(textDirection = TextDirection.Content),
+                        )
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onEdit,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                        ) {
+                            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                            Text(stringResource(MR.string.edit), maxLines = 1)
+                        }
+                        FilledTonalButton(
+                            onClick = onChangeDesign,
+                            shapes = ButtonDefaults.shapes(),
+                            contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight),
+                            modifier = Modifier.weight(1f, fill = false),
+                        ) {
+                            Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                            Text(stringResource(MR.string.profile_card_design_action), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
             }
         }
     }
-}
-
-@Composable
-internal fun DesignAccessPrompt(shown: Boolean, viewModel: ProfileCardViewModel) {
-    if (shown) DesignAccessDialog(onContinue = viewModel::onDesignAccessAccepted, onDismiss = viewModel::onDesignAccessDeclined)
-}
-
-@Composable
-internal fun DesignAccessDialog(onContinue: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
-        title = { Text(stringResource(MR.string.profile_card_access_title), textAlign = TextAlign.Center) },
-        text = { Text(stringResource(MR.string.profile_card_access_body)) },
-        confirmButton = {
-            Button(onClick = onContinue, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(MR.string.profile_card_access_continue))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(MR.string.profile_card_access_later))
-            }
-        },
-    )
+    if (confirmReset) {
+        ResetCardDialog(
+            audience = audience,
+            onReset = { confirmReset = false; onReset() },
+            onDismiss = { confirmReset = false },
+        )
+    }
+    if (explainReadOnly) ReadOnlyCardDialog(onDismiss = { explainReadOnly = false })
 }
 
 // Native bands in the page's colour where a design has content under the chrome; the page has no safe-area support.
@@ -583,8 +662,6 @@ private fun CardBandsLayout(
 @Composable
 internal fun SheetTopChrome(
     uiState: ProfileCardUiState,
-    onSelectCard: (CardAudience) -> Unit,
-    circleActions: CircleCardActions,
     onClose: () -> Unit,
     bandDrag: Modifier,
     handleDrag: Modifier,
@@ -592,8 +669,7 @@ internal fun SheetTopChrome(
 ) {
     val gap = with(LocalDensity.current) { CHROME_GAP.roundToPx() }
     val edge = with(LocalDensity.current) { 8.dp.roundToPx() }
-    // The audience pill takes all the room up to the close button; the drag handle shows only while it has clear space
-    // in the middle, so a long circle name never runs into it.
+    // The audience pill takes all the room up to the close button; the grab zone sits in the middle only while it's clear.
     Layout(
         modifier = modifier
             .fillMaxWidth()
@@ -604,7 +680,7 @@ internal fun SheetTopChrome(
                 traversalIndex = -1f
             },
         content = {
-            AudienceBadge(uiState = uiState, onSelect = onSelectCard, circleActions = circleActions)
+            AudienceTitle(uiState)
             ChromeIconButton(onClick = onClose) {
                 Icon(
                     imageVector = Icons.Filled.Close,
@@ -612,24 +688,13 @@ internal fun SheetTopChrome(
                     modifier = Modifier.size(20.dp),
                 )
             }
+            // An unmarked grab zone: Close is the visible way out, and a bare handle read as an empty chip.
             Box(
                 modifier = Modifier
                     .size(width = 64.dp, height = 48.dp)
                     .then(handleDrag)
-                    // Close already dismisses; a second announced control for the same action is noise.
                     .clearAndSetSemantics { },
-                contentAlignment = Alignment.Center,
-            ) {
-                CardChromePill {
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                            .size(width = 32.dp, height = 4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant),
-                    )
-                }
-            }
+            )
         },
     ) { measurables, constraints ->
         val width = constraints.maxWidth
@@ -658,261 +723,145 @@ internal fun audienceLabel(audience: CardAudience): String = when (audience) {
 internal fun audienceIcon(audience: CardAudience) =
     if (audience is CardAudience.Circle) Icons.Outlined.Groups else Icons.Outlined.Public
 
-internal class CircleCardActions(
-    val onAdd: () -> Unit,
-    val onPick: (String) -> Unit,
-    val onDismissPicker: () -> Unit,
-    val onDelete: () -> Unit,
-)
-
 @Composable
-internal fun AudienceBadge(
-    uiState: ProfileCardUiState,
-    onSelect: (CardAudience) -> Unit,
-    circleActions: CircleCardActions,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    val selected = uiState.selectedAudience
-    val label = audienceLabel(selected)
-    val hasMenu = uiState.hasCardMenu
-    val description = if (hasMenu) {
-        stringResource(MR.string.profile_card_audience_switch, label)
-    } else {
-        stringResource(MR.string.profile_card_audience_description, label)
+internal fun AudienceTitle(uiState: ProfileCardUiState, modifier: Modifier = Modifier) {
+    val named = stringResource(MR.string.profile_card_audience_description, audienceLabel(uiState.selectedAudience))
+    val readOnlyLabel = stringResource(MR.string.profile_card_read_only)
+    val unsavedLabel = stringResource(MR.string.profile_card_not_saved)
+    val description = when {
+        uiState.isCircleReadOnly -> "$named $readOnlyLabel"
+        uiState.isUnsavedCard -> "$named $unsavedLabel"
+        else -> named
     }
-    val isCircle = selected is CardAudience.Circle
-    val colors = MaterialTheme.colorScheme
-    // Same audience colours as the editor's title: a circle card reads tertiary, the public one stays neutral.
-    val spec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>()
-    val container by animateColorAsState(if (isCircle) colors.tertiaryContainer else chromePillColor(), spec)
-    val content by animateColorAsState(if (isCircle) colors.onTertiaryContainer else colors.onSurface, spec)
-    Box(modifier = modifier) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = (if (hasMenu) Modifier.clickable(role = Role.Button) { expanded = true } else Modifier)
-                .clearAndSetSemantics { contentDescription = description }
-                .minimumInteractiveComponentSize(),
-        ) {
-            Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = 2.dp) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .height(CHROME_CONTROL_SIZE)
-                        .padding(start = 10.dp, end = if (hasMenu) 6.dp else 14.dp),
-                ) {
-                    Icon(imageVector = audienceIcon(selected), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false),
-                    )
-                    if (hasMenu) {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowDropDown,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            uiState.cards.forEach { card ->
-                DropdownMenuItem(
-                    text = { Text(audienceLabel(card.audience)) },
-                    leadingIcon = { Icon(audienceIcon(card.audience), contentDescription = null) },
-                    trailingIcon = if (card.audience == selected) {
-                        { Icon(Icons.Filled.Check, contentDescription = null) }
-                    } else {
-                        null
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelect(card.audience)
-                    },
-                )
-            }
-            if (uiState.canAddCircleCard) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.profile_card_add_circle_card)) },
-                    leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                    onClick = {
-                        expanded = false
-                        circleActions.onAdd()
-                    },
-                )
-            }
-            if (uiState.isCircleSelected && !uiState.isCardBusy) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                DropdownMenuItem(
-                    text = { Text(stringResource(MR.string.profile_card_delete_card)) },
-                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-                    colors = MenuDefaults.itemColors(
-                        textColor = MaterialTheme.colorScheme.error,
-                        leadingIconColor = MaterialTheme.colorScheme.error,
-                    ),
-                    onClick = {
-                        expanded = false
-                        confirmDelete = true
-                    },
-                )
-            }
-        }
-    }
-    uiState.circlePicker?.let { picker ->
-        CirclePickerSheet(picker = picker, onPick = circleActions.onPick, onDismiss = circleActions.onDismissPicker)
-    }
-    if (confirmDelete) {
-        DeleteCardDialog(
-            label = label,
-            onDelete = { confirmDelete = false; circleActions.onDelete() },
-            onDismiss = { confirmDelete = false },
-        )
-    }
-}
-
-@Composable
-internal fun DeleteCardDialog(label: String, onDelete: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-            onDismissRequest = onDismiss,
-            icon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-            title = { Text(stringResource(MR.string.profile_card_delete_title, label), textAlign = TextAlign.Center) },
-            text = { Text(stringResource(MR.string.profile_card_delete_message)) },
-            confirmButton = {
-                Button(
-                    onClick = onDelete,
-                    shapes = ButtonDefaults.shapes(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    ),
-                ) {
-                    Text(stringResource(MR.string.delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
-            },
-        )
-}
-
-@Composable
-private fun CirclePickerSheet(picker: CirclePicker, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    AdaptiveSheet(onDismiss = onDismiss, expandFully = picker.circles.size > PICKER_HALF_SHEET_ROWS) {
-        CirclePickerContent(picker = picker, onPick = { id -> dismiss { onPick(id) } })
-    }
-}
-
-@Composable
-internal fun CirclePickerContent(picker: CirclePicker, onPick: (String) -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp)) {
-        Text(
-            text = stringResource(MR.string.profile_card_add_circle_title),
-            style = MaterialTheme.typography.headlineSmallEmphasized,
-            modifier = Modifier.padding(horizontal = 24.dp).semantics { heading() },
-        )
-        val message = when {
-            picker.loading -> null
-            picker.failed -> MR.string.profile_card_add_circle_load_failed
-            picker.circles.isEmpty() -> MR.string.profile_card_add_circle_no_circles
-            !picker.hasChoice -> MR.string.profile_card_add_circle_none
-            else -> MR.string.profile_card_add_circle_hint
-        }
-        message?.let {
-            Text(
-                text = stringResource(it),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
-            )
-        }
-        when {
-            picker.loading -> Box(Modifier.fillMaxWidth().height(PICKER_ROW_HEIGHT * 2), contentAlignment = Alignment.Center) {
-                LoadingIndicator()
-            }
-            picker.circles.isNotEmpty() -> {
-                val listState = rememberLazyListState()
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(top = 12.dp),
-                    modifier = Modifier.weight(1f, fill = false).verticalFadingEdges(listState),
-                ) {
-                    items(picker.circles, key = { it.id }) { circle ->
-                        CirclePickerRow(circle = circle, hasCard = circle.id in picker.withCard, onPick = { onPick(circle.id) })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CirclePickerRow(circle: CardCircle, hasCard: Boolean, onPick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val muted = colors.onSurface.copy(alpha = DISABLED_ALPHA)
-    ListItem(
-        headlineContent = { Text(circle.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
-            Text(pluralStringResource(MR.plurals.profile_card_circle_members, circle.memberCount, circle.memberCount))
-        },
-        leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(PICKER_AVATAR)
-                    .background(if (hasCard) colors.surfaceContainerHighest else colors.tertiaryContainer, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Groups,
-                    contentDescription = null,
-                    tint = if (hasCard) muted else colors.onTertiaryContainer,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        },
-        trailingContent = if (hasCard) {
-            {
-                Text(
-                    text = stringResource(MR.string.profile_card_add_circle_has_card),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                )
-            }
-        } else null,
-        colors = ListItemDefaults.colors(
-            containerColor = Color.Transparent,
-            headlineColor = if (hasCard) muted else colors.onSurface,
-            supportingColor = if (hasCard) muted else colors.onSurfaceVariant,
-        ),
-        modifier = Modifier
-            .heightIn(min = PICKER_ROW_HEIGHT)
-            .clickable(enabled = !hasCard, onClick = onPick)
-            .padding(horizontal = 8.dp),
+    AudienceChip(
+        audience = uiState.selectedAudience,
+        locked = uiState.isCircleReadOnly,
+        unsaved = uiState.isUnsavedCard,
+        modifier = modifier.minimumInteractiveComponentSize().clearAndSetSemantics { contentDescription = description },
     )
 }
 
-// Masks rows under a gradient at whichever end can still scroll, so the list never stops on a hard cut mid-row.
 @Composable
-private fun Modifier.verticalFadingEdges(state: LazyListState): Modifier {
-    val fade = with(LocalDensity.current) { PICKER_FADE.toPx() }
-    return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-            if (state.canScrollBackward) {
-                drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = fade), blendMode = BlendMode.DstIn)
+internal fun audienceContainer(audience: CardAudience): Color =
+    if (audience is CardAudience.Circle) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
+
+@Composable
+internal fun onAudienceContainer(audience: CardAudience): Color =
+    if (audience is CardAudience.Circle) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+
+@Composable
+internal fun AudienceChip(
+    audience: CardAudience,
+    modifier: Modifier = Modifier,
+    locked: Boolean = false,
+    elevated: Boolean = true,
+    maxLines: Int = 1,
+    unsaved: Boolean = false,
+) {
+    val motion = MaterialTheme.motionScheme
+    val container by animateColorAsState(audienceContainer(audience), motion.defaultEffectsSpec())
+    val content by animateColorAsState(onAudienceContainer(audience), motion.defaultEffectsSpec())
+    val elevation = if (elevated) 2.dp else 0.dp
+    Surface(shape = CircleShape, color = container, contentColor = content, shadowElevation = elevation, modifier = modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .animateContentSize(motion.defaultSpatialSpec())
+                .heightIn(min = CHROME_CONTROL_SIZE)
+                .padding(start = 12.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            AnimatedContent(
+                targetState = audience to unsaved,
+                transitionSpec = { fadeIn(motion.defaultEffectsSpec()).togetherWith(fadeOut(motion.fastEffectsSpec())) },
+                modifier = Modifier.weight(1f, fill = false),
+            ) { (shown, draft) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = audienceIcon(shown), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Column(modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false)) {
+                        Text(
+                            text = audienceLabel(shown),
+                            style = MaterialTheme.typography.labelLargeEmphasized,
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (draft) {
+                            Text(
+                                text = stringResource(MR.string.profile_card_not_saved),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LocalContentColor.current.copy(alpha = UNSAVED_LABEL_ALPHA),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
-            if (state.canScrollForward) {
-                drawRect(
-                    Brush.verticalGradient(listOf(Color.Black, Color.Transparent), startY = size.height - fade, endY = size.height),
-                    blendMode = BlendMode.DstIn,
-                )
+            if (locked) {
+                Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
             }
         }
+    }
+}
+
+@Composable
+internal fun ResetCardDialog(audience: CardAudience, onReset: () -> Unit, onDismiss: () -> Unit) {
+    val message = when (audience) {
+        CardAudience.Public -> stringResource(MR.string.profile_card_reset_message_public)
+        is CardAudience.Circle ->
+            if (cardTemplateFor(audience) != null) stringResource(MR.string.profile_card_reset_message_template, audienceLabel(audience))
+            else stringResource(MR.string.profile_card_reset_message_circle, audienceLabel(audience))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.RestartAlt, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_reset_title), textAlign = TextAlign.Center) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                AudienceChip(audience = audience, elevated = false, maxLines = 2)
+                Text(message)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onReset,
+                shapes = ButtonDefaults.shapes(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+            ) {
+                Icon(Icons.Outlined.RestartAlt, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_card_reset_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+internal fun ReadOnlyCardDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_read_only_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_circle_unsupported)) },
+        confirmButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_read_only_ok)) }
+        },
+    )
+}
+
+@Composable
+internal fun WithTooltip(text: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(text) } },
+        state = rememberTooltipState(),
+        content = content,
+    )
 }
 
 @Composable
@@ -1058,6 +1007,7 @@ internal fun designLabel(design: String): StringResource = when (design) {
     CardDesign.POSTER -> MR.string.profile_card_design_poster
     CardDesign.COLLAGE -> MR.string.profile_card_design_collage
     CardDesign.DOSSIER -> MR.string.profile_card_design_dossier
+    CardDesign.LINKS -> MR.string.profile_card_design_links
     else -> MR.string.profile_card_design_board
 }
 
@@ -1102,33 +1052,38 @@ private fun CardSkeleton(design: String) {
     CardDesignThumbnail(design = design, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = pulse })
 }
 
-// One plate for both preview failures, in the error roles so it reads as an error on any design's colours.
 @Composable
-private fun CardErrorPlate(message: StringResource, onRetry: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        modifier = modifier.padding(16.dp),
+internal fun CookieBadge(icon: ImageVector, container: Color, content: Color, size: Dp, iconSize: Dp) {
+    Box(
+        modifier = Modifier.size(size).background(container, MaterialShapes.Cookie9Sided.toShape()),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
-        ) {
-            Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(28.dp))
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(iconSize))
+    }
+}
+
+// One message for both preview failures, on the neutral ground: it reads as blocked, not alarming; only the icon carries the error role.
+@Composable
+internal fun CardErrorPlate(message: StringResource, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.padding(32.dp),
+    ) {
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            CookieBadge(
+                icon = Icons.Outlined.ErrorOutline,
+                container = MaterialTheme.colorScheme.errorContainer,
+                content = MaterialTheme.colorScheme.onErrorContainer,
+                size = 64.dp,
+                iconSize = 28.dp,
+            )
             Text(
                 text = stringResource(message),
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
             )
-            Button(
-                onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError,
-                ),
-            ) {
+            FilledTonalButton(onClick = onRetry, shapes = ButtonDefaults.shapes()) {
                 Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                 Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                 Text(stringResource(MR.string.profile_edit_retry))

@@ -70,7 +70,7 @@ class CardOverridesTest {
         assertNull(read.palette)
         assertEquals("bar", read.socials)
         assertNull(read.portraits!!.first().tape)
-        assertNull(read.portraits!!.first().mono)
+        assertNull(read.portraits.first().mono)
         assertEquals(listOf(CardPortrait(shape = "circle", tilt = 2.5)), read.portraits)
         assertEquals(listOf(CardBlock("links"), CardBlock("posts")), read.blocks)
 
@@ -124,12 +124,12 @@ class CardOverridesTest {
         assertNull(poster.palette)
         assertNull(poster.portraits)
         assertEquals(CardTypeface(display = "caveat", text = "newsreader"), poster.type)
-        assertEquals(listOf(CardBlock("posts"), CardBlock("links")), poster.blocks)
+        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), poster.blocks)
         assertEquals("handles", poster.socials)
 
         val collage = everything.prunedFor(CardDesign.COLLAGE)
         assertEquals(CardPalette(accent = "#ABCDEF"), collage.palette)
-        assertEquals(listOf(CardBlock("posts"), CardBlock("links")), collage.blocks)
+        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), collage.blocks)
         assertEquals(listOf(CardPortrait(shape = "square"), CardPortrait()), collage.portraits)
 
         val dossier = everything.prunedFor(CardDesign.DOSSIER)
@@ -137,5 +137,18 @@ class CardOverridesTest {
         assertEquals(listOf(CardPortrait(shape = "square")), dossier.portraits)
 
         assertEquals(CardOverrides.EMPTY, everything.prunedFor("hologram"))
+    }
+
+    @Test
+    fun orderToolOnlyOffersWhatTheDesignReorders() {
+        val collage = CardDesignSpecs.of(CardDesign.COLLAGE)!!
+        assertEquals(listOf("links", "moments"), collage.reorderable(hasLinks = true))
+        assertEquals(listOf("moments"), collage.reorderable(hasLinks = false))
+        assertEquals(listOf("chat", "links", "moments"), CardDesignSpecs.of(CardDesign.POSTER)!!.reorderable(hasLinks = true))
+
+        val stored = CardOverrides.EMPTY.withBlockOrder(listOf("links", "chat", "moments"))
+        val shown = listOf("links", "moments")
+        val reordered = stored.withShownBlockOrder(shown, listOf("moments", "links"))
+        assertEquals(listOf("moments", "chat", "links"), reordered.blockOrder())
     }
 }

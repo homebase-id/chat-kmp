@@ -124,8 +124,8 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.FullScreenMediaViewer
 import id.homebase.chat.widget.FullScreenVideoPlayer
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.image.ImageSize
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.moments.MomentsPreferences
@@ -573,6 +573,7 @@ fun MomentDetailPane(
                     is FullScreenOverlay.VideoPlayerData -> "video"
                     is FullScreenOverlay.AttachmentData -> "attachment"
                     is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },
             transitionSpec = {
@@ -626,6 +627,10 @@ fun MomentDetailPane(
 
                 is FullScreenOverlay.PdfViewerData -> {
                     // Not used by moments — PDFs are chat-only.
+                }
+
+                is FullScreenOverlay.ViewOnceViewer -> {
+                    // Chat-only; the moments VM never emits this variant.
                 }
             }
         }
@@ -1138,9 +1143,9 @@ private fun ReactionDetailRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = reaction.odinId,
-            initials = reaction.displayName.firstOrNull()?.toString(),
+            displayName = reaction.displayName,
             options = AvatarOptions(size = 40.dp),
         )
         Text(
@@ -2766,9 +2771,9 @@ private fun AvatarStack(
                     .background(ringColor),
                 contentAlignment = Alignment.Center,
             ) {
-                PublicAvatar(
+                IdentityAvatar(
                     odinId = r.odinId,
-                    initials = r.displayName.firstOrNull()?.toString(),
+                    displayName = r.displayName,
                     options = AvatarOptions(size = avatarSize),
                 )
             }
@@ -2798,9 +2803,9 @@ private fun RecipientPlainRow(recipient: RecipientBaseUiModel) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = recipient.odinId,
-            initials = recipient.displayName.firstOrNull()?.toString(),
+            displayName = recipient.displayName,
             options = AvatarOptions(size = 32.dp),
         )
         Text(
@@ -2887,9 +2892,9 @@ private fun DeliveryRow(row: RecipientDeliveryUiModel) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            initials = row.displayName.firstOrNull()?.toString(),
+            displayName = row.displayName,
             options = AvatarOptions(size = 32.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
@@ -3192,15 +3197,13 @@ private fun CommentRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Sender avatar — uses the same PublicAvatar widget the SharedWith
-            // surface uses, so the moment detail screen has one consistent
-            // identity-rendering style. Own comments fall back to the active
-            // user's domain when self isn't on the conversation's contact list.
+            // Own comments fall back to the active user's domain when self isn't on the
+            // conversation's contact list.
             val avatarOdinId = comment.senderOdinId
             if (avatarOdinId != null) {
-                PublicAvatar(
+                IdentityAvatar(
                     odinId = avatarOdinId,
-                    initials = authorLabel.firstOrNull()?.toString(),
+                    displayName = authorLabel,
                     options = AvatarOptions(size = 24.dp),
                 )
             }

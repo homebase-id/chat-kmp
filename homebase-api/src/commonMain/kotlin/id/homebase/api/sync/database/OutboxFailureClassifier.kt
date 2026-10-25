@@ -36,6 +36,12 @@ internal fun classifyPermanentFailure(e: Throwable): String? {
             OdinClientErrorCode.MissingVersionTag,
             OdinClientErrorCode.VersionTagMismatch,
             OdinClientErrorCode.CannotOverwriteNonExistentFile,
+            // The target was soft-deleted server-side (e.g. a queued edit of a
+            // message deleted from another device). A tombstone never becomes
+            // active again, so every retry gets the same 4002. Servers before
+            // odin-core #1929 answered a payload-carrying update of a tombstone
+            // with a 500 instead, which still retries.
+            OdinClientErrorCode.CannotUpdateNonActiveFile,
             OdinClientErrorCode.MustRotateKeyHeaderIvWhenUpdating,
             OdinClientErrorCode.UnknownId -> return reasonOf(e)
             else -> Unit

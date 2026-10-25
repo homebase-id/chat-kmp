@@ -1,11 +1,14 @@
 package id.homebase.chat.services.content
 
+import id.homebase.chat.calling.CallEventDescriptor
+import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.notifshared.EVENT_NOTIF_SENTINEL
 
 /**
@@ -52,6 +55,9 @@ sealed interface MessageContent {
      * without ever seeing the title.
      */
     val notificationLabel: String get() = displayLabel
+
+    /** False for messages the recipient should receive without a push, e.g. a log entry for a call they took. */
+    val pushesToRecipient: Boolean get() = true
 
     /**
      * A scheduled event with optional location, meeting URL, and RSVP via reactions.
@@ -124,6 +130,18 @@ sealed interface MessageContent {
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_POLL_LABEL
     }
 
+    /** A call log entry; [descriptor] follows the same nullability contract as [Event.descriptor]. */
+    data class CallEvent(val descriptor: CallEventDescriptor?) : MessageContent {
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_CALL_LABEL
+
+        // Only the callee gets the push, so it reads from their side.
+        override val notificationLabel: String
+            get() = descriptor?.let { if (it.video) "Missed video call" else "Missed call" } ?: UNPARSEABLE_CALL_LABEL
+
+        override val pushesToRecipient: Boolean
+            get() = descriptor?.outcome == CallOutcome.NoAnswer || descriptor?.outcome == CallOutcome.Cancelled
+    }
+
     /**
      * A shared contact card (name, organization, phones, emails) — produced by sharing a vCard
      * into the app. [descriptor] follows the same nullability contract as [Event.descriptor].
@@ -169,6 +187,25 @@ sealed interface MessageContent {
     }
 
     /**
+     * A single photo or video the recipient can open once. The media is a payload, unlike the other
+     * typed kinds, and must never be loaded outside the viewer. [descriptor] follows the
+     * [Event.descriptor] nullability contract.
+     */
+    data class ViewOnce(val descriptor: ViewOnceDescriptor?) : MessageContent {
+        // Reply and react work like any message, and a reply quotes just the icon and kind word. The payload leaves the viewer by no other route.
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,
+            allowReply = true,
+            allowForward = false,
+            allowShare = false,
+            allowInlineReactions = true,
+            allowReactionDetails = true,
+            allowCopy = false,
+        )
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_VIEW_ONCE_LABEL
+    }
+
+    /**
      * A typed message whose [dataType] this client doesn't recognize — typically
      * a newer kind (poll, doodle, …) sent from a more up-to-date peer. The
      * receiver can't render the content itself; the bubble shows an
@@ -190,8 +227,10 @@ sealed interface MessageContent {
         const val UNPARSEABLE_DICE_LABEL = "Dice roll"
         const val UNPARSEABLE_GROODLE_LABEL = "Groodle"
         const val UNPARSEABLE_POLL_LABEL = "Poll"
+        const val UNPARSEABLE_CALL_LABEL = "Call"
         const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
+        const val UNPARSEABLE_VIEW_ONCE_LABEL = "Media"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 
@@ -216,6 +255,7 @@ data class ActionPolicy(
     val allowInlineReactions: Boolean,
     /** "Show all reactions" / per-emoji reactor breakdown sheet. */
     val allowReactionDetails: Boolean,
+    val allowCopy: Boolean = true,
 ) {
     companion object {
         val Standard = ActionPolicy(
@@ -226,6 +266,8 @@ data class ActionPolicy(
             allowInlineReactions = true,
             allowReactionDetails = true,
         )
+
+        val Sticker = Standard.copy(allowEdit = false, allowShare = false, allowCopy = false)
 
         val StructuredOneShot = ActionPolicy(
             allowEdit = false,

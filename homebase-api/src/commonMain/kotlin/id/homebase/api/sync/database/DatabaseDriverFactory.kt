@@ -34,39 +34,52 @@ internal fun databaseFilePaths(basePath: String): List<String> =
 internal fun DatabaseDriverFactory.databaseFiles(): List<String> =
     databaseFilePaths(dbFilePath())
 
+/** Reader connections each driver serves beside its one writer; [DatabaseManager]'s read lane admits this many reads at once. */
+internal const val SQLITE_READER_CONNECTIONS = 4
+
 /**
- * Shared SQLite tuning applied identically on every platform — the single source of
- * truth so the three [DatabaseDriverFactory] actuals can't drift. Each platform applies
- * it through its driver's native mechanism (desktop: JDBC connection [java.util.Properties];
- * Android: `execSQL` in the open-helper callback; iOS: `rawExecSql` in the sqliter
- * connection lifecycle), but the pragma set itself lives here.
- *
- *  - `journal_mode=WAL` — readers and the single writer don't block each other. Reads
- *    bypass [DatabaseManager]'s single-writer dispatcher and run on separate connections,
- *    so without WAL a long read + a write collide into `SQLITE_BUSY` (what knocked the
- *    desktop WebSocket offline). File-persistent.
- *  - `busy_timeout=5000` — a contended statement waits up to 5s for the lock instead of
- *    throwing `SQLITE_BUSY` immediately.
- *  - `synchronous=NORMAL` — faster, WAL-safe durability (no corruption risk; at most the
- *    last committed transaction is lost on power loss).
- *  - `temp_store=MEMORY` — temp tables/indices in RAM.
+ * Readers and the single writer don't block each other; without it a long read and a write
+ * collide into `SQLITE_BUSY`. Persisted in the file, so each driver sets it once, its own way.
  */
-internal val SQLITE_TUNING_PRAGMAS: Map<String, String> = linkedMapOf(
-    "journal_mode" to "WAL",
+internal const val SQLITE_JOURNAL_MODE = "WAL"
+
+/**
+ * Settings every connection carries, writer and readers alike. Shared so the
+ * [DatabaseDriverFactory] actuals can't drift.
+ *
+ *  - `busy_timeout=5000` — a contended statement waits up to 5 s instead of throwing `SQLITE_BUSY`.
+ *  - `synchronous=NORMAL` — WAL-safe durability; at most the last commit is lost on power loss.
+ *  - `temp_store=MEMORY` — temp tables and indices in RAM.
+ */
+internal val SQLITE_CONNECTION_PRAGMAS: Map<String, String> = linkedMapOf(
     "busy_timeout" to "5000",
     "synchronous" to "NORMAL",
     "temp_store" to "MEMORY",
 )
 
+/** [SQLITE_CONNECTION_PRAGMAS] as `PRAGMA key=value` statements, for drivers that run raw SQL per connection. */
+internal val SQLITE_CONNECTION_PRAGMA_STATEMENTS: List<String> =
+    SQLITE_CONNECTION_PRAGMAS.entries.map { (key, value) -> "PRAGMA $key=$value" }
+
 /**
- * [SQLITE_TUNING_PRAGMAS] rendered as executable `PRAGMA key=value` statements, for the
- * platforms that apply pragmas as raw SQL on each new connection (Android, iOS).
+ * `journal_size_limit` for the writer, the only connection that resets the `-wal`. Connections
+ * stay open, so nothing deletes the file; this trims it after a write burst to about the
+ * auto-checkpoint size (1000 pages of 4 KB).
  */
-internal fun sqliteTuningPragmaStatements(): List<String> =
-    SQLITE_TUNING_PRAGMAS.entries.map { (key, value) -> "PRAGMA $key=$value" }
+internal const val SQLITE_WRITER_JOURNAL_SIZE_LIMIT = 4_194_304
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 expect class DatabaseDriverFactory {
+    /**
+     * Serves one writer plus [SQLITE_READER_CONNECTIONS] concurrent readers in
+     * [SQLITE_JOURNAL_MODE], all kept open: reads never wait for an open write transaction, and
+     * the page cache and parsed schema survive between statements. Every connection carries
+     * [SQLITE_CONNECTION_PRAGMAS], and the writer [SQLITE_WRITER_JOURNAL_SIZE_LIMIT].
+     * DatabaseConnectionContractTest holds each platform to this.
+     *
+     * wasmJs is the exception: sql.js is one in-memory connection on the browser's single
+     * thread, with no journal and no pragmas.
+     */
     fun createDriver(passphrase: String? = null): SqlDriver
 
     /**

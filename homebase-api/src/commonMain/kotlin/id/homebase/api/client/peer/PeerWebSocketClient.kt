@@ -17,6 +17,7 @@ import id.homebase.api.client.websockets.WebSocketClientNotificationPayload
 import id.homebase.api.client.websockets.WebSocketPingSupervisor
 import id.homebase.api.client.websockets.WebSocketState
 import id.homebase.api.client.websockets.WebsocketCommand
+import id.homebase.api.client.websockets.withWebSocketUpgradeDeadline
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
@@ -153,41 +154,45 @@ class PeerWebSocketClient(
         val wsUrl = "wss://$ownerOdinId$PEER_WS_PATH"
         Logger.i(tag = TAG) { "peer WS[$ownerOdinId] connecting to $wsUrl (drives=${drives.size})" }
 
-        client.webSocket(
-            urlString = wsUrl,
-            request = {
-                // Guest client-auth token carried in the SUB32 header (JS parity). The exact v2 peer
-                // WS auth scheme must be confirmed against the server (see plan "Open items").
-                headers.append("SUB32", token64)
-            },
-        ) {
-            session = this
-            _connectionState.value = WebSocketState.Connected
-            handshakeDone = false
-            establishConnectionRequest(ss, token64)
+        // #1921: bound the attempt up to the 101 — see withWebSocketUpgradeDeadline.
+        withWebSocketUpgradeDeadline { upgraded ->
+            client.webSocket(
+                urlString = wsUrl,
+                request = {
+                    // Guest client-auth token carried in the SUB32 header (JS parity). The exact v2 peer
+                    // WS auth scheme must be confirmed against the server (see plan "Open items").
+                    headers.append("SUB32", token64)
+                },
+            ) {
+                upgraded()
+                session = this
+                _connectionState.value = WebSocketState.Connected
+                handshakeDone = false
+                establishConnectionRequest(ss, token64)
 
-            val handshakeTimeoutJob = scope.launch {
-                delay(10_000L)
-                if (!handshakeDone) {
-                    Logger.w(tag = TAG) { "peer WS[$ownerOdinId] handshake timeout — closing" }
-                    session?.close()
-                }
-            }
-
-            try {
-                for (frame in incoming) {
-                    when (frame) {
-                        is Frame.Text -> handleTextFrame(frame, ss)
-                        is Frame.Close -> break
-                        else -> Unit
+                val handshakeTimeoutJob = scope.launch {
+                    delay(10_000L)
+                    if (!handshakeDone) {
+                        Logger.w(tag = TAG) { "peer WS[$ownerOdinId] handshake timeout — closing" }
+                        session?.close()
                     }
                 }
-            } finally {
-                handshakeTimeoutJob.cancel()
-                session = null
-                pingSupervisor.stop()
-                if (_connectionState.value !is WebSocketState.Error) {
-                    _connectionState.value = WebSocketState.Disconnected
+
+                try {
+                    for (frame in incoming) {
+                        when (frame) {
+                            is Frame.Text -> handleTextFrame(frame, ss)
+                            is Frame.Close -> break
+                            else -> Unit
+                        }
+                    }
+                } finally {
+                    handshakeTimeoutJob.cancel()
+                    session = null
+                    pingSupervisor.stop()
+                    if (_connectionState.value !is WebSocketState.Error) {
+                        _connectionState.value = WebSocketState.Disconnected
+                    }
                 }
             }
         }
@@ -197,7 +202,7 @@ class PeerWebSocketClient(
         try {
             val decryptedJson = decryptData(frame.readText(), ss)
             val notification = OdinSystemSerializer
-                .deserialize<ClientNotificationPayload>(decryptedJson) ?: return
+                .deserialize<ClientNotificationPayload>(decryptedJson)
             dispatchNotification(notification, ss)
         } catch (e: Exception) {
             Logger.e(e) { "peer WS[$ownerOdinId] error handling frame" }

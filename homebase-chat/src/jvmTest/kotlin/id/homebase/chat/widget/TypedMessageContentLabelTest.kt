@@ -51,6 +51,12 @@ class TypedMessageContentLabelTest {
     }
 
     @Test
+    fun viewOnce_isLabelledByMessageContentLabelNotHere() {
+        assertNull(typedMessageContentLabel(MessageContent.ViewOnce(id.homebase.chat.viewonce.ViewOnceDescriptor("video"))))
+        assertNull(typedMessageContentLabel(MessageContent.ViewOnce(null)))
+    }
+
+    @Test
     fun nullContent_returnsNull() {
         assertNull(typedMessageContentLabel(null))
     }

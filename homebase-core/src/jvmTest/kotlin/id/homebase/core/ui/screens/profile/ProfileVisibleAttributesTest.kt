@@ -15,7 +15,6 @@ import kotlinx.serialization.json.JsonPrimitive
 
 class ProfileVisibleAttributesTest {
 
-    private val systemCircle = "bb2683fa402aff866e771a6495765a15"
     private val friendsCircle = "0f2c1a8e5b3d4e6f9a1b2c3d4e5f6a7b"
 
     private fun status(
@@ -41,13 +40,11 @@ class ProfileVisibleAttributesTest {
             status("public", "anonymous"),
             status("logged in", "authenticated"),
             status("connections", "connected"),
-            status("confirmed circle", "connected", circles = listOf(systemCircle)),
             status("friends circle", "connected", circles = listOf(friendsCircle)),
             status("owner", "owner"),
         )
         assertEquals("public", attributes.statusFor(ANONYMOUS))
-        assertEquals("confirmed circle", attributes.statusFor(CONNECTED))
-        assertEquals("connections", attributes.filterNot { it.acl.circleIdList != null }.statusFor(CONNECTED))
+        assertEquals("connections", attributes.statusFor(CONNECTED))
         assertEquals("logged in", listOf(status("public", "anonymous"), status("logged in", "authenticated")).statusFor(CONNECTED))
     }
 
@@ -93,12 +90,11 @@ class ProfileVisibleAttributesTest {
     }
 
     @Test
-    fun previewVettedValuesLeaveOutAnOwnerOnlyRecordTheEditorStillEdits() {
+    fun theEditorEditsThePublicRecordAndPreviewKeepsTheOwnerOnlyOneOut() {
         val ownerOnly = status("owner only", "owner")
-        val state = ProfileEditUiState().withLoaded(LoadedProfileAttributes.from(listOf(status("public", "anonymous"), ownerOnly)))
+        val attributes = listOf(ownerOnly, status("public", "anonymous"))
 
-        assertEquals("owner only", state.connectedValues[ProfileField.STATUS])
-        assertEquals("public", state.visibleValues(CONNECTED)[ProfileField.STATUS])
-        assertEquals("public", state.visibleValues(ANONYMOUS)[ProfileField.STATUS])
+        assertEquals("public", LoadedProfileAttributes.from(attributes).byType[ProfileAttributeTypes.STATUS]?.string(ProfileAttributeTypes.KEY_STATUS))
+        assertEquals("public", attributes.visibleValues(CONNECTED)[ProfileField.STATUS])
     }
 }

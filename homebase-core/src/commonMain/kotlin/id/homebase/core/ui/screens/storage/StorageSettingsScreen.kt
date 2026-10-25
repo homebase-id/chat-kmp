@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,6 +32,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -50,13 +52,27 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.cache.CacheStats
+import id.homebase.api.client.storage.StorageUsage
 import id.homebase.common.util.formatBytes
+import id.homebase.common.util.planStorageText
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.cd_navigate_forward
+import id.homebase.resources.plan_public_page_off
+import id.homebase.resources.plan_public_page_on
 import id.homebase.resources.settings_data_storage
+import id.homebase.resources.storage_account_full
+import id.homebase.resources.storage_account_less_than_one_percent
+import id.homebase.resources.storage_account_plan
+import id.homebase.resources.storage_account_title
+import id.homebase.resources.storage_account_under
+import id.homebase.resources.storage_account_usage
+import id.homebase.resources.storage_account_usage_unlimited
+import id.homebase.resources.storage_account_used_free
+import id.homebase.resources.storage_full_upload_failed
 import id.homebase.resources.storage_orphan_coil_body
 import id.homebase.resources.storage_orphan_coil_title
 import id.homebase.resources.storage_cache_coil_memory
@@ -95,6 +111,7 @@ fun StorageSettingsScreen(
     viewModel: StorageSettingsViewModel,
     onBackClick: () -> Unit,
     onNavigateToDefragmenter: () -> Unit,
+    onOpenAccount: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -115,6 +132,7 @@ fun StorageSettingsScreen(
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
         onNavigateToDefragmenter = onNavigateToDefragmenter,
+        onOpenAccount = onOpenAccount,
         snackbarHostState = snackbarHostState,
         crashTrigger = koinInject(),
     )
@@ -127,6 +145,7 @@ fun StorageSettingsUi(
     onAction: (StorageSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
     onNavigateToDefragmenter: () -> Unit,
+    onOpenAccount: () -> Unit,
     snackbarHostState: SnackbarHostState,
     crashTrigger: DiagnosticsCrashTrigger = NoOpDiagnosticsCrashTrigger,
 ) {
@@ -157,6 +176,20 @@ fun StorageSettingsUi(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            uiState.account?.let { account ->
+                SettingsSectionHeader(
+                    title = stringResource(MR.string.storage_account_title),
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                AccountStorageCard(account = account, onClick = onOpenAccount)
+                if (uiState.accountStorageFull) {
+                    ErrorCard(
+                        title = stringResource(MR.string.storage_full_upload_failed),
+                        body = stringResource(MR.string.storage_account_full),
+                    )
+                }
+            }
+
             SettingsSectionHeader(
                 title = stringResource(MR.string.storage_caches_header),
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -501,6 +534,84 @@ private fun DriveRow(state: DriveRowState) {
     }
 }
 
+/**
+ * The identity's storage on its Homebase against its plan. Here it leads to Settings > Account ([onClick]);
+ * Account shows it with the public home page too ([showPublicPage]).
+ */
+@Composable
+internal fun AccountStorageCard(
+    account: StorageUsage,
+    onClick: (() -> Unit)? = null,
+    showPublicPage: Boolean = false,
+) {
+    val quota = account.quotaBytes
+    // "12% of 500 GB used", then what is used and free in the plan's own unit: no MB against GB to convert
+    val text = quota?.let { planStorageText(account.usedBytes, it) }
+    Card(modifier = Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (text != null) {
+                        stringResource(
+                            MR.string.storage_account_usage,
+                            text.percent?.let { "$it%" } ?: stringResource(MR.string.storage_account_less_than_one_percent),
+                            text.size,
+                        )
+                    } else {
+                        stringResource(MR.string.storage_account_usage_unlimited, formatBytes(account.usedBytes))
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (account.isOverQuota) MaterialTheme.colorScheme.error else Color.Unspecified,
+                    modifier = Modifier.weight(1f),
+                )
+                if (onClick != null) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = stringResource(MR.string.cd_navigate_forward),
+                    )
+                }
+            }
+            if (quota != null && quota > 0) {
+                LinearProgressIndicator(
+                    progress = { (account.usedBytes.toFloat() / quota).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = if (account.isOverQuota) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+            }
+            text?.let {
+                Text(
+                    text = stringResource(
+                        MR.string.storage_account_used_free,
+                        if (it.usedIsUnder) stringResource(MR.string.storage_account_under, it.used) else it.used,
+                        it.free,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            account.planId?.let { plan ->
+                Text(
+                    text = stringResource(MR.string.storage_account_plan, plan),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (showPublicPage) {
+                account.publicWebPresence?.let { on ->
+                    Text(
+                        text = stringResource(if (on) MR.string.plan_public_page_on else MR.string.plan_public_page_off),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun EmptyRow(text: String) {
     Box(
@@ -534,7 +645,7 @@ private fun UnhealthyCacheWarning() {
 }
 
 @Composable
-private fun ErrorCard(title: String, body: String) {
+internal fun ErrorCard(title: String, body: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = androidx.compose.material3.CardDefaults.cardColors(

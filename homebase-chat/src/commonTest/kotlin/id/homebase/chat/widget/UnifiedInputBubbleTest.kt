@@ -13,10 +13,19 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.MessageAppData
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.test.assertEquals
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.unit.Dp
+import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 class UnifiedInputBubbleTest {
 
     @Test
@@ -277,5 +286,40 @@ class UnifiedInputBubbleTest {
         }
         onNodeWithTag("attachment_fab").performClick()
         assertTrue(attached)
+    }
+
+    private fun fabCentreAndFieldBounds(fieldHeight: Dp) = run {
+        var result: Pair<Dp, androidx.compose.ui.unit.DpRect>? = null
+        runComposeUiTest {
+            setContent {
+                MaterialTheme {
+                    UnifiedInputBubble(
+                        replyToMessage = null,
+                        onDismissReply = {},
+                        editExistingMode = false,
+                        showSendButton = false,
+                        isRecordingActive = false,
+                        onSendMessage = {},
+                        onCancelEdit = {},
+                        onAddAttachmentClick = {},
+                    ) { Box(Modifier.fillMaxWidth().height(fieldHeight).testTag("field")) }
+                }
+            }
+            val fab = onNodeWithTag("attachment_fab").getBoundsInRoot()
+            result = (fab.top + fab.bottom) / 2 to onNodeWithTag("field").getBoundsInRoot()
+        }
+        result!!
+    }
+
+    @Test
+    fun theEndButtonIsCentredOnASingleLineField() {
+        val (fabCentre, field) = fabCentreAndFieldBounds(RichTextEditorDefaults.MinHeight)
+        assertEquals((field.top + field.bottom) / 2, fabCentre)
+    }
+
+    @Test
+    fun theEndButtonStaysOnTheLastLineAsTheFieldGrows() {
+        val (fabCentre, field) = fabCentreAndFieldBounds(RichTextEditorDefaults.MinHeight * 3)
+        assertEquals(field.bottom - RichTextEditorDefaults.MinHeight / 2, fabCentre)
     }
 }

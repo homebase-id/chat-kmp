@@ -16,7 +16,6 @@ import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.canBattle
-import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.util.isMobile
 import kotlinx.collections.immutable.ImmutableList
@@ -46,6 +45,7 @@ fun MessageItem(
     chainCap: Int? = null,
     ownLiveShareUntilMs: Long? = null,
     onCopyText: (String) -> Unit = {},
+    savedStickerSourceIds: Set<Uuid> = emptySet(),
 ) {
     val odinId: OdinId? = try {
         OdinId(currentOdinId)
@@ -58,7 +58,7 @@ fun MessageItem(
     // rich content (event today; poll/doodle/dice later) declares its own
     // policy on the sealed type — defaulting to StructuredOneShot which
     // disables edit/reply/forward/share/inline-reactions/reactor-details.
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val policy = message.actionPolicy
 
     // Live-location controls for the location bubble (ignored by non-location media). State (LIVE/
     // ENDED) is read from the message descriptor in the bubble; this only carries side + actions.
@@ -155,6 +155,24 @@ fun MessageItem(
             onUiAction(ConversationListUiAction.MessageIdentity(odinId))
         }
     }
+    val isStickerSaved = message.fileId in savedStickerSourceIds
+    val stickerPayloadKey = message.stickerPayloadKey
+    val stickerActions = if (stickerPayloadKey != null) {
+        remember(message.id, stickerPayloadKey, isStickerSaved) {
+            StickerMenuActions(
+                isSaved = isStickerSaved,
+                onToggleSaved = {
+                    onUiAction(
+                        if (isStickerSaved) ConversationListUiAction.RemoveStickerFromMessage(message.fileId)
+                        else ConversationListUiAction.SaveStickerFromMessage(message.id, stickerPayloadKey)
+                    )
+                },
+                onSaveToDevice = {
+                    onUiAction(ConversationListUiAction.DownloadMedia(message.id, stickerPayloadKey))
+                },
+            )
+        }
+    } else null
     if (message.isAuthoredBy(odinId)) {
         val onEdit = if (message.isEditableBy(odinId)) {
             remember(message) {
@@ -182,6 +200,7 @@ fun MessageItem(
                 decryptedFiles = decryptedFiles,
                 currentOdinId = currentOdinId,
                 clusterPosition = clusterPosition,
+                isGroupConversation = isGroupConversation,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
                 onBattle = onBattle,
@@ -207,6 +226,7 @@ fun MessageItem(
                 onSaveContactCard = onSaveContactCard,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
+                stickerActions = stickerActions,
             )
         }
     } else {
@@ -268,6 +288,7 @@ fun MessageItem(
                 onSaveContactCard = onSaveContactCard,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
+                stickerActions = stickerActions,
             )
         }
     }

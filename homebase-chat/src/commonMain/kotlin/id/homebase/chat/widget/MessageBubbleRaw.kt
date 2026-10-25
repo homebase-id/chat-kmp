@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -75,15 +77,21 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
+import id.homebase.chat.calling.CallEventBubble
+import id.homebase.chat.calling.LocalCallStarter
 import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.ViewOnceBubble
+import id.homebase.chat.viewonce.VIEW_ONCE_PAYLOAD_KEY
+import id.homebase.chat.viewonce.ViewOnceRules
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -98,6 +106,7 @@ import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -150,6 +159,7 @@ fun MessageBubbleRaw(
     sentByYou: Boolean,
     currentOdinId: String = "",
     clusterPosition: MessageClusterPosition = MessageClusterPosition.ALONE,
+    isGroupConversation: Boolean = false,
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
@@ -296,10 +306,81 @@ fun MessageBubbleRaw(
             )
             return
         }
+        is MessageContent.ViewOnce -> {
+            val containerColor =
+                if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+                else MaterialTheme.colorScheme.surfaceContainerHigh
+            val contentColor =
+                if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+                else MaterialTheme.colorScheme.onSurface
+            // sentByYou already settled authorship; hand the rules an identity that agrees with it.
+            val viewOnceMe = if (sentByYou) message.originalAuthor else null
+            val (viewOnceState, openedCount) = remember(message, viewOnceMe, sentByYou) {
+                ViewOnceRules.stateOf(message, Clock.System.now().toEpochMilliseconds(), viewOnceMe) to
+                    if (sentByYou) ViewOnceRules.openedCount(message) else 0
+            }
+            ViewOnceBubble(
+                descriptor = content.descriptor,
+                isOutgoing = sentByYou,
+                isGroup = isGroupConversation,
+                state = viewOnceState,
+                openedCount = openedCount,
+                canView = isMobile(),
+                onOpen = remember(message, displayOnly) {
+                    val payload = message.payloads?.firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY }
+                    if (payload != null && !displayOnly) {
+                        { onMediaClick(payload) }
+                    } else null
+                },
+                onLongClick = onLongClick,
+                onDoubleClick = onDoubleClick,
+                shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
+                containerColor = containerColor,
+                contentColor = contentColor,
+                authorName = authorName,
+                authorColor = authorColor,
+                modifier = modifier,
+                footer = { footerColor ->
+                    MessageTimestampFooter(
+                        infoText = formatMessageTimestamp(message.userDate),
+                        contentColor = footerColor,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                    )
+                },
+            )
+            return
+        }
         is MessageContent.Unknown -> {
             UnknownMessageBubble(
                 dataType = content.dataType,
                 modifier = modifier,
+            )
+            return
+        }
+        is MessageContent.CallEvent -> {
+            val callBack = LocalCallStarter.current?.takeIf { it.idle && !displayOnly }?.start
+            val descriptor = content.descriptor
+            CallEventBubble(
+                descriptor = descriptor,
+                isOwn = sentByYou,
+                modifier = modifier,
+                onCallBack = if (callBack != null && descriptor != null) ({ callBack(descriptor.video) }) else null,
+                shape = remember(sentByYou, clusterPosition) { messageBubbleShape(sentByYou, clusterPosition) },
+                containerColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface,
+                footer = { footerColor ->
+                    MessageTimestampFooter(
+                        infoText = formatMessageTimestamp(message.userDate),
+                        contentColor = footerColor,
+                        showDeliveryStatus = false,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                    )
+                },
             )
             return
         }
@@ -501,26 +582,9 @@ fun MessageBubbleRaw(
     val blockTextTopPadding =
         if (authorAbutsText && message.messageAppData.replyPreview == null) 0.dp else 12.dp
 
-    val big = Dimens.Message.cornerRadius
-    val small = Dimens.Message.cornerCollapseRadius
     val shape = remember(sentByYou, clusterPosition, mediaOnly) {
-        if (mediaOnly) {
-            RoundedCornerShape(big)
-        } else if (sentByYou) {
-            when (clusterPosition) {
-                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
-                MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
-                MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
-                MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
-            }
-        } else {
-            when (clusterPosition) {
-                MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
-                MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
-                MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
-                MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
-            }
-        }
+        if (mediaOnly) RoundedCornerShape(Dimens.Message.cornerRadius)
+        else messageBubbleShape(sentByYou, clusterPosition)
     }
 
     Surface(
@@ -758,15 +822,17 @@ fun MessageBubbleRaw(
                     ) {
                         // No onTextLayout: the block renderer reports none, and the
                         // timestamp is placed below as its own row (next).
-                        ChatMarkdown(
-                            content = bodyText,
-                            modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
-                            color = contentColor,
-                            style = MaterialTheme.typography.bodyLarge,
-                            searchQuery = effectiveSearchQuery,
-                            isCurrentSearchResult = isCurrentSearchResult,
-                            mentions = mentionContext,
-                        )
+                        SelectableOnDesktop(enabled = !message.isDeleted) {
+                            ChatMarkdown(
+                                content = bodyText,
+                                modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
+                                color = contentColor,
+                                style = MaterialTheme.typography.bodyLarge,
+                                searchQuery = effectiveSearchQuery,
+                                isCurrentSearchResult = isCurrentSearchResult,
+                                mentions = mentionContext,
+                            )
+                        }
                     }
                     if (message.hasMore && onShowMoreClick != null) {
                         Box(
@@ -900,18 +966,20 @@ fun MessageBubbleRaw(
                                             tint = contentColor,
                                         )
                                     }
-                                    ChatMarkdown(
-                                        content = bodyText,
-                                        modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
-                                        color = contentColor,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        searchQuery = effectiveSearchQuery,
-                                        isCurrentSearchResult = isCurrentSearchResult,
-                                        mentions = mentionContext,
-                                        maxLines = bodyMaxLines,
-                                        overflow = TextOverflow.Ellipsis,
-                                        onTextLayout = { textLayoutResult = it },
-                                    )
+                                    SelectableOnDesktop(enabled = !message.isDeleted) {
+                                        ChatMarkdown(
+                                            content = bodyText,
+                                            modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
+                                            color = contentColor,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            searchQuery = effectiveSearchQuery,
+                                            isCurrentSearchResult = isCurrentSearchResult,
+                                            mentions = mentionContext,
+                                            maxLines = bodyMaxLines,
+                                            overflow = TextOverflow.Ellipsis,
+                                            onTextLayout = { textLayoutResult = it },
+                                        )
+                                    }
                                 }
                             }
                             // Single custom-Layout slot for the one-way "Read more"
@@ -966,7 +1034,7 @@ fun MessageBubbleRaw(
                                 if (showMessageFooter) {
                                     Text(
                                         text = messageInfoText,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
                                         color = contentColor.copy(alpha = 0.7f),
                                         modifier = Modifier.testTag(ChatBubbleTestTags.TIMESTAMP),
                                     )
@@ -1260,7 +1328,7 @@ private fun BoxScope.MediaTimestampOverlay(
             ) {
                 Text(
                     text = messageInfoText,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
                     color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f),
                 )
                 if (sentByYou) {
@@ -1275,6 +1343,11 @@ private fun BoxScope.MediaTimestampOverlay(
             }
         }
     }
+}
+
+@Composable
+private fun SelectableOnDesktop(enabled: Boolean, content: @Composable () -> Unit) {
+    if (enabled && isDesktopOrWeb()) SelectionContainer(content = content) else content()
 }
 
 /**
@@ -1305,6 +1378,26 @@ internal fun buildSearchHighlightedText(
             val endIdx = (idx + lowerQuery.length).coerceAtMost(plain.length)
             addStyle(SpanStyle(background = highlightColor), idx, endIdx)
             startIndex = endIdx
+        }
+    }
+}
+
+internal fun messageBubbleShape(sentByYou: Boolean, clusterPosition: MessageClusterPosition): RoundedCornerShape {
+    val big = Dimens.Message.cornerRadius
+    val small = Dimens.Message.cornerCollapseRadius
+    return if (sentByYou) {
+        when (clusterPosition) {
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
+            MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
+        }
+    } else {
+        when (clusterPosition) {
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
+            MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
         }
     }
 }

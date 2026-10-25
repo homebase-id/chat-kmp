@@ -2,6 +2,7 @@
 
 package id.homebase.core.di
 
+import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.core.ui.screens.email.EmailService
@@ -13,6 +14,9 @@ import id.homebase.core.ui.screens.email.EmailViewModel
 import id.homebase.core.email.EmailPreferences
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
+import id.homebase.chat.viewonce.evictMemoryFor
+import id.homebase.api.file.scratchDir
+import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.CacheAudit
 import id.homebase.api.file.CacheSweeper
@@ -40,6 +44,7 @@ import id.homebase.chat.conversationmedia.ConversationMediaViewModel
 import id.homebase.chat.services.sticker.StickerService
 import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
+import id.homebase.chat.calling.history.NewCallViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
@@ -52,6 +57,13 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.calling.CallViewModel
+import id.homebase.chat.calling.history.CallLogDeleter
+import id.homebase.chat.calling.history.CallsViewModel
+import id.homebase.chat.services.calling.history.CallHistoryService
+import id.homebase.core.calling.CallsPreferences
+import id.homebase.chat.services.calling.CallService
+import id.homebase.chat.services.calling.platformCallEngineFactory
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
 import id.homebase.core.config.locationLabeledDrive
@@ -60,7 +72,12 @@ import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.viewonce.ViewOnceActions
+import id.homebase.chat.viewonce.ViewOncePayloadLoader
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.XorIdUtil
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
@@ -125,12 +142,22 @@ import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewM
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
+import id.homebase.core.ui.screens.vault.VaultUploaderFileSaver
 import id.homebase.core.ui.screens.vault.VaultUploaderService
+import id.homebase.core.vault.VaultFileSaver
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.webdrop.WebDropService
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncRepository
+import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncEditor
+import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncUploader
+import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
+import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -140,6 +167,7 @@ import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
+import kotlinx.coroutines.flow.map
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentCommentsService
@@ -184,6 +212,7 @@ import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
+import id.homebase.core.updater.AppUpdates
 import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
@@ -200,12 +229,13 @@ import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
+import id.homebase.core.ui.screens.profile.OwnerSessionAvatar
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
-import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.LiveDefragSource
+import id.homebase.core.ui.screens.account.AccountSettingsViewModel
 import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
 import id.homebase.core.upgrade.PendingUpgradeManager
 import org.koin.core.module.Module
@@ -219,6 +249,7 @@ import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
+import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
@@ -249,6 +280,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
+val FilesyncPermissionQualifier = named("filesyncPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -258,6 +290,7 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    singleOf(::AppUpdates)
 
     single<ProximityAudioRouter> { getProximityAudioRouter() }
     single<VoiceNotePlayback> {
@@ -311,8 +344,8 @@ val appModule = module {
     singleOf(::FeedPermissionService)
     singleOf(::ReportingUrlProvider)
 
-    single { VaultPreferences(get()) }
-    single { EmailPreferences(get()) }
+    single { VaultPreferences(get(), migrationScope = get()) }
+    single { EmailPreferences(get(), migrationScope = get()) }
 
     // Contact Book add-on (contact manager). Reads from the mandatory Contacts
     // drive; writes through the api-layer ContactsProvider. No optional-drive
@@ -360,6 +393,32 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    // One CallController per identity behind CallService; a null engineFactory (unsupported platform, or off in
+    // Settings, read once so a restart applies it) hides every call entry point. The fake engine/loopback live only in the Call lab.
+    single {
+        CallService(
+            credentialsManager = get(),
+            eventBus = get(),
+            relay = { channelKey, recipients, blob, push -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, push, wakeCause = null) },
+            engineFactory = platformCallEngineFactory().takeIf { get<CallsPreferences>().enabled.value },
+            stunUrls = get(),
+            scope = get(),
+            onCallActiveChanged = { get<AuthConnectionCoordinator>().setCallActive(it) },
+            recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
+        )
+    }
+    single { CallsPreferences(get()) }
+    single {
+        CallHistoryService(
+            credentialsManager = get(),
+            dbm = get(),
+            eventBus = get(),
+            conversations = get(),
+            preferences = get(),
+            scope = get(),
+            conversationsReady = get<ConversationStream>().conversations.map { it.dataReady },
+        )
+    }
     single { EmergencyLocateStore(eventBus = get(), scope = get()) }
     single { EmergencyLocateService(temporalDriveReadProvider = get(), store = get()) }
     // Readiness gate for "Share live location": activated add-on + location permission, so the chat
@@ -646,6 +705,7 @@ val appModule = module {
                 conversationStream.reset()
                 conversationStream.start()
                 get<ContactService>().start()
+                get<CallHistoryService>()
                 // MRU store before lookup: lookup's combine() reads
                 // mruStore.stableKeys, and started-first means the cold-load
                 // emits before the lookup builds its first list.
@@ -708,11 +768,12 @@ val appModule = module {
                 // endregion
 
                 get<VaultPreferences>().reset()
-            get<EmailPreferences>().reset()
+                get<EmailPreferences>().reset()
             get<EmailStream>().apply { reset(); start() }
                 get<VaultStream>().apply { reset(); start() }
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
+                get<FilesyncPreferences>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -738,7 +799,6 @@ val appModule = module {
             // #1109: attribute a background window to the active location profile in the
             // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
             locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
-            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
         )
     }
     single {
@@ -778,7 +838,6 @@ val appModule = module {
             eventBus = get(),
             scope = get(),
             cache = get(),
-            processEnrollmentsEnabled = { get<DeveloperPreferences>().connectionReviewEnabled.value },
         )
     }
     singleOf(::EmergencyCircleNotifier)
@@ -849,6 +908,7 @@ val appModule = module {
             stream.autoPinTypedMessage = { messageId, dependencyUniqueId ->
                 get<ChatMessageActionService>().pinMessage(messageId, dependencyUniqueId)
             }
+            stream.sweepViewOnce = { messages, nowMs -> get<ViewOnceActions>().sweep(messages, nowMs) }
         }
     }
     single<MessageLookup> { get<ChatMessageStream>() }
@@ -861,6 +921,15 @@ val appModule = module {
     single { CardRepository(ProfileRepositoryCardStore(get())) }
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
+    single { ViewOnceActions(get(), get()) }
+    single {
+        ViewOncePayloadLoader(
+            driveFileProvider = get(),
+            fileOps = get(),
+            tempDir = { get<FileOperationsProvider>().scratchDir(AppCacheDirs.VIEW_ONCE) },
+            evictLocalImage = { path -> get<ImageLoader>().evictMemoryFor(path) },
+        ) { driveId, fileId -> get<HomebaseImageLoader>().evictFile(driveId, fileId) }
+    }
     singleOf(::DiceRollPreferences)
     singleOf(::EventReminderPreferences)
     // Explicit `single` (not `singleOf`) — the ctor's `now` clock arg is an intentional Kotlin
@@ -904,8 +973,21 @@ val appModule = module {
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
+    single<VaultFileSaver> {
+        VaultUploaderFileSaver(
+            uploader = get<VaultUploaderService>(),
+            activation = get<OptionalDriveActivation>(),
+            fileOperationsProvider = get<FileOperationsProvider>(),
+            appScope = get<kotlinx.coroutines.CoroutineScope>(),
+        )
+    }
 
     singleOf(::WebDropStream)
+    single { FilesyncPreferences(get()) }
+    single { FilesyncRepository(get(), get(), get(), get()) }
+    single { FilesyncUploader(get(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get()) }
+    single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
 
@@ -984,6 +1066,27 @@ val appModule = module {
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
+    viewModel { CallViewModel(get<CallService>()) }
+    viewModel {
+        val calls = get<CallService>()
+        CallsViewModel(
+            history = get<CallHistoryService>(),
+            contacts = get<ContactService>().contacts,
+            conversations = get(),
+            session = calls,
+            callsAvailable = calls.available,
+            deleter = CallLogDeleter { id, forEveryone -> get<ChatMessageActionService>().deleteMessage(id, forEveryone) },
+        )
+    }
+    viewModel {
+        val calls = get<CallService>()
+        NewCallViewModel(
+            contacts = get<ContactService>().contacts,
+            self = get<OwnerSessionRepository>().user,
+            session = calls,
+            callsAvailable = calls.available,
+        )
+    }
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
     // Manual `viewModel { ... }` rather than viewModelOf because the constructor
@@ -996,6 +1099,7 @@ val appModule = module {
             chatMessageStream = get(),
             chatMessageSenderService = get(),
             chatMessageActionService = get(),
+            viewOnceActions = get(),
             conversationService = get(),
             userPreferences = get(),
             fileOperationsProvider = get(),
@@ -1024,6 +1128,8 @@ val appModule = module {
             liveShareReadiness = get(),
             locationService = get(),
             driveSyncManager = get(),
+            optionalDriveActivation = get(),
+            vaultFileSaver = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -1077,7 +1183,6 @@ val appModule = module {
             conversationService = get(),
             emergencyLocateService = get(),
             authConnectionCoordinator = get(),
-            developerPreferences = get(),
         )
     }
     viewModelOf(::EmergencyContactPickerViewModel)
@@ -1125,7 +1230,6 @@ val appModule = module {
             circleName = params.get(),
             repo = get(),
             connectionService = get(),
-            developerPreferences = get(),
         )
     }
     // Manual block: conversationId arrives as a Koin runtime parameter from the ShareContact route.
@@ -1222,6 +1326,15 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
+    viewModel(FilesyncPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getFilesyncPermissionExtensionConfig(),
+        )
+    }
     viewModel(EmailPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1240,8 +1353,10 @@ val appModule = module {
         )
     }
     viewModelOf(::SettingsViewModel)
-    viewModelOf(::ProfileEditViewModel)
-    viewModelOf(::ProfileAvatarEditViewModel)
+    viewModel {
+        val cards = get<ProfileCardSource>()
+        ProfileAvatarEditViewModel(OwnerSessionAvatar(get()), get(), get(), get(), storageQuota = get()) { cards.circles() }
+    }
     viewModel { ProfileCardViewModel(get(), ::createCardHost) }
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
@@ -1251,11 +1366,23 @@ val appModule = module {
     viewModelOf(::MediaSettingsViewModel)
     viewModelOf(::KeyboardSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
+    viewModelOf(::AccountSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
-    viewModelOf(::DesktopViewModel)
+    singleOf(::DesktopViewModel)
+    viewModel {
+        FilesyncViewModel(
+            repository = get(),
+            uploadQueue = get(),
+            editor = get(),
+            extendPermissionViewModel = get(FilesyncPermissionQualifier),
+            webDropShareFlowState = get(),
+        )
+    }
+    viewModel { FilesyncTrashViewModel(get(), get()) }
+    viewModel { FilesyncRecentViewModel(get(), get()) }
     viewModel {
         WebDropViewModel(
             webDropService = get(),
@@ -1323,3 +1450,18 @@ val allModules = listOf(
     appModule,
     id.homebase.imageeditor.ui.di.imageEditorModule,
 )
+
+private suspend fun recordCallEvent(
+    credentials: CredentialsManager,
+    sender: ChatMessageSenderService,
+    peer: String,
+    event: CallEventDescriptor,
+) {
+    val self = credentials.getActiveDomain()?.domainName ?: return
+    sender.sendNewTypedMessage(
+        messageUniqueId = Uuid.random(),
+        conversationId = XorIdUtil.getNewXorId(self, peer),
+        content = MessageContent.CallEvent(event),
+        previousMessageUniqueId = null,
+    )
+}

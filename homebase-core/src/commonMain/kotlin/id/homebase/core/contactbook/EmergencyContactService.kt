@@ -261,7 +261,7 @@ class EmergencyContactService internal constructor(
                 .filter { only == null || it.domainName in only }
                 .filter { status[it.domainName].needsReverify(now) }
             if (only == null) lastFullSweepMs = now
-            Logger.i(TAG) { "refreshAll: targets=${targets.size} only=${only?.size} spinner=$showSpinner" }
+            Logger.i(tag = TAG) { "refreshAll: targets=${targets.size} only=${only?.size} spinner=$showSpinner" }
             if (targets.isEmpty()) return
             coroutineScope {
                 targets.forEach { peer -> launch { verifyPermits.withPermit { refresh(peer, showSpinner) } } }

@@ -1,10 +1,13 @@
 package id.homebase.core.media.subsample
 
+import androidx.compose.runtime.Immutable
 import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImageData
 
 sealed interface SubSamplingImageSource {
 
+    // Keeps the stability flag constant: Kotlin/Wasm would set it lazily, and a flag that flips mid-session shifts slot reads.
+    @Immutable
     class Remote(
         val imageData: HomebaseImageData,
     ) : SubSamplingImageSource

@@ -22,8 +22,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
@@ -51,9 +49,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.FallbackAvatar
-import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.avatars.GroupAvatar
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.core.moments.services.isDisabledCircle
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
@@ -325,29 +323,17 @@ private fun RecipientRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Render avatars the same way chat does: individuals resolve their
-            // public profile image from the odinId via PublicAvatar; groups fall
-            // back to chat's group glyph (mirrors ConversationAvatar's
-            // GroupFallback). See ConversationAvatar.kt / PublicAvatar.kt.
             val avatarOptions = AvatarOptions(size = 40.dp)
             when (recipient) {
-                is MomentsRecipient.Individual -> PublicAvatar(
+                is MomentsRecipient.Individual -> IdentityAvatar(
                     odinId = recipient.odinId,
-                    initials = recipient.avatarInitials,
+                    displayName = recipient.displayName,
                     options = avatarOptions,
                 )
 
-                is MomentsRecipient.Group -> FallbackAvatar(
-                    initials = recipient.avatarInitials,
-                    options = avatarOptions,
-                    imageVector = Icons.Outlined.Group,
-                )
+                is MomentsRecipient.Group -> GroupAvatar(initials = recipient.avatarInitials, options = avatarOptions)
 
-                is MomentsRecipient.Circle -> FallbackAvatar(
-                    initials = recipient.avatarInitials,
-                    options = avatarOptions,
-                    imageVector = Icons.Outlined.Groups,
-                )
+                is MomentsRecipient.Circle -> GroupAvatar(initials = recipient.avatarInitials, options = avatarOptions)
             }
             Column {
                 Text(

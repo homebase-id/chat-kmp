@@ -5,10 +5,13 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.compose.ui.AndroidComposeUiFlags
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import co.touchlab.kermit.Logger
+import id.homebase.feed.calls.AndroidCallCoordinator
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import com.mmk.kmpnotifier.notification.NotifierManager
@@ -21,6 +24,7 @@ import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
+import id.homebase.core.ui.screens.card.resetCardNfcService
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.logging.LoggerConfig
@@ -45,7 +49,10 @@ import org.koin.core.component.get
 import org.koin.core.context.GlobalContext.startKoin
 
 class MainApplication : Application(), KoinComponent {
+    @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate() {
+        // API < 31: shared WindowInfo latches the pre-rotation window size until the process restarts.
+        AndroidComposeUiFlags.isSharedWindowInfoEnabled = false
         super.onCreate()
 
         if (getProcessName() != packageName) return
@@ -66,6 +73,7 @@ class MainApplication : Application(), KoinComponent {
         // so even an init-time crash gets a written report + the native recovery
         // screen. It needs only Context + PackageManager + static BuildConfig.
         GlobalCrashHandler.install(this)
+        resetCardNfcService(this)
 
         // Initialize storage (must be done before App() which may access storage)
         SecureStorage.initialize(this)
@@ -139,6 +147,8 @@ class MainApplication : Application(), KoinComponent {
         // Publish share shortcuts when conversations change
         initShareShortcuts()
 
+        AndroidCallCoordinator(this, get(), get(), appScope).start()
+
         // Reap cleartext share-OUT temps every time the app reaches the
         // foreground. The chat "Share to other app" flow writes decrypted
         // copies of E2EE Homebase payloads into <cacheDir>/share_outbound/
@@ -170,7 +180,7 @@ class MainApplication : Application(), KoinComponent {
         })
     }
 
-    private val appScope = supervisedScope("android-app")
+    val appScope = supervisedScope("android-app")
 
     private fun initShareShortcuts() {
         val conversationStream = get<ConversationStream>()

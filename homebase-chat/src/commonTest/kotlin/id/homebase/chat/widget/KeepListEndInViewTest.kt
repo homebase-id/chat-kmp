@@ -69,7 +69,7 @@ class KeepListEndInViewTest {
     fun aJumpAwayFromTheEndIsNotPulledBack() = jumpFromTheEnd { scrollToItem(10) }
 
     @Test
-    fun anAnimatedJumpAwayFromTheEndLandsOnItsTarget() = jumpFromTheEnd { jumpToItem(10) }
+    fun anAnimatedJumpAwayFromTheEndLandsOnItsTarget() = jumpFromTheEnd { requestJumpStart(10); animateScrollToItem(10) }
 
     private fun jumpFromTheEnd(jump: suspend LazyListState.() -> Unit) = runComposeUiTest {
         val state = LazyListState(firstVisibleItemIndex = 49)

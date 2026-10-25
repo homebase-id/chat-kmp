@@ -76,14 +76,32 @@ kotlin {
         // animates GIFs there via AnimatedImageDecoder; see PR #663). Lets the
         // in-house animated-GIF/WebP Skia decoder live in one place instead of
         // three near-identical per-platform copies.
-        val skiaMain by creating { dependsOn(commonMain.get()) }
+        val skiaMain = create("skiaMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(skiaMain)
         nativeMain.get().dependsOn(skiaMain)
         wasmJsMain.get().dependsOn(skiaMain)
 
-        val cameraStubMain by creating { dependsOn(commonMain.get()) }
+        val cameraStubMain = create("cameraStubMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(cameraStubMain)
         wasmJsMain.get().dependsOn(cameraStubMain)
+
+        // FileKit's PlatformFile.path and lastModified() exist on every target but the web.
+        val nonWebMain = create("nonWebMain") { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(nonWebMain)
+        jvmMain.get().dependsOn(nonWebMain)
+        nativeMain.get().dependsOn(nonWebMain)
+
+        // Tests that build a PlatformFile from a path, which the web has no constructor for.
+        val nonWebTest = create("nonWebTest") { dependsOn(commonTest.get()) }
+        getByName("androidHostTest").dependsOn(nonWebTest)
+        jvmTest.get().dependsOn(nonWebTest)
+        nativeTest.get().dependsOn(nonWebTest)
+
+        nonWebMain.dependencies {
+            implementation(libs.kermit.io)
+            // No wasmJs artifact, so it stays off commonMain; api for androidApp/desktopApp/iOS export.
+            api(libs.kmpnotifier)
+        }
 
         commonMain.dependencies {
             api(project(":homebase-api"))
@@ -148,11 +166,6 @@ kotlin {
             // coil-gif is an Android-only aar in Coil 3.4.0 and Coil has no Skia animated decoder,
             // so the other targets animate through our AnimatedSkiaDecoder in skiaMain.
             api(libs.coil3.gif)
-            implementation(libs.kermit.io)
-            // kmpnotifier has no wasmJs artifact — must stay off commonMain.
-            // `api` so the dep cascades transitively to androidApp (which
-            // imports NotifierManager in MainApplication/MainActivity).
-            api(libs.kmpnotifier)
             // Location add-on tracker: fused provider (batched background
             // PendingIntent updates) + app-foreground observation.
             implementation(libs.play.services.location)
@@ -160,11 +173,6 @@ kotlin {
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
-            implementation(libs.kermit.io)
-            // `api` so the iOS framework `export(libs.kmpnotifier)` block above
-            // resolves the symbols for Swift consumption (iOSApp.swift calls
-            // `NotifierManager.shared.initialize(...)`).
-            api(libs.kmpnotifier)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
@@ -173,14 +181,9 @@ kotlin {
             implementation(libs.nucleus.notification.windows)
             implementation(libs.nucleus.notification.macos)
             implementation(libs.nucleus.notification.linux)
-            implementation(libs.kermit.io)
             implementation(libs.pdfbox)
             implementation(libs.jna)
             implementation(libs.jna.platform)
-            // `api` so desktopApp's existing direct kmpnotifier dep stays
-            // consistent and `RichNotificationDisplayer.jvm.kt` can reach the
-            // type from the same source set's classpath.
-            api(libs.kmpnotifier)
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.

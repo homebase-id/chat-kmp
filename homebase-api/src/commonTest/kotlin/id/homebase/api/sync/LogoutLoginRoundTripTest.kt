@@ -15,7 +15,6 @@ import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.client.engine.mock.respond
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -42,7 +41,6 @@ import kotlin.uuid.Uuid
  * in-memory cache that flushes back after the drop, a missing
  * `expectFreshCursors=true` after clearStorage) would fail this test.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class LogoutLoginRoundTripTest {
 
     private val badUserDate = 9_999_999_999_999L // sentinel — far in the future

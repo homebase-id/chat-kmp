@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Casino
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
@@ -72,7 +74,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
@@ -100,6 +101,9 @@ import id.homebase.resources.chat_pin
 import id.homebase.resources.chat_pin_message
 import id.homebase.resources.chat_unpin_message
 import id.homebase.resources.chat_save_sticker
+import id.homebase.resources.chat_sticker_add_to_library
+import id.homebase.resources.chat_sticker_remove_from_library
+import id.homebase.resources.chat_sticker_save_to_device
 import id.homebase.resources.chat_settings
 import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_unpin
@@ -109,6 +113,7 @@ import id.homebase.resources.save
 import id.homebase.resources.search
 import id.homebase.resources.settings
 import id.homebase.resources.share
+import id.homebase.resources.vault_save_to
 import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
@@ -227,6 +232,31 @@ fun ConversationMenu(
     }
 }
 
+class StickerMenuActions(
+    val isSaved: Boolean,
+    val onToggleSaved: () -> Unit,
+    val onSaveToDevice: () -> Unit,
+)
+
+@Composable
+private fun StickerMenuItems(actions: StickerMenuActions) {
+    ListItemActionNormalIcon(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = actions.onToggleSaved,
+        text = stringResource(
+            if (actions.isSaved) MR.string.chat_sticker_remove_from_library
+            else MR.string.chat_sticker_add_to_library
+        ),
+        imageVector = if (actions.isSaved) Icons.Filled.Delete else Icons.Filled.Add,
+    )
+    ListItemActionNormalIcon(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = actions.onSaveToDevice,
+        text = stringResource(MR.string.chat_sticker_save_to_device),
+        imageVector = Icons.Filled.Download,
+    )
+}
+
 @Composable
 internal fun ReceivedMessagePopup(
     transition: Transition<MessagePopupMode>,
@@ -241,13 +271,14 @@ internal fun ReceivedMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    stickerActions: StickerMenuActions? = null,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
     onBlock: () -> Unit,
     onReport: () -> Unit,
 ) {
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy, onBattle, message.isPinned) {
+    val policy = message.actionPolicy
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -290,12 +321,15 @@ internal fun ReceivedMessagePopup(
                             imageVector = HomebaseIcons.MessageForward,
                         )
                     }
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onCopy,
-                        text = stringResource(MR.string.chat_message_copy),
-                        imageVector = Icons.Default.ContentCopy,
-                    )
+                    if (stickerActions != null) StickerMenuItems(stickerActions)
+                    if (policy.allowCopy) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopy,
+                            text = stringResource(MR.string.chat_message_copy),
+                            imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onTogglePin,
@@ -397,13 +431,14 @@ internal fun SentMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    stickerActions: StickerMenuActions? = null,
     onShare: (() -> Unit)?,
     onEdit: (() -> Unit)?,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
 ) {
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy, onBattle, message.isPinned) {
+    val policy = message.actionPolicy
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -446,12 +481,15 @@ internal fun SentMessagePopup(
                             imageVector = HomebaseIcons.MessageForward,
                         )
                     }
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onCopy,
-                        text = stringResource(MR.string.chat_message_copy),
-                        imageVector = Icons.Default.ContentCopy,
-                    )
+                    if (stickerActions != null) StickerMenuItems(stickerActions)
+                    if (policy.allowCopy) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopy,
+                            text = stringResource(MR.string.chat_message_copy),
+                            imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
                     if (onEdit != null) {
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
@@ -650,7 +688,7 @@ fun BubbleReactionPopup(
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
 ) {
-    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val policy = message.actionPolicy
     if (!policy.allowInlineReactions) return
     val growsFromRight = alignToBubbleEnd == (LocalLayoutDirection.current == LayoutDirection.Ltr)
     Popup(
@@ -716,6 +754,7 @@ fun FullScreenMediaMenu(
     // saved-stickers library. Gated strictly to real stickers so it never appears on
     // ordinary photos (which would create a non-transparent "sticker").
     onSaveSticker: (() -> Unit)? = null,
+    onSaveToVault: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -739,6 +778,14 @@ fun FullScreenMediaMenu(
                 text = { Text(text = stringResource(MR.string.save)) },
                 leadingIcon = {
                     Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+                })
+        }
+        if (onSaveToVault != null) {
+            DropdownMenuItem(
+                onClick = onSaveToVault,
+                text = { Text(text = stringResource(MR.string.vault_save_to)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Filled.Lock, contentDescription = null)
                 })
         }
         if (onSaveSticker != null) {

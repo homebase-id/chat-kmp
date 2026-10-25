@@ -109,4 +109,41 @@ class WebDropProtocolTest {
         val back = OdinSystemSerializer.deserialize<WebDropReceiptContent>(OdinSystemSerializer.serialize(receipt))
         assertEquals(receipt, back)
     }
+
+    @Test
+    fun viewOnlyContentSerializesFailClosedAndStaysSmall() {
+        val key = WebDropProtocol.manifestKey(viewOnly = true)
+        val content = WebDropDropContent(
+            v = WebDropProtocol.contentVersion(viewOnly = true),
+            ivs = (0 until WebDropProtocol.MaxFilesPerDrop).associate {
+                WebDropProtocol.dataPayloadKey(it) to "AAAAAAAAAAAAAAAAAAAAAA=="
+            } + (key to "AAAAAAAAAAAAAAAAAAAAAA=="),
+            viewOnly = true,
+        )
+        val json = OdinSystemSerializer.serialize(content)
+
+        assertTrue("\"viewOnly\":true" in json, json)
+        assertTrue("\"v\":2" in json, json)
+        assertTrue("\"wdr_vmeta\"" in json, json)
+        assertTrue("\"wdr_meta\"" !in json, json)
+        assertTrue(json.length < HomebaseProtocol.MaxHeaderContentBytes / 2, "size ${json.length}")
+        assertEquals(content, OdinSystemSerializer.deserialize<WebDropDropContent>(json))
+        assertTrue(Regex("^[a-z0-9_]{8,10}$").matches(WebDropProtocol.ViewOnlyManifestPayloadKey))
+    }
+
+    @Test
+    fun normalContentOmitsViewOnlyAndLegacyStillParses() {
+        val content = WebDropDropContent(
+            ivs = mapOf(WebDropProtocol.ManifestPayloadKey to "AAAAAAAAAAAAAAAAAAAAAA=="),
+        )
+        val json = OdinSystemSerializer.serialize(content)
+        assertTrue("viewOnly" !in json, json)
+        assertTrue("\"v\":1" in json, json)
+        assertTrue("\"wdr_meta\"" in json, json)
+
+        val legacy = """{"v":1,"ivs":{"wdr_meta":"AAAAAAAAAAAAAAAAAAAAAA=="}}"""
+        assertEquals(null, OdinSystemSerializer.deserialize<WebDropDropContent>(legacy).viewOnly)
+        val legacyReceipt = """{"v":1,"name":"a","files":[],"url":"u","ttl":1,"createdAt":2}"""
+        assertEquals(null, OdinSystemSerializer.deserialize<WebDropReceiptContent>(legacyReceipt).viewOnly)
+    }
 }

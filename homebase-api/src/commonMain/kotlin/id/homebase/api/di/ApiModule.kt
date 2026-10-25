@@ -10,11 +10,14 @@ import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
+import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.contacts.ContactHeaderReader
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactPayloadReader
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.storage.StorageQuota
+import id.homebase.api.client.storage.StorageUsageProvider
 import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
@@ -28,6 +31,7 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.client.mail.MailProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
@@ -57,6 +61,7 @@ import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.dsl.factoryOf
@@ -101,12 +106,15 @@ val apiModule = module {
     single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
     // Explicit `single` (not `singleOf`) because the ctor's background-assertion factory is
     // an intentional Kotlin default the container can't resolve reflectively.
+    factoryOf(::StorageUsageProvider)
+    singleOf(::StorageQuota)
     single {
         OutboxSync(
             databaseManager = get(),
             uploader = get(),
             eventBus = get(),
             scope = get<CoroutineScope>(),
+            storageQuota = get(),
         )
     }
 
@@ -167,6 +175,7 @@ val apiModule = module {
     }
     singleOf(::ContactsProvider)
     singleOf(::ContactRepository)
+    single { AvatarResolver(get<ContactRepository>().contacts) }
     // Owner profile-attribute editor: write client + read/orchestration (queries the ProfileDrive
     // on demand; the drive is not in mandatorySyncDrives). Needs the ManageProfile permission +
     // ProfileDrive Read grant from AppConfig.
@@ -192,6 +201,9 @@ val apiModule = module {
     singleOf(::LocationPreviewProvider)
 
     single { EventBus() }
+    single(createdAtStart = true) {
+        StunUrlStore(get(), get<CredentialsManager>().credentialsFlow.map { it?.domain?.domainName }, get<CoroutineScope>())
+    }
 
     // Eager startup task: logs a one-shot breakdown of the cache directory so an
     // `adb logcat -s CacheAudit:*` capture shows where disk usage is going. The

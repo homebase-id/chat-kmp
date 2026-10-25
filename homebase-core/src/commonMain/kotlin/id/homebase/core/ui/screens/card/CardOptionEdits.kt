@@ -11,10 +11,12 @@ fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
     CardOption.BLOCK_ORDER -> null
 }
 
-/** The block order in effect: the override, then whatever kinds it leaves out in default order. */
-fun CardOverrides.blockOrder(): List<String> {
-    val chosen = blocks?.map { it.kind }.orEmpty().filter { it in CardDesignSpecs.BLOCK_KINDS }.distinct()
-    return chosen + CardDesignSpecs.BLOCK_KINDS.filter { it !in chosen }
+/** Orderable sections in effect; posts rides with moments. */
+fun CardOverrides.blockOrder(): List<String> = completeOrder(blocks?.map { it.kind }.orEmpty())
+
+private fun completeOrder(kinds: List<String>): List<String> {
+    val chosen = kinds.filter { it in CardDesignSpecs.ORDERED_KINDS }.distinct()
+    return chosen + CardDesignSpecs.ORDERED_KINDS.filter { it !in chosen }
 }
 
 /** Sets a single-valued [option] to [value], or back to the preset for null. */
@@ -32,4 +34,10 @@ fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when
 }
 
 fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides =
-    copy(blocks = kinds?.map { CardBlock(it) })
+    copy(blocks = kinds?.let { completeOrder(it) }?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }?.map { CardBlock(it) })
+
+/** Applies a new order of just the [kinds] a design shows, leaving the hidden kinds where they were. */
+fun CardOverrides.withShownBlockOrder(kinds: List<String>, shown: List<String>): CardOverrides {
+    val queue = shown.iterator()
+    return withBlockOrder(blockOrder().map { if (it in kinds) queue.next() else it })
+}

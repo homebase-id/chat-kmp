@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,12 +52,17 @@ import id.homebase.chat.conversationlist.resolveAnchorMessageId
 import id.homebase.chat.services.PaginatedConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.camera.CameraModes
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
+import id.homebase.chat.viewonce.ViewOnceIntroSheet
+import id.homebase.chat.viewonce.ViewOnceToast
+import id.homebase.chat.viewonce.rememberViewOnceComposerState
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -81,6 +87,7 @@ fun ConversationMessagesPane(
     /** Two-pane layouts draw the read-only viewers above the scaffold instead; the pane still
      *  drops [ConversationContent] so the composer cannot hold focus behind one. */
     hoistMediaViewer: Boolean = false,
+    vaultActive: Boolean = false,
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 
@@ -182,16 +189,8 @@ fun ConversationMessagesPane(
             }
     }
 
-    LaunchedEffect(uiState.scrollPosition) {
-        val position = uiState.scrollPosition
-        if (position?.triggerScroll == true) {
-            if (position.animate) {
-                listState.jumpToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
-            } else {
-                listState.scrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
-            }
-            onUiAction(ConversationListUiAction.ClearScrollTrigger)
-        }
+    ScrollPositionTrigger(listState, uiState.scrollPosition) {
+        onUiAction(ConversationListUiAction.ClearScrollTrigger)
     }
 
     // Proximity-trigger: when the visible window approaches either end and the
@@ -283,6 +282,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
                     is FullScreenOverlay.AttachmentData -> "attachment"
                     is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },
             transitionSpec = {
@@ -334,6 +334,7 @@ fun ConversationMessagesPane(
                             ChatMediaViewer(
                                 data = data,
                                 uiState = uiState,
+                                vaultActive = vaultActive,
                                 onUiAction = onUiAction,
                                 animatedVisibilityScope = this@AnimatedContent,
                                 sharedTransitionScope = this@SharedTransitionLayout,
@@ -343,6 +344,11 @@ fun ConversationMessagesPane(
 
                     is FullScreenOverlay.AttachmentData -> {
                         var captionEmojiPickerOpen by remember { mutableStateOf(false) }
+                        val viewOnceState = rememberViewOnceComposerState()
+                        val viewOnceEligible = isViewOnceEligible(data.attachments)
+                        LaunchedEffect(viewOnceEligible) { viewOnceState.onEligibilityChanged(viewOnceEligible) }
+                        val viewOnce = viewOnceState.requested && viewOnceEligible
+                        val viewOnceIsVideo = data.attachments.singleOrNull() is AttachmentPendingFile.FileVideo
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
@@ -356,6 +362,8 @@ fun ConversationMessagesPane(
                                         .ToggleMediaQuality
                                 )
                             },
+                            centerImageInPage = true,
+                            addMoreEnabled = !viewOnce,
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },
@@ -383,6 +391,9 @@ fun ConversationMessagesPane(
                                         data.conversationId, attachmentId, startMs, endMs,
                                     )
                                 )
+                            },
+                            aboveStripOverlay = {
+                                ViewOnceToast(message = viewOnceState.toast, modifier = Modifier.align(Alignment.BottomCenter))
                             },
                             pagerTopEndSlot = {
                                 Row(
@@ -414,7 +425,12 @@ fun ConversationMessagesPane(
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     state = textFieldState,
                                     onSendMessage = {
-                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
+                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments, viewOnce))
+                                    },
+                                    viewOnceToggle = remember(data.attachments, viewOnce, viewOnceState, viewOnceIsVideo, viewOnceEligible) {
+                                        viewOnceToggleFor(data.attachments, viewOnce) {
+                                            viewOnceState.toggle(viewOnceIsVideo, viewOnceEligible)
+                                        }
                                     },
                                     onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     onPasteImage = { imageBytes ->
@@ -427,9 +443,35 @@ fun ConversationMessagesPane(
                                 )
                             },
                         )
+                        if (viewOnceState.showIntro) {
+                            ViewOnceIntroSheet(isVideo = viewOnceIsVideo, onDismiss = viewOnceState::dismissIntro)
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun ScrollPositionTrigger(listState: LazyListState, position: ScrollPosition?, onConsumed: () -> Unit) {
+    // Snap while this composition applies, in the same measure as the window it came with: a frame later the
+    // replaced rows are mid animateItem fade-out, and a snap's item-animator reset leaves them drawn on screen.
+    DisposableEffect(position) {
+        if (position?.triggerScroll == true) {
+            if (position.animate) {
+                listState.requestJumpStart(position.firstVisibleItemIndex)
+            } else {
+                listState.requestScrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+            }
+        }
+        onDispose { }
+    }
+    LaunchedEffect(position) {
+        if (position?.triggerScroll != true) return@LaunchedEffect
+        if (position.animate) {
+            listState.animateScrollToItem(position.firstVisibleItemIndex, position.firstVisibleItemScrollOffset)
+        }
+        onConsumed()
     }
 }

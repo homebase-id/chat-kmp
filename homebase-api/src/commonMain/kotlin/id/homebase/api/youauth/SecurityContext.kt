@@ -1,7 +1,6 @@
 package id.homebase.api.youauth
 
 import id.homebase.api.util.compareStringUuId
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -15,9 +14,6 @@ data class SecurityContext(val caller: CallerContext, val permissionContext: Per
 data class CallerContext(
     val odinId: String? = null,
     val securityLevel: String,
-    /** Whether the caller has been granted the connected identities system circle. */
-    @SerialName("isGrantedConnectedIdentitiesSystemCircle")
-    val isGrantedConnectedIdentitiesSystemCircle: Boolean = false
 )
 
 /** Container for permission groups granted to the caller. */
@@ -68,7 +64,3 @@ data class DriveReference(val alias: String, val type: String)
 /** A set of permission keys granted. */
 @Serializable
 data class PermissionSet(val keys: List<Int> = emptyList())
-
-// Circle IDs used for connected identities
-const val AUTO_CONNECTIONS_CIRCLE_ID = "auto_connections"
-const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "confirmed_connections"

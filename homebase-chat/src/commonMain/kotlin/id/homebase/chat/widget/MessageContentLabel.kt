@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
@@ -22,6 +23,9 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.viewonce.kindLabel
+import id.homebase.chat.viewonce.ViewOnceIcon
+import id.homebase.chat.viewonce.ViewOnceOpenedIcon
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
@@ -59,8 +63,10 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.Event -> ContentLabel(messageContent.displayLabel, Icons.Default.Event)
     is MessageContent.DiceRoll -> ContentLabel(messageContent.displayLabel, Icons.Default.Casino)
     is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
+    is MessageContent.CallEvent -> ContentLabel(messageContent.displayLabel, Icons.Default.Call)
     is MessageContent.ContactCard -> ContentLabel(messageContent.displayLabel, Icons.Outlined.ContactPage)
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
+    is MessageContent.ViewOnce -> null
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }
@@ -80,7 +86,14 @@ fun messageContentLabel(
     firstPayload: PayloadDescriptor?,
     hasMultiplePayloads: Boolean,
     messageContent: MessageContent? = null,
+    // Null reads the opened variant off a missing payload: a received view-once copy loses its media once spent.
+    viewOnceOpened: Boolean? = null,
 ): ContentLabel? {
+    // Before the deleted check: a spent view-once item keeps its view-once label instead of reading as deleted; "Media" only when this device never stored the live row.
+    if (messageContent is MessageContent.ViewOnce) {
+        val word = stringResource(messageContent.descriptor.kindLabel())
+        return ContentLabel(word, if (viewOnceOpened ?: (firstPayload == null)) ViewOnceOpenedIcon else ViewOnceIcon)
+    }
     if (isDeleted) {
         return ContentLabel(
             text = stringResource(MR.string.chat_message_deleted),

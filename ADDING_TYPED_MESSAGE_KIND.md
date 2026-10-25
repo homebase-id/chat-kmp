@@ -1,7 +1,7 @@
 # Adding a New Typed Message Kind
 
 This guide shows how to add a new "typed message kind" — a self-contained chat
-message whose full descriptor rides on the message header (no payloads), with
+message whose full descriptor rides on the message header (usually no payloads), with
 its own bubble UI and composer. Examples in tree:
 
 - **Event** (`dataType = 210`) — `homebase-chat/src/commonMain/kotlin/id/homebase/chat/event/`
@@ -17,8 +17,9 @@ For brevity this guide uses a hypothetical **Poll** kind throughout. Substitute
 A chat message whose `appData.content` is a kind-specific descriptor JSON
 (parsed by `MessageContentParser`) and `appData.dataType` is a reserved integer
 that the receiver dispatches off. Receivers render a custom bubble for the
-kind. No payloads — the descriptor must fit in `appData.content` (capped by
-`ChatProtocol.MaxHeaderContentBytes = 7000` bytes).
+kind. The descriptor must fit in `appData.content` (capped by
+`ChatProtocol.MaxHeaderContentBytes = 7000` bytes). Most kinds carry no payload;
+see "Payload-bearing typed kinds" below for the two that do.
 
 ### When to use a typed kind vs. payload-attached vs. an add-on app
 
@@ -126,7 +127,7 @@ the long-press menu shows. The dispatcher reads it once
 hard-coded `if (is X)` checks anywhere in the menu code, so this is the
 single point where you decide what users can do with your message.
 
-The six flags:
+The seven flags:
 
 | Flag | Controls |
 |---|---|
@@ -135,13 +136,14 @@ The six flags:
 | `allowForward` | "Forward to…" entry — opens the recipient picker |
 | `allowShare` | "Share" / copy text |
 | `allowInlineReactions` | Emoji quick-strip on long-press + "Add reaction" hover icon |
+| `allowCopy` | "Copy" entry — copies the message text |
 | `allowReactionDetails` | "Show all reactions" — per-emoji reactor breakdown sheet |
 
 Two presets in the `MessageContent` companion:
 
-- **`Standard`** — all six true. Used by plain text + media messages (the
+- **`Standard`** — all seven true. Used by plain text + media messages (the
   `messageContent == null` fall-through in `MessageItem.kt:49`).
-- **`StructuredOneShot`** — all six false. The default for typed kinds.
+- **`StructuredOneShot`** — turns off six flags and leaves `allowCopy` at its default of true, so Copy still shows. The default for typed kinds.
 
 ### How to override
 
@@ -306,7 +308,8 @@ sender.sendNewTypedMessage(
 )
 ```
 
-`sendNewTypedMessage` always passes `payloadBundle = null` and derives the
+`sendNewTypedMessage` passes `payloadBundle = null` unless you supply one (see
+"Payload-bearing typed kinds") and derives the
 header `dataType` from `MessageContentParser.dataTypeFor(content)`. You don't
 plumb either through manually.
 
@@ -493,9 +496,9 @@ Make `summaryLine()` (or whatever you named it) good and you're done.
 - **The 7000-byte header limit.** `ChatProtocol.MaxHeaderContentBytes`. If
   your descriptor could exceed it (e.g. embedded base64 image data), you
   need a payload-based design, not a typed kind.
-- **No payloads on a typed message.** `sendNewTypedMessage` always passes
-  `payloadBundle = null`. Combining typed content with attachments is not
-  supported — if you need both, build it as a text + media message.
+- **Payloads on a typed message are the exception.** `sendNewTypedMessage`
+  takes an optional `payloadBundle`, but a payload is a fetch and a cache
+  entry. Use it only as described in "Payload-bearing typed kinds".
 - **Don't override `actions = ActionPolicy.Standard` casually.** Polls and
   dice rolls shouldn't be edited or forwarded. The default
   `StructuredOneShot` is the right answer for almost every typed kind.
@@ -503,3 +506,27 @@ Make `summaryLine()` (or whatever you named it) good and you're done.
   source of truth — link to it from code comments, don't restate it. The
   old kdoc at `MessageContent.kt:13-19` rotted because the recipe grew and
   the comment didn't keep up; that's why this file exists.
+
+## Payload-bearing typed kinds
+
+`sendNewTypedMessage(..., payloadBundle = bundle)` lets a typed kind carry media.
+Two kinds do:
+
+- **Event cover photo** (`event/EventComposerSheet.kt`): an optional image under
+  `chat_web0`, rendered above the card.
+- **ViewOnce** (`dataType = 216`, `viewonce/`): exactly one photo or video under
+  `chat_web0`, which only the viewer may ever load.
+
+For a kind whose media must stay private, as ViewOnce's does:
+
+- Build the bundle with `MessageAttachmentBuilder.buildSingle(..., payloadKey =
+  PAYLOAD_KEY_MESSAGE_WEB + "0")`, then `withoutThumbnails()`. `ChatMessageSenderService`
+  also sets `seedCache = false` and `omitThumbnails = true` for 216, which covers the
+  thumbnails the video processor generates during encryption.
+- Keep the header `previewThumbnail` null.
+- Dispatch the bubble before any media code in `MessageBubbleRaw`, and give
+  it a custom `ActionPolicy`: reply and inline reactions on; `allowCopy = false`, forward and
+  share off, so the payload leaves only through the viewer.
+- Make `collectConversationOverview` skip the kind, and refuse it in
+  `forwardMessage`.
+- Leave `ChatMediaAutoSaveRules` alone: it already rejects any `dataType != 0`.

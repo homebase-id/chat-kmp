@@ -71,6 +71,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
@@ -345,7 +346,8 @@ fun ConversationItem(
                         prefixColor = if (draftPreview != null) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         iconRes = if (draftPreview != null) null else iconRes,
-                        isDeleted = draftPreview == null && enrichedData.conversation.lastMessageIsDeleted,
+                        isDeleted = draftPreview == null && enrichedData.conversation.lastMessageIsDeleted &&
+                            enrichedData.conversation.lastMessageContent !is MessageContent.ViewOnce,
                         modifier = Modifier.weight(1f)
                     )
 

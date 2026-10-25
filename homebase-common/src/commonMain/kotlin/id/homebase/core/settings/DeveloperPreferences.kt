@@ -17,24 +17,6 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
 
     private val keyValue get() = databaseManager.keyValue
 
-    /**
-     * Whether the owner can act on a connection review — the Review button, the contact-detail
-     * prompt, and "Mark as new".
-     *
-     * Off by default. The states themselves (New / Chat / Circle, and the marks on circle chips)
-     * are not gated: they report what the server already says, and a contact only acquires a
-     * pending or waiting circle once someone has used the review anyway.
-     */
-    private val _connectionReviewEnabled =
-        MutableStateFlow(readBoolean(CONNECTION_REVIEW_KEY, default = false))
-    val connectionReviewEnabled: StateFlow<Boolean> = _connectionReviewEnabled.asStateFlow()
-
-    suspend fun setConnectionReviewEnabled(value: Boolean) {
-        if (_connectionReviewEnabled.value == value) return
-        keyValue.upsertValue(CONNECTION_REVIEW_KEY, encode(value))
-        _connectionReviewEnabled.value = value
-    }
-
     private val _profileCardEnabled = MutableStateFlow(readBoolean(PROFILE_CARD_KEY, default = false))
     val profileCardEnabled: StateFlow<Boolean> = _profileCardEnabled.asStateFlow()
 
@@ -45,7 +27,6 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
     }
 
     fun reload() {
-        _connectionReviewEnabled.value = readBoolean(CONNECTION_REVIEW_KEY, default = false)
         _profileCardEnabled.value = readBoolean(PROFILE_CARD_KEY, default = false)
     }
 
@@ -61,10 +42,8 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 
     companion object {
-        // 0a08xx — developer flags. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx,
-        // 0a04xx and 0a07xx are taken; 0a08 is the next free namespace.
-        val CONNECTION_REVIEW_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0801")
-        // DiceRollPreferences also writes 0a0801-0a0803, so newer flags go in 0a09xx.
+        // 0a09xx — developer flags. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx,
+        // 0a04xx and 0a07xx are taken, and DiceRollPreferences writes 0a0801-0a0803.
         val PROFILE_CARD_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0901")
     }
 }

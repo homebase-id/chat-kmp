@@ -14,7 +14,10 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.onDownload
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.plugins.HttpTimeoutConfig
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.header
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -22,17 +25,27 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.contentLength
+import io.ktor.utils.io.availableForRead
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.io.IOException
 
-private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024): Flow<ByteArray> = flow {
+// The web engine has no socket timeout, and a download has no request timeout: only this ends a stalled body.
+// Timed on Dispatchers.Default so it counts real time, not the caller's (a test's virtual time skips ahead).
+private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = 5 * 60_000L): Flow<ByteArray> = flow {
     val buffer = ByteArray(chunkSize)
 
     while (!isClosedForRead) {
+        if (availableForRead == 0 && withContext(Dispatchers.Default) { withTimeoutOrNull(stallMillis) { awaitContent() } } == null) {
+            throw IOException("no data for $stallMillis ms")
+        }
         val read = readAvailable(buffer)
         if (read > 0) emit(buffer.copyOf(read))
     }
@@ -46,6 +59,9 @@ public class DriveFileHttpProvider(
 
     companion object {
         private const val TAG = "DriveFileHttpProvider"
+
+        // odin-core's FileVersionTagBatchV2.MaxFiles.
+        const val FILE_BATCH = 1000
     }
 
     // ==================== GET METHODS ====================
@@ -71,52 +87,56 @@ public class DriveFileHttpProvider(
                 "/drives/$driveId/files/$fileId/payload/$key"
             )
 
-        val response =
-            httpClient.get(url) {
-                bearerAuth(creds.accessToken)
+        // Streamed, not buffered: get() would read the whole body into memory, and a large file outlasts any request timeout.
+        return httpClient.prepareGet(url) {
+            bearerAuth(creds.accessToken)
+            timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
+        }.execute { response ->
+            if (response.status.value == 404) {
+                Logger.w(tag = TAG) { "streamPayloadDecryptedToPath 404 file=$fileId key=$key" }
+                return@execute false
             }
 
-        if (response.status.value == 404) return false
-
-        if (response.status.value !in listOf(200, 206)) {
-            throwForFailure(
-                ByteApiResponse(
-                    status = response.status.value,
-                    headers = response.headers,
-                    bytes = ByteArray(0),
-                    contentType = "application/octet-stream"
+            if (response.status.value !in listOf(200, 206)) {
+                throwForFailure(
+                    ByteApiResponse(
+                        status = response.status.value,
+                        headers = response.headers,
+                        bytes = ByteArray(0),
+                        contentType = "application/octet-stream"
+                    )
                 )
-            )
-        }
+            }
 
-        // Progress from a bytes-read counter over Content-Length (when present) —
-        // needed by the rerouted MP4 render path (#845), which showed real download
-        // progress back when it buffered the whole payload.
-        val totalBytes = response.contentLength()
-        var readSoFar = 0L
-        val encryptedFlow =
-            response.bodyAsChannel().asFlow().let { upstream ->
-                if (onProgress == null || totalBytes == null || totalBytes <= 0L) upstream
-                else flow {
-                    upstream.collect { chunk ->
-                        readSoFar += chunk.size
-                        onProgress((readSoFar.toFloat() / totalBytes.toFloat()).coerceAtMost(1f))
-                        emit(chunk)
+            // Progress from a bytes-read counter over Content-Length (when present) —
+            // needed by the rerouted MP4 render path (#845), which showed real download
+            // progress back when it buffered the whole payload.
+            val totalBytes = response.contentLength()
+            var readSoFar = 0L
+            val encryptedFlow =
+                response.bodyAsChannel().asFlow().let { upstream ->
+                    if (onProgress == null || totalBytes == null || totalBytes <= 0L) upstream
+                    else flow {
+                        upstream.collect { chunk ->
+                            readSoFar += chunk.size
+                            onProgress((readSoFar.toFloat() / totalBytes.toFloat()).coerceAtMost(1f))
+                            emit(chunk)
+                        }
                     }
                 }
-            }
 
-        val decryptedFlow =
-            AesCbc.streamDecryptWithCbc(
-                encryptedFlow,
-                keyHeader.aesKey,
-                keyHeader.iv
-            )
+            val decryptedFlow =
+                AesCbc.streamDecryptWithCbc(
+                    encryptedFlow,
+                    keyHeader.aesKey,
+                    keyHeader.iv
+                )
 
-        fileOps.writeStream(outputPath, decryptedFlow)
-        onProgress?.invoke(1f)
+            fileOps.writeStream(outputPath, decryptedFlow)
+            onProgress?.invoke(1f)
 
-        return true
+            true
+        }
     }
 
     // This ought to be private / protected and only used by driveCache but probably rewire it all
@@ -356,6 +376,36 @@ public class DriveFileHttpProvider(
 
         return deserialize<DeleteFileIdBatchResult>(response.body)
 
+    }
+
+    /** Deletes [files] for good, payloads and all, leaving no tombstone: each only at its versionTag. */
+    suspend fun hardDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): PerFileBatchResult =
+        perFileBatch(driveId, "hard-delete-batch", FileVersionTagBatch(files))
+
+    /** Deletes [files], leaving tombstones: each only at its versionTag. */
+    suspend fun softDeleteFiles(driveId: Uuid, files: List<FileVersionTag>): PerFileBatchResult =
+        perFileBatch(driveId, "soft-delete-batch", FileVersionTagBatch(files))
+
+    /** Sets only the archivalStatus of [files], each only at its versionTag, leaving the rest of each header as it is. */
+    suspend fun updateArchivalStatus(driveId: Uuid, status: ArchivalStatus, files: List<FileVersionTag>): PerFileBatchResult =
+        perFileBatch(driveId, "update-archival-status-batch", FileVersionTagBatch(files, status))
+
+    /** One answer per file, in order; one file's answer never stops the others. At most [FILE_BATCH] per call. */
+    private suspend fun perFileBatch(driveId: Uuid, endpoint: String, request: FileVersionTagBatch): PerFileBatchResult {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        require(request.files.size in 1..FILE_BATCH) { "1 to $FILE_BATCH files, not ${request.files.size}" }
+        val creds = requireCreds()
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, "/drives/$driveId/files/$endpoint"),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(request),
+            secret = creds.secret
+        )
+
+        throwForFailure(response)
+
+        return deserialize<PerFileBatchResult>(response.body)
     }
 
     /** Deletes files from the drive by group IDs. */

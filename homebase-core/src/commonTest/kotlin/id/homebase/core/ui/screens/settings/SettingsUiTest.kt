@@ -17,6 +17,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.core.settings.ThemeState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -33,6 +34,7 @@ class SettingsUiTest {
             onMedia = { fired += "media" },
             onKeyboard = { fired += "keyboard" },
             onStorage = { fired += "storage" },
+            onAccount = { fired += "account" },
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },
             onVaultSettings = { fired += "vault" },
@@ -80,6 +82,12 @@ class SettingsUiTest {
         assertEquals(listOf("back"), routes.fired)
     }
 
+    /** Account sits right below General in the wide layout's sidebar, as it does near the top of the hub. */
+    @Test
+    fun accountComesRightAfterGeneralInTheSidebar() {
+        assertEquals(listOf(SettingsCategory.General, SettingsCategory.Account), SettingsCategory.entries.take(2))
+    }
+
     /** Walks the hub top to bottom. */
     @Test
     fun everyNavigationRowReachesItsOwnRoute() = runComposeUiTest {
@@ -87,7 +95,7 @@ class SettingsUiTest {
         settings(routes = routes)
 
         val expected = listOf(
-            "profileCardButton" to "profileCard",
+            "accountButton" to "account",
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",
@@ -107,10 +115,18 @@ class SettingsUiTest {
     }
 
     @Test
-    fun profileCardRowIsHiddenWhileTheCardIsDarkLaunched() = runComposeUiTest {
-        settings(actions = Routes().actions().copy(onProfileCard = null))
-        onNodeWithTag("securitySetupButton").assertExists()
-        onNodeWithTag("profileCardButton").assertDoesNotExist()
+    fun headerOpensTheCardsScreenWhenCardsAreEnabled() = runComposeUiTest {
+        val routes = Routes()
+        var edited = false
+        settings(routes = routes, onAction = { if (it is SettingsUiAction.ProfileInfoClicked) edited = true })
+        onNodeWithTag("profileHeader").assert(
+            SemanticsMatcher("click label is Your cards") {
+                it.config.getOrNull(SemanticsActions.OnClick)?.label == "Your cards"
+            },
+        )
+        tapRow("profileHeader")
+        assertEquals(listOf("profileCard"), routes.fired)
+        assertTrue(!edited)
     }
 
     @Test
@@ -130,9 +146,12 @@ class SettingsUiTest {
     }
 
     @Test
-    fun profileHeaderOpensProfileEdit() = runComposeUiTest {
+    fun headerFallsBackToProfileEditWhileTheCardIsDarkLaunched() = runComposeUiTest {
         var fired = false
-        settings(onAction = { if (it is SettingsUiAction.ProfileInfoClicked) fired = true })
+        settings(
+            actions = Routes().actions().copy(onProfileCard = null),
+            onAction = { if (it is SettingsUiAction.ProfileInfoClicked) fired = true },
+        )
         tapRow("profileHeader")
         assertTrue(fired)
     }
@@ -142,22 +161,6 @@ class SettingsUiTest {
         var fired = false
         settings(onAction = { if (it is SettingsUiAction.AvatarClicked) fired = true })
         tapRow("avatarEditButton")
-        assertTrue(fired)
-    }
-
-    @Test
-    fun logoutFiresAction() = runComposeUiTest {
-        var fired = false
-        settings(onAction = { if (it is SettingsUiAction.LogoutClicked) fired = true })
-        tapRow("logoutButton")
-        assertTrue(fired)
-    }
-
-    @Test
-    fun deleteAccountFiresAction() = runComposeUiTest {
-        var fired = false
-        settings(onAction = { if (it is SettingsUiAction.DeleteAccount) fired = true })
-        tapRow("deleteAccountButton")
         assertTrue(fired)
     }
 
@@ -181,19 +184,16 @@ class SettingsUiTest {
         onNodeWithText("Theme: Dark").assertExists()
     }
 
-    /**
-     * Delete opens an in-app dialog, so it must not carry the external affordance or its
-     * "Open externally" click label — Security setup one section up genuinely does leave.
-     */
+    /** Log out and delete account moved to Settings > Account (AccountSettingsUiTest). */
     @Test
-    fun deleteAccountDoesNotClaimToLeaveTheApp() = runComposeUiTest {
+    fun theHubHasNoLogoutOrDeleteAccount() = runComposeUiTest {
         settings()
-        onNodeWithTag("settingsList").performScrollToNode(hasTestTag("deleteAccountButton"))
-        onNodeWithTag("deleteAccountButton").assert(
-            SemanticsMatcher("has no click label") { node ->
-                node.config.getOrNull(SemanticsActions.OnClick)?.label == null
+        // Scrolling the whole list for each, since a lazy row off screen would not exist yet either
+        listOf("logoutButton", "deleteAccountButton").forEach { tag ->
+            assertFailsWith<AssertionError>(tag) {
+                onNodeWithTag("settingsList").performScrollToNode(hasTestTag(tag))
             }
-        )
+        }
     }
 
     @Test

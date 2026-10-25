@@ -49,8 +49,8 @@ import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.ReceivedMessageBubbleDisplayOnly
 import id.homebase.chat.widget.SentMessageBubbleDisplayOnly
 import id.homebase.chat.widget.deliveryFailureTint
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.util.formateDateTime
 import id.homebase.core.widget.SettingsSectionHeader
@@ -73,6 +73,7 @@ import id.homebase.resources.msg_outbox_checked_out_stuck
 import id.homebase.resources.msg_outbox_entry_lingering
 import id.homebase.resources.msg_send_attempt
 import id.homebase.resources.msg_stuck_reason
+import id.homebase.resources.msg_storage_full
 import id.homebase.resources.msg_waiting_for_connection
 import id.homebase.resources.msg_waiting_on_earlier_message
 import id.homebase.resources.msg_status_delivery_details_unavailable
@@ -342,7 +343,8 @@ fun MessageInfoUi(
                                 }
                                 uiState.stuckReason?.let { reason ->
                                     Text(
-                                        text = stringResource(MR.string.msg_stuck_reason, reason),
+                                        text = if (uiState.storageFull) stringResource(MR.string.msg_storage_full)
+                                        else stringResource(MR.string.msg_stuck_reason, reason),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(top = 2.dp),
@@ -416,7 +418,8 @@ fun MessageInfoUi(
                             }
                             uiState.stuckReason?.let { reason ->
                                 Text(
-                                    text = stringResource(MR.string.msg_stuck_reason, reason),
+                                    text = if (uiState.storageFull) stringResource(MR.string.msg_storage_full)
+                                    else stringResource(MR.string.msg_stuck_reason, reason),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(top = 2.dp),
@@ -637,9 +640,9 @@ private fun RecipientRow(recipient: RecipientStatusUiModel, modifier: Modifier =
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            initials = recipient.displayName.firstOrNull()?.toString(),
+            displayName = recipient.displayName,
             options = AvatarOptions(size = 40.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
@@ -671,9 +674,9 @@ private fun ReactionRow(reaction: ReactionUiModel, modifier: Modifier = Modifier
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = odinId,
-            initials = reaction.displayName.firstOrNull()?.toString(),
+            displayName = reaction.displayName,
             options = AvatarOptions(size = 40.dp),
         )
         Text(

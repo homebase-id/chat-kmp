@@ -215,6 +215,11 @@ class HomebaseImageLoader(
         fullPayloadCache.clear()
     }
 
+    suspend fun evictFile(driveId: Uuid, fileId: Uuid) {
+        val marker = "$driveId/$fileId/"
+        fullPayloadCache.evictMatching { marker in it }
+    }
+
     /**
      * Non-suspending best-effort clear for call sites that aren't coroutines
      * (e.g. the logout hook). Schedules the clear on [cacheScope] so decrypted

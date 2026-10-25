@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.sp
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_actions
 import id.homebase.resources.chat_contact_card_more
@@ -286,9 +286,9 @@ internal fun ContactCardAvatar(
     }
     if (identity != null) {
         Box(modifier = Modifier.clearAndSetSemantics {}) {
-            PublicAvatar(
+            IdentityAvatar(
                 odinId = identity,
-                initials = initials.ifBlank { null },
+                displayName = descriptor.avatarName(),
                 // Without this the shared fallback derives sp from the already-scaled diameter and
                 // scales it a second time, overflowing the circle at 2x.
                 options = AvatarOptions(

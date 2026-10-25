@@ -48,7 +48,7 @@ class PeerDriveUploadProvider(
         val remoteTargetDrive = requireNotNull(transit?.remoteTargetDrive) {
             "uploadFileOverPeer requires transitOptions.remoteTargetDrive"
         }
-        val recipients = transit?.recipients
+        val recipients = transit.recipients
         require(!recipients.isNullOrEmpty()) {
             "uploadFileOverPeer requires at least one recipient (the drive owner)"
         }

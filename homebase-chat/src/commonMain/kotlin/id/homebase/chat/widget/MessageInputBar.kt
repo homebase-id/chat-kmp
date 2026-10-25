@@ -54,9 +54,19 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.runtime.Immutable
+import id.homebase.chat.viewonce.ViewOnceIcon
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.ripple
+import androidx.compose.ui.semantics.Role
+import id.homebase.resources.cd_view_once_toggle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -65,6 +75,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -159,6 +170,7 @@ import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.slide_to_cancel
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -228,49 +240,50 @@ fun MessageInputBar(
     // URL-detector private state. Lives here (not in the parent) because it's an
     // implementation detail of how LinkPreviewRenderer gets produced from typed text:
     //  - cancelledUrls: URLs the user explicitly dismissed; don't auto-refetch.
-    //  - lastFetchedUrl: debounce memory; don't spam refetch on every keystroke.
     val linkPreviewProvider: LinkPreviewProvider = koinInject()
     var cancelledUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var lastFetchedUrl by remember { mutableStateOf<String?>(null) }
+    var loadingLinkUrl by remember { mutableStateOf<String?>(null) }
+    val currentPayloadRenderers by rememberUpdatedState(payloadRenderers)
+    val currentOnPayloadRenderersChange by rememberUpdatedState(onPayloadRenderersChange)
+    val detectedUrl by remember(textFieldState) {
+        derivedStateOf { URL_REGEX.find(textFieldState.annotatedString.text)?.value }
+    }
 
-    LaunchedEffect(textFieldState.annotatedString.text) {
-        val text = textFieldState.annotatedString.text
-        val match = URL_REGEX.find(text)
+    // Keyed on the URL, not the text: typing around the link must not cancel an in-flight fetch.
+    LaunchedEffect(detectedUrl) {
+        val url = detectedUrl
+        val withoutLink = { currentPayloadRenderers.filterNot { it is LinkPreviewRenderer } }
 
-        if (match != null) {
-            val url = match.value
-
-            // If the user modifies the URL, immediately hide the old preview while we
-            // wait to fetch the new one.
-            val existingLink = payloadRenderers.firstOrNull { it is LinkPreviewRenderer } as? LinkPreviewRenderer
-            if (existingLink != null && existingLink.preview.url != url) {
-                onPayloadRenderersChange(payloadRenderers.filterNot { it is LinkPreviewRenderer })
-            }
-
-            if (url !in cancelledUrls && url != lastFetchedUrl) {
-                delay(250)
-                lastFetchedUrl = url
-                try {
-                    val preview = linkPreviewProvider.getLinkPreview(url)
-                    // Ensure the URL wasn't cancelled during the network request delay.
-                    if (preview != null && url !in cancelledUrls) {
-                        onPayloadRenderersChange(
-                            payloadRenderers.filterNot { it is LinkPreviewRenderer } +
-                                LinkPreviewRenderer(preview)
-                        )
-                    }
-                } catch (_: Exception) {
-                    // Ignore API errors, but because it's in lastFetchedUrl, we
-                    // won't spam retry it on every keystroke.
-                }
-            }
-        } else {
-            // URL was completely removed, so clean up preview and reset memory.
-            if (payloadRenderers.any { it is LinkPreviewRenderer }) {
-                onPayloadRenderersChange(payloadRenderers.filterNot { it is LinkPreviewRenderer })
+        if (url == null) {
+            if (currentPayloadRenderers.any { it is LinkPreviewRenderer }) {
+                currentOnPayloadRenderersChange(withoutLink())
             }
             cancelledUrls = emptySet()
             lastFetchedUrl = null
+            return@LaunchedEffect
+        }
+
+        val existingLink = currentPayloadRenderers.filterIsInstance<LinkPreviewRenderer>().firstOrNull()
+        if (existingLink != null && existingLink.preview.url != url) {
+            currentOnPayloadRenderersChange(withoutLink())
+        }
+        if (url in cancelledUrls || url == lastFetchedUrl) return@LaunchedEffect
+
+        delay(250)
+        loadingLinkUrl = url
+        try {
+            val preview = linkPreviewProvider.getLinkPreview(url)
+            if (preview != null && url !in cancelledUrls) {
+                lastFetchedUrl = url
+                currentOnPayloadRenderersChange(withoutLink() + LinkPreviewRenderer(preview))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Link preview fetch failed" }
+        } finally {
+            if (loadingLinkUrl == url) loadingLinkUrl = null
         }
     }
 
@@ -285,6 +298,12 @@ fun MessageInputBar(
             cancelledUrls = cancelledUrls + att.preview.url
         }
         onPayloadRenderersChange(payloadRenderers.filterNot { it.id == id })
+    }
+
+    fun cancelLoadingLink() {
+        val url = loadingLinkUrl ?: return
+        cancelledUrls = cancelledUrls + url
+        loadingLinkUrl = null
     }
 
     fun sendMessage() {
@@ -317,6 +336,8 @@ fun MessageInputBar(
                 mentionTargets = mentionTargets,
                 payloadRenderers = payloadRenderers,
                 onCancelAttachment = ::cancelRenderer,
+                loadingLinkUrl = loadingLinkUrl,
+                onCancelLoadingLink = ::cancelLoadingLink,
                 editExistingMode = editExistingMode,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -345,6 +366,8 @@ fun MessageInputBar(
                 payloadRenderers = payloadRenderers,
                 recordingData = recordingData,
                 onCancelAttachment = ::cancelRenderer,
+                loadingLinkUrl = loadingLinkUrl,
+                onCancelLoadingLink = ::cancelLoadingLink,
                 showingEmojiSheet = showingEmojiSheet,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -381,6 +404,8 @@ fun MessageTextFieldExpanded(
     editExistingMode: Boolean,
     payloadRenderers: List<PayloadRenderer>,
     onCancelAttachment: (id: String) -> Unit,
+    loadingLinkUrl: String? = null,
+    onCancelLoadingLink: () -> Unit = {},
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
@@ -431,6 +456,9 @@ fun MessageTextFieldExpanded(
                 attachment = att,
                 onCancel = { onCancelAttachment(att.id) },
             )
+        }
+        if (loadingLinkUrl != null) {
+            LoadingLinkPreviewRow(url = loadingLinkUrl, onCancel = onCancelLoadingLink)
         }
         val pasteModifier = if (onPasteImage != null) {
             clipboardImageReceiverModifier { bytes -> onPasteImage.invoke(bytes) }
@@ -562,6 +590,8 @@ fun MessageTextFieldCompact(
     payloadRenderers: List<PayloadRenderer>,
     recordingData: RecordingData?,
     onCancelAttachment: (id: String) -> Unit,
+    loadingLinkUrl: String? = null,
+    onCancelLoadingLink: () -> Unit = {},
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
@@ -704,6 +734,9 @@ fun MessageTextFieldCompact(
                         attachment = att,
                         onCancel = { onCancelAttachment(att.id) },
                     )
+                }
+                if (loadingLinkUrl != null) {
+                    LoadingLinkPreviewRow(url = loadingLinkUrl, onCancel = onCancelLoadingLink)
                 }
             }
         }
@@ -1211,7 +1244,62 @@ private fun EmojiToggleButton(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+const val VIEW_ONCE_TOGGLE_TAG = "viewOnceToggle"
+private val VIEW_ONCE_TOGGLE_TARGET = 48.dp
+
+// Outlined circle off, filled squircle on: shape, fill and outline travel together on the motion scheme, as one control.
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ViewOnceCaptionToggle(toggle: ViewOnceToggle) {
+    val toggleSize = IconButtonDefaults.extraSmallContainerSize()
+    val colors = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val corner by animateDpAsState(
+        when {
+            pressed -> 8.dp
+            toggle.checked -> 12.dp
+            else -> toggleSize.height / 2
+        },
+        motion.fastSpatialSpec(),
+    )
+    val container by animateColorAsState(if (toggle.checked) colors.primary else colors.primary.copy(alpha = 0f), motion.defaultEffectsSpec())
+    val outline by animateColorAsState(if (toggle.checked) colors.primary.copy(alpha = 0f) else colors.outline, motion.defaultEffectsSpec())
+    val glyph by animateColorAsState(if (toggle.checked) colors.onPrimary else colors.onSurfaceVariant, motion.defaultEffectsSpec())
+    val shape = RoundedCornerShape(corner)
+    Box(
+        // minimumInteractiveComponentSize measured 32dp in the editor's trailing slot, so the target is sized explicitly.
+        modifier = Modifier
+            .size(VIEW_ONCE_TOGGLE_TARGET)
+            .testTag(VIEW_ONCE_TOGGLE_TAG)
+            .toggleable(
+                value = toggle.checked,
+                interactionSource = interaction,
+                indication = ripple(bounded = false, radius = toggleSize.height / 2),
+                role = Role.Switch,
+                onValueChange = { toggle.onToggle() },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(toggleSize).background(container, shape).border(1.dp, outline, shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = ViewOnceIcon,
+                contentDescription = stringResource(MR.string.cd_view_once_toggle),
+                tint = glyph,
+                modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+            )
+        }
+    }
+}
+
+@Immutable
+class ViewOnceToggle(val checked: Boolean, val onToggle: () -> Unit)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
@@ -1225,6 +1313,8 @@ fun MessageTextFieldForAttachment(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
     clipboardImage: () -> ByteArray? = ::getImageFromClipboard,
+    // Non-null puts the view-once toggle inside the caption field; null when the attachment can't be view once.
+    viewOnceToggle: ViewOnceToggle? = null,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
@@ -1306,6 +1396,7 @@ fun MessageTextFieldForAttachment(
                     placeholder = {
                         Text(stringResource(MR.string.chat_new_message_placeholder))
                     },
+                    trailingIcon = viewOnceToggle?.let { toggle -> { ViewOnceCaptionToggle(toggle) } },
                     leadingIcon = {
                         IconButton(
                             onClick = {
@@ -1384,7 +1475,6 @@ fun MessageTextFieldForAttachment(
                 }
             }
         }
-
         // Emoji only, no sticker/GIF tabs: a caption is text, and a sticker isn't.
         if (emojiPanel.isPanelComposed) {
             EmojiSelection(

@@ -35,9 +35,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.PublicAvatar
-import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.feed_following_back
 import id.homebase.resources.feed_following_empty_followers
@@ -167,7 +166,6 @@ private fun IdentityRow(
     // OdinId(...) recomputes a SHA-256 hash on construction, so keep it behind
     // remember keyed on the domain string rather than rebuilding every recompose.
     val odin = remember(odinId) { OdinId(odinId) }
-    val rowInitials = remember(displayName) { displayName.initials() }
 
     Row(
         modifier = Modifier
@@ -176,9 +174,9 @@ private fun IdentityRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PublicAvatar(
+        IdentityAvatar(
             odinId = odin,
-            initials = rowInitials,
+            displayName = displayName,
             options = AvatarOptions(size = 44.dp, onClick = onRowClick),
         )
         Column(modifier = Modifier.weight(1f)) {

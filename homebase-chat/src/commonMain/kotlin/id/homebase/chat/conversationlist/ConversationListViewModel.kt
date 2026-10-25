@@ -26,6 +26,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.viewonce.ViewOnceActions
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
@@ -152,6 +153,7 @@ class ConversationListViewModel(
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
+    private val viewOnceActions: ViewOnceActions,
     private val conversationService: ConversationService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
@@ -181,6 +183,8 @@ class ConversationListViewModel(
     private val locationService: id.homebase.core.location.LocationService,
     // Nullable so tests can build the VM without the sync engine.
     private val driveSyncManager: id.homebase.api.sync.DriveSyncManager? = null,
+    private val optionalDriveActivation: id.homebase.core.sync.OptionalDriveActivation? = null,
+    private val vaultFileSaver: id.homebase.core.vault.VaultFileSaver? = null,
 ) : ViewModel() {
 
     companion object {
@@ -252,8 +256,10 @@ class ConversationListViewModel(
         driveFileProvider = driveFileProvider,
         fileOperationsProvider = fileOperationsProvider,
         chatMessageActionService = chatMessageActionService,
+        viewOnceActions = viewOnceActions,
         chatMessageStream = chatMessageStream,
         localVideoContextStore = localVideoContextStore,
+        vaultFileSaver = vaultFileSaver,
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
     )
@@ -487,6 +493,13 @@ class ConversationListViewModel(
         get() = stickerPermissionViewModel
 
     init {
+        optionalDriveActivation?.let { activation ->
+            viewModelScope.launch {
+                activation.isActivatedFlow(id.homebase.core.config.vaultLabeledDrive)
+                    .collect { active -> _uiState.update { it.copy(vaultActive = active) } }
+            }
+        }
+
         // The process-global mirror the notification, live-location and draft collectors read is
         // a projection of the selection, never a second write, so the two cannot diverge.
         viewModelScope.launch {
@@ -1394,6 +1407,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ShareMedia -> mediaDownloadHandler.handleShareMedia(action)
 
+            is ConversationListUiAction.SaveMediaToVault -> mediaDownloadHandler.handleSaveMediaToVault(action)
+
             is ConversationListUiAction.ShareMessage -> mediaDownloadHandler.handleShareMessage(action)
 
             is ConversationListUiAction.DownloadMedia -> mediaDownloadHandler.handleDownloadMedia(action)
@@ -1486,6 +1501,11 @@ class ConversationListViewModel(
             is ConversationListUiAction.ShowMoreClicked -> mediaDownloadHandler.handleShowMoreClicked(action)
 
             is ConversationListUiAction.CloseFullScreenOverlay -> mediaDownloadHandler.handleCloseFullScreenOverlay()
+
+            is ConversationListUiAction.ViewOnceViewerClosed -> mediaDownloadHandler.handleViewOnceViewerClosed(action)
+            is ConversationListUiAction.ViewOnceScreenshot -> mediaDownloadHandler.handleViewOnceScreenshot(action)
+            is ConversationListUiAction.ViewOnceReact -> mediaDownloadHandler.handleViewOnceReact(action)
+            is ConversationListUiAction.ViewOnceReply -> mediaDownloadHandler.handleViewOnceReply(action)
 
             is ConversationListUiAction.ReplyToMessage -> messageActionsHandler.handleReplyToMessage(action)
 

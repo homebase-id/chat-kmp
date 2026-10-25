@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
@@ -78,7 +79,7 @@ public class DriveFileProvider(
      * @param driveId The target drive id containing the file
      * @param fileId The ID of the file
      * @param options Optional operation options
-     * @return The HomebaseFile or null if not found
+     * @return The HomebaseFile, or null when the identity itself says it isn't there
      */
 
     suspend fun getFileHeader(
@@ -101,7 +102,7 @@ public class DriveFileProvider(
             secret = creds.secret
         )
 
-        if (response.status == 404) {
+        if (response.status == 404 && response.fromIdentity()) {
             return null
         }
 
@@ -158,6 +159,7 @@ public class DriveFileProvider(
         key: String,
         onDownloadProgress: ((Float) -> Unit)?,
     ) {
+        if (driveCache.isEphemeral(fileId)) return
         driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
     }
 
@@ -172,6 +174,7 @@ public class DriveFileProvider(
         chunkLength: Long,
         onDownloadProgress: ((Float) -> Unit)?,
     ) {
+        if (driveCache.isEphemeral(fileId)) return
         driveCache.getPayloadBytesRaw(
             driveId = driveId,
             fileId = fileId,
@@ -183,6 +186,10 @@ public class DriveFileProvider(
             onDownloadProgress = onDownloadProgress,
         )
     }
+
+    suspend fun markPayloadEphemeral(fileId: Uuid) = driveCache.markEphemeral(fileId)
+
+    suspend fun evictFile(driveId: Uuid, fileId: Uuid, key: String) = driveCache.evictFile(driveId, fileId, key)
 
     override suspend fun getPayloadBytesDecrypted(
         driveId: Uuid,
@@ -729,6 +736,20 @@ data class DeleteFileResult(
 data class DeleteFileIdBatchResult (
     val results: List<DeleteFileResult>
 )
+
+/** A file at the version the caller knows: a guarded write leaves it alone once it changed. */
+@Serializable
+data class FileVersionTag(val fileId: Uuid, val versionTag: Uuid)
+
+@Serializable
+data class FileVersionTagBatch(val files: List<FileVersionTag>, val archivalStatus: ArchivalStatus? = null)
+
+/** [errorCode] is null when the write went through: the file is gone, or at the status asked for. */
+@Serializable
+data class PerFileResult(val fileId: Uuid, val errorCode: OdinClientErrorCode? = null)
+
+@Serializable
+data class PerFileBatchResult(val results: List<PerFileResult>)
 
 @Serializable
 data class DeleteFilesByGroupIdBatchResult(

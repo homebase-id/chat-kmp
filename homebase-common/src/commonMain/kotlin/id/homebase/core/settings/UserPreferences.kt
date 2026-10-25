@@ -57,6 +57,11 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getBoolean("use_native_feed", true)
         set(value) = settings.putBoolean("use_native_feed", value)
 
+    /** The one-time sheet shown the first time a sender turns view once on. */
+    var viewOnceIntroSeen: Boolean
+        get() = settings.getBoolean("view_once_intro_seen", false)
+        set(value) = settings.putBoolean("view_once_intro_seen", value)
+
     /** Master switch for in-app haptic feedback (default on). Read by GatedHaptics. */
     var hapticsEnabled: Boolean
         get() = settings.getBoolean("haptics_enabled", true)

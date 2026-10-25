@@ -25,6 +25,8 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +53,8 @@ class ChatMessageStream(
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
     private val serverHistory: ChatServerHistory,
+    // Where headers are mapped to messages; tests pass their own dispatcher to stay in virtual time.
+    private val mapDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
@@ -78,6 +82,24 @@ class ChatMessageStream(
     // path that surfaces messages — loadConversation, processIncrementalBatch, and
     // refreshCachedWindows (DriveEvent.Stopped) — because that durable tag makes it safe.
     private val autoPinHandled = mutableSetOf<Uuid>()
+
+    /**
+     * View-once recovery and expiry sweep. Wired at construction in DI like [autoPinTypedMessage];
+     * the hook avoids a DI cycle through ChatMessageActionService.
+     */
+    var sweepViewOnce: suspend (messages: List<MessageUiModel>, nowMs: Long) -> Unit = { _, _ -> }
+
+    private suspend fun onMessagesSurfaced(messages: List<MessageUiModel>) {
+        autoPinNewTypedMessages(messages)
+        if (messages.isEmpty()) return
+        try {
+            sweepViewOnce(messages, Clock.System.now().toEpochMilliseconds())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Logger.e(t) { "ChatMessageStream: view-once sweep failed: ${t.message}" }
+        }
+    }
 
     private val paginatedState = PaginatedConversationState()
     private val chatDrive = chatTargetDrive.alias
@@ -208,7 +230,7 @@ class ChatMessageStream(
             tagId = ChatProtocol.MessagePinnedTag,
             groupId = conversationId,
         )
-        return withContext(Dispatchers.Default) {
+        return withContext(mapDispatcher) {
             jsonHeaders.mapNotNull { json ->
                 val header = runCatching {
                     OdinSystemSerializer.deserialize<HomebaseFile>(json)
@@ -288,7 +310,7 @@ class ChatMessageStream(
         // Read the finalized window so a merged raced write is included; runs on both the
         // raced and common paths. Dismissed messages carry AutoPinDismissedTag and are skipped.
         val windowMessages = paginatedState.getWindow(conversationId)?.messages ?: return
-        autoPinNewTypedMessages(windowMessages)
+        onMessagesSurfaced(windowMessages)
         refreshPinnedFor(conversationId)
     }
 
@@ -536,7 +558,7 @@ class ChatMessageStream(
         // (the common case) leaves the bar empty until a live BatchReceived arrives.
         // Runs on both the initial seed and the raced merge=true re-seed
         // (autoPinNewTypedMessages/refreshPinnedFor are idempotent).
-        autoPinNewTypedMessages(combined)
+        onMessagesSurfaced(combined)
         refreshPinnedFor(conversationId)
     }
 
@@ -582,7 +604,7 @@ class ChatMessageStream(
                     // silent DriveSync (this path), and must still pin. Safe against
                     // re-pinning a dismissed message because the gate is now the durable
                     // AutoPinDismissedTag, not the per-session in-memory set.
-                    autoPinNewTypedMessages(result.records)
+                    onMessagesSurfaced(result.records)
                     refreshPinnedFor(conversationId)
                 } catch (t: Throwable) {
                     Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
@@ -596,7 +618,7 @@ class ChatMessageStream(
 // ---------- EVENT HANDLING ----------
 
     private suspend fun processIncrementalBatch(files: List<HomebaseFile>) {
-        val messages = withContext(Dispatchers.Default) {
+        val messages = withContext(mapDispatcher) {
             files
                 .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
                 .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
@@ -630,7 +652,7 @@ class ChatMessageStream(
             paginatedState.upsert(conversationId, msgs)
         }
 
-        autoPinNewTypedMessages(messages)
+        onMessagesSurfaced(messages)
 
         // Refresh the pinned bar for every affected OPEN conversation. Done off the
         // window gate above (which defers history-paged windows) because a pin/unpin
@@ -854,7 +876,7 @@ class ChatMessageStream(
         val queryElapsed = queryStart.elapsedNow()
 
         val mapStart = TimeSource.Monotonic.markNow()
-        val records = withContext(Dispatchers.Default) {
+        val records = withContext(mapDispatcher) {
             result.records.mapNotNull { header ->
                 mapToMessageData(header, credentialsManager, ::resolveDisplayName)
             }
@@ -907,14 +929,9 @@ class ChatMessageStream(
 
         // TODO - remove simple content search filter when actual query does filtering
         return BatchResult(
-            records = withContext(Dispatchers.Default) {
+            records = withContext(mapDispatcher) {
                 result.records
-                    .filter {
-                        it.fileMetadata.appData.content?.contains(
-                            searchQuery,
-                            ignoreCase = true
-                        ) == true
-                    }
+                    .filter { matchesSearchQuery(it, searchQuery) }
                     .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
             },
             hasMoreRows = result.hasMoreRows,
@@ -961,7 +978,7 @@ class ChatMessageStream(
             )
 
         return BatchResult(
-            records = withContext(Dispatchers.Default) {
+            records = withContext(mapDispatcher) {
                 result.records.mapNotNull {
                     mapToMessageData(
                         it,
@@ -1058,6 +1075,13 @@ class ChatMessageStream(
 sealed interface ChatMessagesData {
     data object Initializing : ChatMessagesData
     data class Messages(val window: MessageWindow) : ChatMessagesData
+}
+
+// A view-once caption is viewer-only; matching it would confirm the text without opening.
+internal fun matchesSearchQuery(header: HomebaseFile, query: String): Boolean {
+    val appData = header.fileMetadata.appData
+    if (appData.dataType == ChatProtocol.ChatViewOnceMessageDataType) return false
+    return appData.content?.contains(query, ignoreCase = true) == true
 }
 
 /**

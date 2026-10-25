@@ -280,88 +280,92 @@ class OdinWebSocketClient(
         val bearerToken = creds.clientAccessToken.replace('+', '-').replace('/', '_').trimEnd('=')
         val bearer = "odin.bearer.$bearerToken"
 
-        client.webSocket(
-            urlString = wsUrl,
-            request = {
-                // Single comma-joined value, no whitespace. Two earlier
-                // attempts failed:
-                //   - "odin.notify.v1, $bearer" (with space) crashes the Ktor
-                //     JS engine: it splits the header on ',' and passes the
-                //     tokens to new WebSocket(url, protocols); " odin.bearer.*"
-                //     has a leading space, violates the RFC 7230 token grammar,
-                //     and the browser throws SyntaxError pre-flight.
-                //   - Two headers.append(...) calls fixes the browser but on
-                //     CIO/OkHttp emits two separate Sec-WebSocket-Protocol
-                //     header lines; ASP.NET Core's WebSocketRequestedProtocols
-                //     reads only the first and the controller sees no bearer
-                //     value → 401.
-                // The no-space single-string form is the only variant that
-                // produces one wire-format header on every engine AND parses
-                // cleanly in the browser's WebSocket constructor.
-                if(isWasm)
-                {
-                    headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1")
-                    headers.append(HttpHeaders.SecWebSocketProtocol, bearer)
-                }
-                else {
-                    headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1, $bearer")
-                }
-            }
-        ) {
-            session = this
-            _connectionState.value = WebSocketState.Connected
-
-            // Verify the server committed to our application subprotocol on the 101.
-            // The log line is deliberately verbose on the first connect so we can
-            // confirm the engine passed our comma-separated header through intact
-            // and the server negotiated the expected value.
-            val negotiated = call.response.headers[HttpHeaders.SecWebSocketProtocol]
-            Logger.i(tag = "WebSocket") {
-                "WS[$instanceId] negotiated Sec-WebSocket-Protocol=$negotiated"
-            }
-            if (negotiated?.trim() != "odin.notify.v1") {
-                Logger.w(tag = "WebSocket") {
-                    "WS[$instanceId] server did not commit to odin.notify.v1 (got=$negotiated) — closing"
-                }
-                close()
-                return@webSocket
-            }
-
-            handshakeDone = false
-            establishConnectionRequest()
-
-            val handshakeTimeoutJob = scope.launch {
-                delay(10_000L)
-                if (!handshakeDone) {
-                    Logger.w { "Handshake timeout — closing session to force reconnect" }
-                    session?.close()
-                }
-            }
-
-            try {
-                for (frame in incoming) {
-                    when (frame) {
-                        is Frame.Text -> handleTextFrame(frame)
-                        is Frame.Close -> {
-                            Logger.i { "WebSocket closed by server" }
-                            break
-                        }
-
-                        else -> {
-                            // no op
-                            Logger.d { "Received other frame type: ${frame.frameType}" }
-                        }
+        // #1921: bound the attempt up to the 101 — see withWebSocketUpgradeDeadline.
+        withWebSocketUpgradeDeadline { upgraded ->
+            client.webSocket(
+                urlString = wsUrl,
+                request = {
+                    // Single comma-joined value, no whitespace. Two earlier
+                    // attempts failed:
+                    //   - "odin.notify.v1, $bearer" (with space) crashes the Ktor
+                    //     JS engine: it splits the header on ',' and passes the
+                    //     tokens to new WebSocket(url, protocols); " odin.bearer.*"
+                    //     has a leading space, violates the RFC 7230 token grammar,
+                    //     and the browser throws SyntaxError pre-flight.
+                    //   - Two headers.append(...) calls fixes the browser but on
+                    //     CIO/OkHttp emits two separate Sec-WebSocket-Protocol
+                    //     header lines; ASP.NET Core's WebSocketRequestedProtocols
+                    //     reads only the first and the controller sees no bearer
+                    //     value → 401.
+                    // The no-space single-string form is the only variant that
+                    // produces one wire-format header on every engine AND parses
+                    // cleanly in the browser's WebSocket constructor.
+                    if(isWasm)
+                    {
+                        headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1")
+                        headers.append(HttpHeaders.SecWebSocketProtocol, bearer)
+                    }
+                    else {
+                        headers.append(HttpHeaders.SecWebSocketProtocol, "odin.notify.v1, $bearer")
                     }
                 }
-            } finally {
-                handshakeTimeoutJob.cancel()
-                session = null // Clear session reference
-                pingSupervisor.stop()
-                if (_connectionState.value != WebSocketState.Error("Unknown error")) {
-                    _connectionState.value = WebSocketState.Disconnected
+            ) {
+                upgraded()
+                session = this
+                _connectionState.value = WebSocketState.Connected
+
+                // Verify the server committed to our application subprotocol on the 101.
+                // The log line is deliberately verbose on the first connect so we can
+                // confirm the engine passed our comma-separated header through intact
+                // and the server negotiated the expected value.
+                val negotiated = call.response.headers[HttpHeaders.SecWebSocketProtocol]
+                Logger.i(tag = "WebSocket") {
+                    "WS[$instanceId] negotiated Sec-WebSocket-Protocol=$negotiated"
                 }
-                handleDisconnected()
-                Logger.i { "WebSocket connection ended" }
+                if (negotiated?.trim() != "odin.notify.v1") {
+                    Logger.w(tag = "WebSocket") {
+                        "WS[$instanceId] server did not commit to odin.notify.v1 (got=$negotiated) — closing"
+                    }
+                    close()
+                    return@webSocket
+                }
+
+                handshakeDone = false
+                establishConnectionRequest()
+
+                val handshakeTimeoutJob = scope.launch {
+                    delay(10_000L)
+                    if (!handshakeDone) {
+                        Logger.w { "Handshake timeout — closing session to force reconnect" }
+                        session?.close()
+                    }
+                }
+
+                try {
+                    for (frame in incoming) {
+                        when (frame) {
+                            is Frame.Text -> handleTextFrame(frame)
+                            is Frame.Close -> {
+                                Logger.i { "WebSocket closed by server" }
+                                break
+                            }
+
+                            else -> {
+                                // no op
+                                Logger.d { "Received other frame type: ${frame.frameType}" }
+                            }
+                        }
+                    }
+                } finally {
+                    handshakeTimeoutJob.cancel()
+                    session = null // Clear session reference
+                    pingSupervisor.stop()
+                    if (_connectionState.value != WebSocketState.Error("Unknown error")) {
+                        _connectionState.value = WebSocketState.Disconnected
+                    }
+                    handleDisconnected()
+                    Logger.i { "WebSocket connection ended" }
+                }
             }
         }
         return true
@@ -426,6 +430,9 @@ class OdinWebSocketClient(
     private suspend fun dispatchNotification(notification: ClientNotificationPayload) {
         when (notification.notificationType) {
             ClientNotificationType.deviceHandshakeSuccess -> {
+                if (notification.stunUrls.isNotEmpty()) {
+                    eventBus.emit(BackendEvent.StunUrlsReceived(notification.stunUrls))
+                }
                 onHandshakeSuccess()
             }
 

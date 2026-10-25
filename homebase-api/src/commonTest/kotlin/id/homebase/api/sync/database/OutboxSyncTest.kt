@@ -12,7 +12,6 @@ import kotlinx.atomicfu.update
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -125,7 +124,6 @@ private fun clientException(
  * time split (each constructs its own real-dispatcher DatabaseManager and says why):
  * `testFailureAndRetry` and `testTryEnqueueDoesNotBlockOnSaturatedEventBus`.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class OutboxSyncTest {
 
     /**
@@ -935,7 +933,7 @@ class OutboxSyncTest {
         assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
         assertNotNull(dropped.reason, "a permanent drop must carry its classifier reason")
         assertTrue(
-            dropped.reason!!.contains("Cannot transfer to yourself"),
+            dropped.reason.contains("Cannot transfer to yourself"),
             "reason should surface the server message; was: ${dropped.reason}",
         )
 
@@ -1423,6 +1421,34 @@ class OutboxSyncTest {
         // Second row: never popped — the circuit breaker aborted the pass.
         assertEquals(0L, rowB.checkOutCount)
         assertEquals(0L, rowB.nextRunTime, "row B must be untouched — pass aborted after the first probe")
+        assertEquals(0, uploader.uploaded.size)
+    }
+
+    @Test
+    fun storageFull_keepsTheRowUnchargedUntilRetryAfter() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader().apply {
+            failureException = id.homebase.api.client.StorageFullException(retryAfter = 3600.seconds, problem = null)
+        }
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+
+        val itemFailed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().first()
+        }
+        testScheduler.runCurrent()
+
+        val (drive, uid) = db.insertRow(priority = 0)
+        val before = id.homebase.api.common.time.UnixTimeUtc.now().milliseconds
+
+        assertTrue(sync.send(force = true))
+        assertEquals(uid, itemFailed.await().uniqueId)
+        sync.clearCheckout(timeoutMs = 5_000)
+
+        val row = db.outbox.selectByDriveAndUnique(drive, uid)
+        assertNotNull(row, "a storage-full message must not be dropped")
+        assertEquals(0L, row.checkOutCount, "storage full must not use up the retry budget")
+        assertTrue(row.nextRunTime >= before + 3_590_000, "it waits out Retry-After, not the 30s backoff")
+        assertTrue(sync.pendingRowSnapshot(drive, uid)!!.storageFull)
         assertEquals(0, uploader.uploaded.size)
     }
 

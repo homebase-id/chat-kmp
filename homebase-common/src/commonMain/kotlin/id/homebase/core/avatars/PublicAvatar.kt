@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
@@ -23,6 +24,7 @@ import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.common.OdinId
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.avatarSharedElementKey
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_public
@@ -31,11 +33,12 @@ import org.koin.compose.koinInject
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun PublicAvatar(
+internal fun PublicAvatar(
     odinId: OdinId,
     initials: String?,
     options: AvatarOptions,
     modifier: Modifier = Modifier,
+    onOpenImage: ((SubSamplingImageSource) -> Unit)? = null,
     /**
      * Supply both to morph this avatar into (and back out of) the full-screen viewer opened by
      * [options] `onClick`. Keyed on the identity, so it pairs with a
@@ -53,8 +56,9 @@ fun PublicAvatar(
     // future Coil upgrade that changes singleton resolution semantics.
     val imageLoader: ImageLoader = koinInject()
 
-    val containerClick = options.onClick?.takeIf { !options.onClickNeedsImage }
-    val imageClick = options.onClick?.takeIf { options.onClickNeedsImage }
+    // Opening the photo needs a loaded image, so an initials fallback stays inert; a navigating tap always works.
+    val containerClick = options.onClick?.takeIf { onOpenImage == null }
+    val imageClick = remember(odinId, onOpenImage) { onOpenImage?.let { open -> { open(SubSamplingImageSource.Avatar(odinId)) } } }
 
     var containerModifier =
         if (containerClick != null) {
@@ -104,17 +108,11 @@ fun PublicAvatar(
         ) { loaded ->
             if (loaded) {
                 SubcomposeAsyncImageContent(
-                    modifier = if (imageClick != null) {
-                        Modifier.fillMaxSize().clickable(onClick = imageClick)
-                    } else {
-                        Modifier
-                    }
+                    modifier = Modifier.fillMaxSize().then(if (imageClick != null) Modifier.clickable(onClick = imageClick) else Modifier)
                 )
             } else {
                 FallbackAvatar(
                     initials = initials,
-                    // FallbackAvatar applies options.onClick itself; an image-gated
-                    // tap must not survive into the no-image branch.
                     options = if (imageClick != null) options.copy(onClick = null) else options,
                     modifier = Modifier.fillMaxSize()
                 )

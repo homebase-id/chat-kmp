@@ -18,6 +18,7 @@ import id.homebase.core.config.OWNER_APP_ID
 import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.ui.navigation.Route
 import id.homebase.core.sync.awaitAuthRestored
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
@@ -317,6 +318,16 @@ class NotificationService(
         notificationBackend.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
     }
 
+    @kotlin.concurrent.Volatile
+    private var voipToken: String? = null
+
+    /** PushKit token from iOS; re-registers the subscription so the server learns it next to the FCM token. */
+    fun onVoipToken(token: String) {
+        voipToken = token
+        Logger.i(tag = "NotificationService") { "VoIP token received (${token.length} chars)" }
+        scope.launch { notificationBackend.getPushToken()?.let { registerToken(it) } }
+    }
+
     /**
      * Called from platform FCM service when a new token is received.
      * Forwards to the same listener path as KMPNotifier's built-in service.
@@ -377,10 +388,10 @@ class NotificationService(
         val friendlyName = "${Platform.osName} | ${Platform.osVersion}"
 
         Logger.i(tag = "NotificationService") {
-            "Registering token with server... ($friendlyName)"
+            "Registering token with server... ($friendlyName, voip=${voipToken != null})"
         }
         api.subscribe(
-            deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName
+            deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName, voipDeviceToken = voipToken
         )
         Logger.i(tag = "NotificationService") { "Token registered successfully" }
     }
@@ -392,6 +403,7 @@ class NotificationService(
                 val dataString = data["data"] as? String ?: return@launch
                 val notification = OdinSystemSerializer.deserialize<PushNotification>(dataString)
 
+                if (CallPushRouter.tryHandle(notification)) return@launch
                 if (notification.options.silent) return@launch
 
                 // Suppress chat notifications when user is on the conversation list
@@ -660,7 +672,7 @@ class NotificationService(
                 }
 
                 // An incoming connection request is reviewable in-app (contact detail shows the
-                // requester's public profile with Accept/Reject + the circle picker), so it opens
+                // requester's public profile as the connection review), so it opens
                 // there instead of bouncing to the owner web console like the owner app's other
                 // notifications. Sits ahead of the companion branch, which OWNER_APP_ID would
                 // otherwise claim; a payload with no sender leaves this null and falls through to
@@ -730,6 +742,10 @@ class NotificationService(
     /** Navigate to the WebDrop composer (used for the "New WebDrop" share deep link). */
     fun navigateToWebDropCompose() {
         _navigationEvents.trySend(NotificationNavigationEvent.OpenWebDropCompose)
+    }
+
+    fun navigateToApp(route: Route) {
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenApp(route))
     }
 
     /** Displays a rich notification using platform-specific APIs. */

@@ -95,7 +95,7 @@ private fun resolveDoH(hostname: String): ResolveOutcome {
             .header("accept", "application/dns-json")
             .build()
         client.newCall(request).execute().use { resp ->
-            val body = runCatching { resp.body?.string().orEmpty() }.getOrDefault("")
+            val body = runCatching { resp.body.string() }.getOrDefault("")
             val ips = runCatching {
                 diagJson.decodeFromString<DohResponse>(body).answer.filter { it.type == 1 }.map { it.data }
             }.getOrDefault(emptyList())
@@ -170,11 +170,12 @@ private fun probeConnection(hostname: String, targetIp: String): ConnResult {
 
     // Stage 3 — HTTP ping (SNI-preserving via custom Dns; redirects not followed so a captive
     // portal shows as a 3xx rather than being chased).
+    val pinnedHost = hostname
     val client = OkHttpClient.Builder()
         .dns(object : Dns {
-            override fun lookup(h: String): List<InetAddress> =
-                if (h.equals(hostname, ignoreCase = true)) listOf(InetAddress.getByName(targetIp))
-                else Dns.SYSTEM.lookup(h)
+            override fun lookup(hostname: String): List<InetAddress> =
+                if (hostname.equals(pinnedHost, ignoreCase = true)) listOf(InetAddress.getByName(targetIp))
+                else Dns.SYSTEM.lookup(hostname)
         })
         .followRedirects(false)
         .followSslRedirects(false)
@@ -192,7 +193,7 @@ private fun probeConnection(hostname: String, targetIp: String): ConnResult {
             .build()
         client.newCall(request).execute().use { resp ->
             val code = resp.code
-            val body = runCatching { resp.body?.string().orEmpty() }.getOrDefault("")
+            val body = runCatching { resp.body.string() }.getOrDefault("")
             val identity = runCatching { diagJson.decodeFromString<PingResponse>(body).identity }.getOrNull()
             val httpMs = elapsedMs(httpStart)
             when {

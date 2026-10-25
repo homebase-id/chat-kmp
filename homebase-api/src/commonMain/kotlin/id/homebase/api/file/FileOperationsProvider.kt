@@ -33,9 +33,11 @@ interface FileOperationsProvider {
         return if (all.size <= maxBytes) all else all.copyOf(maxBytes)
     }
 
+    /** Returns true for a missing path or a directory (neither is deleted); never throws. */
     fun deleteTempFile(path: String): Boolean
     fun getCacheDirectory(): String
 
+    /** Size in bytes; 0 for a missing path. */
     fun getFileSize(path: String): Long
 
     /**
@@ -156,6 +158,7 @@ interface FileOperationsProvider {
     suspend fun createUploadTempPath(prefix: String, suffix: String): String =
         createStagingPathIn(uploadTempDirectory(), prefix, suffix)
 
+    /** Replaces any existing file at [path], creating parent directories; an empty [data] yields a 0-byte file. */
     suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>

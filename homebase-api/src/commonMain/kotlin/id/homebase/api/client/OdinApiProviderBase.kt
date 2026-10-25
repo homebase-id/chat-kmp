@@ -17,6 +17,8 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.plugins.timeout
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.contentLength
 import io.ktor.utils.io.cancel
@@ -126,19 +128,14 @@ abstract class OdinApiProviderBase(
         // response headers from cross-origin (CORS) responses unless the server sends
         // `Access-Control-Expose-Headers: X-SSE`, so on web we fall back to detecting the
         // {"iv","data"} envelope by shape and decrypt it anyway.
-        val body =
-            if (secret != null &&
-                (response.headers["X-SSE"] == "1" || looksLikeEncryptedEnvelope(rawBody))
-            ) {
-                CryptoHelper.decryptContentAsString(rawBody, secret.unsafeBytes)
-            } else {
-                rawBody
-            }
+        val key = secret?.takeIf { response.headers["X-SSE"] == "1" || looksLikeEncryptedEnvelope(rawBody) }
+        val body = key?.let { CryptoHelper.decryptContentAsString(rawBody, it.unsafeBytes) } ?: rawBody
 
         return ApiResponse(
             status = response.status.value,
             headers = response.headers,
-            body = body
+            body = body,
+            sealed = key != null
         )
     }
 
@@ -311,6 +308,12 @@ abstract class OdinApiProviderBase(
     }
 
 
+    // Grows with the upload's size so a slow link can finish a large one; still bounded, as the web engine has no socket timeout.
+    private fun HttpRequestBuilder.uploadTimeout(formData: MultiPartFormDataContent) {
+        val bytes = formData.contentLength ?: return
+        timeout { requestTimeoutMillis = UPLOAD_TIMEOUT_BASE_MS + bytes / UPLOAD_MIN_BYTES_PER_MS }
+    }
+
     protected suspend fun plainPostMultipart(
         url: String,
         token: String,
@@ -324,6 +327,7 @@ abstract class OdinApiProviderBase(
                 httpClient.post(url) {
                     bearerAuth(token)
                     setBody(formData)
+                    uploadTimeout(formData)
 
                     onUpload { sent, total ->
                         onProgress?.invoke(sent, total)
@@ -347,6 +351,7 @@ abstract class OdinApiProviderBase(
                 httpClient.patch(url) {
                     bearerAuth(token)
                     setBody(formData)
+                    uploadTimeout(formData)
 
                     onUpload { sent, total ->
                         onProgress?.invoke(sent, total)
@@ -524,6 +529,10 @@ abstract class OdinApiProviderBase(
     private fun parseProblemOrNull(body: String): ProblemDetails? =
         runCatching { deserialize<ProblemDetails>(body) }.getOrNull()
 
+    /** odin-core answered, not a proxy in front of it: its version header, and a body sealed or ProblemDetails of this status. */
+    protected fun ApiResponse.fromIdentity(problem: ProblemDetails? = parseProblemOrNull(body)): Boolean =
+        "X-Odin-Version" in headers && (sealed || problem?.status == status)
+
     protected fun throwForFailure(response: ApiResponse) {
         if (response.status in 200..299) return
 
@@ -554,25 +563,20 @@ abstract class OdinApiProviderBase(
                 throw ForbiddenException(problem)
             }
 
-            404 -> throw NotFoundException(parseProblemOrNull(response.body))
+            404 -> parseProblemOrNull(response.body).let { throw NotFoundException(it, response.fromIdentity(it)) }
 
-            in 500..599 -> {
-                val problem = runCatching {
-                    deserialize<ProblemDetails>(response.body)
-                }.getOrNull()
+            507 -> throw StorageFullException(
+                retryAfter = retryAfterOrNull(response.headers[HttpHeaders.RetryAfter]),
+                problem = parseProblemOrNull(response.body),
+            )
 
+            // 5xx, and any other status odin-core answers with a ProblemDetails (e.g. 408 for a request
+            // body sent too slowly): keep its correlation id so the failure can be found in the server logs
+            else -> parseProblemOrNull(response.body).let {
                 throw ServerException(
                     status = response.status,
-                    correlationId = problem?.correlationId(),
-                    problem = problem
-                )
-            }
-
-            else -> {
-                throw ServerException(
-                    status = response.status,
-                    correlationId = null,
-                    problem = null
+                    correlationId = it?.correlationId(),
+                    problem = it
                 )
             }
         }
@@ -618,3 +622,8 @@ abstract class OdinApiProviderBase(
     }
 
 }
+
+private const val UPLOAD_TIMEOUT_BASE_MS = 5 * 60_000L
+
+// About 16 KB/s: a 4 GiB upload gets about three days.
+private const val UPLOAD_MIN_BYTES_PER_MS = 16L

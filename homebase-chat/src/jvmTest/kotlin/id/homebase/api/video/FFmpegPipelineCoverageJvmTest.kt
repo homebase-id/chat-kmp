@@ -6,6 +6,7 @@ import java.io.File
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -102,40 +103,31 @@ class FFmpegPipelineCoverageJvmTest {
             assertTrue(File(segmentPath).length() > 0L, "segment .ts must have bytes")
 
             // 7. Round-trip remuxHlsToMp4 → duration matches input ±500ms.
-            //    The JVM actual of remuxHlsToMp4 is currently a stub that returns
-            //    false (FFmpegUtils.jvm.kt:490 — "Desktop HLS→MP4 export not
-            //    implemented yet"). The production desktop download path doesn't
-            //    reach it either. Assert the stub still no-ops; when JVM gets a
-            //    real implementation OR this test gets lifted to Android/iOS,
-            //    swap the inverted assertion below for a real duration round-trip.
             val remuxedFile = File.createTempFile("remuxed_", ".mp4").also { it.delete() }
             val remuxedPath = remuxedFile.absolutePath
             cleanup += remuxedPath
             val remuxResult = FFmpegUtils.remuxHlsToMp4(playlistPath, remuxedPath)
-            if (remuxResult) {
-                val remuxDuration = FFmpegUtils.getDurationMs(remuxedPath)
-                assertTrue(
-                    abs(remuxDuration - inputDuration) <= 500L,
-                    "remux duration should match input within 500ms (in=${inputDuration}ms, out=${remuxDuration}ms)",
-                )
-            }
+            assertTrue(remuxResult, "remuxHlsToMp4 must succeed on the segmented fixture")
+            val remuxDuration = FFmpegUtils.getDurationMs(remuxedPath)
+            assertTrue(
+                abs(remuxDuration - inputDuration) <= 500L,
+                "remux duration should match input within 500ms (in=${inputDuration}ms, out=${remuxDuration}ms)",
+            )
 
             // 8. End-to-end VideoPayloadProcessor mimic: replay the exact call
             //    sequence from VideoPayloadProcessor.kt:49,79,104,147 —
             //    grabThumbnail → compressVideo(null trim) → segmentAndEncryptVideo
-            //    → metadata read. sample.mp4 is already optimal so the compress
-            //    short-circuits to null, matching the production fall-back to
-            //    payload.filePath.
+            //    → metadata read. compressVideo always re-encodes to a new file.
             val compressed = FFmpegUtils.compressVideo(
                 inputPath = fixture,
                 trimStartMs = null,
                 trimEndMs = null,
             )
-            val toSegment = compressed ?: fixture
-            if (compressed != null) cleanup += compressed
+            cleanup += compressed
+            assertNotEquals(fixture, compressed, "compressVideo must never hand back its input")
 
             val encResult = FFmpegUtils.segmentAndEncryptVideo(
-                inputPath = toSegment,
+                inputPath = compressed,
                 keyHeader = KeyHeader.newRandom16(),
                 onProgress = null,
             )
@@ -180,7 +172,7 @@ class FFmpegPipelineCoverageJvmTest {
             FFmpegBinaryManager.isAvailable(),
         )
 
-        val proc = ProcessBuilder(FFmpegBinaryManager.ffmpegPath(), "-version")
+        val proc = FFmpegBinaryManager.processBuilder(FFmpegBinaryManager.ffmpegPath(), "-version")
             .redirectErrorStream(true)
             .start()
         val output = proc.inputStream.bufferedReader().use { it.readText() }

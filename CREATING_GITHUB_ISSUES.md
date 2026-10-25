@@ -279,6 +279,9 @@ Notes:
   section is what separates a filed ticket from a `/plan` prompt.
 - **Evidence over guesses** (see CLAUDE.md). Prefer a stack trace to a hunch; if the
   cause is unproven, label it a lead, not a conclusion.
+- **Web crash traces: symbolicate first.** A raw `wasm-function[N]:0xOFF` trace tells the
+  assignee nothing. Resolve it per [`WASM_CRASH_SYMBOLS.md`](WASM_CRASH_SYMBOLS.md) and put
+  the Kotlin frames in the issue, with the `.wasm` hash and chat-kmp commit they came from.
 - **Respect repo rules** when describing fixes: Material 3, `stringResource()` for all
   user-facing text, RTL padding, no duplicated envelope fields in descriptors, etc.
 - Don't create labels or milestones on the fly; if a new label seems needed, ask the

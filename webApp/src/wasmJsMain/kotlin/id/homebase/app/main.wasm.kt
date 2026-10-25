@@ -15,16 +15,20 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.AppConfig
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.di.allModules
+import id.homebase.core.notifications.NotificationService
+import id.homebase.core.ui.navigation.AppLink
+import id.homebase.core.widget.ComposerAutocompleteProbe
+import id.homebase.core.widget.initLazyStabilityFlags
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.configureWebResources
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 
@@ -34,9 +38,28 @@ private fun bootStage(label: String, percent: Int): Unit =
 private fun bootDone(): Unit =
     js("{ if (window.__homebaseBootDone) window.__homebaseBootDone(); }")
 
-@OptIn(ExperimentalComposeUiApi::class)
+private fun recordAutocompleteTrace(trace: String): Unit =
+    js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteTrace = trace; }")
+
+private fun recordAutocompleteMismatch(report: String): Unit =
+    js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteMismatch = report; }")
+
+private fun recordAutocompleteComposing(composing: String): Unit =
+    js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteComposing = composing; }")
+
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
+    initLazyStabilityFlags()
+    WebAppLink.captureFromUrl()
+    configureWebResources {
+        resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
+    }
+    ComposerAutocompleteProbe.install(object : ComposerAutocompleteProbe.Reporter {
+        override fun onTrace(trace: String) = recordAutocompleteTrace(trace)
+        override fun onMismatch(report: String) = recordAutocompleteMismatch(report)
+        override fun onComposing(composing: String) = recordAutocompleteComposing(composing)
+    })
     // sql.js compiles its wasm asynchronously; finish that and build the in-memory database
     // before Koin (and the DriveSync graph behind the login screen) ever touches DatabaseManager.
     MainScope().launch {
@@ -71,7 +94,6 @@ fun main() {
                         drives = targetDriveAccessRequest,
                         permissions = appPermissions,
                         circleDrives = circleDriveTargetRequest,
-                        circles = listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID),
                         persistForRedirect = true
                     )
                     bootStage("Signing you in…", 90)
@@ -91,9 +113,17 @@ fun main() {
         // forever and the app hangs on "syncing". Mirrors MainActivity.onCreate
         // (Android) and MainViewController() (iOS). Idempotent.
         GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
+        val notificationService = GlobalContext.get().get<NotificationService>()
+        WebAppLink.consumePending()?.let { notificationService.navigateToApp(it.route) }
         ComposeViewport("ComposeApp") {
             LaunchedEffect(Unit) { bootDone() }
-            App(onNavHostReady = { it.bindToBrowserNavigation() })
+            App(onNavHostReady = { nav ->
+                WebAppLink.listenForTypedHash { notificationService.navigateToApp(it.route) }
+                // A custom fragment turns off the library's own hash parsing; WebAppLink does that instead.
+                nav.bindToBrowserNavigation { _ ->
+                    AppLink.forBackStack(nav.currentBackStack.value)?.let { "#${it.slug}" }.orEmpty()
+                }
+            })
         }
     }
 }

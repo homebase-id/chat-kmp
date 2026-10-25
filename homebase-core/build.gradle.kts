@@ -27,6 +27,7 @@ kotlin {
         compileSdkExtension = 19
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
+        withDeviceTest {}
     }
 
     jvm()
@@ -79,6 +80,17 @@ kotlin {
     }
 
     sourceSets {
+        val nonWebMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                // composenativewebview has no wasmJs artifact — must stay off commonMain.
+                implementation(libs.composenativewebview)
+            }
+        }
+        androidMain.get().dependsOn(nonWebMain)
+        jvmMain.get().dependsOn(nonWebMain)
+        nativeMain.get().dependsOn(nonWebMain)
+
         commonMain.dependencies {
             // Use api so it can be exported to Swift
             api(project(":homebase-api"))
@@ -149,26 +161,32 @@ kotlin {
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native.driver)
-            // composenativewebview has no wasmJs artifact — must stay off
-            // commonMain. The FeedWebView facade (commonMain) is bridged to
-            // kdroidfilter types in `FeedWebView.native.kt`.
-            implementation(libs.composenativewebview)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.koin.android)
             implementation(libs.play.app.update)
-            implementation(libs.composenativewebview)
         }
         jvmMain.dependencies {
                 implementation(libs.conveyor.control)
-                implementation(libs.composenativewebview)
+                // Declared here because desktopApp consumes homebase-chat as a repackaged jar that strips its external deps.
+                implementation(libs.webrtc.java)
+                listOf("macos-aarch64", "macos-x86_64", "windows-x86_64", "linux-x86_64", "linux-aarch64").forEach {
+                    runtimeOnly("${libs.webrtc.java.get().module}:${libs.versions.webrtcJava.get()}:$it")
+                }
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
         // ktor-client-js provides the browser engine (fetch/WebSocket).
         wasmJsMain.dependencies {
             implementation(libs.ktor.client.js)
+        }
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlin.testJunit)
+            implementation(libs.androidx.test.runner)
+            implementation(libs.androidx.test.core)
+            implementation(libs.androidx.junit)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -203,5 +221,10 @@ kotlin {
 // against the mocked Android host-test classpath. Disable the task until
 // those tests are migrated to jvmTest/.
 tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
+    enabled = false
+}
+
+// The compose-resources plugin leaves this device-test copy task's outputDirectory unset; the tests use no resources.
+tasks.matching { it.name == "copyAndroidDeviceTestComposeResourcesToAndroidAssets" }.configureEach {
     enabled = false
 }

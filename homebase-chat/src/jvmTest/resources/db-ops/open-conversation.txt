@@ -1,0 +1,6 @@
+# Open a conversation of 100 messages
+# Regenerate: DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'
+reads 2, writes 0, transactions 0
+
+1x read              DriveLocalTagIndexWrapper.selectJsonHeadersByLocalTagInGroup < ChatMessageStream.getPinnedMessages < ChatMessageStream.refreshPinnedFor SELECT m.jsonHeader FROM DriveLocalTagIndex t JOIN DriveMainIndex m ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId WHERE t.ide
+1x read              QueryBatch.queryBatchAsync < ChatMessageStream.fetchMessages < ChatMessageStream.loadConversation SELECT DISTINCT rowId, jsonHeader FROM driveMainIndex INDEXED BY idx_chatmessage_convid_userDate WHERE driveMainIndex.identityId = x'?' AND driveMainIndex.drive

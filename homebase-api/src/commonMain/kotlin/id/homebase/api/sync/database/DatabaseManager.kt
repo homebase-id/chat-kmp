@@ -111,14 +111,11 @@ data class ReadTiming(
 class DatabaseManager(
     driverProvider: () -> SqlDriver,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
-    // Reads run off the single write [dispatcher] so they don't queue behind a long
-    // write transaction. True concurrency comes from each platform driver's reader
-    // pool under WAL (iOS NativeSqliteDriver.maxReaderConnections, Android's framework
-    // WAL pool, desktop's per-thread JDBC connections); where a platform can't serve a
-    // concurrent reader the reads simply serialize — benign, never incorrect. We still
-    // run on the *existing* single driver — no second managed SqlDriver/connection.
+    // Reads run off the single write [dispatcher] so they don't queue behind a long write
+    // transaction; the driver's reader connections (see DatabaseDriverFactory.createDriver)
+    // serve them concurrently.
     private val readDispatcher: CoroutineDispatcher =
-        ioDispatcher.limitedParallelism(READ_PARALLELISM)
+        ioDispatcher.limitedParallelism(SQLITE_READER_CONNECTIONS)
 ) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
@@ -138,6 +135,17 @@ class DatabaseManager(
     val lastReadTiming: ReadTiming? get() = _lastReadTiming.value
 
     init {
+        // A failed open must not leave the driver holding the file: recovery deletes it next,
+        // which fails on Windows while a connection is open.
+        database = try {
+            openDatabase()
+        } catch (t: Throwable) {
+            driver.close()
+            throw t
+        }
+    }
+
+    private fun openDatabase(): OdinDatabase {
         // Rebuild-on-version-bump must run BEFORE Schema.create(). Schema.create()
         // is `CREATE TABLE/INDEX IF NOT EXISTS`, so on a stale on-disk schema the old
         // tables survive the no-op CREATE TABLE while a *new* index over a *newly
@@ -159,7 +167,7 @@ class DatabaseManager(
         }
 
         OdinDatabase.Schema.create(driver) // Create the tables if they are missing
-        database = OdinDatabase(
+        val database = OdinDatabase(
             driver,
             appNotificationsAdapter,
             chatReadCountAdapter,
@@ -183,26 +191,14 @@ class DatabaseManager(
         val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
         logger.i {
             "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms " +
-                "synchronous=$synchronous readParallelism=$READ_PARALLELISM"
+                "synchronous=$synchronous readParallelism=$SQLITE_READER_CONNECTIONS"
         }
+        return database
     }
 
     companion object {
         private const val DATABASE_VERSION =
             5  // Increase to wipe the database and rebuild all tables
-
-        // Max concurrent reads on [readDispatcher]. Kept in step with iOS
-        // NativeSqliteDriver.maxReaderConnections=4 so the dispatcher doesn't admit more
-        // readers than the platform connection pool can serve. On Android the SQLCipher WAL
-        // pool size is platform-determined (net.zetetic's SupportOpenHelperFactory exposes no
-        // knob, unlike iOS) — if it serves fewer than this, the extra reads block in
-        // SQLiteConnectionPool.waitForConnection, which is counted inside the read's `sql=`
-        // time (the wait happens inside driver.executeQuery), so it surfaces as an inflated
-        // `sql=` in a SlowDbRead line. That's the verification signal: if device logs show a
-        // normally-fast read with a large `sql=` during a read burst, lower this to match the
-        // pool. Since reads are off the Main thread (DriveMainIndexWrapper + the list readers
-        // both route through the read lane), such a wait queues a background read, not the UI.
-        private const val READ_PARALLELISM = 4
 
         // A read slower than this logs a SlowDbRead warn with its queueWait/sql split.
         private val SLOW_READ_THRESHOLD = 50.milliseconds
@@ -623,8 +619,7 @@ class DatabaseManager(
         val freelistAfter = readPragmaLong("PRAGMA freelist_count") ?: -1L
         if (checkpoint != null) {
             val (busy, logPages, ckptPages) = checkpoint
-            // busy=1 means another connection held the WAL — should never happen here
-            // because we're on the single-writer dbDispatcher with no other clients.
+            // busy=1 means a reader still held the WAL after busy_timeout.
             // logPages > 0 after wipe + VACUUM is the red flag: it means we VACUUMed
             // into a fresh main DB but the WAL still holds pages that a future open
             // would replay on top.
@@ -708,8 +703,12 @@ class DatabaseManager(
     // Reclaim space released by DELETE/DROP without nuking schema. Runs on the
     // single-writer [dispatcher] so it cannot race with other queries. Used by
     // the Defragmenter screen as its finale.
-    suspend fun vacuum() = withContext(dispatcher) {
-        driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+    suspend fun vacuum() {
+        withContext(dispatcher) {
+            driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+            // Under WAL, VACUUM writes the whole database into the -wal; open connections keep it at that size.
+            readPragmaCheckpoint("PRAGMA wal_checkpoint(TRUNCATE)")
+        }
     }
 
     override fun close() {

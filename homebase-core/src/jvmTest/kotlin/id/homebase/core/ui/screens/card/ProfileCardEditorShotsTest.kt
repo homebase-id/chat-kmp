@@ -1,6 +1,10 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +26,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalDensity
@@ -31,18 +34,35 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.click
-import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.theme.HomebaseTheme
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import javax.imageio.ImageIO
+import androidx.compose.ui.test.assertCountEquals
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -55,20 +75,26 @@ import kotlin.uuid.Uuid
 class ProfileCardEditorShotsTest {
 
     private val outDir: File? = System.getenv("CARD_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
+    private val realPreviewDir: File? = System.getenv("CARD_REAL_PREVIEW_DIR")?.let(::File)
 
     private data class Shot(
         val name: String,
         val state: ProfileCardUiState,
         val step: EditorStep = EditorStep.Design,
+        val mode: EditorMode = EditorMode.Design,
+        val photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
         val preview: Preview = Preview.Ready,
         val fontScale: Float = 1f,
         val rtl: Boolean = false,
         val widthDp: Int = PHONE_W,
         val heightDp: Int = PHONE_H,
+        val completesToggle: Boolean = false,
+        val failsToggle: Boolean = false,
+        val showCard: Boolean = true,
         val act: ComposeUiTest.() -> Unit = {},
     )
 
-    private enum class Preview { Ready, Loading, LoadFailed, CardFailed }
+    private enum class Preview { Ready, Loading, LoadFailed, CardFailed, Real }
 
     private fun card(audience: CardAudience, design: String = CardDesign.BOARD) =
         ProfileCard(id = Uuid.random(), versionTag = Uuid.random(), audience = audience, design = design)
@@ -91,14 +117,9 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides().with(CardOption.COLOURS, "#F4F1EA"),
     )
 
-    private fun appOnly(state: ProfileCardUiState) = state.copy(designAccessMissing = true, designAccessDeclined = true)
-
     private fun tool(description: String): ComposeUiTest.() -> Unit = {
-        // A mouse click, then the pointer leaves, so no hover highlight is left on whatever ends up under it.
-        onNodeWithContentDescription(description).performMouseInput {
-            click()
-            moveTo(Offset(-PARK_PX, -PARK_PX))
-        }
+        // The semantic click reaches a tool scrolled out of view and leaves no hover highlight behind.
+        onNodeWithContentDescription(description).performSemanticsAction(SemanticsActions.OnClick)
         mainClock.advanceTimeBy(SETTLE_MS)
     }
 
@@ -108,6 +129,7 @@ class ProfileCardEditorShotsTest {
         Shot("03-design-saving", base.copy(previewDesign = CardDesign.COLLAGE, isSavingDesign = true)),
         Shot("03b-customise-saving", edited.copy(isSavingDesign = true), EditorStep.Customise),
         Shot("04-customise-accent", edited, EditorStep.Customise),
+        Shot("04b-customise-unedited", base, EditorStep.Customise),
         Shot("05-customise-heading-font", edited, EditorStep.Customise, act = tool("Heading font")),
         Shot("06-customise-portrait", edited, EditorStep.Customise, act = tool("Portrait shape")),
         Shot("07-customise-socials", edited, EditorStep.Customise, act = tool("Social links style")),
@@ -130,16 +152,9 @@ class ProfileCardEditorShotsTest {
         Shot("20-small-phone-customise", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
         Shot("21-small-phone-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = 360, heightDp = 640),
         Shot("22-small-phone-fonts", edited, EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Body font")),
-        Shot("23-app-only-design", appOnly(base), EditorStep.Design),
-        Shot("24-app-only-customise", appOnly(edited), EditorStep.Customise, act = tool("Social links style")),
-        Shot("25-app-only-small-phone", appOnly(edited), EditorStep.Customise, widthDp = 360, heightDp = 640),
-        Shot("26-app-only-font-scale", appOnly(edited), EditorStep.Customise, fontScale = 1.6f),
-        Shot("27-app-only-long-design", appOnly(base.copy(previewDesign = CardDesign.DOSSIER)), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("30-redmi-design", base.copy(previewDesign = CardDesign.DOSSIER), widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("31-redmi-design-access", appOnly(base.copy(previewDesign = CardDesign.DOSSIER)), widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("32-redmi-design-unsaved", appOnly(base.copy(previewDesign = CardDesign.COLLAGE)), widthDp = REDMI_W, heightDp = REDMI_H),
+        Shot("32-redmi-design-unsaved", base.copy(previewDesign = CardDesign.COLLAGE), widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("33-redmi-colours", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("34-redmi-colours-access", appOnly(schemed), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
         Shot("35-redmi-accent", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Accent colour")),
         Shot("36-redmi-heading-font", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Heading font")),
         Shot("37-redmi-portrait", schemed, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = tool("Portrait shape")),
@@ -150,9 +165,16 @@ class ProfileCardEditorShotsTest {
         Shot("42-redmi-poster-colours", base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H),
     )
 
-    private fun circles(n: Int) = List(n) { CardCircle("c$it", CIRCLE_NAMES[it % CIRCLE_NAMES.size], memberCount = it * 3 % 11) }
-
-    private class ViewerShot(val name: String, val state: ProfileCardUiState, val act: ComposeUiTest.() -> Unit = {}, val popup: Boolean = false)
+    private class ViewerShot(
+        val name: String,
+        val state: ProfileCardUiState,
+        val act: ComposeUiTest.() -> Unit = {},
+        val popup: Boolean = false,
+        val fontScale: Float = 1f,
+        val rtl: Boolean = false,
+        val widthDp: Int = PHONE_W,
+        val heightDp: Int = PHONE_H,
+    )
 
     private val work = CardAudience.Circle("c1", "Work")
     private val emergency = CardAudience.Circle("c3", "Emergency Location Access")
@@ -164,31 +186,195 @@ class ProfileCardEditorShotsTest {
         ViewerShot("v04-exporting", withCircle.copy(isExporting = true)),
         ViewerShot("v13-long-circle", base.copy(cards = listOf(public, card(emergency)), selectedAudience = emergency)),
         ViewerShot("v14-long-circle-tiny", base.copy(cards = listOf(public, card(longCircle)), selectedAudience = longCircle)),
-        ViewerShot("v05-menu", withCircle, act = { onNodeWithContentDescription("Card for Work. Choose another card.").performClick() }, popup = true),
     )
+
+    private val family = CardAudience.Circle("f", "Family")
+    private fun virtual(audience: CardAudience) = card(audience).copy(id = Uuid.NIL)
+    private val fixedSet = listOf(public, virtual(family), card(friends, CardDesign.COLLAGE), virtual(work))
+    private val fixedFriends = base.copy(cards = fixedSet, selectedAudience = friends)
+    private val fixedReadOnly = fixedFriends.copy(circleCardsSupported = false)
+    private fun click(description: String): ComposeUiTest.() -> Unit = { onNodeWithContentDescription(description).performClick() }
+    private fun clickText(text: String): ComposeUiTest.() -> Unit = { onNodeWithText(text).performClick() }
+    private val fixedPublic = base.copy(cards = fixedSet, hasLocalPublicDesign = true)
+
+    private val fixedViewerShots = listOf(
+        ViewerShot("k6-v05-read-only", fixedReadOnly),
+        ViewerShot("k6-v05b-read-only-why", fixedReadOnly, act = clickText("Why can't I edit?")),
+        ViewerShot("k6-v06-single-card", base.copy(cards = listOf(public))),
+        ViewerShot("k6-v08-virtual-circle", fixedFriends.copy(selectedAudience = family)),
+        ViewerShot("k6-v09-reset-from-toolbar", fixedFriends, act = click("Reset to default design")),
+        ViewerShot("k6-v10-public-saved", fixedPublic),
+        ViewerShot("k6-v11-font-scale", fixedFriends, fontScale = 1.6f),
+        ViewerShot("k6-v12-rtl-read-only", fixedReadOnly, rtl = true),
+        ViewerShot("k6-v13-long-circle-small", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle), widthDp = 360, heightDp = 640),
+        ViewerShot("k6-v15-public-virtual", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1))),
+    )
+
+    private val fixedEditorShots = listOf(
+        Shot("k6-e01-circle-design", fixedFriends),
+        Shot("k6-e02-read-only-design", fixedReadOnly.copy(previewDesign = CardDesign.POSTER)),
+        Shot("k6-e03-read-only-customise", fixedReadOnly, EditorStep.Customise),
+        Shot("k6-e04-read-only-font-scale", fixedReadOnly, fontScale = 1.6f),
+        Shot("k6-e05-read-only-small", fixedReadOnly, widthDp = 360, heightDp = 640),
+        Shot("k6-e06-font-scale-design", fixedFriends, fontScale = 1.6f),
+        Shot("k6-e07-small-design", fixedFriends, widthDp = 360, heightDp = 640),
+        Shot("k6-e08-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise),
+        Shot("k6-e09-customise-heading", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, act = tool("Heading font")),
+        Shot("k6-e10-customise-empty", base.copy(previewDesign = "zine"), EditorStep.Customise),
+        Shot("k6-e11-long-circle", base.copy(cards = fixedSet + card(longCircle), selectedAudience = longCircle)),
+        Shot("k6-e12-public-unsaved", base.copy(cards = listOf(virtual(CardAudience.Public)) + fixedSet.drop(1), previewDesign = CardDesign.POSTER)),
+        Shot("k6-e13-loading", fixedFriends.copy(isCardReady = false), preview = Preview.Loading),
+        Shot("k6-e14-load-failed", fixedFriends.copy(loadFailed = true), preview = Preview.LoadFailed),
+        Shot("k6-e15-small-font-scale", fixedFriends, fontScale = 1.3f, widthDp = 360, heightDp = 640),
+        Shot("k6-e16-small-font-scale-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, fontScale = 1.3f, widthDp = 360, heightDp = 640),
+        Shot("k6-e17-customise-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, act = tool("Section order")),
+        Shot("k6-e18-small-customise", edited.copy(cards = fixedSet, selectedAudience = friends), EditorStep.Customise, widthDp = 360, heightDp = 640),
+        Shot("k6-e19-rtl-read-only", fixedReadOnly, rtl = true),
+        Shot("k6-e20-rtl-customise", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, rtl = true, act = tool("Section order")),
+        Shot("k6-e21-font-scale-order", edited.copy(cards = fixedSet, selectedAudience = friends, previewDesign = CardDesign.BOARD), EditorStep.Customise, fontScale = 1.6f, act = tool("Section order")),
+        Shot("k6-e22-virtual-family", fixedFriends.copy(selectedAudience = family)),
+    )
+
+    private fun attribute(type: String, key: String, value: String, visibility: ProfileVisibility, circles: List<String>? = null) = ProfileAttribute(
+        id = Uuid.random(),
+        type = type,
+        versionTag = Uuid.random(),
+        visibility = visibility,
+        data = JsonObject(mapOf(key to JsonPrimitive(value))),
+        acl = AccessControlList(requiredSecurityGroup = visibility.wireValue, circleIdList = circles),
+    )
+
+    private val contentCircles = listOf(
+        CardCircle(FAMILY_CIRCLE_ID, "Family"),
+        CardCircle(FRIENDS_CIRCLE_ID, "Friends"),
+        CardCircle(WORK_CIRCLE_ID, "Work"),
+    )
+    private val contentAttributes = listOf(
+        attribute(ProfileAttributeTypes.NAME, ProfileAttributeTypes.KEY_GIVEN_NAME, "Samwise Gamgee", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.BIO_SUMMARY, ProfileAttributeTypes.KEY_SHORT_BIO, "Gardener, cook, second breakfast enthusiast", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.PHONE, ProfileAttributeTypes.KEY_PHONE, "+14155550123", ProfileVisibility.CONNECTED, listOf(FRIENDS_CIRCLE_ID)),
+        attribute(ProfileAttributeTypes.LINK, ProfileAttributeTypes.KEY_LINK_TARGET, "https://shire.example/rosie", ProfileVisibility.CONNECTED, listOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID)),
+        attribute(ProfileAttributeTypes.INSTAGRAM, ProfileAttributeTypes.KEY_INSTAGRAM, "samwise", ProfileVisibility.OWNER),
+    )
+    private val friendsCard = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+    private val contentBase = base.copy(
+        attributes = contentAttributes,
+        circles = contentCircles,
+        cards = listOf(public, card(friendsCard)),
+    )
+    private val familyCard = CardAudience.Circle(FAMILY_CIRCLE_ID, "Family")
+    private val workCard = CardAudience.Circle(WORK_CIRCLE_ID, "Work")
+    private val fullAttributes = listOf(
+        attribute(ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.KEY_EMAIL, "sam@shire.example", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER, "samwise", ProfileVisibility.ANONYMOUS),
+        attribute(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN, "samwise-gamgee", ProfileVisibility.CONNECTED, listOf(WORK_CIRCLE_ID)),
+        attribute(ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.KEY_FACEBOOK, "sam.gamgee", ProfileVisibility.CONNECTED),
+    )
+    private val contentShots = listOf(
+        Shot(
+            "k14-editor-real-preview-work",
+            contentBase.copy(cards = listOf(public, card(workCard, CardDesign.LINKS)), selectedAudience = workCard),
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+            preview = Preview.Real,
+        ),
+    )
+
+    private val editorBase = contentBase.copy(
+        attributes = contentAttributes + fullAttributes,
+        cards = listOf(public, card(friendsCard), card(workCard)),
+        selectedAudience = friendsCard,
+    )
+    private val editorWork = editorBase.copy(selectedAudience = workCard)
+    private val editorPublic = editorBase.copy(selectedAudience = CardAudience.Public)
+    private val editorEmpty = base.copy(attributes = emptyList(), circles = contentCircles, cards = listOf(public, card(friendsCard)), selectedAudience = friendsCard)
+    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), showCard: Boolean = true, act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, showCard = showCard, act = act)
+
+    private fun templateCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
+        ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides)
+    }
+    private val templateShots = listOf(
+        "k15-editor-template-public" to CardAudience.Public,
+        "k15-editor-template-family" to familyCard,
+        "k15-editor-template-friends" to friendsCard,
+        "k15-editor-template-work" to workCard,
+    ).map { (name, audience) ->
+        editor(name, editorBase.copy(cards = listOf(templateCard(audience)), selectedAudience = audience))
+    }
+
+    private val contentEditorShots = templateShots + listOf(
+        editor("k12-editor-friends", editorBase),
+        editor("k12-editor-public", editorPublic),
+        editor("k12-editor-work", editorWork),
+        editor("k12-editor-empty", editorEmpty),
+        editor("k12-editor-small", editorBase, w = 360, h = 640),
+        editor("k12-editor-font-scale", editorBase, fontScale = 1.6f),
+        editor("k12-editor-rtl", editorBase, rtl = true),
+        editor("k12-editor-wide", editorBase, w = 900, h = 820),
+        editor("k12-editor-photo-own", editorBase, photo = CardPhotoUi(null, true, true, false)),
+        editor("k12-editor-photo-circle-readonly", editorBase, photo = CardPhotoUi(null, false, false, false)),
+        editor("k12-editor-photo-busy", editorBase, photo = CardPhotoUi(null, true, true, true)),
+        editor("k12-editor-busy", editorBase.copy(isContentBusy = true)),
+        editor("k13-editor-copy-from", editorBase, act = {
+            onNodeWithText("Copy from…").performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k16-profile-cards-off", editorPublic, showCard = false),
+        editor("k16-profile-cards-off-friends", editorBase, showCard = false),
+        editor("k16-profile-edit-item", editorBase, showCard = false, act = {
+            onNode(SemanticsMatcher("edits the phone") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Edit Phone" }).performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        editor("k16-profile-add-more", editorBase, showCard = false, act = {
+            onNodeWithContentDescription("Add new: More").performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+    )
+
+    @Test
+    fun contentEditorRendersEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in contentEditorShots) render(shot, dark)
+        }
+    }
+
+    @Test
+    fun theEditorPreviewRendersTheWorkCardsRealTemplate() {
+        for (dark in listOf(false, true)) {
+            for (shot in contentShots) render(shot, dark)
+        }
+    }
+
+    @Test
+    fun fixedCircleCardsRenderEveryState() {
+        for (dark in listOf(false, true)) {
+            for (shot in fixedViewerShots) renderViewer(shot, dark)
+            for (shot in fixedEditorShots) render(shot, dark)
+            renderPopup("k6-d01-reset-public", dark) { ResetCardDialog(audience = CardAudience.Public, onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d02-reset-circle", dark) { ResetCardDialog(audience = friends, onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d03-reset-long", dark) { ResetCardDialog(audience = longCircle, onReset = {}, onDismiss = {}) }
+            renderPopup("k6-d04-read-only", dark) { ReadOnlyCardDialog(onDismiss = {}) }
+        }
+    }
 
     @Test
     fun viewerChromeRendersEveryState() {
         for (dark in listOf(false, true)) {
             for (shot in viewerShots) renderViewer(shot, dark)
-            renderPopup("v06-delete-dialog", dark) { DeleteCardDialog(label = "Work", onDelete = {}, onDismiss = {}) }
-            renderPopup("v07-access-dialog", dark) { DesignAccessDialog(onContinue = {}, onDismiss = {}) }
+            renderPopup("v06-reset-dialog", dark) { ResetCardDialog(audience = work, onReset = {}, onDismiss = {}) }
             renderPopup("v03-share-public-confirm", dark) {
                 SharePublicCardDialog(circleLabel = "Acquaintances", saveInsteadOfShare = false, onConfirm = {}, onDismiss = {})
             }
-            renderSheet("v08-add-circle", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false))
-            renderSheet("v09-add-circle-few", dark, CirclePicker(circles(3), withCard = setOf("c0"), loading = false))
-            renderSheet("v10-add-circle-loading", dark, CirclePicker())
-            renderSheet("v11-add-circle-all-taken", dark, CirclePicker(circles(2), withCard = setOf("c0", "c1"), loading = false))
-            renderSheet("v12-add-circle-redmi", dark, CirclePicker(circles(12), withCard = setOf("c1", "c4"), loading = false), REDMI_W, REDMI_H)
-            renderSheet("v15-add-circle-redmi-few", dark, CirclePicker(circles(4), withCard = setOf("c1"), loading = false), REDMI_W, REDMI_H)
-            renderSheet("v16-add-circle-load-failed", dark, CirclePicker(loading = false, failed = true), REDMI_W, REDMI_H)
         }
     }
 
     @Composable
-    private fun themed(dark: Boolean, content: @Composable () -> Unit) {
-        CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+    private fun themed(dark: Boolean, fontScale: Float = 1f, rtl: Boolean = false, content: @Composable () -> Unit) {
+        CompositionLocalProvider(
+            LocalDensity provides Density(SCALE, fontScale),
+            LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+        ) {
             HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
                 CardExpressiveTheme(content)
             }
@@ -196,28 +382,33 @@ class ProfileCardEditorShotsTest {
     }
 
     private fun renderViewer(shot: ViewerShot, dark: Boolean) = runDesktopComposeUiTest(
-        width = (PHONE_W * SCALE).toInt(),
-        height = (PHONE_H * SCALE).toInt(),
+        width = (shot.widthDp * SCALE).toInt(),
+        height = (shot.heightDp * SCALE).toInt(),
     ) {
         mainClock.autoAdvance = false
         setContent {
-            themed(dark) {
-                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(shot.state.design)))) {
+            themed(dark, shot.fontScale, shot.rtl) {
+                var state by remember { mutableStateOf(shot.state) }
+                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(state.design)))) {
                     SheetTopChrome(
-                        uiState = shot.state,
-                        onSelectCard = {},
-                        circleActions = CircleCardActions({}, {}, {}, {}),
+                        uiState = state,
                         onClose = {},
                         bandDrag = Modifier,
                         handleDrag = Modifier,
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                     CardBottomChrome(
-                        isExporting = shot.state.isExporting,
+                        audience = state.selectedAudience,
+                        isExporting = state.isExporting,
                         canShare = true,
                         saveInsteadOfShare = false,
+                        readOnly = state.isCircleReadOnly,
+                        showsReset = state.showsReset,
+                        canReset = state.canReset,
                         onShare = {},
                         onEdit = {},
+                        onChangeDesign = {},
+                        onReset = {},
                         extraActions = {},
                     )
                 }
@@ -244,44 +435,46 @@ class ProfileCardEditorShotsTest {
         save(name, dark)
     }
 
-    private fun renderSheet(
-        name: String,
-        dark: Boolean,
-        picker: CirclePicker,
-        widthDp: Int = PHONE_W,
-        heightDp: Int = PHONE_H,
-        act: ComposeUiTest.() -> Unit = {},
-    ) = runDesktopComposeUiTest(
-        width = (widthDp * SCALE).toInt(),
-        height = (heightDp * SCALE).toInt(),
-    ) {
-        mainClock.autoAdvance = false
-        setContent {
-            themed(dark) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)), contentAlignment = Alignment.BottomCenter) {
-                    Surface(
-                        shape = MaterialTheme.shapes.extraLarge,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = (heightDp * 0.9f).dp),
-                    ) {
-                        Box(Modifier.padding(top = 48.dp)) {
-                            CirclePickerContent(picker = picker, onPick = {})
-                        }
-                    }
-                }
-            }
-        }
-        mainClock.advanceTimeBy(SETTLE_MS)
-        act(this)
-        mainClock.advanceTimeBy(SETTLE_MS)
-        save(name, dark)
-    }
-
     private fun ComposeUiTest.save(name: String, dark: Boolean) {
         val image = onAllNodes(isRoot()).onFirst().captureToImage()
         assertTrue(image.width > 0 && image.height > 0)
         outDir?.let { dir ->
             ImageIO.write(image.toAwtImage(), "png", File(dir, "$name-${if (dark) "dark" else "light"}.png"))
+        }
+    }
+
+    @Test
+    fun saveIsACheckInTheTopBarOnlyOnTheCustomiseStep() {
+        for ((step, expected) in listOf(EditorStep.Design to 0, EditorStep.Customise to 1)) {
+            var saved = 0
+            runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
+                setContent {
+                    CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+                        HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                            CardExpressiveTheme {
+                                ProfileCardEditorContent(
+                                    uiState = edited.copy(previewDesign = CardDesign.POSTER),
+                                    step = step,
+                                    onStep = {},
+                                    onBack = {},
+                                    onSelect = {},
+                                    onOption = { _, _ -> },
+                                    onBlockOrder = {},
+                                    onSave = { saved++ },
+                                    snackbarHostState = remember { SnackbarHostState() },
+                                ) { Box(Modifier.fillMaxSize()) }
+                            }
+                        }
+                    }
+                }
+                waitForIdle()
+                onAllNodesWithContentDescription("Save").assertCountEquals(expected)
+                onAllNodesWithText("Save").assertCountEquals(0)
+                if (expected == 1) {
+                    onNodeWithContentDescription("Save").performClick()
+                    assertEquals(1, saved)
+                }
+            }
         }
     }
 
@@ -305,8 +498,12 @@ class ProfileCardEditorShotsTest {
                 HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
                     CardExpressiveTheme {
                         var step by remember { mutableStateOf(shot.step) }
+                        var uiState by remember { mutableStateOf(shot.state) }
                         ProfileCardEditorContent(
-                            uiState = shot.state,
+                            uiState = uiState,
+                            mode = shot.mode,
+                            photo = shot.photo,
+                            showCard = shot.showCard,
                             step = step,
                             onStep = { step = it },
                             onBack = { step = EditorStep.Design },
@@ -314,11 +511,19 @@ class ProfileCardEditorShotsTest {
                             onOption = { _, _ -> },
                             onBlockOrder = {},
                             onSave = {},
-                            onEditProfile = {},
                             snackbarHostState = remember { SnackbarHostState() },
+                            // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
+                            onContentToggle = { _, _ ->
+                                uiState = when {
+                                    shot.completesToggle -> uiState.copy(contentSaves = uiState.contentSaves + 1)
+                                    shot.failsToggle -> uiState.copy(contentFailures = uiState.contentFailures + 1)
+                                    else -> uiState.copy(isContentBusy = true)
+                                }
+                            },
                         ) { layoutWidth ->
                             when (shot.preview) {
                                 Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))
+                                Preview.Real -> RealCard(dark, shot.state, Modifier.fillMaxSize().laidOutAt(layoutWidth))
                                 else -> CardSurface(
                                     uiState = shot.state,
                                     host = null,
@@ -338,6 +543,18 @@ class ProfileCardEditorShotsTest {
         shot.act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
         save(shot.name, dark)
+    }
+
+    // A web render of the same design from odin-js (card-shots), so the editor is judged against the real page, not a flat stand-in.
+    @Composable
+    private fun RealCard(dark: Boolean, state: ProfileCardUiState, modifier: Modifier) {
+        val file = realPreviewDir?.resolve("links-390-${if (dark) "dark" else "light"}-circle-3.png")?.takeIf { it.exists() }
+        val bitmap = remember(file) { file?.let { ImageIO.read(it).toComposeImageBitmap() } }
+        if (bitmap == null) {
+            StandInCard(state.design, state.overrides.palette, modifier)
+        } else {
+            Image(bitmap, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
+        }
     }
 
     // Real-size type laid out at the viewer's width, so the shot shows the preview's scale-down, not a reflow.
@@ -368,7 +585,5 @@ class ProfileCardEditorShotsTest {
         const val REDMI_W = 393
         const val REDMI_H = 800
         const val SETTLE_MS = 1_500L
-        const val PARK_PX = 100_000f
-        val CIRCLE_NAMES = listOf("Acquaintances", "Chat", "Emergency Location Access", "Family", "Feed", "Friends", "HomePage", "Moments", "Recovery", "Vault", "Webdrop", "Work")
     }
 }

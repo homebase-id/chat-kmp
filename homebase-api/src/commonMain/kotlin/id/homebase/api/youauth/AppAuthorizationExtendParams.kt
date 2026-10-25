@@ -1,7 +1,5 @@
 package id.homebase.api.youauth
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.serializer
 import kotlin.text.iterator
 
 /**
@@ -15,8 +13,6 @@ data class AppAuthorizationExtendParams(
         val d: String? = null,
         /** Comma-separated permission keys */
         val p: String? = null,
-        /** Circle IDs (JSON array) */
-        val c: String? = null,
         /** JSON-encoded circle drives */
         val cd: String? = null,
         /** Return URL for deep linking back to app */
@@ -27,7 +23,6 @@ data class AppAuthorizationExtendParams(
         append("appId=").append(appId.encodeURLParam())
         d?.let { append("&d=").append(it.encodeURLParam()) }
         p?.let { append("&p=").append(it.encodeURLParam()) }
-        c?.let { append("&c=").append(it.encodeURLParam()) }
         cd?.let { append("&cd=").append(it.encodeURLParam()) }
         append("&return=").append(returnUrl.encodeURLParam())
     }
@@ -40,8 +35,6 @@ data class AppAuthorizationExtendParams(
          * @param drives Missing drive access requests
          * @param circleDrives Optional circle-specific drives
          * @param permissionKeys Missing permission key values
-         * @param needsAllConnectedOrCircleIds true for all connected circles, list for specific
-         * circle IDs
          * @param returnUrl Deep link URL to return to app
          */
         fun create(
@@ -49,37 +42,14 @@ data class AppAuthorizationExtendParams(
             drives: List<TargetDriveAccessRequest>,
             circleDrives: List<TargetDriveAccessRequest>? = null,
             permissionKeys: List<Int>? = null,
-            needsAllConnectedOrCircleIds: Any? = null, // Boolean or List<String>
             returnUrl: String
         ): AppAuthorizationExtendParams {
-            val circleIds =
-                    when (needsAllConnectedOrCircleIds) {
-                        is List<*> -> {
-                            @Suppress("UNCHECKED_CAST")
-                            Json.encodeToString(
-                                serializer(),
-                                    needsAllConnectedOrCircleIds as List<String>
-                            )
-                        }
-                        true -> {
-                            Json.encodeToString(
-                                serializer(),
-                                    listOf(
-                                        AUTO_CONNECTIONS_CIRCLE_ID,
-                                        CONFIRMED_CONNECTIONS_CIRCLE_ID
-                                    )
-                            )
-                        }
-                        else -> null
-                    }
-
             return AppAuthorizationExtendParams(
                     appId = appId,
                     d =
                             if (drives.isNotEmpty()) TargetDriveAccessRequest.Companion.encodeList(drives)
                             else null,
                     p = permissionKeys?.joinToString(","),
-                    c = circleIds,
                     cd =
                             circleDrives?.takeIf { it.isNotEmpty() }?.let {
                                 TargetDriveAccessRequest.Companion.encodeList(it)

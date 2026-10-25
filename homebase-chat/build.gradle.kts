@@ -40,6 +40,7 @@ kotlin {
             baseName = "homebase-chatKit"
             isStatic = true
         }
+        iosTarget.compilerOptions { optIn.add("kotlinx.cinterop.BetaInteropApi") }
     }
 
     compilerOptions {
@@ -105,6 +106,17 @@ kotlin {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }
+        // Android + Apple share one webrtc-kmp engine; webrtc-kmp has no JVM variant, so it cannot live in commonMain.
+        val webrtcKmpMain = create("webrtcKmpMain") {
+            dependsOn(commonMain.get())
+            dependencies { implementation(libs.webrtc.kmp) }
+        }
+        androidMain.get().dependsOn(webrtcKmpMain)
+        appleMain.get().dependsOn(webrtcKmpMain)
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.robolectric)
+        }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.media3.exoplayer)
@@ -132,6 +144,12 @@ kotlin {
             }
             implementation(libs.jna)
             implementation(libs.jna.platform)
+            implementation(libs.composemediaplayer)
+            implementation(libs.webrtc.java)
+            implementation(libs.multiplatform.settings)
+            listOf("macos-aarch64", "macos-x86_64", "windows-x86_64", "linux-x86_64", "linux-aarch64").forEach {
+                runtimeOnly("${libs.webrtc.java.get().module}:${libs.versions.webrtcJava.get()}:$it")
+            }
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.
@@ -141,6 +159,7 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
             implementation(libs.jetbrains.compose.ui.test)
             // Composing a real composer field pulls koinInject<UserPreferences>, which a test can
             // only satisfy by building one over a Settings.
@@ -239,11 +258,8 @@ tasks.named("jvmJar") {
     finalizedBy(platformJarTasks)
 }
 
-// `withHostTest {}` is enabled above so AGP 9.2 stops warning about commonTest
-// with no Android host-test runner. Compose UI tests in commonTest use a
-// Skiko-backed implementation that doesn't compose against the mocked Android
-// host-test classpath, so disable the task until those tests are migrated
-// to jvmTest/.
-tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
-    enabled = false
+// commonTest's Compose UI tests are Skiko-backed and don't run on the mocked Android host classpath,
+// so the Android host run is limited to the Android-only tests until those move to jvmTest/.
+tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
+    filter { includeTestsMatching("org.webrtc.*") }
 }

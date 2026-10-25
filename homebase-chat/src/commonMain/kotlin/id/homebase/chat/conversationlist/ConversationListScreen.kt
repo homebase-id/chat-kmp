@@ -945,6 +945,7 @@ fun ConversationListUi(
                                     },
                                     onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
+                                    vaultActive = uiState.vaultActive,
                                 )
                             }
                         } else {
@@ -1009,6 +1010,7 @@ fun ConversationListUi(
                                 is FullScreenOverlay.ViewMessageData -> "view"
                                 is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
                                 is FullScreenOverlay.PdfViewerData -> "pdf"
+                                is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                             }
                         },
                         transitionSpec = {
@@ -1021,6 +1023,7 @@ fun ConversationListUi(
                             ChatMediaViewer(
                                 data = overlay,
                                 uiState = messagesUiState,
+                                vaultActive = uiState.vaultActive,
                                 onUiAction = onUiAction,
                                 sharedTransitionScope = this@SharedTransitionLayout,
                                 animatedVisibilityScope = this@AnimatedContent,

@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package id.homebase.app
 
 import kotlinx.browser.document
@@ -8,7 +10,7 @@ import kotlinx.browser.window
  * Seamless owner-session login for the web app (issue #853).
  *
  * When the wasm bundle is hosted on the identity's own domain (production serves it under
- * `/apps/chat-wasm/`), the owner console's session cookie lives on the same origin. Instead of
+ * `/apps/chat/`), the owner console's session cookie lives on the same origin. Instead of
  * showing the login form + YouAuth popup, we navigate the top window straight to the authorize
  * endpoint: the cookie rides along, odin-core skips consent for same-origin first-party apps
  * (`YouAuthUnifiedService.NeedConsent` — "Apps on /owner doesn't need consent"), and the user
@@ -50,13 +52,14 @@ object SeamlessOwnerLogin {
      * a normal boot.
      */
     fun consumePendingCallbackUrl(): String? {
-        val location = window.location
-        if (!location.pathname.contains(CALLBACK_PATH_SEGMENT)) return null
-        if (!location.search.contains("state=")) return null
-        val href = location.href
+        if (!isCallbackUrl()) return null
+        val href = window.location.href
         window.history.replaceState(null, "", document.baseURI)
         return href
     }
+
+    fun isCallbackUrl(): Boolean =
+        window.location.pathname.contains(CALLBACK_PATH_SEGMENT) && window.location.search.contains("state=")
 
     /**
      * Mark the seamless attempt for this tab session. Returns false if an attempt was already

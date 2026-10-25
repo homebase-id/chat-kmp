@@ -188,6 +188,35 @@ class DriveFileProviderCached(
         key: String,
     ): ByteApiResponse = delegate.getPayloadBytesRawNetwork(driveId, fileId, key)
 
+    // Holder counts per file; immutable map replaced under ephemeralMutex like notFoundCache.
+    @Volatile private var ephemeralFiles: Map<Uuid, Int> = emptyMap()
+    private val ephemeralMutex = Mutex()
+
+    /** Reads of this file skip the disk caches until every holder has called [evictFile]; nothing is written for it. */
+    suspend fun markEphemeral(fileId: Uuid) {
+        ephemeralMutex.withLock { ephemeralFiles = ephemeralFiles + (fileId to (ephemeralFiles[fileId] ?: 0) + 1) }
+    }
+
+    fun isEphemeral(fileId: Uuid): Boolean = fileId in ephemeralFiles
+
+    /**
+     * Releases one [markEphemeral] hold, so a disposed viewer cannot unmark a file a live one still
+     * holds, and drops whatever full-payload entry the disk cache holds for the file.
+     */
+    suspend fun evictFile(driveId: Uuid, fileId: Uuid, key: String) {
+        ephemeralMutex.withLock {
+            val holders = ephemeralFiles[fileId] ?: 0
+            ephemeralFiles = if (holders <= 1) ephemeralFiles - fileId else ephemeralFiles + (fileId to holders - 1)
+        }
+        try {
+            payloadDiskCache.remove(buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "evictFile failed for $fileId" }
+        }
+    }
+
     suspend fun getPayloadBytesRaw(
             driveId: Uuid,
             fileId: Uuid,
@@ -195,6 +224,9 @@ class DriveFileProviderCached(
             options: PayloadOperationOptions = PayloadOperationOptions(),
             onDownloadProgress: ((Float) -> Unit)? = null,
     ): ByteApiResponse {
+        if (fileId in ephemeralFiles) {
+            return delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
+        }
         val cacheKey = buildPayloadCacheKey(
                 driveId, fileId, key, options.chunkStart, options.chunkLength, options.lastModified)
         // The ONE routing decision (#845): range-shaped requests live in the
@@ -264,6 +296,9 @@ class DriveFileProviderCached(
             fileOps: FileOperationsProvider = fileOperationsProvider,
             onProgress: ((Float) -> Unit)? = null,
     ): Boolean {
+        if (fileId in ephemeralFiles) {
+            return delegate.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+        }
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
         val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
                 ?: return delegate.streamPayloadDecryptedToPath(

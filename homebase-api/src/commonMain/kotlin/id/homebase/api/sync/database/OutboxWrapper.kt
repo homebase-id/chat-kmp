@@ -94,6 +94,13 @@ class OutboxWrapper(
         }
     }
 
+    /** Points rows of [uploadNewFile] queued behind [heldUniqueId] at [newDependency]. Other rows on it (an edit,
+     *  a reaction) keep waiting for it. */
+    suspend fun repointNewFilesQueuedBehind(heldUniqueId: Uuid, newDependency: Uuid?, uploadNewFile: Long): Long =
+        databaseManager.withWriteValue {
+            delegate.repointNewFilesQueuedBehind(newDependency, heldUniqueId, uploadNewFile).value
+        }
+
     suspend fun checkInFailed(
         checkOutStamp: Long,
         nextRunTime: Long,

@@ -145,13 +145,13 @@ GROUP BY d.groupId;
 -- settles; the result is empty in the normal case.
 selectOrphanedAtRestConversations:
 SELECT
-  m.groupId AS groupId,
-  COUNT(*) AS messageCount,
+  g.groupId AS groupId,
+  g.messageCount AS messageCount,
   (
     SELECT m2.originalAuthor
     FROM DriveMainIndex m2
-    WHERE m2.identityId = m.identityId
-      AND m2.groupId = m.groupId
+    WHERE m2.identityId = :identityId
+      AND m2.groupId = g.groupId
       AND m2.fileType = 7878 AND m2.dataType = 0
       AND m2.fileState != 0 AND m2.archivalStatus != 2
       AND m2.originalAuthor IS NOT NULL
@@ -159,18 +159,21 @@ SELECT
     ORDER BY m2.userDate DESC
     LIMIT 1
   ) AS counterpartyAuthor
-FROM DriveMainIndex m
-WHERE m.identityId = :identityId
-  AND m.fileType = 7878 AND m.dataType = 0
-  AND m.groupId IS NOT NULL
-  AND m.fileState != 0 AND m.archivalStatus != 2
-  AND NOT EXISTS (
-    SELECT 1 FROM DriveMainIndex h
-    WHERE h.identityId = m.identityId
-      AND h.fileType = 8888
-      AND h.uniqueId = m.groupId
-  )
-GROUP BY m.groupId;
+FROM (
+  SELECT m.groupId AS groupId, COUNT(*) AS messageCount
+  FROM DriveMainIndex m
+  WHERE m.identityId = :identityId
+    AND m.fileType = 7878 AND m.dataType = 0
+    AND m.groupId IS NOT NULL
+    AND m.fileState != 0 AND m.archivalStatus != 2
+  GROUP BY m.groupId
+) AS g
+WHERE NOT EXISTS (
+  SELECT 1 FROM DriveMainIndex h
+  WHERE h.identityId = :identityId
+    AND h.fileType = 8888
+    AND h.uniqueId = g.groupId
+);
 
 -- Raw lastReadTime for a conversation (test affordance + debugging).
 selectLastReadTime:

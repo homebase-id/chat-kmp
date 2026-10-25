@@ -168,6 +168,8 @@ fun initializeApp() {
         .get<id.homebase.core.location.tracking.LocationTrackingCoordinator>()
         .onProcessStart()
 
+    id.homebase.core.calling.startAppleCallCoordinator()
+
     CrashReporting.markStartupComplete()
     Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }

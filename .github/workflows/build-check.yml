@@ -55,7 +55,7 @@ jobs:
         # (see karma.config.d/01-ffmpeg.js). wasmJs gradle tasks don't support
         # Gradle's configuration-cache or parallel-project execution (KT-52074
         # and friends), hence the two flags below.
-        run: ./gradlew :homebase-api:wasmJsTest --no-configuration-cache --no-parallel
+        run: ./gradlew :homebase-api:wasmJsTest :homebase-common:wasmJsTest --no-configuration-cache --no-parallel
         env:
           JDK_21: ${{ env.JAVA_HOME }}
           CI: true
@@ -67,7 +67,7 @@ jobs:
           files: |
             **/build/test-results/jvmTest/TEST-*.xml
             **/build/test-results/testDebugUnitTest/TEST-*.xml
-            **/build/test-results/wasmJsTest/TEST-*.xml
+            **/build/test-results/wasmJsBrowserTest/TEST-*.xml
           # Branch protection on `main` requires the literal context "JVM Test Results".
           # The check now covers JVM + Android unit + wasmJs results in one publish; the
           # name stays as-is until the required-status-check list is updated.

@@ -283,16 +283,18 @@ fun AttachmentGallery(
                                 expanded = showMenu,
                                 onDismissRequest = { showMenu = false },
                             ) {
-                                DropdownMenuItem(
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Image, contentDescription = null)
-                                    },
-                                    text = { Text(stringResource(MR.string.chat_select_more_photos)) },
-                                    onClick = {
-                                        showMenu = false
-                                        galleryPermissionState.requestPartialGalleryPermission()
-                                    }
-                                )
+                                if (galleryPermissionState.canSelectMorePhotos) {
+                                    DropdownMenuItem(
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Image, contentDescription = null)
+                                        },
+                                        text = { Text(stringResource(MR.string.chat_select_more_photos)) },
+                                        onClick = {
+                                            showMenu = false
+                                            galleryPermissionState.requestPartialGalleryPermission()
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     leadingIcon = {
                                         Icon(Icons.Default.Settings, contentDescription = null)

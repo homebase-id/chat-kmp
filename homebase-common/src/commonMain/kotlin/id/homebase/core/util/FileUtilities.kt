@@ -11,7 +11,11 @@ interface FileSystemHandler {
     fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     fun openFileBrowser(file: Path, onError: (Throwable) -> Unit = {})
-    /** Desktop: opens a Save As dialog for a copy. */
+    /**
+     * Hands [file] to another app. Android and iOS show the system share sheet (on iPad a popover anchored
+     * to the window); desktop has no share target, so it opens a Save As dialog for a copy; the web does nothing.
+     * Callers that already offer Save should offer Share on Android and iOS only.
+     */
     fun shareFile(file: Path, onError: (Throwable) -> Unit = {})
 
     /**

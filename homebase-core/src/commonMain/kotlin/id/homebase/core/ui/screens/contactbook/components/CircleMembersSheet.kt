@@ -169,7 +169,7 @@ fun CircleMembersSheet(
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
 
-                allMembers.isEmpty() && !state.pendingChecking -> Text(
+                allMembers.isEmpty() -> Text(
                     text = stringResource(MR.string.contactbook_circle_members_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -177,27 +177,19 @@ fun CircleMembersSheet(
                 )
 
                 else -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (pendingCount == 0) {
-                                stringResource(MR.string.contactbook_circle_members_count, realCount)
-                            } else {
-                                stringResource(
-                                    MR.string.contactbook_circle_members_count_with_pending,
-                                    realCount,
-                                    pendingCount,
-                                )
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (state.pendingChecking) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(start = 8.dp).heightIn(max = 12.dp),
-                                strokeWidth = 2.dp,
+                    Text(
+                        text = if (pendingCount == 0) {
+                            stringResource(MR.string.contactbook_circle_members_count, realCount)
+                        } else {
+                            stringResource(
+                                MR.string.contactbook_circle_members_count_with_pending,
+                                realCount,
+                                pendingCount,
                             )
-                        }
-                    }
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     state.removeError?.let { error ->
                         Text(
                             text = stringResource(error.messageRes()),

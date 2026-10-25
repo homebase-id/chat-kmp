@@ -102,7 +102,7 @@ suspend fun resolveVideoContent(
         // size, LRU untouched, and the surfaces play from a file path — which they
         // already did, except they used to buffer the whole payload in RAM first
         // just to write it themselves.
-        val outputPath = AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), AppCacheDirs.EXPORT) +
+        val outputPath = AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), data.scratchSub) +
             "/hbvid_res_${Random.nextLong().toULong().toString(16)}.mp4"
         val (ok, payloadElapsed) = measureTimedValue {
             driveFileProvider.streamPayloadDecryptedToPath(

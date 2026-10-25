@@ -44,3 +44,18 @@ class PhoneSeededE164Test {
         assertEquals("+14155553695", seededE164("(415) 555-3695", country("US")))
     }
 }
+
+class PhoneSharedDialCodeTest {
+
+    @Test
+    fun `a shared dial code seeds its main country without a region`() {
+        assertEquals("US", splitE164("+14155550123").first?.iso)
+        assertEquals("RU", splitE164("+74951234567").first?.iso)
+    }
+
+    @Test
+    fun `a shared dial code follows the device region`() {
+        assertEquals("CA", splitE164("+16135550123", "CA").first?.iso)
+        assertEquals("US", splitE164("+14155550123", "DK").first?.iso)
+    }
+}

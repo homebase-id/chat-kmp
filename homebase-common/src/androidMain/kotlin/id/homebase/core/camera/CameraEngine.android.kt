@@ -10,7 +10,6 @@ import android.hardware.camera2.TotalCaptureResult
 import android.hardware.display.DisplayManager
 import android.view.Display
 import androidx.camera.camera2.interop.Camera2Interop
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -353,7 +352,6 @@ internal class AndroidCameraEngine(
     }
 
     // Target rotation is read once at build time by the Compose viewfinder, hence the rebuild on rotation.
-    @OptIn(ExperimentalCamera2Interop::class)
     private fun buildPreview(): Preview {
         val builder = Preview.Builder()
             .setResolutionSelector(RESOLUTION_16_9)

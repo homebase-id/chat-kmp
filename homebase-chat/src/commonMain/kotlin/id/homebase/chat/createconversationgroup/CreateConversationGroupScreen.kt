@@ -262,7 +262,6 @@ fun CreateConversationGroupUi(
                         name = contact.name,
                         subTitle = contact.odinId.domainName,
                         odinId = contact.odinId,
-                        avatarInitials = contact.avatarInitials,
                         onContactClick = {
                             onUiAction(
                                 CreateConversationGroupUiAction.RemoveClicked(contact)

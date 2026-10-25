@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package id.homebase.core.files
 
 import id.homebase.api.file.FileOperationsProvider
@@ -16,3 +18,7 @@ actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
 // picked PlatformFile keeps its bytes; toUploadPath() above materializes them at send time via
 // readBytes(). (FileKit's copyTo / cacheDir aren't available on wasmJs.)
 actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile = this
+
+private fun lastModifiedJs(file: JsAny): Double = js("file.lastModified")
+
+actual fun PlatformFile.modifiedAtMs(): Long? = lastModifiedJs(file).toLong().takeIf { it > 0 }

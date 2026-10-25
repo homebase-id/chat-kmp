@@ -298,7 +298,7 @@ object ImageMetadataScrubber {
         }
 
         // Metadata chunks belong at the end of the stream, after the image data.
-        if (keepOrientation && sawVp8x) pieces += Piece.Literal(webpExifChunk(orientation!!))
+        if (keepOrientation && sawVp8x) pieces += Piece.Literal(webpExifChunk(orientation))
 
         if (!droppedAnything) return src
         val out = assemble(pieces, src)

@@ -13,7 +13,7 @@
 //   ffmpeg-wasm/worker-loader.js    -> the module worker that imports the core
 //   ffmpeg-wasm/core/esm/ffmpeg-core.{js,wasm}
 //   mp4box.all.min.js               -> globalThis.MP4Box (container probe)
-// All resolved against document.baseURI so sub-path hosting (-PpublicPath=/apps/chat-wasm/)
+// All resolved against document.baseURI so sub-path hosting (-PpublicPath=/apps/chat/)
 // works.
 (function () {
   var ffmpeg = null;        // shared FFmpeg instance, created lazily

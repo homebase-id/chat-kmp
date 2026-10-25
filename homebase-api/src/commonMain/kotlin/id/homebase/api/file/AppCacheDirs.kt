@@ -14,6 +14,7 @@ object AppCacheDirs {
     const val PICKER_COPIES: String = "picker-copies"
     const val AUDIO: String = "audio"
     const val SHARE_INBOUND: String = "share-inbound"
+    const val VIEW_ONCE: String = "view-once"
 
     fun scratchRoot(cacheDir: String): String = cacheDir.trimEnd('/') + "/" + SCRATCH_DIR_NAME
 

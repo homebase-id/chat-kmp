@@ -15,29 +15,22 @@ import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import co.touchlab.kermit.Logger
 import kotlin.uuid.Uuid
 
 /** Debounce window for push-driven refreshes — long enough to swallow a fan-out burst, short
  *  enough that the contact-detail / circles UI updates promptly after an external change. */
 private const val REFRESH_DEBOUNCE_MS = 300L
-
-/** Bounds [ConnectionService.findPendingMembers]'s wait for the first real load on cold start. */
-private const val CONNECTIONS_LOAD_WAIT_MS = 15_000L
 
 /**
  * A review could not be cleared because the contact still holds circles that keep them reviewed.
@@ -66,11 +59,10 @@ data class ConnectionState(
 }
 
 /**
- * Owner circles (including system circles) with their members, fetched alongside the
- * connection map on every [ConnectionService.refresh]. Powers circle-membership reads:
- * the contact-list "Confirmed" / "Introduced" pills (via the two system-circle ids) and
- * the contact-detail "circles this person is in" list. Persisted by [ConnectionCacheRepository]
- * and hydrated on a cold start, so offline it shows the last-known memberships.
+ * Owner circles with their members, fetched alongside the connection map on every
+ * [ConnectionService.refresh]. Powers circle-membership reads such as the contact-detail
+ * "circles this person is in" list. Persisted by [ConnectionCacheRepository] and hydrated on a
+ * cold start, so offline it shows the last-known memberships.
  */
 data class CircleMembershipState(
     val isLoaded: Boolean = false,
@@ -102,8 +94,6 @@ class ConnectionService(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val cache: ConnectionCacheRepository,
-    /** Dark launch: enrollments are only claimed while the connection review flag is on. */
-    private val processEnrollmentsEnabled: () -> Boolean = { false },
 ) {
 
     private val _connections =
@@ -199,36 +189,7 @@ class ConnectionService(
         scope.launch {
             hydrateFromCache()
             launchRefresh()
-            if (processEnrollmentsEnabled()) processEnrollments()
         }
-    }
-
-    /**
-     * Drain any circle enrolments queued for this app, over HTTP.
-     *
-     * The socket carries the same command and is sent on every connect, but it answers nothing —
-     * so it cannot tell us whether an enrolment was actually claimed. This one returns counts.
-     * Idempotent and a no-op without the permission, so running both is harmless.
-     */
-    suspend fun processEnrollments() {
-        // Logged before the call as well as after: without this, silence is ambiguous — never
-        // reached, still in flight, and threw all look the same.
-        Logger.i { "ENROLL-DIAG calling POST /connections/enrollments/process" }
-        val result = try {
-            provider.processEnrollments()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // 403 here is the answer, not an incident: it means this app token may not process
-            // enrolments at all, which no count could have told us.
-            Logger.w(e) { "ENROLL-DIAG failed (${e::class.simpleName})" }
-            return
-        }
-        Logger.i {
-            "ENROLL-DIAG processed connections=${result.connectionsProcessed} " +
-                "enrollments=${result.enrollmentsCompleted}"
-        }
-        if (result.enrollmentsCompleted > 0) refresh()
     }
 
     /**
@@ -277,7 +238,7 @@ class ConnectionService(
                 // Circles ride along on the same refresh. A failure here must not break the
                 // connection map, so it is caught independently and leaves prior circles intact.
                 val circlesDeferred = async {
-                    runCatching { provider.getCirclesWithMembers(includeSystemCircle = true) }
+                    runCatching { provider.getCirclesWithMembers() }
                         .getOrElse { e ->
                             Logger.w(e) { "ConnectionService: getCirclesWithMembers failed" }
                             null
@@ -292,8 +253,6 @@ class ConnectionService(
                 )
                 circlesDeferred.await()?.let { circles ->
                     _circles.value = CircleMembershipState(isLoaded = true, circles = circles)
-                    // Verifies the Confirmed (bb2683fa…) / Auto (9e22b429…) system-circle ids
-                    // actually come back here so the membership-driven pills are reliable.
                     Logger.d {
                         "ConnectionService circles: " +
                             circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
@@ -347,14 +306,6 @@ class ConnectionService(
     }
 
     /**
-     * Live (uncached) status read for [odinId] straight from the server — the only way to learn
-     * whether a circle grant is still a sealed deposit (`accessGrant.pendingCircleIds`) rather
-     * than a real [CircleWithMembers] entry, since there is no bulk "list pending" endpoint.
-     */
-    suspend fun getConnectionStatus(odinId: OdinId): RedactedIdentityConnectionRegistration? =
-        provider.getConnectionStatus(odinId)
-
-    /**
      * Grant [odinId] membership in [circleId]. May land as a real [CircleWithMembers] entry
      * immediately or as a sealed deposit (`pendingCircleIds` on their `/connections/status`) —
      * the caller decides how to represent that. Refreshes immediately after success so
@@ -391,58 +342,6 @@ class ConnectionService(
     suspend fun setCircleEnabled(circleId: Uuid, enabled: Boolean) {
         if (enabled) provider.enableCircle(circleId) else provider.disableCircle(circleId)
         refresh()
-    }
-
-    /**
-     * Main's per-contact pending lookup, kept for the connection-review dark launch: one
-     * `/connections/status` read per Connected identity that isn't already a real member.
-     *
-     * Waits (bounded) for the first real load, or a cold-start caller reads empty state and
-     * silently reports nobody pending.
-     */
-    suspend fun findPendingMembers(circleId: Uuid): List<OdinId> = coroutineScope {
-        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) {
-            connections.first { it.isLoaded }
-            circles.first { it.isLoaded }
-        }
-
-        val realMembers = circles.value.membersOf(circleId.toHexString())
-        val candidates = connections.value.map.values
-            .filter { it.status == ConnectionStatus.Connected }
-            .map { it.odinId }
-            .filterNot { realMembers.contains(it.domainName.lowercase()) }
-
-        candidates.map { odinId ->
-            async {
-                val status = try {
-                    getConnectionStatus(odinId)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending members of $circleId" }
-                    null
-                }
-                odinId.takeIf { status?.accessGrant?.pendingCircleIds?.contains(circleId) == true }
-            }
-        }.awaitAll().filterNotNull()
-    }
-
-    /** Main's single-contact inverse of [findPendingMembers], kept for the same dark launch. */
-    suspend fun findPendingCircles(odinId: OdinId): List<Uuid> {
-        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) { circles.first { it.isLoaded } }
-
-        val status = try {
-            getConnectionStatus(odinId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending circles" }
-            return emptyList()
-        }
-        val known = circles.value.circles
-            .mapNotNull { runCatching { Uuid.parseHex(it.circle.id) }.getOrNull() }
-            .toSet()
-        return status?.accessGrant?.pendingCircleIds.orEmpty().filter { it in known }
     }
 
     /**

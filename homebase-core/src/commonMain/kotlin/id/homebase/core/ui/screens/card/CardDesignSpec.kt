@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.util.compareStringUuId
+
 enum class CardOption {
     COLOURS,
     ACCENT,
@@ -16,7 +18,11 @@ data class CardDesignSpec(
     val options: Set<CardOption>,
     val portraitSlots: Int = 0,
     val schemes: List<CardColourScheme> = emptyList(),
-)
+    val orderedKinds: List<String> = CardDesignSpecs.ORDERED_KINDS,
+) {
+    /** Chat and moments always render; links only when the card has some. */
+    fun reorderable(hasLinks: Boolean): List<String> = orderedKinds.filter { hasLinks || it != "links" }
+}
 
 /** Everything but the accent, set together so the ink always reads on its ground; [id] names it in the UI. */
 data class CardColourScheme(
@@ -40,7 +46,10 @@ object CardDesignSpecs {
     val PORTRAIT_SHAPES = listOf("circle", "square", "rounded", "ellipse")
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
+    val ORDERED_KINDS = BLOCK_KINDS - "posts"
 
+    // These renderers pin chat and socials outside the ordered list.
+    private val PINNED_CHAT_KINDS = listOf("links", "moments")
     private val ALL_OPTIONS = CardOption.entries.toSet()
 
     // Poster's ground tints a photo and its paper section is set in the ground colour, so it only takes dark grounds.
@@ -73,6 +82,7 @@ object CardDesignSpecs {
         CardDesignSpec(
             CardDesign.COLLAGE,
             ALL_OPTIONS,
+            orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 2,
             schemes = listOf(
                 CardColourScheme("sage", "#DDE5D3", "#26331F", "#56664A", "#FFFFFF", "#26331F"),
@@ -87,6 +97,7 @@ object CardDesignSpecs {
         CardDesignSpec(
             CardDesign.DOSSIER,
             ALL_OPTIONS,
+            orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 1,
             schemes = listOf(
                 CardColourScheme("ink", "#0D1B2A", "#E3ECF5", "#8EA3B8", "#1B2E44", "#E3ECF5"),
@@ -96,6 +107,20 @@ object CardDesignSpecs {
                 CardColourScheme("paper", "#F4F1EA", "#1C1B19", "#6B675E", "#E2DDD2", "#1C1B19"),
                 CardColourScheme("blueprint", "#12355B", "#EAF2FB", "#9DB6D1", "#1E4A78", "#EAF2FB"),
                 CardColourScheme("sand", "#E8DCC6", "#2A2216", "#6E604A", "#D6C7AB", "#2A2216"),
+            ),
+        ),
+        CardDesignSpec(
+            CardDesign.LINKS,
+            ALL_OPTIONS,
+            portraitSlots = 1,
+            schemes = listOf(
+                CardColourScheme("cloud", "#F1F3F6", "#1B1F24", "#5C6673", "#FFFFFF", "#1B1F24"),
+                CardColourScheme("slate", "#1B1F24", "#F1F3F6", "#A3ACB8", "#2A3037", "#F1F3F6"),
+                CardColourScheme("mint", "#DDF0E6", "#12301F", "#4A6B58", "#FFFFFF", "#12301F"),
+                CardColourScheme("peach", "#FBE3D6", "#43210F", "#7D5A45", "#FFFFFF", "#43210F"),
+                CardColourScheme("lavender", "#E7E3F7", "#2A2350", "#5F5A85", "#FFFFFF", "#2A2350"),
+                CardColourScheme("navy", "#14213D", "#F0F4FA", "#A9B7CE", "#22345A", "#F0F4FA"),
+                CardColourScheme("lemon", "#F8F2C8", "#3B3405", "#6E6420", "#FFFFFF", "#3B3405"),
             ),
         ),
     ).associateBy { it.design }
@@ -125,7 +150,30 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
         portraits = shape?.takeIf { has(CardOption.PORTRAIT_SHAPE) }?.let {
             List(spec.portraitSlots) { slot -> if (slot == 0) CardPortrait(shape = it) else CardPortrait() }
         },
-        blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.map { CardBlock(it.kind) },
+        blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.let { withBlockOrder(blockOrder()).blocks },
         socials = socials?.takeIf { has(CardOption.SOCIALS_STYLE) },
     )
 }
+
+/** What a fixed card renders until first saved, and what its reset returns to. */
+internal data class CardTemplate(val design: String, val overrides: CardOverrides)
+
+private fun template(design: String, scheme: String) = CardTemplate(
+    design,
+    CardOverrides(palette = CardDesignSpecs.of(design)!!.schemes.first { it.id == scheme }.applyTo(null)),
+)
+
+private val FIXED_CIRCLE_TEMPLATES = listOf(
+    FRIENDS_CIRCLE_ID to template(CardDesign.COLLAGE, "sage"),
+    FAMILY_CIRCLE_ID to template(CardDesign.POSTER, "wine"),
+    WORK_CIRCLE_ID to template(CardDesign.LINKS, "cloud"),
+)
+
+internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.LINKS, "mint")
+
+internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audience) {
+    CardAudience.Public -> PUBLIC_CARD_TEMPLATE
+    is CardAudience.Circle -> FIXED_CIRCLE_TEMPLATES.firstOrNull { compareStringUuId(it.first, audience.id) }?.second
+}
+
+internal fun ProfileCard.withTemplate(template: CardTemplate): ProfileCard = copy(design = template.design, overrides = template.overrides)

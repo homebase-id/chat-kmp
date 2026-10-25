@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 7A1C0DE02F9000020055AA02 /* WebRTC */; };
 		031DFB24DCA72A98A492CB45 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB32F3A0C08000B3AFE /* libswscale.xcframework */; };
 		1B3A45515D60DA2487B59C66 /* fixture_4k.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */; };
 		3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */; };
@@ -40,6 +41,8 @@
 		8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; };
 		A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83540B919899D142F6699230 /* Foundation.framework */; };
 		CF04EFF288B21720D5F2C2A5 /* fixture_1080p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */; };
+		5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */; };
+		5B0F1A0C0000000000000A03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 5B0F1A0C0000000000000A04 /* WebRTC */; };
 		DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */; };
 		F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006A01 /* SharedContentSaverTests.swift */; };
 		F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1207A520000000000006C01 /* SharedContentSaver.swift */; };
@@ -110,6 +113,7 @@
 
 /* Begin PBXFileReference section */
 		03A0D16625BBBB6D9B0E2DFC /* fixture_1080p.mp4 */ = {isa = PBXFileReference; includeInIndex = 1; path = fixture_1080p.mp4; sourceTree = "<group>"; };
+		5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SampleBufferVideoViewTests.swift; sourceTree = "<group>"; };
 		1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FFmpegPipelineTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006A01 /* SharedContentSaverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedContentSaverTests.swift; sourceTree = "<group>"; };
 		F1207A520000000000006C01 /* SharedContentSaver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedContentSaver.swift; path = ShareExtension/SharedContentSaver.swift; sourceTree = SOURCE_ROOT; };
@@ -201,6 +205,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B89255D2411EA1E606A9FA /* Foundation.framework in Frameworks */,
+				5B0F1A0C0000000000000A03 /* WebRTC in Frameworks */,
 				E37B55745513C31F5CF240ED /* ffmpegkit.xcframework in Frameworks */,
 				3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */,
 				8E44FD0C2144036BC6B53634 /* libavdevice.xcframework in Frameworks */,
@@ -234,6 +239,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */,
 				43296FC22F3A0C08000B3AFE /* libavdevice.xcframework in Frameworks */,
 				43296FBA2F3A0C08000B3AFE /* libavfilter.xcframework in Frameworks */,
 				4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */,
@@ -316,6 +322,7 @@
 			isa = PBXGroup;
 			children = (
 				1E585E03C7BEE52F79C7D8BE /* FFmpegPipelineTests.swift */,
+				5B0F1A0C0000000000000A01 /* SampleBufferVideoViewTests.swift */,
 				F1207A520000000000006A01 /* SharedContentSaverTests.swift */,
 				F1207A520000000000006C01 /* SharedContentSaver.swift */,
 				E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */,
@@ -358,6 +365,7 @@
 				4332A0A62F3B761C00F895B5 /* FirebaseCore */,
 				4332A0A82F3B761C00F895B5 /* FirebaseMessaging */,
 				4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */,
+				7A1C0DE02F9000020055AA02 /* WebRTC */,
 			);
 			productName = iosApp;
 			productReference = E036487443061F6060AA1439 /* Homebase.app */;
@@ -377,6 +385,9 @@
 				DAE7C6C248D295C574FFC09F /* PBXTargetDependency */,
 			);
 			name = iosAppTests;
+			packageProductDependencies = (
+				5B0F1A0C0000000000000A04 /* WebRTC */,
+			);
 			productName = iosAppTests;
 			productReference = A119F0A8E11D557B2E98503F /* iosAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -463,6 +474,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0FA39D98867DA0943346125E /* Products */;
@@ -620,6 +632,7 @@
 				DC82714879B26AB0D9534606 /* FFmpegPipelineTests.swift in Sources */,
 				F1207A520000000000006B01 /* SharedContentSaverTests.swift in Sources */,
 				F1207A520000000000006D01 /* SharedContentSaver.swift in Sources */,
+				5B0F1A0C0000000000000A02 /* SampleBufferVideoViewTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -912,7 +925,7 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1010,7 +1023,7 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1199,7 +1212,7 @@
 				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages and the sound in videos you take.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -1317,6 +1330,14 @@
 				minimumVersion = 12.9.0;
 			};
 		};
+		7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC";
+			requirement = {
+				kind = exactVersion;
+				version = 125.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1354,6 +1375,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCrashlytics;
+		};
+		5B0F1A0C0000000000000A04 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+		7A1C0DE02F9000020055AA02 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

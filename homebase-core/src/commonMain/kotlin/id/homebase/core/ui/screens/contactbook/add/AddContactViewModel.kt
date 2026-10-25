@@ -19,15 +19,14 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.connections.RecipientResolution
-import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.ui.screens.contactbook.ConnectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
-import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.connectionRequestFailure
 import id.homebase.core.ui.screens.contactbook.isTerminal
-import id.homebase.core.ui.screens.contactbook.isPendingIncomingRequest
+import id.homebase.chat.services.requests.RequestDirection
+import id.homebase.chat.services.requests.pendingRequestDirection
 import id.homebase.core.ui.screens.contactbook.components.IncomingRequestSummary
 import id.homebase.core.ui.screens.contactbook.detail.ReviewSheetState
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
@@ -64,7 +63,6 @@ class AddContactViewModel(
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
     private val conversationService: ConversationService,
-    private val developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddContactUiState())
@@ -80,10 +78,9 @@ class AddContactViewModel(
     )
 
     /**
-     * Public state, with [AddContactUiState.relation], [AddContactUiState.alreadySaved] and
-     * [AddContactUiState.assignableCircles] folded in live from the connection map, the circle
-     * definitions, the pending incoming/outgoing request lists, and the saved contacts. This is
-     * what lets the resolved-identity card offer exactly the applicable action (send / accept /
+     * Public state, with [AddContactUiState.relation] and [AddContactUiState.alreadySaved]
+     * folded in live from the connection map, the circle definitions, the pending incoming/outgoing
+     * request lists, and the saved contacts. This is what lets the resolved-identity card offer exactly the applicable action (send / accept /
      * reject / cancel / nothing) and avoid offering to save a contact twice.
      */
     val state: StateFlow<AddContactUiState> =
@@ -110,24 +107,26 @@ class AddContactViewModel(
             // Taken once: the relation below is derived from it, so the two can't disagree.
             val incomingRequest = domain
                 ?.let { d -> incoming.firstOrNull { it.senderOdinId.domainName.lowercase() == d } }
-            val pendingIncoming = isPendingIncomingRequest(status, incomingRequest != null)
+            val direction = pendingRequestDirection(
+                status,
+                hasIncoming = incomingRequest != null,
+                hasOutgoing = outgoing.any { it.recipientOdinId.domainName.lowercase() == domain },
+            )
+            val pendingIncoming = direction == RequestDirection.INCOMING
             val relation = when {
                 domain == null -> IdentityRelation.NONE
                 status == ConnectionStatus.Connected -> IdentityRelation.CONNECTED
                 status == ConnectionStatus.Blocked -> IdentityRelation.BLOCKED
                 pendingIncoming -> IdentityRelation.INCOMING_PENDING
-                outgoing.any { it.recipientOdinId.domainName.lowercase() == domain } ->
-                    IdentityRelation.OUTGOING_PENDING
+                direction == RequestDirection.OUTGOING -> IdentityRelation.OUTGOING_PENDING
                 else -> IdentityRelation.NONE
             }
             val alreadySaved = domain != null &&
                 contacts.any { it.content.odinId?.lowercase() == domain }
-            val reviewEnabled = developerPreferences.connectionReviewEnabled.value
-            val requestUnderReview = incomingRequest.takeIf { reviewEnabled && pendingIncoming }
+            val requestUnderReview = incomingRequest.takeIf { pendingIncoming }
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,
-                assignableCircles = circ.assignableCircles(reviewEnabled),
                 // This fold re-runs on every keystroke in the identity field; the groups are read
                 // only while a request is actually under review.
                 reviewCircleGroups =
@@ -185,12 +184,6 @@ class AddContactViewModel(
                 _state.update { it.copy(mode = AddContactMode.BY_IDENTITY) }
             AddContactAction.SaveClicked -> save()
             AddContactAction.MessageClicked -> openConversation()
-            is AddContactAction.AcceptRequestClicked -> {
-                val circleUuids = action.circleIds.toCircleUuids()
-                handleRequestAction(AddContactEvent.RequestAccepted) {
-                    connectionRequestService.acceptIncomingRequest(it, circleUuids)
-                }
-            }
             is AddContactAction.ReviewSubmitted -> acceptReviewedRequest(action.circleIds)
             AddContactAction.RejectRequestClicked -> handleRequestAction(
                 AddContactEvent.RequestRejected,
@@ -244,7 +237,7 @@ class AddContactViewModel(
         viewModelScope.launch {
             try {
                 connectionRequestService.acceptIncomingRequest(odinId, circleIds.toCircleUuids())
-                _state.update { it.copy(requestReview = null) }
+                // Left for the fold to clear together with relation, so the two never disagree.
                 _events.tryEmit(AddContactEvent.RequestAccepted)
             } catch (e: CancellationException) {
                 throw e

@@ -303,7 +303,7 @@ actual fun VideoPlayerSurface(
             try {
                 val videoData = VideoPlayerData(
                     data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, data.scratchSub,
                 )
                 val videoAccess =
                     videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
@@ -620,3 +620,5 @@ private class HomebaseVideoDataSource(
     override fun addTransferListener(transferListener: TransferListener) {}
     override fun close() { buffer = ByteArray(0) }
 }
+
+actual val nativeVideoControlsOwnTopCorners: Boolean = false

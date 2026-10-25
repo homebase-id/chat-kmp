@@ -4,9 +4,15 @@
     <string name="share_auth_required">Please open Homebase Chat and sign in first</string>
     <string name="share_nothing_to_share">Nothing to share</string>
     <string name="share_sent">Sent</string>
-    <string name="share_sent_multiple">Sent to %1$d conversations</string>
+    <plurals name="share_sent_multiple">
+        <item quantity="one">Sent to %1$d conversation</item>
+        <item quantity="other">Sent to %1$d conversations</item>
+    </plurals>
     <string name="share_preview_title_single">Conversation</string>
-    <string name="share_preview_title_others">%1$s +%2$d others</string>
+    <plurals name="share_preview_title_others">
+        <item quantity="one">%1$s +%2$d other</item>
+        <item quantity="other">%1$s +%2$d others</item>
+    </plurals>
     <string name="share_send_failed">Failed to send: %1$s</string>
     <string name="share_contact_save_failed">Couldn\'t save the contact</string>
     <string name="share_contact_save_partial">Contact saved, but its extra numbers, emails and company couldn\'t be added</string>
@@ -18,4 +24,10 @@
     <string name="crash_share">Share crash report</string>
     <string name="crash_details_toggle">Technical details</string>
     <string name="crash_report_unavailable">(crash report unavailable)</string>
+    <string name="incoming_call">Incoming call</string>
+    <string name="ongoing_call">Call in progress</string>
+    <string name="allow_full_screen_calls">Allow full-screen calls</string>
+    <string name="call_channel_incoming">Calls</string>
+    <string name="call_channel_incoming_description">Incoming calls</string>
+    <string name="call_channel_ongoing">Ongoing call</string>
 </resources>

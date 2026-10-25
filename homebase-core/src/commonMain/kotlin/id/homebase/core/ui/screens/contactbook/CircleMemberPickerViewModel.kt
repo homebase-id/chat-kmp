@@ -5,7 +5,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.ConnectionStatus
@@ -47,14 +46,9 @@ class CircleMemberPickerViewModel(
     circleName: String,
     private val repo: ContactRepository,
     private val connectionService: ConnectionService,
-    developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
-    private val reviewEnabled = developerPreferences.connectionReviewEnabled.value
-
-    private val _uiState = MutableStateFlow(
-        CircleMemberPickerUiState(circleName = circleName, reviewEnabled = reviewEnabled),
-    )
+    private val _uiState = MutableStateFlow(CircleMemberPickerUiState(circleName = circleName))
     val uiState: StateFlow<CircleMemberPickerUiState> = _uiState.asStateFlow()
     val searchTextState = TextFieldState()
 
@@ -83,7 +77,7 @@ class CircleMemberPickerViewModel(
                 connectedRegistrations
                     .map { reg ->
                         val domain = reg.odinId.domainName.lowercase()
-                        CircleMemberCandidate(entry = byOdin[domain] ?: syntheticEntry(domain), eligible = reg.canJoinCircles(reviewEnabled))
+                        CircleMemberCandidate(entry = byOdin[domain] ?: syntheticEntry(domain), eligible = reg.isReviewed())
                     }
                     .filter { q.isEmpty() || it.entry.displayName.lowercase().contains(q) || it.entry.odinId?.lowercase()?.contains(q) == true }
                     .sortedBy { it.entry.displayName.lowercase() }

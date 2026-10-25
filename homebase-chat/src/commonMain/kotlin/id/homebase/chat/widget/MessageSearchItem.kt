@@ -22,8 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.markdownToPlainPreview
+import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
@@ -66,16 +66,15 @@ fun MessageSearchItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (contactOdinId != null) {
-            ContactAvatar(
+            IdentityAvatar(
                 odinId = contactOdinId,
                 modifier = Modifier.padding(8.dp),
-                profileImageData = null,
-                initials = memberName.initials(),
+                displayName = memberName,
                 options = AvatarOptions(
                     onClick = {
                         onContactClick(contactOdinId)
                     }
-                )
+                ),
             )
         } else {
             FallbackAvatar(
