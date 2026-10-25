@@ -223,7 +223,7 @@ private fun SharedMediaViewer(
         onSaveToVault = if (vaultActive) { _, _ ->
             scope.launch {
                 val saved = try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) }
+                    val iv = item.payload.iv?.bytes
                     val contentType = item.payload.contentType
                     val path = if (iv != null && contentType != null) {
                         actionService.streamPayloadToUploadTemp(

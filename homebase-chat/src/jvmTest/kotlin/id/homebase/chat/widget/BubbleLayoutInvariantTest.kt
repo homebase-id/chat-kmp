@@ -173,7 +173,7 @@ class BubbleLayoutInvariantTest {
         contentType = "image/jpeg",
         iv = Base64Bytes(ByteArray(16)),
         previewThumbnail = ThumbnailDescriptor(
-            pixelWidth = aspect.w, pixelHeight = aspect.h, contentType = "image/jpeg", content = null,
+            pixelWidth = aspect.w, pixelHeight = aspect.h, contentType = "image/jpeg", content = Base64Bytes(ByteArray(0)),
         ),
     )
 
@@ -210,7 +210,7 @@ class BubbleLayoutInvariantTest {
             ),
         ),
         previewThumbnail = ThumbnailDescriptor(
-            pixelWidth = 1200, pixelHeight = 600, contentType = "image/jpeg", content = null,
+            pixelWidth = 1200, pixelHeight = 600, contentType = "image/jpeg", content = Base64Bytes(ByteArray(0)),
         ),
     )
 

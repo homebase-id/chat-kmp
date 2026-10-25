@@ -134,9 +134,7 @@ internal class MediaDownloadHandler(
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                 val contentType = payload.contentType ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
-                )
+                val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
                 val extension = extensionForMimeType(contentType) ?: contentType.substringAfter("/")
                 val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
                     message.fileId,
