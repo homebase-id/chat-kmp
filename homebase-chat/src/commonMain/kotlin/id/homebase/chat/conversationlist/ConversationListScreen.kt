@@ -945,6 +945,7 @@ fun ConversationListUi(
                                     },
                                     onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
+                                    vaultActive = uiState.vaultActive,
                                 )
                             }
                         } else {
@@ -1022,6 +1023,7 @@ fun ConversationListUi(
                             ChatMediaViewer(
                                 data = overlay,
                                 uiState = messagesUiState,
+                                vaultActive = uiState.vaultActive,
                                 onUiAction = onUiAction,
                                 sharedTransitionScope = this@SharedTransitionLayout,
                                 animatedVisibilityScope = this@AnimatedContent,

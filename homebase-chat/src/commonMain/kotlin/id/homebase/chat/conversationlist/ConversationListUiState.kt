@@ -44,6 +44,7 @@ data class ConversationListUiState(
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val downloadingFiles: Set<String> = emptySet(),
+    val vaultActive: Boolean = false,
     val connectionStatus: AppConnectionStatus = AppConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
