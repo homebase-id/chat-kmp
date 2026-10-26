@@ -11,7 +11,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toAwtImage
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -136,16 +135,16 @@ $legacyPlate
         assertTrue(file.length() > 0, "$name.png is empty")
     }
 
-    private fun bubble(name: String, dark: Boolean, sent: Boolean) = runDesktopComposeUiTest(
-        width = (WIDTH * SCALE).toInt(),
-        height = (HEIGHT * SCALE).toInt(),
-    ) {
+    private fun runShotTest(block: ComposeUiTest.() -> Unit) =
+        runDesktopComposeUiTest(width = (WIDTH * SCALE).toInt(), height = (HEIGHT * SCALE).toInt(), block = block)
+
+    private fun bubble(name: String, dark: Boolean, sent: Boolean) = runShotTest {
         setContent {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false, updatesSystemChrome = false) {
                 val container = if (sent) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
                 val content = if (sent) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
-                    Box(Modifier.widthIn(max = 360.dp).background(container, MaterialTheme.shapes.large).padding(12.dp).testTag("bubble")) {
+                    Box(Modifier.widthIn(max = 360.dp).background(container, MaterialTheme.shapes.large).padding(12.dp)) {
                         ChatMarkdown(
                             content = source,
                             color = content,
@@ -161,10 +160,7 @@ $legacyPlate
         save(name)
     }
 
-    private fun composer(name: String, dark: Boolean) = runDesktopComposeUiTest(
-        width = (WIDTH * SCALE).toInt(),
-        height = (HEIGHT * SCALE).toInt(),
-    ) {
+    private fun composer(name: String, dark: Boolean) = runShotTest {
         setContent {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false, updatesSystemChrome = false) {
                 val state = rememberRichTextState()
