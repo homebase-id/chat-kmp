@@ -2,15 +2,12 @@ package id.homebase.agent
 
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.SystemDriveConstants
-import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -24,14 +21,9 @@ import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.upload.PayloadBundle
-import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.upload.PayloadBundleEncryptionService
 import java.io.File
 import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.currentCoroutineContext
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -142,9 +134,6 @@ suspend fun outgoingBundle(text: String, files: List<OutFile>, fileOps: JvmFileO
     return StagedBundle(buildLinkPreviewBundle(preview, fileOps))
 }
 
-private fun payloadEncryptor(fileOps: JvmFileOperationsProvider) =
-    PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
-
 suspend fun sendToConversation(
     session: Session,
     allowlist: Allowlist,
@@ -174,7 +163,6 @@ suspend fun sendToConversation(
     try {
         require(built.payloadJson == null || staged?.preEncrypted != true) { "caption too long for a video message" }
         val bundle = if (textFile != null) withTextPayload(staged?.bundle, textFile) else staged?.bundle
-        val encrypted = bundle?.let { if (staged?.preEncrypted == true) it else payloadEncryptor(fileOps).encryptBundle(messageId, it, keyHeader.aesKey, CoroutineScope(currentCoroutineContext())) }
         val metadata = buildMessageMetadata(
             conversation.id, messageId, text, Clock.System.now().toEpochMilliseconds(), keyHeader,
             distribute = recipients.isNotEmpty(),
@@ -184,17 +172,14 @@ suspend fun sendToConversation(
             content = built.header,
             dataType = typed?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
         )
-        DriveUploadProvider(session.http, session.credentials, fileOps)
-            .uploadFile(
-                UploadFileRequest(
-                    driveId = SystemDriveConstants.chatDrive.alias,
-                    keyHeader = keyHeader,
-                    metadata = metadata,
-                    transitOptions = conversationTransitOptions(conversation.id, messageId, recipients, conversation.title),
-                    payloads = encrypted?.payloads.orEmpty(),
-                    thumbnails = encrypted?.thumbnails.orEmpty(),
-                )
-            )
+        AgentUploadService(session, fileOps).upload(
+            uniqueId = messageId,
+            keyHeader = keyHeader,
+            metadata = metadata,
+            transit = conversationTransitOptions(conversation.id, messageId, recipients, conversation.title),
+            bundle = bundle,
+            preEncrypted = staged?.preEncrypted == true,
+        )
     } finally {
         textFile?.let { runCatching { File(it.filePath).delete() } }
         staged?.let { s ->
