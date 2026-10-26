@@ -5,11 +5,13 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.createPlatformHttpClient
 import id.homebase.api.client.drives.DECRYPTION_FAILURE_APP_DATA
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.SystemDriveConstants
-import id.homebase.api.client.drives.files.DriveFileHeaderReader
-import id.homebase.api.client.drives.files.DriveInboxProcessor
 import id.homebase.api.client.drives.files.RichText
 import id.homebase.api.client.drives.files.getPlainTextFromRichText
+import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
@@ -63,9 +65,7 @@ suspend fun fetchChatNotificationPreview(
     fetchChatNotificationPreview(client, credentials, conversationId, messageId)
 }
 
-private const val INBOX_BATCH_SIZE = 10
-private val HEADER_TIMEOUT = 4.seconds
-internal val INBOX_TIMEOUT = 8.seconds
+internal val QUERY_TIMEOUT = 8.seconds
 
 // The NSE gets ~30 s in all; this leaves room for its badge read (2 s) and avatar fetch (5 s).
 internal val PREVIEW_DEADLINE = 18.seconds
@@ -76,7 +76,7 @@ internal suspend fun fetchChatNotificationPreview(
     conversationId: String,
     messageId: String,
     deadline: Duration = PREVIEW_DEADLINE,
-    inboxTimeout: Duration = INBOX_TIMEOUT,
+    queryTimeout: Duration = QUERY_TIMEOUT,
 ): ChatNotificationPreview {
     val conversation = Uuid.parseOrNull(conversationId)
         ?: return ChatNotificationPreview.missed("typeId is not a uuid")
@@ -86,39 +86,32 @@ internal suspend fun fetchChatNotificationPreview(
 
     return withTimeoutOrNull(deadline) {
         try {
-            fetchedPreview(httpClient, credentials, conversation, message, inboxTimeout)
+            fetchedPreview(httpClient, credentials, conversation, message, queryTimeout)
         } catch (e: StepFailed) {
             ChatNotificationPreview.missed(e.reason)
         }
     } ?: ChatNotificationPreview.missed("timed out after $deadline")
 }
 
-/**
- * The push usually lands while the message is still in the recipient's transit inbox, where the
- * by-uid read answers 404; processing the inbox moves it into the chat drive, as the app's own
- * sync does when a push wakes it on Android.
- */
+// QueryBatch drains the drive's transit inbox before it queries; the by-uid header read doesn't.
 private suspend fun fetchedPreview(
     httpClient: HttpClient,
     credentials: ApiCredentials,
     conversation: Uuid,
     message: Uuid,
-    inboxTimeout: Duration,
+    queryTimeout: Duration,
 ): ChatNotificationPreview {
     val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
-    val chatDrive = SystemDriveConstants.chatDrive.alias
-    val headers = DriveFileHeaderReader(httpClient, credentialsManager)
-    suspend fun readHeader(name: String) = step(name, HEADER_TIMEOUT) { headers.getFileHeaderByUid(chatDrive, message) }
-
-    val file = readHeader("header fetch")
-        ?: run {
-            step("header not found (404); inbox process", inboxTimeout) {
-                DriveInboxProcessor(httpClient, credentialsManager).processInbox(chatDrive, INBOX_BATCH_SIZE)
-            }
-            readHeader("header retry")
-        }
-        ?: return ChatNotificationPreview.missed("header not found (404) after processing the inbox")
-
+    val request = QueryBatchRequest(
+        FileQueryParams(clientUniqueIdAtLeastOne = listOf(message)),
+        QueryBatchResultOptionsRequest(maxRecords = 1, includeMetadataHeader = true),
+    )
+    val response = step("query", queryTimeout) {
+        DriveQueryProvider(httpClient, credentialsManager).queryBatch(SystemDriveConstants.chatDrive.alias, request)
+    }
+    if (response.invalidDrive) return ChatNotificationPreview.missed("query answered invalidDrive")
+    val file = response.searchResults.firstOrNull()
+        ?: return ChatNotificationPreview.missed("query returned 0 results")
     return chatMessagePreview(file, conversation)
 }
 
