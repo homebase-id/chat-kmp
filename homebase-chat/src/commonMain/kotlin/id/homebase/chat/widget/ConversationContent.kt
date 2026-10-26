@@ -155,11 +155,9 @@ import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
-import id.homebase.core.util.isDesktop
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.isMobile
-import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.keyboardPanelAnchoredList
 import id.homebase.core.util.keyboardPanelSlot
@@ -288,7 +286,7 @@ fun ConversationContent(
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
-    val composerPopovers = isDesktopOrWeb() && isExpandedLayout()
+    val composerPopovers = usesPointerUx() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -440,7 +438,7 @@ fun ConversationContent(
     // composition, briefly flashing the keyboard and shifting the layout.
     // Block focus until the first frame has been laid out.  On Android/Desktop
     // the flag starts true so behaviour is unchanged.
-    val needsFocusGuard = !isDesktop() && !isWeb()   // only mobile (iOS + Android)
+    val needsFocusGuard = isMobile()
     var inputFocusable by remember(conversation.conversation.id) {
         mutableStateOf(!needsFocusGuard)
     }

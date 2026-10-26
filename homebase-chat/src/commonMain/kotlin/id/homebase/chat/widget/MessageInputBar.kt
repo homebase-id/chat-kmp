@@ -135,7 +135,7 @@ import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.settings.rememberArrowUpEditsLastMessage
 import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.keyboardPanelSlot
@@ -341,7 +341,7 @@ fun MessageInputBar(
     }
 
     val toggleExpanded = { showExpanded = !showExpanded }
-    val onToggleExpand = if (isDesktopOrWeb()) toggleExpanded else null
+    val onToggleExpand = if (usesPointerUx()) toggleExpanded else null
 
     Column(
         modifier = modifier,
@@ -536,7 +536,7 @@ fun MessageTextFieldExpanded(
             EmojiAutocomplete(
                 state = state,
                 controller = autocomplete,
-                enabled = isFieldFocused && isDesktopOrWeb(),
+                enabled = isFieldFocused && usesPointerUx(),
             )
             MentionAutocomplete(
                 state = state,
@@ -742,7 +742,7 @@ fun MessageTextFieldCompact(
             exit = signalFadeOut(),
         ) {
             Column {
-                if (isDesktopOrWeb()) {
+                if (usesPointerUx()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -904,7 +904,7 @@ fun MessageTextFieldCompact(
                             EmojiAutocomplete(
                                 state = state,
                                 controller = autocomplete,
-                                enabled = isKeyboardFocused && isDesktopOrWeb(),
+                                enabled = isKeyboardFocused && usesPointerUx(),
                             )
                             MentionAutocomplete(
                                 state = state,
@@ -1341,7 +1341,7 @@ fun MessageTextFieldForAttachment(
     // Mirror the chat composer: the rich-text formatting toolbar is desktop/web-only.
     // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
     // are unit-testable without a device.
-    showFormattingToolbar: Boolean = isDesktopOrWeb(),
+    showFormattingToolbar: Boolean = usesPointerUx(),
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
     onPasteImage: ((ByteArray) -> Unit)? = null,
     // Injectable so a test can paste without the OS clipboard, which headless CI lacks.
@@ -1388,7 +1388,7 @@ fun MessageTextFieldForAttachment(
     // Only where a hardware keyboard is a given: on mobile this would raise the IME
     // over the very media the caption describes.
     LaunchedEffect(Unit) {
-        if (isDesktopOrWeb()) captionFocusRequester.requestFocus()
+        if (usesPointerUx()) captionFocusRequester.requestFocus()
     }
 
     @Suppress("DEPRECATION") BackHandler(emojiPanel.isOpen) { setEmojiPicker(false) }
@@ -1474,7 +1474,7 @@ fun MessageTextFieldForAttachment(
                 EmojiAutocomplete(
                     state = state,
                     controller = autocomplete,
-                    enabled = isDesktopOrWeb(),
+                    enabled = usesPointerUx(),
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
