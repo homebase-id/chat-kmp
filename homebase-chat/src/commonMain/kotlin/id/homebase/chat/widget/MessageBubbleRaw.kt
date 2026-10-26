@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.usesTouchUx
+import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
@@ -65,7 +67,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.contactcard.ContactCardBubble
 import id.homebase.chat.contactcard.contactCardPhotoData
 import id.homebase.chat.contactcard.ContactCardDescriptor
@@ -91,7 +92,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -468,7 +469,7 @@ fun MessageBubbleRaw(
     fun expandBody() {
         if (expandedMessages != null) expandedMessages[message.id] = true else localBodyExpanded = true
     }
-    val isMobileDevice = isMobile()
+    val isMobileDevice = usesTouchUx()
     // Desktop always shows the full body and never an expander.
     val bodyMaxLines = if (isMobileDevice && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
     // Whether a "Read more" affordance is *eligible* for this bubble. This is deliberately
@@ -567,11 +568,12 @@ fun MessageBubbleRaw(
     // the custom Layout. Emoji-only, search, and the "deleted" placeholder always
     // render as a single stable Text, so they keep the custom Layout's last-line
     // timestamp tuck.
-    val bodyIsBlock = remember(bodyText, emojiOnly, effectiveSearchQuery, message.isDeleted) {
+    val markdownCache = LocalChatMarkdownParseCache.current
+    val bodyIsBlock = remember(markdownCache, bodyText, emojiOnly, effectiveSearchQuery, message.isDeleted) {
         !message.isDeleted &&
             !emojiOnly &&
             effectiveSearchQuery.isEmpty() &&
-            markdownHasBlockElements(bodyText)
+            markdownCache.get(bodyText).hasBlockElements
     }
 
     // The author name carries its own 4dp bottom padding, so the text row drops its top one
@@ -593,7 +595,7 @@ fun MessageBubbleRaw(
             // Capped on the bubble, not the gallery, so a block caption can't widen it past the images.
             .ifTrue(isGallery) { Modifier.widthIn(max = Dimens.MediaBubble.galleryMaxWidth) }
             .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
-            .ifTrue(isMobile()) {
+            .ifTrue(supportsTouchGestures()) {
                 Modifier.combinedClickable(
                     onClick = {},
                     onLongClick = { handleLongClick() },
@@ -614,7 +616,7 @@ fun MessageBubbleRaw(
             // (plain body text is not a pointer-input node). It consumes the down, so the
             // Surface's combinedClickable above never sees a second tap — the double-tap
             // has to be handled here too, not only there.
-            if (isMobile()) {
+            if (supportsTouchGestures()) {
                 Box(
                     modifier = Modifier
                         .matchParentSize()
@@ -1347,7 +1349,7 @@ private fun BoxScope.MediaTimestampOverlay(
 
 @Composable
 private fun SelectableOnDesktop(enabled: Boolean, content: @Composable () -> Unit) {
-    if (enabled && isDesktopOrWeb()) SelectionContainer(content = content) else content()
+    if (enabled && usesPointerUx()) SelectionContainer(content = content) else content()
 }
 
 /**

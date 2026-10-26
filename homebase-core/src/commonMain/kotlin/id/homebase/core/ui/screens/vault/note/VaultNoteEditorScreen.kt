@@ -79,6 +79,7 @@ import id.homebase.resources.vault_note_title_placeholder
 import id.homebase.resources.vault_note_title_required
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.core.util.rememberImeOffsetState
+import id.homebase.core.util.toMessageMarkdown
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalRichTextApi::class, ExperimentalComposeUiApi::class)
@@ -101,12 +102,13 @@ fun VaultNoteEditorScreen(
     val deleteFailedMessage = stringResource(MR.string.vault_note_delete_failed)
 
     val hasUnsavedChanges: () -> Boolean = {
-        if (uiState.isCreateMode) {
-            uiState.title.isNotBlank() || richTextState.toMarkdown().isNotBlank()
-        } else {
-            uiState.title != (uiState.loadedTitle ?: "") ||
-                richTextState.toMarkdown() != (uiState.loadedMarkdown ?: "")
-        }
+        isVaultNoteDirty(
+            isCreateMode = uiState.isCreateMode,
+            title = uiState.title,
+            currentMarkdown = richTextState.toMessageMarkdown(),
+            loadedTitle = uiState.loadedTitle,
+            loadedMarkdown = uiState.loadedMarkdown,
+        )
     }
 
     val handleEditClose: () -> Unit = {
@@ -166,7 +168,7 @@ fun VaultNoteEditorScreen(
                 EditModeTopBar(
                     uiState = uiState,
                     onClose = handleEditClose,
-                    onSave = { viewModel.onSave(richTextState.toMarkdown()) },
+                    onSave = { viewModel.onSave(richTextState.toMessageMarkdown()) },
                 )
             } else {
                 ReadModeTopBar(
