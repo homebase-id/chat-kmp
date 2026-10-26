@@ -85,6 +85,17 @@ class PendingSendPlaceholderTest {
     }
 
     @Test
+    fun pagedBackInHistoryDoesNotWaitForRealMessage() = runTest {
+        val state = registered()
+        state.update { it.copy(hasNewerMessages = true) }
+
+        state.sendUnderPlaceholder(id) { }
+
+        assertEquals(0L, testScheduler.currentTime)
+        assertTrue(state.value.pendingOutgoing.isEmpty())
+    }
+
+    @Test
     fun placeholderShowsPreparingWhileSendIsSuspended_thenDropsKeepingProgress() = runTest {
         val state = registered()
         val gate = CompletableDeferred<Unit>()

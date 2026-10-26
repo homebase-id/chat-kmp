@@ -125,7 +125,7 @@ internal suspend fun RichTextState.clearedForSend(content: String, send: suspend
 
 /**
  * Awaits [send] under the already-registered placeholder [messageId]: drops it once the real
- * bubble is in the list (or after [PLACEHOLDER_HANDOFF_TIMEOUT]), or drops it and its progress and
+ * bubble is in the list (or at once while paged back in history, where it never lands, or after [PLACEHOLDER_HANDOFF_TIMEOUT]), or drops it and its progress and
  * rethrows if [send] fails. Dropping on `send()` return left the key missing for a few frames while
  * the real message travelled stream -> VM, stranding a ghost row in the lazy list (#1988).
  */
@@ -141,7 +141,8 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     }
     withTimeoutOrNull(PLACEHOLDER_HANDOFF_TIMEOUT) {
         first { state ->
-            state.messages.any { it is MessageListContentModel.Message && it.message.id == messageId }
+            state.hasNewerMessages ||
+                state.messages.any { it is MessageListContentModel.Message && it.message.id == messageId }
         }
     }
     update { it.withoutPendingSend(messageId, clearProgress = false) }
