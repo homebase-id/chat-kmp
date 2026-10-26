@@ -74,9 +74,12 @@ data class ServerFile(
     }
 }
 
-/** What [HomebaseFile] appData content holds when it couldn't be decrypted. */
 internal const val DECRYPTION_FAILURE_APP_DATA =
     """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}"""
+
+/** True when this file's appData could not be decrypted and holds the placeholder instead. */
+fun HomebaseFile.appDataFailedToDecrypt(): Boolean =
+    fileMetadata.appData.content == DECRYPTION_FAILURE_APP_DATA
 
 fun FileMetadata.withDecryptedContent(bytes: ByteArray): FileMetadata =
     this.copy(
