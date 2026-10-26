@@ -38,8 +38,11 @@ fun EmailSessionTracker(
     DisposableEffect(lifecycleOwner, inEmailFlow) {
         if (!inEmailFlow) return@DisposableEffect onDispose { }
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && emailPreferences.biometricsEnabled.value) {
-                emailPreferences.recordAppBackgrounded()
+            if (!emailPreferences.biometricsEnabled.value) return@LifecycleEventObserver
+            when (event) {
+                Lifecycle.Event.ON_STOP -> emailPreferences.recordAppBackgrounded()
+                Lifecycle.Event.ON_START -> emailPreferences.recordAppForegrounded()
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

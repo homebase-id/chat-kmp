@@ -41,6 +41,20 @@ class EmailPreferencesAuthSessionTest {
     }
 
     @Test
+    fun `short absence does not age while staying active afterwards`() = runTest {
+        val clock = clock()
+        val prefs = EmailPreferences(createTestDatabaseManager(), clock)
+        prefs.recordAuthSuccess()
+        prefs.setEmailScreenActive(true)
+        clock += 1.minutes
+        prefs.recordAppBackgrounded()
+        clock += 4.minutes
+        prefs.recordAppForegrounded()
+        clock += 2.minutes
+        assertFalse(prefs.requiresUnlock())
+    }
+
+    @Test
     fun `background six minutes re-prompts`() = runTest {
         val clock = clock()
         val prefs = EmailPreferences(createTestDatabaseManager(), clock)

@@ -84,6 +84,13 @@ class EmailPreferences(
         lastBackgroundTimeMs = now
     }
 
+    fun recordAppForegrounded() {
+        val now = clock.now().toEpochMilliseconds()
+        if (lastBackgroundTimeMs != 0L && now - lastBackgroundTimeMs <= BACKGROUND_THRESHOLD_MS) {
+            lastBackgroundTimeMs = 0L
+        }
+    }
+
     fun recordUserAction() {
         lastActionTimeMs = clock.now().toEpochMilliseconds()
     }
