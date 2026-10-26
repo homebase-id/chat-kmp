@@ -154,6 +154,28 @@ fun SwipeRevealBox(
         }
     }
 
+    fun updateHaptic() {
+        if (!hapticFired && offsetPx.absoluteValue >= currentThresholdPx) {
+            hapticFired = true
+            haptics.perform(HapticEvent.LongPress)
+        } else if (hapticFired && offsetPx.absoluteValue < currentThresholdPx) {
+            hapticFired = false
+        }
+    }
+
+    fun commitOnRelease(velocityPxPerSecond: Float) {
+        val commit = shouldCommitSwipe(
+            offsetPx = offsetPx,
+            thresholdPx = currentThresholdPx,
+            velocityPxPerSecond = velocityPxPerSecond,
+            escapeVelocityPxPerSecond = currentEscapeVelocityPx,
+        )
+        if (!commit) return
+        val toRight = offsetPx > 0f
+        if (toRight) currentOnSwipeRight?.invoke() else currentOnSwipeLeft?.invoke()
+        if (if (toRight) currentSlideOutRight else currentSlideOutLeft) slideOutDirection = if (toRight) 1 else -1
+    }
+
     // A nested horizontal scroller (code block, table) consumes the pointer events, so the loop
     // below never sees its drags. What the scroller cannot use arrives here as leftover instead,
     // but only when it had not scrolled yet: a swipe that began mid-scroll stays a scroll.
@@ -186,12 +208,7 @@ fun SwipeRevealBox(
                 }
                 val used = clamped - offsetPx
                 offsetPx = clamped
-                if (!hapticFired && offsetPx.absoluteValue >= currentThresholdPx) {
-                    hapticFired = true
-                    haptics.perform(HapticEvent.LongPress)
-                } else if (hapticFired && offsetPx.absoluteValue < currentThresholdPx) {
-                    hapticFired = false
-                }
+                updateHaptic()
                 return Offset(used, 0f)
             }
 
@@ -200,17 +217,7 @@ fun SwipeRevealBox(
                 scrolledThisGesture = false
                 handingOff = false
                 if (!wasHandingOff) return Velocity.Zero
-                val commit = shouldCommitSwipe(
-                    offsetPx = offsetPx,
-                    thresholdPx = currentThresholdPx,
-                    velocityPxPerSecond = available.x,
-                    escapeVelocityPxPerSecond = currentEscapeVelocityPx,
-                )
-                if (commit) {
-                    val toRight = offsetPx > 0f
-                    if (toRight) currentOnSwipeRight?.invoke() else currentOnSwipeLeft?.invoke()
-                    if (if (toRight) currentSlideOutRight else currentSlideOutLeft) slideOutDirection = if (toRight) 1 else -1
-                }
+                commitOnRelease(available.x)
                 isDragging = false
                 return available
             }
@@ -277,31 +284,13 @@ fun SwipeRevealBox(
                                 if (currentOnSwipeLeft == null) newValue = newValue.coerceAtLeast(0f)
                                 offsetPx = newValue.coerceIn(-currentMaxOffsetPx, currentMaxOffsetPx)
 
-                                if (!hapticFired && offsetPx.absoluteValue >= currentThresholdPx) {
-                                    hapticFired = true
-                                    haptics.perform(HapticEvent.LongPress)
-                                } else if (hapticFired && offsetPx.absoluteValue < currentThresholdPx) {
-                                    hapticFired = false
-                                }
+                                updateHaptic()
                             }
 
                             if (isHorizontal) {
-                                val commit = shouldCommitSwipe(
-                                    offsetPx = offsetPx,
-                                    thresholdPx = currentThresholdPx,
-                                    velocityPxPerSecond = velocityTracker.calculateVelocity().x,
-                                    escapeVelocityPxPerSecond = currentEscapeVelocityPx,
-                                )
                                 // Act on release rather than after the spring-back, so the
                                 // action never trails the gesture by an animation.
-                                if (commit) {
-                                    val toRight = offsetPx > 0f
-                                    if (toRight) currentOnSwipeRight?.invoke()
-                                    else currentOnSwipeLeft?.invoke()
-                                    val slidesOut =
-                                        if (toRight) currentSlideOutRight else currentSlideOutLeft
-                                    if (slidesOut) slideOutDirection = if (toRight) 1 else -1
-                                }
+                                commitOnRelease(velocityTracker.calculateVelocity().x)
                             }
                         } finally {
                             // awaitEachGesture swallows a gesture-level cancellation and
