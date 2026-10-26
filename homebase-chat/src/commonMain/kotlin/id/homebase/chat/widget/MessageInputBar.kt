@@ -45,12 +45,12 @@ import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.AddLink
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.FormatStrikethrough
-import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
@@ -167,7 +167,6 @@ import id.homebase.resources.chat_markdown_code_block
 import id.homebase.resources.chat_markdown_heading
 import id.homebase.resources.chat_markdown_inline_code
 import id.homebase.resources.chat_markdown_link
-import id.homebase.resources.chat_markdown_task_list
 import id.homebase.resources.chat_markdown_link_dialog_cancel
 import id.homebase.resources.chat_markdown_link_dialog_edit_title
 import id.homebase.resources.chat_markdown_link_dialog_remove
@@ -186,6 +185,7 @@ import id.homebase.resources.chat_markdown_link_dialog_text
 import id.homebase.resources.chat_markdown_link_dialog_title
 import id.homebase.resources.chat_markdown_link_dialog_url
 import id.homebase.resources.chat_markdown_nested_list
+import id.homebase.resources.chat_markdown_task_list
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
