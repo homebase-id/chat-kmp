@@ -35,15 +35,6 @@ private fun renderBlocks(nodes: List<RichTextNode>): List<String> {
     for (node in nodes) {
         val type = node.type.orEmpty()
         when {
-            type !in blockTypes -> {
-                if (hasBlockChild(node)) {
-                    flushRun()
-                    blocks.addAll(renderBlocks(node.children.orEmpty()))
-                } else {
-                    run.add(node)
-                }
-            }
-
             type == "code_block" -> {
                 flushRun()
                 blocks.add(renderCodeBlock(node))
@@ -70,14 +61,17 @@ private fun renderBlocks(nodes: List<RichTextNode>): List<String> {
                 if (text.isNotEmpty()) blocks.add("#".repeat(headingLevels.getValue(type)) + " " + text)
             }
 
+            hasBlockChild(node) -> {
+                flushRun()
+                blocks.addAll(renderBlocks(node.children.orEmpty()))
+            }
+
+            type !in blockTypes -> run.add(node)
+
             else -> {
                 flushRun()
-                if (hasBlockChild(node)) {
-                    blocks.addAll(renderBlocks(node.children.orEmpty()))
-                } else {
-                    val text = renderInline(node.children.orEmpty()).trim()
-                    if (text.isNotEmpty()) blocks.add(text)
-                }
+                val text = renderInline(node.children.orEmpty()).trim()
+                if (text.isNotEmpty()) blocks.add(text)
             }
         }
     }
