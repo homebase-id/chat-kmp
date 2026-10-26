@@ -2,7 +2,6 @@
 
 package id.homebase.chat.widget
 
-import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
@@ -42,10 +41,3 @@ internal fun ComposeUiTest.fadingInKeys(): Set<Any> =
             (info!!.getter("getAnimations") as Array<*>).any { it?.getter("isAppearanceAnimationInProgress") == true }
         }.keys.map { it!! }
     }.toSet()
-
-internal fun ComposeUiTest.invalidateDisappearingItemsDraw() {
-    itemAnimators().forEach { animator ->
-        val node = animator.field("displayingNode") as DrawModifierNode
-        runOnUiThread { node.invalidateDraw() }
-    }
-}
