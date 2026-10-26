@@ -91,7 +91,7 @@ import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.horizontalResizeCursor
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -880,7 +880,7 @@ fun ConversationListUi(
                     scaffoldLeft = it.positionInRoot().x
                     scaffoldWidth = it.size.width.toFloat()
                 }.onPreviewKeyEvent { keyEvent ->
-                    if (isDesktopOrWeb() &&
+                    if (usesPointerUx() &&
                         keyEvent.type == KeyEventType.KeyDown &&
                         keyEvent.key == Key.F &&
                         (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
@@ -976,7 +976,7 @@ fun ConversationListUi(
                 // never goes quiet: it pinned the desktop render loop at ~164 fps and ~15% GPU while
                 // idle. This handle is an invisible hit strip over the hairline ConversationListPane
                 // already draws, with nothing to animate.
-                paneExpansionDragHandle = if (!isDesktopOrWeb()) null else {
+                paneExpansionDragHandle = if (!usesPointerUx()) null else {
                     { state ->
                         Box(
                             Modifier

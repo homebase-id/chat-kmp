@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.spring
@@ -34,7 +35,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
-import id.homebase.core.util.isMobile
 import kotlinx.coroutines.delay
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
@@ -91,7 +91,7 @@ fun SwipeRevealBox(
     commitThreshold: SwipeDistance,
     maxOffset: SwipeDistance,
     modifier: Modifier = Modifier,
-    enabled: Boolean = isMobile(),
+    enabled: Boolean = supportsTouchGestures(),
     /** Null disables the flick shortcut, leaving distance as the only way to commit. */
     escapeVelocityDpPerSecond: Float? = null,
     /** Set where a committed swipe removes the row: it then slides out instead of springing

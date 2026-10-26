@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.Composable
@@ -17,7 +18,6 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.canBattle
 import id.homebase.chat.services.content.MessageContent
-import id.homebase.core.util.isMobile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
@@ -189,7 +189,7 @@ fun MessageItem(
         } else null
 
         SwipeableMessageWrapper(
-            enabled = isMobile() && !message.isDeleted,
+            enabled = supportsTouchGestures() && !message.isDeleted,
             onSwipeRight = onReply,
             onSwipeLeft = onMessageInfo,
         ) {
@@ -250,7 +250,7 @@ fun MessageItem(
         }
 
         SwipeableMessageWrapper(
-            enabled = isMobile() && !message.isDeleted,
+            enabled = supportsTouchGestures() && !message.isDeleted,
             onSwipeRight = onReply,
             onSwipeLeft = onMessageInfo,
         ) {

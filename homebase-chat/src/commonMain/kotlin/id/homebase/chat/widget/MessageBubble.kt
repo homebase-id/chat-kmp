@@ -103,9 +103,11 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 
 import id.homebase.core.util.getOdinIdColor
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.supportsHoverActions
+import id.homebase.core.util.supportsTouchGestures
+import id.homebase.core.util.usesPointerUx
+import id.homebase.core.util.usesTouchUx
 import id.homebase.core.util.isEmojiContentOnly
-import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
@@ -244,7 +246,7 @@ fun SentMessageBubble(
             // align with the colored bubble's center, not the bubble+pill.
             val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
             Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
-                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
+                if (onMessageInfo != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -257,7 +259,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
+                if (onReply != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply.invoke() },
@@ -270,7 +272,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
+                if (onAddReaction != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -353,13 +355,13 @@ fun SentMessageBubble(
                 // and the action Popup anchored inside that row is adjacent to
                 // the bubble — matching Signal-style behavior. Mobile keeps
                 // fillMaxWidth so the combinedClickable target spans the row.
-                modifier = if (isMobile()) Modifier.fillMaxWidth()
+                modifier = if (supportsTouchGestures()) Modifier.fillMaxWidth()
                 else Modifier.weight(1f, fill = false),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Box(
                     modifier = Modifier.handbackSource(handback).then(
-                        if (isMobile()) {
+                        if (supportsTouchGestures()) {
                             Modifier.combinedClickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -418,7 +420,7 @@ fun SentMessageBubble(
                         onAddEmoji = openReactionBar,
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                     )
-                    if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction && !message.isDeleted) {
+                    if (usesTouchUx() && popupTransition.shownMode == MessagePopupMode.Reaction && !message.isDeleted) {
                         BubbleReactionPopup(
                             transition = popupTransition,
                             message = message,
@@ -601,7 +603,7 @@ fun ReceivedMessageBubble(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = if (isMobile()) {
+                modifier = if (supportsTouchGestures()) {
                     Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -679,7 +681,7 @@ fun ReceivedMessageBubble(
                             onAddEmoji = openReactionBar,
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
                         )
-                        if (isMobile() && popupTransition.shownMode == MessagePopupMode.Reaction &&
+                        if (usesTouchUx() && popupTransition.shownMode == MessagePopupMode.Reaction &&
                             !message.isDeleted
                         ) {
                             BubbleReactionPopup(
@@ -707,7 +709,7 @@ fun ReceivedMessageBubble(
             Row(
                 modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
-                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
+                if (onAddReaction != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -720,7 +722,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
+                if (onReply != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply() },
@@ -733,7 +735,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
+                if (onMessageInfo != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -1148,7 +1150,7 @@ fun InlineReplyPreview(
     // a pure presentational choice. Desktop and web have the horizontal room for a
     // second line; on mobile we keep a single line to stay compact. The author name
     // stays single-line on every platform.
-    val replyPreviewMaxLines = if (isDesktopOrWeb()) 2 else 1
+    val replyPreviewMaxLines = if (usesPointerUx()) 2 else 1
 
     Row(
         modifier = Modifier

@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.usesPointerUx
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
@@ -379,7 +380,7 @@ internal fun ReceivedMessagePopup(
             // This unanchored Popup positions against its parent — the hover-icons Row,
             // which only has icons (and therefore a size) on desktop. Mobile renders the
             // bar from the bubble itself via BubbleReactionPopup.
-            if (policy.allowInlineReactions && !isMobile()) {
+            if (policy.allowInlineReactions && usesPointerUx()) {
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
@@ -539,7 +540,7 @@ internal fun SentMessagePopup(
     when (transition.shownMode) {
         MessagePopupMode.Reaction -> {
             // Desktop-only anchor — see ReceivedMessagePopup.
-            if (policy.allowInlineReactions && !isMobile()) {
+            if (policy.allowInlineReactions && usesPointerUx()) {
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {

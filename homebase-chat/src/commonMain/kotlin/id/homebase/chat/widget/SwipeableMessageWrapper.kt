@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.info
@@ -27,7 +27,7 @@ import org.jetbrains.compose.resources.stringResource
 fun SwipeableMessageWrapper(
     onSwipeRight: (() -> Unit)?,
     onSwipeLeft: (() -> Unit)?,
-    enabled: Boolean = isMobile(),
+    enabled: Boolean = supportsTouchGestures(),
     content: @Composable () -> Unit,
 ) {
     if (!enabled || (onSwipeRight == null && onSwipeLeft == null)) {
