@@ -330,13 +330,13 @@ fun ChatMarkdown(
  * Builds the single-paragraph inline [AnnotatedString] the inline render path draws:
  * bold/italic/strike/inline-code plus native Compose link annotations, with chat soft
  * breaks promoted to hard breaks (so a message typed with single Enters keeps its
- * lines — see [withChatHardLineBreaks]). Extracted and `internal` so the soft-break and
- * autolink behaviour are unit-testable without a bubble. Pixel-equivalent to what the
+ * lines — see [id.homebase.api.util.withParagraphSoftBreaksPromoted]). Extracted and
+ * `internal` so the soft-break and autolink behaviour are unit-testable without a bubble. Pixel-equivalent to what the
  * block path renders for the same inline content.
  *
- * mikepenz's String overload parses with [ChatMarkdownFlavour] (matching the block
- * `Markdown()` path), finds the single paragraph/inline run, and applies the base
- * [style]'s SpanStyle — including the [androidx.compose.ui.text.LinkAnnotation]s that
+ * The tree comes from [LocalChatMarkdownParseCache] (one [ChatMarkdownFlavour] parse shared with
+ * the block path); the single paragraph/inline run is annotated with the base [style]'s
+ * SpanStyle — including the [androidx.compose.ui.text.LinkAnnotation]s that
  * let a plain Text handle taps natively (opened via `LocalUriHandler` by the default
  * link interaction listener).
  *
