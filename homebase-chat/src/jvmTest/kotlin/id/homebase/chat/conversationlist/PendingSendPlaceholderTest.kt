@@ -2,6 +2,11 @@
 
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
+import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.MessageAppData
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,11 +20,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.common.OdinId
-import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.MessageAppData
-import kotlinx.collections.immutable.persistentListOf
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.uuid.Uuid

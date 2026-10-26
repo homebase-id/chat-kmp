@@ -81,9 +81,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.launch
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import id.homebase.core.files.toUploadPath
@@ -123,11 +123,13 @@ internal suspend fun RichTextState.clearedForSend(content: String, send: suspend
     }
 }
 
+private val PLACEHOLDER_HANDOFF_TIMEOUT = 5.seconds
+
 /**
  * Awaits [send] under the already-registered placeholder [messageId]: drops it once the real
- * bubble is in the list (or at once while paged back in history, where it never lands, or after [PLACEHOLDER_HANDOFF_TIMEOUT]), or drops it and its progress and
- * rethrows if [send] fails. Dropping on `send()` return left the key missing for a few frames while
- * the real message travelled stream -> VM, stranding a ghost row in the lazy list (#1988).
+ * bubble is in the list (at once while paged back in history, or after [PLACEHOLDER_HANDOFF_TIMEOUT]),
+ * or drops it and its progress and rethrows if [send] fails. Dropping on `send()` return left the
+ * key missing for a few frames, stranding a ghost row in the lazy list.
  */
 internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     messageId: Uuid,
@@ -147,8 +149,6 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     }
     update { it.withoutPendingSend(messageId, clearProgress = false) }
 }
-
-private val PLACEHOLDER_HANDOFF_TIMEOUT = 5.seconds
 
 /**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
