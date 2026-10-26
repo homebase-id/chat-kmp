@@ -1,5 +1,6 @@
 package id.homebase.api.sync.database
 
+import id.homebase.api.storage.SecureRead
 import id.homebase.api.sync.database.DatabaseFileState.Absent
 import id.homebase.api.sync.database.DatabaseFileState.Encrypted
 import id.homebase.api.sync.database.DatabaseFileState.Plaintext
@@ -15,12 +16,12 @@ import kotlin.test.assertEquals
 class RawKeyDecisionTest {
 
     private val hex = "ab".repeat(SqlCipherRawKey.BYTES)
-    private val found = RawKeyRead.Found(hex)
-    private val corrupt = RawKeyRead.Found("not-a-key")
-    private val missing = RawKeyRead.Missing
-    private val locked = RawKeyRead.Unavailable("OSStatus -25308")
+    private val found = SecureRead.Found(hex)
+    private val corrupt = SecureRead.Found("not-a-key")
+    private val missing = SecureRead.Missing
+    private val locked = SecureRead.Unavailable(IllegalStateException("OSStatus -25308"))
 
-    private val table: List<Triple<RawKeyRead, DatabaseFileState, RawKeyDecision>> = listOf(
+    private val table: List<Triple<SecureRead, DatabaseFileState, RawKeyDecision>> = listOf(
         Triple(found, Absent, Use(hex)),
         Triple(found, Plaintext, Use(hex)),
         Triple(found, Encrypted, Use(hex)),

@@ -2,7 +2,10 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import id.homebase.api.storage.SecureRead
+import id.homebase.api.storage.toSecureRead
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.sql.DriverManager
 import kotlin.test.AfterTest
@@ -23,16 +26,13 @@ class SqlCipherKeyModeTest {
 
     private val tempDir: File = Files.createTempDirectory("sqlcipher-key-mode").toFile()
 
-    private class FakeStore(var value: String? = null) : RawKeyStore {
+    private class FakeStore(var value: String? = null, var unavailable: Boolean = false) : RawKeyStore {
         var writes = 0
-        override fun get(): String? = value
+        override fun read(): SecureRead =
+            if (unavailable) SecureRead.Unavailable(IOException("key store not ready")) else value.toSecureRead()
         override fun put(hex: String) {
             value = hex
             writes++
-        }
-
-        override fun remove() {
-            value = null
         }
     }
 
@@ -119,11 +119,12 @@ class SqlCipherKeyModeTest {
         createWith(cipherUrl(db, "the-real-passphrase"), "kept")
 
         val store = FakeStore("11".repeat(32))
-        assertFailsWith<Exception> {
+        val failure = assertFailsWith<Exception> {
             openKeyedSqliteDriver(db, "a-passphrase-that-was-never-used", store) { error("must not derive") }
         }
 
-        assertNull(store.value, "a key that cannot open the file must not stay cached")
+        assertFalse(failure is DatabaseUnavailableException, "a key that was read but is wrong lets recovery reset")
+        assertEquals("11".repeat(32), store.value, "a failed open must never delete the stored key")
         assertEquals(
             "kept",
             readMarker(cipherUrl(db, "the-real-passphrase")),
@@ -150,6 +151,70 @@ class SqlCipherKeyModeTest {
             SqlCipherRawKey.isHex("not-hex"),
             "hex validation must reject a garbled cache entry",
         )
+    }
+
+    private fun rawKeyDatabase(name: String, passphrase: String, store: FakeStore): File {
+        val db = dbFile(name)
+        openKeyedSqliteDriver(db, passphrase, store, inline).use { driver ->
+            driver.execute(null, "CREATE TABLE probe (v TEXT)", 0)
+            driver.execute(null, "INSERT INTO probe VALUES ('born-raw')", 0)
+        }
+        return db
+    }
+
+    @Test
+    fun `a raw-key database whose key can't be read right now is reported unavailable and left alone`() {
+        val store = FakeStore()
+        val db = rawKeyDatabase("raw-unavailable.db", "passphrase", store)
+        val key = assertNotNull(store.value)
+        store.unavailable = true
+
+        assertFailsWith<DatabaseUnavailableException> {
+            openKeyedSqliteDriver(db, "passphrase", store) { error("must not derive") }
+        }
+
+        assertEquals(1, store.writes, "nothing may be written while the key can't be read")
+        assertEquals(key, store.value)
+        assertEquals("born-raw", readMarker(cipherUrl(db, SqlCipherRawKey.format(key))))
+    }
+
+    @Test
+    fun `no database and an unreadable key store creates neither a key nor a file`() {
+        val db = dbFile("fresh-unavailable.db")
+        val store = FakeStore("aa".repeat(32), unavailable = true)
+
+        assertFailsWith<DatabaseUnavailableException> {
+            openKeyedSqliteDriver(db, "passphrase", store) { error("must not derive") }
+        }
+
+        assertEquals(0, store.writes)
+        assertEquals("aa".repeat(32), store.value)
+        assertFalse(db.exists(), "a file created under a new key would orphan the stored one")
+    }
+
+    @Test
+    fun `a passphrase database opens while the key store is unreadable and nothing is written`() {
+        val db = dbFile("passphrase-unavailable.db")
+        val passphrase = "a-passphrase-from-before-raw-key-mode"
+        createWith(cipherUrl(db, passphrase), "kept")
+        val store = FakeStore(unavailable = true)
+
+        assertEquals("kept", openKeyedSqliteDriver(db, passphrase, store, noDerivation).marker())
+
+        assertEquals(0, store.writes)
+    }
+
+    @Test
+    fun `a raw-key database whose key is gone for good fails as an ordinary open error`() {
+        val store = FakeStore()
+        val db = rawKeyDatabase("raw-lost.db", "passphrase", store)
+        store.value = null
+
+        val failure = assertFailsWith<Exception> {
+            openKeyedSqliteDriver(db, "passphrase", store) { error("must not derive") }
+        }
+
+        assertFalse(failure is DatabaseUnavailableException, "a missing key can't come back, so recovery may reset")
     }
 
     @Test
