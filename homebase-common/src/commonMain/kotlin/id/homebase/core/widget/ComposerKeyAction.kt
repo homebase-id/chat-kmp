@@ -4,6 +4,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
@@ -151,6 +152,7 @@ internal class ComposerKeyChord(
     val isSeven: Boolean = false,
     val isEight: Boolean = false,
     val isEscape: Boolean = false,
+    val isAltPressed: Boolean = false,
 )
 
 internal fun KeyEvent.toKeyChord(): ComposerKeyChord = ComposerKeyChord(
@@ -169,6 +171,8 @@ internal fun KeyEvent.toKeyChord(): ComposerKeyChord = ComposerKeyChord(
     isSeven = key == Key.Seven,
     isEight = key == Key.Eight,
     isEscape = key == Key.Escape,
+    // Windows reports AltGr as Ctrl+Alt, and AltGr+key types a character.
+    isAltPressed = isAltPressed,
 )
 
 /** An Enter the composer decides on: it sends or breaks the line, whatever else is showing. */
@@ -205,7 +209,7 @@ internal fun composerKeyAction(
 
 private fun formatAction(chord: ComposerKeyChord): ComposerKeyAction? {
     if (chord.isEscape) return ComposerKeyAction.DismissTrigger
-    if (!chord.isCtrlOrCmdPressed) return null
+    if (!chord.isCtrlOrCmdPressed || chord.isAltPressed) return null
     return if (chord.isShiftPressed) when {
         chord.isX -> ComposerKeyAction.Strike
         chord.isEight -> ComposerKeyAction.BulletList

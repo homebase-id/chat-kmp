@@ -150,6 +150,7 @@ class ComposerEnterChordTest {
         seven: Boolean = false,
         eight: Boolean = false,
         escape: Boolean = false,
+        alt: Boolean = false,
     ) = ComposerKeyChord(
         isEnter = false,
         isArrowUp = false,
@@ -164,6 +165,7 @@ class ComposerEnterChordTest {
         isSeven = seven,
         isEight = eight,
         isEscape = escape,
+        isAltPressed = alt,
     )
 
     @Test
@@ -186,6 +188,13 @@ class ComposerEnterChordTest {
     fun `formatting shortcuts work where plain enter is inert`() {
         assertEquals(ComposerKeyAction.Bold, action(key(b = true), handlesHardwareKeys = false))
         assertEquals(ComposerKeyAction.Ignore, action(chord(), handlesHardwareKeys = false))
+    }
+
+    @Test
+    fun `an AltGr chord types its character instead of formatting`() {
+        assertEquals(ComposerKeyAction.Ignore, action(key(e = true, alt = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(x = true, shift = true, alt = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(b = true, alt = true)))
     }
 
     @Test
