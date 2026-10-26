@@ -136,7 +136,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | videoFrames | `true` lets the brain see up to 4 keyframes of a video it reads (needs `ffmpeg` and `ffprobe` on PATH); see Security | false |
 | transcribe | command run as `<cmd> "<audio file>"`, transcript on stdout, 60 s limit; unset = voice notes stay a label (see Voice notes) | none |
 | tts | command run as `<cmd> "<text file>" "<out file>"`, must write an m4a voice note to the out file; `scripts/speak.sh` does; unset = no voice replies (see Voice replies) | none |
-| ttsVoice | built-in voice name, passed as env `TTS_VOICE` (never in the shell string) | `Marcus` when a persona is set, else `Bruno` |
+| ttsVoice | built-in voice name, passed as env `TTS_VOICE` (never in the shell string) | `Marcus` when a persona is set, else `Bruno`; the sidecar's default fast model (`kitten-tts-mini-0.8`: Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, Leo) falls back to Bruno for other names |
 | ttsPreset | `stable` or `expressive` (`TTS_PRESET`) | expressive |
 | ttsReference, ttsReferenceText | 5 to 30 s wav and its transcript for voice cloning (`TTS_REFERENCE`, `TTS_REFERENCE_TEXT`); overrides `ttsVoice` (warns if both are set). With the sidecar the clip path is resolved on the host under `TTS_REFERENCE_DIR`, so give the host path, not a container path. A knob only: nothing is fetched or shipped | none |
 | ttsTimeout | e.g. `240s`; the command is killed after this | 240s |
@@ -249,6 +249,8 @@ default with a persona), Dante expressive 124 Hz, Vincent expressive 135 Hz, Bru
 stays a config knob (`ttsReference`/`ttsReferenceText`, plus `TTS_REFERENCE_DIR` for the sidecar); no actor audio is ever fetched.
 
 ### Sidecar install (`deploy/tts/`)
+
+Default model `KittenML/kitten-tts-mini-0.8`: on the G14 a 91-character line takes 6 to 8 s through the sidecar (2 s in a bare bench) in 0.3 GB, fast enough for `callTts`. Set `TTS_MODEL=KittenML/kitten-tts-2` on the service for presets and cloning (about 90 s per sentence, 7.4 GB).
 
 `tts-server.py` (stdlib plus kittenml and soundfile from the experiment venv) listens on a systemd-activated unix socket, serves one
 request at a time with at most 2 waiting (503 beyond), refuses text over 600 characters (413), only reads reference wavs under
