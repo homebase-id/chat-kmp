@@ -2,6 +2,8 @@ package id.homebase.agent
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
+import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.groodle.GroodleVote
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.chat.poll.PollDescriptor
@@ -40,7 +42,7 @@ private val SENDING_TOOLS = setOf("send_message", "send_file") + TYPED_SEND_TOOL
 private val LEASE_KEY = AttributeKey<ToolRun>("chat-agent-run")
 
 private val READ_TOOLS = setOf("read_messages", "search_messages", "get_conversation")
-private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact", "vote_poll") + TYPED_SEND_TOOLS
+private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact", "vote_poll", "vote_groodle") + TYPED_SEND_TOOLS
 private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES
 
 fun chatToolNames(tier: Tier): Set<String> = if (tier == Tier.OPERATOR) OPERATOR_TOOLS else LOCKED_TOOLS
@@ -172,22 +174,27 @@ class WatcherBackend(
     override suspend fun send(conversationId: Uuid, text: String, replyTo: id.homebase.chat.services.ReplyPreview?) =
         sendToConversation(session, allowlist, conversationId, text, replyTo, previews = previews)
 
-    override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String) =
-        sendToConversation(session, allowlist, conversationId, caption, files = listOf(file))
+    override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?) =
+        sendToConversation(session, allowlist, conversationId, caption, replyTo, files = listOf(file))
 
     override fun disclose(conversationId: Uuid, text: String) = allowlist.disclosure(conversationId, text, session.identity)
 
-    override suspend fun sendTyped(conversationId: Uuid, content: MessageContent) =
-        sendToConversation(session, allowlist, conversationId, "", typed = content)
+    override val self: OdinId get() = session.identity
+
+    override suspend fun sendTyped(conversationId: Uuid, content: MessageContent, messageId: Uuid) =
+        sendToConversation(session, allowlist, conversationId, "", typed = content, messageId = messageId)
+
+    override suspend fun voteGroodle(conversationId: Uuid, message: ChatMsg, slot: Int, choice: GroodleVote.Choice, groodle: GroodleDescriptor) =
+        voteOnGroodle(session, allowlist, conversationId, message, slot, choice, groodle)
 
     override suspend fun vote(conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor) =
         voteOnPoll(session, allowlist, conversationId, message, option, poll)
 
-    override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String) =
-        sendToConversation(session, allowlist, conversationId, caption, media = { key, ops -> stageVideo(video, key, ops) })
+    override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?) =
+        sendToConversation(session, allowlist, conversationId, caption, replyTo, media = { key, ops -> stageVideo(video, key, ops) })
 
-    override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String) =
-        sendToConversation(session, allowlist, conversationId, caption, media = { _, _ -> stageVoice(voice) })
+    override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?) =
+        sendToConversation(session, allowlist, conversationId, caption, replyTo, media = { _, _ -> stageVoice(voice) })
 
     override suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor) =
         sendToConversation(session, allowlist, conversationId, "", typed = MessageContent.ViewOnce(descriptor), media = staged)

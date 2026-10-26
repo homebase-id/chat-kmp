@@ -59,10 +59,10 @@ class ChatToolsTest {
         val typed = CopyOnWriteArrayList<id.homebase.chat.services.content.MessageContent>()
         val videos = CopyOnWriteArrayList<String>()
         override val ffmpeg = Ffmpeg("/nonexistent-dir-for-l20b")
-        override suspend fun sendTyped(conversationId: Uuid, content: id.homebase.chat.services.content.MessageContent): Uuid { typed += content; return Uuid.random() }
-        override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String): Uuid { videos += video.name; return Uuid.random() }
-        override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String): Uuid { videos += voice.name; return Uuid.random() }
-        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid { videos += file.name; return Uuid.random() }
+        override suspend fun sendTyped(conversationId: Uuid, content: id.homebase.chat.services.content.MessageContent, messageId: Uuid): Uuid { typed += content; return Uuid.random() }
+        override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid { videos += video.name; return Uuid.random() }
+        override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid { videos += voice.name; return Uuid.random() }
+        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid { videos += file.name; return Uuid.random() }
         override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?): List<ChatMsg> {
             readFrom += conversationId
             return msgs
@@ -163,7 +163,7 @@ class ChatToolsTest {
     fun toolListPerTierAndConversationIdIsNotInTheSchema() {
         val operator = rpc(lease(fake(), Tier.OPERATOR).token, "tools/list").second!!
         fun names(r: JsonObject) = r["result"]!!.jsonObject["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
-        val typed = setOf("send_poll", "vote_poll", "send_event", "send_location", "send_contact")
+        val typed = setOf("send_poll", "vote_poll", "send_event", "send_location", "send_contact", "send_dice", "send_groodle", "vote_groodle")
         assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact", "edit_message", "delete_message") + typed + SCHEDULE_TOOL_NAMES, names(operator))
         val locked = rpc(lease(fake(), Tier.LOCKED).token, "tools/list").second!!
         assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact") + typed, names(locked))
@@ -412,7 +412,7 @@ class ChatToolsTest {
         val mine = msg(null, "$BOT_PREFIX old")
         val b = object : AgentBackend by fake(mine) {
             val texts = mutableListOf<String>()
-            override val allowlist = Allowlist.default(owner, ).copy(self, false)
+            override val allowlist = Allowlist.default(owner, ).copy(this@ChatToolsTest.self, false)
             override val sendPrefix = BOT_PREFIX
             override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = listOf(mine)
             override fun isOwn(message: ChatMsg) = true

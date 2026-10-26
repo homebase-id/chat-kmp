@@ -155,6 +155,7 @@ suspend fun sendToConversation(
     previews: LinkPreviewSource? = null,
     typed: MessageContent? = null,
     media: (suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle)? = null,
+    messageId: Uuid = Uuid.random(),
 ): Uuid {
     allowlist.requireSend(conversationId)
     require(files.size <= MAX_OUT_FILES) { "at most $MAX_OUT_FILES files per message" }
@@ -163,7 +164,6 @@ suspend fun sendToConversation(
     require(recipients.isNotEmpty() || conversation.id == ChatProtocol.ConversationWithYourselfId) {
         "no recipients resolved for conversation ${conversation.id}"
     }
-    val messageId = Uuid.random()
     val text = if (typed != null) text else allowlist.disclosure(conversation.id, text, session.identity)
     val keyHeader = KeyHeader.newRandom16()
     val fileOps = JvmFileOperationsProvider()

@@ -218,7 +218,7 @@ class OutgoingTest {
         val sent = mutableListOf<Pair<OutFile, String>>()
         override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = emptyList<ChatMsg>()
         override suspend fun send(conversationId: Uuid, text: String, replyTo: id.homebase.chat.services.ReplyPreview?) = Uuid.random()
-        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid {
+        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid {
             sent += file to caption
             return Uuid.random()
         }

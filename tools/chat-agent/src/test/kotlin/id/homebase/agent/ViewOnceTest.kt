@@ -178,7 +178,7 @@ class ViewOnceTest {
         override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = emptyList<ChatMsg>()
         override suspend fun send(conversationId: Uuid, text: String, replyTo: id.homebase.chat.services.ReplyPreview?) = Uuid.random()
         override fun disclose(conversationId: Uuid, text: String) = allowlist.disclosure(conversationId, text, owner)
-        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid { files += file; return Uuid.random() }
+        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid { files += file; return Uuid.random() }
         override suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor): Uuid {
             sent += descriptor to staged
             return Uuid.random()

@@ -9,7 +9,11 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.codePointCount
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
+import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.groodle.GroodleSlot
+import id.homebase.chat.groodle.GroodleVote
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
@@ -49,6 +53,10 @@ class TypedToolsTest {
         val delegate: Boolean = false,
     ) : AgentBackend {
         val typed = CopyOnWriteArrayList<MessageContent>()
+        val typedIds = CopyOnWriteArrayList<Uuid>()
+        val replies = CopyOnWriteArrayList<id.homebase.chat.services.ReplyPreview?>()
+        val groodleVotes = CopyOnWriteArrayList<Pair<Int, GroodleVote.Choice>>()
+        override val self: OdinId? get() = owner
         val votes = CopyOnWriteArrayList<Pair<Int, PollDescriptor>>()
         val videos = CopyOnWriteArrayList<Pair<OutVideo, String>>()
         val voices = CopyOnWriteArrayList<Pair<OutVoice, String>>()
@@ -57,11 +65,12 @@ class TypedToolsTest {
         override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = msgs
         override suspend fun send(conversationId: Uuid, text: String, replyTo: id.homebase.chat.services.ReplyPreview?) = Uuid.random()
         override fun disclose(conversationId: Uuid, text: String) = allowlist.disclosure(conversationId, text, owner)
-        override suspend fun sendTyped(conversationId: Uuid, content: MessageContent): Uuid { typed += content; return Uuid.random() }
+        override suspend fun sendTyped(conversationId: Uuid, content: MessageContent, messageId: Uuid): Uuid { typed += content; typedIds += messageId; return messageId }
+        override suspend fun voteGroodle(conversationId: Uuid, message: ChatMsg, slot: Int, choice: GroodleVote.Choice, groodle: GroodleDescriptor): Boolean { groodleVotes += slot to choice; return true }
         override suspend fun vote(conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean { votes += option to poll; return true }
-        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid { files += file to caption; return Uuid.random() }
-        override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String): Uuid { videos += video to caption; return Uuid.random() }
-        override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String): Uuid { voices += voice to caption; return Uuid.random() }
+        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid { files += file to caption; replies += replyTo; return Uuid.random() }
+        override suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid { videos += video to caption; replies += replyTo; return Uuid.random() }
+        override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid { voices += voice to caption; replies += replyTo; return Uuid.random() }
     }
 
     private fun delegateFake(filesDir: File? = null): Fake {
@@ -438,5 +447,135 @@ class TypedToolsTest {
         assertEquals(3, lines.count { it == "-protocol_whitelist" })
         assertEquals(1, lines.count { it == "-nostdin" })
         assertEquals(listOf("mp4", "mp4", "image2pipe"), lines.indices.filter { lines[it] == "-f" }.map { lines[it + 1] })
+    }
+
+    @Test
+    fun diceDescriptorIsValidAndBoundToItsOwnMessageId() = runBlocking<Unit> {
+        val b = Fake()
+        val reply = ok(toolSendDice(b, scope(b, args("count" to 3, "faces" to 20), self)))
+        val d = (b.typed.single() as MessageContent.DiceRoll).descriptor
+        assertNotNull(d)
+        assertTrue(d.isValid())
+        assertEquals(20, d.faces)
+        assertEquals(3, d.latest.results.size)
+        assertEquals(b.typedIds.single(), d.latest.messageId)
+        assertEquals(owner, d.latest.odinId)
+        assertTrue(reply.text.startsWith("rolled ${d.sum} (3d20): "), reply.text)
+        ok(toolSendDice(b, scope(b, args(), self)))
+        assertEquals(1, (b.typed.last() as MessageContent.DiceRoll).descriptor!!.latest.results.size)
+        assertEquals(6, (b.typed.last() as MessageContent.DiceRoll).descriptor!!.faces)
+    }
+
+    @Test
+    fun diceBoundsAndDisclosureRefusal() = runBlocking<Unit> {
+        val b = Fake()
+        refused(toolSendDice(b, scope(b, args("count" to 0), self)), "count")
+        refused(toolSendDice(b, scope(b, args("count" to DiceRollDescriptor.MAX_STANDARD_DICE + 1), self)), "count")
+        refused(toolSendDice(b, scope(b, args("faces" to 7), self)), "faces")
+        ok(toolSendDice(b, scope(b, args("count" to DiceRollDescriptor.MAX_STANDARD_DICE, "faces" to 4), self)))
+        val d = delegateFake()
+        refused(toolSendDice(d, scope(d, args(), group)), "disclosure")
+        assertTrue(d.typed.isEmpty())
+    }
+
+    @Test
+    fun groodleSlotsParseInTheZoneAndTitleCarriesDisclosure() = runBlocking<Unit> {
+        val b = Fake()
+        ok(toolSendGroodle(b, scope(b, args("title" to "Game night", "timezone" to "Europe/Berlin", "slots" to listOf("2026-10-02T18:00/2026-10-02T20:00", "2026-10-01T18:00"), "allowMaybe" to false, "deadline" to "2026-09-30T12:00"), self)))
+        val d = (b.typed.single() as MessageContent.Groodle).descriptor!!
+        assertTrue(d.isValid())
+        assertEquals(java.time.Instant.parse("2026-10-01T16:00:00Z").toEpochMilli(), d.slots[0].startUtcMs)
+        assertNull(d.slots[0].endUtcMs)
+        assertEquals(java.time.Instant.parse("2026-10-02T18:00:00Z").toEpochMilli(), d.slots[1].endUtcMs)
+        assertEquals("Europe/Berlin", d.timezone)
+        assertFalse(d.allowMaybe)
+        assertEquals(java.time.Instant.parse("2026-09-30T10:00:00Z").toEpochMilli(), d.deadlineUtcMs)
+        val dl = delegateFake()
+        ok(toolSendGroodle(dl, scope(dl, args("title" to "x".repeat(200), "slots" to listOf("2026-10-01T18:00")), group)))
+        val t = (dl.typed.single() as MessageContent.Groodle).descriptor!!.title
+        assertTrue(t.contains(BOT_PREFIX.trim()), t)
+        assertTrue(t.codePointCount() <= GroodleDescriptor.MAX_TITLE_CODEPOINTS)
+    }
+
+    @Test
+    fun groodleValidationRefusals() = runBlocking<Unit> {
+        val b = Fake()
+        fun groodle(slots: List<String>, vararg more: Pair<String, Any?>) = runBlocking { toolSendGroodle(b, scope(b, args("title" to "t", "slots" to slots, *more), self)) }
+        refused(groodle(emptyList()), "groodle")
+        refused(groodle((1..11).map { "2026-10-%02dT18:00".format(it) }), "groodle")
+        refused(groodle(listOf("2026-10-01T18:00/2026-10-01T17:00")), "groodle")
+        refused(groodle(listOf("2026-10-01T18:00"), "deadline" to "2026-10-02T00:00"), "groodle")
+        refused(groodle(listOf("tomorrow")), "ISO")
+        assertTrue(b.typed.isEmpty())
+        ok(groodle((1..10).map { "2026-10-%02dT18:00".format(it) }))
+    }
+
+    private fun groodleMessage(allowMaybe: Boolean = true, deadline: Long? = null): ChatMsg {
+        val d = GroodleDescriptor(title = "G", timezone = "UTC", allowMaybe = allowMaybe, deadlineUtcMs = deadline, slots = listOf(GroodleSlot(2_000L), GroodleSlot(3_000L)))
+        return ChatMsg(Uuid.random(), self, other, "G", 1L, dataType = ChatProtocol.ChatGroodleMessageDataType, rawContent = OdinSystemSerializer.serialize(d), fileId = Uuid.random())
+    }
+
+    @Test
+    fun voteGroodleRefusalsAndPassThrough() = runBlocking<Unit> {
+        val g = groodleMessage()
+        val b = Fake(msgs = listOf(g, ChatMsg(Uuid.random(), self, other, "plain", 2L, fileId = Uuid.random())))
+        fun vote(m: ChatMsg, slot: Any, choice: String, fake: Fake = b) = runBlocking { toolVoteGroodle(fake, scope(fake, args("messageId" to m.id.toString().take(8), "slot" to slot, "choice" to choice), self)) }
+        ok(vote(g, 2, "Maybe"))
+        ok(vote(g, 1, "yes"))
+        assertEquals(listOf(2 to GroodleVote.Choice.MAYBE, 1 to GroodleVote.Choice.YES), b.groodleVotes.toList())
+        refused(vote(g, 3, "yes"), "slot")
+        refused(vote(g, 0, "yes"), "slot")
+        refused(vote(g, 1, "perhaps"), "choice")
+        refused(vote(b.msgs[1], 1, "yes"), "not a groodle")
+        val noMaybe = groodleMessage(allowMaybe = false)
+        refused(vote(noMaybe, 1, "maybe", Fake(msgs = listOf(noMaybe))), "maybe")
+        val late = groodleMessage(deadline = 1_000L)
+        refused(vote(late, 1, "yes", Fake(msgs = listOf(late))), "deadline")
+        assertEquals(2, b.groodleVotes.size)
+    }
+
+    private class RecordingReactions(var own: List<String>) : OwnReactions {
+        val added = mutableListOf<String>()
+        val removed = mutableListOf<String>()
+        override suspend fun codes() = own
+        override suspend fun add(code: String) { added += code }
+        override suspend fun remove(code: String) { removed += code }
+    }
+
+    @Test
+    fun castGroodleVoteSetsOneChoicePerSlot() = runBlocking<Unit> {
+        val d = GroodleDescriptor(title = "G", timezone = "UTC", slots = listOf(GroodleSlot(2_000L), GroodleSlot(3_000L)))
+        val fresh = RecordingReactions(emptyList())
+        assertTrue(castGroodleVote(fresh, d, 2, GroodleVote.Choice.YES))
+        assertEquals(listOf("_2Y"), fresh.added)
+        assertTrue(fresh.removed.isEmpty())
+        val changing = RecordingReactions(listOf("_2N", "_1Y"))
+        assertTrue(castGroodleVote(changing, d, 2, GroodleVote.Choice.YES))
+        assertEquals(listOf("_2Y"), changing.added)
+        assertEquals(listOf("_2N"), changing.removed)
+        val same = RecordingReactions(listOf("_1M"))
+        assertFalse(castGroodleVote(same, d, 1, GroodleVote.Choice.MAYBE))
+        assertTrue(same.added.isEmpty() && same.removed.isEmpty())
+    }
+
+    @Test
+    fun mediaRepliesCarryTheQuotedPreview() = runBlocking<Unit> {
+        val dir = Files.createTempDirectory("quag-reply").toFile()
+        try {
+            File(dir, "a.txt").writeText("hi")
+            File(dir, "v.m4a").writeBytes(ByteArray(64))
+            val parent = ChatMsg(Uuid.random(), self, other, "quote me", 1L, fileId = Uuid.random())
+            val b = Fake(filesDir = dir, msgs = listOf(parent))
+            val ref = parent.id.toString().take(8)
+            ok(toolSendFile(b, scope(b, args("path" to "a.txt", "replyToId" to ref), self)))
+            ok(toolSendVoice(b, scope(b, args("path" to "v.m4a", "replyToId" to ref), self)))
+            ok(toolSendFile(b, scope(b, args("path" to "a.txt"), self)))
+            assertEquals(parent.toReplyPreview(), b.replies[0])
+            assertEquals(parent.toReplyPreview(), b.replies[1])
+            assertNull(b.replies[2])
+            refused(toolSendFile(b, scope(b, args("path" to "a.txt", "replyToId" to "deadbeef"), self)))
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }

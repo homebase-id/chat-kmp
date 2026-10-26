@@ -12,7 +12,14 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.contactcard.scrubbed
+import id.homebase.chat.dice.ChainRoll
+import id.homebase.chat.dice.DiceRollDescriptor
+import id.homebase.chat.dice.DiceRollMode
+import id.homebase.chat.dice.RollSource
 import id.homebase.chat.event.EventDescriptor
+import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.groodle.GroodleSlot
+import id.homebase.chat.groodle.GroodleVote
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.content.MessageContent
@@ -20,6 +27,7 @@ import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.upload.PayloadBundle
 import java.io.File
+import java.security.SecureRandom
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -43,7 +51,7 @@ const val CAPTION_CODEPOINTS = 500
 const val VIDEO_MAX_BYTES = 5L * 1024 * 1024
 private const val ONE_HOUR_MS = 3_600_000L
 
-val TYPED_SEND_TOOLS = setOf("send_poll", "send_event", "send_location", "send_contact")
+val TYPED_SEND_TOOLS = setOf("send_poll", "send_event", "send_location", "send_contact", "send_dice", "send_groodle")
 val MEDIA_SEND_TOOLS = setOf("send_video", "send_voice", "send_view_once")
 
 private val E164 = Regex("^\\+[1-9]\\d{1,14}$")
@@ -77,6 +85,63 @@ fun parseEventInstant(raw: String, zone: ZoneId): Long =
         ?: runCatching { OffsetDateTime.parse(raw).toInstant().toEpochMilli() }.getOrNull()
         ?: runCatching { LocalDateTime.parse(raw).atZone(zone).toInstant().toEpochMilli() }.getOrNull()
         ?: throw IllegalArgumentException("'$raw' is not an ISO date-time like 2026-10-01T18:00")
+
+suspend fun toolSendDice(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
+    val conversationId = sendTarget(backend, args)
+    val count = intArg(args, "count") ?: 1
+    val faces = intArg(args, "faces") ?: 6
+    require(count in 1..DiceRollDescriptor.MAX_STANDARD_DICE) { "count must be 1 to ${DiceRollDescriptor.MAX_STANDARD_DICE}" }
+    require(faces in DiceRollDescriptor.ALLOWED_FACES) { "faces must be one of ${DiceRollDescriptor.ALLOWED_FACES.joinToString(", ")}" }
+    require(backend.disclose(conversationId, "").isBlank()) { "a dice roll cannot carry the AI disclosure" }
+    val self = requireNotNull(backend.self) { "this backend has no identity to roll as" }
+    val rng = SecureRandom()
+    val results = List(count) { rng.nextInt(faces) + 1 }
+    val messageId = Uuid.random()
+    val descriptor = DiceRollDescriptor(
+        faces = faces,
+        rolls = listOf(ChainRoll(messageId, self, results, System.currentTimeMillis(), RollSource.LocalRandom)),
+        mode = DiceRollMode.Standard,
+    )
+    require(descriptor.isValid()) { "dice roll is not valid" }
+    val sent = backend.sendTyped(conversationId, MessageContent.DiceRoll(descriptor), messageId)
+    ToolReply("rolled ${results.sum()} (${count}d$faces): ${results.joinToString(", ")} (sent $sent)")
+}
+
+suspend fun toolSendGroodle(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
+    val conversationId = sendTarget(backend, args)
+    val title = stringArg(args, "title")?.oneLine(GroodleDescriptor.MAX_TITLE_CODEPOINTS * 2) ?: return@guarded ToolReply("title is empty", true)
+    val zone = stringArg(args, "timezone")?.let { runCatching { ZoneId.of(it) }.getOrNull() ?: throw IllegalArgumentException("unknown timezone '$it'") } ?: ZoneOffset.UTC
+    val slots = listArg(args, "slots").map { raw ->
+        val start = parseEventInstant(raw.substringBefore('/').trim(), zone)
+        val end = raw.substringAfter('/', "").trim().takeIf { it.isNotEmpty() }?.let { parseEventInstant(it, zone) }
+        GroodleSlot(start, end)
+    }.sortedBy { it.startUtcMs }
+    val descriptor = GroodleDescriptor(
+        title = fitDisclosed({ backend.disclose(conversationId, it) }, title, GroodleDescriptor.MAX_TITLE_CODEPOINTS),
+        description = stringArg(args, "description")?.truncateToCodePoints(GroodleDescriptor.MAX_DESCRIPTION_CODEPOINTS).orEmpty(),
+        timezone = zone.id,
+        allowMaybe = boolArg(args, "allowMaybe") ?: true,
+        deadlineUtcMs = stringArg(args, "deadline")?.let { parseEventInstant(it, zone) },
+        slots = slots,
+    )
+    require(descriptor.isValid()) { "groodle is not valid: 1 to ${GroodleDescriptor.MAX_SLOTS} distinct slots, each end after its start, and a deadline no later than the first slot" }
+    sendTypedContent(backend, conversationId, MessageContent.Groodle(descriptor), "groodle")
+}
+
+suspend fun toolVoteGroodle(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
+    val conversationId = sendTarget(backend, args)
+    val message = findMessage(backend.messages(conversationId, LOOKUP_WINDOW), stringArg(args, "messageId") ?: "")
+    val groodle = (MessageContentParser.parse(message.dataType, message.rawContent) as? MessageContent.Groodle)?.descriptor
+    requireNotNull(groodle) { "message ${message.id.toString().take(ID_PREFIX)} is not a groodle" }
+    val slot = intArg(args, "slot") ?: return@guarded ToolReply("slot is empty", true)
+    require(slot in 1..groodle.slots.size) { "slot must be from 1 to ${groodle.slots.size}" }
+    val choice = GroodleVote.Choice.entries.firstOrNull { it.name.equals(stringArg(args, "choice"), ignoreCase = true) }
+    requireNotNull(choice) { "choice must be yes, no or maybe" }
+    require(groodle.allowMaybe || choice != GroodleVote.Choice.MAYBE) { "this groodle does not allow maybe" }
+    require(groodle.deadlineUtcMs.let { it == null || System.currentTimeMillis() <= it }) { "the voting deadline has passed" }
+    val changed = backend.voteGroodle(conversationId, message, slot, choice, groodle)
+    ToolReply("${if (changed) "voted" else "already voted"} ${choice.name.lowercase()} on slot $slot of ${message.id.toString().take(ID_PREFIX)}")
+}
 
 private suspend fun sendTypedContent(backend: AgentBackend, conversationId: Uuid, content: MessageContent, label: String) =
     ToolReply("sent $label ${backend.sendTyped(conversationId, content)}")
@@ -183,12 +248,13 @@ suspend fun toolSendVideo(backend: AgentBackend, args: JsonObject?): ToolReply =
     val file = fileArg(backend, args)
     val caption = captionArg(backend, args)
     val ffmpeg = backend.ffmpeg
-    suspend fun asFile(why: String) = ToolReply("sent ${backend.sendFile(conversationId, file, caption)} as a file: $why")
+    val reply = replyArg(backend, conversationId, args)
+    suspend fun asFile(why: String) = ToolReply("sent ${backend.sendFile(conversationId, file, caption, reply)} as a file: $why")
     if (!ffmpeg.available) return@guarded asFile("ffmpeg/ffprobe not found on PATH, so no video thumbnail or duration")
     require(file.name.lowercase().endsWith(".mp4")) { "send_video needs an .mp4 file" }
     if (file.bytes.size > VIDEO_MAX_BYTES) return@guarded asFile("the video is over ${formatSize(VIDEO_MAX_BYTES)}, larger videos are not segmented here")
     val video = probeOutVideo(ffmpeg, file)
-    ToolReply("sent video ${backend.sendVideo(conversationId, video, caption)}")
+    ToolReply("sent video ${backend.sendVideo(conversationId, video, caption, reply)}")
 }
 
 suspend fun toolSendVoice(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
@@ -207,7 +273,7 @@ suspend fun toolSendVoice(backend: AgentBackend, args: JsonObject?): ToolReply =
         }
     } else null
     val voice = OutVoice(file.name, file.bytes, type, seconds ?: 0)
-    ToolReply("sent voice note ${backend.sendVoice(conversationId, voice, captionArg(backend, args))}${if (seconds == null) " (duration unknown: ffprobe not available or unreadable)" else ""}")
+    ToolReply("sent voice note ${backend.sendVoice(conversationId, voice, captionArg(backend, args), replyArg(backend, conversationId, args))}${if (seconds == null) " (duration unknown: ffprobe not available or unreadable)" else ""}")
 }
 
 private typealias Stager = suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle
@@ -364,11 +430,45 @@ fun typedTools(): List<ToolDef> = listOf(
         listOf("conversationId", "name"), stdio = false, write = true,
     ) { b, a -> toolSendContact(b, a) },
     ToolDef(
+        "send_dice", "Roll 1 to 10 dice and send the result as a dice-roll message (rolled with a secure random source). Refused where the AI disclosure is required.",
+        buildJsonObject {
+            put("conversationId", CONVERSATION_PROP)
+            put("count", prop("integer", "Number of dice, 1 to ${DiceRollDescriptor.MAX_STANDARD_DICE}, default 1"))
+            put("faces", prop("integer", "Faces per die: ${DiceRollDescriptor.ALLOWED_FACES.joinToString(", ")}, default 6"))
+        },
+        listOf("conversationId"), stdio = false, write = true,
+    ) { b, a -> toolSendDice(b, a) },
+    ToolDef(
+        "send_groodle", "Send a Groodle: a scheduling poll with 1 to ${GroodleDescriptor.MAX_SLOTS} candidate time slots that people vote yes, no or maybe on.",
+        buildJsonObject {
+            put("conversationId", CONVERSATION_PROP)
+            put("title", prop("string", "Title, at most ${GroodleDescriptor.MAX_TITLE_CODEPOINTS} characters"))
+            put("description", prop("string", "At most ${GroodleDescriptor.MAX_DESCRIPTION_CODEPOINTS} characters"))
+            put("timezone", prop("string", "IANA zone such as Europe/Berlin, default UTC"))
+            put("slots", listProp("1 to ${GroodleDescriptor.MAX_SLOTS} slots, each 'start' or 'start/end' as ISO date-times, e.g. 2026-10-01T18:00/2026-10-01T19:00"))
+            put("allowMaybe", prop("boolean", "Offer a maybe vote, default true"))
+            put("deadline", prop("string", "Optional ISO date-time voting deadline, no later than the first slot"))
+        },
+        listOf("conversationId", "title", "slots"), stdio = false, write = true,
+    ) { b, a -> toolSendGroodle(b, a) },
+    ToolDef(
+        "vote_groodle", "Cast this identity's yes, no or maybe vote on one slot of a Groodle message (replaces its earlier vote on that slot).",
+        buildJsonObject {
+            put("conversationId", CONVERSATION_PROP)
+            put("messageId", MESSAGE_PROP)
+            put("slot", prop("integer", "1-based slot number"))
+            put("choice", prop("string", "yes, no or maybe"))
+        },
+        listOf("conversationId", "messageId", "slot", "choice"), stdio = false, write = true,
+    ) { b, a -> toolVoteGroodle(b, a) },
+    ToolDef(
         "send_video", "Send an .mp4 video from the files directory as a video message with thumbnail and duration (needs ffmpeg and ffprobe, else it goes as a plain file). Max 5 MB as video.",
         buildJsonObject {
             put("conversationId", CONVERSATION_PROP)
             put("path", prop("string", "File inside the files directory"))
             put("caption", prop("string", "Optional text"))
+            put("replyToId", prop("string", "Message id to quote"))
+            put("replyToId", prop("string", "Message id to quote"))
         },
         listOf("conversationId", "path"), stdio = false, write = true,
     ) { b, a -> toolSendVideo(b, a) },

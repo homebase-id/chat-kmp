@@ -14,6 +14,8 @@ import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.groodle.GroodleVote
 import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.decodeReactionCode
@@ -93,14 +95,33 @@ private fun viewOnceLabel(descriptor: ViewOnceDescriptor?, payloads: List<Payloa
     }
 }
 
+private fun liveShareLabel(untilMs: Long?, nowMs: Long = System.currentTimeMillis()): String = when {
+    untilMs == null -> ""
+    untilMs > nowMs -> " | live until ${java.time.Instant.ofEpochMilli(untilMs).truncatedTo(java.time.temporal.ChronoUnit.MINUTES)}"
+    else -> " | live share ended"
+}
+
+private val SLOT_TIME = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+private fun groodleLabel(d: GroodleDescriptor, reactions: ReactionSummary?): String {
+    val zone = runCatching { java.time.ZoneId.of(d.timezone) }.getOrDefault(java.time.ZoneOffset.UTC)
+    fun local(ms: Long) = SLOT_TIME.format(java.time.Instant.ofEpochMilli(ms).atZone(zone))
+    val counts = GroodleVote.counts(reactions, d.slots.size, d.allowMaybe)
+    val slots = d.slots.withIndex().joinToString(", ") { (i, s) ->
+        val c = counts.getValue(i + 1)
+        "${i + 1}: ${local(s.startUtcMs)} (y ${c.yes} / n ${c.no}${if (d.allowMaybe) " / m ${c.maybe}" else ""})"
+    }
+    return listOfNotNull(d.title.oneLine(NAME_CODEPOINTS), slots, d.deadlineUtcMs?.let { "deadline ${local(it)}" }).joinToString(" | ")
+}
+
 private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionSummary?, payloads: List<PayloadDescriptor>? = null, ctx: ViewOnceContext = ViewOnceContext()): String? {
     val content = MessageContentParser.parse(dataType, rawContent) ?: return null
     val (kind, body) = when (content) {
         is MessageContent.Event -> "event" to (content.descriptor?.let { d ->
-            listOfNotNull(d.title.oneLine(NAME_CODEPOINTS), Instant.fromEpochMilliseconds(d.startUtcMs).toString(), d.locationText?.takeIf { it.isNotBlank() }?.let { "at ${it.oneLine(NAME_CODEPOINTS)}" }).joinToString(" | ")
+            listOfNotNull(d.title.oneLine(NAME_CODEPOINTS), Instant.fromEpochMilliseconds(d.startUtcMs).toString(), d.locationText?.takeIf { it.isNotBlank() }?.let { "at ${it.oneLine(NAME_CODEPOINTS)}" }, "with cover photo".takeIf { payloads.mediaPayloads().any { p -> p.isImage() } }).joinToString(" | ")
         } ?: content.displayLabel)
         is MessageContent.DiceRoll -> "dice" to content.displayLabel
-        is MessageContent.Groodle -> "groodle" to content.displayLabel
+        is MessageContent.Groodle -> "groodle" to (content.descriptor?.let { groodleLabel(it, reactions) } ?: content.displayLabel)
         is MessageContent.Poll -> "poll" to (content.descriptor?.let { d ->
             val votes = PollVote.counts(reactions, d.options.size)
             val options = d.options.withIndex().joinToString(", ") { (i, o) -> "${o.oneLine(40)} (${votes[i]})" }
@@ -110,7 +131,7 @@ private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionS
             listOfNotNull(d.summaryLine().oneLine(NAME_CODEPOINTS), d.organization.takeIf { it.isNotBlank() }?.oneLine(NAME_CODEPOINTS), d.phones.take(MAX_CONTACT_VALUES).takeIf { it.isNotEmpty() }?.joinToString(", ") { it.oneLine(40) }, d.emails.take(MAX_CONTACT_VALUES).takeIf { it.isNotEmpty() }?.joinToString(", ") { it.oneLine(60) }, d.odinId.takeIf { it.isNotBlank() }?.oneLine(60)).joinToString(" | ")
         } ?: content.displayLabel)
         is MessageContent.Location -> "location" to (content.descriptor?.let { d ->
-            "${d.lat},${d.lon}" + listOfNotNull(d.caption, d.address).firstOrNull { it.isNotBlank() }?.let { " ${it.oneLine(NAME_CODEPOINTS)}" }.orEmpty()
+            "${d.lat},${d.lon}" + listOfNotNull(d.caption, d.address).firstOrNull { it.isNotBlank() }?.let { " ${it.oneLine(NAME_CODEPOINTS)}" }.orEmpty() + liveShareLabel(d.liveShareUntilMs)
         } ?: content.displayLabel)
         is MessageContent.CallEvent -> "call" to content.displayLabel
         is MessageContent.ViewOnce -> return viewOnceLabel(content.descriptor, payloads, reactions, ctx)

@@ -2,6 +2,8 @@ package id.homebase.agent
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
+import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.groodle.GroodleVote
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.api.util.truncateToCodePoints
@@ -53,7 +55,7 @@ interface AgentBackend {
     val filesDir: File? get() = null
     val schedules: ScheduleScope? get() = null
     val sendPrefix: String get() = if (allowlist.delegate) BOT_PREFIX else ""
-    suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String): Uuid = error("sending files is not supported")
+    suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending files is not supported")
     fun visible(messages: List<ChatMsg>, conversationId: Uuid): List<ChatMsg> =
         messages.filter { allowlist.allowsAuthor(it.author, conversationId) }
     fun frame(lines: String): String = lines
@@ -63,10 +65,12 @@ interface AgentBackend {
     suspend fun delete(conversationId: Uuid, message: ChatMsg): Unit = error("deleting is not supported")
     fun disclose(conversationId: Uuid, text: String): String = text
     val ffmpeg: Ffmpeg get() = DEFAULT_FFMPEG
-    suspend fun sendTyped(conversationId: Uuid, content: MessageContent): Uuid = error("typed messages are not supported")
+    val self: OdinId? get() = null
+    suspend fun sendTyped(conversationId: Uuid, content: MessageContent, messageId: Uuid = Uuid.random()): Uuid = error("typed messages are not supported")
+    suspend fun voteGroodle(conversationId: Uuid, message: ChatMsg, slot: Int, choice: GroodleVote.Choice, groodle: GroodleDescriptor): Boolean = error("voting is not supported")
     suspend fun vote(conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean = error("voting is not supported")
-    suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String): Uuid = error("sending video is not supported")
-    suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String): Uuid = error("sending voice notes is not supported")
+    suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending video is not supported")
+    suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending voice notes is not supported")
     suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor): Uuid = error("sending view-once media is not supported")
 }
 
@@ -185,13 +189,13 @@ suspend fun toolSearchMessages(backend: AgentBackend, args: JsonObject?): ToolRe
     ToolReply(backend.frame(lines.joinToString("\n").ifEmpty { "(no matches)" }))
 }
 
+internal suspend fun replyArg(backend: AgentBackend, conversationId: Uuid, args: JsonObject?): ReplyPreview? =
+    stringArg(args, "replyToId")?.let { ref -> findMessage(backend.messages(conversationId, LOOKUP_WINDOW), ref).toReplyPreview() }
+
 suspend fun toolSendMessage(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val conversationId = sendTarget(backend, args)
     val text = stringArg(args, "text") ?: return@guarded ToolReply("text is empty", true)
-    val reply = stringArg(args, "replyToId")?.let { ref ->
-        val parent = findMessage(backend.messages(conversationId, LOOKUP_WINDOW), ref)
-        parent.toReplyPreview()
-    }
+    val reply = replyArg(backend, conversationId, args)
     ToolReply("sent ${backend.send(conversationId, tagged(backend.sendPrefix, text), reply)}")
 }
 
@@ -199,7 +203,7 @@ suspend fun toolSendFile(backend: AgentBackend, args: JsonObject?): ToolReply = 
     val conversationId = sendTarget(backend, args)
     val file = fileArg(backend, args)
     val caption = stringArg(args, "caption").orEmpty()
-    ToolReply("sent ${backend.sendFile(conversationId, file, tagged(backend.sendPrefix, caption).trim())}")
+    ToolReply("sent ${backend.sendFile(conversationId, file, tagged(backend.sendPrefix, caption).trim(), replyArg(backend, conversationId, args))}")
 }
 
 class SessionBackend(private val profile: String, private val scope: Uuid? = null, private val readOnly: Boolean = false) : AgentBackend {
@@ -233,8 +237,8 @@ class SessionBackend(private val profile: String, private val scope: Uuid? = nul
     override var filesDir: File? = null
         private set
 
-    override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String) =
-        sendToConversation(open(), allowlist, conversationId, caption, files = listOf(file))
+    override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: ReplyPreview?) =
+        sendToConversation(open(), allowlist, conversationId, caption, replyTo, files = listOf(file))
 }
 
 class ToolDef(
@@ -293,6 +297,7 @@ private val BASE_TOOLS: List<ToolDef> = listOf(
             put("conversationId", CONVERSATION_PROP)
             put("path", prop("string", "File inside the files directory (max 10 MB)"))
             put("caption", prop("string", "Optional text"))
+            put("replyToId", prop("string", "Message id to quote"))
         },
         listOf("conversationId", "path"), write = true,
     ) { b, a -> toolSendFile(b, a) },

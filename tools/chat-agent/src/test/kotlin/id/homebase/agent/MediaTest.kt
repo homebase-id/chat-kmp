@@ -44,6 +44,31 @@ class MediaTest {
     }
 
     @Test
+    fun groodleLabelTalliesEachSlot() {
+        val d = """{"title":"Game night","timezone":"Europe/Berlin","deadlineUtcMs":1790000000000,"slots":[{"startUtcMs":1790003600000},{"startUtcMs":1790090000000,"endUtcMs":1790093600000}]}"""
+        val label = messageDisplay("x", ChatProtocol.ChatGroodleMessageDataType, d, null, reactions("_1Y" to 2, "_1N" to 1, "_2M" to 3, "_9Y" to 4))
+        assertEquals("[groodle: Game night | 1: 2026-09-21 17:13 (y 2 / n 1 / m 0), 2: 2026-09-22 17:13 (y 0 / n 0 / m 3) | deadline 2026-09-21 16:13]", label)
+        val noMaybe = messageDisplay("x", ChatProtocol.ChatGroodleMessageDataType, d.replace("{\"title\"", "{\"allowMaybe\":false,\"title\""), null, null)
+        assertTrue(noMaybe.contains("(y 0 / n 0)"), noMaybe)
+    }
+
+    @Test
+    fun liveAndEndedLocationLabels() {
+        val future = System.currentTimeMillis() + 3_600_000
+        val live = messageDisplay("x", ChatProtocol.ChatLocationMessageDataType, """{"lat":1.5,"lon":2.5,"address":"Cafe","hasImage":false,"liveShareUntilMs":$future}""", null)
+        val until = java.time.Instant.ofEpochMilli(future).truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+        assertEquals("[location: 1.5,2.5 Cafe | live until $until]", live)
+        assertEquals("[location: 1.5,2.5 Cafe | live share ended]", messageDisplay("x", ChatProtocol.ChatLocationMessageDataType, """{"lat":1.5,"lon":2.5,"address":"Cafe","hasImage":false,"liveShareUntilMs":1000}""", null))
+    }
+
+    @Test
+    fun eventLabelMentionsTheCoverPhoto() {
+        val raw = """{"title":"Party","startUtcMs":1790000000000,"timezone":"UTC"}"""
+        assertEquals("[event: Party | 2026-09-21T14:13:20Z]", messageDisplay("x", ChatProtocol.ChatEventMessageDataType, raw, null))
+        assertEquals("[event: Party | 2026-09-21T14:13:20Z | with cover photo]", messageDisplay("x", ChatProtocol.ChatEventMessageDataType, raw, listOf(p("pfl0000001", "image/jpeg", descriptor = ""))))
+    }
+
+    @Test
     fun reactionsAreCompactAndVoteCodesHidden() {
         assertEquals("hi [reactions: 👍×2 ❤️×1]", messageDisplay("hi", 0, null, null, reactions("❤️" to 1, "👍" to 2, "_p0" to 5)))
         assertEquals("hi", messageDisplay("hi", 0, null, null, reactions("_p0" to 5)))

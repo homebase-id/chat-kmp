@@ -21,6 +21,8 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.groodle.GroodleVote
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.ChatProtocol
@@ -71,6 +73,34 @@ suspend fun voteOnPoll(session: Session, allowlist: Allowlist, conversationId: U
     change.remove.filter { PollVote.optionOf(it) in own }.forEach { provider.deleteReaction(chatDrive, fileId, reactionJson(it), recipients) }
     change.add.filter { PollVote.optionOf(it) !in own }.forEach { provider.addReaction(chatDrive, fileId, reactionJson(it), recipients) }
     return true
+}
+
+interface OwnReactions {
+    suspend fun codes(): List<String>
+    suspend fun add(code: String)
+    suspend fun remove(code: String)
+}
+
+suspend fun castGroodleVote(reactions: OwnReactions, groodle: GroodleDescriptor, slot: Int, choice: GroodleVote.Choice): Boolean {
+    val own = reactions.codes()
+    val current = GroodleVote.myVotes(own, groodle.slots.size, groodle.allowMaybe)[slot]
+    if (current == choice) return false
+    val change = GroodleVote.change(slot, current, choice, groodle.allowMaybe)
+    change.remove.filter { it in own }.forEach { reactions.remove(it) }
+    change.add.forEach { reactions.add(it) }
+    return true
+}
+
+suspend fun voteOnGroodle(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg, slot: Int, choice: GroodleVote.Choice, groodle: GroodleDescriptor): Boolean {
+    allowlist.requireSend(conversationId)
+    val fileId = fileIdOf(message)
+    val provider = DriveFileGroupReactionProvider(session.http, session.credentials)
+    val recipients = conversationRecipients(conversationFor(session, allowlist, conversationId), session.identity)
+    return castGroodleVote(object : OwnReactions {
+        override suspend fun codes() = ownReactionCodes(provider, fileId, session.identity)
+        override suspend fun add(code: String) { provider.addReaction(chatDrive, fileId, reactionJson(code), recipients) }
+        override suspend fun remove(code: String) { provider.deleteReaction(chatDrive, fileId, reactionJson(code), recipients) }
+    }, groodle, slot, choice)
 }
 
 suspend fun deleteOwnMessage(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg) {

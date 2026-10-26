@@ -326,7 +326,7 @@ as far as the tools go. The brain never sees the identity's credentials: the wat
 
 Scope is fixed server-side from the token: the conversation that triggered the run, its tier and its sender. A
 `conversationId` argument is ignored (the tools do not even list it). Tools: `read_messages`, `search_messages`,
-`get_conversation`, `send_message` (with `replyToId`), `send_file` (only when `mcpFilesDir` is set), `react`,
+`get_conversation`, `send_message` (with `replyToId`), `send_file` (with `replyToId`; only when `mcpFilesDir` is set), `react`,
 `unreact` (emoji on a message here), and, operator tier only, `edit_message` (short text messages) and `delete_message`
 (for everyone), both limited to messages this identity sent. Sends go through the normal gate, disclosure prefix and
 size caps. Read results are labelled with the author and wrapped in an `<untrusted_chat_...>` block; treat them as data.
@@ -338,11 +338,14 @@ app renders them as its own:
 |---|---|---|
 | `send_poll` | `question` (max 140 chars), `options` (2 to 10, max 80 chars each), `allowMultiple` | too many or empty options are refused |
 | `vote_poll` | `messageId`, `option` (1-based number or the option text) | votes the way the app does (reaction `_p<i>`); single-choice replaces the earlier vote; refuses closed polls; repeating a vote is a no-op |
+| `send_dice` | `count` (1 to 10, default 1), `faces` (4, 6, 8, 10, 12, 20; default 6) | rolled with a secure random source; refused where the AI disclosure is required (a dice roll has no text field) |
+| `send_groodle` | `title` (max 80 chars), `description`, `timezone` (IANA, default UTC), `slots` (1 to 10 of `start` or `start/end` ISO date-times), `allowMaybe`, `deadline` | validated with the app's `GroodleDescriptor`; slots are sorted by start |
+| `vote_groodle` | `messageId`, `slot` (1-based), `choice` (`yes`, `no`, `maybe`) | votes the way the app does (reaction `_<slot><Y/N/M>`); replaces the earlier choice on that slot; refuses `maybe` when not allowed and votes past the deadline |
 | `send_event` | `title` (max 80), `start`, `end`, `timezone`, `place` (max 120), `description` (max 280) | no cover photo; `start`/`end` are ISO date-times (`2026-10-01T18:00` in `timezone`, default UTC, or with `Z`/offset); default end is start + 1 h |
 | `send_location` | `lat`, `lon`, `label` | static only, never live sharing; out-of-range coordinates are refused |
 | `send_contact` | `name`, `phones` (E.164, `+1 (415) 555-0123` is normalized), `emails`, `organization` | malformed phones or emails are refused, max 10 of each |
-| `send_video` | `path`, `caption` | `.mp4` up to 5 MB from `mcpFilesDir`; real video message with thumbnail and duration |
-| `send_voice` | `path`, `caption` | audio file (m4a, mp3, wav, ogg, aac, opus, up to 10 MB) from `mcpFilesDir` as a voice note |
+| `send_video` | `path`, `caption`, `replyToId` | `.mp4` up to 5 MB from `mcpFilesDir`; real video message with thumbnail and duration |
+| `send_voice` | `path`, `caption`, `replyToId` | audio file (m4a, mp3, wav, ogg, aac, opus, up to 10 MB) from `mcpFilesDir` as a voice note |
 | `send_view_once` | `path`, `caption` | one image (png, jpeg, gif) or one `.mp4` (up to 5 MB, needs ffmpeg and ffprobe) from `mcpFilesDir` as a view-once message; operator tier only |
 
 On a disclosed send (the `me` profile outside note-to-self) the "AI assistant" disclosure goes into a field recipients
@@ -381,7 +384,7 @@ input; other codecs may not play on every receiver.
 | tier | tools | reads |
 |---|---|---|
 | operator | all of the above | `operatorContext=all`: whole room; `operators`: operator-authored only in rooms that are not fully trusted |
-| locked | none, unless `lockedTools=chat`: read, `send_message`, `send_file`, `react`, `unreact`, `send_poll`, `vote_poll`, `send_event`, `send_location`, `send_contact`; never edit, delete, `send_video`, `send_voice` or `send_view_once` (they read local files and run ffmpeg); at most 5 tool calls per run (the 6th errors) | whole room |
+| locked | none, unless `lockedTools=chat`: read, `send_message`, `send_file`, `react`, `unreact`, `send_poll`, `vote_poll`, `send_dice`, `send_groodle`, `vote_groodle`, `send_event`, `send_location`, `send_contact`; never edit, delete, `send_video`, `send_voice` or `send_view_once` (they read local files and run ffmpeg); at most 5 tool calls per run (the 6th errors) | whole room |
 
 With `lockedTools=chat` the default locked claude command gains `--mcp-config {mcp}` and `--allowedTools` limited to the
 `mcp__chat__*` tools above (still `--tools ""`, `--strict-mcp-config`, no settings, scrubbed env, temp cwd) and
