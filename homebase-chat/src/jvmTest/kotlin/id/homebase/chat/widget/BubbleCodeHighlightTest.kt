@@ -89,6 +89,19 @@ class BubbleCodeHighlightTest {
     }
 
     @Test
+    fun commonFenceAliasesAndInfoStringsHighlight() {
+        val light = cases.getValue("light")
+        val theme = style(light, sides(light).getValue("received")).theme
+        for (tag in listOf("kt", "KT", "kotlin title=Main.kt", " kotlin ")) {
+            val out = highlightCode(code, tag, theme)
+            assertEquals(code, out.text)
+            assertTrue(out.spanStyles.isNotEmpty(), "no highlighting for '$tag'")
+        }
+        val js = "const x = \"hi\"; // c"
+        assertTrue(highlightCode(js, "js", theme).spanStyles.isNotEmpty())
+    }
+
+    @Test
     fun unknownLanguageStaysPlain() {
         val out = highlightCode(code, "notalanguage", style(cases.getValue("light"), sides(cases.getValue("light")).getValue("received")).theme)
         assertEquals(code, out.text)

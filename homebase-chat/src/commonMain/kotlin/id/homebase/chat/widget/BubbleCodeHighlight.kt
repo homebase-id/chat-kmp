@@ -17,8 +17,9 @@ import dev.snipme.highlights.model.SyntaxLanguage
 import dev.snipme.highlights.model.SyntaxTheme
 
 internal fun highlightCode(code: String, language: String?, theme: SyntaxTheme): AnnotatedString {
-    val tag = language?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return AnnotatedString(code)
-    val syntax = SyntaxLanguage.getByName(tag)
+    val tag = language?.trim()?.substringBefore(' ')?.lowercase()?.takeIf { it.isNotEmpty() }
+        ?: return AnnotatedString(code)
+    val syntax = FenceAliases[tag] ?: SyntaxLanguage.getByName(tag)
     if (syntax == null || syntax == SyntaxLanguage.DEFAULT) return AnnotatedString(code)
     val highlights = Highlights.Builder()
         .code(code)
@@ -40,6 +41,17 @@ internal fun highlightCode(code: String, language: String?, theme: SyntaxTheme):
 }
 
 private const val OPAQUE = 0xFF000000.toInt()
+
+private val FenceAliases = mapOf(
+    "kt" to SyntaxLanguage.KOTLIN, "kts" to SyntaxLanguage.KOTLIN,
+    "js" to SyntaxLanguage.JAVASCRIPT, "jsx" to SyntaxLanguage.JAVASCRIPT, "mjs" to SyntaxLanguage.JAVASCRIPT,
+    "ts" to SyntaxLanguage.TYPESCRIPT, "tsx" to SyntaxLanguage.TYPESCRIPT,
+    "py" to SyntaxLanguage.PYTHON, "rb" to SyntaxLanguage.RUBY, "rs" to SyntaxLanguage.RUST,
+    "golang" to SyntaxLanguage.GO, "pl" to SyntaxLanguage.PERL, "coffee" to SyntaxLanguage.COFFEESCRIPT,
+    "sh" to SyntaxLanguage.SHELL, "bash" to SyntaxLanguage.SHELL, "zsh" to SyntaxLanguage.SHELL,
+    "c++" to SyntaxLanguage.CPP, "cc" to SyntaxLanguage.CPP, "cxx" to SyntaxLanguage.CPP, "hpp" to SyntaxLanguage.CPP,
+    "cs" to SyntaxLanguage.CSHARP, "c#" to SyntaxLanguage.CSHARP, "h" to SyntaxLanguage.C,
+)
 
 internal const val MIN_CODE_CONTRAST = 4.5f
 
