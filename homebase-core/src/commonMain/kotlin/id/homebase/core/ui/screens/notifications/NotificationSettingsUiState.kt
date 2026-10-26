@@ -1,28 +1,20 @@
 package id.homebase.core.ui.screens.notifications
 
+import id.homebase.api.share.NotificationContentLevel
 import id.homebase.resources.MR
 import id.homebase.resources.settings_notification_content_name_content_actions
 import id.homebase.resources.settings_notification_content_name_only
 import id.homebase.resources.settings_notification_content_no_name_or_content
 import org.jetbrains.compose.resources.StringResource
 
-/** Notification content display levels. */
-enum class NotificationContentLevel(val code: String, val label: StringResource) {
-    NAME_CONTENT_ACTIONS(
-        "name_content_actions",
-        MR.string.settings_notification_content_name_content_actions,
-    ),
-    NAME_ONLY("name_only", MR.string.settings_notification_content_name_only),
-    NO_NAME_OR_CONTENT(
-        "no_name_or_content",
-        MR.string.settings_notification_content_no_name_or_content,
-    );
-
-    companion object {
-        fun fromCode(code: String): NotificationContentLevel =
-            entries.find { it.code == code } ?: NAME_CONTENT_ACTIONS
+val NotificationContentLevel.label: StringResource
+    get() = when (this) {
+        NotificationContentLevel.NAME_CONTENT_ACTIONS ->
+            MR.string.settings_notification_content_name_content_actions
+        NotificationContentLevel.NAME_ONLY -> MR.string.settings_notification_content_name_only
+        NotificationContentLevel.NO_NAME_OR_CONTENT ->
+            MR.string.settings_notification_content_no_name_or_content
     }
-}
 
 /** Push notification registration status. */
 enum class RegistrationStatus {

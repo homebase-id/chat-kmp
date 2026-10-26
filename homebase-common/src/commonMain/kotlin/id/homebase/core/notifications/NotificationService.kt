@@ -9,6 +9,7 @@ import id.homebase.api.client.notifications.PushSubscriptionResponse
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.share.NotificationContentLevel
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.COMMUNITY_APP_ID
@@ -453,17 +454,14 @@ class NotificationService(
                     )
 
                 // Apply privacy content level filtering
-                val contentLevel = userPreferences.notificationContentLevel
+                val contentLevel =
+                    NotificationContentLevel.fromCode(userPreferences.notificationContentLevel)
                 val (displayTitle, displayBody) = when (contentLevel) {
-                    "name_content_actions" -> Pair(appName, bodyText)
-                    "name_only" -> Pair(displayName, "New notification")
-                    "no_name_or_content" -> Pair("Homebase", "New notification")
-                    else -> Pair(appName, bodyText)
+                    NotificationContentLevel.NAME_CONTENT_ACTIONS -> Pair(appName, bodyText)
+                    NotificationContentLevel.NAME_ONLY -> Pair(displayName, "New notification")
+                    NotificationContentLevel.NO_NAME_OR_CONTENT -> Pair("Homebase", "New notification")
                 }
-                // Full content is shown at name_content_actions (and the default/unknown case,
-                // which fromCode() treats as that level) — never at the redacted levels.
-                val showsRealContent =
-                    contentLevel != "name_only" && contentLevel != "no_name_or_content"
+                val showsRealContent = contentLevel == NotificationContentLevel.NAME_CONTENT_ACTIONS
 
                 // Track per-conversation message count for summary display
                 val messageCount = if (conversationId != null) {

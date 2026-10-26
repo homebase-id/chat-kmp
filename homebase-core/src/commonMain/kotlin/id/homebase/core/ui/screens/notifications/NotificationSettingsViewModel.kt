@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.notifications
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.share.NotificationContentLevel
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.SubscriptionVerificationStatus
 import id.homebase.core.notifications.WebPushHealth

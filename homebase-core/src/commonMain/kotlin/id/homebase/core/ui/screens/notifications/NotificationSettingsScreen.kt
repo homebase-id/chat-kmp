@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.share.NotificationContentLevel
 import id.homebase.core.clipboard.rememberCopyToClipboard
 import id.homebase.core.notifications.rememberOpenSystemNotificationSettings
 import id.homebase.core.permissions.PermissionStatus

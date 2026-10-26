@@ -132,7 +132,7 @@ class NotificationService: UNNotificationServiceExtension {
 
     // MARK: - Content Level
 
-    /// Codes must match `NotificationContentLevel` in the shared KMP code.
+    /// Swift keeps its own copy: codes must match `NotificationContentLevel` in homebase-api.
     private static let fullContentLevel = "name_content_actions"
     private static let nameOnlyLevel = "name_only"
     private static let noNameOrContentLevel = "no_name_or_content"

@@ -2,6 +2,7 @@ package id.homebase.core.settings
 
 import com.russhwolf.settings.Settings
 import id.homebase.api.image.MediaQuality
+import id.homebase.api.share.NotificationContentLevel
 import id.homebase.api.share.NotificationExtensionStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -151,7 +152,7 @@ class UserPreferences(private val settings: Settings) {
     }
 
     var notificationContentLevel: String
-        get() = settings.getString("notification_content_level", "name_content_actions")
+        get() = settings.getString("notification_content_level", NotificationContentLevel.NAME_CONTENT_ACTIONS.code)
         set(value) {
             settings.putString("notification_content_level", value)
             NotificationExtensionStore.publishContentLevel(value)
