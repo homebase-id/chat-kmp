@@ -1,0 +1,19 @@
+# ~/.config/systemd/user/quag-tts.service   (started by quag-tts.socket on the first request, exits when idle)
+[Unit]
+Description=Quagmire voice (KittenTTS sidecar)
+Requires=quag-tts.socket
+After=quag-tts.socket
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Github/kittytts-voice-exp
+ExecStart=%h/Github/kittytts-voice-exp/.venv/bin/python %h/chat-agent/deploy/tts/tts-server.py
+Environment=HF_HUB_OFFLINE=1
+Environment=TTS_REPO=%h/Github/kittytts-voice-exp
+Environment=TTS_THREADS=6
+Environment=TTS_IDLE_EXIT=600
+Nice=10
+MemoryHigh=7G
+MemoryMax=8G
+CPUQuota=600%
+UMask=0077

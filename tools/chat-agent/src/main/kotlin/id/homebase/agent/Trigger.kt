@@ -23,12 +23,12 @@ const val LOCKED_WEB_SYSTEM_PROMPT =
 const val LOCKED_CHAT_MAX_TURNS = 6
 private val WEB_BUILTINS = mapOf("search" to "WebSearch", "fetch" to "WebFetch")
 
-fun lockedBrainCommand(tools: Set<String>): String {
+fun lockedBrainCommand(tools: Set<String>, voice: Boolean = false): String {
     val web = WEB_BUILTINS.filterKeys { it in tools }.values.toList()
     val chat = "chat" in tools
     if (!chat && web.isEmpty()) return DEFAULT_BRAIN
     val builtins = web.joinToString(",")
-    val allowed = (listOfNotNull(chatToolCommandNames().takeIf { chat }) + web).joinToString(" ")
+    val allowed = (listOfNotNull(chatToolCommandNames(voice).takeIf { chat }) + web).joinToString(" ")
     val prompt = when {
         !chat -> LOCKED_WEB_SYSTEM_PROMPT
         web.isEmpty() -> LOCKED_CHAT_SYSTEM_PROMPT
@@ -43,6 +43,8 @@ const val DEFAULT_MAX_RUNS_PER_HOUR = 20
 const val DEFAULT_MAX_RUNS_PER_DAY = 100
 const val DEFAULT_OPERATOR_TIMEOUT_MS = 30 * 60_000L
 const val DEFAULT_MAX_JOBS_PER_DAY = 20
+const val DEFAULT_TTS_VOICE = "Bruno"
+const val DEFAULT_PERSONA_TTS_VOICE = "Marcus"
 const val DEFAULT_LISTEN_COOLDOWN_MS = 60_000L
 const val DEFAULT_FOLLOW_UP_MS = 180_000L
 const val MAX_LOCKED_HISTORY = 30
@@ -88,6 +90,15 @@ class AgentConfig(
     val lockedTools: Set<String> = emptySet(),
     val readReceipts: Boolean = allowlist.kind == Kind.BOT,
     val transcribe: String? = null,
+    val tts: String? = null,
+    val ttsVoice: String = DEFAULT_TTS_VOICE,
+    val ttsPreset: String = DEFAULT_TTS_PRESET,
+    val ttsReference: String? = null,
+    val ttsReferenceText: String? = null,
+    val ttsTimeoutMs: Long = DEFAULT_TTS_TIMEOUT_MS,
+    val ttsMaxChars: Int = DEFAULT_TTS_MAX_CHARS,
+    val voiceReplies: Boolean = false,
+    val maxVoicePerDay: Int = DEFAULT_MAX_VOICE_PER_DAY,
     val videoFrames: Boolean = false,
     val linkPreviews: Boolean = false,
     val mcpFilesDir: File? = null,
@@ -102,6 +113,7 @@ class AgentConfig(
     val replyPrefix get() = if (bot) "" else BOT_PREFIX
     val sendsReceipts get() = readReceipts && bot
     val described get() = persona != null || bot
+    val voiceMirror get() = voiceReplies && tts != null
 
     fun previewsFor(session: Session): LinkPreviewSource? = if (linkPreviews) serverLinkPreviews(session) else null
 }
@@ -217,10 +229,15 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
     val lockedTools = list("lockedTools").orEmpty().map { it.lowercase() }.filter { it in SUPPORTED_LOCKED_TOOLS }.toSet()
     val persona = (str("persona") ?: path("personaFile")?.let { File(it).readText() })
         ?.trim()?.lineSequence()?.joinToString(" ") { it.trim() }?.takeIf { it.isNotEmpty() }
+    val tts = str("tts")
+    val ttsReference = path("ttsReference")
+    val ttsPreset = str("ttsPreset")?.lowercase()?.takeIf { it in TTS_PRESETS } ?: DEFAULT_TTS_PRESET
+    val voiceMode = str("voiceReplies")?.lowercase()
+    val ttsMaxChars = int("ttsMaxChars", DEFAULT_TTS_MAX_CHARS).coerceIn(1, TTS_SIDECAR_MAX_CHARS)
     return AgentConfig(
         allowlist = Allowlist(conversations, authors, kind, memberMode, selfOwned = ownerKey == owner),
         nickname = str("nickname") ?: DEFAULT_NICKNAME,
-        brain = str("brain")?.let { Brain(it) } ?: if (lockedTools.isNotEmpty()) Brain(lockedBrainCommand(lockedTools), streamJson = true) else Brain.LOCKED,
+        brain = str("brain")?.let { Brain(it) } ?: if (lockedTools.isNotEmpty()) Brain(lockedBrainCommand(lockedTools, voice = tts != null), streamJson = true) else Brain.LOCKED,
         maxRunsPerHour = int("maxRunsPerHour", DEFAULT_MAX_RUNS_PER_HOUR),
         maxRunsPerDay = int("maxRunsPerDay", DEFAULT_MAX_RUNS_PER_DAY),
         persona = persona,
@@ -250,6 +267,17 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         lockedHistory = int("lockedHistory", HISTORY_LIMIT).coerceIn(1, MAX_LOCKED_HISTORY),
         lockedTools = lockedTools,
         transcribe = str("transcribe"),
+        tts = tts,
+        ttsVoice = str("ttsVoice") ?: if (persona != null) DEFAULT_PERSONA_TTS_VOICE else DEFAULT_TTS_VOICE,
+        ttsPreset = ttsPreset,
+        ttsReference = ttsReference,
+        ttsReferenceText = str("ttsReferenceText"),
+        ttsTimeoutMs = str("ttsTimeout")?.let {
+            parseDurationMs(it) ?: throw IllegalArgumentException("invalid ttsTimeout '$it': use e.g. 90s, 4m")
+        } ?: DEFAULT_TTS_TIMEOUT_MS,
+        ttsMaxChars = ttsMaxChars,
+        voiceReplies = voiceMode == "mirror",
+        maxVoicePerDay = int("maxVoicePerDay", DEFAULT_MAX_VOICE_PER_DAY).coerceAtLeast(0),
         videoFrames = bool("videoFrames") == true,
         linkPreviews = bool("linkPreviews") ?: bot,
         mcpFilesDir = path("mcpFilesDir")?.let(::File),
@@ -264,6 +292,13 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
             *list("lockedTools").orEmpty().filter { it.lowercase() !in SUPPORTED_LOCKED_TOOLS }.map { "WARNING: unknown lockedTools value '$it' ignored (supported: ${SUPPORTED_LOCKED_TOOLS.joinToString()})" }.toTypedArray(),
             "WARNING: lockedTools=chat only shapes the default claude brain; your custom brain receives CHAT_AGENT_MCP_URL/TOKEN/CONFIG and the {mcp} placeholder instead".takeIf { lockedTools.contains("chat") && str("brain") != null },
             "WARNING: lockedTools search/fetch only shape the default claude brain; your custom brain ignores them".takeIf { lockedTools.any { it in WEB_BUILTINS } && str("brain") != null },
+            "WARNING: ttsReference and ttsVoice are both set; the reference clip wins and ttsVoice is ignored".takeIf { ttsReference != null && str("ttsVoice") != null },
+            "WARNING: ttsReferenceText is set without ttsReference, ignored".takeIf { ttsReference == null && str("ttsReferenceText") != null },
+            "WARNING: invalid ttsPreset '${str("ttsPreset")}', using $DEFAULT_TTS_PRESET (stable or expressive)".takeIf { str("ttsPreset") != null && str("ttsPreset")?.lowercase() !in TTS_PRESETS },
+            "WARNING: invalid voiceReplies '${str("voiceReplies")}', using off (off or mirror)".takeIf { voiceMode != null && voiceMode !in setOf("off", "mirror") },
+            "WARNING: voiceReplies=mirror needs tts=, voice replies stay off".takeIf { voiceMode == "mirror" && tts == null },
+            "WARNING: ttsMaxChars=${values["ttsMaxChars"]} is not in 1..$TTS_SIDECAR_MAX_CHARS, using $ttsMaxChars".takeIf { values.containsKey("ttsMaxChars") && int("ttsMaxChars", -1) !in 1..TTS_SIDECAR_MAX_CHARS },
+            "WARNING: tts, ttsVoice and the other tts keys are ignored without tts=".takeIf { tts == null && listOf("ttsVoice", "ttsPreset", "ttsReference", "ttsTimeout", "ttsMaxChars").any { str(it) != null } },
             "WARNING: invalid transport '${str("transport")}', using auto".takeIf { parseTransport(str("transport")) == null },
         ),
     )

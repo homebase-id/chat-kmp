@@ -20,8 +20,10 @@ class TestHarness(
     sessions: SessionStore? = null,
     schedules: ScheduleStore? = null,
     var now: Long = 1_000_000L,
+    voice: VoiceOut? = null,
 ) {
     val sends = CopyOnWriteArrayList<Triple<Uuid, String, List<OutFile>>>()
+    val voices = CopyOnWriteArrayList<Triple<Uuid, OutVoice, String>>()
     val logs = CopyOnWriteArrayList<String>()
     val prompts = CopyOnWriteArrayList<String>()
     val flags = CopyOnWriteArrayList<String?>()
@@ -56,6 +58,8 @@ class TestHarness(
         sessions = sessions,
         schedules = schedules,
         clock = { now },
+        voice = voice,
+        sendVoice = { conversation, spoken, caption -> voices += Triple(conversation, spoken, caption) },
     )
 
     suspend fun handle(msg: ChatMsg): String = processor.handleAll(listOf(msg))[msg.id] ?: "seen"

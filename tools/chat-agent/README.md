@@ -135,6 +135,14 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | linkPreviews | true/false; preview card for the first URL in a reply, built by your identity server (`/links/extract`, as the app does); this machine never fetches the URL; failure sends without a preview | true for bot |
 | videoFrames | `true` lets the brain see up to 4 keyframes of a video it reads (needs `ffmpeg` and `ffprobe` on PATH); see Security | false |
 | transcribe | command run as `<cmd> "<audio file>"`, transcript on stdout, 60 s limit; unset = voice notes stay a label (see Voice notes) | none |
+| tts | command run as `<cmd> "<text file>" "<out file>"`, must write an m4a voice note to the out file; `scripts/speak.sh` does; unset = no voice replies (see Voice replies) | none |
+| ttsVoice | built-in voice name, passed as env `TTS_VOICE` (never in the shell string) | `Marcus` when a persona is set, else `Bruno` |
+| ttsPreset | `stable` or `expressive` (`TTS_PRESET`) | expressive |
+| ttsReference, ttsReferenceText | 5 to 30 s wav and its transcript for voice cloning (`TTS_REFERENCE`, `TTS_REFERENCE_TEXT`); overrides `ttsVoice` (warns if both are set). A knob only: nothing is fetched or shipped | none |
+| ttsTimeout | e.g. `240s`; the command is killed after this | 240s |
+| ttsMaxChars | the spoken text is cut to this many characters (1 to 600) | 400 |
+| voiceReplies | `off` or `mirror`: answer a voice-note trigger with a voice note, text as its caption | off |
+| maxVoicePerDay | voice replies per rolling 24 h, shared by the tool and `mirror`, kept in `voice.txt` | 20 |
 | lockedTools | comma list, default empty. `chat` gives the locked brain the chat tools below (claude default brain only; a custom `brain` gets the env vars and `{mcp}`). Unknown values warn and are ignored | none |
 | mcpFilesDir | directory the MCP `send_file` tool may send from (no default: tool refuses) | none |
 
@@ -205,6 +213,49 @@ Arch / CachyOS:
 measured on the target). For better accuracy use `small` (about 470 MB, several times slower): download `ggml-small.bin` and set
 `WHISPER_MODEL=~/.local/share/whisper.cpp/ggml-small.bin` (systemd unit: add an `Environment=` line). Other knobs:
 `WHISPER_BIN`, `WHISPER_THREADS`, `WHISPER_LANG`, `TRANSCRIBE_MAX_SECONDS`. The transcript is untrusted chat text like any other.
+
+## Voice replies (text to speech)
+
+`send_voice_reply` (both tiers, when `tts=` is set) and `voiceReplies=mirror` make the agent answer as a voice note in its own
+voice. The text is the note's caption, so it carries the AI disclosure and is the accessible transcript. With `mirror`, a text
+reply to a message that carried a voice note is sent as a voice note instead; any TTS failure, timeout or the daily limit logs
+`voice reply fell back to text: <why>` and sends the plain text. The tool counts as a sending tool (`LOCKED_TOOL_CALL_CAP` applies).
+The speakable text drops code fences and `ATTACH:` lines, turns URLs into "link" and loses markdown marks. The startup line shows
+`tts=on voice=<name> preset=... replies=off|mirror`.
+
+KittenTTS 2 measured on the G14 (Ryzen 5 4600HS, 12 threads, CPU only: the 4 GB GTX 1650 Ti is too small for the weights), under a
+load average of 13 to 15 from another job, so pessimistic (idle box maybe 2 to 4x faster, not measured):
+
+- cold start about 47 s (imports 2 s, model load 45 s); venv 6.0 GB, weights cache 3.0 GB;
+- about 90 s per 16-word sentence once loaded, 11 to 17x slower than real time; time grows with text length;
+- 7.4 GB RSS, so it cannot live in the 4 GB container. It runs as a host sidecar that loads on the first request and exits when idle.
+
+Consequences: voice notes are asynchronous (expect 1 to 2 minutes per sentence, and `mirror` holds the reply path while it
+speaks); a live two-way call turn loop is not viable with this engine (a separate fast engine would need its own knob);
+an outbound urgent call has to synthesize its message before dialing.
+
+Voice candidates, median F0 on the same line (numbers, not listening tests; pick by ear): Marcus expressive 107 Hz (deepest, the
+default with a persona), Dante expressive 124 Hz, Vincent expressive 135 Hz, Bruno 140 to 143 Hz, Hugo 151 to 157 Hz. Cloning
+stays a config knob (`ttsReference`/`ttsReferenceText`, plus `TTS_REFERENCE_DIR` for the sidecar); no actor audio is ever fetched.
+
+### Sidecar install (`deploy/tts/`)
+
+`tts-server.py` (stdlib plus kittenml and soundfile from the experiment venv) listens on a systemd-activated unix socket, serves one
+request at a time with at most 2 waiting (503 beyond), refuses text over 600 characters (413), only reads reference wavs under
+`TTS_REFERENCE_DIR`, and exits after `TTS_IDLE_EXIT` seconds idle (default 600) to give the 7 GB back. `GET /health` returns
+`{"loaded", "busy"}`. `load_model()` and `synthesize()` are the only functions that touch kittenml: keep them in step with
+`speak.py` in the experiment repo (they were written without access to it).
+
+    mkdir -p ~/.config/systemd/user
+    cp deploy/tts/quag-tts.socket deploy/tts/quag-tts.service ~/.config/systemd/user/   # edit the paths in ExecStart/WorkingDirectory
+    systemctl --user daemon-reload
+    systemctl --user enable --now quag-tts.socket
+    python3 -m py_compile deploy/tts/tts-server.py                                       # manual syntax check, gradle does not run it
+
+Container (quadlet): `Volume=%t/quag-tts:/run/quag-tts` and `Environment=TTS_SOCKET=/run/quag-tts/tts.sock`; agent.conf gets
+`tts=/opt/chat-agent/scripts/speak.sh`. `speak.sh` needs `curl`, `jq` and `ffmpeg`, posts to the socket and converts the wav to
+m4a/AAC 48 kHz mono. Without a socket, `TTS_CMD` runs a local synthesizer instead. `TTS_RUN_SECONDS` (default 230) must stay
+below `ttsTimeout`.
 
 ## Deploy (Linux box, systemd)
 
@@ -327,7 +378,7 @@ as far as the tools go. The brain never sees the identity's credentials: the wat
 Scope is fixed server-side from the token: the conversation that triggered the run, its tier and its sender. A
 `conversationId` argument is ignored (the tools do not even list it). Tools: `read_messages`, `search_messages`,
 `get_conversation`, `send_message` (with `replyToId`), `send_file` (with `replyToId`; only when `mcpFilesDir` is set), `react`,
-`unreact` (emoji on a message here), and, operator tier only, `edit_message` (short text messages) and `delete_message`
+`unreact` (emoji on a message here), `send_voice_reply` (only when `tts=` is set; see Voice replies), and, operator tier only, `edit_message` (short text messages) and `delete_message`
 (for everyone), both limited to messages this identity sent. Sends go through the normal gate, disclosure prefix and
 size caps. Read results are labelled with the author and wrapped in an `<untrusted_chat_...>` block; treat them as data.
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Quagmire voice (KittenTTS sidecar socket)
+
+[Socket]
+ListenStream=%t/quag-tts/tts.sock
+DirectoryMode=0750
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target

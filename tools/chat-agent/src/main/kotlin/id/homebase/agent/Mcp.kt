@@ -71,6 +71,7 @@ interface AgentBackend {
     suspend fun vote(conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean = error("voting is not supported")
     suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending video is not supported")
     suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending voice notes is not supported")
+    suspend fun speak(text: String): OutVoice = error("voice is not configured")
     suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor): Uuid = error("sending view-once media is not supported")
 }
 

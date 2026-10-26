@@ -53,11 +53,12 @@ private const val ONE_HOUR_MS = 3_600_000L
 
 val TYPED_SEND_TOOLS = setOf("send_poll", "send_event", "send_location", "send_contact", "send_dice", "send_groodle")
 val MEDIA_SEND_TOOLS = setOf("send_video", "send_voice", "send_view_once")
+const val VOICE_REPLY_TOOL = "send_voice_reply"
 
 private val E164 = Regex("^\\+[1-9]\\d{1,14}$")
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 private val PHONE_NOISE = Regex("[\\s()\\-.]")
-private val VOICE_TYPES = mapOf("m4a" to "audio/mp4", "mp3" to "audio/mpeg", "wav" to "audio/wav", "ogg" to "audio/ogg", "aac" to "audio/aac", "opus" to "audio/opus")
+internal val VOICE_TYPES = mapOf("m4a" to "audio/mp4", "mp3" to "audio/mpeg", "wav" to "audio/wav", "ogg" to "audio/ogg", "aac" to "audio/aac", "opus" to "audio/opus")
 
 class OutVideo(val name: String, val bytes: ByteArray, val poster: ByteArray, val durationMs: Long, val width: Int, val height: Int, val codec: String)
 class OutVoice(val name: String, val bytes: ByteArray, val contentType: String, val seconds: Int)
@@ -280,6 +281,15 @@ private typealias Stager = suspend (KeyHeader, JvmFileOperationsProvider) -> Sta
 
 private fun imageStager(file: OutFile): Stager = { _, ops -> buildOutgoingBundle(listOf(file), ops).withoutThumbnails() }
 
+suspend fun toolSendVoiceReply(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
+    val conversationId = sendTarget(backend, args)
+    val text = stringArg(args, "text") ?: return@guarded ToolReply("text is empty", true)
+    val reply = replyArg(backend, conversationId, args)
+    val voice = backend.speak(text)
+    val caption = tagged(backend.sendPrefix, text).trim().truncateToCodePoints(CAPTION_CODEPOINTS)
+    ToolReply("sent voice reply ${backend.sendVoice(conversationId, voice, caption, reply)}${if (voice.seconds == 0) " (duration unknown)" else ""}")
+}
+
 private suspend fun videoStager(backend: AgentBackend, file: OutFile): Stager {
     val ffmpeg = backend.ffmpeg
     require(ffmpeg.available) { "a view-once video needs ffmpeg and ffprobe, and is never sent as a plain file" }
@@ -481,6 +491,15 @@ fun typedTools(): List<ToolDef> = listOf(
         },
         listOf("conversationId", "path"), stdio = false, write = true,
     ) { b, a -> toolSendVoice(b, a) },
+    ToolDef(
+        VOICE_REPLY_TOOL, "Say the text out loud in this identity's own voice and send it as a voice note, with the text as its caption. Synthesis takes a minute or more, so use it for one short conversational reply, not for long text; falls back to an error if voice is busy or over its daily limit.",
+        buildJsonObject {
+            put("conversationId", CONVERSATION_PROP)
+            put("text", prop("string", "What to say, plain sentences, no markdown or links"))
+            put("replyToId", prop("string", "Message id to quote"))
+        },
+        listOf("conversationId", "text"), stdio = false, write = true,
+    ) { b, a -> toolSendVoiceReply(b, a) },
     ToolDef(
         "send_view_once", "Send one image (png, jpeg, gif) or one .mp4 video from the files directory as a view-once message: the recipient can open it a single time, then it is gone. Never a reply; a video needs ffmpeg and ffprobe, max 5 MB.",
         buildJsonObject {

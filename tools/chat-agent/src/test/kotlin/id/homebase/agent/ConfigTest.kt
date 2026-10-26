@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -27,6 +28,58 @@ class ConfigTest {
         assertTrue(high.warnings.any { "lockedHistory=99" in it })
         assertEquals(1, parseConfig("lockedHistory=0", owner).lockedHistory)
         assertTrue(parseConfig("lockedHistory=abc", owner).warnings.any { "lockedHistory" in it })
+    }
+
+    @Test
+    fun ttsDefaultsAndPersonaVoice() {
+        val off = parseConfig("", owner)
+        assertNull(off.tts)
+        assertFalse(off.voiceReplies)
+        assertTrue(off.warnings.none { "tts" in it.lowercase() })
+        val plain = parseConfig("tts=/x/speak.sh", owner)
+        assertEquals("Bruno", plain.ttsVoice)
+        assertEquals("expressive", plain.ttsPreset)
+        assertEquals(240_000L, plain.ttsTimeoutMs)
+        assertEquals(400, plain.ttsMaxChars)
+        assertEquals(20, plain.maxVoicePerDay)
+        assertFalse(plain.voiceMirror)
+        assertEquals("Marcus", parseConfig("tts=/x/speak.sh\npersona=Loud neighbour", owner).ttsVoice)
+        assertEquals("Dante", parseConfig("tts=/x/speak.sh\npersona=x\nttsVoice=Dante", owner).ttsVoice)
+    }
+
+    @Test
+    fun ttsKnobsParseAndReachTheCommandAsEnv() {
+        val cfg = parseConfig("tts=/x/speak.sh\nttsVoice=Dante\nttsPreset=Stable\nttsTimeout=90s\nttsMaxChars=120\nvoiceReplies=mirror\nmaxVoicePerDay=3", owner)
+        assertEquals(90_000L, cfg.ttsTimeoutMs)
+        assertEquals(120, cfg.ttsMaxChars)
+        assertEquals(3, cfg.maxVoicePerDay)
+        assertTrue(cfg.voiceMirror)
+        assertTrue(cfg.warnings.none { "tts" in it.lowercase() || "voice" in it.lowercase() })
+        assertEquals(mapOf("TTS_VOICE" to "Dante", "TTS_PRESET" to "stable"), ttsEnvironment(cfg))
+        assertFailsWith<IllegalArgumentException> { parseConfig("ttsTimeout=soon", owner) }
+    }
+
+    @Test
+    fun ttsReferenceReplacesTheVoiceAndWarnsWhenBothAreSet() {
+        val cfg = parseConfig("tts=/x/speak.sh\nttsReference=/refs/a.wav\nttsReferenceText=hello there\nttsVoice=Dante", owner)
+        assertEquals(mapOf("TTS_REFERENCE" to "/refs/a.wav", "TTS_REFERENCE_TEXT" to "hello there", "TTS_PRESET" to "expressive"), ttsEnvironment(cfg))
+        assertTrue(cfg.warnings.any { "ttsReference" in it && "ttsVoice" in it })
+        assertTrue(parseConfig("tts=/x/speak.sh\nttsReference=/refs/a.wav", owner).warnings.none { "ttsVoice" in it })
+        assertTrue(parseConfig("tts=/x/speak.sh\nttsReferenceText=hi", owner).warnings.any { "ttsReferenceText" in it })
+    }
+
+    @Test
+    fun ttsBadValuesWarnAndFallBack() {
+        val cfg = parseConfig("tts=/x/speak.sh\nttsPreset=loud\nvoiceReplies=always\nttsMaxChars=9000", owner)
+        assertEquals("expressive", cfg.ttsPreset)
+        assertFalse(cfg.voiceReplies)
+        assertEquals(600, cfg.ttsMaxChars)
+        assertTrue(cfg.warnings.any { "ttsPreset" in it })
+        assertTrue(cfg.warnings.any { "voiceReplies" in it })
+        assertTrue(cfg.warnings.any { "ttsMaxChars" in it })
+        assertTrue(parseConfig("voiceReplies=mirror", owner).warnings.any { "needs tts=" in it })
+        assertFalse(parseConfig("voiceReplies=mirror", owner).voiceMirror)
+        assertTrue(parseConfig("ttsVoice=Dante", owner).warnings.any { "without tts=" in it })
     }
 
     @Test

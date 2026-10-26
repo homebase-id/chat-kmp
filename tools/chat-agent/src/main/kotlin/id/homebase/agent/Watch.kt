@@ -64,7 +64,13 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val fetcher = sessionFetcher(session)
     val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null
     val schedules = if (config.operatorBrain != null) ScheduleStore(File(dir, "schedules.json"), config.zone, log = ::log) else null
-    val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules) }
+    val voice = config.tts?.let {
+        VoiceOut(
+            shellSpeaker(it, ttsEnvironment(config), config.ttsTimeoutMs, ::log, config.ttsMaxChars),
+            VoiceLimiter(File(dir, "voice.txt"), config.maxVoicePerDay),
+        )
+    }
+    val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules, voice) }
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
@@ -85,6 +91,10 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         fetcher = fetcher,
         leaseFor = chatTools?.let { tools -> { conversation, tier, sender -> tools.lease(conversation, tier, sender) } },
         schedules = schedules,
+        voice = voice,
+        sendVoice = { conversation, spoken, caption ->
+            timings.time("send") { sendToConversation(session, config.allowlist, conversation, caption, media = { _, _ -> stageVoice(spoken) }) }
+        },
         sessions = if (config.sessions) SessionStore(File(dir, "sessions.json"), config.sessionMaxTokens, config.sessionMaxTurns, config.sessionWarmMs) else null,
         brain = { prompt, tier, attachments, lease, session ->
             timings.time("brain") {
@@ -123,7 +133,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     toolServer?.let { log("chat tools on 127.0.0.1:${it.port} (per-run bearer token, loopback only)") }
     jobs?.recoverDropped { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) }
     schedules?.let { log("schedules: ${it.activeCount()} active, timezone ${config.zone}") }
-    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} transcribe=${if (config.transcribe != null) "on" else "off"} lastSeen=${cursor.position}")
+    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} transcribe=${if (config.transcribe != null) "on" else "off"} tts=${if (config.tts != null) "on voice=${config.ttsReference?.let { "reference" } ?: config.ttsVoice} preset=${config.ttsPreset} replies=${if (config.voiceReplies) "mirror" else "off"} maxPerDay=${config.maxVoicePerDay}" else "off"} lastSeen=${cursor.position}")
     var poll = 0
     val waker = PollWaker()
     try {

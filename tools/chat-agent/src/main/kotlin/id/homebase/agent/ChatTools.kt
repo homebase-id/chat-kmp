@@ -38,16 +38,17 @@ const val MCP_SERVER_NAME = "chat"
 const val LOCKED_TOOL_CALL_CAP = 5
 private const val LEASE_GRACE_MS = 60_000L
 private const val UNTRUSTED_TAG = "untrusted_chat"
-private val SENDING_TOOLS = setOf("send_message", "send_file") + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
+private val SENDING_TOOLS = setOf("send_message", "send_file", VOICE_REPLY_TOOL) + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
 private val LEASE_KEY = AttributeKey<ToolRun>("chat-agent-run")
 
 private val READ_TOOLS = setOf("read_messages", "search_messages", "get_conversation")
 private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact", "vote_poll", "vote_groodle") + TYPED_SEND_TOOLS
 private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES
 
-fun chatToolNames(tier: Tier): Set<String> = if (tier == Tier.OPERATOR) OPERATOR_TOOLS else LOCKED_TOOLS
+fun chatToolNames(tier: Tier, voice: Boolean = false): Set<String> =
+    (if (tier == Tier.OPERATOR) OPERATOR_TOOLS else LOCKED_TOOLS).let { if (voice) it + VOICE_REPLY_TOOL else it }
 
-fun chatToolCommandNames(): String = CHAT_TOOLS.map { it.name }.filter { it in LOCKED_TOOLS }.joinToString(" ") { "mcp__${MCP_SERVER_NAME}__$it" }
+fun chatToolCommandNames(voice: Boolean = false): String = CHAT_TOOLS.map { it.name }.filter { it in LOCKED_TOOLS || (voice && it == VOICE_REPLY_TOOL) }.joinToString(" ") { "mcp__${MCP_SERVER_NAME}__$it" }
 
 class RunScope(val conversation: Uuid, val tier: Tier, val sender: OdinId?)
 
@@ -164,6 +165,7 @@ class WatcherBackend(
     override val allowlist: Allowlist,
     private val previews: LinkPreviewSource?,
     override val schedules: ScheduleScope? = null,
+    private val voice: VoiceOut? = null,
     private val visibleTo: (List<ChatMsg>) -> List<ChatMsg>,
 ) : AgentBackend {
     override val filesDir: File? = config.mcpFilesDir
@@ -176,6 +178,8 @@ class WatcherBackend(
 
     override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?) =
         sendToConversation(session, allowlist, conversationId, caption, replyTo, files = listOf(file))
+
+    override suspend fun speak(text: String): OutVoice = voice?.speak(text) ?: super.speak(text)
 
     override fun disclose(conversationId: Uuid, text: String) = allowlist.disclosure(conversationId, text, session.identity)
 
@@ -220,7 +224,7 @@ class WatcherBackend(
 fun visibilityFor(config: AgentConfig, trust: TrustPolicy, tier: Tier, members: List<OdinId>?, noteToSelf: Boolean, conversation: Uuid): (List<ChatMsg>) -> List<ChatMsg> =
     if (tier == Tier.OPERATOR && config.operatorContext == OperatorContext.OPERATORS) { all -> trust.history(all, members, noteToSelf, conversation) } else { all -> all }
 
-class ChatTools(private val server: ChatToolServer, private val config: AgentConfig, private val session: Session, private val previews: LinkPreviewSource?, private val schedules: ScheduleStore? = null) {
+class ChatTools(private val server: ChatToolServer, private val config: AgentConfig, private val session: Session, private val previews: LinkPreviewSource?, private val schedules: ScheduleStore? = null, private val voice: VoiceOut? = null) {
     private val trust = TrustPolicy(config, session.identity)
 
     fun lease(conversation: Uuid, tier: Tier, sender: OdinId?): ToolLease? {
@@ -232,8 +236,8 @@ class ChatTools(private val server: ChatToolServer, private val config: AgentCon
         val timeout = if (tier == Tier.OPERATOR) config.operatorTimeoutMs else BRAIN_TIMEOUT_MS
         return server.open(
             RunScope(conversation, tier, sender),
-            WatcherBackend(session, config, allowlist, previews, schedules?.takeIf { tier == Tier.OPERATOR }?.let { ScheduleScope(it, conversation, (sender ?: session.identity).toString()) }, visible),
-            chatToolNames(tier),
+            WatcherBackend(session, config, allowlist, previews, schedules?.takeIf { tier == Tier.OPERATOR }?.let { ScheduleScope(it, conversation, (sender ?: session.identity).toString()) }, voice, visible),
+            chatToolNames(tier, voice != null),
             cap = if (tier == Tier.LOCKED) LOCKED_TOOL_CALL_CAP else null,
             timeoutMs = timeout,
         )

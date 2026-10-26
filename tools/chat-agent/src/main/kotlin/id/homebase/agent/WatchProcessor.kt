@@ -29,6 +29,8 @@ class WatchProcessor(
     private val sessions: SessionStore? = null,
     private val schedules: ScheduleStore? = null,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val voice: VoiceOut? = null,
+    private val sendVoice: (suspend (Uuid, OutVoice, String) -> Unit)? = null,
 ) {
     private val self = OdinId(identity)
     private val trust = TrustPolicy(config, self)
@@ -112,7 +114,7 @@ class WatchProcessor(
     private fun header(conversation: Uuid): String? {
         if (!config.described) return null
         val where = if (allow.isDirect(conversation)) "a private chat" else "a group conversation"
-        return listOfNotNull(config.persona, "You are $identity, replying in $where. Its title and members are listed in the untrusted context block.").joinToString("\n")
+        return listOfNotNull(config.persona, "You are $identity, replying in $where. Its title and members are listed in the untrusted context block.", VOICE_PROMPT_LINE.takeIf { config.voiceMirror }).joinToString("\n")
     }
 
     private fun context(conversation: Uuid): String? {
@@ -131,6 +133,23 @@ class WatchProcessor(
             log("send error: ${e.message}")
             false
         }
+
+    private suspend fun voiceReply(conversation: Uuid, text: String): Boolean =
+        try {
+            val spoken = voice!!.speak(text.removePrefix(config.replyPrefix).trim())
+            sendVoice!!(conversation, spoken, text)
+            log("$conversation replied as a voice note (${spoken.seconds}s)")
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("$conversation voice reply fell back to text: ${e.message}")
+            false
+        }
+
+    private fun wantsVoice(sorted: List<ChatMsg>, files: List<OutFile>, failed: Boolean) =
+        config.voiceMirror && voice != null && sendVoice != null && !failed && files.isEmpty() &&
+            sorted.any { m -> m.payloads?.any { it.isAudio() } == true }
 
     private fun isEnabled(command: OperatorCommand) = when (command) {
         is OperatorCommand.Status, is OperatorCommand.Cancel -> jobs != null
@@ -415,7 +434,11 @@ class WatchProcessor(
                 ?: if (files.isNotEmpty()) config.replyPrefix else return done(sorted, "silent")
             val failed = outcome is BrainOutcome.Failed
             val attempt = (sorted.maxOf { attempts[it.id] ?: 0 }) + 1
-            val sent = if (failed && attempt < MAX_ATTEMPTS && !toolSent) false else safeReply(conversation, text, files)
+            val sent = when {
+                failed && attempt < MAX_ATTEMPTS && !toolSent -> false
+                wantsVoice(sorted, files, failed) && voiceReply(conversation, text) -> true
+                else -> safeReply(conversation, text, files)
+            }
             val settled = sent || attempt >= MAX_ATTEMPTS
             if (sent && !failed && config.bot && config.followUpMs > 0 && !allow.isDirect(conversation)) {
                 val now = clock()
