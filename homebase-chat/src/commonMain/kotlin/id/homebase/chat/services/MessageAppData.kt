@@ -35,9 +35,6 @@ data class MessageAppData(
     val version: Int? = null
 ) {
 
-    val bodyIsMarkdown: Boolean
-        get() = message is JsonArray || (version ?: 0) >= 1
-
     fun getMessage(): String {
         return when {
             version == null -> getMessageAsString()

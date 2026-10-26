@@ -156,7 +156,11 @@ open class JvmAudioPlayer : AudioPlayer {
         backwardsCount = 0
 
         try {
-            val input = startDecoder(filePath, seekMs) ?: return
+            val input = startDecoder(filePath, seekMs) ?: run {
+                stopPlayback()
+                observer?.onComplete()
+                return
+            }
 
             val line = openAudioLine(pcmFormat)
             sourceLine = line
@@ -209,6 +213,7 @@ open class JvmAudioPlayer : AudioPlayer {
         } catch (e: Exception) {
             Logger.e(e, tag = TAG) { "Failed to start audio playback" }
             stopPlayback()
+            observer?.onComplete()
         }
     }
 

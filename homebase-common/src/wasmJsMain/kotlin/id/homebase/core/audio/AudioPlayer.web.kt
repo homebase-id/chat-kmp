@@ -25,6 +25,7 @@ private class WebAudioPlayer : AudioPlayer {
         val bytes = readWebFileBytes(filePath)
         if (bytes == null) {
             Logger.e(tag = TAG) { "No decrypted audio at $filePath" }
+            observer?.onComplete()
             return
         }
 
@@ -39,13 +40,26 @@ private class WebAudioPlayer : AudioPlayer {
             }
         }
         addAudioEndedListener(el) { guardJsCallback("audio.ended") { observer?.onComplete() } }
+        var failed = false
+        val failOnce = {
+            if (!failed && element === el) {
+                failed = true
+                observer?.onComplete()
+            }
+        }
         addAudioErrorListener(el) { code ->
-            guardJsCallback("audio.error") { Logger.e(tag = TAG) { "Audio element error $code" } }
+            guardJsCallback("audio.error") {
+                Logger.e(tag = TAG) { "Audio element error $code" }
+                failOnce()
+            }
         }
         element = el
 
-        playAudioElement(el) { reason ->
-            guardJsCallback("audio.play") { Logger.w(tag = TAG) { "play() rejected: $reason" } }
+        playAudioElement(el) { name, reason ->
+            guardJsCallback("audio.play") {
+                Logger.w(tag = TAG) { "play() rejected: $reason" }
+                if (name != "AbortError") failOnce()
+            }
         }
     }
 
@@ -61,7 +75,7 @@ private class WebAudioPlayer : AudioPlayer {
 
     override fun resume() {
         val el = element ?: return
-        playAudioElement(el) { reason ->
+        playAudioElement(el) { _, reason ->
             guardJsCallback("audio.resume") { Logger.w(tag = TAG) { "resume() rejected: $reason" } }
         }
     }
@@ -117,10 +131,10 @@ private fun createAudioElement(url: String): JsAny = js(
     }"""
 )
 
-private fun playAudioElement(el: JsAny, onRejected: (String) -> Unit): Unit = js(
+private fun playAudioElement(el: JsAny, onRejected: (String, String) -> Unit): Unit = js(
     """{
         var p = el.play();
-        if (p && typeof p.catch === 'function') p.catch(function (e) { onRejected(String(e)); });
+        if (p && typeof p.catch === 'function') p.catch(function (e) { onRejected(String(e && e.name), String(e)); });
     }"""
 )
 

@@ -18,12 +18,19 @@ class AndroidAudioPlayer: AudioPlayer {
 
     override fun play(filePath: String) {
         release()
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(filePath)
-            setOnCompletionListener { observer?.onComplete() }
-            prepare()
-            start()
+        val player = MediaPlayer()
+        try {
+            player.setDataSource(filePath)
+            player.setOnCompletionListener { observer?.onComplete() }
+            player.prepare()
+            player.start()
+        } catch (e: Exception) {
+            Logger.e(e) { "Cannot play $filePath" }
+            player.release()
+            observer?.onComplete()
+            return
         }
+        mediaPlayer = player
         applySpeed()
         startPositionPolling()
     }
