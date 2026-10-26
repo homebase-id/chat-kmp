@@ -96,15 +96,16 @@ private suspend fun fetchedPreview(
     message: Uuid,
 ): ChatNotificationPreview {
     val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
-    val headers = DriveFileHeaderReader(httpClient, credentialsManager)
     val chatDrive = SystemDriveConstants.chatDrive.alias
+    val headers = DriveFileHeaderReader(httpClient, credentialsManager)
+    suspend fun readHeader(name: String) = step(name, HEADER_TIMEOUT) { headers.getFileHeaderByUid(chatDrive, message) }
 
-    val file = step("header fetch", HEADER_TIMEOUT) { headers.getFileHeaderByUid(chatDrive, message) }
+    val file = readHeader("header fetch")
         ?: run {
             step("header not found (404); inbox process", INBOX_TIMEOUT) {
                 DriveInboxProcessor(httpClient, credentialsManager).processInbox(chatDrive, INBOX_BATCH_SIZE)
             }
-            step("header retry", HEADER_TIMEOUT) { headers.getFileHeaderByUid(chatDrive, message) }
+            readHeader("header retry")
         }
         ?: return ChatNotificationPreview.missed("header not found (404) after processing the inbox")
 
