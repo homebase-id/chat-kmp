@@ -355,7 +355,7 @@ fun SentMessageBubble(
                 // and the action Popup anchored inside that row is adjacent to
                 // the bubble — matching Signal-style behavior. Mobile keeps
                 // fillMaxWidth so the combinedClickable target spans the row.
-                modifier = if (supportsTouchGestures()) Modifier.fillMaxWidth()
+                modifier = if (usesTouchUx()) Modifier.fillMaxWidth()
                 else Modifier.weight(1f, fill = false),
                 contentAlignment = Alignment.CenterEnd,
             ) {
@@ -603,7 +603,7 @@ fun ReceivedMessageBubble(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = if (supportsTouchGestures()) {
+                modifier = (if (usesTouchUx()) Modifier else Modifier.weight(1f, fill = false)).then(if (supportsTouchGestures()) {
                     Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -616,7 +616,7 @@ fun ReceivedMessageBubble(
                         // See SentMessageBubble — MessageBubbleRaw owns the bubble surface.
                         onDoubleClick = openReactionBar,
                     )
-                } else Modifier.weight(1f, fill = false),
+                } else Modifier),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Column {
