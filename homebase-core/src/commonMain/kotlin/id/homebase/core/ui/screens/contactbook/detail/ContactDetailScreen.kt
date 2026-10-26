@@ -722,6 +722,7 @@ private fun DetailHeader(
         ContactBookAvatar(
             entry = entry,
             size = 88.dp,
+            morphAcrossNav = true,
             onClick = onAvatarClick,
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
