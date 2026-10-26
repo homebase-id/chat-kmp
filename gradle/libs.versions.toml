@@ -1,19 +1,19 @@
 [versions]
-agp = "9.4.0"
+agp = "9.4.1"
 android-compileSdk = "37"
 # CMP 1.13 needs compileSdk 37.1; its platform carries SDK extension 23, so no compileSdkExtension.
 android-compileSdkMinor = "1"
 android-minSdk = "28"
 android-targetSdk = "36"
 androidx-activity = "1.13.0"
-androidx-appcompat = "1.7.1"
+androidx-appcompat = "1.8.0"
 androidx-biometric = "1.1.0"
 androidx-camera = "1.6.2"
-androidx-core = "1.18.0"
+androidx-core = "1.19.1"
 androidx-espresso = "3.7.0"
 androidx-exifinterface = "1.4.2"
 androidx-lifecycle = "2.11.0"
-androidx-media3 = "1.10.0"
+androidx-media3 = "1.11.1"
 androidx-testExt = "1.3.0"
 androidx-testRunner = "1.7.0"
 androidx-testCore = "1.7.0"
@@ -38,7 +38,7 @@ jetbrains-compose-material3-adaptive = "1.4.0-alpha01"
 kotlinxHtmlJvm = "0.12.0"
 kotlinxSerializationJson = "1.12.0"
 materialIconsExtended = "1.7.3"
-materialComponents = "1.11.0"
+materialComponents = "1.14.0"
 multiplatformSettings = "1.3.0"
 coil3 = "3.6.3"
 zoomimage = "1.7.0"
@@ -75,13 +75,13 @@ kotlinx-io = "0.9.1"
 ktor = "3.6.0"
 kermit = "2.2.0"
 cryptography = "0.5.0"
-robolectric = "4.16.1"
+robolectric = "4.17"
 navigation = "2.10.0"
 koin = "4.2.2"
 # Held at 0.13.0: 0.14.2+ publishes klibs with abi_version 2.4.0, unreadable by Kotlin 2.3.x.
 # Bumping needs the Kotlin 2.4 upgrade first, or every Kotlin/Native target fails to resolve.
 filekit = "0.13.0"
-androidx-work = "2.11.2"
+androidx-work = "2.12.0"
 atomicfu = "0.33.0"
 runner = "1.0.2"
 espressoCore = "3.0.2"
@@ -90,15 +90,15 @@ uiToolingPreview = "1.13.0-beta01"
 kotlinStdlib = "2.4.21"
 googleAccompanist = "0.37.3"
 kmpnotifier = "1.6.1"
-firebase-messaging = "25.0.1"
-firebase-crashlytics = "20.0.5"
-firebase-crashlytics-plugin = "3.0.7"
-google-services = "4.4.4"
+firebase-messaging = "25.1.3"
+firebase-crashlytics = "20.1.1"
+firebase-crashlytics-plugin = "3.0.8"
+google-services = "4.5.0"
 sharetarget = "1.2.0"
 playPublisher = "4.0.0"
 buildconfig = "6.0.9"
 play-app-update = "2.1.0"
-play-services-location = "21.3.0"
+play-services-location = "21.4.0"
 mlkit-subject-segmentation = "16.0.0-beta1"
 metadataExtractor = "2.19.0"
 
@@ -126,7 +126,7 @@ jetbrains-compose-ui-backhandler = { module = "org.jetbrains.compose.ui:ui-backh
 jetbrains-compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "composeMultiplatform" }
 jetbrains-compose-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
-androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version = "1.0.1" }
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version = "1.2.0" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-testRunner" }
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-testCore" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-testExt" }
