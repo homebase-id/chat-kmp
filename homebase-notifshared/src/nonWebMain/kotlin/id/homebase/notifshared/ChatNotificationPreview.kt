@@ -1,4 +1,4 @@
-package id.homebase.api.notifications
+package id.homebase.notifshared
 
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -22,15 +22,6 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
-/** Tag of a Moments comment push; a post push repeats the moment id in both fields. */
-const val MOMENT_COMMENT_TAG_SENTINEL = "00000000-0000-4000-8000-0000c0117e57"
-
-fun isMomentsPush(typeId: String, tagId: String): Boolean {
-    if (typeId.isBlank()) return false
-    val tag = Uuid.parseOrNull(tagId)
-    return (tag != null && tag == Uuid.parseOrNull(MOMENT_COMMENT_TAG_SENTINEL)) || typeId == tagId
-}
-
 private const val CHAT_MESSAGE_FILE_TYPE = 7878
 private const val PLAIN_MESSAGE_DATA_TYPE = 0
 
@@ -38,7 +29,7 @@ private const val PLAIN_MESSAGE_DATA_TYPE = 0
  * Either the text to show, or why the sender's placeholder stays. [missReason] never carries
  * message content, so the extension can log it unredacted.
  */
-data class ChatNotificationPreview(val text: String?, val missReason: String?) {
+internal data class ChatNotificationPreview(val text: String?, val missReason: String?) {
     internal companion object {
         fun shown(text: String) = ChatNotificationPreview(text, null)
         fun missed(reason: String) = ChatNotificationPreview(null, reason)
@@ -55,7 +46,7 @@ data class ChatNotificationPreview(val text: String?, val missReason: String?) {
  * [PREVIEW_DEADLINE] — so the caller keeps the sender's placeholder, which for typed kinds is
  * already their privacy-aware label. Never throws except for cancellation.
  */
-suspend fun fetchChatNotificationPreview(
+internal suspend fun fetchChatNotificationPreview(
     credentials: ApiCredentials,
     conversationId: String,
     messageId: String,

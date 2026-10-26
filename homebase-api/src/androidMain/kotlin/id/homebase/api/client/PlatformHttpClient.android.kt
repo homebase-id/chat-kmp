@@ -13,7 +13,7 @@ import io.ktor.client.engine.okhttp.OkHttp
  * server records its IP (last-known-good, for the dev-menu Network Status fallback). This
  * instruments both the shared REST client and the notify WebSocket, since both build through here.
  */
-internal actual fun createPlatformHttpClient(
+actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit,
 ): HttpClient = HttpClient(OkHttp) {
     block()

@@ -1,4 +1,4 @@
-package id.homebase.api.notifications
+package id.homebase.notifshared
 
 import id.homebase.api.client.CryptoHelper
 import id.homebase.api.client.KeyHeader

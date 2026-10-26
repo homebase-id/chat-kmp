@@ -3,8 +3,8 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.isIos
-import id.homebase.api.notifications.MOMENT_COMMENT_TAG_SENTINEL as API_MOMENT_COMMENT_TAG_SENTINEL
-import id.homebase.api.notifications.isMomentsPush
+import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL as API_MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.notifshared.isMomentsPush
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi

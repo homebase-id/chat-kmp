@@ -1,6 +1,5 @@
 package id.homebase.notifshared
 
-import id.homebase.api.notifications.fetchChatNotificationPreview
 import id.homebase.api.share.NotificationExtensionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

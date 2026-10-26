@@ -9,6 +9,6 @@ import io.ktor.client.engine.darwin.Darwin
  * trust store (kept current by the OS). No extra roots needed — name the engine
  * and apply the shared config.
  */
-internal actual fun createPlatformHttpClient(
+actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit,
 ): HttpClient = HttpClient(Darwin) { block() }
