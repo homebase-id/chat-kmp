@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -136,6 +137,9 @@ class ConversationService(
     private val syncQuietMs: Long = 2_000L,
     /** Poll interval while waiting out an in-flight chat-drive sync. */
     private val syncPollMs: Long = 100L,
+    /** Our own server's header for a chat-drive uniqueId, null on 404. Null in tests: missing
+     *  then means only a local-only placeholder. */
+    private val serverConversationHeader: (suspend (Uuid) -> HomebaseFile?)? = null,
 ) : LocalLastReadUpdater, GroupHealConversationOps {
     private val chatDrive = chatTargetDrive.alias
 
@@ -164,6 +168,8 @@ class ConversationService(
     // only dedup identical writes so restoring a draft can't echo back into the
     // outbox, and cap the stored text so it stays within the header budget.
     private val draftMutex = Mutex()
+    // The outbox check and the delete+enqueue in a rebuild must not interleave with another rebuild.
+    private val rebuildMutex = Mutex()
     private var lastPersistedDraft: Pair<Uuid, String?>? = null
     // ponytail: 2000 codepoints keeps the header comfortably under the 7 KB cap
     // for normal text; a longer draft is truncated (raise only with a payload
@@ -413,6 +419,81 @@ class ConversationService(
         val wasNewlyCreated: Boolean
     )
 
+    enum class OneOnOneRebuildOutcome {
+        /** The file was re-created and queued for us and the peer. */
+        Rebuilt,
+        /** Our server still has the file; nothing to rebuild. */
+        AlreadyOnServer,
+        /** A write for the file is still in the outbox; rebuilding now would collide with it. */
+        AlreadyQueued,
+    }
+
+    data class OneOnOneRebuildResult(val peer: OdinId, val outcome: OneOnOneRebuildOutcome)
+
+    /**
+     * Re-creates a 1:1 conversation file that is missing on our server, under the id both sides
+     * derive from the two domains, and sends it to the peer. The file is missing when our server
+     * 404s its header, or (without a server lookup) when the local row is a local-only placeholder.
+     *
+     * Throws for anything that is not a 1:1 whose id is the XorId of the two domains, so a group
+     * can never be re-created here; groups recover through [GroupHealService].
+     *
+     * If both sides rebuild at once they create the same uniqueId; which copy wins is not defined.
+     */
+    suspend fun rebuildOneOnOneConversation(conversationId: Uuid): OneOnOneRebuildResult =
+        rebuildMutex.withLock { rebuildOneOnOneConversationLocked(conversationId) }
+
+    private suspend fun rebuildOneOnOneConversationLocked(conversationId: Uuid): OneOnOneRebuildResult {
+        val audit = MethodAudit("rebuildOneOnOneConversation")
+        audit.start("conversationId=$conversationId")
+        val domain = credentialsManager.requireActiveDomain()
+        val file = getConversationHomebaseFile(conversationId)
+            ?: error("rebuildOneOnOneConversation: no local conversation $conversationId")
+        val content = file.fileMetadata.appData.content?.let {
+            runCatching { OdinSystemSerializer.deserialize<ConversationAppDataJson>(it) }.getOrNull()
+        }
+        val participants = content?.recipients?.filterNotNull()?.distinct().orEmpty()
+        val peer = participants.singleOrNull { it != domain }
+        val groupTagged = file.fileMetadata.appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
+        require(
+            !groupTagged && peer != null &&
+                conversationId == XorIdUtil.getNewXorId(domain.domainName, peer.domainName)
+        ) {
+            "rebuildOneOnOneConversation: $conversationId is not a 1:1 with a derived id"
+        }
+
+        if (dbm.outbox.selectByDriveAndUnique(chatDrive, conversationId) != null) {
+            audit.finish("already queued")
+            return OneOnOneRebuildResult(peer, OneOnOneRebuildOutcome.AlreadyQueued)
+        }
+        val missing = serverConversationHeader?.let { lookup -> lookup(conversationId) == null }
+            ?: file.isLocalOnlyPlaceholder
+        if (!missing) {
+            audit.finish("present on server")
+            return OneOnOneRebuildResult(peer, OneOnOneRebuildOutcome.AlreadyOnServer)
+        }
+
+        // The upsert only replaces a row with a newer `modified`; the placeholder's is zero.
+        dbm.driveMainIndex.deleteBy(
+            identityId = credentialsManager.requireActiveCredentials().getIdentityId(),
+            driveId = chatDrive,
+            fileId = file.fileId,
+        )
+        val enqueued = writeConversationFile(
+            conversationId = conversationId,
+            allParticipants = (participants + domain).distinct(),
+            transitRecipients = listOf(peer),
+            title = content?.title,
+            isGroup = false,
+            created = file.fileMetadata.created,
+            // Keeps the owner's draft and last-read, which ride the conversation file locally.
+            localAppData = file.fileMetadata.localAppData,
+        )
+        check(enqueued) { "rebuildOneOnOneConversation: enqueue failed for $conversationId" }
+        audit.finish("rebuilt, sent to ${peer.domainName}")
+        return OneOnOneRebuildResult(peer, OneOnOneRebuildOutcome.Rebuilt)
+    }
+
     /**
      * Notifies [recipient] that the local user has designated them as an emergency contact by
      * posting a [StatusMessage.EmergencyContactDesignated] status into their 1:1 conversation
@@ -566,7 +647,9 @@ class ConversationService(
         transitRecipients: List<OdinId>,
         title: String?,
         isGroup: Boolean,
-        payloadBundle: PayloadBundle? = null
+        payloadBundle: PayloadBundle? = null,
+        created: UnixTimeUtc = UnixTimeUtc.now(),
+        localAppData: LocalAppMetadata? = null,
     ): Boolean {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("writeConversationFile")
@@ -616,6 +699,8 @@ class ConversationService(
                 unecryptedMetadata = metadata,
                 originalRecipientCount = transitRecipients.size,
                 fileSystemType = FileSystemType.Standard,
+                created = created,
+                localAppData = localAppData,
             )
         }.onSuccess { audit.checkPass("optimisticWriteNew") }
             .onFailure { e ->

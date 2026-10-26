@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Healing
 import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
@@ -96,6 +97,11 @@ import id.homebase.resources.contactbook_action_request_cancelled
 import id.homebase.resources.contactbook_action_request_rejected
 import id.homebase.resources.contactbook_action_request_withdrawn
 import id.homebase.resources.contactbook_action_sync_started
+import id.homebase.resources.contactbook_action_conversation_rebuilt
+import id.homebase.resources.contactbook_action_conversation_rebuild_not_needed
+import id.homebase.resources.contactbook_action_conversation_rebuild_queued
+import id.homebase.resources.contactbook_error_conversation_rebuild
+import id.homebase.resources.contactbook_detail_rebuild_conversation
 import id.homebase.resources.contactbook_action_disconnected
 import id.homebase.resources.contactbook_detail_emergency_badge
 import id.homebase.resources.contactbook_detail_location_data_as_of
@@ -189,6 +195,10 @@ fun ContactDetailScreen(
     val msgBlockedRemoved = stringResource(MR.string.contactbook_action_blocked_connection_removed)
     val msgNotBlocked = stringResource(MR.string.contactbook_action_not_blocked)
     val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
+    val msgConversationRebuilt = stringResource(MR.string.contactbook_action_conversation_rebuilt)
+    val msgRebuildNotNeeded = stringResource(MR.string.contactbook_action_conversation_rebuild_not_needed)
+    val msgRebuildQueued = stringResource(MR.string.contactbook_action_conversation_rebuild_queued)
+    val errRebuild = stringResource(MR.string.contactbook_error_conversation_rebuild)
     val msgRequestAccepted = stringResource(MR.string.contactbook_action_request_accepted)
     val msgRequestRejected = stringResource(MR.string.contactbook_action_request_rejected)
     val msgRequestCancelled = stringResource(MR.string.contactbook_action_request_cancelled)
@@ -224,6 +234,10 @@ fun ContactDetailScreen(
                     snackbarHostState.showSnackbar(msgBlockedRemoved)
                 ContactDetailEvent.NotBlocked -> snackbarHostState.showSnackbar(msgNotBlocked)
                 ContactDetailEvent.SyncStarted -> snackbarHostState.showSnackbar(msgSyncStarted)
+                ContactDetailEvent.ConversationRebuilt -> snackbarHostState.showSnackbar(msgConversationRebuilt)
+                ContactDetailEvent.ConversationRebuildNotNeeded -> snackbarHostState.showSnackbar(msgRebuildNotNeeded)
+                ContactDetailEvent.ConversationRebuildQueued -> snackbarHostState.showSnackbar(msgRebuildQueued)
+                ContactDetailEvent.ConversationRebuildFailed -> snackbarHostState.showSnackbar(errRebuild)
                 ContactDetailEvent.RequestAccepted -> snackbarHostState.showSnackbar(msgRequestAccepted)
                 ContactDetailEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRequestRejected)
                 ContactDetailEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgRequestCancelled)
@@ -646,6 +660,13 @@ private fun ManagementMenu(
                 leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
                 onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
             )
+            if (uiState.conversationId != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contactbook_detail_rebuild_conversation)) },
+                    leadingIcon = { Icon(Icons.Outlined.Healing, contentDescription = null) },
+                    onClick = { open = false; onAction(ContactDetailAction.RebuildConversationClicked) },
+                )
+            }
             if (uiState.isConnected && !uiState.needsReview) {
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.contact_unreview_action)) },

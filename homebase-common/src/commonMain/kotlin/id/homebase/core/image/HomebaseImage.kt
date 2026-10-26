@@ -45,7 +45,6 @@ import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
@@ -114,8 +113,7 @@ fun HomebaseImage(
         remember(imageData.previewThumbnail) {
             imageData.previewThumbnail?.content?.let {
                 try {
-                    val bytes = Base64.decode(it)
-                    bytes.decodeToImageBitmap()
+                    it.bytes.decodeToImageBitmap()
                 } catch (_: Exception) {
                     null
                 }

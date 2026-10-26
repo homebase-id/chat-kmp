@@ -7,7 +7,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
@@ -30,11 +29,7 @@ fun PayloadDescriptor.replyQuoteImageData(
     aesKey: SecureByteArray,
     fallbackPreview: EmbeddedThumb?,
 ): HomebaseImageData? {
-    val payloadIv = try {
-        iv?.let { Base64.decode(it) }
-    } catch (_: Exception) {
-        null
-    } ?: return null
+    val payloadIv = iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

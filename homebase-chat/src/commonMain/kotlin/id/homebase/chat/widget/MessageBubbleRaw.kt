@@ -106,7 +106,6 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -407,7 +406,7 @@ fun MessageBubbleRaw(
                 val mapPayload = message.payloads?.firstOrNull {
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
-                val pIv = mapPayload?.iv?.let { Base64.decode(it) }
+                val pIv = mapPayload?.iv?.bytes
                 // One fused bubble: the map "card" stays neutral grey; only the user's caption section
                 // takes the message-bubble background (blue when sent). The outer modifier supplies the
                 // single rounded clip — the card sets the grey, the caption section sets the blue.

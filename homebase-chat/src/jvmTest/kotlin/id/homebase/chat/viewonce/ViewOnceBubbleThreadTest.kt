@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.animation.AnimatedVisibility
@@ -55,7 +56,6 @@ import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import java.util.prefs.Preferences
-import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -97,7 +97,7 @@ class ViewOnceBubbleThreadTest {
         reactionPreview = null,
         previewThumbnail = null,
         payloads = persistentListOf(
-            PayloadDescriptor(key = VIEW_ONCE_PAYLOAD_KEY, contentType = "image/jpeg", iv = Base64.encode(ByteArray(16))),
+            PayloadDescriptor(key = VIEW_ONCE_PAYLOAD_KEY, contentType = "image/jpeg", iv = Base64Bytes(ByteArray(16))),
         ),
         keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
         versionTag = Uuid.random(),

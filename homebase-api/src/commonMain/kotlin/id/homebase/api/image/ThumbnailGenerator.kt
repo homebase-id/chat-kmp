@@ -1,10 +1,10 @@
 package id.homebase.api.image
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.math.abs
 import kotlin.math.max
@@ -50,7 +50,6 @@ val standardPrimaryImage =
     ThumbnailInstruction(quality = 85, maxPixelDimension = 1600, maxBytes = 640 * 1024)
 
 @OptIn(ExperimentalEncodingApi::class)
-private fun toBase64(bytes: ByteArray): String = Base64.encode(bytes)
 
 fun getRevisedThumbs(sourceSize: ImageSize, thumbs: List<ThumbnailInstruction>): List<ThumbnailInstruction> {
     val sourceMax = max(sourceSize.pixelWidth, sourceSize.pixelHeight)
@@ -138,7 +137,7 @@ suspend fun createThumbnails(
                 pixelWidth = tinyResult.size.pixelWidth,
                 pixelHeight = tinyResult.size.pixelHeight,
                 contentType = "image/webp",
-                content = toBase64(tinyResult.bytes),
+                content = Base64Bytes(tinyResult.bytes),
             )
 
             val instructions = thumbSizes ?: baseThumbSizes
@@ -179,7 +178,7 @@ suspend fun createThumbnails(
             pixelWidth = naturalSize.pixelWidth,
             pixelHeight = naturalSize.pixelHeight,
             contentType = "image/webp",
-            content = toBase64(tinyThumbFile.thumbnailBytes)
+            content = Base64Bytes(tinyThumbFile.thumbnailBytes)
         )
         return@withContext Triple(naturalSize, embeddedTiny, emptyList())
     }
@@ -200,7 +199,7 @@ suspend fun createThumbnails(
         pixelWidth = tinyThumbFile.pixelWidth,
         pixelHeight = tinyThumbFile.pixelHeight,
         contentType = "image/webp",
-        content = toBase64(tinyThumbFile.thumbnailBytes)
+        content = Base64Bytes(tinyThumbFile.thumbnailBytes)
     )
 
     return@withContext Triple(naturalSize, embeddedTiny, additional)
