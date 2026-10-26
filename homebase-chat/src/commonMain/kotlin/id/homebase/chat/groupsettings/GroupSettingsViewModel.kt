@@ -40,7 +40,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.chat.services.toErrorDetailRes
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.buildConnectToIdentityUrl
@@ -846,6 +845,7 @@ class GroupSettingsViewModel(
         return map.entries.joinToString(prefix = "{", postfix = "}") { (recipient, status) ->
             val s = when (status) {
                 RecipientFileStatus.Ok -> "OK"
+                RecipientFileStatus.Pending -> "PENDING"
                 is RecipientFileStatus.Problem -> "PROBLEM(${status.rawStatus})"
             }
             "$recipient=$s"
@@ -880,27 +880,7 @@ class GroupSettingsViewModel(
             val history = driveFileProvider.getTransferHistory(chatTargetDrive.alias, file.fileId)
             val results = history?.history?.results ?: emptyList()
             results.associate { entry: RecipientTransferHistoryEntry ->
-                val odinId = OdinId(entry.recipient)
-                // Match the per-message status mapping in
-                // ChatDeliveryStatus.toChatDeliveryStatus: when the latest known
-                // status is Delivered, that wins over `isInOutbox`. Right after
-                // pressing "Heal group" we re-enqueue the file, so the server
-                // briefly returns `latestTransferStatus = Delivered` (from the
-                // prior successful send) AND `isInOutbox = true` (because we
-                // just kicked it back into the outbox). Treating that combo as
-                // a Problem produced a misleading "PROBLEM(Delivered)" log
-                // entry and a transient red icon for ~180ms after each heal.
-                // The recipient is fine — the file has been delivered before
-                // and is currently being redistributed.
-                val status = if (entry.latestTransferStatus == TransferStatus.Delivered) {
-                    RecipientFileStatus.Ok
-                } else {
-                    RecipientFileStatus.Problem(
-                        rawStatus = entry.latestTransferStatus,
-                        detailRes = entry.latestTransferStatus.toErrorDetailRes()
-                    )
-                }
-                odinId to status
+                OdinId(entry.recipient) to entry.toRecipientFileStatus()
             }
         } catch (e: Exception) {
             Logger.w(throwable = e) { "loadTransferHistory: getTransferHistory($label) failed for fileId=${file.fileId}" }
