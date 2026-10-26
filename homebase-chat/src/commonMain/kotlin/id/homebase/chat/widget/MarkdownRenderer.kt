@@ -221,7 +221,7 @@ fun ChatMarkdown(
         // table reads on BOTH bubbles.
         tableBackground = color.copy(alpha = FENCED_CODE_BG_ALPHA),
     )
-    val linkStyles = chatLinkStyles(style, color)
+    val linkStyles = remember(style, color) { chatLinkStyles(style, color) }
     val typography = markdownTypography(
         // Heading ladder. The M3 title/headline scale is too compressed to give a
         // legible six-level hierarchy inside a chat bubble (titleLarge 22 → titleMedium

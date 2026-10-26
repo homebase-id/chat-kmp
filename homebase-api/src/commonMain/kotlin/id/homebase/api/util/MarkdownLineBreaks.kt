@@ -37,14 +37,13 @@ fun String.normalizeChatNewlines(): String = replace("\r\n", "\n").replace('\r',
 fun String.withParagraphSoftBreaksPromoted(tree: ASTNode): String {
     val softBreakOffsets = HashSet<Int>().also { collectParagraphSoftBreaks(tree, insideParagraph = false, out = it) }
     if (softBreakOffsets.isEmpty()) return this
-    val text = this
-    val sb = StringBuilder(text.length + softBreakOffsets.size * 2)
-    for (i in text.indices) {
+    val sb = StringBuilder(length + softBreakOffsets.size * 2)
+    for (i in indices) {
         if (i in softBreakOffsets) {
-            val alreadyHard = i >= 2 && text[i - 1] == ' ' && text[i - 2] == ' '
+            val alreadyHard = i >= 2 && this[i - 1] == ' ' && this[i - 2] == ' '
             if (!alreadyHard) sb.append("  ")
         }
-        sb.append(text[i])
+        sb.append(this[i])
     }
     return sb.toString()
 }
