@@ -1,6 +1,5 @@
 package id.homebase.api.notifications
 
-import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.createPlatformHttpClient
@@ -23,11 +22,22 @@ private const val CHAT_MESSAGE_FILE_TYPE = 7878
 private const val PLAIN_MESSAGE_DATA_TYPE = 0
 
 /**
+ * Either the text to show, or why the sender's placeholder stays. [missReason] never carries
+ * message content, so the extension can log it unredacted.
+ */
+data class ChatNotificationPreview(val text: String?, val missReason: String?) {
+    internal companion object {
+        fun shown(text: String) = ChatNotificationPreview(text, null)
+        fun missed(reason: String) = ChatNotificationPreview(null, reason)
+    }
+}
+
+/**
  * The text of chat message [messageId] in [conversationId], fetched from the identity and
  * decrypted on-device, for a push handler that runs without the app graph (the iOS Notification
  * Service Extension).
  *
- * Null for anything that isn't readable plain text — a typed kind, status message, media-only
+ * No text for anything that isn't readable plain text — a typed kind, status message, media-only
  * or deleted message, a header that failed to decrypt, a network failure — so the caller keeps
  * the sender's placeholder, which for typed kinds is already their privacy-aware label. Never
  * throws except for cancellation.
@@ -36,13 +46,8 @@ suspend fun fetchChatNotificationPreview(
     credentials: ApiCredentials,
     conversationId: String,
     messageId: String,
-): String? {
-    val httpClient = createPlatformHttpClient()
-    try {
-        return fetchChatNotificationPreview(httpClient, credentials, conversationId, messageId)
-    } finally {
-        httpClient.close()
-    }
+): ChatNotificationPreview = createPlatformHttpClient().use { client ->
+    fetchChatNotificationPreview(client, credentials, conversationId, messageId)
 }
 
 internal suspend fun fetchChatNotificationPreview(
@@ -50,11 +55,13 @@ internal suspend fun fetchChatNotificationPreview(
     credentials: ApiCredentials,
     conversationId: String,
     messageId: String,
-): String? {
-    val conversation = Uuid.parseOrNull(conversationId) ?: return null
-    val message = Uuid.parseOrNull(messageId) ?: return null
+): ChatNotificationPreview {
+    val conversation = Uuid.parseOrNull(conversationId)
+        ?: return ChatNotificationPreview.missed("typeId is not a uuid")
+    val message = Uuid.parseOrNull(messageId)
+        ?: return ChatNotificationPreview.missed("tagId is not a uuid")
     // A Moments post push carries the moment id in both fields; it is not a chat message.
-    if (conversation == message) return null
+    if (conversation == message) return ChatNotificationPreview.missed("moments push")
 
     val file = try {
         val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
@@ -63,33 +70,46 @@ internal suspend fun fetchChatNotificationPreview(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Logger.w(tag = "ChatNotificationPreview") { "header fetch failed: ${e.message}" }
-        null
-    } ?: return null
+        return ChatNotificationPreview.missed("header fetch threw ${e.causeChain()}")
+    } ?: return ChatNotificationPreview.missed("header not found (404)")
 
     return chatMessagePreview(file, conversation)
 }
 
-internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): String? {
-    val appData = file.fileMetadata.appData
-    if (appData.fileType != CHAT_MESSAGE_FILE_TYPE) return null
-    if ((appData.dataType ?: PLAIN_MESSAGE_DATA_TYPE) != PLAIN_MESSAGE_DATA_TYPE) return null
-    if (appData.groupId != conversationId || file.isSoftDeleted()) return null
+// Class names only: an exception message can quote the decrypted header.
+private fun Throwable.causeChain(): String =
+    generateSequence(this) { it.cause }.take(4).joinToString(" <- ") { it::class.simpleName ?: "?" }
 
-    val content = appData.content?.takeUnless { it == DECRYPTION_FAILURE_APP_DATA } ?: return null
+internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): ChatNotificationPreview {
+    val appData = file.fileMetadata.appData
+    val dataType = appData.dataType ?: PLAIN_MESSAGE_DATA_TYPE
+    val miss = when {
+        appData.fileType != CHAT_MESSAGE_FILE_TYPE -> "fileType ${appData.fileType}"
+        dataType != PLAIN_MESSAGE_DATA_TYPE -> "dataType $dataType"
+        appData.groupId != conversationId -> "groupId ${appData.groupId} is not the push typeId"
+        file.isSoftDeleted() -> "deleted (${file.fileState}, ${appData.archivalStatus})"
+        appData.content.isNullOrEmpty() -> "no content (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
+        appData.content == DECRYPTION_FAILURE_APP_DATA -> "content failed to decrypt"
+        else -> null
+    }
+    if (miss != null) return ChatNotificationPreview.missed(miss)
+
     val message = try {
-        OdinSystemSerializer.json.parseToJsonElement(content).jsonObject["message"]
+        OdinSystemSerializer.json.parseToJsonElement(appData.content!!).jsonObject["message"]
     } catch (_: Exception) {
-        null
+        return ChatNotificationPreview.missed(
+            "content is not a json object (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
+        )
     }
     val text = when (message) {
         is JsonPrimitive -> message.content.takeIf { message.isString }
         is JsonArray -> try {
             getPlainTextFromRichText(OdinSystemSerializer.json.decodeFromJsonElement<RichText>(message))
         } catch (_: Exception) {
-            null
+            return ChatNotificationPreview.missed("rich text did not parse")
         }
         else -> null
     }
-    return text?.takeIf { it.isNotBlank() }
+    return text?.takeIf { it.isNotBlank() }?.let(ChatNotificationPreview::shown)
+        ?: ChatNotificationPreview.missed("no message text")
 }

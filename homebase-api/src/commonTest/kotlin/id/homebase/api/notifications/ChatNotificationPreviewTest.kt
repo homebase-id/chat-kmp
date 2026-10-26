@@ -1,5 +1,6 @@
 package id.homebase.api.notifications
 
+import id.homebase.api.client.CryptoHelper
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.common.OdinId
@@ -35,10 +36,13 @@ class ChatNotificationPreviewTest {
         fileState: String = "active",
         encryptWith: ByteArray = secret,
         encryptedContent: String? = null,
+        keyHeaderJson: String? = null,
     ): String {
         val keyHeader = KeyHeader.newRandom16()
-        val encryptedKeyHeader = EncryptedKeyHeader.encryptKeyHeaderAes(
-            keyHeader, ByteArray(16) { 9 }, SecureByteArray(encryptWith.copyOf())
+        val encryptedKeyHeader = keyHeaderJson ?: OdinSystemSerializer.serialize(
+            EncryptedKeyHeader.encryptKeyHeaderAes(
+                keyHeader, ByteArray(16) { 9 }, SecureByteArray(encryptWith.copyOf())
+            )
         )
         val content = encryptedContent
             ?: Base64.encode(keyHeader.encryptDataAes(appContent.encodeToByteArray()))
@@ -48,18 +52,31 @@ class ChatNotificationPreviewTest {
               "driveId": "${Uuid.random()}",
               "fileState": "$fileState",
               "fileSystemType": "standard",
-              "sharedSecretEncryptedKeyHeader": ${OdinSystemSerializer.serialize(encryptedKeyHeader)},
+              "sharedSecretEncryptedKeyHeader": $encryptedKeyHeader,
               "fileMetadata": {
+                "globalTransitId": "${Uuid.random()}",
+                "created": 1761440502738,
+                "updated": 1761440502738,
+                "transitCreated": 1761440501938,
                 "isEncrypted": true,
+                "senderOdinId": "samwise.gamgee.demo.rocks",
+                "originalAuthor": "samwise.gamgee.demo.rocks",
+                "versionTag": "${Uuid.random()}",
+                "payloads": [],
                 "appData": {
                   "uniqueId": "$messageId",
+                  "tags": null,
                   "fileType": 7878,
                   "dataType": $dataType,
                   "groupId": "$groupId",
+                  "userDate": 1761440501900,
+                  "archivalStatus": 0,
                   "content": ${OdinSystemSerializer.serialize(content)}
                 }
               },
-              "serverMetadata": {}
+              "serverMetadata": { "allowDistribution": true, "fileByteCount": 1200, "originalRecipientCount": 1 },
+              "priority": 1,
+              "fileByteCount": 1200
             }
         """.trimIndent()
     }
@@ -70,19 +87,29 @@ class ChatNotificationPreviewTest {
         conversation: Uuid = conversationId,
         message: Uuid = messageId,
         requests: MutableList<String> = mutableListOf(),
-    ): String? {
+    ): ChatNotificationPreview {
+        // Sealed with the shared secret and flagged X-SSE, as the identity answers a 200.
+        val ok = status == HttpStatusCode.OK
+        val sealed = if (ok) OdinSystemSerializer.serialize(CryptoHelper.encryptData(body, secret)) else body
+        val headers = if (ok) headersOf("X-Odin-Version" to listOf("1.0"), "X-SSE" to listOf("1"))
+        else headersOf("X-Odin-Version", "1.0")
         val http = HttpClient(MockEngine { request ->
             requests += request.url.encodedPath
-            respond(body, status, headersOf("X-Odin-Version", "1.0"))
+            respond(sealed, status, headers)
         })
         return fetchChatNotificationPreview(http, credentials, conversation.toString(), message.toString())
+    }
+
+    private fun assertMissed(expected: String, preview: ChatNotificationPreview) {
+        assertNull(preview.text)
+        assertTrue(preview.missReason.orEmpty().contains(expected), "missReason=${preview.missReason}")
     }
 
     @Test
     fun plainTextMessageIsDecryptedFromItsChatDriveHeader() = runTest {
         val requests = mutableListOf<String>()
-        val text = preview(header("""{"message":"Second breakfast?","version":1}"""), requests = requests)
-        assertEquals("Second breakfast?", text)
+        val result = preview(header("""{"message":"NSE 1091 check charlie"}"""), requests = requests)
+        assertEquals(ChatNotificationPreview("NSE 1091 check charlie", null), result)
         assertEquals(1, requests.size)
         assertTrue(requests.single().endsWith("/files/by-uid/$messageId/header"), requests.single())
     }
@@ -90,55 +117,65 @@ class ChatNotificationPreviewTest {
     @Test
     fun legacyRichTextMessageBecomesItsPlainText() = runTest {
         val rich = """{"message":[{"type":"p","children":[{"text":"Not all"},{"text":"who wander"}]}]}"""
-        assertEquals("Not all who wander", preview(header(rich)))
+        assertEquals("Not all who wander", preview(header(rich)).text)
     }
 
     @Test
     fun typedKindsKeepTheSendersLabel() = runTest {
-        assertNull(preview(header("""{"question":"Mordor?"}""", dataType = 214)))
+        assertMissed("dataType 214", preview(header("""{"question":"Mordor?"}""", dataType = 214)))
     }
 
     @Test
     fun statusMessagesKeepTheSendersBody() = runTest {
-        assertNull(preview(header("""{"message":"x"}""", dataType = 202)))
+        assertMissed("dataType 202", preview(header("""{"message":"x"}""", dataType = 202)))
     }
 
     @Test
     fun mediaOnlyMessageHasNoText() = runTest {
-        assertNull(preview(header("""{"message":"","version":1}""")))
+        assertMissed("no message text", preview(header("""{"message":"","version":1}""")))
     }
 
     @Test
     fun aMessageFromAnotherConversationIsNotShown() = runTest {
-        assertNull(preview(header("""{"message":"hi"}""", groupId = Uuid.random())))
+        assertMissed("groupId", preview(header("""{"message":"hi"}""", groupId = Uuid.random())))
     }
 
     @Test
     fun aDeletedMessageIsNotShown() = runTest {
-        assertNull(preview(header("""{"message":"hi"}""", fileState = "deleted")))
+        assertMissed("deleted", preview(header("""{"message":"hi"}""", fileState = "deleted")))
     }
 
     @Test
     fun aKeyHeaderSealedWithAnotherSecretIsNotShown() = runTest {
-        assertNull(preview(header("""{"message":"hi"}""", encryptWith = ByteArray(16) { 4 })))
+        val result = preview(header("""{"message":"hi"}""", encryptWith = ByteArray(16) { 4 }))
+        assertNull(result.text)
+        // A wrong key still unpads cleanly about 1 time in 256, failing at the content instead.
+        val reason = result.missReason.orEmpty()
+        assertTrue("KeyHeaderDecryptionFailed" in reason || "content failed" in reason, reason)
+    }
+
+    @Test
+    fun anEmptyKeyHeaderNamesTheFailingStep() = runTest {
+        val empty = """{"encryptionVersion":1,"type":"aes","iv":"AAAAAAAAAAAAAAAAAAAAAA==","encryptedAesKey":"AAAAAAAAAAAAAAAAAAAAAA=="}"""
+        assertMissed("header fetch threw", preview(header("""{"message":"hi"}""", keyHeaderJson = empty)))
     }
 
     @Test
     fun contentThatFailsToDecryptIsNotShownAsItsPlaceholder() = runTest {
         val undecryptable = Base64.encode(ByteArray(32) { 1 })
-        assertNull(preview(header("", encryptedContent = undecryptable)))
+        assertMissed("content failed to decrypt", preview(header("", encryptedContent = undecryptable)))
     }
 
     @Test
     fun aMissingOrFailedFetchFallsBack() = runTest {
-        assertNull(preview("""{"title":"Not Found","status":404}""", HttpStatusCode.NotFound))
-        assertNull(preview("boom", HttpStatusCode.InternalServerError))
+        assertMissed("404", preview("""{"title":"Not Found","status":404}""", HttpStatusCode.NotFound))
+        assertMissed("header fetch threw", preview("boom", HttpStatusCode.InternalServerError))
     }
 
     @Test
     fun aMomentsPostPushIsNeverFetched() = runTest {
         val requests = mutableListOf<String>()
-        assertNull(preview("{}", conversation = messageId, message = messageId, requests = requests))
+        assertMissed("moments", preview("{}", conversation = messageId, message = messageId, requests = requests))
         assertTrue(requests.isEmpty())
     }
 }

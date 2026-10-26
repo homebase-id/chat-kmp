@@ -121,7 +121,11 @@ class NotificationService: UNNotificationServiceExtension {
         NotificationPreviewBridge.shared.resolvePreview(
             conversationId: conversationId,
             messageId: messageId
-        ) { preview in
+        ) { preview, missReason in
+            // Public: Kermit's default os_log writer redacts every line to <private>.
+            if let missReason = missReason {
+                os_log("NSE preview miss: %{public}@", missReason)
+            }
             completion(preview)
         }
     }
