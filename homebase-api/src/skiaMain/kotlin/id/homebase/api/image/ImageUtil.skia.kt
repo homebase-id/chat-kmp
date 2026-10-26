@@ -730,6 +730,8 @@ private class SvgCtx(
     val fillOpacity: Float,
 )
 
+private val rootSvgCtx = SvgCtx(hidden = false, visibility = "visible", color = BLACK, opacity = 1f, fillOpacity = 1f)
+
 private val svgNonRenderedContainers = setOf("defs", "symbol", "clippath", "mask", "pattern", "marker", "style", "title", "desc")
 
 private fun stripSvgBlocks(svg: String, open: String, close: String): String {
@@ -773,7 +775,7 @@ private fun collectSvgTextRuns(source: String): List<SvgTextRun> {
     val svg = stripSvgBlocks(stripSvgBlocks(source, "<!--", "-->"), "<![CDATA[", "]]>")
     val runs = ArrayList<SvgTextRun>()
     val stack = ArrayList<Pair<String, SvgCtx>>()
-    var ctx = SvgCtx(hidden = false, visibility = "visible", color = BLACK, opacity = 1f, fillOpacity = 1f)
+    var ctx = rootSvgCtx
     var i = 0
     while (true) {
         i = svg.indexOf('<', i)
@@ -787,7 +789,7 @@ private fun collectSvgTextRuns(source: String): List<SvgTextRun> {
             val name = body.drop(1).trim().lowercase()
             val at = stack.indexOfLast { it.first == name }
             if (at >= 0) {
-                ctx = if (at == 0) SvgCtx(false, "visible", BLACK, 1f, 1f) else stack[at - 1].second
+                ctx = if (at == 0) rootSvgCtx else stack[at - 1].second
                 while (stack.size > at) stack.removeAt(stack.size - 1)
             }
             continue
