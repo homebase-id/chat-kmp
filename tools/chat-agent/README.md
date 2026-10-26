@@ -179,6 +179,7 @@ A failed run is retried once on the next poll, then `failed: ...` is sent (prefi
     conversations
     send [--conversation <id>] [--file <path>] [text]
     watch            # websocket doorbell + poll (see Transport)
+    call --to <odinId> --say <text>   # place the owner call by hand (operators only, needs calls=on); prints the outcome
     mcp              # stdio MCP server: list_conversations, read_messages, send_message, send_file
 
 ## Transport
@@ -287,6 +288,20 @@ With no such chat it logs `owner has no 1:1 with the bot` and the tool returns a
 Privacy: notices go through the same encrypted Homebase chat as every other message and nothing leaves it. Push notification bodies stay
 generic (`conversationTransitOptions`), so the text is never in the push payload. Voice synthesis stays on the box (see Voice replies);
 a live phone call needs a fast engine, which is a separate decision (KittenTTS 2 is far slower than real time).
+
+### Calling the owner (`calls=on`)
+
+`calls=on` (default off; needs `tts=`, a websocket transport and the person in `operators`) makes escalation place a real one-to-one audio
+call with the app's own calling stack: the message is synthesized first (same `tts=` command), decoded to 48 kHz mono PCM with ffmpeg,
+then the bot dials, waits for the answer, waits 800 ms, plays the message, waits 1.5 s and hangs up. A headless audio module and a
+`CustomAudioSource` stand in for the sound card; the call log entry lands in the 1:1 like any app-placed call. One call at a time, a
+second request reports `unavailable`. The outcome is answered, missed, declined, unavailable or failed. While `calls=on` the bot
+declines every incoming call (answering is a later slice). `chat-agent call --to <id> --say "<text>"` places one by hand.
+
+Deploy notes: webrtc-java's `linux-x86_64` native needs shared libraries from the base image (`eclipse-temurin` noble). Run `ldd` on the
+extracted `libwebrtc-java.so` during the deploy step and install what is missing (likely X11, pulse and asound packages; unverified).
+`gradle :chat-agent:trimmedTest` must pass before deploying: the engine runs with `renderVideo=false`, which is what keeps compose and skiko
+(stripped from the trimmed classpath) from loading.
 
 ## Deploy (Linux box, systemd)
 

@@ -110,6 +110,7 @@ class AgentConfig(
     val ownerQuietHours: QuietHours? = null,
     val urgentOverridesQuiet: Boolean = true,
     val notifyJobsAfterMs: Long = DEFAULT_NOTIFY_JOBS_AFTER_MS,
+    val calls: Boolean = false,
     val warnings: List<String> = emptyList(),
 ) {
     val nick = Nickname(nickname)
@@ -246,6 +247,8 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
     val ttsTimeoutMs = str("ttsTimeout")?.let {
         parseDurationMs(it) ?: throw IllegalArgumentException("invalid ttsTimeout '$it': use e.g. 90s, 4m")
     } ?: DEFAULT_TTS_TIMEOUT_MS
+    val callsMode = str("calls")?.lowercase()
+    val callsOn = callsMode == "on" && tts != null && parseTransport(str("transport")) != Transport.POLL
     val quietText = str("ownerQuietHours")
     val quiet = quietText?.let(::parseQuietHours)
     val notifyOwner = ownerKey?.takeIf { it in operatorSet && it != owner }
@@ -307,7 +310,11 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         notifyJobsAfterMs = str("notifyJobsAfter")?.let {
             parseDurationMs(it) ?: throw IllegalArgumentException("invalid notifyJobsAfter '$it': use e.g. 90s, 2m, 1h")
         } ?: DEFAULT_NOTIFY_JOBS_AFTER_MS,
+        calls = callsOn,
         warnings = listOfNotNull(
+            "WARNING: invalid calls '${str("calls")}', using off (on or off)".takeIf { callsMode != null && callsMode !in setOf("on", "off") },
+            "WARNING: calls=on needs tts= to synthesize the message before dialing, calls stay off".takeIf { callsMode == "on" && tts == null },
+            "WARNING: calls=on needs a websocket, so transport=poll keeps calls off".takeIf { callsMode == "on" && parseTransport(str("transport")) == Transport.POLL },
             "WARNING: owner=$ownerKey is not in operators, so owner notifications (notify_owner, job results, call escalation) are off".takeIf { ownerKey != null && ownerKey != owner && notifyOwner == null && str("operatorBrain") != null },
             "WARNING: owner=$ownerKey is the bot's own identity, so there is no 1:1 to notify and owner notifications are off".takeIf { ownerKey != null && ownerKey == owner && str("operatorBrain") != null },
             "WARNING: invalid ownerQuietHours '$quietText', use HH:MM-HH:MM with different start and end; quiet hours are off".takeIf { quietText != null && quiet == null },

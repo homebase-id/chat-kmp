@@ -3,6 +3,9 @@ package id.homebase.agent
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.websockets.LiveRelayReceivedNotification
 import id.homebase.api.client.websockets.ClientNotificationPayload
 import id.homebase.api.client.websockets.ClientNotificationType
 import id.homebase.api.client.websockets.EstablishConnectionRequest
@@ -31,7 +34,14 @@ private val QUIET = setOf(
     ClientNotificationType.deviceDisconnected,
 )
 
-fun sessionConnector(session: Session, verbose: Boolean, log: (String) -> Unit): Connector {
+fun relayEvents(note: ClientNotificationPayload): List<BackendEvent> = when (note.notificationType) {
+    ClientNotificationType.liveRelay -> runCatching { OdinSystemSerializer.deserialize<LiveRelayReceivedNotification>(note.data) }.getOrNull()
+        ?.let { listOf(BackendEvent.LiveRelayReceived(it.senderOdinId, it.channelKey, it.blob, it.receivedAt)) }.orEmpty()
+    ClientNotificationType.deviceHandshakeSuccess -> if (note.stunUrls.isEmpty()) emptyList() else listOf(BackendEvent.StunUrlsReceived(note.stunUrls))
+    else -> emptyList()
+}
+
+fun sessionConnector(session: Session, verbose: Boolean, log: (String) -> Unit, events: EventBus? = null): Connector {
     val client = HttpClientProvider.create().config { install(WebSockets) }
     return { onUp, onRing ->
         val creds = session.credentials.getActiveCredentials() ?: error("no credentials")
@@ -86,6 +96,7 @@ fun sessionConnector(session: Session, verbose: Boolean, log: (String) -> Unit):
                     if (frame !is Frame.Text) continue
                     val note = runCatching { OdinSystemSerializer.deserialize<ClientNotificationPayload>(decrypt(frame.readText())) }
                         .getOrNull() ?: continue
+                    events?.let { bus -> relayEvents(note).forEach { bus.emit(it) } }
                     when (note.notificationType) {
                         ClientNotificationType.deviceHandshakeSuccess -> {
                             up = true

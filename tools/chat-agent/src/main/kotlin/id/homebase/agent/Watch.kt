@@ -1,6 +1,7 @@
 package id.homebase.agent
 
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.drives.files.SendReadReceiptResult
 import id.homebase.api.client.drives.files.SendReadReceiptResultStatus
 import id.homebase.api.common.OdinId
@@ -69,6 +70,8 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val sendVoiceNote: suspend (Uuid, OutVoice, String) -> Uuid = { conversation, spoken, caption ->
         sendToConversation(session, config.allowlist, conversation, caption, media = { _, _ -> stageVoice(spoken) })
     }
+    val eventBus = EventBus()
+    val agentCalls = buildAgentCalls(session, eventBus, background, config, ::log)
     val notifier = config.notifyOwner?.takeIf { config.operatorBrain != null }?.let { ownerId ->
         OwnerNotifier(
             scope = background,
@@ -79,6 +82,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             send = { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) },
             speak = voice?.let { v -> { text: String -> v.speak(text) } },
             sendVoice = sendVoiceNote,
+            caller = agentCalls ?: OwnerCaller.None,
             store = File(dir, "escalations.json"),
             calls = CallBudget(File(dir, "owner-calls.txt"), config.maxOwnerCallsPerDay),
             prefix = config.replyPrefix,
@@ -168,12 +172,12 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         }
     }
     schedules?.let { log("schedules: ${it.activeCount()} active, timezone ${config.zone}") }
-    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} transcribe=${if (config.transcribe != null) "on" else "off"} tts=${if (config.tts != null) "on voice=${config.ttsReference?.let { "reference" } ?: config.ttsVoice} preset=${config.ttsPreset} replies=${if (config.voiceReplies) "mirror" else "off"} maxPerDay=${config.maxVoicePerDay}" else "off"} lastSeen=${cursor.position}")
+    log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} transcribe=${if (config.transcribe != null) "on" else "off"} tts=${if (config.tts != null) "on voice=${config.ttsReference?.let { "reference" } ?: config.ttsVoice} preset=${config.ttsPreset} replies=${if (config.voiceReplies) "mirror" else "off"} maxPerDay=${config.maxVoicePerDay}" else "off"} calls=${if (agentCalls != null) "on" else "off"} lastSeen=${cursor.position}")
     var poll = 0
     val waker = PollWaker()
     try {
       coroutineScope {
-        startDoorbell(this, config.transport, sessionConnector(session, verbose, ::log), waker, ::log)
+        startDoorbell(this, config.transport, sessionConnector(session, verbose, ::log, eventBus.takeIf { agentCalls != null }), waker, ::log)
         if (schedules != null) launch {
             while (true) {
                 try {
@@ -212,5 +216,6 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         log("stopping")
     } finally {
         toolServer?.close()
+        agentCalls?.close()
     }
 }

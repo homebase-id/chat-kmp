@@ -77,6 +77,12 @@ class Ffmpeg(private val path: String? = System.getenv("PATH"), private val time
             ?.takeIf { it.isNotEmpty() }
     }
 
+    suspend fun pcm(input: File, rate: Int, limitMs: Long = timeoutMs): ByteArray? {
+        val bin = ffmpeg ?: return null
+        return run(listOf(bin, "-nostdin", "-v", "error") + inputArgs(input, null) + listOf("-f", "s16le", "-ac", "1", "-ar", rate.toString(), "pipe:1"), limitMs)
+            ?.takeIf { it.isNotEmpty() }
+    }
+
     suspend fun poster(input: File, durationMs: Long): ByteArray? = frame(input, minOf(1_000L, durationMs / 2), POSTER_WIDTH, timeoutMs)
 
     // one shared deadline across all frames

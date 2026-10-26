@@ -7,9 +7,9 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 
 private const val USAGE =
-    "usage: chat-agent login --profile <p> [--identity <domain>] [--no-browser] [--callback-port <n>] | read --profile <p> [--conversation <id>] [--limit <n>] [--full <message id prefix>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | brain-test --profile <p>  (global: --verbose, --version)"
+    "usage: chat-agent login --profile <p> [--identity <domain>] [--no-browser] [--callback-port <n>] | read --profile <p> [--conversation <id>] [--limit <n>] [--full <message id prefix>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | call --profile <p> --to <odinId> --say <text> | brain-test --profile <p>  (global: --verbose, --version)"
 
-private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--file", "--callback-port", "--full")
+private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--file", "--callback-port", "--full", "--to", "--say")
 private const val VERBOSE = "--verbose"
 private const val READ_ONLY = "--read-only"
 private const val ATTACH_LATEST = "--attach-latest-image"
@@ -42,7 +42,7 @@ fun main(args: Array<String>) {
     val sendText = positional.drop(1).joinToString(" ")
     Logger.setMinSeverity(if (verbose) Severity.Verbose else Severity.Warn)
     val profile = options["--profile"]
-    if (command !in setOf("login", "read", "conversations", "send", "watch", "mcp", "brain-test", "tools-check") || profile == null) {
+    if (command !in setOf("login", "read", "conversations", "send", "watch", "call", "mcp", "brain-test", "tools-check") || profile == null) {
         System.err.println(USAGE)
         exitProcess(2)
     }
@@ -57,6 +57,7 @@ fun main(args: Array<String>) {
                 )
                 "send" -> send(profile, sendText, options["--conversation"]?.let { Uuid.parse(it) }, options["--file"])
                 "watch" -> watch(profile, verbose)
+                "call" -> callOwner(profile, options["--to"] ?: error("--to <odinId> required"), options["--say"] ?: sendText.ifEmpty { error("--say <text> required") }, verbose)
                 "brain-test" -> brainTest(profile, attachLatest)
                 "tools-check" -> if (sendText.startsWith("typed")) toolsCheckTyped(profile, sendText.removePrefix("typed").trim().ifEmpty { null }) else toolsCheck(profile)
                 "mcp" -> mcp(profile, options["--conversation"]?.let { Uuid.parse(it) }, readOnly)

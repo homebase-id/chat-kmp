@@ -28,6 +28,7 @@ dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
     implementation(libs.kermit)
+    implementation(libs.webrtc.java)
     runtimeOnly(libs.slf4j.nop)
     implementation(libs.kotlinx.io.core)
     implementation(libs.kotlinx.coroutines.core)
