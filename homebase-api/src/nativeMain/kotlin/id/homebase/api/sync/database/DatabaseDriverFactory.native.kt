@@ -195,7 +195,7 @@ internal fun exportEncryptedCopy(name: String, key: String) {
     }
 }
 
-internal fun exportPath(name: String): String = "${databasePath(name)}-encrypting"
+internal fun exportPath(name: String): String = databasePath(name) + ENCRYPTING_COPY_SUFFIX
 
 internal fun databasePath(name: String): String = "${iosDatabasesDir()}/$name"
 

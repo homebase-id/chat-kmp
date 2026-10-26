@@ -220,6 +220,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       PushChainLoggingKt.logPushChain(
           hop: "received(ios)",
           detail: "appState=\(application.applicationState.rawValue) hasAps=\(aps != nil) dataKeys=\(data.count)")
+      guard MainViewControllerKt.isDatabaseOpen() else {
+          completionHandler(.noData)
+          return
+      }
       let entry = NotificationEntry.companion.fromKoin()
       entry.onPushArrivedAsync(title: title, body: body, data: data) { success in
           completionHandler(success == true ? .newData : .failed)
