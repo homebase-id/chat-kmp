@@ -54,6 +54,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentImageInfoChip
 import id.homebase.core.util.contentType
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.menu_back
@@ -184,7 +185,7 @@ fun MomentComposeScreen(
                     // we don't mirror it continuously.
                     viewModel.onAction(
                         MomentComposeUiAction.DescriptionChanged(
-                            textFieldState.toMarkdown().trimEnd()
+                            textFieldState.toMessageMarkdown()
                         )
                     )
                     viewModel.onAction(MomentComposeUiAction.NextClicked)
