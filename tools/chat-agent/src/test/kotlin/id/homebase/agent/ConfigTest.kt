@@ -136,4 +136,48 @@ class ConfigTest {
         assertEquals(setOf(self, other), c.allowlist.conversationIds)
         assertEquals(setOf(OdinId("a.example.com")), c.allowlist.authors)
     }
+
+    @Test
+    fun ownerNotificationKnobsParse() {
+        val ops = OdinId("ops.example.com")
+        val off = parseConfig("bot=true", owner)
+        assertNull(off.notifyOwner)
+        assertEquals(10 * 60_000L, off.ownerCallAfterMs)
+        assertEquals(3, off.maxOwnerCallsPerDay)
+        assertNull(off.ownerQuietHours)
+        assertTrue(off.urgentOverridesQuiet)
+        assertEquals(2 * 60_000L, off.notifyJobsAfterMs)
+        assertTrue(off.warnings.none { "owner" in it.lowercase() })
+
+        val on = parseConfig(
+            "bot=true\noperatorBrain=x\noperators=ops.example.com\nowner=ops.example.com\nownerCallAfter=5m\nmaxOwnerCallsPerDay=1\nownerQuietHours=22:00-07:30\nurgentOverridesQuiet=false\nnotifyJobsAfter=30s\ntimezone=Europe/Oslo",
+            owner,
+        )
+        assertEquals(ops, on.notifyOwner)
+        assertEquals(5 * 60_000L, on.ownerCallAfterMs)
+        assertEquals(1, on.maxOwnerCallsPerDay)
+        assertEquals(java.time.LocalTime.of(22, 0), on.ownerQuietHours!!.start)
+        assertEquals(java.time.LocalTime.of(7, 30), on.ownerQuietHours!!.end)
+        assertFalse(on.urgentOverridesQuiet)
+        assertEquals(30_000L, on.notifyJobsAfterMs)
+        assertEquals(java.time.ZoneId.of("Europe/Oslo"), on.notifyPolicy.zone)
+        assertTrue(on.warnings.none { "owner" in it.lowercase() })
+    }
+
+    @Test
+    fun ownerOutsideOperatorsWarnsAndTurnsNotificationsOff() {
+        val c = parseConfig("bot=true\noperatorBrain=x\noperators=ops.example.com\nowner=boss.example.com", owner)
+        assertNull(c.notifyOwner)
+        assertTrue(c.warnings.any { "boss.example.com" in it && "not in operators" in it })
+    }
+
+    @Test
+    fun badQuietHoursAndDurationsAreHandled() {
+        val c = parseConfig("ownerQuietHours=night", owner)
+        assertNull(c.ownerQuietHours)
+        assertTrue(c.warnings.any { "ownerQuietHours" in it })
+        assertTrue(parseConfig("ownerQuietHours=08:00-08:00", owner).warnings.any { "ownerQuietHours" in it })
+        assertFailsWith<IllegalArgumentException> { parseConfig("ownerCallAfter=soon", owner) }
+        assertFailsWith<IllegalArgumentException> { parseConfig("notifyJobsAfter=0", owner) }
+    }
 }

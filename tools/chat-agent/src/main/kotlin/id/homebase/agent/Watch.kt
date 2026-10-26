@@ -58,19 +58,48 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val cursor = SeenCursor(stateFile.takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() ?: System.currentTimeMillis())
     val timings = PollTimings()
     val previews = config.previewsFor(session)
-    val jobs = config.operatorBrain?.let {
-        JobRunner(CoroutineScope(SupervisorJob(coroutineContext.job)), JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"), ackDelayMs = JOB_ACK_DELAY_MS)
-    }
-    val fetcher = sessionFetcher(session)
-    val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null
-    val schedules = if (config.operatorBrain != null) ScheduleStore(File(dir, "schedules.json"), config.zone, log = ::log) else null
+    val background = CoroutineScope(SupervisorJob(coroutineContext.job))
     val voice = config.tts?.let {
         VoiceOut(
             shellSpeaker(it, ttsEnvironment(config), config.ttsTimeoutMs, ::log, config.ttsMaxChars),
             RunLimiter(File(dir, "voice.txt"), Int.MAX_VALUE, config.maxVoicePerDay),
         )
     }
-    val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules, voice) }
+    val notifier = config.notifyOwner?.takeIf { config.operatorBrain != null }?.let { ownerId ->
+        OwnerNotifier(
+            scope = background,
+            clock = System::currentTimeMillis,
+            owner = ownerId,
+            conversation = { config.allowlist.directWith(session.identity, ownerId) },
+            policy = config.notifyPolicy,
+            send = { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) },
+            speak = voice?.let { v -> { text: String -> v.speak(text) } },
+            sendVoice = { conversation, spoken, caption ->
+                sendToConversation(session, config.allowlist, conversation, caption, media = { _, _ -> stageVoice(spoken) })
+            },
+            sendMedia = { conversation, media -> sendOwnerMedia(session, config.allowlist, conversation, media) },
+            store = File(dir, "escalations.json"),
+            calls = CallBudget(File(dir, "owner-calls.txt"), config.maxOwnerCallsPerDay),
+            prefix = config.replyPrefix,
+            log = ::log,
+        )
+    }
+    val jobs = config.operatorBrain?.let {
+        JobRunner(
+            background, JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"), ackDelayMs = JOB_ACK_DELAY_MS,
+            onFinished = notifier?.let { n ->
+                { report ->
+                    val owned = config.allowlist.directWith(session.identity, n.owner)
+                    jobNotice(report, config.allowlist.title(report.conversation) ?: report.conversation.toString().take(ID_PREFIX), owned, config.notifyJobsAfterMs)
+                        ?.let { (urgency, text) -> n.notify(text, urgency, "job ${report.id}") }
+                }
+            },
+        )
+    }
+    val fetcher = sessionFetcher(session)
+    val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null
+    val schedules = if (config.operatorBrain != null) ScheduleStore(File(dir, "schedules.json"), config.zone, log = ::log) else null
+    val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules, voice, notifier) }
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
@@ -92,6 +121,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         leaseFor = chatTools?.let { tools -> { conversation, tier, sender -> tools.lease(conversation, tier, sender) } },
         schedules = schedules,
         voice = voice,
+        notifier = notifier,
         sendVoice = { conversation, spoken, caption ->
             timings.time("send") { sendToConversation(session, config.allowlist, conversation, caption, media = { _, _ -> stageVoice(spoken) }) }
         },
@@ -131,7 +161,13 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             .onFailure { log("WARNING: operatorGroup '$g' does not exist; operator MCP token files stay private (700/600), a brain running as another OS user cannot read them") }
     }
     toolServer?.let { log("chat tools on 127.0.0.1:${it.port} (per-run bearer token, loopback only)") }
-    jobs?.recoverDropped { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) }
+    notifier?.start()
+    jobs?.recoverDropped { conversation, text ->
+        sendToConversation(session, config.allowlist, conversation, text)
+        if (notifier != null && conversation != config.allowlist.directWith(session.identity, notifier.owner)) {
+            notifier.notify(text.removePrefix(config.replyPrefix).trim(), Urgency.INFO, "restart")
+        }
+    }
     schedules?.let { log("schedules: ${it.activeCount()} active, timezone ${config.zone}") }
     log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} transcribe=${if (config.transcribe != null) "on" else "off"} tts=${if (config.tts != null) "on voice=${config.ttsReference?.let { "reference" } ?: config.ttsVoice} preset=${config.ttsPreset} replies=${if (config.voiceReplies) "mirror" else "off"} maxPerDay=${config.maxVoicePerDay}" else "off"} lastSeen=${cursor.position}")
     var poll = 0

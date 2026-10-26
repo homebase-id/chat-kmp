@@ -196,4 +196,55 @@ class JobsTest {
         gate.complete(Unit)
         until("slow reply") { "slow" in texts }
     }
+
+    private fun hooked(reports: MutableList<JobReport>, ackDelayMs: Long = 0) =
+        JobRunner(CoroutineScope(Dispatchers.Default), JobLedger(null, 10), prefix = "", ackDelayMs = ackDelayMs, onFinished = { reports += it })
+
+    @Test
+    fun finishHookReportsSuccessWithTheFirstLine() = runBlocking<Unit> {
+        val reports = CopyOnWriteArrayList<JobReport>()
+        hooked(reports).submit(dm, setOf("op"), {}, {}) { BrainOutcome.Output("\nall green\nsecond line") }
+        until("report") { reports.size == 1 }
+        val r = reports.single()
+        assertEquals(JobStatus.DONE, r.status)
+        assertEquals("all green", r.firstLine)
+        assertEquals(dm, r.conversation)
+        assertEquals(1, r.id)
+        assertEquals(null, r.schedule)
+    }
+
+    @Test
+    fun finishHookReportsFailureAndExceptionAndScheduleTag() = runBlocking<Unit> {
+        val reports = CopyOnWriteArrayList<JobReport>()
+        val runner = hooked(reports)
+        runner.submit(dm, setOf("op"), {}, {}, schedule = "ab12") { BrainOutcome.Failed("boom") }
+        until("first") { reports.size == 1 }
+        runner.submit(dm, setOf("op"), {}, {}) { error("kaput") }
+        until("second") { reports.size == 2 }
+        assertEquals(listOf(JobStatus.FAILED, JobStatus.FAILED), reports.map { it.status })
+        assertEquals("boom", reports[0].firstLine)
+        assertEquals("ab12", reports[0].schedule)
+        assertEquals("kaput", reports[1].firstLine)
+    }
+
+    @Test
+    fun finishHookReportsACancelledRunningJob() = runBlocking<Unit> {
+        val reports = CopyOnWriteArrayList<JobReport>()
+        val started = CompletableDeferred<Unit>()
+        val runner = hooked(reports)
+        runner.submit(dm, setOf("op"), {}, {}) { started.complete(Unit); CompletableDeferred<Unit>().await(); BrainOutcome.Output("never") }
+        started.await()
+        runner.cancel(null)
+        until("cancel report") { reports.size == 1 }
+        assertEquals(JobStatus.CANCELLED, reports.single().status)
+    }
+
+    @Test
+    fun aFailingFinishHookNeverBlocksTheNextJob() = runBlocking<Unit> {
+        val done = CopyOnWriteArrayList<String>()
+        val runner = JobRunner(CoroutineScope(Dispatchers.Default), JobLedger(null, 10), prefix = "", onFinished = { error("hook down") })
+        runner.submit(dm, setOf("op"), {}, { done += it }) { BrainOutcome.Output("one") }
+        runner.submit(dm, setOf("op"), {}, { done += it }) { BrainOutcome.Output("two") }
+        until("both jobs") { done.size == 2 }
+    }
 }

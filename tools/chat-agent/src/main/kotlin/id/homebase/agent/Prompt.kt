@@ -5,6 +5,8 @@ import java.security.SecureRandom
 
 const val HISTORY_LIMIT = 10
 private const val MESSAGE_CODEPOINTS = 1000
+const val NOTIFY_PROMPT_LINE =
+    "When you are blocked on a decision only the owner can make, call notify_owner with urgency attention; use urgency urgent only for something that cannot wait (prod down, data at risk, a deadline)."
 private val TIME_FORMAT = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(java.time.ZoneOffset.UTC)
 
 private fun ChatMsg.shown() = if (expanded) text else display.truncateToCodePoints(MESSAGE_CODEPOINTS)

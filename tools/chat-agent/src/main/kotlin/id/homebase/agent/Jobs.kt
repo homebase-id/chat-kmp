@@ -9,6 +9,10 @@ import java.io.File
 
 const val JOB_ACK_DELAY_MS = 60_000L
 
+enum class JobStatus { DONE, FAILED, CANCELLED }
+
+class JobReport(val id: Int, val conversation: Uuid, val status: JobStatus, val durationMs: Long, val firstLine: String, val schedule: String? = null)
+
 class JobRunner(
     private val scope: CoroutineScope,
     private val ledger: JobLedger,
@@ -17,9 +21,11 @@ class JobRunner(
     private val prefix: String = BOT_PREFIX,
     private val journal: File? = null,
     private val ackDelayMs: Long = 0,
+    private val onFinished: (suspend (JobReport) -> Unit)? = null,
 ) {
-    private class Job(val id: Int, val conversation: Uuid, val operators: Set<String>, val work: suspend () -> BrainOutcome, val deliver: suspend (String) -> Unit) {
+    private class Job(val id: Int, val conversation: Uuid, val operators: Set<String>, val work: suspend () -> BrainOutcome, val deliver: suspend (String) -> Unit, val schedule: String?) {
         var ready = false
+        @Volatile var userCancelled = false
         var startedAt = 0L
         var coroutine: kotlinx.coroutines.Job? = null
         var ackTimer: kotlinx.coroutines.Job? = null
@@ -35,6 +41,7 @@ class JobRunner(
         operators: Set<String>,
         announce: suspend (String) -> Unit,
         deliver: suspend (String) -> Unit,
+        schedule: String? = null,
         work: suspend () -> BrainOutcome,
     ): String {
         val accepted = synchronized(lock) {
@@ -42,7 +49,7 @@ class JobRunner(
                 null
             } else {
                 operators.forEach(ledger::record)
-                val job = Job(nextId++, conversation, operators, work, deliver)
+                val job = Job(nextId++, conversation, operators, work, deliver, schedule)
                 val ahead = queue.lastOrNull() ?: running
                 queue.addLast(job)
                 journal?.appendText("+\t${job.id}\t$conversation\n")
@@ -132,12 +139,20 @@ class JobRunner(
         running = job
         job.startedAt = now()
         job.coroutine = scope.launch {
+            var status = JobStatus.DONE
+            var line = ""
             val text = try {
-                jobText(job.id, job.work(), prefix)
+                val outcome = job.work()
+                if (outcome is BrainOutcome.Failed) status = JobStatus.FAILED
+                line = jobSummary(outcome)
+                jobText(job.id, outcome, prefix)
             } catch (e: CancellationException) {
+                if (job.userCancelled) report(job, JobStatus.CANCELLED, "")
                 throw e
             } catch (e: Exception) {
-                tagged(prefix, "job ${job.id} failed: ${failureLine(e.message ?: e.toString())}")
+                status = JobStatus.FAILED
+                line = failureLine(e.message ?: e.toString())
+                tagged(prefix, "job ${job.id} failed: $line")
             }
             try {
                 job.deliver(text)
@@ -146,9 +161,24 @@ class JobRunner(
             } catch (e: Exception) {
                 log("job ${job.id} send error: ${e.message}")
             }
+            report(job, status, line)
         }.also {
             it.invokeOnCompletion {
                 synchronized(lock) { job.ackTimer?.cancel(); if (running === job) running = null; journalDrop(job); startNext() }
+            }
+        }
+    }
+
+    private fun report(job: Job, status: JobStatus, line: String) {
+        val hook = onFinished ?: return
+        val report = JobReport(job.id, job.conversation, status, now() - job.startedAt, line, job.schedule)
+        scope.launch {
+            try {
+                hook(report)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("job ${job.id} finish hook error: ${e.message}")
             }
         }
     }
@@ -166,6 +196,7 @@ class JobRunner(
         val job = listOfNotNull(running).plus(queue).firstOrNull { it.id == target } ?: return tagged(prefix, "no such job $target")
         if (!mayCancel(job.conversation)) return tagged(prefix, "job $target was started in another conversation")
         if (running === job) {
+            job.userCancelled = true
             job.coroutine?.cancel()
         } else {
             queue.remove(job)

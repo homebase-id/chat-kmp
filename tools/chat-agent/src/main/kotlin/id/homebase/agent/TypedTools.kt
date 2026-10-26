@@ -230,7 +230,7 @@ suspend fun toolSendContact(backend: AgentBackend, args: JsonObject?): ToolReply
 private fun captionArg(backend: AgentBackend, args: JsonObject?) =
     tagged(backend.sendPrefix, stringArg(args, "caption").orEmpty()).trim().truncateToCodePoints(CAPTION_CODEPOINTS)
 
-private suspend fun probeOutVideo(ffmpeg: Ffmpeg, file: OutFile): OutVideo {
+internal suspend fun probeOutVideo(ffmpeg: Ffmpeg, file: OutFile): OutVideo {
     val dir = tempDir("probe")
     try {
         val source = File(dir, "in.mp4").also { it.writeBytes(file.bytes) }
@@ -258,21 +258,23 @@ suspend fun toolSendVideo(backend: AgentBackend, args: JsonObject?): ToolReply =
     ToolReply("sent video ${backend.sendVideo(conversationId, video, caption, reply)}")
 }
 
+internal suspend fun voiceSeconds(ffmpeg: Ffmpeg, file: OutFile): Int? {
+    if (!ffmpeg.available) return null
+    val dir = tempDir("probe")
+    try {
+        val source = File(dir, "in.${file.name.substringAfterLast('.').lowercase()}").also { it.writeBytes(file.bytes) }
+        return probeSeconds(ffmpeg, source)
+    } finally {
+        dir.deleteRecursively()
+    }
+}
+
 suspend fun toolSendVoice(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val conversationId = sendTarget(backend, args)
     val file = fileArg(backend, args)
     val type = VOICE_TYPES[file.name.substringAfterLast('.', "").lowercase()]
     requireNotNull(type) { "send_voice needs an audio file (${VOICE_TYPES.keys.joinToString(", ")})" }
-    val ffmpeg = backend.ffmpeg
-    val seconds = if (ffmpeg.available) {
-        val dir = tempDir("probe")
-        try {
-            val source = File(dir, "in.${file.name.substringAfterLast('.').lowercase()}").also { it.writeBytes(file.bytes) }
-            probeSeconds(ffmpeg, source)
-        } finally {
-            dir.deleteRecursively()
-        }
-    } else null
+    val seconds = voiceSeconds(backend.ffmpeg, file)
     val voice = OutVoice(file.name, file.bytes, type, seconds ?: 0)
     ToolReply("sent voice note ${backend.sendVoice(conversationId, voice, captionArg(backend, args), replyArg(backend, conversationId, args))}${if (seconds == null) " (duration unknown: ffprobe not available or unreadable)" else ""}")
 }

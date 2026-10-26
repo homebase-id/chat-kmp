@@ -104,6 +104,12 @@ class AgentConfig(
     val mcpFilesDir: File? = null,
     val transport: Transport = Transport.AUTO,
     val zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    val notifyOwner: OdinId? = null,
+    val ownerCallAfterMs: Long = DEFAULT_OWNER_CALL_AFTER_MS,
+    val maxOwnerCallsPerDay: Int = DEFAULT_MAX_OWNER_CALLS_PER_DAY,
+    val ownerQuietHours: QuietHours? = null,
+    val urgentOverridesQuiet: Boolean = true,
+    val notifyJobsAfterMs: Long = DEFAULT_NOTIFY_JOBS_AFTER_MS,
     val warnings: List<String> = emptyList(),
 ) {
     val nick = Nickname(nickname)
@@ -114,6 +120,7 @@ class AgentConfig(
     val sendsReceipts get() = readReceipts && bot
     val described get() = persona != null || bot
     val voiceMirror get() = voiceReplies && tts != null
+    val notifyPolicy get() = NotifyPolicy(ownerCallAfterMs, maxOwnerCallsPerDay, ownerQuietHours, urgentOverridesQuiet, zone)
 
     fun previewsFor(session: Session): LinkPreviewSource? = if (linkPreviews) serverLinkPreviews(session) else null
 }
@@ -180,6 +187,7 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
             add("WARNING: group membership grants machine access: every current member of an operator room can run operatorBrain here (full env, unfiltered history); membership is re-read each discovery")
         }
     }
+    if (config.notifyOwner != null && config.operatorBrain != null) add("owner notifications: on for ${config.notifyOwner} (notify_owner tool, job results, escalation to a call after ${config.ownerCallAfterMs / 60_000}m without a reply, at most ${config.maxOwnerCallsPerDay} calls/day, quiet hours ${config.ownerQuietHours?.let { "${it.start}-${it.end}" } ?: "none"}, urgent overrides quiet=${config.urgentOverridesQuiet}); text stays inside Homebase")
     if (config.listenRooms.isNotEmpty()) {
         add("WARNING: listenRooms: the locked brain reads every message in ${config.listenRooms.joinToString(", ")} and may reply without being tagged (at most once per ${config.listenCooldownMs / 1000}s per room, PASS stays silent); unprompted runs never get the operator tier")
         config.listenRooms.filterNot { config.allowlist.allowsConversation(it) }.forEach { add("WARNING: listenRooms $it is not on allowConversations, ignored") }
@@ -229,6 +237,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
     val lockedTools = list("lockedTools").orEmpty().map { it.lowercase() }.filter { it in SUPPORTED_LOCKED_TOOLS }.toSet()
     val persona = (str("persona") ?: path("personaFile")?.let { File(it).readText() })
         ?.trim()?.lineSequence()?.joinToString(" ") { it.trim() }?.takeIf { it.isNotEmpty() }
+    val operatorSet = list("operators")?.map { OdinId(it) }?.toSet().orEmpty()
     val tts = str("tts")
     val ttsReference = path("ttsReference")
     val ttsPreset = str("ttsPreset")?.lowercase()?.takeIf { it in TTS_PRESETS } ?: DEFAULT_TTS_PRESET
@@ -237,6 +246,9 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
     val ttsTimeoutMs = str("ttsTimeout")?.let {
         parseDurationMs(it) ?: throw IllegalArgumentException("invalid ttsTimeout '$it': use e.g. 90s, 4m")
     } ?: DEFAULT_TTS_TIMEOUT_MS
+    val quietText = str("ownerQuietHours")
+    val quiet = quietText?.let(::parseQuietHours)
+    val notifyOwner = ownerKey?.takeIf { it in operatorSet }
     return AgentConfig(
         allowlist = Allowlist(conversations, authors, kind, memberMode, selfOwned = ownerKey == owner),
         nickname = str("nickname") ?: DEFAULT_NICKNAME,
@@ -244,7 +256,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         maxRunsPerHour = int("maxRunsPerHour", DEFAULT_MAX_RUNS_PER_HOUR),
         maxRunsPerDay = int("maxRunsPerDay", DEFAULT_MAX_RUNS_PER_DAY),
         persona = persona,
-        operators = list("operators")?.map { OdinId(it) }?.toSet().orEmpty(),
+        operators = operatorSet,
         operatorBrain = str("operatorBrain"),
         operatorRooms = list("operatorRooms")?.map { Uuid.parse(it) }?.toSet().orEmpty(),
         listenRooms = if (bot) list("listenRooms")?.map { Uuid.parse(it) }?.toSet().orEmpty() else emptySet(),
@@ -285,7 +297,19 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         transport = parseTransport(str("transport")) ?: Transport.AUTO,
         zone = str("timezone")?.let { runCatching { java.time.ZoneId.of(it) }.getOrElse { _ -> throw IllegalArgumentException("invalid timezone '$it': use an IANA id like Europe/Oslo") } } ?: java.time.ZoneId.systemDefault(),
         readReceipts = bool("readReceipts") ?: bot,
+        notifyOwner = notifyOwner,
+        ownerCallAfterMs = str("ownerCallAfter")?.let {
+            parseDurationMs(it) ?: throw IllegalArgumentException("invalid ownerCallAfter '$it': use e.g. 90s, 10m, 1h")
+        } ?: DEFAULT_OWNER_CALL_AFTER_MS,
+        maxOwnerCallsPerDay = int("maxOwnerCallsPerDay", DEFAULT_MAX_OWNER_CALLS_PER_DAY).coerceAtLeast(0),
+        ownerQuietHours = quiet,
+        urgentOverridesQuiet = bool("urgentOverridesQuiet") ?: true,
+        notifyJobsAfterMs = str("notifyJobsAfter")?.let {
+            parseDurationMs(it) ?: throw IllegalArgumentException("invalid notifyJobsAfter '$it': use e.g. 90s, 2m, 1h")
+        } ?: DEFAULT_NOTIFY_JOBS_AFTER_MS,
         warnings = listOfNotNull(
+            "WARNING: owner=$ownerKey is not in operators, so owner notifications (notify_owner, job results, call escalation) are off".takeIf { ownerKey != null && notifyOwner == null && str("operatorBrain") != null },
+            "WARNING: invalid ownerQuietHours '$quietText', use HH:MM-HH:MM with different start and end; quiet hours are off".takeIf { quietText != null && quiet == null },
             "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },
             "WARNING: listenRooms is ignored unless bot=true (never for the $DELEGATE_PROFILE profile)".takeIf { !bot && str("listenRooms") != null },
             "WARNING: invalid operatorContext '${str("operatorContext")}', using operators".takeIf { str("operatorContext")?.lowercase() !in setOf(null, "all", "operators") },

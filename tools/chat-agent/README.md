@@ -121,7 +121,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | timezone | IANA zone id (e.g. `Europe/Oslo`) used for schedule times; invalid is a startup error | system zone |
 | maxJobsPerDay | operator jobs per day PER OPERATOR (keyed by the server-set sender, persisted in `jobs.txt`; separate from `maxRunsPerDay`) | 20 |
 | bot | true for a bot identity | false |
-| owner | odinId allowed to summon the bot | none |
+| owner | odinId allowed to summon the bot. With `operatorBrain` it is also who the bot reaches out to (see Reaching the owner); it must be listed in `operators` or that feature stays off with a warning | none |
 | listenRooms | bot only: comma list of conversation uuids where untagged messages may also get a reply (locked tier, model may answer `PASS` to stay quiet); must also be allowed by `allowConversations` | none |
 | listenCooldown | minimum gap between unprompted runs in one room (`30s`, `5m`; bare number = seconds) | 60s |
 | followUp | bot only: how long after a group reply the same sender's untagged messages are read as a possible continuation (`90s`, `3m`; `0` disables) | 3m |
@@ -141,6 +141,11 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | ttsReference, ttsReferenceText | 5 to 30 s wav and its transcript for voice cloning (`TTS_REFERENCE`, `TTS_REFERENCE_TEXT`); overrides `ttsVoice` (warns if both are set). With the sidecar the clip path is resolved on the host under `TTS_REFERENCE_DIR`, so give the host path, not a container path. A knob only: nothing is fetched or shipped | none |
 | ttsTimeout | e.g. `240s`; the command is killed after this | 240s |
 | ttsMaxChars | the spoken text is cut to this many characters (1 to 600; about 1 s of synthesis per character plus a 47 s cold start must fit in `ttsTimeout`, else a warning) | 150 |
+| ownerCallAfter | how long an urgent notice may go unanswered before the bot places a call, e.g. `10m` | 10m |
+| maxOwnerCallsPerDay | calls placed to the owner in any 24 h, persisted in `owner-calls.txt`; 0 turns calls off | 3 |
+| ownerQuietHours | `HH:MM-HH:MM` in `timezone` (may wrap midnight), none by default. No voice notes for attention notices in it, and no calls unless `urgentOverridesQuiet` | none |
+| urgentOverridesQuiet | `true` lets urgent notices voice and call during quiet hours; `false` skips them (the text still goes) | true |
+| notifyJobsAfter | a job that ran in the owner's own chat is only announced again when it took at least this long; jobs from any other conversation always are | 2m |
 | voiceReplies | `off` or `mirror`: answer a voice-note trigger with a voice note, text as its caption | off |
 | maxVoicePerDay | voice replies per rolling 24 h, shared by the tool and `mirror`, kept in `voice.txt` | 20 |
 | lockedTools | comma list, default empty. `chat` gives the locked brain the chat tools below (claude default brain only; a custom `brain` gets the env vars and `{mcp}`). Unknown values warn and are ignored | none |
@@ -256,6 +261,32 @@ Container (quadlet): `Volume=%t/quag-tts:/run/quag-tts` and `Environment=TTS_SOC
 `tts=/opt/chat-agent/scripts/speak.sh`. `speak.sh` needs `curl`, `jq` and `ffmpeg`, posts to the socket and converts the wav to
 m4a/AAC 48 kHz mono. Without a socket, `TTS_CMD` runs a local synthesizer instead. `TTS_RUN_SECONDS` (default 230) must stay
 below `ttsTimeout`.
+
+## Reaching the owner (`notify_owner`, job notices, call escalation)
+
+Set `owner=<odinId>` and list the same id in `operators`, with an `operatorBrain`. The bot then finds its 1:1 chat with that
+person (a direct conversation whose members are exactly the bot and the owner; never note-to-self, which is the bot's own).
+With no such chat it logs `owner has no 1:1 with the bot` and the tool returns an error. Start the chat from the owner's side once.
+
+- Operator brain tool `notify_owner(text, urgency=info|attention|urgent, path?)`: operator tier only, a locked run never gets it.
+  Text up to 1500 characters, tagged like any bot message, at most 6 calls per hour across all runs. `path` is a file inside
+  `mcpFilesDir` and goes after the text as an image or file, an `.mp4` as a video, or audio as a voice note.
+- `info` sends the text. `attention` adds a voice note when `tts=` is set and it is not quiet hours. `urgent` sends the text, adds
+  the voice note, and records an escalation (`escalations.json`, one per source, a new urgent from the same source replaces it).
+- If the owner has not written in that chat `ownerCallAfter` after an urgent notice, the bot calls them (budget `maxOwnerCallsPerDay`,
+  quiet hours per `urgentOverridesQuiet`) and then texts the outcome: answered, missed, declined, unavailable or failed.
+  Quote-replying to the notice cancels the escalation and the brain sees "the owner is replying to your notice: ...". Any message from
+  the owner in that chat also cancels it; read receipts are not used. Escalations survive a restart (an overdue one waits a minute
+  first so replies sent while the bot was down are read) and are dropped after 24 h. The call itself sits behind `OwnerCaller`; the
+  default does nothing and reports `unavailable`, which does not use the daily budget.
+- Operator jobs finishing, failing or being cancelled notify the owner (`INFO`, failures `ATTENTION`) unless the job ran in the owner's
+  own chat and took less than `notifyJobsAfter`. A scheduled run that fails always notifies. A job dropped by a restart is relayed too.
+- The operator prompt tells the brain to use `attention` when it is blocked on a decision only the owner can make, and `urgent` only
+  for something that cannot wait (prod down, data at risk, a deadline).
+
+Privacy: notices go through the same encrypted Homebase chat as every other message and nothing leaves it. Push notification bodies stay
+generic (`conversationTransitOptions`), so the text is never in the push payload. Voice synthesis stays on the box (see Voice replies);
+a live phone call needs a fast engine, which is a separate decision (KittenTTS 2 is far slower than real time).
 
 ## Deploy (Linux box, systemd)
 

@@ -71,6 +71,10 @@ class Allowlist(
 
     fun info(id: Uuid): ConversationInfo? = lookup(id)
 
+    fun directWith(self: OdinId, peer: OdinId): Uuid? =
+        (known.values + derived.values).filter { it.id != ChatProtocol.ConversationWithYourselfId && it.members.toSet() == setOf(self, peer) && allowsSend(it.id) }
+            .minByOrNull { it.id.toString() }?.id
+
     fun allowsSend(id: Uuid): Boolean = !readOnly && when {
         id == ChatProtocol.ConversationWithYourselfId -> allowsConversation(id)
         delegate -> isExplicitGroup(id) && lookup(id) != null

@@ -164,7 +164,7 @@ class ChatToolsTest {
         val operator = rpc(lease(fake(), Tier.OPERATOR).token, "tools/list").second!!
         fun names(r: JsonObject) = r["result"]!!.jsonObject["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
         val typed = setOf("send_poll", "vote_poll", "send_event", "send_location", "send_contact", "send_dice", "send_groodle", "vote_groodle")
-        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact", "edit_message", "delete_message") + typed + SCHEDULE_TOOL_NAMES, names(operator))
+        assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact", "edit_message", "delete_message") + typed + SCHEDULE_TOOL_NAMES + NOTIFY_TOOL, names(operator))
         val locked = rpc(lease(fake(), Tier.LOCKED).token, "tools/list").second!!
         assertEquals(setOf("read_messages", "search_messages", "get_conversation", "send_message", "react", "unreact") + typed, names(locked))
         assertFalse(locked.toString().contains("conversationId"))
@@ -179,7 +179,7 @@ class ChatToolsTest {
         assertTrue(setOf("send_video", "send_voice", "send_view_once", "send_file").all { it in names(Tier.OPERATOR) })
         assertTrue(setOf("send_poll", "vote_poll", "send_event", "send_location", "send_contact", "send_file").all { it in names(Tier.LOCKED) })
         assertTrue(names(Tier.LOCKED).none { it == "send_video" || it == "send_voice" || it == "send_view_once" })
-        assertEquals(setOf("send_video", "send_voice", "send_view_once"), names(Tier.OPERATOR) - names(Tier.LOCKED) - setOf("edit_message", "delete_message") - SCHEDULE_TOOL_NAMES)
+        assertEquals(setOf("send_video", "send_voice", "send_view_once"), names(Tier.OPERATOR) - names(Tier.LOCKED) - setOf("edit_message", "delete_message") - SCHEDULE_TOOL_NAMES - NOTIFY_TOOL)
         val b = Fake(Allowlist.default(owner).copy(self, false), emptyList(), root)
         val locked = lease(b, Tier.LOCKED, cap = LOCKED_TOOL_CALL_CAP)
         assertTrue(call(locked.token, "send_video", buildJsonObject { put("path", "a.mp4") }).second.isError())
