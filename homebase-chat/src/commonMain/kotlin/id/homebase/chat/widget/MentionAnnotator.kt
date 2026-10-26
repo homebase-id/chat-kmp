@@ -12,7 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import com.mikepenz.markdown.model.MarkdownAnnotator
 import com.mikepenz.markdown.model.markdownAnnotator
-import id.homebase.api.util.findMentions
+import id.homebase.api.util.Mention
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import org.intellij.markdown.IElementType
@@ -84,9 +84,8 @@ private class ResolvedMention(val range: IntRange, val style: SpanStyle, val tex
  * `annotatorSettings`, and the block path hands it to `Markdown()`, which publishes it for
  * paragraphs, headings, list items, quotes and table cells alike.
  *
- * [parsedContent] must be the exact string handed to the parser (i.e. post
- * [id.homebase.api.util.withChatHardLineBreaks], which shifts offsets) — the ranges are offsets
- * into it, and the annotator slices the node's own span out of it.
+ * [parsed] carries the post-soft-break-promotion text the AST was built from, which shifts offsets
+ * — the mention ranges are offsets into it, and the annotator slices the node's own span out of it.
  *
  * The scan, the self-test and the name lookup all happen once per remembered key, never per AST
  * node and never per recomposition: the annotator lambda runs for every paragraph, list item and
@@ -96,7 +95,7 @@ private class ResolvedMention(val range: IntRange, val style: SpanStyle, val tex
  */
 @Composable
 internal fun rememberMentionAnnotator(
-    parsedContent: String,
+    parsed: ParsedChatMarkdown,
     style: TextStyle,
     color: Color,
     context: MentionContext?,
@@ -104,9 +103,10 @@ internal fun rememberMentionAnnotator(
     val selfBackground = MaterialTheme.colorScheme.tertiaryContainer
     val selfContent = MaterialTheme.colorScheme.onTertiaryContainer
     val linkStyles = remember(style, color) { chatLinkStyles(style, color) }
-    return remember(parsedContent, style, color, selfBackground, selfContent, context) {
+    return remember(parsed, style, color, selfBackground, selfContent, context) {
         val resolved = resolveMentions(
-            content = parsedContent,
+            content = parsed.text,
+            mentions = parsed.mentionRanges,
             style = style,
             color = color,
             selfBackground = selfBackground,
@@ -119,13 +119,13 @@ internal fun rememberMentionAnnotator(
 
 private fun resolveMentions(
     content: String,
+    mentions: List<Mention>,
     style: TextStyle,
     color: Color,
     selfBackground: Color,
     selfContent: Color,
     context: MentionContext?,
 ): List<ResolvedMention> {
-    val mentions = findMentions(content)
     if (mentions.isEmpty()) return emptyList()
 
     val mentionStyle = mentionSpanStyle(style, color)

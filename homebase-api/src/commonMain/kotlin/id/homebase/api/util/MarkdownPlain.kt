@@ -218,7 +218,11 @@ fun markdownHasBlockElements(content: String): Boolean {
     } catch (_: Throwable) {
         return false
     }
+    return markdownTreeHasBlockElements(tree)
+}
 
+/** [markdownHasBlockElements] over an already-parsed ChatMarkdownFlavour tree. */
+fun markdownTreeHasBlockElements(tree: ASTNode): Boolean {
     // The root is MARKDOWN_FILE; its direct children are the block-level nodes.
     // A pure inline message yields a single PARAGRAPH plus whitespace/EOL tokens.
     // Any other top-level child (a second paragraph, or any heading/list/quote/

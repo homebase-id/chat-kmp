@@ -65,7 +65,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.contactcard.ContactCardBubble
 import id.homebase.chat.contactcard.contactCardPhotoData
 import id.homebase.chat.contactcard.ContactCardDescriptor
@@ -567,11 +566,12 @@ fun MessageBubbleRaw(
     // the custom Layout. Emoji-only, search, and the "deleted" placeholder always
     // render as a single stable Text, so they keep the custom Layout's last-line
     // timestamp tuck.
-    val bodyIsBlock = remember(bodyText, emojiOnly, effectiveSearchQuery, message.isDeleted) {
+    val markdownCache = LocalChatMarkdownParseCache.current
+    val bodyIsBlock = remember(markdownCache, bodyText, emojiOnly, effectiveSearchQuery, message.isDeleted) {
         !message.isDeleted &&
             !emojiOnly &&
             effectiveSearchQuery.isEmpty() &&
-            markdownHasBlockElements(bodyText)
+            markdownCache.get(bodyText).hasBlockElements
     }
 
     // The author name carries its own 4dp bottom padding, so the text row drops its top one
