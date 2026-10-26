@@ -77,7 +77,7 @@ kermit = "2.1.0"
 cryptography = "0.5.0"
 robolectric = "4.16.1"
 navigation = "2.10.0"
-koin = "4.2.1"
+koin = "4.2.2"
 # Held at 0.13.0: 0.14.2+ publishes klibs with abi_version 2.4.0, unreadable by Kotlin 2.3.x.
 # Bumping needs the Kotlin 2.4 upgrade first, or every Kotlin/Native target fails to resolve.
 filekit = "0.13.0"
