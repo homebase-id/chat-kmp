@@ -23,6 +23,7 @@ import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGPDFDocumentCreateWithURL
 import platform.CoreGraphics.CGPDFDocumentGetNumberOfPages
 import platform.CoreGraphics.CGPDFDocumentGetPage
+import platform.CoreGraphics.CGPDFDocumentIsUnlocked
 import platform.CoreGraphics.CGPDFDocumentRelease
 import platform.CoreGraphics.CGPDFDocumentRef
 import platform.CoreGraphics.CGPDFPageGetBoxRect
@@ -43,8 +44,13 @@ actual class PdfRenderer actual constructor() {
         val cfUrl = platform.Foundation.CFBridgingRetain(nsUrl)
         try {
             @Suppress("UNCHECKED_CAST")
-            document = CGPDFDocumentCreateWithURL(cfUrl as platform.CoreFoundation.CFURLRef)
+            val opened = CGPDFDocumentCreateWithURL(cfUrl as platform.CoreFoundation.CFURLRef)
                 ?: throw IllegalArgumentException("Cannot open PDF: $filePath")
+            if (!CGPDFDocumentIsUnlocked(opened)) {
+                CGPDFDocumentRelease(opened)
+                throw IllegalArgumentException("PDF needs a password: $filePath")
+            }
+            document = opened
             if (accessed) accessedUrl = nsUrl
         } catch (e: Throwable) {
             if (accessed) nsUrl.stopAccessingSecurityScopedResource()

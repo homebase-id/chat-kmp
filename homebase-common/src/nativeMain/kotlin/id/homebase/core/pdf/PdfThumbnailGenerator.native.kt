@@ -22,6 +22,7 @@ import platform.CoreGraphics.CGImageRelease
 import platform.CoreGraphics.CGPDFDocumentCreateWithProvider
 import platform.CoreGraphics.CGPDFDocumentCreateWithURL
 import platform.CoreGraphics.CGPDFDocumentGetNumberOfPages
+import platform.CoreGraphics.CGPDFDocumentIsUnlocked
 import platform.CoreGraphics.CGPDFDocumentGetPage
 import platform.CoreGraphics.CGPDFDocumentRef
 import platform.CoreGraphics.CGPDFDocumentRelease
@@ -88,6 +89,7 @@ private fun renderFirstPageThumbnail(
     document: CGPDFDocumentRef,
     maxWidth: Int,
 ): PdfThumbnailResult? {
+    if (!CGPDFDocumentIsUnlocked(document)) return null
     val pageCount = CGPDFDocumentGetNumberOfPages(document).toInt()
     val page = CGPDFDocumentGetPage(document, 1u) ?: return null
     val mediaBox = CGPDFPageGetBoxRect(page, kCGPDFMediaBox)
