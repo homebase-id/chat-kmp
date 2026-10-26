@@ -38,14 +38,14 @@ class BubbleCodeHighlightTest {
         ),
     )
 
-    private class Side(val content: Color, val bubble: Color, val sent: Boolean)
+    private class Side(val content: Color, val bubble: Color)
 
     private fun sides(c: Case) = mapOf(
-        "sent" to Side(c.sentContent, c.sentBubble, true),
-        "received" to Side(c.scheme.onSurface, c.scheme.surfaceContainerHigh, false),
+        "sent" to Side(c.sentContent, c.sentBubble),
+        "received" to Side(c.scheme.onSurface, c.scheme.surfaceContainerHigh),
     )
 
-    private fun style(c: Case, s: Side) = bubbleCodeStyle(c.scheme, s.content, s.bubble, s.sent)
+    private fun style(c: Case, s: Side) = bubbleCodeStyle(c.scheme, s.content, s.bubble)
 
     @Test
     fun kotlinFenceHasMultipleColoursAndKeepsText() {

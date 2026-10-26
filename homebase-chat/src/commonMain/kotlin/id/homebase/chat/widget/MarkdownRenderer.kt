@@ -422,14 +422,7 @@ private fun TextStyle.bubbleHeading(color: Color, scale: Float, weight: FontWeig
     )
 }
 
-/**
- * Fenced/code-block container for a chat bubble: the [bubbleCodeStyle] background with a
- * subtle [color] border, so the block reads as a distinct surface on BOTH a sent (primary)
- * and received (surface) bubble.
- * Mirrors mikepenz's own private `MarkdownCode` body (rounded [MarkdownCodeBackground]
- * + horizontally-scrollable monospace text) but swaps the surface-role fill for the
- * bubble-relative tint and adds the border.
- */
+/** Fenced/code-block container: the [bubbleCodeStyle] background with a subtle [color] border. */
 @Composable
 private fun BubbleCodeContainer(
     code: String,
@@ -441,9 +434,8 @@ private fun BubbleCodeContainer(
     val scheme = MaterialTheme.colorScheme
     val extended = HomebaseTheme.extendedColors
     val codeStyle = remember(scheme, extended, color) {
-        val sent = color == extended.bubbleSentOnSurface
-        val bubble = if (sent) extended.bubbleSentSurface else scheme.surfaceContainerHigh
-        bubbleCodeStyle(scheme, color, bubble, sent)
+        val bubble = if (color == extended.bubbleSentOnSurface) extended.bubbleSentSurface else scheme.surfaceContainerHigh
+        bubbleCodeStyle(scheme, color, bubble)
     }
     MarkdownCodeBackground(
         color = codeStyle.background,
