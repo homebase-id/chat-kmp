@@ -81,6 +81,30 @@ All plans use indexes. The chat fetch seeks `idx_chatmessage_convid_userDate`, s
 size barely matters. The per-conversation SQL isn't the slow part of opening a conversation
 on desktop.
 
+### 2026-10-26, 004c805e5, iOS baseline, unencrypted, debug K/N framework
+
+iPhone (A16, `iosApp Dev`) and iPhone 17 simulator on an M-series Mac. The release framework
+link ran out of Gradle heap (`linkReleaseFrameworkIosArm64`, `OutOfMemoryError`), so these
+are a debug Kotlin/Native framework: compare them with each other, not with Android or desktop.
+Phone DB: 8.4 MB, 1,936 `DriveMainIndex` rows, 309 messages, 70 conversations, WAL, no
+`sqlite_stat1`. Medians of 3 runs, ms from the `homebase.log` markers.
+
+| Flow | median |
+|---|---|
+| phone cold start: process → `APP STARTUP` | 346 |
+| phone `initializeApp` (DB init 6–9) | 34–51 |
+| phone → `ComposeView` built (waits for scene `.active`, main thread idle) | 716 |
+| phone → conversation list data ready (70 items) | 840 |
+| phone `loadBasicConversations` (SQL 1–3, row mapping the rest) | 50–67 |
+| phone `enrichWithLastMessages` | 34–65 |
+| phone incoming message, WebSocket `drainOnce` | 5.5 |
+| sim open conversation, `messages first emission sinceSelected`, 56 msgs | 129 |
+| sim open conversation, 6 msgs | 110 |
+
+The three hot queries (list + last message, unread counts, open conversation) all seek an
+index on the phone DB; the list query runs in 6 ms in the `sqlite3` CLI. Every cold start on
+the phone logs one `SlowDbRead`: the `QueryBatch` page, with `mapper` 46–76 ms of JSON decode.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
@@ -141,6 +165,23 @@ on desktop.
   level is the message page and the pinned bar; the ViewModel adds `unpinExpiredPins` and the
   pinned observer on top (not measured yet).
 
+- **iOS (2026-10-26, debug framework).** Opening a conversation is composition, not DB: on
+  the simulator the main thread spends 400–700 ms in `ConversationContent` and the list pane,
+  and a 6-message conversation opens about as fast as a 56-message one. At launch the phone's
+  main thread is not saturated; the background does `CacheAudit`/`CacheSweeper` (~250 ms CPU),
+  the gallery prefetch in `GalleryCache` init (`fetchGalleryImages`, ~240 ms) and the
+  `QueryBatch` JSON decode (~130 ms). Crashlytics' report setup costs 49 ms on the main thread
+  in `dladdr` (debug symbols; recheck on release).
+- **Each send causes three server writes**: the message, `stampConversationDraft` (GET + PATCH
+  of the conversation's local metadata) and `stampConversationLastReadTime` ~2.3 s later, so
+  every other device drains the conversation header twice per message.
+- **Profiling pitfall:** with argent's accessibility service attached to the simulator,
+  `AccessibilityMediator.sync` took 56% of main-thread samples while scrolling (45 saturated
+  50 ms windows); without it, 4 samples and 2 windows. Launch with `simctl` and don't query the
+  AX tree while recording.
+- **`SlowDbRead` previews were unidentifiable**: 120 characters of `QueryBatch`'s SQL are the
+  same for every caller. Now 400.
+
 ## Tried
 
 | Date | Change | Result | Kept? |
@@ -153,3 +194,4 @@ on desktop.
 | 2026-10-24 | Android raw-key mode: the shared `SqlCipherKeyMode` (`javaMain`, desktop and Android) hands SQLCipher a cached raw key. The first launch after the update opens with the passphrase and derives the raw key on a background thread, because Android's PBKDF2 runs in Java: 3,261 ms on the main thread when tried inline, 1,705 ms in the background on an API 36 emulator. The database opens once; the old separate key probe also checkpointed the WAL on the main thread. The file isn't rewritten | Per fresh driver, passphrase → raw key: open plus first read 220–307 → 2–6 ms; 4 first reads during a write 766–988 → 5–9 ms (the pool opened 3 readers one after another, each deriving the key). Upgrade from the previous build on the emulator: migrated, salt unchanged, next launch silent | Yes |
 | 2026-10-24 | Sync batch: save the drive cursor once per batch, not once per file (`performBaseUpsert`) | `background-wake.txt` 12 → 10 writes for 3 files. Linux, Python's sqlite3 (no SQLCipher): 1,000 redundant upserts cost 6.8 ms per batch, plus serializing the cursor each time | Yes |
 | 2026-10-24 | Skip the two tag `DELETE`s (`DriveTagIndex`, `DriveLocalTagIndex`) for new rows | Same setup: 2,000 no-match deletes over 57K tag rows cost 4.0 ms per 1,000-file batch. Skipping needs proof that no tag rows exist for the fileId; if that is wrong, the tag `INSERT` breaks UNIQUE and the batch fails | No: risk outweighs 4 ms |
+| 2026-10-26 | `QueryBatch`: the read mapper only collects the `jsonHeader` strings; the `HomebaseFile` JSON decode runs after the read on `DatabaseManager.decodeDispatcher`, so a reader connection is not held during the decode (phone `SlowDbRead` mapper was 46–76 ms per cold start) | Not yet measured on device (the rebuild did not finish) | Pending |

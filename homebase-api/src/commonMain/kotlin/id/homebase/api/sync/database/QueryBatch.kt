@@ -2,6 +2,7 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.withContext
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.common.time.UnixTimeUtcRange
 import id.homebase.api.client.drives.FileState
@@ -273,19 +274,14 @@ class QueryBatch(
             identifier = null,
             sql = sqlStatement,
             mapper = { sqlCursor ->
-                val records = mutableListOf<HomebaseFile>()
-                var count = 0
-                lateinit var header: HomebaseFile
+                val jsonHeaders = mutableListOf<String>()
                 var rowId: Long? = -1
 
                 var cursorDepleted = true
                 while (sqlCursor.next().value) {
                     rowId = sqlCursor.getLong(0)
-                    val jsonHeader = sqlCursor.getString(1) ?: ""
-                    header = OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
-                    records.add(header)
-                    count++
-                    if (count >= actualNoOfItems) {
+                    jsonHeaders.add(sqlCursor.getString(1) ?: "")
+                    if (jsonHeaders.size >= actualNoOfItems) {
                         cursorDepleted = false
                         break
                     }
@@ -294,68 +290,75 @@ class QueryBatch(
                 // Important: iOS cannot call the cursor twice if it is EOF.
                 // Important !cursorDepleted is first in &&
                 val hasMoreRows = !cursorDepleted && sqlCursor.next().value
-
-                if (count > 0) {
-                    // Carry the last-returned row's `rowId` through into the
-                    // next cursor instead of hardcoding 0L. Without this, the
-                    // next fetch's WHERE `(time, rowId) > (lastTime, 0L)`
-                    // re-matches every row at `lastTime` (because rowId is
-                    // always > 0). When the boundary userDate isn't unique
-                    // (e.g. the chat-message "no version → authorSpecificDate"
-                    // fallback produces clusters of identical userDates), the
-                    // cursor effectively doesn't advance and pagination
-                    // re-returns the same page forever — see
-                    // `QueryBatchCursorAdvanceTest`. The local `rowId` here
-                    // captures the *last* SqlCursor.getLong(0) in the loop
-                    // above; it's the boundary we want the next fetch to skip.
-                    val boundaryRowId = rowId ?: 0L
-                    if (sortField === QueryBatchSortField.UserDate)
-                        // Use `sqlUserDateMs()` — the *exact same* projection
-                        // `MainIndexMeta.kt:127-128` writes into the SQL
-                        // `userDate` column: `appData.userDate ?: created.ms`.
-                        // The earlier `appData.userDate ?: 0L` here disagreed
-                        // with the SQL column for any row whose
-                        // `appData.userDate` is null (the chat "no version,
-                        // not edited" branch). That mismatch produced cursors
-                        // of shape `(0L, lastRowId)` while the SQL had real
-                        // ms timestamps in the userDate column, so the next
-                        // fetch's `WHERE (userDate, rowId) > (0L, lastRowId)`
-                        // matched the *entire timeline* from epoch and
-                        // ORDER BY ASC returned the oldest rows — already in
-                        // the window. Window stayed the same size, hasMore
-                        // stayed true, infinity-spinner on the bottom. See
-                        // QueryBatchCursorUserDateSourceTest.
-                        workingCursor = workingCursor.copy(
-                            paging = TimeRowCursor(
-                                UnixTimeUtc(header.sqlUserDateMs()),
-                                boundaryRowId
-                            )
-                        )
-                    else if (sortField === QueryBatchSortField.AnyChangeDate || sortField === QueryBatchSortField.OnlyModifiedDate)
-                        workingCursor = workingCursor.copy(
-                            paging = TimeRowCursor(
-                                header.fileMetadata.updated,
-                                boundaryRowId
-                            )
-                        )
-                    else if (sortField === QueryBatchSortField.FileId || sortField === QueryBatchSortField.CreatedDate)
-                        workingCursor = workingCursor.copy(
-                            paging = TimeRowCursor(
-                                header.fileMetadata.created,
-                                boundaryRowId
-                            )
-                        )
-                    else
-                        throw IllegalArgumentException("Invalid QueryBatchSortField type")
-                }
-
-                QueryResult.Value(QueryBatchResult(records, hasMoreRows, workingCursor))
+                QueryResult.Value(RawPage(jsonHeaders, rowId, hasMoreRows))
             },
             parameters = 0
-        ) { }
+        ) { }.value
 
-        return result.value;
+        val records = withContext(dbm.decodeDispatcher) {
+            result.jsonHeaders.map { OdinSystemSerializer.deserialize<HomebaseFile>(it) }
+        }
+
+        if (records.isNotEmpty()) {
+            val header = records.last()
+            val rowId = result.lastRowId
+            // Carry the last-returned row's `rowId` through into the
+            // next cursor instead of hardcoding 0L. Without this, the
+            // next fetch's WHERE `(time, rowId) > (lastTime, 0L)`
+            // re-matches every row at `lastTime` (because rowId is
+            // always > 0). When the boundary userDate isn't unique
+            // (e.g. the chat-message "no version → authorSpecificDate"
+            // fallback produces clusters of identical userDates), the
+            // cursor effectively doesn't advance and pagination
+            // re-returns the same page forever — see
+            // `QueryBatchCursorAdvanceTest`. The local `rowId` here
+            // captures the *last* SqlCursor.getLong(0) in the loop
+            // above; it's the boundary we want the next fetch to skip.
+            val boundaryRowId = rowId ?: 0L
+            if (sortField === QueryBatchSortField.UserDate)
+                // Use `sqlUserDateMs()` — the *exact same* projection
+                // `MainIndexMeta.kt:127-128` writes into the SQL
+                // `userDate` column: `appData.userDate ?: created.ms`.
+                // The earlier `appData.userDate ?: 0L` here disagreed
+                // with the SQL column for any row whose
+                // `appData.userDate` is null (the chat "no version,
+                // not edited" branch). That mismatch produced cursors
+                // of shape `(0L, lastRowId)` while the SQL had real
+                // ms timestamps in the userDate column, so the next
+                // fetch's `WHERE (userDate, rowId) > (0L, lastRowId)`
+                // matched the *entire timeline* from epoch and
+                // ORDER BY ASC returned the oldest rows — already in
+                // the window. Window stayed the same size, hasMore
+                // stayed true, infinity-spinner on the bottom. See
+                // QueryBatchCursorUserDateSourceTest.
+                workingCursor = workingCursor.copy(
+                    paging = TimeRowCursor(
+                        UnixTimeUtc(header.sqlUserDateMs()),
+                        boundaryRowId
+                    )
+                )
+            else if (sortField === QueryBatchSortField.AnyChangeDate || sortField === QueryBatchSortField.OnlyModifiedDate)
+                workingCursor = workingCursor.copy(
+                    paging = TimeRowCursor(
+                        header.fileMetadata.updated,
+                        boundaryRowId
+                    )
+                )
+            else if (sortField === QueryBatchSortField.FileId || sortField === QueryBatchSortField.CreatedDate)
+                workingCursor = workingCursor.copy(
+                    paging = TimeRowCursor(
+                        header.fileMetadata.created,
+                        boundaryRowId
+                    )
+                )
+            else
+                throw IllegalArgumentException("Invalid QueryBatchSortField type")
+        }
+
+        return QueryBatchResult(records, result.hasMoreRows, workingCursor)
     }
+
+    private class RawPage(val jsonHeaders: List<String>, val lastRowId: Long?, val hasMoreRows: Boolean)
 
     // Helper functions
 

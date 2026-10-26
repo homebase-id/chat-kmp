@@ -114,9 +114,15 @@ class DatabaseManager(
     // Reads run off the single write [dispatcher] so they don't queue behind a long write
     // transaction; the driver's reader connections (see DatabaseDriverFactory.createDriver)
     // serve them concurrently.
-    private val readDispatcher: CoroutineDispatcher =
-        ioDispatcher.limitedParallelism(SQLITE_READER_CONNECTIONS)
+    readDispatcher: CoroutineDispatcher? = null,
 ) : AutoCloseable {
+    private val readDispatcher: CoroutineDispatcher =
+        readDispatcher ?: ioDispatcher.limitedParallelism(SQLITE_READER_CONNECTIONS)
+
+    // Decoding rows off the read lane keeps a reader connection free for the next read.
+    // A test that injects its read dispatcher decodes there too, so it stays in virtual time.
+    internal val decodeDispatcher: CoroutineDispatcher = readDispatcher ?: Dispatchers.Default
+
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
     internal var driver: SqlDriver = driverProvider()
@@ -430,7 +436,7 @@ class DatabaseManager(
                 )
                 if (queueWait + total > SLOW_READ_THRESHOLD) {
                     logger.w {
-                        "SlowDbRead queueWait=$queueWait sql=$sqlOnly mapper=$mapperOnly sqlPreview=${sql.take(120)}"
+                        "SlowDbRead queueWait=$queueWait sql=$sqlOnly mapper=$mapperOnly sqlPreview=${sql.take(400)}"
                     }
                 }
                 result
