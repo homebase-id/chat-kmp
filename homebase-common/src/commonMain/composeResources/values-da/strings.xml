@@ -1821,8 +1821,6 @@
     <string name="profile_card_content_could_add">Også på din profil</string>
     <string name="profile_card_content_every_card">På alle kort</string>
     <string name="profile_card_content_every_card_desc">Offentlige, så alle ser dem på alle kort.</string>
-    <string name="profile_card_content_hide_this">Skjul %1$s på dette kort</string>
-    <string name="profile_card_content_show_this">Vis %1$s på dette kort</string>
     <string name="profile_card_content_edit_this">Redigér %1$s</string>
     <string name="profile_card_content_edit_title">Redigér</string>
     <string name="profile_card_content_delete">Slet fra alle kort</string>
@@ -1841,6 +1839,12 @@
     <string name="profile_card_import_public_title">Vis disse for alle?</string>
     <string name="profile_card_import_public_message">Disse elementer bliver synlige for alle, der ser dit offentlige kort.</string>
     <string name="profile_card_import_public_confirm">Vis for alle</string>
+    <string name="profile_card_content_choose_cards">Vælg hvilke kort der viser %1$s</string>
+    <string name="profile_card_cards_public">Offentlig: alle</string>
+    <string name="profile_card_make_public_title">Gør dette offentligt?</string>
+    <string name="profile_card_make_public_message">Alle på internettet kan se %1$s.</string>
+    <string name="profile_card_content_now_public">%1$s er nu offentlig</string>
+    <string name="profile_card_content_now_hidden">%1$s er ikke længere offentlig</string>
     <string name="profile_card_editor_title">Kortdesign</string>
     <string name="profile_card_design_save_failed">Kunne ikke gemme kortdesignet.</string>
     <string name="profile_card_nfc">Del kort ved at holde telefonerne sammen</string>

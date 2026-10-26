@@ -2,12 +2,14 @@ package id.homebase.chat.groupsettings
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.connections.IntroductionPreflightStatus
+import id.homebase.api.client.drives.files.RecipientTransferHistoryEntry
 import id.homebase.api.client.drives.files.TransferStatus
 import id.homebase.api.client.peer.FileExistsOnPeerResponse
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.toErrorDetailRes
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.StringResource
 
@@ -87,7 +89,14 @@ data class GroupSettingsUiState(
 @Immutable
 sealed interface RecipientFileStatus {
     data object Ok : RecipientFileStatus
+    data object Pending : RecipientFileStatus
     data class Problem(val rawStatus: TransferStatus, val detailRes: StringResource?) : RecipientFileStatus
+}
+
+fun RecipientTransferHistoryEntry.toRecipientFileStatus(): RecipientFileStatus = when {
+    latestTransferStatus == TransferStatus.Delivered -> RecipientFileStatus.Ok
+    isInOutbox -> RecipientFileStatus.Pending
+    else -> RecipientFileStatus.Problem(latestTransferStatus, latestTransferStatus.toErrorDetailRes())
 }
 
 /**
