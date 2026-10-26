@@ -1,5 +1,7 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.serialization.LenientBase64BytesSerializer
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ApiResponse
 import id.homebase.api.client.KeyHeader
@@ -33,7 +35,7 @@ data class LocalAppData(
     val versionTag: String? = null,
     val tags: List<String>? = null,
     val content: String? = null,
-    val iv: String? = null
+    @Serializable(with = LenientBase64BytesSerializer::class) val iv: Base64Bytes? = null
 )
 
 @Serializable
@@ -44,7 +46,7 @@ private data class UpdateLocalMetadataTagsRequest(
 
 @Serializable
 private data class UpdateLocalMetadataContentRequest(
-    val iv: String? = null,
+    @Serializable(with = LenientBase64BytesSerializer::class) val iv: Base64Bytes? = null,
     val localVersionTag: String?,
     val content: String?
 )
@@ -360,7 +362,7 @@ class DriveUploadProvider(
                     aesKey = decryptedKeyHeader.aesKey
                 )
                 val encrypted = keyHeader.encryptDataAes(localAppData.content.encodeToByteArray())
-                Base64.encode(keyHeader.iv) to Base64.encode(encrypted)
+                Base64Bytes(keyHeader.iv) to Base64.encode(encrypted)
             } else {
                 null to localAppData.content
             }
