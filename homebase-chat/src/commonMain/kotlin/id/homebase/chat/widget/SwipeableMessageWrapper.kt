@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import id.homebase.core.util.supportsTouchGestures
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.info

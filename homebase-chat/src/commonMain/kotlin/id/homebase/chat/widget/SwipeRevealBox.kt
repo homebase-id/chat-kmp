@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.spring
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.util.supportsTouchGestures
 import kotlinx.coroutines.delay
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt

@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import id.homebase.core.util.usesPointerUx
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
@@ -79,6 +78,7 @@ import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.isMobile
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR

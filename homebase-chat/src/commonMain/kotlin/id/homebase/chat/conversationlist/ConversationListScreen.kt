@@ -1,6 +1,5 @@
 package id.homebase.chat.conversationlist
 
-import id.homebase.api.common.OdinId
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
@@ -89,6 +88,7 @@ import id.homebase.chat.widget.StickerCreatorSheet
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.api.common.OdinId
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.horizontalResizeCursor
 import id.homebase.core.util.usesPointerUx

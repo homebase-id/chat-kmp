@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.updateTransition
@@ -82,6 +81,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.supportsTouchGestures
 import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR

@@ -103,12 +103,12 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.withEmojiFont
 
 import id.homebase.core.util.getOdinIdColor
+import id.homebase.core.util.isEmojiContentOnly
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.core.util.supportsHoverActions
 import id.homebase.core.util.supportsTouchGestures
 import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.usesTouchUx
-import id.homebase.core.util.isEmojiContentOnly
-import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
 import id.homebase.resources.MR

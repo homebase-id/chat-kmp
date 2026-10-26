@@ -1,12 +1,12 @@
 package id.homebase.chat.widget
 
-import id.homebase.core.util.supportsTouchGestures
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import id.homebase.core.util.supportsTouchGestures
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.ContactCardDescriptor
