@@ -388,6 +388,7 @@ internal fun CameraCaptureContent(
 
     fun zoomTo(ratio: Float) {
         presetTarget = null
+        zoomAcrossFlip = null
         val state = currentUi
         val target = state.clampZoom(ratio)
         val steps = currentPresets
@@ -618,6 +619,7 @@ internal fun CameraCaptureContent(
                 dimmed = looksRecording && heldRecording,
                 onSelect = { preset ->
                     haptics.perform(HapticEvent.Selection)
+                    zoomAcrossFlip = null
                     presetTarget = currentUi.clampZoom(preset.ratio)
                     engine.setZoomRatio(preset.ratio, animate = true)
                 },
