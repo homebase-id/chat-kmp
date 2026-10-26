@@ -13,6 +13,27 @@ import kotlinx.coroutines.sync.withLock
 private const val MAX_ATTEMPTS = 2
 private const val NOTICE_CONTEXT_CODEPOINTS = 500
 
+fun ownsJob(conversation: Uuid?, listed: Boolean, allow: Allowlist, sender: OdinId): (Uuid) -> Boolean = { job ->
+    job == conversation || (listed && allow.info(job)?.members?.contains(sender) == true)
+}
+
+fun sharedCommandText(
+    command: OperatorCommand,
+    jobs: JobRunner?,
+    sessions: SessionStore?,
+    conversation: Uuid?,
+    sender: String,
+    mayCancel: (Uuid) -> Boolean,
+): String? = when (command) {
+    OperatorCommand.Status -> jobs?.let { it.status(sender) + conversation?.let { c -> sessions?.let { s -> "\n" + s.status(c) } }.orEmpty() }
+    OperatorCommand.New -> if (sessions != null && conversation != null) {
+        sessions.forget(conversation)
+        "session forgotten, notes kept; the next job starts fresh"
+    } else null
+    is OperatorCommand.Cancel -> jobs?.cancel(command.id, mayCancel)
+    else -> null
+}
+
 class WatchProcessor(
     private val config: AgentConfig,
     private val identity: String,
@@ -163,15 +184,11 @@ class WatchProcessor(
     private suspend fun runOperatorCommand(msg: ChatMsg, command: OperatorCommand, results: MutableMap<Uuid, String>) {
         val conversation = msg.conversationId
         val (label, text) = when (command) {
-            OperatorCommand.Status -> "job status" to jobs!!.status(effectiveSender(msg).toString()) + (sessions?.let { "\n" + it.status(conversation) }.orEmpty())
-            OperatorCommand.New -> {
-                sessions!!.forget(conversation)
-                "job new" to tagged(config.replyPrefix, "session forgotten, notes kept; the next job starts fresh")
-            }
-            is OperatorCommand.Cancel -> "job cancel" to jobs!!.cancel(command.id) { jobConversation ->
-                jobConversation == conversation ||
-                    (trust.isListed(msg.sender) && allow.info(jobConversation)?.members?.contains(effectiveSender(msg)) == true)
-            }
+            OperatorCommand.Status -> "job status" to sharedCommandText(command, jobs, sessions, conversation, effectiveSender(msg).toString()) { false }.orEmpty()
+            OperatorCommand.New -> "job new" to tagged(config.replyPrefix, sharedCommandText(command, jobs, sessions, conversation, "") { false }.orEmpty())
+            is OperatorCommand.Cancel -> "job cancel" to sharedCommandText(
+                command, jobs, sessions, conversation, "", ownsJob(conversation, trust.isListed(msg.sender), allow, effectiveSender(msg)),
+            ).orEmpty()
             OperatorCommand.Schedules -> "schedule schedules" to tagged(
                 config.replyPrefix,
                 schedules!!.let { s -> s.list(conversation).joinToString("\n") { s.describe(it) } }.ifEmpty { "no schedules in this conversation" },

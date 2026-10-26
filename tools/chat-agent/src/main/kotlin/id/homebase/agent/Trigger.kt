@@ -112,7 +112,7 @@ class AgentConfig(
     val urgentOverridesQuiet: Boolean = true,
     val notifyJobsAfterMs: Long = DEFAULT_NOTIFY_JOBS_AFTER_MS,
     val calls: Boolean = false,
-    val callTts: String? = tts,
+    val callTts: String? = null,
     val callFiller: String = DEFAULT_CALL_FILLER,
     val callMaxMinutes: Int = DEFAULT_CALL_MAX_MINUTES,
     val callConverse: Boolean = true,

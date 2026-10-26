@@ -232,6 +232,22 @@ class CallTurnLoopTest {
     }
 
     @Test
+    fun aCoughWhileTheBrainThinksDoesNotCancelTheReply() = runTest {
+        val rig = Rig()
+        rig.say("what time is it"); rig.brainWith { delay(5_000); BrainOutcome.Output("Noon.") }
+        val run = start(rig)
+        rig.utterance()
+        advanceTimeBy(1_000)
+        rig.voice(100)
+        rig.silence(900)
+        advanceTimeBy(6_000)
+        runCurrent()
+        assertEquals(0, rig.audio.flushes.get())
+        assertTrue("Noon." in rig.spoken)
+        run.cancel()
+    }
+
+    @Test
     fun threeFailuresInARowSayLosingYouAndHangUp() = runTest {
         val rig = Rig()
         repeat(3) { rig.say(null) }
@@ -350,16 +366,6 @@ class CallTurnLoopTest {
         val quiet = Rig()
         quiet.loop().postSummary()
         assertTrue(quiet.notes.isEmpty())
-    }
-
-    @Test
-    fun theLoopEndsWhenTheRemoteAudioEnds() = runTest {
-        val rig = Rig()
-        val run = start(rig)
-        rig.frames.close()
-        runCurrent()
-        assertEquals(CallEnd.REMOTE_ENDED, run.await())
-        assertEquals(0, rig.hangups.get())
     }
 
     private class FakeCall : CallSession {

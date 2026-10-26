@@ -29,7 +29,7 @@ private const val CALL_HISTORY_TURNS = 6
 private const val CALL_NOTES_CODEPOINTS = 300
 private const val LOSING_YOU = "I'm losing you."
 
-enum class CallEnd { GOODBYE, MAX_MINUTES, FAILURES, REMOTE_ENDED }
+enum class CallEnd { GOODBYE, MAX_MINUTES, FAILURES }
 
 interface CallAudioOut {
     suspend fun play(pcm: ByteArray)
@@ -60,6 +60,7 @@ class CallTurnLoop(
     private val speak: suspend (String) -> ByteArray?,
     private val command: suspend (OperatorCommand) -> String?,
     private val postNotes: suspend (String) -> Unit,
+    private val summarize: suspend (String) -> BrainOutcome = brain,
     private val hangup: () -> Unit,
     private val fillerText: String = DEFAULT_CALL_FILLER,
     private val maxMinutes: Int = DEFAULT_CALL_MAX_MINUTES,
@@ -75,6 +76,7 @@ class CallTurnLoop(
     private val failures = AtomicInteger()
     @Volatile private var reply: Job? = null
     @Volatile private var filler: Deferred<ByteArray?>? = null
+    private val playing = AtomicInteger()
 
     suspend fun run(greeting: String? = null): CallEnd = coroutineScope {
         val ended = CompletableDeferred<CallEnd>()
@@ -89,11 +91,10 @@ class CallTurnLoop(
         launch {
             frames.collect { chunk ->
                 for (event in segmenter.feed(chunk)) when (event) {
-                    is SegmentEvent.Onset -> bargeIn()
-                    is SegmentEvent.Done -> utterances.trySend(event.utterance)
+                    is SegmentEvent.Onset -> if (playing.get() > 0) bargeIn()
+                    is SegmentEvent.Done -> { bargeIn(); utterances.trySend(event.utterance) }
                 }
             }
-            ended.complete(CallEnd.REMOTE_ENDED)
         }
         launch {
             for (utterance in utterances) heard(utterance, ended)
@@ -129,8 +130,17 @@ class CallTurnLoop(
     private suspend fun say(text: String): Boolean {
         val pcm = speakQuietly(text)
         if (pcm == null) return false
-        audio.play(pcm)
+        play(pcm)
         return true
+    }
+
+    private suspend fun play(pcm: ByteArray) {
+        playing.incrementAndGet()
+        try {
+            audio.play(pcm)
+        } finally {
+            playing.decrementAndGet()
+        }
     }
 
     private suspend fun heard(utterance: Utterance, ended: CompletableDeferred<CallEnd>) {
@@ -169,9 +179,9 @@ class CallTurnLoop(
         if (answer.isEmpty()) return
         val spoken = speakableText(answer, CALL_REPLY_CHARS)
         if (spoken.isEmpty()) return
-        turns += Turn(false, spoken)
         log("call replying ${spoken.length} chars")
         if (!say(spoken)) return failed("speech", ended)
+        turns += Turn(false, spoken)
         failures.set(0)
         if (GOODBYE.containsMatchIn(answer)) {
             delay(tailMs)
@@ -186,7 +196,7 @@ class CallTurnLoop(
             delay(fillerAfterMs)
             val pcm = filler?.takeIf { it.isCompleted }?.await() ?: return@launch
             fillerStarted.set(true)
-            audio.play(pcm)
+            play(pcm)
         }
         val outcome = try {
             withTimeoutOrNull(brainTimeoutMs) { brain(callPrompt()) }
@@ -218,7 +228,7 @@ class CallTurnLoop(
             lines.takeLast(CALL_HISTORY_TURNS * 2).forEach { appendLine("${if (it.owner) peer else "You"}: ${it.text}") }
         }
         val outcome = try {
-            withTimeoutOrNull(brainTimeoutMs) { brain(prompt) }
+            withTimeoutOrNull(brainTimeoutMs) { summarize(prompt) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

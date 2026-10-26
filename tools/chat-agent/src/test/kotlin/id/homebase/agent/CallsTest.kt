@@ -313,4 +313,12 @@ class CallsTest {
     private fun launchEnd(calls: ScriptedCalls) {
         Thread { Thread.sleep(100); calls.phase(CallPhase.Ended(CallEndReason.Hangup(remote = true))) }.apply { isDaemon = true }.start()
     }
+
+    @Test
+    fun remoteAudioIsDownmixedAndResampledTo48kMono() {
+        val stereo = ShortArray(960) { if (it % 2 == 0) 1000 else 3000 }
+        assertEquals(480, toMono48k(stereo, CALL_SAMPLE_RATE, 2).size)
+        assertEquals(2000, toMono48k(stereo, CALL_SAMPLE_RATE, 2)[0].toInt())
+        assertEquals(960, toMono48k(ShortArray(480), 24_000, 1).size)
+    }
 }

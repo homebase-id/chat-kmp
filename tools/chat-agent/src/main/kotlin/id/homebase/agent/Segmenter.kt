@@ -10,9 +10,10 @@ const val SEGMENT_MIN_MS = 400
 const val SEGMENT_MAX_MS = 20_000
 private const val CALIBRATION_FRAMES = 5
 private const val CALIBRATION_CEILING = 0.03
-private const val FLOOR_MAX = 0.05
+private const val FLOOR_MAX = 0.02
 private const val FLOOR_MIN = 0.001
-private const val FLOOR_RATE = 0.05
+private const val FLOOR_RISE_RATE = 0.005
+private const val FLOOR_FALL_RATE = 0.05
 private const val FLOOR_TRACK_RATIO = 2.0
 private const val THRESHOLD_FACTOR = 3.0
 private const val THRESHOLD_MIN = 0.01
@@ -39,7 +40,7 @@ class Segmenter(private val inputRate: Int = CALL_SAMPLE_RATE, private val chann
 
     private var carry = ShortArray(0)
     private var frameIndex = 0L
-    private var floor = 0.0
+    private var floor = FLOOR_MIN
     private val calibration = ArrayList<Double>()
 
     private var speaking = false
@@ -78,13 +79,16 @@ class Segmenter(private val inputRate: Int = CALL_SAMPLE_RATE, private val chann
     private fun frame(samples: ShortArray, events: MutableList<SegmentEvent>) {
         val level = rms(samples)
         val index = frameIndex++
-        if (calibration.size < CALIBRATION_FRAMES) {
+        if (calibration.size < CALIBRATION_FRAMES && level < CALIBRATION_CEILING) {
             calibration += level
-            floor = max(FLOOR_MIN, minOf(calibration.average(), CALIBRATION_CEILING))
-            if (calibration.size < CALIBRATION_FRAMES) return
+            floor = calibration.average().coerceIn(FLOOR_MIN, FLOOR_MAX)
+            return
         }
         val voiced = level > max(floor * THRESHOLD_FACTOR, THRESHOLD_MIN)
-        if (!voiced && level < floor * FLOOR_TRACK_RATIO) floor = (floor + (level - floor) * FLOOR_RATE).coerceIn(FLOOR_MIN, FLOOR_MAX)
+        if (!voiced && level < floor * FLOOR_TRACK_RATIO) {
+            val rate = if (level > floor) FLOOR_RISE_RATE else FLOOR_FALL_RATE
+            floor = (floor + (level - floor) * rate).coerceIn(FLOOR_MIN, FLOOR_MAX)
+        }
         if (!speaking) {
             idle(samples, voiced, index, events)
             return

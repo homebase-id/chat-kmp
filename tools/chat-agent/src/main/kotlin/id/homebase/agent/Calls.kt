@@ -155,6 +155,23 @@ fun rms(samples: ShortArray): Double {
     return sqrt(sum / samples.size) / Short.MAX_VALUE
 }
 
+fun toMono48k(pcm: ShortArray, sampleRate: Int, channels: Int): ShortArray {
+    val mono = if (channels <= 1) pcm else ShortArray(pcm.size / channels) { i ->
+        var sum = 0
+        for (c in 0 until channels) sum += pcm[i * channels + c]
+        (sum / channels).toShort()
+    }
+    if (sampleRate == CALL_SAMPLE_RATE || sampleRate <= 0 || mono.isEmpty()) return mono
+    val outLen = (mono.size.toLong() * CALL_SAMPLE_RATE / sampleRate).toInt()
+    val step = sampleRate.toDouble() / CALL_SAMPLE_RATE
+    return ShortArray(outLen) { i ->
+        val pos = i * step
+        val a = pos.toInt().coerceAtMost(mono.size - 1)
+        val b = (a + 1).coerceAtMost(mono.size - 1)
+        (mono[a] + (mono[b] - mono[a]) * (pos - a)).toInt().toShort()
+    }
+}
+
 class RemoteAudio : AudioTrackSink {
     private val ring = MutableSharedFlow<ShortArray>(extraBufferCapacity = REMOTE_RING_FRAMES, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val frames: Flow<ShortArray> = ring.asSharedFlow()
@@ -166,8 +183,9 @@ class RemoteAudio : AudioTrackSink {
         if (bitsPerSample != 16) return
         val shorts = ShortArray(minOf(data.size / 2, frames * channels))
         ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(shorts)
-        level = rms(shorts)
-        ring.tryEmit(shorts)
+        val mono = toMono48k(shorts, sampleRate, channels)
+        level = rms(mono)
+        ring.tryEmit(mono)
     }
 }
 
@@ -322,6 +340,7 @@ class CallHooks(
     val brain: suspend (OdinId, String) -> BrainOutcome,
     val command: suspend (OdinId, OperatorCommand) -> String?,
     val notes: suspend (OdinId, String) -> Unit,
+    val summarize: suspend (OdinId, String) -> BrainOutcome,
 )
 
 class AgentCalls(
@@ -385,12 +404,14 @@ class AgentCalls(
         val loop = CallTurnLoop(
             peer = peer.toString(), nickname = config.nickname, frames = remote.frames, audio = player,
             transcribe = h.transcribe, brain = { h.brain(peer, it) }, speak = callSynth, command = { h.command(peer, it) },
-            postNotes = { h.notes(peer, it) }, hangup = service::hangup,
+            postNotes = { h.notes(peer, it) }, summarize = { h.summarize(peer, it) }, hangup = service::hangup,
             fillerText = config.callFiller, maxMinutes = config.callMaxMinutes, persona = config.persona, log = log,
         )
+        var end: Any = "remote hangup or cancelled"
         try {
-            log("call loop ended: ${loop.run(opening)}")
+            end = loop.run(opening)
         } finally {
+            log("call loop ended: $end")
             withContext(NonCancellable) { loop.postSummary() }
         }
     }
@@ -438,10 +459,11 @@ class AgentCalls(
 fun buildAgentCalls(session: Session, eventBus: EventBus, scope: CoroutineScope, config: AgentConfig, log: (String) -> Unit): AgentCalls? {
     if (!config.calls) return null
     val command = config.tts ?: return null
+    val callCommand = config.callTts ?: return null
     return AgentCalls(
         session, eventBus, scope, config,
         speaker = shellSpeaker(command, ttsEnvironment(config), config.ttsTimeoutMs, log, config.ttsMaxChars),
-        callSpeaker = shellSpeaker(config.callTts ?: command, ttsEnvironment(config), CALL_TTS_TIMEOUT_MS, log, CALL_REPLY_CHARS),
+        callSpeaker = shellSpeaker(callCommand, ttsEnvironment(config), CALL_TTS_TIMEOUT_MS, log, CALL_REPLY_CHARS),
         sendTyped = { conversation, content -> sendToConversation(session, config.allowlist, conversation, "", typed = content) },
         log = log,
     )

@@ -115,22 +115,15 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             brain = { peer, prompt ->
                 val lease = ownerChat(peer)?.let { chatTools?.lease(it, Tier.OPERATOR, peer) }
                 try {
-                    runBrain(Brain(operatorBrain), prompt, CALL_BRAIN_TIMEOUT_MS, tier = Tier.OPERATOR, operatorCwd = config.operatorCwd, lease = lease, mcpGroup = config.operatorGroup)
+                    runBrain(Brain(operatorBrain), prompt, tier = Tier.OPERATOR, operatorCwd = config.operatorCwd, lease = lease, mcpGroup = config.operatorGroup)
                 } finally {
                     lease?.close()
                 }
             },
+            summarize = { _, prompt -> runBrain(Brain(operatorBrain), prompt, tier = Tier.OPERATOR, operatorCwd = config.operatorCwd) },
             command = { peer, command ->
                 val chat = ownerChat(peer)
-                when (command) {
-                    OperatorCommand.Status -> jobs?.status(peer.toString())
-                    is OperatorCommand.Cancel -> jobs?.cancel(command.id) { it == chat }
-                    OperatorCommand.New -> if (sessionStore != null && chat != null) {
-                        sessionStore.forget(chat)
-                        tagged(config.replyPrefix, "session forgotten, notes kept")
-                    } else null
-                    else -> null
-                }
+                sharedCommandText(command, jobs, sessionStore, chat, peer.toString(), ownsJob(chat, true, config.allowlist, peer))
             },
             notes = { peer, text -> ownerChat(peer)?.let { sendToConversation(session, config.allowlist, it, tagged(config.replyPrefix, text)) } },
         )
