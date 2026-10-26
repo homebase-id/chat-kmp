@@ -138,9 +138,9 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | tts | command run as `<cmd> "<text file>" "<out file>"`, must write an m4a voice note to the out file; `scripts/speak.sh` does; unset = no voice replies (see Voice replies) | none |
 | ttsVoice | built-in voice name, passed as env `TTS_VOICE` (never in the shell string) | `Marcus` when a persona is set, else `Bruno` |
 | ttsPreset | `stable` or `expressive` (`TTS_PRESET`) | expressive |
-| ttsReference, ttsReferenceText | 5 to 30 s wav and its transcript for voice cloning (`TTS_REFERENCE`, `TTS_REFERENCE_TEXT`); overrides `ttsVoice` (warns if both are set). A knob only: nothing is fetched or shipped | none |
+| ttsReference, ttsReferenceText | 5 to 30 s wav and its transcript for voice cloning (`TTS_REFERENCE`, `TTS_REFERENCE_TEXT`); overrides `ttsVoice` (warns if both are set). With the sidecar the clip path is resolved on the host under `TTS_REFERENCE_DIR`, so give the host path, not a container path. A knob only: nothing is fetched or shipped | none |
 | ttsTimeout | e.g. `240s`; the command is killed after this | 240s |
-| ttsMaxChars | the spoken text is cut to this many characters (1 to 600) | 400 |
+| ttsMaxChars | the spoken text is cut to this many characters (1 to 600; about 1 s of synthesis per character plus a 47 s cold start must fit in `ttsTimeout`, else a warning) | 150 |
 | voiceReplies | `off` or `mirror`: answer a voice-note trigger with a voice note, text as its caption | off |
 | maxVoicePerDay | voice replies per rolling 24 h, shared by the tool and `mirror`, kept in `voice.txt` | 20 |
 | lockedTools | comma list, default empty. `chat` gives the locked brain the chat tools below (claude default brain only; a custom `brain` gets the env vars and `{mcp}`). Unknown values warn and are ignored | none |
@@ -216,10 +216,10 @@ measured on the target). For better accuracy use `small` (about 470 MB, several 
 
 ## Voice replies (text to speech)
 
-`send_voice_reply` (both tiers, when `tts=` is set) and `voiceReplies=mirror` make the agent answer as a voice note in its own
+`send_voice_reply` (operator tier only, when `tts=` is set: a locked run is killed after 120 s, shorter than a synthesis) and `voiceReplies=mirror` make the agent answer as a voice note in its own
 voice. The text is the note's caption, so it carries the AI disclosure and is the accessible transcript. With `mirror`, a text
-reply to a message that carried a voice note is sent as a voice note instead; any TTS failure, timeout or the daily limit logs
-`voice reply fell back to text: <why>` and sends the plain text. The tool counts as a sending tool (`LOCKED_TOOL_CALL_CAP` applies).
+reply to a message that carried a recorded voice note (not a plain audio file) is sent as a voice note instead; any TTS failure, timeout or the daily limit logs
+`voice reply fell back to text: <why>` and sends the plain text. The tool counts as a sending tool.
 The speakable text drops code fences and `ATTACH:` lines, turns URLs into "link" and loses markdown marks. The startup line shows
 `tts=on voice=<name> preset=... replies=off|mirror`.
 
@@ -378,7 +378,7 @@ as far as the tools go. The brain never sees the identity's credentials: the wat
 Scope is fixed server-side from the token: the conversation that triggered the run, its tier and its sender. A
 `conversationId` argument is ignored (the tools do not even list it). Tools: `read_messages`, `search_messages`,
 `get_conversation`, `send_message` (with `replyToId`), `send_file` (with `replyToId`; only when `mcpFilesDir` is set), `react`,
-`unreact` (emoji on a message here), `send_voice_reply` (only when `tts=` is set; see Voice replies), and, operator tier only, `edit_message` (short text messages) and `delete_message`
+`unreact` (emoji on a message here), and, operator tier only, `send_voice_reply` (when `tts=` is set; see Voice replies), `edit_message` (short text messages) and `delete_message`
 (for everyone), both limited to messages this identity sent. Sends go through the normal gate, disclosure prefix and
 size caps. Read results are labelled with the author and wrapped in an `<untrusted_chat_...>` block; treat them as data.
 

@@ -67,7 +67,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val voice = config.tts?.let {
         VoiceOut(
             shellSpeaker(it, ttsEnvironment(config), config.ttsTimeoutMs, ::log, config.ttsMaxChars),
-            VoiceLimiter(File(dir, "voice.txt"), config.maxVoicePerDay),
+            RunLimiter(File(dir, "voice.txt"), Int.MAX_VALUE, config.maxVoicePerDay),
         )
     }
     val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules, voice) }

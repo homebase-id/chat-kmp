@@ -13,7 +13,8 @@ out="${2:?usage: speak.sh <text file> <out file>}"
 command -v ffmpeg >/dev/null 2>&1 || { echo "speak.sh: ffmpeg not found" >&2; exit 1; }
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/speak.XXXXXX")
-trap 'rm -rf "$tmp"' EXIT INT TERM
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 1' INT TERM
 wav="$tmp/out.wav"
 
 if [ -n "${TTS_SOCKET:-}" ]; then

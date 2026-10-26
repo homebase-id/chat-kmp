@@ -40,7 +40,9 @@ class ConfigTest {
         assertEquals("Bruno", plain.ttsVoice)
         assertEquals("expressive", plain.ttsPreset)
         assertEquals(240_000L, plain.ttsTimeoutMs)
-        assertEquals(400, plain.ttsMaxChars)
+        assertEquals(150, plain.ttsMaxChars)
+        assertTrue(parseConfig("tts=/x/speak.sh\nttsTimeout=60s", owner).warnings.any { "ttsTimeout" in it })
+        assertTrue(plain.warnings.none { "ttsTimeout" in it })
         assertEquals(20, plain.maxVoicePerDay)
         assertFalse(plain.voiceMirror)
         assertEquals("Marcus", parseConfig("tts=/x/speak.sh\npersona=Loud neighbour", owner).ttsVoice)
@@ -49,8 +51,8 @@ class ConfigTest {
 
     @Test
     fun ttsKnobsParseAndReachTheCommandAsEnv() {
-        val cfg = parseConfig("tts=/x/speak.sh\nttsVoice=Dante\nttsPreset=Stable\nttsTimeout=90s\nttsMaxChars=120\nvoiceReplies=mirror\nmaxVoicePerDay=3", owner)
-        assertEquals(90_000L, cfg.ttsTimeoutMs)
+        val cfg = parseConfig("tts=/x/speak.sh\nttsVoice=Dante\nttsPreset=Stable\nttsTimeout=200s\nttsMaxChars=120\nvoiceReplies=mirror\nmaxVoicePerDay=3", owner)
+        assertEquals(200_000L, cfg.ttsTimeoutMs)
         assertEquals(120, cfg.ttsMaxChars)
         assertEquals(3, cfg.maxVoicePerDay)
         assertTrue(cfg.voiceMirror)

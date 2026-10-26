@@ -149,7 +149,7 @@ class WatchProcessor(
 
     private fun wantsVoice(sorted: List<ChatMsg>, files: List<OutFile>, failed: Boolean) =
         config.voiceMirror && voice != null && sendVoice != null && !failed && files.isEmpty() &&
-            sorted.any { m -> m.payloads?.any { it.isAudio() } == true }
+            sorted.any { m -> m.payloads?.any { it.isAudio() && it.audioLengthSeconds() != null } == true }
 
     private fun isEnabled(command: OperatorCommand) = when (command) {
         is OperatorCommand.Status, is OperatorCommand.Cancel -> jobs != null

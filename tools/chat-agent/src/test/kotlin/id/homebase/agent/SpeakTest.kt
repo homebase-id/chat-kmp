@@ -15,7 +15,15 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -68,6 +76,37 @@ printf FAKEAUDIO > "${'$'}2"""")
     }
 
     @Test
+    fun cancellationKillsTheCommandAndTmpdirIsPrivate() = runBlocking {
+        val pidFile = File(dir, "pid")
+        val job = launch(Dispatchers.Default) { speaker(script("echo \$\$ > ${pidFile.absolutePath}; exec sleep 30"), timeoutMs = 60_000)("hi") }
+        withTimeout(5_000) { while (!pidFile.exists() || pidFile.readText().isBlank()) delay(20) }
+        val handle = ProcessHandle.of(pidFile.readText().trim().toLong()).get()
+        job.cancelAndJoin()
+        withTimeout(5_000) { while (handle.isAlive) delay(20) }
+        val tmp = script("""printf '%s' "${'$'}TMPDIR" > "${'$'}2"""")
+        assertTrue(assertNotNull(speaker(tmp)("hi")).bytes.decodeToString().contains("chat-agent-speak"))
+    }
+
+    @Test
+    fun concurrentSpeaksCannotExceedTheDailyCap() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val out = VoiceOut({ gate.await(); OutVoice("a.m4a", byteArrayOf(1), "audio/mp4", 1) }, RunLimiter(null, Int.MAX_VALUE, 2))
+        val results = (1..4).map { async(Dispatchers.Default) { runCatching { out.speak("x") } } }
+        delay(200)
+        gate.complete(Unit)
+        assertEquals(2, results.awaitAll().count { it.isSuccess })
+    }
+
+    @Test
+    fun aFailedSynthesisGivesTheSlotBack() = runBlocking<Unit> {
+        var fail = true
+        val out = VoiceOut({ if (fail) null else OutVoice("a.m4a", byteArrayOf(1), "audio/mp4", 1) }, RunLimiter(null, Int.MAX_VALUE, 1))
+        assertTrue(runCatching { out.speak("x") }.isFailure)
+        fail = false
+        assertEquals(1, out.speak("x").seconds)
+    }
+
+    @Test
     fun nonZeroExitLogsTheStderrTail() = runBlocking {
         assertNull(speaker(script("echo boom >&2; exit 7"))("hi"))
         assertTrue(logs.any { "exit 7" in it && "boom" in it })
@@ -117,13 +156,14 @@ printf FAKEAUDIO > "${'$'}2"""")
     fun voiceLimiterCountsARollingDayAndPersists() {
         var now = 0L
         val file = File(dir, "voice.txt")
-        val limiter = VoiceLimiter(file, 2) { now }
-        assertTrue(limiter.allows())
-        limiter.record(); now += 1_000; limiter.record()
-        assertFalse(limiter.allows())
-        assertFalse(VoiceLimiter(file, 2) { now }.allows())
+        fun limiter() = RunLimiter(file, Int.MAX_VALUE, 2) { now }
+        val limiter = limiter()
+        assertTrue(limiter.allows(emptySet()))
+        limiter.record(emptySet()); now += 1_000; limiter.record(emptySet())
+        assertFalse(limiter.allows(emptySet()))
+        assertFalse(limiter().allows(emptySet()))
         now += 86_400_000L
-        assertTrue(VoiceLimiter(file, 2) { now }.allows())
+        assertTrue(limiter().allows(emptySet()))
     }
 
     private val owner = OdinId("owner.example.com")
@@ -143,7 +183,7 @@ printf FAKEAUDIO > "${'$'}2"""")
     }
 
     private fun voiceOut(perDay: Int = 5, result: OutVoice? = OutVoice("reply.m4a", byteArrayOf(1, 2), "audio/mp4", 3), spoken: MutableList<String>? = null) =
-        VoiceOut({ text -> spoken?.add(text); result }, VoiceLimiter(null, perDay))
+        VoiceOut({ text -> spoken?.add(text); result }, RunLimiter(null, Int.MAX_VALUE, perDay))
 
     private fun backend(voice: VoiceOut?, prefix: String = "") = VoiceBackend(Allowlist.default(owner).copy(self, false), voice, prefix)
 
@@ -187,13 +227,13 @@ printf FAKEAUDIO > "${'$'}2"""")
     fun toolIsListedOnlyWhenTtsIsConfigured() {
         for (tier in Tier.entries) {
             assertFalse(VOICE_REPLY_TOOL in chatToolNames(tier))
-            assertTrue(VOICE_REPLY_TOOL in chatToolNames(tier, voice = true))
+            val listed = tier == Tier.OPERATOR
+            assertEquals(listed, VOICE_REPLY_TOOL in chatToolNames(tier, voice = true))
             assertTrue(scopedTools(chatToolNames(tier), null).none { it.name == VOICE_REPLY_TOOL })
-            assertTrue(scopedTools(chatToolNames(tier, voice = true), null).any { it.name == VOICE_REPLY_TOOL })
+            assertEquals(listed, scopedTools(chatToolNames(tier, voice = true), null).any { it.name == VOICE_REPLY_TOOL })
         }
         assertFalse("mcp__chat__$VOICE_REPLY_TOOL" in lockedBrainCommand(setOf("chat")))
-        assertTrue("mcp__chat__$VOICE_REPLY_TOOL" in lockedBrainCommand(setOf("chat"), voice = true))
-        assertTrue("mcp__chat__$VOICE_REPLY_TOOL" in parseConfig("lockedTools=chat\ntts=/x/speak.sh", owner).brain.command)
+        assertFalse("mcp__chat__$VOICE_REPLY_TOOL" in parseConfig("lockedTools=chat\ntts=/x/speak.sh", owner).brain.command)
         assertFalse("mcp__chat__$VOICE_REPLY_TOOL" in parseConfig("lockedTools=chat", owner).brain.command)
     }
 
@@ -249,7 +289,7 @@ printf FAKEAUDIO > "${'$'}2"""")
 
     @Test
     fun mirrorFallsBackWhenSendingTheVoiceNoteFails() = runBlocking {
-        val h = TestHarness(botConfig("tts=/x/speak.sh\nvoiceReplies=mirror"), identity = bot.toString(), voice = VoiceOut({ error("boom") }, VoiceLimiter(null, 5)))
+        val h = TestHarness(botConfig("tts=/x/speak.sh\nvoiceReplies=mirror"), identity = bot.toString(), voice = VoiceOut({ error("boom") }, RunLimiter(null, Int.MAX_VALUE, 5)))
         assertEquals("replied", h.handle(note("", 1L)))
         assertEquals(listOf("pong"), h.replies)
     }

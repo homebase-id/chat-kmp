@@ -35,6 +35,7 @@ import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
@@ -513,25 +514,41 @@ fun writeAttachments(dir: File, attachments: List<Attachment>): List<File> =
         }
     }
 
-fun shellTranscriber(command: String, log: (String) -> Unit = {}): suspend (ByteArray, String) -> String? = { bytes, name ->
-    withContext(Dispatchers.IO) {
-        val dir = tempDir("voice")
-        try {
-            val file = File(dir, safeName(name)).also { it.writeBytes(bytes) }
-            val process = ProcessBuilder("sh", "-c", "$command \"\$1\"", "transcribe", file.absolutePath).start()
-            process.outputStream.close()
-            val out = process.inputStream.readTextAsync()
-            val err = process.errorStream.readTextAsync()
-            fun fail(reason: String): String? = null.also { log("transcribe failed for $name: $reason") }
-            if (!process.waitFor(TRANSCRIBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly()
-                return@withContext fail("timed out after ${TRANSCRIBE_TIMEOUT_MS / 1000}s")
-            }
-            if (process.exitValue() != 0) return@withContext fail("exit ${process.exitValue()}: ${err.tail()}")
-            out.get(2, TimeUnit.SECONDS).trim().takeIf { it.isNotEmpty() }?.truncateToCodePoints(INLINE_TEXT_CODEPOINTS)
-                ?: fail("empty output: ${err.tail()}")
-        } finally {
-            dir.deleteRecursively()
+class ShellResult(val timedOut: Boolean, val exit: Int, val out: String, val outTail: String, val errTail: String)
+
+suspend fun runShell(command: String, args: List<String>, env: Map<String, String>, timeoutMs: Long): ShellResult = withContext(Dispatchers.IO) {
+    val builder = ProcessBuilder(listOf("sh", "-c", "$command \"\$@\"", "sh") + args)
+    builder.environment().putAll(env)
+    val process = builder.start()
+    try {
+        process.outputStream.close()
+        val out = process.inputStream.readTextAsync()
+        val err = process.errorStream.readTextAsync()
+        if (!runInterruptible { process.waitFor(timeoutMs, TimeUnit.MILLISECONDS) }) return@withContext ShellResult(true, -1, "", "", "")
+        ShellResult(false, process.exitValue(), runCatching { out.get(2, TimeUnit.SECONDS) }.getOrDefault(""), out.tail(), err.tail())
+    } finally {
+        if (process.isAlive) {
+            process.descendants().forEach { it.destroyForcibly() }
+            process.destroyForcibly()
         }
+    }
+}
+
+suspend fun probeSeconds(ffmpeg: Ffmpeg, file: File): Int? =
+    if (ffmpeg.available) ffmpeg.probe(file)?.let { ((it.durationMs + 500) / 1000).toInt() } else null
+
+fun shellTranscriber(command: String, log: (String) -> Unit = {}): suspend (ByteArray, String) -> String? = { bytes, name ->
+    val dir = tempDir("voice")
+    try {
+        val file = File(dir, safeName(name)).also { it.writeBytes(bytes) }
+        fun fail(reason: String): String? = null.also { log("transcribe failed for $name: $reason") }
+        val r = runShell(command, listOf(file.absolutePath), mapOf("TMPDIR" to dir.absolutePath), TRANSCRIBE_TIMEOUT_MS)
+        when {
+            r.timedOut -> fail("timed out after ${TRANSCRIBE_TIMEOUT_MS / 1000}s")
+            r.exit != 0 -> fail("exit ${r.exit}: ${r.errTail}")
+            else -> r.out.trim().takeIf { it.isNotEmpty() }?.truncateToCodePoints(INLINE_TEXT_CODEPOINTS) ?: fail("empty output: ${r.errTail}")
+        }
+    } finally {
+        dir.deleteRecursively()
     }
 }

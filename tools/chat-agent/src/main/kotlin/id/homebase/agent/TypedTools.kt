@@ -268,7 +268,7 @@ suspend fun toolSendVoice(backend: AgentBackend, args: JsonObject?): ToolReply =
         val dir = tempDir("probe")
         try {
             val source = File(dir, "in.${file.name.substringAfterLast('.').lowercase()}").also { it.writeBytes(file.bytes) }
-            ffmpeg.probe(source)?.let { ((it.durationMs + 500) / 1000).toInt() }
+            probeSeconds(ffmpeg, source)
         } finally {
             dir.deleteRecursively()
         }

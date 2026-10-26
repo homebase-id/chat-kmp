@@ -58,6 +58,7 @@ class RunLimiter(
         if (diskLines > runs.size) compact()
     }
 
+    @Synchronized
     fun allows(authors: Set<String>): Boolean {
         val t = now()
         runs.removeAll { it.at < t - DAY_MS }
@@ -65,11 +66,25 @@ class RunLimiter(
         return authors.all { a -> runs.count { it.at >= t - HOUR_MS && a in it.authors } < perHour }
     }
 
-    fun record(authors: Set<String>) {
+    @Synchronized
+    fun record(authors: Set<String>): Long {
         val run = Run(now(), authors)
         runs += run
         file?.appendText(line(run))
         if (++diskLines > 2 * runs.size + COMPACT_SLACK) compact()
+        return run.at
+    }
+
+    @Synchronized
+    fun reserve(authors: Set<String>): Long? = if (allows(authors)) record(authors) else null
+
+    @Synchronized
+    fun release(at: Long) {
+        val i = runs.indexOfFirst { it.at == at }
+        if (i >= 0) {
+            runs.removeAt(i)
+            compact()
+        }
     }
 
     private fun line(run: Run) = "${run.at}\t${run.authors.joinToString(",")}\n"

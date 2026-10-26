@@ -46,9 +46,9 @@ private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "reac
 private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES
 
 fun chatToolNames(tier: Tier, voice: Boolean = false): Set<String> =
-    (if (tier == Tier.OPERATOR) OPERATOR_TOOLS else LOCKED_TOOLS).let { if (voice) it + VOICE_REPLY_TOOL else it }
+    if (tier == Tier.OPERATOR) OPERATOR_TOOLS.let { if (voice) it + VOICE_REPLY_TOOL else it } else LOCKED_TOOLS
 
-fun chatToolCommandNames(voice: Boolean = false): String = CHAT_TOOLS.map { it.name }.filter { it in LOCKED_TOOLS || (voice && it == VOICE_REPLY_TOOL) }.joinToString(" ") { "mcp__${MCP_SERVER_NAME}__$it" }
+fun chatToolCommandNames(): String = CHAT_TOOLS.map { it.name }.filter { it in LOCKED_TOOLS }.joinToString(" ") { "mcp__${MCP_SERVER_NAME}__$it" }
 
 class RunScope(val conversation: Uuid, val tier: Tier, val sender: OdinId?)
 
@@ -146,8 +146,10 @@ class ChatToolServer(private val log: (String) -> Unit = {}, private val now: ()
         if (run.revoked || now() >= run.deadline) return ToolReply("this run has ended", true)
         val n = run.calls.incrementAndGet()
         if (run.cap != null && n > run.cap) return ToolReply("tool call limit (${run.cap}) reached for this run", true)
+        val sending = def.name in SENDING_TOOLS
+        if (sending) run.sent.incrementAndGet()
         val reply = guarded { def.run(run.backend, scopedArguments(args, run.scope.conversation)) }
-        if (def.name in SENDING_TOOLS && !reply.isError) run.sent.incrementAndGet()
+        if (sending && reply.isError) run.sent.decrementAndGet()
         log("${run.scope.conversation} tool ${def.name} #$n tier=${run.scope.tier.name.lowercase()} sender=${run.scope.sender ?: "self"}${if (reply.isError) " error" else ""}")
         return reply
     }

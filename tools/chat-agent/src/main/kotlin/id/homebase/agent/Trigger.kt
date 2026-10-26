@@ -23,12 +23,12 @@ const val LOCKED_WEB_SYSTEM_PROMPT =
 const val LOCKED_CHAT_MAX_TURNS = 6
 private val WEB_BUILTINS = mapOf("search" to "WebSearch", "fetch" to "WebFetch")
 
-fun lockedBrainCommand(tools: Set<String>, voice: Boolean = false): String {
+fun lockedBrainCommand(tools: Set<String>): String {
     val web = WEB_BUILTINS.filterKeys { it in tools }.values.toList()
     val chat = "chat" in tools
     if (!chat && web.isEmpty()) return DEFAULT_BRAIN
     val builtins = web.joinToString(",")
-    val allowed = (listOfNotNull(chatToolCommandNames(voice).takeIf { chat }) + web).joinToString(" ")
+    val allowed = (listOfNotNull(chatToolCommandNames().takeIf { chat }) + web).joinToString(" ")
     val prompt = when {
         !chat -> LOCKED_WEB_SYSTEM_PROMPT
         web.isEmpty() -> LOCKED_CHAT_SYSTEM_PROMPT
@@ -234,10 +234,13 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
     val ttsPreset = str("ttsPreset")?.lowercase()?.takeIf { it in TTS_PRESETS } ?: DEFAULT_TTS_PRESET
     val voiceMode = str("voiceReplies")?.lowercase()
     val ttsMaxChars = int("ttsMaxChars", DEFAULT_TTS_MAX_CHARS).coerceIn(1, TTS_SIDECAR_MAX_CHARS)
+    val ttsTimeoutMs = str("ttsTimeout")?.let {
+        parseDurationMs(it) ?: throw IllegalArgumentException("invalid ttsTimeout '$it': use e.g. 90s, 4m")
+    } ?: DEFAULT_TTS_TIMEOUT_MS
     return AgentConfig(
         allowlist = Allowlist(conversations, authors, kind, memberMode, selfOwned = ownerKey == owner),
         nickname = str("nickname") ?: DEFAULT_NICKNAME,
-        brain = str("brain")?.let { Brain(it) } ?: if (lockedTools.isNotEmpty()) Brain(lockedBrainCommand(lockedTools, voice = tts != null), streamJson = true) else Brain.LOCKED,
+        brain = str("brain")?.let { Brain(it) } ?: if (lockedTools.isNotEmpty()) Brain(lockedBrainCommand(lockedTools), streamJson = true) else Brain.LOCKED,
         maxRunsPerHour = int("maxRunsPerHour", DEFAULT_MAX_RUNS_PER_HOUR),
         maxRunsPerDay = int("maxRunsPerDay", DEFAULT_MAX_RUNS_PER_DAY),
         persona = persona,
@@ -272,9 +275,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         ttsPreset = ttsPreset,
         ttsReference = ttsReference,
         ttsReferenceText = str("ttsReferenceText"),
-        ttsTimeoutMs = str("ttsTimeout")?.let {
-            parseDurationMs(it) ?: throw IllegalArgumentException("invalid ttsTimeout '$it': use e.g. 90s, 4m")
-        } ?: DEFAULT_TTS_TIMEOUT_MS,
+        ttsTimeoutMs = ttsTimeoutMs,
         ttsMaxChars = ttsMaxChars,
         voiceReplies = voiceMode == "mirror",
         maxVoicePerDay = int("maxVoicePerDay", DEFAULT_MAX_VOICE_PER_DAY).coerceAtLeast(0),
@@ -298,6 +299,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
             "WARNING: invalid voiceReplies '${str("voiceReplies")}', using off (off or mirror)".takeIf { voiceMode != null && voiceMode !in setOf("off", "mirror") },
             "WARNING: voiceReplies=mirror needs tts=, voice replies stay off".takeIf { voiceMode == "mirror" && tts == null },
             "WARNING: ttsMaxChars=${values["ttsMaxChars"]} is not in 1..$TTS_SIDECAR_MAX_CHARS, using $ttsMaxChars".takeIf { values.containsKey("ttsMaxChars") && int("ttsMaxChars", -1) !in 1..TTS_SIDECAR_MAX_CHARS },
+            "WARNING: ttsMaxChars=$ttsMaxChars needs about ${(TTS_COLD_START_MS + ttsMaxChars * TTS_MS_PER_CHAR) / 1000}s to synthesize but ttsTimeout is ${ttsTimeoutMs / 1000}s, long replies will time out and fall back to text".takeIf { tts != null && TTS_COLD_START_MS + ttsMaxChars * TTS_MS_PER_CHAR > ttsTimeoutMs },
             "WARNING: tts, ttsVoice and the other tts keys are ignored without tts=".takeIf { tts == null && listOf("ttsVoice", "ttsPreset", "ttsReference", "ttsTimeout", "ttsMaxChars").any { str(it) != null } },
             "WARNING: invalid transport '${str("transport")}', using auto".takeIf { parseTransport(str("transport")) == null },
         ),
