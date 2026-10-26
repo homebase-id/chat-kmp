@@ -12,7 +12,7 @@ object CallLogReport {
     private val SECRET = Regex("""(?i)\b(ice-pwd|ice-ufrag|fingerprint|secret|password|token|key)(\s*[=:]\s*)\S+""")
 
     private class Entry(val at: Instant, val tag: String, val lines: MutableList<String>) {
-        val text: String get() = lines.joinToString("\n")
+        val text: String by lazy { lines.joinToString("\n") }
     }
 
     fun exportName(callId: String): String = "call-report-${callId.filter { it.isLetterOrDigit() || it == '-' }.take(36)}.txt"
