@@ -6,11 +6,20 @@ package id.homebase.core.clipboard
  */
 expect fun getImageFromClipboard(): ByteArray?
 
+class ClipboardContents(val image: ByteArray?, val text: String?)
+
 /**
- * Reads an image off the clipboard on demand (menu/tap-driven). suspend so web can use the
- * async Clipboard API; other platforms run synchronously inside. Returns original bytes or null.
+ * Reads the clipboard's image (original bytes) and plain text for a menu Paste, in one read so web
+ * asks the browser once. suspend for web's async Clipboard API; other platforms read synchronously.
  */
-expect suspend fun readClipboardImage(): ByteArray?
+expect suspend fun readClipboard(): ClipboardContents
+
+/**
+ * Whether the clipboard may hold an image, checked without reading it (so iOS shows no paste
+ * alert and Android no paste toast). False only when the platform can tell there is none; web
+ * cannot tell without a permissioned read, so it is always true there.
+ */
+expect fun clipboardMayHoldImage(): Boolean
 
 // Pure mime-selection core, stdlib-typed so it's unit-testable without Robolectric/mockito:
 // takes the clip's mime types and a lazy byte reader instead of ClipData/ContentResolver.

@@ -12,6 +12,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import id.homebase.core.clipboard.getImageFromClipboard
+import id.homebase.core.clipboard.pastedText
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isImeComposing
 
@@ -48,7 +49,7 @@ fun Modifier.composerKeyHandler(
         onLink = onLink,
         onFormat = onFormat,
         pasteImage = {
-            (onPasteImage != null && event.pasteClipboardImage(clipboardImage, onPasteImage)) ||
+            (onPasteImage != null && event.pasteClipboardImage(clipboardImage, clipboardText, onPasteImage)) ||
                 (onPasteOverSelection != null && event.pasteTextOverSelection(clipboardText, onPasteOverSelection))
         },
     )
@@ -103,14 +104,16 @@ internal fun handleComposerKey(
     return pasteImage()
 }
 
+// Leaves the event unconsumed when there is text to paste too, so the field's own paste inserts it.
 private fun KeyEvent.pasteClipboardImage(
     clipboardImage: () -> ByteArray?,
+    clipboardText: () -> String?,
     onPasteImage: (ByteArray) -> Unit,
 ): Boolean {
     if (!isPasteChord()) return false
     val imageBytes = clipboardImage() ?: return false
     onPasteImage(imageBytes)
-    return true
+    return pastedText(imageBytes, clipboardText()) == null
 }
 
 private fun KeyEvent.pasteTextOverSelection(

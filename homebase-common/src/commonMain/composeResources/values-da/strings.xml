@@ -858,6 +858,7 @@
     <string name="cd_sticker_options_add">Føj til mine klistermærker</string>
     <string name="cd_sticker_options_remove">Fjern fra mine klistermærker</string>
     <string name="cd_sticker_options_save">Gem på enheden</string>
+    <string name="chat_message_paste">Indsæt</string>
     <!-- Sheet shown when an animated GIF is pasted into the composer -->
     <string name="chat_gif_paste_title">Send denne GIF</string>
     <string name="chat_gif_paste_as_sticker">Send som klistermærke</string>
