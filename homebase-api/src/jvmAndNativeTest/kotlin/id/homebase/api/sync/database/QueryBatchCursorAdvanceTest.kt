@@ -1,6 +1,5 @@
 package id.homebase.api.sync.database
 
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.query.QueryBatchCursor
@@ -54,7 +53,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_oldestFirstUserDate_cursorAdvancesPastRowsAtSameUserDate() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
 
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
@@ -153,7 +152,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_oldestFirstUserDate_paginatesDisjointlyWhenAllRowsShareUserDate() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
 
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
@@ -263,7 +262,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_oldestFirstUserDate_cursorAdvances_whenAppDataUserDateIsNull() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
 
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
@@ -365,7 +364,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_newestFirstUserDate_paginatesDisjointlyWhenAllRowsShareUserDate() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
 
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
@@ -458,7 +457,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_createdDate_cursorAdvancesPastTiedCreatedRows() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
             val groupId = Uuid.fromLongs(0L, 3L)
@@ -495,7 +494,7 @@ class QueryBatchCursorAdvanceTest {
         // `header.fileMetadata.created` for the cursor). Same setup as above,
         // different sortField, must produce the same disjoint pagination.
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
             val groupId = Uuid.fromLongs(0L, 3L)
@@ -527,7 +526,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_anyChangeDate_cursorAdvancesPastTiedModifiedRows() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
             val groupId = Uuid.fromLongs(0L, 3L)
@@ -562,7 +561,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_onlyModifiedDate_cursorAdvancesPastTiedModifiedRows() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
             val groupId = Uuid.fromLongs(0L, 3L)
@@ -647,7 +646,7 @@ class QueryBatchCursorAdvanceTest {
     @Test
     fun queryBatchAsync_fetchesAllSeededRows_whenLimitExceedsCount() {
         runBlocking {
-            val dbm = DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+            val dbm = DatabaseManager({ createRawInMemoryDriver() })
 
             val identityId = Uuid.fromLongs(0L, 1L)
             val driveId = Uuid.fromLongs(0L, 2L)
