@@ -35,6 +35,7 @@ import id.homebase.core.logging.setupIOSCrashHandler
 import id.homebase.core.location.tracking.observeAppForeground
 import id.homebase.core.settings.UserPreferencesHelper
 import kotlinx.cinterop.ExperimentalForeignApi
+import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
 import org.koin.core.context.startKoin
@@ -42,6 +43,11 @@ import platform.Foundation.NSBundle
 import platform.UIKit.UIDevice
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
+import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationProtectedDataDidBecomeAvailable
+import platform.darwin.NSObjectProtocol
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
@@ -101,13 +107,45 @@ fun initKoin() {
  * [MainViewController] so the main-thread run-loop is free to process CoreText / Metal
  * callbacks before the first Compose frame is rendered.
  *
- * Call from `AppDelegate.didFinishLaunchingWithOptions` — idempotent.
+ * Call from `AppDelegate.didFinishLaunchingWithOptions` — idempotent. Before the first unlock the
+ * database can't be opened, so the work that needs it waits for protected data instead of crashing.
  */
 @OptIn(ExperimentalForeignApi::class)
 fun initializeApp() {
-    if (appInitialized) return
-    appInitialized = true
+    if (!appInitialized) {
+        appInitialized = true
+        initializeBeforeDatabase()
+    }
+    if (!databaseGate.tryOpen()) retryWhenProtectedDataAvailable()
+}
 
+/** Swift skips background work that needs the database while this is false. */
+fun isDatabaseOpen(): Boolean = databaseGate.isOpen
+
+private val databaseGate = DatabaseStartGate {
+    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
+    runBlocking {
+        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
+    }
+    Logger.i(tag = "TextRendering") { "DB init (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms" }
+}
+
+private var protectedDataObserver: NSObjectProtocol? = null
+
+/** Before the first unlock the database can't be read: open it once protected data is available. */
+private fun retryWhenProtectedDataAvailable() {
+    if (protectedDataObserver != null) return
+    protectedDataObserver = NSNotificationCenter.defaultCenter.addObserverForName(
+        name = UIApplicationProtectedDataDidBecomeAvailable,
+        `object` = null,
+        queue = NSOperationQueue.mainQueue,
+    ) { _ -> initializeApp() }
+    // It may have become available between the failed open and registering.
+    if (UIApplication.sharedApplication.isProtectedDataAvailable()) initializeApp()
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun initializeBeforeDatabase() {
     // Arm crash handling as the VERY FIRST step — even before Koin/DB — so
     // an init-time crash gets a written report even if Swift didn't arm first.
     installCrashReportingAndHandlers()
@@ -152,11 +190,12 @@ fun initializeApp() {
     // GpuTextDiagnostics / BLANK_TEXT_INVESTIGATION.md.
     installGpuTextDiagnostics()
 
-    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
-    runBlocking {
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-    }
-    Logger.i(tag = "TextRendering") { "DB init (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms" }
+    databaseGate.whenOpen { initializeAfterDatabase(startMark) }
+}
+
+private fun initializeAfterDatabase(startMark: kotlin.time.TimeSource.Monotonic.ValueTimeMark) {
+    protectedDataObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
+    protectedDataObserver = null
 
     // Re-arm Location tracking on every process start — including the
     // UIApplicationLaunchOptionsLocationKey relaunch after the OS terminated
@@ -189,10 +228,14 @@ fun MainViewController(): UIViewController {
     // makeUIViewController). FCM background-fetch wake-ups don't reach
     // here, so headless work stays headless. Idempotent. See
     // AuthConnectionCoordinator.promoteToForeground.
-    val authCC: id.homebase.core.auth.AuthConnectionCoordinator =
-        org.koin.mp.KoinPlatformTools.defaultContext().get().get()
-    authCC.promoteToForeground()
-    val controller = ComposeUIViewController { App() }
+    val databaseOpen = mutableStateOf(false)
+    databaseGate.whenOpen {
+        org.koin.mp.KoinPlatformTools.defaultContext().get()
+            .get<id.homebase.core.auth.AuthConnectionCoordinator>()
+            .promoteToForeground()
+        databaseOpen.value = true
+    }
+    val controller = ComposeUIViewController { if (databaseOpen.value) App() }
     MainViewControllerRef.instance = controller
     return controller
 }

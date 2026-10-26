@@ -203,6 +203,8 @@ import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
 import id.homebase.core.ui.screens.vault.auth.VaultSessionTracker
+import id.homebase.core.ui.screens.email.auth.EmailBiometricGate
+import id.homebase.core.ui.screens.email.auth.EmailSessionTracker
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.webdrop.WebDropScreen
@@ -562,6 +564,7 @@ fun AppNavHost(
     // Keeps the Vault biometric session alive across every Vault sub-screen — owned by
     // the vault feature, not this nav host.
     VaultSessionTracker(navController)
+    EmailSessionTracker(navController)
 
     // Track active conversation + auth guard + notification permission
     LaunchedEffect(authState, currentDestination) {
@@ -2248,19 +2251,23 @@ fun AppNavHost(
 
                             composable<Route.EmailThunderbirdSetup> {
                                 if (isAuthenticated) {
-                                    EmailThunderbirdSetupScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                    )
+                                    EmailBiometricGate {
+                                        EmailThunderbirdSetupScreen(
+                                            viewModel = koinViewModel(),
+                                            onBackClick = { navController.popBackStack() },
+                                        )
+                                    }
                                 }
                             }
 
                             composable<Route.EmailSecrets> {
                                 if (isAuthenticated) {
-                                    EmailSecretsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                    )
+                                    EmailBiometricGate {
+                                        EmailSecretsScreen(
+                                            viewModel = koinViewModel(),
+                                            onBackClick = { navController.popBackStack() },
+                                        )
+                                    }
                                 }
                             }
 
