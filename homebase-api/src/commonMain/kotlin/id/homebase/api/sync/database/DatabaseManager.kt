@@ -119,8 +119,7 @@ class DatabaseManager(
     private val readDispatcher: CoroutineDispatcher =
         readDispatcher ?: ioDispatcher.limitedParallelism(SQLITE_READER_CONNECTIONS)
 
-    // Decoding rows off the read lane keeps a reader connection free for the next read.
-    // A test that injects its read dispatcher decodes there too, so it stays in virtual time.
+    // Injected read dispatchers decode in place so tests stay in virtual time.
     internal val decodeDispatcher: CoroutineDispatcher = readDispatcher ?: Dispatchers.Default
 
     private val logger = Logger.withTag("DatabaseManager")
