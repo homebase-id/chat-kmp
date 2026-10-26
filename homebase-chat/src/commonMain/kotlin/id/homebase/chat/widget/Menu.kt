@@ -78,6 +78,7 @@ import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.isMobile
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
@@ -379,7 +380,7 @@ internal fun ReceivedMessagePopup(
             // This unanchored Popup positions against its parent — the hover-icons Row,
             // which only has icons (and therefore a size) on desktop. Mobile renders the
             // bar from the bubble itself via BubbleReactionPopup.
-            if (policy.allowInlineReactions && !isMobile()) {
+            if (policy.allowInlineReactions && usesPointerUx()) {
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
@@ -539,7 +540,7 @@ internal fun SentMessagePopup(
     when (transition.shownMode) {
         MessagePopupMode.Reaction -> {
             // Desktop-only anchor — see ReceivedMessagePopup.
-            if (policy.allowInlineReactions && !isMobile()) {
+            if (policy.allowInlineReactions && usesPointerUx()) {
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
