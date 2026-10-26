@@ -519,10 +519,10 @@ class DriveSyncCollectionTest {
             val chatLike = Uuid.random()
             val feedLike = Uuid.random()
             val small = List(2) { Uuid.random() }
-            // Mount order puts the tail drives FIRST to prove the ordering is applied, not incidental.
+            // Head and tail are mounted away from their final positions so the ordering is proven.
             val mounts = linkedMapOf(
-                chatLike to "Chat", feedLike to "Feed",
                 small[0] to "Contacts", small[1] to "Profile",
+                feedLike to "Feed", chatLike to "Chat",
             )
             lateinit var engine: MockEngine
             engine = MockEngine { request ->

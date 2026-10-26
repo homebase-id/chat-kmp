@@ -278,8 +278,8 @@ class DriveSyncManager(
         // Remote (owner-hosted) drives can't join an own-host collection: kicked fire-and-forget
         // as before, so an offline owner never stalls the aggregate round.
         val headOrder = collectionHead.withIndex().associate { (i, id) -> id to i - collectionHead.size }
-        val tailOrder = collectionTail.withIndex().associate { (i, id) -> id to i }
-        val ordered = snapshot.sortedBy { (driveId, _) -> headOrder[driveId] ?: tailOrder[driveId] ?: -1 }
+        val tailOrder = collectionTail.withIndex().associate { (i, id) -> id to i + 1 }
+        val ordered = snapshot.sortedBy { (driveId, _) -> headOrder[driveId] ?: tailOrder[driveId] ?: 0 }
 
         val rounds = mutableListOf<BatchedDrive>()
         for ((driveId, sync) in ordered) {
