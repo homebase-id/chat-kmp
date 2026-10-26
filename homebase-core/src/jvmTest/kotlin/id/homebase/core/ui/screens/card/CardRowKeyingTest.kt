@@ -61,11 +61,11 @@ class CardRowKeyingTest {
         }
 
         onAllNodesWithTag("cards_button")[0].performClick()
-        onNodeWithTag("cards_menu_done").assertExists()
+        onNodeWithTag("cards_sheet_done").assertExists()
 
         attributes = listOf(second)
         waitForIdle()
 
-        onNodeWithTag("cards_menu_done").assertDoesNotExist()
+        onNodeWithTag("cards_sheet_done").assertDoesNotExist()
     }
 }
