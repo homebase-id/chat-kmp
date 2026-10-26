@@ -18,7 +18,6 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.util.initials
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -439,9 +438,7 @@ class ConversationMapper(
                         ?: appData.previewThumbnail,
                     keyHeader =
                         KeyHeader(
-                            iv = Base64.decode(
-                                imagePayload.iv ?: error("encrypted payload requires key header")
-                            ),
+                            iv = (imagePayload.iv ?: error("encrypted payload requires key header")).bytes,
                             aesKey = conversation.keyHeader.aesKey
                         ),
                     requestedSize = ImageSize.THUMB_MEDIUM,

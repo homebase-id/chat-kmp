@@ -1730,6 +1730,11 @@
     <string name="contactbook_action_blocked_connection_removed">Forbindelsen er fjernet. De er stadig blokeret.</string>
     <string name="contactbook_action_not_blocked">De er ikke længere blokeret, så der var intet at fjerne.</string>
     <string name="contactbook_action_sync_started">Synkroniserer denne kontakt fra deres profil…</string>
+    <string name="contactbook_detail_rebuild_conversation">Genopbyg samtale</string>
+    <string name="contactbook_action_conversation_rebuilt">Samtalen er genopbygget og sendt til dem</string>
+    <string name="contactbook_action_conversation_rebuild_not_needed">Din server har stadig denne samtale. Der er intet at genopbygge.</string>
+    <string name="contactbook_action_conversation_rebuild_queued">Samtalen er stadig ved at blive sendt. Prøv igen, når den er færdig.</string>
+    <string name="contactbook_error_conversation_rebuild">Samtalen kunne ikke genopbygges</string>
     <string name="contactbook_action_request_accepted">Forbindelsesanmodning accepteret.</string>
     <string name="contactbook_action_request_rejected">Forbindelsesanmodning afvist.</string>
     <string name="contactbook_action_request_cancelled">Forbindelsesanmodning annulleret.</string>
@@ -2029,6 +2034,10 @@
     <string name="vault_saved">Gemt i Vault</string>
     <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
     <string name="vault_chat_image_name">Chatbillede, %1$s</string>
+    <string name="email_biometric_prompt_title">Lås mailopsætning op</string>
+    <string name="email_biometric_prompt_subtitle">Godkend for at se dine mailadgangskoder og nøgler</string>
+    <string name="email_locked_title">Mailopsætning er låst</string>
+    <string name="email_locked_unlock">Lås op</string>
     <string name="call_beta_label">Beta</string>
     <string name="call_report_problem">Rapportér et problem</string>
     <string name="call_report_unavailable">Ingen log fundet for dette opkald</string>

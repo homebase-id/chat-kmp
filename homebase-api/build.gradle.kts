@@ -10,6 +10,24 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+// Same release iosApp pins for its SQLCipher.swift package; bump both together.
+val sqlCipherIosVersion = "4.19.0"
+val sqlCipherIosSha256 = "39f02d2f04f0de2ba1facf215550bfc6e6e2c9971d5d8ebb0cdd604874781bd7"
+val sqlCipherXcframeworkDir = layout.buildDirectory.dir("sqlcipher/$sqlCipherIosVersion/SQLCipher.xcframework")
+val sqlCipherSimulatorFrameworkDir =
+    sqlCipherXcframeworkDir.get().asFile.resolve("ios-arm64_x86_64-simulator").absolutePath
+
+val fetchSqlCipherXcframework by tasks.registering(Exec::class) {
+    val url = "https://github.com/sqlcipher/SQLCipher.swift/releases/download/$sqlCipherIosVersion/SQLCipher.xcframework.zip"
+    val script = file("scripts/fetch-sqlcipher-xcframework.sh")
+    val out = sqlCipherXcframeworkDir.get().asFile
+    inputs.file(script)
+    inputs.property("url", url)
+    inputs.property("sha256", sqlCipherIosSha256)
+    outputs.dir(out)
+    commandLine("sh", script.absolutePath, url, sqlCipherIosSha256, out.absolutePath)
+}
+
 kotlin {
     applyDefaultHierarchyTemplate()
 
@@ -146,18 +164,19 @@ kotlin {
     // ffmpegkit.framework OR its bundled FFmpeg-lib siblings. Baking the absolute paths is
     // OK because the test binary only runs in the build environment and never ships.
     //
-    // Production iOS app links libsqlite3 via iosApp's Xcode project — for the gradle
-    // test binary we have to wire it in explicitly so SQLDelight's sqliter cinterop has its
-    // underlying symbols at link time. Previously unnoticed because iosSimulatorArm64Test
-    // was never run in CI (test.yml has been disabled).
+    // sqliter's sqlite3 symbols come from SQLCipher, never the system libsqlite3: the app gets
+    // it from iosApp's SQLCipher.swift package, this test binary from fetchSqlCipherXcframework.
     val testBinaryLinkerOpts = buildList {
         add("-F$ffmpegKitFrameworkDir")
         add("-framework"); add("ffmpegkit")
         ffmpegKitSimulatorFrameworkDirs.forEach { add("-rpath"); add(it) }
-        add("-lsqlite3")
+        add("-F$sqlCipherSimulatorFrameworkDir")
+        add("-framework"); add("SQLCipher")
+        add("-rpath"); add(sqlCipherSimulatorFrameworkDir)
     }
     iosSimulatorArm64().binaries
         .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
+        .apply { linkTaskProvider.configure { dependsOn(fetchSqlCipherXcframework) } }
         .linkerOpts(testBinaryLinkerOpts)
 
     // wasmJsTest: SQLDelight has no sql.js-backed test driver wired up yet, so every
