@@ -67,6 +67,20 @@ class RichTextBlockFormatTest {
     }
 
     @Test
+    fun codeFence_caretAtLineStartWithTrailingTextClosesFence() {
+        val edit = "abc".codeBlockEdit(TextRange(0))
+        assertEquals("```\n\n```\nabc", edit.applyTo("abc"))
+        assertEquals(TextRange(4), edit.selection)
+    }
+
+    @Test
+    fun codeFence_caretMidLineClosesFenceBeforeTrailingText() {
+        val edit = "abcd".codeBlockEdit(TextRange(2))
+        assertEquals("ab\n```\n\n```\ncd", edit.applyTo("abcd"))
+        assertEquals(TextRange(7), edit.selection)
+    }
+
+    @Test
     fun taskList_togglesOnAndOff() {
         val on = "buy milk".taskListEdit(TextRange(0)).applyTo("buy milk")
         assertEquals("- [ ] buy milk", on)

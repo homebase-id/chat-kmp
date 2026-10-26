@@ -99,7 +99,8 @@ private fun codeBlockEdit(text: String, lines: List<BlockLine>, selection: TextR
         val line = lines.touching(sel).firstOrNull()
         if (line?.isList == true) return BlockEdit(emptyList(), sel)
         val lead = if (line == null || sel.min == line.start) "" else "\n"
-        val insert = "$lead$FENCE\n\n$FENCE"
+        val trail = if (line != null && sel.min < line.end) "\n" else ""
+        val insert = "$lead$FENCE\n\n$FENCE$trail"
         return BlockEdit(listOf(Splice(sel.min, 0, insert)), TextRange(sel.min + lead.length + FENCE.length + 1))
     }
     val touched = lines.touching(sel)

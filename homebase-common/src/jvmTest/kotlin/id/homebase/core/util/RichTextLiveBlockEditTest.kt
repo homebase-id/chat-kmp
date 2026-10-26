@@ -89,6 +89,20 @@ class RichTextLiveBlockEditTest {
     }
 
     @Test
+    fun codeFence_caretAtLineStartWithTrailingText() {
+        val state = load("abc", TextRange(0))
+        val out = state.press { codeBlockEdit() }
+        assertEquals("```\n\n```\nabc", out)
+    }
+
+    @Test
+    fun codeFence_caretMidLineWithTrailingText() {
+        val state = load("abcd", TextRange(2))
+        val out = state.press { codeBlockEdit() }
+        assertEquals("ab\n```\n\n```\ncd", out)
+    }
+
+    @Test
     fun codeFence_doesNotCopyListBulletGlyphs() {
         val state = load("- one\n- two")
         assertEquals("- one\n- two", state.press { codeBlockEdit() })
