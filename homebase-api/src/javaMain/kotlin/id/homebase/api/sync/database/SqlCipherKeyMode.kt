@@ -3,27 +3,11 @@ package id.homebase.api.sync.database
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import co.touchlab.kermit.Logger
-import id.homebase.api.crypto.ByteArrayUtil
-import id.homebase.api.storage.SecureStorage
 import java.io.File
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 import kotlin.concurrent.thread
 import kotlin.time.TimeSource
-
-internal interface RawKeyStore {
-    fun get(): String?
-    fun put(hex: String)
-    fun remove()
-}
-
-internal object SecureStorageRawKeyStore : RawKeyStore {
-    private const val KEY_DB_RAW_KEY = "odin_db_raw_key"
-
-    override fun get(): String? = SecureStorage.get(KEY_DB_RAW_KEY)
-    override fun put(hex: String) = SecureStorage.put(KEY_DB_RAW_KEY, hex)
-    override fun remove() = SecureStorage.remove(KEY_DB_RAW_KEY)
-}
 
 /**
  * Opens the SQLCipher database on desktop and Android with a raw key (`x'<64 hex>'`) instead of
@@ -32,8 +16,6 @@ internal object SecureStorageRawKeyStore : RawKeyStore {
  */
 internal object SqlCipherKeyMode {
     private const val SALT_BYTES = 16
-    private const val RAW_KEY_BYTES = 32
-    private const val RAW_KEY_HEX_LENGTH = RAW_KEY_BYTES * 2
 
     // SQLCipher v4's default KDF, which both platforms' files were encrypted with.
     private const val KDF_ITERATIONS = 256_000
@@ -55,17 +37,17 @@ internal object SqlCipherKeyMode {
         open: (key: String?) -> SqlDriver,
     ): SqlDriver {
         if (passphrase.isNullOrEmpty()) return open(null).verified()
-        val cached = store.get()?.takeIf(::isRawKeyHex)
+        val cached = store.get()?.takeIf(SqlCipherRawKey::isHex)
 
         if (!dbFile.isFile || dbFile.length() < SALT_BYTES) {
             // Store before the driver creates the file, so a crash in between leaves the
             // key that the next run will open it with.
-            val hex = cached ?: ByteArrayUtil.getRndByteArray(RAW_KEY_BYTES).toHexString().also(store::put)
-            return open(rawKey(hex)).verified()
+            val hex = cached ?: SqlCipherRawKey.newHex().also(store::put)
+            return open(SqlCipherRawKey.format(hex)).verified()
         }
 
         if (cached != null) {
-            tryOpen(open, rawKey(cached))?.let { return it }
+            tryOpen(open, SqlCipherRawKey.format(cached))?.let { return it }
             logger.w { "Cached raw key doesn't open the database; using the passphrase" }
             store.remove()
         }
@@ -89,8 +71,6 @@ internal object SqlCipherKeyMode {
         }
     }
 
-    fun rawKey(rawKeyHex: String): String = "x'$rawKeyHex'"
-
     private fun tryOpen(open: (key: String?) -> SqlDriver, key: String): SqlDriver? = try {
         open(key).verified()
     } catch (e: Exception) {
@@ -108,7 +88,7 @@ internal object SqlCipherKeyMode {
     }
 
     internal fun deriveRawKeyHex(passphrase: String, salt: ByteArray): String {
-        val spec = PBEKeySpec(passphrase.toCharArray(), salt, KDF_ITERATIONS, RAW_KEY_BYTES * Byte.SIZE_BITS)
+        val spec = PBEKeySpec(passphrase.toCharArray(), salt, KDF_ITERATIONS, SqlCipherRawKey.BYTES * Byte.SIZE_BITS)
         return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
             .generateSecret(spec)
             .encoded
@@ -125,7 +105,4 @@ internal object SqlCipherKeyMode {
         }
         salt
     }
-
-    internal fun isRawKeyHex(value: String): Boolean =
-        value.length == RAW_KEY_HEX_LENGTH && value.all { it in '0'..'9' || it in 'a'..'f' }
 }
