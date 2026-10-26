@@ -58,23 +58,31 @@ internal const val MIN_CODE_CONTRAST = 4.5f
 internal class BubbleCodeStyle(val background: Color, val theme: SyntaxTheme)
 
 internal fun bubbleCodeStyle(scheme: ColorScheme, content: Color, bubble: Color, sent: Boolean): BubbleCodeStyle {
-    val bg = content.copy(alpha = FENCED_CODE_BG_ALPHA).compositeOver(bubble)
+    // Tinting with light content lifts a saturated bubble towards it and leaves no contrast room for colour.
+    val bg = if (content.luminance() > bubble.luminance()) {
+        scheme.scrim.copy(alpha = LIGHT_CONTENT_CODE_BG_ALPHA).compositeOver(bubble)
+    } else {
+        content.copy(alpha = FENCED_CODE_BG_ALPHA).compositeOver(bubble)
+    }
     fun tone(accent: Color) = readable(accent, content, bg)
+    val keyword = tone(maxOf(scheme.primary, scheme.inversePrimary, compareBy { contrastRatio(it, bg) }))
     val comment = tone(lerp(content, bg, 0.35f))
     val theme = SyntaxTheme(
         key = if (sent) "bubble-sent" else "bubble-received",
         code = content.toArgb(),
-        keyword = tone(scheme.tertiary).toArgb(),
-        string = tone(scheme.secondary).toArgb(),
-        literal = tone(scheme.inversePrimary).toArgb(),
+        keyword = keyword.toArgb(),
+        string = tone(scheme.tertiary).toArgb(),
+        literal = tone(scheme.error).toArgb(),
         comment = comment.toArgb(),
-        metadata = tone(scheme.tertiaryContainer).toArgb(),
+        metadata = keyword.toArgb(),
         multilineComment = comment.toArgb(),
         punctuation = content.toArgb(),
         mark = content.toArgb(),
     )
     return BubbleCodeStyle(bg, theme)
 }
+
+private const val LIGHT_CONTENT_CODE_BG_ALPHA = 0.3f
 
 private fun readable(accent: Color, content: Color, bg: Color): Color {
     for (step in 0..10) {

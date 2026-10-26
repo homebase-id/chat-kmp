@@ -423,9 +423,9 @@ private fun TextStyle.bubbleHeading(color: Color, scale: Float, weight: FontWeig
 }
 
 /**
- * Fenced/code-block container for a chat bubble: a faint [color] tint with a subtle
- * [color] border, both alpha-blended onto the bubble content colour so the block
- * reads as a distinct surface on BOTH a sent (primary) and received (surface) bubble.
+ * Fenced/code-block container for a chat bubble: the [bubbleCodeStyle] background with a
+ * subtle [color] border, so the block reads as a distinct surface on BOTH a sent (primary)
+ * and received (surface) bubble.
  * Mirrors mikepenz's own private `MarkdownCode` body (rounded [MarkdownCodeBackground]
  * + horizontally-scrollable monospace text) but swaps the surface-role fill for the
  * bubble-relative tint and adds the border.
@@ -438,8 +438,15 @@ private fun BubbleCodeContainer(
     color: Color,
 ) {
     val codeBlockPadding = LocalMarkdownPadding.current.codeBlock
+    val scheme = MaterialTheme.colorScheme
+    val extended = HomebaseTheme.extendedColors
+    val codeStyle = remember(scheme, extended, color) {
+        val sent = color == extended.bubbleSentOnSurface
+        val bubble = if (sent) extended.bubbleSentSurface else scheme.surfaceContainerHigh
+        bubbleCodeStyle(scheme, color, bubble, sent)
+    }
     MarkdownCodeBackground(
-        color = color.copy(alpha = FENCED_CODE_BG_ALPHA),
+        color = codeStyle.background,
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, color.copy(alpha = FENCED_CODE_BORDER_ALPHA)),
         modifier = Modifier
@@ -448,14 +455,7 @@ private fun BubbleCodeContainer(
         language = language,
         code = code,
     ) {
-        val scheme = MaterialTheme.colorScheme
-        val extended = HomebaseTheme.extendedColors
-        val syntax = remember(scheme, extended, color) {
-            val sent = color == extended.bubbleSentOnSurface
-            val bubble = if (sent) extended.bubbleSentSurface else scheme.surfaceContainerHigh
-            bubbleCodeStyle(scheme, color, bubble, sent).theme
-        }
-        val text = remember(code, language, syntax) { highlightCode(code, language, syntax) }
+        val text = remember(code, language, codeStyle) { highlightCode(code, language, codeStyle.theme) }
         MarkdownBasicText(
             text = text,
             style = style,

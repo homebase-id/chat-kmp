@@ -6,10 +6,13 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import id.homebase.core.ui.theme.DarkColors
 import id.homebase.core.ui.theme.LightColors
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+
+private const val MIN_TOKEN_GAP = 24f / 255f
 
 class BubbleCodeHighlightTest {
     private val code = "fun main() {\n    val greeting = \"hello\" // say hi\n    println(greeting + 42)\n}"
@@ -20,7 +23,7 @@ class BubbleCodeHighlightTest {
         "light" to Case(
             lightColorScheme(
                 primary = LightColors.Primary, onPrimary = LightColors.OnPrimary,
-                secondary = LightColors.Secondary, onSurface = LightColors.OnSurface,
+                secondary = LightColors.Secondary, error = LightColors.Error, onSurface = LightColors.OnSurface,
                 surfaceContainerHigh = LightColors.Surface3,
             ),
             LightColors.Primary, LightColors.OnPrimary,
@@ -28,7 +31,7 @@ class BubbleCodeHighlightTest {
         "dark" to Case(
             darkColorScheme(
                 primary = DarkColors.Primary, onPrimary = DarkColors.OnPrimary,
-                secondary = DarkColors.Secondary, onSurface = DarkColors.OnSurface,
+                secondary = DarkColors.Secondary, error = DarkColors.Error, onSurface = DarkColors.OnSurface,
                 surfaceContainerHigh = DarkColors.Surface3,
             ),
             LightColors.Primary, LightColors.OnPrimary,
@@ -53,6 +56,27 @@ class BubbleCodeHighlightTest {
             assertTrue(colours.size >= 2, "expected >=2 colours, got $colours ($name/$side)")
         }
     }
+
+    @Test
+    fun keywordStringAndPlainTextAreDistinguishable() {
+        for ((name, c) in cases) for ((side, sd) in sides(c)) {
+            val out = highlightCode(code, "kotlin", style(c, sd).theme)
+            fun colourAt(token: String): Color {
+                val at = code.indexOf(token)
+                return out.spanStyles.lastOrNull { it.start <= at && it.end > at && it.item.color.alpha > 0f }
+                    ?.item?.color ?: sd.content
+            }
+            val keyword = colourAt("val")
+            val string = colourAt("\"hello\"")
+            val plain = sd.content
+            for ((a, b) in listOf(keyword to plain, string to plain, keyword to string)) {
+                assertTrue(channelGap(a, b) >= MIN_TOKEN_GAP, "$a vs $b too close ($name/$side)")
+            }
+        }
+    }
+
+    private fun channelGap(a: Color, b: Color) =
+        maxOf(abs(a.red - b.red), abs(a.green - b.green), abs(a.blue - b.blue))
 
     @Test
     fun everyTokenColourReachesContrastOnTheCodeBackground() {
