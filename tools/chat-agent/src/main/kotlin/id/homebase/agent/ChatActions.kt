@@ -26,6 +26,8 @@ import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.decodeReactionCode
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.viewonce.ViewOnceSignal
+import id.homebase.api.sync.database.TombstoneRetention
 import kotlin.uuid.Uuid
 
 fun reactionJson(emoji: String): String = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
@@ -135,4 +137,51 @@ suspend fun editOwnMessage(session: Session, allowlist: Allowlist, conversationI
         ),
     )
     requireNotNull(result) { "edit was rejected (the message changed meanwhile)" }
+}
+
+// reactToMessage rejects '_' codes, and this one is not an emoji
+suspend fun addViewOnceSignal(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg) {
+    allowlist.requireSend(conversationId)
+    val recipients = conversationRecipients(conversationFor(session, allowlist, conversationId), session.identity)
+    DriveFileGroupReactionProvider(session.http, session.credentials).addReaction(chatDrive, fileIdOf(message), reactionJson(ViewOnceSignal.OPENED_CODE), recipients)
+}
+
+suspend fun stripOwnViewOnceCopy(session: Session, conversationId: Uuid, message: ChatMsg) {
+    val file = messageFile(session, conversationId, message.id)
+    val metadata = file.fileMetadata
+    val payloadKeys = metadata.payloads.orEmpty().map { it.key }
+    if (payloadKeys.isEmpty()) return
+    val appData = metadata.appData
+    val keyHeader = KeyHeader(KeyHeader.newRandom16().iv, file.keyHeader.aesKey)
+    val update = UploadFileMetadata(
+        allowDistribution = false,
+        isEncrypted = file.serverFileIsEncrypted,
+        accessControlList = file.serverMetadata.accessControlList,
+        versionTag = metadata.versionTag ?: error("message has no version tag"),
+        appData = UploadAppFileMetaData(
+            uniqueId = message.id,
+            tags = appData.tags,
+            groupId = appData.groupId,
+            fileType = appData.fileType,
+            dataType = appData.dataType,
+            userDate = appData.userDate,
+            archivalStatus = appData.archivalStatus,
+            content = TombstoneRetention.viewOnceKindOnly(appData.content),
+        ),
+    )
+    val result = DriveUploadProvider(session.http, session.credentials, JvmFileOperationsProvider()).updateFileByUniqueId(
+        UpdateFileByUniqueIdRequest(
+            driveId = chatDrive,
+            uniqueId = message.id,
+            keyHeader = keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = KeyHeader.newRandom16().iv,
+                locale = UpdateLocale.Local,
+                recipients = emptyList(),
+                manifest = UpdateManifest.build(toDeletePayloads = payloadKeys.map(::PayloadDeleteKey)),
+            ),
+            metadata = update.encryptContent(keyHeader),
+        ),
+    )
+    requireNotNull(result) { "view-once strip was rejected (the message changed meanwhile)" }
 }

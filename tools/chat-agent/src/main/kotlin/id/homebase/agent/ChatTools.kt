@@ -1,6 +1,9 @@
 package id.homebase.agent
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
+import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -185,6 +188,9 @@ class WatcherBackend(
 
     override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String) =
         sendToConversation(session, allowlist, conversationId, caption, media = { _, _ -> stageVoice(voice) })
+
+    override suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor) =
+        sendToConversation(session, allowlist, conversationId, "", typed = MessageContent.ViewOnce(descriptor), media = staged)
 
     override fun visible(messages: List<ChatMsg>, conversationId: Uuid) = visibleTo(messages)
 

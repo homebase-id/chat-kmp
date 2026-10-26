@@ -82,6 +82,7 @@ fun withAttachments(output: BrainOutcome.Output, root: File?): BrainOutcome.Outp
     return if (attached.files.isEmpty() && attached.skipped.isEmpty()) output else BrainOutcome.Output(attached.text, attached.files, output.session)
 }
 
+const val NO_PERSISTENCE_FLAG = "--no-session-persistence"
 const val MCP_PLACEHOLDER = "{mcp}"
 
 private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
@@ -129,7 +130,7 @@ suspend fun runBrain(
     sessionFlags: String? = null,
 ): BrainOutcome {
     val scratch = if (tier == Tier.LOCKED) tempDir("brain") else null
-    val attachDir = scratch ?: attachments.takeIf { a -> a.any { it.bytes != null } }?.let { tempDir("attach") }
+    val attachDir = scratch ?: attachments.takeIf { a -> a.any { it.onDisk } }?.let { tempDir("attach") }
     val cwd = scratch ?: operatorCwd?.let(::File)
     val mcpDir = lease?.let { tempDir("mcp") }
     try {
@@ -138,11 +139,12 @@ suspend fun runBrain(
         val env = (if (files.isEmpty()) emptyMap() else mapOf("CHAT_AGENT_ATTACHMENTS" to files.joinToString("\n") { it.absolutePath })) +
             (if (lease != null && mcpConfig != null) mcpEnvironment(lease, mcpConfig) else emptyMap())
         val vision = brain.streamJson && attachments.any { it.modelBlock }
+        val ephemeral = attachments.any { it.ephemeral }
         val placeholders = buildMap {
             mcpConfig?.let { put(MCP_PLACEHOLDER, shellWord(it.absolutePath)) }
-            if (tier == Tier.OPERATOR) put(SESSION_PLACEHOLDER, sessionFlags.orEmpty())
+            if (tier == Tier.OPERATOR) put(SESSION_PLACEHOLDER, if (ephemeral) "" else sessionFlags.orEmpty())
         }
-        val command = placeholders.entries.fold(brain.command) { c, (k, v) -> c.replace(k, v) }
+        val command = placeholders.entries.fold(brain.command) { c, (k, v) -> c.replace(k, v) }.let { if (ephemeral) "$it $NO_PERSISTENCE_FLAG" else it }
         val outcome = runBrainProcess(
             if (vision) "$command $STREAM_JSON_FLAGS" else command,
             if (vision) streamJsonInput(prompt, attachments) else prompt,

@@ -17,6 +17,7 @@ import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.upload.PayloadBundle
 import java.io.File
 import java.time.Instant
@@ -43,7 +44,7 @@ const val VIDEO_MAX_BYTES = 5L * 1024 * 1024
 private const val ONE_HOUR_MS = 3_600_000L
 
 val TYPED_SEND_TOOLS = setOf("send_poll", "send_event", "send_location", "send_contact")
-val MEDIA_SEND_TOOLS = setOf("send_video", "send_voice")
+val MEDIA_SEND_TOOLS = setOf("send_video", "send_voice", "send_view_once")
 
 private val E164 = Regex("^\\+[1-9]\\d{1,14}$")
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
@@ -205,6 +206,47 @@ suspend fun toolSendVoice(backend: AgentBackend, args: JsonObject?): ToolReply =
     ToolReply("sent voice note ${backend.sendVoice(conversationId, voice, captionArg(backend, args))}${if (seconds == null) " (duration unknown: ffprobe not available or unreadable)" else ""}")
 }
 
+private typealias Stager = suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle
+
+private fun imageStager(file: OutFile): Stager = { _, ops -> buildOutgoingBundle(listOf(file), ops).withoutThumbnails() }
+
+private suspend fun videoStager(backend: AgentBackend, file: OutFile): Stager {
+    val ffmpeg = backend.ffmpeg
+    require(ffmpeg.available) { "a view-once video needs ffmpeg and ffprobe, and is never sent as a plain file" }
+    require(file.bytes.size <= VIDEO_MAX_BYTES) { "the video is over ${formatSize(VIDEO_MAX_BYTES)}" }
+    val dir = tempDir("probe")
+    val video = try {
+        val source = File(dir, "in.mp4").also { it.writeBytes(file.bytes) }
+        val probe = ffmpeg.probe(source, VIDEO_FORMAT)
+        require(probe != null && probe.width > 0 && probe.height > 0) { "${file.name} is not a playable video" }
+        val poster = ffmpeg.poster(source, probe.durationMs)
+        requireNotNull(poster) { "could not read a frame from ${file.name}" }
+        OutVideo(file.name, file.bytes, poster, probe.durationMs, probe.width, probe.height, probe.codec)
+    } finally {
+        dir.deleteRecursively()
+    }
+    return { key, ops -> stageVideo(video, key, ops).withoutThumbnails() }
+}
+
+private val VIEW_ONCE_REFUSED_ARGS = listOf("replyTo", "reply", "files", "paths", "path2")
+
+suspend fun toolSendViewOnce(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
+    val conversationId = sendTarget(backend, args)
+    require(VIEW_ONCE_REFUSED_ARGS.none { args?.containsKey(it) == true }) { "view-once media takes exactly one file and cannot be a reply" }
+    val file = fileArg(backend, args)
+    val caption = fitDisclosed({ backend.disclose(conversationId, it) }, stringArg(args, "caption").orEmpty(), ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS)
+        .ifEmpty { null }
+    val image = decodeImage(file.bytes) != null
+    val kind = when {
+        image -> ViewOnceDescriptor.KIND_IMAGE
+        file.name.lowercase().endsWith(".mp4") -> ViewOnceDescriptor.KIND_VIDEO
+        else -> throw IllegalArgumentException("view-once media must be an image or an .mp4 video")
+    }
+    val staged = if (image) imageStager(file) else videoStager(backend, file)
+    val descriptor = ViewOnceDescriptor(kind = kind, caption = caption)
+    ToolReply("sent view-once $kind ${backend.sendViewOnce(conversationId, staged, descriptor)}")
+}
+
 suspend fun stageVideo(video: OutVideo, key: KeyHeader, fileOps: JvmFileOperationsProvider): StagedBundle {
     val dir = tempDir("out")
     try {
@@ -347,4 +389,13 @@ fun typedTools(): List<ToolDef> = listOf(
         },
         listOf("conversationId", "path"), stdio = false, write = true,
     ) { b, a -> toolSendVoice(b, a) },
+    ToolDef(
+        "send_view_once", "Send one image (png, jpeg, gif) or one .mp4 video from the files directory as a view-once message: the recipient can open it a single time, then it is gone. Never a reply; a video needs ffmpeg and ffprobe, max 5 MB.",
+        buildJsonObject {
+            put("conversationId", CONVERSATION_PROP)
+            put("path", prop("string", "File inside the files directory"))
+            put("caption", prop("string", "Optional text shown only when it is opened"))
+        },
+        listOf("conversationId", "path"), stdio = false, write = true,
+    ) { b, a -> toolSendViewOnce(b, a) },
 )

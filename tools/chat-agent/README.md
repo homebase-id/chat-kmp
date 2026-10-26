@@ -343,11 +343,30 @@ app renders them as its own:
 | `send_contact` | `name`, `phones` (E.164, `+1 (415) 555-0123` is normalized), `emails`, `organization` | malformed phones or emails are refused, max 10 of each |
 | `send_video` | `path`, `caption` | `.mp4` up to 5 MB from `mcpFilesDir`; real video message with thumbnail and duration |
 | `send_voice` | `path`, `caption` | audio file (m4a, mp3, wav, ogg, aac, opus, up to 10 MB) from `mcpFilesDir` as a voice note |
+| `send_view_once` | `path`, `caption` | one image (png, jpeg, gif) or one `.mp4` (up to 5 MB, needs ffmpeg and ffprobe) from `mcpFilesDir` as a view-once message; operator tier only |
 
 On a disclosed send (the `me` profile outside note-to-self) the "AI assistant" disclosure goes into a field recipients
 always see, and your own text gives way to it: the poll question, the event title, the location caption, the contact's
 organization line (a card has no other free text, so saving the contact keeps that line), and the caption of a video or
 voice note. A vote carries no text, so it shows only as the owner's vote, like `react`.
+
+### View-once media
+
+`send_view_once` sends exactly one image or `.mp4`, never a reply, with no thumbnails or preview in the message (the
+bundle goes through `withoutThumbnails()` like the app's). The caption lives in the descriptor, where the recipient sees
+it only after opening, and carries the AI disclosure in delegate mode. A view-once video is never downgraded to a plain
+file: without ffmpeg and ffprobe the tool refuses.
+
+Reading is a one-shot. A received, unopened, unexpired (30 days) view-once item addressed to the bot is opened only when
+the brain is the stream-json default (so the bytes can go to the model over stdin); any other brain leaves it unopened
+and sees `[view-once photo, unopened]`. The loader fetches the payload once, records the open the way the app does
+(hidden `_vo` reaction), then strips the bot's own copy (payloads deleted, kind-only content, local update). The bytes
+are never written to the attachments directory, the claude run gets `--no-session-persistence` and no session resume,
+and the buffer is zeroed when the message settles. Later reads show `[view-once media, already opened]`; if the open
+cannot be recorded the item stays unopened and the model never sees it.
+
+Reading a view-once spends it for good. The bot deliberately acts as a viewer even though the app's desktop client shows
+"open on your phone": it has no phone, and the sender sent it to the bot.
 
 `send_video` and `send_voice` need `mcpFilesDir` and the same path confinement as `send_file` (no `..`, no symlink out).
 They use `ffmpeg` and `ffprobe` from `PATH`, each call bounded to 20 s and killed at the limit, with the input always an
@@ -362,7 +381,7 @@ input; other codecs may not play on every receiver.
 | tier | tools | reads |
 |---|---|---|
 | operator | all of the above | `operatorContext=all`: whole room; `operators`: operator-authored only in rooms that are not fully trusted |
-| locked | none, unless `lockedTools=chat`: read, `send_message`, `send_file`, `react`, `unreact`, `send_poll`, `vote_poll`, `send_event`, `send_location`, `send_contact`; never edit, delete, `send_video` or `send_voice` (they read local files and run ffmpeg); at most 5 tool calls per run (the 6th errors) | whole room |
+| locked | none, unless `lockedTools=chat`: read, `send_message`, `send_file`, `react`, `unreact`, `send_poll`, `vote_poll`, `send_event`, `send_location`, `send_contact`; never edit, delete, `send_video`, `send_voice` or `send_view_once` (they read local files and run ffmpeg); at most 5 tool calls per run (the 6th errors) | whole room |
 
 With `lockedTools=chat` the default locked claude command gains `--mcp-config {mcp}` and `--allowedTools` limited to the
 `mcp__chat__*` tools above (still `--tools ""`, `--strict-mcp-config`, no settings, scrubbed env, temp cwd) and

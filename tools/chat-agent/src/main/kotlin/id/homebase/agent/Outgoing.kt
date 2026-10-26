@@ -14,6 +14,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.upload.PayloadBundle
+import id.homebase.upload.withoutThumbnails
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -244,6 +245,8 @@ class StagedBundle(val bundle: PayloadBundle, private val dir: File? = null, val
     fun cleanup() {
         dir?.deleteRecursively()
     }
+
+    fun withoutThumbnails() = StagedBundle(bundle.withoutThumbnails(), dir, preEncrypted)
 }
 
 // Not built here (the app does): webp thumbs, PDF page previews.

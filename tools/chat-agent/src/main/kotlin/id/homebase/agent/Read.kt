@@ -78,9 +78,10 @@ class ChatMsg(
     val fileId: Uuid? = null,
     val label: String? = null,
     val expanded: Boolean = false,
+    val createdMs: Long? = null,
 ) {
-    fun copy(id: Uuid) = ChatMsg(id, conversationId, author, text, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, label, expanded)
-    fun withFullText(full: String) = ChatMsg(id, conversationId, author, full, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, null, true)
+    fun copy(id: Uuid) = ChatMsg(id, conversationId, author, text, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, label, expanded, createdMs)
+    fun withFullText(full: String) = ChatMsg(id, conversationId, author, full, userDate, previewThumbnail, payloads, dataType, rawContent, sender, fileId, null, true, createdMs)
     val isLong: Boolean get() = payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
     val display: String get() = label ?: text
     val replyContext: JsonElement?
@@ -130,11 +131,13 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
                 OdinSystemSerializer.deserialize<MessageAppData>(metadata.appData.content.orEmpty()).getMessage()
             }.getOrDefault("[unreadable message]")
             val long = metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
-            val label = messageDisplay(text, metadata.appData.dataType, metadata.appData.content, metadata.payloads, metadata.reactionPreview).let { if (long) "$it $LONG_MARKER" else it }.takeIf { it != text }
+            val author = metadata.senderOdinId ?: metadata.originalAuthor ?: owner
+            val viewOnce = ViewOnceContext(own = author == owner, createdMs = metadata.created.milliseconds)
+            val label = messageDisplay(text, metadata.appData.dataType, metadata.appData.content, metadata.payloads, metadata.reactionPreview, viewOnce).let { if (long) "$it $LONG_MARKER" else it }.takeIf { it != text }
             ChatMsg(
                 id = metadata.appData.uniqueId ?: file.fileId,
                 conversationId = conversationId,
-                author = metadata.senderOdinId ?: metadata.originalAuthor ?: owner,
+                author = author,
                 text = text,
                 userDate = metadata.appData.userDate ?: metadata.created.milliseconds,
                 previewThumbnail = metadata.appData.previewThumbnail,
@@ -144,6 +147,7 @@ suspend fun fetchMessages(session: Session, conversationIds: List<Uuid>?, limit:
                 sender = metadata.senderOdinId,
                 fileId = file.fileId,
                 label = label,
+                createdMs = metadata.created.milliseconds,
             )
         }
         .filter { beforeMs == null || it.userDate < beforeMs }

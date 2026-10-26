@@ -1,6 +1,9 @@
 package id.homebase.agent
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
+import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.chat.viewonce.ViewOnceDescriptor
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
@@ -64,6 +67,7 @@ interface AgentBackend {
     suspend fun vote(conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean = error("voting is not supported")
     suspend fun sendVideo(conversationId: Uuid, video: OutVideo, caption: String): Uuid = error("sending video is not supported")
     suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String): Uuid = error("sending voice notes is not supported")
+    suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor): Uuid = error("sending view-once media is not supported")
 }
 
 val DEFAULT_FFMPEG by lazy { Ffmpeg() }

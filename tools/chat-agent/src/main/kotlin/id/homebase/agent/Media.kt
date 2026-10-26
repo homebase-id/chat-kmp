@@ -20,6 +20,10 @@ import id.homebase.chat.services.decodeReactionCode
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.viewonce.VIEW_ONCE_PAYLOAD_KEY
+import id.homebase.chat.viewonce.ViewOnceDescriptor
+import id.homebase.chat.viewonce.ViewOnceRules
+import id.homebase.chat.viewonce.ViewOnceSignal
 import id.homebase.chat.widget.mediaPayloads
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -73,7 +77,23 @@ fun reactionsLabel(summary: ReactionSummary?): String? {
         .joinToString(" ") { "${it.key.oneLine(16)}×${it.value}" }.ifEmpty { null }
 }
 
-private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionSummary?): String? {
+class ViewOnceContext(val own: Boolean = false, val createdMs: Long? = null, val nowMs: Long = System.currentTimeMillis())
+
+private fun viewOnceLabel(descriptor: ViewOnceDescriptor?, payloads: List<PayloadDescriptor>?, reactions: ReactionSummary?, ctx: ViewOnceContext): String {
+    val noun = when (descriptor?.kind) {
+        ViewOnceDescriptor.KIND_IMAGE -> "photo"
+        ViewOnceDescriptor.KIND_VIDEO -> "video"
+        else -> "media"
+    }
+    return when {
+        ctx.own -> if (ViewOnceSignal.count(reactions, ViewOnceSignal.OPENED_CODE) >= 1) "[view-once $noun, sent; opened]" else "[view-once $noun, sent]"
+        payloads.orEmpty().none { it.key == VIEW_ONCE_PAYLOAD_KEY } -> "[view-once media, already opened]"
+        ctx.createdMs != null && ctx.nowMs - ctx.createdMs >= ViewOnceRules.MAX_LIFESPAN_MS -> "[view-once media, expired]"
+        else -> "[view-once $noun, unopened]"
+    }
+}
+
+private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionSummary?, payloads: List<PayloadDescriptor>? = null, ctx: ViewOnceContext = ViewOnceContext()): String? {
     val content = MessageContentParser.parse(dataType, rawContent) ?: return null
     val (kind, body) = when (content) {
         is MessageContent.Event -> "event" to (content.descriptor?.let { d ->
@@ -93,7 +113,7 @@ private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionS
             "${d.lat},${d.lon}" + listOfNotNull(d.caption, d.address).firstOrNull { it.isNotBlank() }?.let { " ${it.oneLine(NAME_CODEPOINTS)}" }.orEmpty()
         } ?: content.displayLabel)
         is MessageContent.CallEvent -> "call" to content.displayLabel
-        is MessageContent.ViewOnce -> return "[view-once media]"
+        is MessageContent.ViewOnce -> return viewOnceLabel(content.descriptor, payloads, reactions, ctx)
         is MessageContent.Unknown -> return "[unsupported message kind ${content.dataType}]"
     }
     return "[$kind: ${body.oneLine(TYPED_LABEL_CODEPOINTS)}]"
@@ -122,9 +142,9 @@ fun payloadLabels(payloads: List<PayloadDescriptor>?): List<String> = payloads.m
     }
 }
 
-fun messageDisplay(text: String, dataType: Int?, rawContent: String?, payloads: List<PayloadDescriptor>?, reactions: ReactionSummary? = null): String {
+fun messageDisplay(text: String, dataType: Int?, rawContent: String?, payloads: List<PayloadDescriptor>?, reactions: ReactionSummary? = null, viewOnce: ViewOnceContext = ViewOnceContext()): String {
     val labels = payloadLabels(payloads).joinToString(" ")
-    val base = typedLabel(dataType, rawContent, reactions) ?: when {
+    val base = typedLabel(dataType, rawContent, reactions, payloads, viewOnce) ?: when {
         labels.isEmpty() -> text
         text.isBlank() -> labels
         else -> "$text $labels"
@@ -145,7 +165,12 @@ class Attachment(
     val bytes: ByteArray? = null,
     val text: String? = null,
     val note: String? = null,
+    val ephemeral: Boolean = false,
 ) {
+    val onDisk get() = bytes != null && !ephemeral
+    fun wipe() {
+        bytes?.fill(0)
+    }
     val viewableImage get() = bytes != null && contentType in VIEWABLE_IMAGES
     val viewablePdf get() = bytes != null && contentType == PDF_TYPE && note == null
     val modelBlock get() = viewableImage || viewablePdf
@@ -203,17 +228,32 @@ fun isTextLike(contentType: String, name: String) =
     contentType.startsWith("text/") || contentType in setOf("application/json", "application/xml", "application/x-yaml", "application/javascript") ||
         name.substringAfterLast('.', "").lowercase() in TEXT_EXTENSIONS
 
+class ViewOnceHooks(
+    val self: String,
+    val signalOpened: suspend (ChatMsg) -> Unit,
+    val stripOwnCopy: suspend (ChatMsg) -> Unit,
+    val now: () -> Long = System::currentTimeMillis,
+)
+
 class AttachmentLoader(
     private val fetcher: PayloadFetcher,
     private val transcribe: (suspend (ByteArray, String) -> String?)? = null,
     private val log: (String) -> Unit = {},
     private val ffmpeg: Ffmpeg? = null,
+    private val viewOnce: ViewOnceHooks? = null,
 ) {
-    suspend fun load(messages: List<Pair<ChatMsg, Boolean>>): List<Attachment> {
+    private val opened = HashSet<Uuid>()
+
+    suspend fun load(messages: List<Pair<ChatMsg, Boolean>>, viewOnceInMemory: Boolean = false): List<Attachment> {
         val out = ArrayList<Attachment>()
         for ((msg, parent) in messages) {
             val fileId = msg.fileId ?: continue
-            if (MessageContentParser.parse(msg.dataType, msg.rawContent) != null) continue
+            val typed = MessageContentParser.parse(msg.dataType, msg.rawContent)
+            if (typed is MessageContent.ViewOnce) {
+                if (!parent && out.size < MAX_ATTACHMENTS) out += openViewOnce(msg, fileId, typed.descriptor, viewOnceInMemory, MAX_ATTACHMENTS - out.size)
+                continue
+            }
+            if (typed != null) continue
             for (p in msg.payloads.mediaPayloads()) {
                 if (out.size >= MAX_ATTACHMENTS) return out
                 if (p.isVideo()) {
@@ -228,6 +268,75 @@ class AttachmentLoader(
             }
         }
         return out
+    }
+
+    private suspend fun openViewOnce(msg: ChatMsg, fileId: Uuid, descriptor: ViewOnceDescriptor?, inMemory: Boolean, room: Int): List<Attachment> {
+        val hooks = viewOnce ?: return emptyList()
+        if (msg.author?.toString() == hooks.self) return emptyList()
+        if (msg.id in opened) return listOf(Attachment(msg.id, false, "view-once", "application/octet-stream", 0, note = "view-once media, already opened"))
+        val p = msg.payloads.orEmpty().firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY } ?: return emptyList()
+        if (hooks.now() - (msg.createdMs ?: msg.userDate) >= ViewOnceRules.MAX_LIFESPAN_MS) return emptyList()
+        if (!inMemory) { log("${msg.id} view-once left unopened: this brain cannot view it in memory"); return emptyList() }
+        val video = descriptor?.kind == ViewOnceDescriptor.KIND_VIDEO
+        if (!video && descriptor?.kind != ViewOnceDescriptor.KIND_IMAGE) return emptyList()
+        val cap = if (video) KEYFRAME_VIDEO_MAX_BYTES else IMAGE_MAX_BYTES
+        if ((p.bytesWritten ?: 0L) > cap) { log("${msg.id} view-once left unopened: over ${formatSize(cap)}"); return emptyList() }
+        val type = p.contentType.orEmpty()
+        val fetched: ByteArray
+        val items: List<Attachment>
+        try {
+            fetched = fetcher.fetch(fileId, VIEW_ONCE_PAYLOAD_KEY, cap) ?: run { log("${msg.id} view-once payload missing"); return emptyList() }
+            if (fetched.size > cap) return emptyList()
+            val note = "view-once ${if (video) "video" else "photo"}, opened now for this reply and gone for good afterwards"
+            val caption = descriptor?.caption?.takeIf { it.isNotBlank() }
+            items = if (video) {
+                val frames = viewOnceFrames(fetched, p, minOf(KEYFRAMES_MAX, room))
+                if (frames.isEmpty()) { log("${msg.id} view-once video left unopened: no frames"); return emptyList() }
+                frames.mapIndexed { i, jpeg -> Attachment(msg.id, false, "view-once-frame-${i + 1}.jpg", "image/jpeg", jpeg.size.toLong(), bytes = jpeg, text = caption.takeIf { i == 0 }, note = "$note; video frame ${i + 1}", ephemeral = true) }
+            } else {
+                if (type !in VIEWABLE_IMAGES) { log("${msg.id} view-once image format not viewable"); return emptyList() }
+                listOf(Attachment(msg.id, false, "view-once.${extensionFor(type)}", type, fetched.size.toLong(), bytes = fetched, text = caption, note = note, ephemeral = true))
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("${msg.id} view-once fetch error: ${e.message}")
+            return emptyList()
+        }
+        try {
+            hooks.signalOpened(msg)
+        } catch (e: CancellationException) {
+            items.forEach { it.wipe() }
+            throw e
+        } catch (e: Exception) {
+            log("${msg.id} view-once left unopened: could not record the open (${e.message})")
+            items.forEach { it.wipe() }
+            return emptyList()
+        } finally {
+            if (video) fetched.fill(0)
+        }
+        opened += msg.id
+        try {
+            hooks.stripOwnCopy(msg)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("ERROR ${msg.id} view-once was opened but our own copy could NOT be stripped: ${e.message}")
+        }
+        return items
+    }
+
+    private suspend fun viewOnceFrames(bytes: ByteArray, p: PayloadDescriptor, room: Int): List<ByteArray> {
+        val tool = ffmpeg?.takeIf { it.available } ?: return emptyList()
+        val durationMs = (p.descriptorInfo() as? DescriptorContent.VideoFile)?.durationMs ?: return emptyList()
+        if (p.contentType != "video/mp4") return emptyList()
+        val dir = tempDir("viewonce")
+        try {
+            val source = File(dir, "in.mp4").also { it.writeBytes(bytes) }
+            return tool.keyframes(source, durationMs, room).filter { it.size <= IMAGE_MAX_BYTES }
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     private suspend fun loadKeyframes(msgId: Uuid, parent: Boolean, fileId: Uuid, p: PayloadDescriptor, index: Int, room: Int): List<Attachment> {
@@ -347,7 +456,7 @@ fun parseStreamResult(stdout: String): BrainOutcome {
 const val STREAM_JSON_FLAGS = "--input-format stream-json --output-format stream-json --verbose"
 
 fun writeAttachments(dir: File, attachments: List<Attachment>): List<File> =
-    attachments.mapNotNull { a ->
+    attachments.filter { !it.ephemeral }.mapNotNull { a ->
         a.bytes?.let {
             val f = File(dir, a.fileName).canonicalFile
             require(f.parentFile == dir.canonicalFile) { "attachment path escapes temp dir" }
