@@ -26,7 +26,7 @@ import org.jetbrains.skia.Image
 import org.jetbrains.skia.Paint
 import org.jetbrains.skia.PaintMode
 import org.jetbrains.skia.PaintStrokeCap
-import org.jetbrains.skia.Path
+import org.jetbrains.skia.PathBuilder
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.Surface
 
@@ -364,12 +364,13 @@ actual object ImageUtils {
         var blurredImage: org.jetbrains.skia.Image? = null
 
         for (cmd in strokes) {
-            val path = Path()
+            val builder = PathBuilder()
             for (pc in cmd.pathCommands) when (pc) {
-                is PathCommand.MoveTo -> path.moveTo(pc.x, pc.y)
-                is PathCommand.LineTo -> path.lineTo(pc.x, pc.y)
-                is PathCommand.CubicTo -> path.cubicTo(pc.c1x, pc.c1y, pc.c2x, pc.c2y, pc.x, pc.y)
+                is PathCommand.MoveTo -> builder.moveTo(pc.x, pc.y)
+                is PathCommand.LineTo -> builder.lineTo(pc.x, pc.y)
+                is PathCommand.CubicTo -> builder.cubicTo(pc.c1x, pc.c1y, pc.c2x, pc.c2y, pc.x, pc.y)
             }
+            val path = builder.detach()
 
             when (cmd.kind) {
                 StrokeKind.PAINT -> {

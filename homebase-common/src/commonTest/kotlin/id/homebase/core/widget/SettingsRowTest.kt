@@ -16,11 +16,13 @@ import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.awaitPendingResourceStateLoads
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalResourceApi::class)
 class SettingsRowTest {
 
     @Test
@@ -101,6 +103,8 @@ class SettingsRowTest {
                 )
             }
         }
+        // Web loads strings with fetch, which only resolves once the test yields to the event loop.
+        awaitPendingResourceStateLoads()
         onNodeWithText("Delete").assert(
             SemanticsMatcher("has an 'Open externally' click label") { node ->
                 node.config.getOrNull(SemanticsActions.OnClick)?.label == "Open externally"
@@ -241,6 +245,7 @@ class SettingsRowTest {
                 )
             }
         }
+        awaitPendingResourceStateLoads()
         onNodeWithText("Collapsed").assert(
             SemanticsMatcher("has an 'Expand' click label") { node ->
                 node.config.getOrNull(SemanticsActions.OnClick)?.label == "Expand"

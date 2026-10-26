@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -114,8 +115,8 @@ internal fun ZoomPresetBar(
                     checked = checked,
                     onCheckedChange = { onSelect(preset) },
                     // Circles in every state nest inside the track's round ends; the default checked square pokes out.
-                    shapes = ToggleButtonDefaults.shapes(shape = CircleShape, pressedShape = CircleShape, checkedShape = CircleShape),
-                    colors = ToggleButtonDefaults.toggleButtonColors(
+                    shapes = ToggleButtonShapes(shape = CircleShape, pressedShape = CircleShape, checkedShape = CircleShape),
+                    colors = ToggleButtonDefaults.colors(
                         containerColor = Color.Transparent,
                         contentColor = colors.onSurface,
                         checkedContainerColor = colors.onSurface.copy(alpha = 0.2f),

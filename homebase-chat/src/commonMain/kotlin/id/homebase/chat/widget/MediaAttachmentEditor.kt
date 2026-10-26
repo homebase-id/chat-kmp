@@ -863,7 +863,7 @@ private fun onlyTool(tools: EditorToolset): Boolean =
     listOf(tools.showCrop, tools.showDraw, tools.showSave).count { it } == 1
 
 @Composable
-private fun sendOptionColors() = ToggleButtonDefaults.toggleButtonColors(
+private fun sendOptionColors() = ToggleButtonDefaults.colors(
     containerColor = MaterialTheme.colorScheme.surfaceContainer,
     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
     checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,

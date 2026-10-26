@@ -57,7 +57,9 @@ kotlin {
     // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
     android {
         namespace = "id.homebase.api"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest { isIncludeAndroidResources = true }
@@ -246,6 +248,7 @@ kotlin {
             implementation(libs.cryptography.random)
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines.extensions)
+            implementation(libs.jetbrains.compose.foundation)
             implementation(libs.navigation.compose)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)

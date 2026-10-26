@@ -104,6 +104,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.FilledTonalToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
@@ -379,7 +380,7 @@ private fun ToolItem(
             onCheckedChange = { onClick() },
             shapes = shapes,
             // Quiet at rest and a tonal pill when picked, so the picked tool never outweighs the step's own action.
-            colors = ToggleButtonDefaults.tonalToggleButtonColors(
+            colors = FilledTonalToggleButtonDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
