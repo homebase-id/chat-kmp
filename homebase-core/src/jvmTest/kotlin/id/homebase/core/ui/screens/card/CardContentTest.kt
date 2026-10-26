@@ -917,6 +917,30 @@ class CardContentTest {
     }
 
     @Test
+    fun takingTheNameOffPublicFromACircleCardAsksFirstAndOnlyTheConfirmationWrites() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val rig = rig(wire)
+        rig.open(friends)
+        val nameId = rig.item(ProfileAttributeTypes.NAME).id
+        val draft = ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))
+
+        rig.vm.onContentAudienceChosen(nameId, draft)
+        assertEquals(0, wire.puts)
+        assertNotNull(rig.vm.uiState.value.pendingNameless)
+        assertNull(rig.vm.pending())
+
+        rig.vm.onNamelessCancelled()
+        assertNull(rig.vm.uiState.value.pendingNameless)
+        assertEquals(0, wire.puts)
+        assertEquals(ProfileAudience.Public, rig.item(ProfileAttributeTypes.NAME).audience)
+
+        rig.vm.onContentAudienceChosen(nameId, draft)
+        rig.write { rig.vm.onNamelessConfirmed() }
+        assertNull(rig.vm.uiState.value.pendingNameless)
+        assertEquals("connected", wire.putBodies.single().jsonObject.str("visibility"))
+    }
+
+    @Test
     fun choosingCirclesOrNobodyWritesWithoutAskingAndKeepsOtherAppCircles() = runTest(dispatcher) {
         val all = setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID, otherAppCircle)
         val wire = CardWireHarness(circlesOnServer = all)
