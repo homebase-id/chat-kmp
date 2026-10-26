@@ -125,12 +125,7 @@ internal suspend fun RichTextState.clearedForSend(content: String, send: suspend
 
 private val PLACEHOLDER_HANDOFF_TIMEOUT = 5.seconds
 
-/**
- * Awaits [send] under the already-registered placeholder [messageId]: drops it once the real
- * bubble is in the list (at once while paged back in history, or after [PLACEHOLDER_HANDOFF_TIMEOUT]),
- * or drops it and its progress and rethrows if [send] fails. Dropping on `send()` return left the
- * key missing for a few frames, stranding a ghost row in the lazy list.
- */
+// Dropping the placeholder on send() return left its key missing for a few frames, stranding a ghost row.
 internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     messageId: Uuid,
     send: suspend () -> Unit,
