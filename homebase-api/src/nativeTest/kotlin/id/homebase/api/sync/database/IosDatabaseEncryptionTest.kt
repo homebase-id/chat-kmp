@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.storage.SecureRead
+import id.homebase.api.storage.toSecureRead
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import co.touchlab.sqliter.JournalMode
@@ -29,10 +30,8 @@ class IosDatabaseEncryptionTest {
         var locked = false
         var writes = 0
         override fun put(hex: String) { value = hex; writes++ }
-        override fun read(): SecureRead = when {
-            locked -> SecureRead.Unavailable(IllegalStateException("locked"))
-            else -> value?.let(SecureRead::Found) ?: SecureRead.Missing
-        }
+        override fun read(): SecureRead =
+            if (locked) SecureRead.Unavailable(IllegalStateException("locked")) else value.toSecureRead()
     }
 
     @BeforeTest

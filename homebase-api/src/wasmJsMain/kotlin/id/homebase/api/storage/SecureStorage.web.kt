@@ -13,7 +13,7 @@ actual object SecureStorage {
     }
 
     actual fun read(key: String): SecureRead =
-        get(key)?.let(SecureRead::Found) ?: SecureRead.Missing
+        get(key).toSecureRead()
 
     actual fun remove(key: String) {
         localStorage.removeItem(key)

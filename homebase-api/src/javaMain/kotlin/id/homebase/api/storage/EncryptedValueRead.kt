@@ -2,10 +2,7 @@ package id.homebase.api.storage
 
 import javax.crypto.AEADBadTagException
 
-/**
- * A failed tag check or a malformed value can never decrypt, e.g. prefs carried to a new device
- * without their Keystore key, so it counts as [SecureRead.Missing]; any other failure may pass.
- */
+/** A failed tag check or malformed value can never decrypt, so it is Missing; any other failure may pass, so Unavailable. */
 internal inline fun readEncrypted(load: () -> String?, decrypt: (String) -> String): SecureRead {
     val encrypted = try {
         load()

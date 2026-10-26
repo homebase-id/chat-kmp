@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.storage.SecureRead
+import id.homebase.api.storage.toSecureRead
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -23,7 +24,7 @@ class SqlCipherKeyModeAndroidTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     private class FakeStore(var value: String? = null) : RawKeyStore {
-        override fun read(): SecureRead = value?.let(SecureRead::Found) ?: SecureRead.Missing
+        override fun read(): SecureRead = value.toSecureRead()
         override fun put(hex: String) {
             value = hex
         }

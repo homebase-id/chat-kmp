@@ -54,3 +54,5 @@ sealed interface SecureRead {
     /** A value may be stored but reading it failed; retry later, never overwrite it. */
     data class Unavailable(val cause: Throwable) : SecureRead
 }
+
+internal fun String?.toSecureRead(): SecureRead = this?.let(SecureRead::Found) ?: SecureRead.Missing

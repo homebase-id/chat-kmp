@@ -179,7 +179,7 @@ actual object SecureStorage {
 
     // Never Unavailable: on iOS the passphrase only switches encryption on; KeychainRawKeyStore reads the raw key's OSStatus.
     actual fun read(key: String): SecureRead =
-        get(key)?.let(SecureRead::Found) ?: SecureRead.Missing
+        get(key).toSecureRead()
 
     actual fun remove(key: String) {
         val query = createBaseQuery(key) ?: return

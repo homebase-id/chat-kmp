@@ -3,6 +3,7 @@ package id.homebase.api.sync.database
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.storage.SecureRead
+import id.homebase.api.storage.toSecureRead
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -27,10 +28,8 @@ class SqlCipherKeyModeTest {
 
     private class FakeStore(var value: String? = null, var unavailable: Boolean = false) : RawKeyStore {
         var writes = 0
-        override fun read(): SecureRead = when {
-            unavailable -> SecureRead.Unavailable(IOException("key store not ready"))
-            else -> value?.let(SecureRead::Found) ?: SecureRead.Missing
-        }
+        override fun read(): SecureRead =
+            if (unavailable) SecureRead.Unavailable(IOException("key store not ready")) else value.toSecureRead()
         override fun put(hex: String) {
             value = hex
             writes++
