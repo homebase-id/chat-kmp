@@ -1,14 +1,7 @@
 package id.homebase.core.audio
 
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.asComposeCanvas
-import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.LayoutDirection
 import co.touchlab.kermit.Logger
 import io.github.vinceglb.filekit.PlatformFile
-import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Surface
 import java.io.File
 import java.io.IOException
 import javax.sound.sampled.AudioInputStream
@@ -155,30 +148,8 @@ class JvmWaveFormGenerator: AudioWaveFormGenerator {
         return AudioFileInfo(durationUs, bytes)
     }
 
-    override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray {
-        // 1. Create a Skia Surface
-        val surface = Surface.makeRasterN32Premul(width, height)
-        val skiaCanvas = surface.canvas
-
-        // 2. Wrap the Skia Canvas into a Compose Canvas
-        val composeCanvas = skiaCanvas.asComposeCanvas()
-
-        // 3. Use CanvasDrawScope to bridge the two
-        val drawScope = CanvasDrawScope()
-        drawScope.draw(
-            density = Density(1f),
-            layoutDirection = LayoutDirection.Ltr,
-            canvas = composeCanvas,
-            size = Size(width.toFloat(), height.toFloat())
-        ) {
-            drawWaveform(amplitudes.toList())
-        }
-
-        // 4. Encode to PNG
-        val image = surface.makeImageSnapshot()
-        val data = image.encodeToData(EncodedImageFormat.PNG, 100)
-        return data?.bytes ?: byteArrayOf()
-    }
+    override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
+        skiaWaveformPng(amplitudes, width, height)
 
     companion object {
         const val TAG = "JvmWaveFormGenerator"
