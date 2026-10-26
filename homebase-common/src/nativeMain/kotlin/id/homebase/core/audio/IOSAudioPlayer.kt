@@ -1,7 +1,6 @@
 package id.homebase.core.audio
 
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
@@ -30,7 +29,7 @@ class IOSAudioPlayer : AudioPlayer {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var speed = 1f
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     override fun play(filePath: String) {
         release()
         if (!AudioSession.configureForPlayback()) {

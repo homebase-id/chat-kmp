@@ -39,3 +39,7 @@ internal expect fun listHomebaseLogFiles(logDirectory: Path): List<Path>
  * it never throws.
  */
 internal expect fun deleteHomebaseLogFiles(logDirectory: Path): Boolean
+
+internal expect fun <T> useHomebaseLogLines(logDirectory: Path, block: (List<Sequence<String>>) -> T): T
+
+internal expect fun writeLogExport(file: Path, text: String): Boolean

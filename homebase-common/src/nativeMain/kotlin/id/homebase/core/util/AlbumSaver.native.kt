@@ -35,7 +35,7 @@ private const val TAG = "IosAlbumSaver"
 
 object IosAlbumSaver : AlbumSaver {
 
-    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     override fun save(
         file: Path,
         suggestedName: String,

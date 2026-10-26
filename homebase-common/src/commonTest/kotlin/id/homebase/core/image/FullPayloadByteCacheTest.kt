@@ -2,7 +2,6 @@ package id.homebase.core.image
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -14,7 +13,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class FullPayloadByteCacheTest {
 
     private fun cachedImage(size: Int) = CachedImage(ByteArray(size), "image/jpeg", null)

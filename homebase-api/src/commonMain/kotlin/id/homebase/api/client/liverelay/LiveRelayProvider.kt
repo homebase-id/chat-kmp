@@ -28,7 +28,7 @@ class LiveRelayProvider(
         recipients: List<String>,
         blob: String,
         push: LiveRelayPush? = null,
-        wakeCause: String? = "live-share-send",
+        wakeCause: String?,
     ): Boolean {
         val creds = requireCreds()
         val url = apiUrl(creds.domain, "/live-relay")

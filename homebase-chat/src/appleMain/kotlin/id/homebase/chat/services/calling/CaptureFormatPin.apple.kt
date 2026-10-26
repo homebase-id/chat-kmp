@@ -1,7 +1,6 @@
 package id.homebase.chat.services.calling
 
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -29,7 +28,7 @@ import platform.darwin.dispatch_time
 
 // webrtc-kmp 0.125.11's selectFormat reads format sizes through a freed CMVideoDimensions (copyContents), lands on 4K
 // and runs the sensor there all call; this re-picks after every session start, which also covers a camera flip.
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class)
 internal fun pinCaptureFormat(session: AVCaptureSession) {
     val queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH.toLong(), 0u)
     dispatch_async(queue) {

@@ -2,7 +2,6 @@
 
 package id.homebase.core.pdf
 
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.useContents
@@ -140,7 +139,6 @@ private fun renderFirstPageThumbnail(
     }
 }
 
-@OptIn(BetaInteropApi::class)
 private fun NSData.toKotlinByteArray(): ByteArray {
     val length = this.length.toInt()
     if (length == 0) return ByteArray(0)

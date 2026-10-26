@@ -1,5 +1,3 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
-
 package id.homebase.core.util
 
 // Compose bounds are relative to #ComposeApp, so the fixed-position element adds its viewport offset (the safe-area inset).
