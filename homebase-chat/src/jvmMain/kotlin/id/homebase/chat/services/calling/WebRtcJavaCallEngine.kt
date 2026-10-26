@@ -70,6 +70,7 @@ class WebRtcJavaCallEngine(
     private val audioSource: (() -> AudioTrackSource)? = null,
     private val remoteAudioSink: AudioTrackSink? = null,
     private val renderVideo: Boolean = true,
+    private val ownsAudioDevice: Boolean = audioDevice == null,
 ) : CallEngine {
     private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
     override val events: Flow<MediaEvent> = _events.receiveAsFlow()
@@ -83,7 +84,6 @@ class WebRtcJavaCallEngine(
         nativeLogs
     }
 
-    private val ownsAudioDevice = audioDevice == null
     private val adm: AudioDeviceModuleBase = audioDevice ?: AudioDeviceModule()
     private val factory = PeerConnectionFactory(adm)
     @Volatile private var audioTrack: AudioTrack? = null

@@ -9,6 +9,7 @@ import id.homebase.api.client.websockets.StunUrlStore
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.calling.CallDirection
 import id.homebase.chat.services.calling.CallEndReason
+import id.homebase.chat.services.calling.CallEngine
 import id.homebase.chat.services.calling.CallEngineFactory
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallService
@@ -22,6 +23,7 @@ import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.sqrt
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -34,6 +36,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -51,6 +56,9 @@ const val CALL_SAMPLE_RATE = 48_000
 const val CALL_FRAME_MS = 10
 const val CALL_SETTLE_MS = 800L
 const val CALL_TAIL_MS = 1_500L
+const val CALL_START_MS = 2_000L
+const val CALL_TEARDOWN_MS = 10_000L
+private const val CALL_TEARDOWN_GRACE_MS = 300L
 const val CALL_CONNECT_SLACK_MS = 10_000L
 private const val REMOTE_RING_FRAMES = 500
 private const val PCM_DECODE_MS = 60_000L
@@ -104,8 +112,11 @@ class PcmPacer(sampleRate: Int, private val push: (ByteArray) -> Unit) {
 class PcmPlayer(private val sampleRate: Int = CALL_SAMPLE_RATE) {
     private val pacer = PcmPacer(sampleRate) { frame -> source.pushAudio(frame, 16, sampleRate, 1, frame.size / 2) }
     private var executor: ScheduledExecutorService? = null
+    private var created: CustomAudioSource? = null
+    @Volatile private var closed = false
 
-    val source: CustomAudioSource by lazy { CustomAudioSource().also { startClock() } }
+    val source: CustomAudioSource
+        @Synchronized get() = created ?: CustomAudioSource().also { created = it; startClock() }
 
     @Synchronized private fun startClock() {
         executor = Executors.newSingleThreadScheduledExecutor { Thread(it, "call-pcm-player").apply { isDaemon = true } }.also {
@@ -114,6 +125,7 @@ class PcmPlayer(private val sampleRate: Int = CALL_SAMPLE_RATE) {
     }
 
     suspend fun play(pcm: ByteArray) {
+        if (closed) return
         val done = pacer.enqueue(pcm)
         try {
             done.await()
@@ -126,9 +138,12 @@ class PcmPlayer(private val sampleRate: Int = CALL_SAMPLE_RATE) {
     fun flush() = pacer.flush()
 
     @Synchronized fun stop() {
+        closed = true
         pacer.flush()
         executor?.shutdownNow()
         executor = null
+        created?.let { runCatching { it.dispose() } }
+        created = null
     }
 }
 
@@ -155,8 +170,25 @@ class RemoteAudio : AudioTrackSink {
     }
 }
 
-fun headlessEngineFactory(player: PcmPlayer, remote: RemoteAudio) = CallEngineFactory {
-    WebRtcJavaCallEngine(it, HeadlessAudioDeviceModule(), audioSource = { player.source }, remoteAudioSink = remote, renderVideo = false)
+private class CountedEngine(private val inner: CallEngine, private val open: MutableStateFlow<Int>) : CallEngine by inner {
+    private val closed = AtomicBoolean()
+
+    override fun close() {
+        try {
+            inner.close()
+        } finally {
+            if (closed.compareAndSet(false, true)) open.update { it - 1 }
+        }
+    }
+}
+
+fun headlessEngineFactory(player: PcmPlayer, remote: RemoteAudio, open: MutableStateFlow<Int> = MutableStateFlow(0)) = CallEngineFactory {
+    val engine = WebRtcJavaCallEngine(
+        it, HeadlessAudioDeviceModule(), audioSource = { player.source }, remoteAudioSink = remote, renderVideo = false,
+        ownsAudioDevice = true,
+    )
+    open.update { n -> n + 1 }
+    CountedEngine(engine, open)
 }
 
 fun callOutcomeFor(reason: CallEndReason): CallOutcome = when (reason) {
@@ -174,6 +206,7 @@ class OwnerCallDriver(
     private val synthesize: suspend (String) -> ByteArray?,
     private val play: suspend (ByteArray) -> Unit,
     private val connectTimeoutMs: Long = RING_TIMEOUT_MS + CALL_CONNECT_SLACK_MS,
+    private val startTimeoutMs: Long = CALL_START_MS,
     private val settleMs: Long = CALL_SETTLE_MS,
     private val tailMs: Long = CALL_TAIL_MS,
     private val log: (String) -> Unit = {},
@@ -205,9 +238,11 @@ class OwnerCallDriver(
         val previous = calls.state.value.callId
         try {
             calls.startCall(peer.domainName, video = false)
+            withTimeoutOrNull(startTimeoutMs) { calls.state.first { it.callId != null && it.callId != previous } }
+                ?: return CallOutcome.FAILED.also { log("call to $peer did not start: no call id after ${startTimeoutMs}ms, credentials not bound?") }
             val settled = withTimeoutOrNull(connectTimeoutMs) {
                 calls.state.first { it.callId != null && it.callId != previous && (it.phase == CallPhase.Connected || it.phase is CallPhase.Ended) }
-            } ?: return (if (calls.state.value.callId == previous) CallOutcome.FAILED else CallOutcome.MISSED).also { log("call to $peer did not connect in ${connectTimeoutMs / 1000}s") }
+            } ?: return CallOutcome.MISSED.also { log("call to $peer did not connect in ${connectTimeoutMs / 1000}s") }
             (settled.phase as? CallPhase.Ended)?.let { return callOutcomeFor(it.reason).also { o -> log("call to $peer ended before connecting: ${it.reason} -> $o") } }
             log("call to $peer connected, speaking ${pcm.size / (CALL_SAMPLE_RATE * 2 / 1000)} ms")
             delay(settleMs)
@@ -238,16 +273,30 @@ class AgentCalls(
     private val player = PcmPlayer()
     private val remote = RemoteAudio()
     private val relay = LiveRelayProvider(session.http, session.credentials)
+    private val openEngines = MutableStateFlow(0)
+    private val busy = MutableStateFlow(0)
     private val service = CallService(
         credentialsManager = session.credentials,
         eventBus = eventBus,
-        relay = { channelKey, recipients, blob, push -> relay.relay(channelKey, recipients, blob, push, wakeCause = null) },
-        engineFactory = headlessEngineFactory(player, remote),
+        relay = { channelKey, recipients, blob, push ->
+            busy.update { it + 1 }
+            try {
+                relay.relay(channelKey, recipients, blob, push, wakeCause = null)
+            } finally {
+                busy.update { it - 1 }
+            }
+        },
+        engineFactory = headlessEngineFactory(player, remote, openEngines),
         stunUrls = StunUrlStore(eventBus, session.credentials.credentialsFlow.map { it?.domain?.domainName }, scope),
         scope = scope,
         recordEvent = { peer, event ->
             val conversation = config.allowlist.directWith(session.identity, OdinId(peer)) ?: error("no 1:1 with $peer to log the call in")
-            sendTyped(conversation, MessageContent.CallEvent(event))
+            busy.update { it + 1 }
+            try {
+                sendTyped(conversation, MessageContent.CallEvent(event))
+            } finally {
+                busy.update { it - 1 }
+            }
         },
     )
     private val driver = OwnerCallDriver(
@@ -274,6 +323,14 @@ class AgentCalls(
     }
 
     override suspend fun call(peer: OdinId, say: String) = driver.call(peer, say)
+
+    suspend fun awaitTeardown(timeoutMs: Long = CALL_TEARDOWN_MS) {
+        withTimeoutOrNull(timeoutMs) {
+            service.state.first { it.phase is CallPhase.Ended }
+            delay(CALL_TEARDOWN_GRACE_MS)
+            combine(openEngines, busy) { engines, inflight -> engines + inflight }.first { it == 0 }
+        } ?: log("call teardown still running after ${timeoutMs}ms")
+    }
 
     fun close() {
         player.stop()
@@ -316,8 +373,12 @@ suspend fun callOwner(profile: String, to: String, say: String, verbose: Boolean
         val waker = PollWaker()
         startDoorbell(this, config.transport, sessionConnector(session, verbose, ::println, bus), waker, ::println)
         withTimeout(CALL_CLI_CONNECT_MS) { while (!waker.connected) delay(200) }
-        println("outcome: ${calls.call(peer, say)}")
-        calls.close()
-        coroutineContext.job.cancelChildren()
+        try {
+            println("outcome: ${calls.call(peer, say)}")
+            calls.awaitTeardown()
+        } finally {
+            calls.close()
+            coroutineContext.job.cancelChildren()
+        }
     }
 }
