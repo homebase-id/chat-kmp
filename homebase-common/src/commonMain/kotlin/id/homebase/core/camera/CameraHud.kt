@@ -461,7 +461,7 @@ internal fun CameraCaptureContent(
         }
     }
 
-    KeepScreenOn(ui.isRecording)
+    KeepScreenOn(true)
     HardwareShutterEffect(onDown = ::shutterKeyDown, onUp = ::shutterKeyUp)
 
     if (!ui.isAvailable) {
