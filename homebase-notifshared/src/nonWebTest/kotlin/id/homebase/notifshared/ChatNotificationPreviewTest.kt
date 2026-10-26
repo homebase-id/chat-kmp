@@ -91,41 +91,25 @@ class ChatNotificationPreviewTest {
         """.trimIndent()
     }
 
-    private val notFound = """{"title":"Not Found","status":404}"""
-    private val inboxStatus = """{"totalItems":0,"poppedCount":1,"oldestItemTimestamp":0}"""
+    private fun found(vararg headers: String) = """{"searchResults":[${headers.joinToString(",")}]}"""
 
-    /**
-     * [body] answers the header read; once the inbox has been processed, [afterInbox] does (when
-     * set). A null body never answers, as an identity that stopped responding.
-     */
+    /** [body] answers the query; a null body never answers, as an identity that stopped responding. */
     private suspend fun preview(
         body: String?,
         status: HttpStatusCode = HttpStatusCode.OK,
         conversation: Uuid = conversationId,
         message: Uuid = messageId,
         requests: MutableList<String> = mutableListOf(),
-        afterInbox: String? = null,
-        inbox: String? = inboxStatus,
-        inboxCode: HttpStatusCode = HttpStatusCode.OK,
         deadline: Duration = PREVIEW_DEADLINE,
-        inboxTimeout: Duration = INBOX_TIMEOUT,
+        queryTimeout: Duration = QUERY_TIMEOUT,
     ): ChatNotificationPreview {
-        var inboxProcessed = false
         val http = HttpClient(MockEngine.create {
             addHandler { request ->
-                val path = request.url.encodedPath
-                requests += path
-                if (path.endsWith("/inbox/process")) {
-                    inboxProcessed = true
-                    identity(inbox ?: awaitCancellation(), inboxCode)
-                } else if (inboxProcessed && afterInbox != null) {
-                    identity(afterInbox, HttpStatusCode.OK)
-                } else {
-                    identity(body ?: awaitCancellation(), status)
-                }
+                requests += request.url.encodedPath
+                identity(body ?: awaitCancellation(), status)
             }
         })
-        return fetchChatNotificationPreview(http, credentials, conversation.toString(), message.toString(), deadline, inboxTimeout)
+        return fetchChatNotificationPreview(http, credentials, conversation.toString(), message.toString(), deadline, queryTimeout)
     }
 
     // Sealed with the shared secret and flagged X-SSE, as the identity answers a 200.
@@ -146,49 +130,26 @@ class ChatNotificationPreviewTest {
     }
 
     @Test
-    fun plainTextMessageIsDecryptedFromItsChatDriveHeader() = realTimeTest {
+    fun plainTextMessageIsDecryptedFromOneChatDriveQuery() = realTimeTest {
         val requests = mutableListOf<String>()
-        val result = preview(header("""{"message":"NSE 1091 check charlie"}"""), requests = requests)
+        val result = preview(found(header("""{"message":"NSE 1091 check charlie"}""")), requests = requests)
         assertEquals(ChatNotificationPreview("NSE 1091 check charlie", null), result)
-        assertEquals(1, requests.size, "a header that is there needs no inbox processing: $requests")
-        assertTrue(requests.single().endsWith("/files/by-uid/$messageId/header"), requests.single())
+        assertEquals(listOf("/api/v2/drives/${SystemDriveConstants.chatDrive.alias}/files/query-batch"), requests)
     }
 
     @Test
-    fun aMessageStillInTheInboxIsReadAfterProcessingIt() = realTimeTest {
-        val requests = mutableListOf<String>()
-        val result = preview(
-            notFound, HttpStatusCode.NotFound, requests = requests,
-            afterInbox = header("""{"message":"Second breakfast?"}"""),
-        )
-        assertEquals(ChatNotificationPreview("Second breakfast?", null), result)
-        assertEquals(3, requests.size, requests.toString())
-        assertTrue(requests[0].endsWith("/header"), requests[0])
-        assertTrue(requests[1].endsWith("/drives/${SystemDriveConstants.chatDrive.alias}/inbox/process"), requests[1])
-        assertTrue(requests[2].endsWith("/header"), requests[2])
+    fun noResultsKeepsThePlaceholder() = realTimeTest {
+        assertMissed("query returned 0 results", preview(found()))
     }
 
     @Test
-    fun aFailedInboxProcessKeepsThePlaceholder() = realTimeTest {
-        val requests = mutableListOf<String>()
-        val result = preview(
-            notFound, HttpStatusCode.NotFound, requests = requests,
-            inbox = "boom", inboxCode = HttpStatusCode.InternalServerError,
-        )
-        assertMissed("inbox process threw", result)
-        assertEquals(2, requests.size, "no retry after the inbox failed: $requests")
+    fun anInvalidDriveKeepsThePlaceholder() = realTimeTest {
+        assertMissed("invalidDrive", preview("""{"invalidDrive":true}"""))
     }
 
     @Test
-    fun aMessageStillMissingAfterTheInboxKeepsThePlaceholder() = realTimeTest {
-        assertMissed("after processing the inbox", preview(notFound, HttpStatusCode.NotFound))
-    }
-
-    @Test
-    fun anInboxThatNeverAnswersTimesOutOnItsOwn() = realTimeTest {
-        val requests = mutableListOf<String>()
-        assertMissed("inbox process timed out", preview(notFound, HttpStatusCode.NotFound, requests = requests, inbox = null, inboxTimeout = 200.milliseconds))
-        assertEquals(2, requests.size, requests.toString())
+    fun aQueryThatNeverAnswersTimesOutOnItsOwn() = realTimeTest {
+        assertMissed("query timed out after 200ms", preview(null, queryTimeout = 200.milliseconds))
     }
 
     @Test
@@ -197,39 +158,44 @@ class ChatNotificationPreviewTest {
     }
 
     @Test
+    fun aFailedQueryKeepsThePlaceholder() = realTimeTest {
+        assertMissed("query threw", preview("boom", HttpStatusCode.InternalServerError))
+    }
+
+    @Test
     fun legacyRichTextMessageBecomesItsPlainText() = realTimeTest {
         val rich = """{"message":[{"type":"p","children":[{"text":"Not all"},{"text":"who wander"}]}]}"""
-        assertEquals("Not all who wander", preview(header(rich)).text)
+        assertEquals("Not all who wander", preview(found(header(rich))).text)
     }
 
     @Test
     fun typedKindsKeepTheSendersLabel() = realTimeTest {
-        assertMissed("dataType 214", preview(header("""{"question":"Mordor?"}""", dataType = 214)))
+        assertMissed("dataType 214", preview(found(header("""{"question":"Mordor?"}""", dataType = 214))))
     }
 
     @Test
     fun statusMessagesKeepTheSendersBody() = realTimeTest {
-        assertMissed("dataType 202", preview(header("""{"message":"x"}""", dataType = 202)))
+        assertMissed("dataType 202", preview(found(header("""{"message":"x"}""", dataType = 202))))
     }
 
     @Test
     fun mediaOnlyMessageHasNoText() = realTimeTest {
-        assertMissed("no message text", preview(header("""{"message":"","version":1}""")))
+        assertMissed("no message text", preview(found(header("""{"message":"","version":1}"""))))
     }
 
     @Test
     fun aMessageFromAnotherConversationIsNotShown() = realTimeTest {
-        assertMissed("groupId", preview(header("""{"message":"hi"}""", groupId = Uuid.random())))
+        assertMissed("groupId", preview(found(header("""{"message":"hi"}""", groupId = Uuid.random()))))
     }
 
     @Test
     fun aDeletedMessageIsNotShown() = realTimeTest {
-        assertMissed("deleted", preview(header("""{"message":"hi"}""", fileState = "deleted")))
+        assertMissed("deleted", preview(found(header("""{"message":"hi"}""", fileState = "deleted"))))
     }
 
     @Test
     fun aKeyHeaderSealedWithAnotherSecretIsNotShown() = realTimeTest {
-        val result = preview(header("""{"message":"hi"}""", encryptWith = ByteArray(16) { 4 }))
+        val result = preview(found(header("""{"message":"hi"}""", encryptWith = ByteArray(16) { 4 })))
         assertNull(result.text)
         // A wrong key still unpads cleanly about 1 time in 256, failing at the content instead.
         val reason = result.missReason.orEmpty()
@@ -239,20 +205,14 @@ class ChatNotificationPreviewTest {
     @Test
     fun anEmptyKeyHeaderNamesTheFailingStep() = realTimeTest {
         val empty = """{"encryptionVersion":1,"type":"aes","iv":"AAAAAAAAAAAAAAAAAAAAAA==","encryptedAesKey":"AAAAAAAAAAAAAAAAAAAAAA=="}"""
-        assertMissed("header fetch threw", preview(header("""{"message":"hi"}""", keyHeaderJson = empty)))
+        assertMissed("query threw", preview(found(header("""{"message":"hi"}""", keyHeaderJson = empty))))
     }
 
     @Test
     fun contentThatFailsToDecryptIsNotShownAsItsPlaceholder() = realTimeTest {
         // Not block-aligned: whole blocks under a random key still pass the PKCS7 check 1 run in 256.
         val undecryptable = Base64.encode(ByteArray(31) { 1 })
-        assertMissed("content failed to decrypt", preview(header("", encryptedContent = undecryptable)))
-    }
-
-    @Test
-    fun aMissingOrFailedFetchFallsBack() = realTimeTest {
-        assertMissed("404", preview(notFound, HttpStatusCode.NotFound))
-        assertMissed("header fetch threw", preview("boom", HttpStatusCode.InternalServerError))
+        assertMissed("content failed to decrypt", preview(found(header("", encryptedContent = undecryptable))))
     }
 
     @Test
