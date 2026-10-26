@@ -32,7 +32,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -45,7 +44,6 @@ import kotlinx.coroutines.test.runTest
  * A refused (or throwing) enqueue leaves the row untouched, so there is no local
  * state the server will never learn about — and nothing to roll back.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class OptimisticWriterEnqueueGateTest {
 
     @Test

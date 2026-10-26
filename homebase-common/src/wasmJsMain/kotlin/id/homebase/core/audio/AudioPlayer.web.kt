@@ -1,5 +1,3 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
-
 package id.homebase.core.audio
 
 import co.touchlab.kermit.Logger

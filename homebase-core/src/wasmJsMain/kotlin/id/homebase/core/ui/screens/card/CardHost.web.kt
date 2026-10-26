@@ -1,5 +1,3 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
-
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.foundation.layout.Box

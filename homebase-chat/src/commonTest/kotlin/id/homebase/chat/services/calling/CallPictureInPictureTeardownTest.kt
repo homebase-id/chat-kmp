@@ -3,13 +3,11 @@ package id.homebase.chat.services.calling
 import id.homebase.core.notifications.CallPictureInPictureBridge
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class CallPictureInPictureTeardownTest {
     private class Bridge : CallPictureInPictureBridge {
         var stops = 0
