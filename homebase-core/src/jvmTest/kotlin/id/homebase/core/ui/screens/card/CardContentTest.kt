@@ -20,21 +20,16 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -81,33 +76,30 @@ class CardContentTest {
         val host = FakeHost()
         val vm = ProfileCardViewModel(source) { host }.also { it.startHost() }
         vm.await { it.attributes.isNotEmpty() && it.cards.size == 4 }
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (host.rendered.isEmpty()) delay(10) } }
+        settle { host.rendered.isNotEmpty() }
         return Rig(wire, host, vm, source)
     }
 
-    private suspend fun ProfileCardViewModel.await(condition: (ProfileCardUiState) -> Boolean) =
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { uiState.first(condition) } }
+    private suspend fun ProfileCardViewModel.await(condition: (ProfileCardUiState) -> Boolean) = settle { condition(uiState.value) }
 
     private suspend fun Rig.open(card: CardAudience, stored: Boolean = false) {
         vm.onCardOpened(card)
         vm.await { it.selectedAudience == card && (!stored || it.selectedCard?.isDefault == false) }
         val expected = if (card is CardAudience.Circle) CardAudiencePayload("circle", card.label) else CardAudiencePayload("public")
-        withContext(Dispatchers.Default) {
-            withTimeout(10.seconds) { while (host.rendered.lastOrNull()?.audience != expected) delay(10) }
-        }
+        settle { host.rendered.lastOrNull()?.audience == expected }
     }
 
     private suspend fun Rig.write(block: () -> Unit) {
         vm.await { !it.isContentBusy }
         val before = wire.puts
         block()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts == before) delay(10) } }
+        settle { wire.puts != before }
         vm.await { !it.isContentBusy }
     }
 
-    private suspend fun Rig.rendered(until: (CardPayload) -> Boolean): CardPayload = withContext(Dispatchers.Default) {
-        withTimeout(10.seconds) { while (host.rendered.lastOrNull()?.let(until) != true) delay(10) }
-        host.rendered.last()
+    private suspend fun Rig.rendered(until: (CardPayload) -> Boolean): CardPayload {
+        settle { host.rendered.lastOrNull()?.let(until) == true }
+        return host.rendered.last()
     }
 
     private fun ProfileCardViewModel.toggle(id: Uuid, on: Boolean) {
@@ -312,7 +304,7 @@ class CardContentTest {
         vm.await { !it.isContentBusy }
         val before = wire.puts
         vm.onImportRequested(from)
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < before + expectedPuts) delay(10) } }
+        settle { wire.puts >= before + expectedPuts }
         vm.await { !it.isContentBusy }
     }
 
@@ -353,7 +345,7 @@ class CardContentTest {
         assertTrue(before != wire.acls())
 
         rig.vm.onImportUndone()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 6) delay(10) } }
+        settle { wire.puts >= 6 }
         rig.vm.await { !it.isContentBusy }
 
         assertEquals(before, wire.acls())
@@ -380,7 +372,7 @@ class CardContentTest {
 
         rig.vm.onImportRequested(friends)
         rig.vm.onImportConfirmed()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 3) delay(10) } }
+        settle { wire.puts >= 3 }
         rig.vm.await { !it.isContentBusy }
 
         assertNull(rig.vm.uiState.value.pendingImport)
@@ -432,10 +424,10 @@ class CardContentTest {
         rig.open(CardAudience.Public)
         rig.vm.onImportRequested(friends)
         rig.vm.onImportConfirmed()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 3) delay(10) } }
+        settle { wire.puts >= 3 }
         rig.vm.await { !it.isContentBusy }
         rig.vm.onImportUndone()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 6) delay(10) } }
+        settle { wire.puts >= 6 }
         rig.vm.await { !it.isContentBusy }
         val phoneId = rig.vm.uiState.value.attributes.single { it.type == ProfileAttributeTypes.PHONE }.id
 
@@ -526,7 +518,7 @@ class CardContentTest {
         rig.open(work)
 
         rig.vm.onImportRequested(friends)
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 3) delay(10) } }
+        settle { wire.puts >= 3 }
         rig.vm.await { !it.isContentBusy }
 
         assertEquals(before, wire.acls())
@@ -578,13 +570,13 @@ class CardContentTest {
         rig.import(friends, expectedPuts = 3)
 
         rig.vm.onImportUndone()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 6) delay(10) } }
+        settle { wire.puts >= 6 }
         rig.vm.await { !it.isContentBusy }
 
         assertEquals(1, rig.vm.uiState.value.contentFailures)
         assertTrue(before != wire.acls())
         rig.vm.onImportUndone()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 7) delay(10) } }
+        settle { wire.puts >= 7 }
         rig.vm.await { !it.isContentBusy }
         assertEquals(before, wire.acls())
     }
@@ -602,12 +594,12 @@ class CardContentTest {
         rig.open(CardAudience.Public)
         rig.vm.onImportRequested(family)
         rig.vm.onImportConfirmed()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 1) delay(10) } }
+        settle { wire.puts >= 1 }
         rig.vm.await { !it.isContentBusy }
         assertEquals("anonymous" to null, wire.acls()["${ProfileAttributeTypes.TWITTER}:"])
 
         rig.vm.onImportUndone()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 2) delay(10) } }
+        settle { wire.puts >= 2 }
         rig.vm.await { !it.isContentBusy }
 
         assertEquals(0, rig.vm.uiState.value.contentFailures)
@@ -638,7 +630,7 @@ class CardContentTest {
         rig.open(work)
         rig.import(friends, expectedPuts = 3)
         rig.vm.onImportUndone()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 6) delay(10) } }
+        settle { wire.puts >= 6 }
         rig.vm.await { !it.isContentBusy }
         assertEquals(0, rig.source.serverCircleReads)
     }
@@ -716,7 +708,7 @@ class CardContentTest {
         assertEquals(0, wire.puts)
 
         rig.write { rig.vm.toggle(rig.item(ProfileAttributeTypes.PHONE).id, true) }
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 2) delay(10) } }
+        settle { wire.puts >= 2 }
 
         val card = wire.putBodies.map { it.jsonObject }.single { it.str("type") == ProfileAttributeTypes.PROFILE_CARD }
         assertEquals(CardDesign.LINKS, card.str("data", "design"))
@@ -753,7 +745,7 @@ class CardContentTest {
         vm.await { !it.isContentBusy }
         val before = wire.deletes
         block()
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.deletes == before) delay(10) } }
+        settle { wire.deletes != before }
         vm.await { !it.isContentBusy }
     }
 
@@ -831,12 +823,11 @@ class CardContentTest {
         val email = wire.seed(ProfileAttributeTypes.EMAIL, "connected", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"), listOf(WORK_CIRCLE_ID))
         val rig = rig(wire)
         rig.open(work)
-        val failed = async { withContext(Dispatchers.Default) { withTimeout(10.seconds) { rig.vm.events.first { it == ProfileCardEvent.ContentSaveFailed } } } }
-        yield()
+        val failed = async { rig.vm.events.first { it == ProfileCardEvent.ContentSaveFailed } }
 
         rig.delete { rig.vm.onContentDeleted(email) }
 
-        failed.await()
+        settled(failed)
         assertTrue(rig.item(ProfileAttributeTypes.EMAIL).shown)
     }
 
@@ -987,7 +978,7 @@ class CardContentTest {
 
         rig.vm.onContentAudienceChosen(phoneId, ProfileAudience.Public)
         rig.write { rig.vm.onPublicConfirmed() }
-        val event = assertIs<ProfileCardEvent.AudienceChanged>(withContext(Dispatchers.Default) { withTimeout(10.seconds) { changed.await() } })
+        val event = assertIs<ProfileCardEvent.AudienceChanged>(settled(changed))
         assertTrue(event.nowPublic)
 
         rig.write { rig.vm.onAudienceUndone() }

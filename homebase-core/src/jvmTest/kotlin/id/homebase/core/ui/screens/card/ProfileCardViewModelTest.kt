@@ -51,10 +51,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -385,13 +382,9 @@ class ProfileCardViewModelTest {
         assertEquals(CardDesign.LINKS, vm.uiState.value.savedDesign)
     }
 
-    private suspend fun CardWireHarness.awaitPuts(n: Int) = withContext(Dispatchers.Default) {
-        withTimeout(10.seconds) { while (puts < n) delay(10) }
-    }
+    private suspend fun CardWireHarness.awaitPuts(n: Int) = settle { puts >= n }
 
-    private suspend fun FakeSource.awaitCardWrites(n: Int) = withContext(Dispatchers.Default) {
-        withTimeout(10.seconds) { cardWrites.first { it >= n } }
-    }
+    private suspend fun FakeSource.awaitCardWrites(n: Int) = settle { cardWrites.value >= n }
 
     @Test
     fun savingOnASupportingServerWritesTheCard() = runTest(dispatcher) {
@@ -1059,8 +1052,7 @@ class ProfileCardViewModelTest {
         assertEquals(JsonPrimitive("poster"), data["design"])
         assertEquals(surviving, data["overrides"])
 
-        // awaitPuts hands the body back on a Default worker inside the unconfined event loop, which queues a nested launch until the body suspends; a fresh withContext runs it inline.
-        withContext(Dispatchers.Default) { vm.onDesignSelected(CardDesign.DOSSIER) }
+        vm.onDesignSelected(CardDesign.DOSSIER)
         val back = Json.parseToJsonElement(host.rendered.last().toJson()).jsonObject
         assertEquals(CardDesign.DOSSIER, host.rendered.last().design)
         assertEquals(surviving, back["overrides"])
@@ -1612,9 +1604,7 @@ class ProfileCardViewModelTest {
         assertTrue(vm.uiState.value.canReset)
     }
 
-    private suspend fun awaitUntil(condition: () -> Boolean) = withContext(Dispatchers.Default) {
-        withTimeout(10.seconds) { while (!condition()) delay(10) }
-    }
+    private suspend fun awaitUntil(condition: () -> Boolean) = settle(condition)
 
     private suspend fun wireCircleVm(
         wire: CardWireHarness,
@@ -1635,8 +1625,7 @@ class ProfileCardViewModelTest {
     private fun JsonObject.putGround() =
         getValue("data").jsonObject.getValue("overrides").jsonObject.getValue("palette").jsonObject["ground"]?.jsonPrimitive?.content
 
-    private suspend fun <T> awaited(deferred: Deferred<T>) =
-        withContext(Dispatchers.Default) { withTimeout(10.seconds) { deferred.await() } }
+    private suspend fun <T> awaited(deferred: Deferred<T>) = settled(deferred)
 
     @Test
     fun anUnsavedCircleCardOverTheWireIsCreatedByItsFirstSaveAndEditedInPlaceAfter() = runTest(dispatcher) {
