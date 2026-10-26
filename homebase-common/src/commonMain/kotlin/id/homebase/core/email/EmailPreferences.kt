@@ -2,6 +2,7 @@ package id.homebase.core.email
 
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.ui.navigation.BottomBarDefaultsMigration
+import id.homebase.core.vault.BiometricSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,9 +17,8 @@ import kotlin.uuid.Uuid
  * through `OptionalDriveActivation`. A local flag diverges across devices — see
  * ADDING_ADDON_APPS.md.
  *
- * The biometric session mirrors [id.homebase.core.vault.VaultPreferences] because this app holds
- * the identity's mail keys and app passwords, which is the same class of secret the Vault gate
- * exists for. (Both copies are a candidate for extraction — see the follow-up in the plan.)
+ * The biometric session is the same [BiometricSession] Vault uses: this app holds the identity's
+ * mail keys and app passwords, the same class of secret the Vault gate exists for.
  */
 class EmailPreferences(
     private val databaseManager: DatabaseManager,
@@ -45,22 +45,15 @@ class EmailPreferences(
     private val _serverSupportsMail = MutableStateFlow(readBooleanOrNull(SERVER_SUPPORTS_MAIL_KEY))
     val serverSupportsMail: StateFlow<Boolean?> = _serverSupportsMail.asStateFlow()
 
-    // In-memory biometric session tracking — not persisted, resets on app restart.
-    private var lastAuthTimeMs: Long = 0L
-    private var lastBackgroundTimeMs: Long = 0L
-    private var lastActionTimeMs: Long = 0L
+    private val session = BiometricSession(clock, BACKGROUND_THRESHOLD_MS)
 
-    var isEmailScreenActive: Boolean = false
-        private set
+    val isEmailScreenActive: Boolean get() = session.isScreenActive
 
     fun setEmailScreenActive(active: Boolean) {
-        val now = clock.now().toEpochMilliseconds()
         // Otherwise leaving a still-locked screen would stamp a fresh action and revive the session.
-        if (!isEmailScreenActive && active && now - lastActionTimeMs > AUTH_SESSION_DURATION_MS) {
-            lastAuthTimeMs = 0L
-        }
-        if (isEmailScreenActive && !active) lastActionTimeMs = now
-        isEmailScreenActive = active
+        if (!session.isScreenActive && active) session.expireIfIdle()
+        if (session.isScreenActive && !active) session.recordUserAction()
+        session.setScreenActive(active)
     }
 
     fun requiresUnlock(): Boolean = _biometricsEnabled.value && !isAuthSessionValid()
@@ -69,46 +62,18 @@ class EmailPreferences(
         _iconVisible.value = readIconVisible()
         _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
         _serverSupportsMail.value = readBooleanOrNull(SERVER_SUPPORTS_MAIL_KEY)
-        lastAuthTimeMs = 0L
-        lastBackgroundTimeMs = 0L
-        lastActionTimeMs = 0L
-        isEmailScreenActive = false
+        session.reset()
     }
 
-    fun recordAuthSuccess() {
-        val now = clock.now().toEpochMilliseconds()
-        lastAuthTimeMs = now
-        lastActionTimeMs = now
-    }
+    fun recordAuthSuccess() = session.recordAuthSuccess()
 
-    fun recordAppBackgrounded() {
-        val now = clock.now().toEpochMilliseconds()
-        // The biometric prompt itself stops the Activity briefly around a successful unlock on
-        // some devices; that churn is not a genuine app-background.
-        if (lastAuthTimeMs != 0L && now - lastAuthTimeMs in 0..POST_AUTH_SETTLE_MS) return
-        lastBackgroundTimeMs = now
-    }
+    fun recordAppBackgrounded() = session.recordAppBackgrounded()
 
-    fun recordAppForegrounded() {
-        val now = clock.now().toEpochMilliseconds()
-        if (lastBackgroundTimeMs != 0L && now - lastBackgroundTimeMs <= BACKGROUND_THRESHOLD_MS) {
-            lastBackgroundTimeMs = 0L
-        }
-    }
+    fun recordAppForegrounded() = session.recordAppForegrounded()
 
-    fun recordUserAction() {
-        lastActionTimeMs = clock.now().toEpochMilliseconds()
-    }
+    fun recordUserAction() = session.recordUserAction()
 
-    fun isAuthSessionValid(): Boolean {
-        if (lastAuthTimeMs == 0L) return false
-        val now = clock.now().toEpochMilliseconds()
-        if (lastBackgroundTimeMs > lastAuthTimeMs &&
-            now - lastBackgroundTimeMs > BACKGROUND_THRESHOLD_MS
-        ) return false
-        if (!isEmailScreenActive && now - lastActionTimeMs > AUTH_SESSION_DURATION_MS) return false
-        return true
-    }
+    fun isAuthSessionValid(): Boolean = session.isAuthSessionValid()
 
     suspend fun setIconVisible(value: Boolean) {
         if (_iconVisible.value == value) return
@@ -159,9 +124,7 @@ class EmailPreferences(
         val BIOMETRICS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0703")
         val SERVER_SUPPORTS_MAIL_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0705")
 
-        private const val AUTH_SESSION_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
         // Deliberately longer than Vault's 30s: setting up a mail client means constant app switching.
         private const val BACKGROUND_THRESHOLD_MS = 5 * 60 * 1000L
-        private const val POST_AUTH_SETTLE_MS = 2 * 1000L
     }
 }
