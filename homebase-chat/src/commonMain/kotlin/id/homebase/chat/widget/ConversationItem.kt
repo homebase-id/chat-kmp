@@ -81,8 +81,8 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
-import id.homebase.core.util.isDesktopOrWeb
-import id.homebase.core.util.isMobile
+import id.homebase.core.util.supportsTouchGestures
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
@@ -125,7 +125,7 @@ fun ConversationItem(
     var showMenu by rememberSaveable { mutableStateOf(false) }
 
     // Pointer rows follow Signal Desktop: one step down the type scale, title+preview as one block.
-    val compact = isDesktopOrWeb()
+    val compact = usesPointerUx()
     val row = Dimens.ConversationRow.metrics(compact)
 
     val isArchived = enrichedData.conversation.conversationState == ConversationState.Archived
@@ -145,7 +145,7 @@ fun ConversationItem(
     SwipeRevealBox(
         onSwipeRight = onSwipeRight,
         onSwipeLeft = onSwipeLeft,
-        enabled = allowSwipeActions && isMobile(),
+        enabled = allowSwipeActions && supportsTouchGestures(),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = row.listGutter)
@@ -584,7 +584,7 @@ fun ConversationMessagePreview(
     prefix: String? = null,
     prefixColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
-    val compact = isDesktopOrWeb()
+    val compact = usesPointerUx()
     val previewStyle = if (compact) MaterialTheme.typography.bodySmall
     else MaterialTheme.typography.bodyMedium
     val emojiFamily = emojiFontFamily()

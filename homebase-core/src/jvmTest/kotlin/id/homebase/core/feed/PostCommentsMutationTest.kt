@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalCoroutinesApi::class)
-
 package id.homebase.core.feed
 
 import app.cash.sqldelight.db.SqlDriver
@@ -30,7 +28,6 @@ import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle

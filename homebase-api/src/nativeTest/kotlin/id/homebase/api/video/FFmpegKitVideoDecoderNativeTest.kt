@@ -1,8 +1,4 @@
-@file:OptIn(
-    kotlinx.cinterop.ExperimentalForeignApi::class,
-    kotlinx.cinterop.BetaInteropApi::class,
-    LowLevelFfmpegApi::class,
-)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, LowLevelFfmpegApi::class)
 
 package id.homebase.api.video
 

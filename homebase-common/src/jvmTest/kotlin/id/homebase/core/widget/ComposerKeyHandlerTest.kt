@@ -86,4 +86,77 @@ class ComposerKeyHandlerTest {
         assertTrue(handle(action = ComposerKeyAction.Ignore, imagePasted = true))
         assertEquals(listOf("autocomplete", "paste"), calls)
     }
+
+    @Test
+    fun `ctrl and meta K map to link and plain K to nothing`() {
+        fun chord(ctrlOrCmd: Boolean, shift: Boolean = false) = ComposerKeyChord(
+            isEnter = false,
+            isArrowUp = false,
+            isKeyDown = true,
+            isShiftPressed = shift,
+            isCtrlOrCmdPressed = ctrlOrCmd,
+            isK = true,
+        )
+        fun action(c: ComposerKeyChord) = composerKeyAction(
+            chord = c,
+            enterSendsMessage = true,
+            handlesHardwareKeys = true,
+            arrowUpEditsLastMessage = false,
+            isComposerEmpty = { true },
+        )
+        assertEquals(ComposerKeyAction.Link, action(chord(ctrlOrCmd = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(chord(ctrlOrCmd = false)))
+    }
+
+    @Test
+    fun `link claims the key and opens the dialog`() {
+        var opened = 0
+        assertTrue(
+            handleComposerKey(
+                isImeComposing = false,
+                claimedByAutocomplete = { false },
+                action = ComposerKeyAction.Link,
+                onSend = {},
+                onNewline = null,
+                onEditLast = null,
+                onLink = { opened++ },
+                pasteImage = { false },
+            )
+        )
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun `a format action is claimed only when the composer applies it`() {
+        val applied = mutableListOf<ComposerKeyAction>()
+        fun run(onFormat: ((ComposerKeyAction) -> Boolean)?, claims: Boolean = false) = handleComposerKey(
+            isImeComposing = false,
+            claimedByAutocomplete = { claims },
+            action = ComposerKeyAction.Bold,
+            onSend = {},
+            onNewline = null,
+            onEditLast = null,
+            onFormat = onFormat,
+            pasteImage = { false },
+        )
+        assertTrue(run({ applied += it; true }))
+        assertEquals(listOf(ComposerKeyAction.Bold), applied)
+        assertFalse(run({ false }))
+        assertFalse(run(null))
+    }
+
+    @Test
+    fun `escape is consumed only when the autocomplete is open`() {
+        fun escape(open: Boolean) = handleComposerKey(
+            isImeComposing = false,
+            claimedByAutocomplete = { open },
+            action = ComposerKeyAction.DismissTrigger,
+            onSend = {},
+            onNewline = null,
+            onEditLast = null,
+            pasteImage = { false },
+        )
+        assertTrue(escape(open = true))
+        assertFalse(escape(open = false))
+    }
 }

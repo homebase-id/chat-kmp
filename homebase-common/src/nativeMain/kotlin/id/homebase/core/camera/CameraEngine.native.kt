@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@file:OptIn(ExperimentalForeignApi::class)
 
 package id.homebase.core.camera
 
@@ -13,7 +13,6 @@ import id.homebase.core.audio.AudioSession
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar

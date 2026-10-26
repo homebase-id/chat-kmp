@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-
 package id.homebase.chat.services.calling
 
 import id.homebase.api.client.CryptoHelper
@@ -50,7 +48,7 @@ class LiveRelayCallSignalingTest {
             respond("", status)
         }
         val provider = LiveRelayProvider(HttpClient(engine), creds)
-        return LiveRelayCallSignaling(frodo, provider::relay, bus)
+        return LiveRelayCallSignaling(frodo, { channelKey, recipients, blob, push -> provider.relay(channelKey, recipients, blob, push, wakeCause = null) }, bus)
     }
 
     @Test

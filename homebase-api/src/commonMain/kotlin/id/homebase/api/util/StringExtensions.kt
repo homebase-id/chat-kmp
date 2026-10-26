@@ -208,3 +208,13 @@ fun String.cleanDomain(
     return cleanedString
 }
 
+
+fun String.longestBacktickRun(): Int {
+    var best = 0
+    var run = 0
+    for (c in this) {
+        run = if (c == '`') run + 1 else 0
+        if (run > best) best = run
+    }
+    return best
+}

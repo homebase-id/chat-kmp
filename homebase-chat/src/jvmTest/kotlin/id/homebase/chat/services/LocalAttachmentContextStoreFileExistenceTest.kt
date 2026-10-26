@@ -3,7 +3,6 @@ package id.homebase.chat.services
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -224,7 +223,6 @@ class LocalAttachmentContextStoreFileExistenceTest {
 
     // region Logout (BackendEvent.SessionEnded) clears all cached previews
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun sessionEnded_clearsAllContexts() = runTest(UnconfinedTestDispatcher()) {
         val eventBus = EventBus()

@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import io.github.vinceglb.filekit.PlatformFile
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
@@ -25,7 +24,7 @@ import kotlin.math.abs
 
 
 class IOSWaveFormGenerator : AudioWaveFormGenerator {
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     override fun generateWaveForm(file: PlatformFile): AudioFileInfo {
         val url = NSURL.fileURLWithPath(file.toString())
 

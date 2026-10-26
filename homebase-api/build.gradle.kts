@@ -13,6 +13,16 @@ plugins {
 kotlin {
     applyDefaultHierarchyTemplate()
 
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+    sourceSets.matching { it.name.startsWith("wasmJs") }.configureEach {
+        languageSettings.optIn("kotlin.js.ExperimentalWasmJsInterop")
+    }
+    sourceSets.matching { s -> listOf("native", "apple", "ios").any { s.name.startsWith(it) } }.configureEach {
+        languageSettings.optIn("kotlinx.cinterop.BetaInteropApi")
+    }
+
     // ✅ GLOBAL opt-ins for ALL source sets & targets
     sourceSets.all {
         languageSettings.apply {
@@ -22,9 +32,6 @@ kotlin {
             optIn("kotlin.time.ExperimentalTime")
             optIn("dev.whyoleg.cryptography.DelicateCryptographyApi")
         }
-    }
-    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
-        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
     }
 
     // Target declarations - add or remove as needed below. These define
