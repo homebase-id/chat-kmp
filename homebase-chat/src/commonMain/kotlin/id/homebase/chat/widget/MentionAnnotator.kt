@@ -59,8 +59,6 @@ internal fun selfMentionSpanStyle(
     chipStyle(style, selfContent, selfBackground)
 }
 
-/** The library's own no-op annotator: default handling for every node. */
-
 /**
  * Parents whose `TEXT` children are not prose. `@alice.example.test` inside a code span is a
  * literal the author asked us to show verbatim, and inside a link label it is already spoken for by
