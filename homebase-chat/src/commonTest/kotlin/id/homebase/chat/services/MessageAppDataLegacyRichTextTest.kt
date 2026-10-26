@@ -27,4 +27,10 @@ class MessageAppDataLegacyRichTextTest {
         val data = MessageAppData(message = Json.parseToJsonElement("""[{"type":"p","children":[{"text":"x","bold":true}]}]"""), version = 0)
         assertEquals("**x**", data.getMessage())
     }
+
+    @Test
+    fun version_one_json_array_produces_markdown() {
+        val data = MessageAppData(message = Json.parseToJsonElement("""[{"type":"p","children":[{"text":"x","bold":true}]}]"""), version = 1)
+        assertEquals("**x**", data.getMessage())
+    }
 }
