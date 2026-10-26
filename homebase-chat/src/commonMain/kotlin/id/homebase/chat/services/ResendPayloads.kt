@@ -6,8 +6,6 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ResendPayloadByteSource
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.file.FileOperationsProvider
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
 /**
@@ -80,10 +78,7 @@ internal suspend fun resendablePayloads(
                 unavailableKeys += descriptor.key
                 continue
             }
-            val ivBytes = descriptor.iv?.let {
-                @OptIn(ExperimentalEncodingApi::class)
-                Base64.Default.decode(it)
-            }
+            val ivBytes = descriptor.iv?.bytes
             if (ivBytes == null) {
                 Logger.w(tag = logTag) {
                     "resendablePayloads: payload key=${descriptor.key} unavailable — descriptor has no iv (fileId=${file.fileId})"

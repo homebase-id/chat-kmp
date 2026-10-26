@@ -7,7 +7,6 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.util.isMobile
-import kotlin.io.encoding.Base64
 
 const val VIEW_ONCE_PAYLOAD_KEY = ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB + "0"
 
@@ -22,7 +21,7 @@ fun viewOnceViewerFor(
     if (!mobile || message.isFromActiveUser(myOdinId)) return null
     if (ViewOnceRules.stateOf(message, nowMs, myOdinId) != ViewOnceState.Unopened) return null
     val payload = message.payloads?.firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY } ?: return null
-    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    val iv = payload.iv?.bytes ?: return null
     return FullScreenOverlay.ViewOnceViewer(
         messageId = message.id,
         conversationId = message.conversationId,
