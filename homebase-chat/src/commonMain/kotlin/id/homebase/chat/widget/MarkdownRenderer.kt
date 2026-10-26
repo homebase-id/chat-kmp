@@ -370,17 +370,18 @@ internal fun buildChatInlineAnnotatedString(
     ).toSpanStyle().copy(background = color.copy(alpha = INLINE_CODE_BG_ALPHA))
     val cache = LocalChatMarkdownParseCache.current
     val parsed = remember(cache, content) { cache.get(content) }
+    val annotator = rememberMentionAnnotator(parsed, style, color, mentions)
     val settings = annotatorSettings(
         linkTextSpanStyle = linkSpanStyle,
         codeSpanStyle = inlineCodeStyle,
-        annotator = rememberMentionAnnotator(parsed, style, color, mentions),
+        annotator = annotator,
         referenceLinkHandler = null,
     )
     // Web bundles a colour-emoji font and scopes it to the emoji runs; null everywhere else,
     // where withEmojiFont returns the string untouched. Part of the remember key so the emoji
     // pass is memoized with the parse rather than redone on every recomposition.
     val emojiFamily = emojiFontFamily()
-    return remember(parsed, style, color, emojiFamily, mentions) {
+    return remember(parsed, style, color, emojiFamily, mentions, annotator) {
         val node = parsed.inlineNode
         val built = when {
             parsed.ast == null -> AnnotatedString(parsed.text)
