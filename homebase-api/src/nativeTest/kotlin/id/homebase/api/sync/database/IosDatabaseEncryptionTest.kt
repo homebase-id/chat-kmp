@@ -14,6 +14,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -26,9 +27,12 @@ class IosDatabaseEncryptionTest {
     private val passphrase = "passphrase"
 
     private class FakeStore(var value: String? = null) : RawKeyStore {
+        var locked = false
+        var writes = 0
         override fun get() = value
-        override fun put(hex: String) { value = hex }
+        override fun put(hex: String) { value = hex; writes++ }
         override fun remove() { value = null }
+        override fun read() = if (locked) RawKeyRead.Unavailable("locked") else super.read()
     }
 
     @BeforeTest
@@ -118,6 +122,30 @@ class IosDatabaseEncryptionTest {
         assertFalse(isPlaintextDatabase(path))
         assertFalse(exists(exportPath(name)))
         assertEquals(1L, schemaRows(SqlCipherRawKey.format(assertNotNull(store.value)), "SELECT count(*) FROM marker"))
+    }
+
+    @Test
+    fun lockedKeychainNeitherReplacesTheKeyNorTheEncryptedDatabase() {
+        val store = FakeStore()
+        openKeyedNativeSqliteDriver(name, passphrase, store).useDriver { it.writeMarker("kept") }
+        val hex = assertNotNull(store.value)
+
+        store.locked = true
+        assertFailsWith<DatabaseUnavailableException> { openKeyedNativeSqliteDriver(name, passphrase, store) }
+
+        assertEquals(hex, store.value)
+        assertEquals(1, store.writes)
+        store.locked = false
+        openKeyedNativeSqliteDriver(name, passphrase, store).useDriver { assertEquals("kept", it.readMarker()) }
+    }
+
+    @Test
+    fun missingKeyForAnEncryptedDatabaseWritesNoNewKey() {
+        openNativeSqliteDriver(name, SqlCipherRawKey.format(SqlCipherRawKey.newHex())).useDriver { it.writeMarker("lost") }
+        val store = FakeStore()
+
+        assertFailsWith<IllegalStateException> { openKeyedNativeSqliteDriver(name, passphrase, store) }
+        assertEquals(0, store.writes)
     }
 
     private fun exists(path: String) = FileSystem.SYSTEM.exists(path.toPath())

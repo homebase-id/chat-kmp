@@ -13,12 +13,14 @@ import co.touchlab.sqliter.createDatabaseManager
 import co.touchlab.sqliter.getVersion
 import co.touchlab.sqliter.longForQuery
 import co.touchlab.sqliter.stringForQuery
+import id.homebase.api.storage.SecureStorage
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import okio.FileSystem
+import okio.IOException
 import okio.Path.Companion.toPath
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSError
@@ -28,10 +30,11 @@ import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUserDomainMask
+import platform.Security.errSecItemNotFound
 
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
-        val driver = openKeyedNativeSqliteDriver(DB_FILE_NAME, passphrase, SecureStorageRawKeyStore)
+        val driver = openKeyedNativeSqliteDriver(DB_FILE_NAME, passphrase, KeychainRawKeyStore)
 
         // Mark the SQLite files as ineligible for iCloud / Finder backup, like Android's
         // allowBackup=false. The file is encrypted by SQLCipher and its key is a
@@ -66,9 +69,10 @@ actual class DatabaseDriverFactory {
  * in [store]. iOS never shipped an encrypted file, so there is no passphrase-derived key to carry
  * over; an empty [passphrase] opens the file unencrypted, as on the other platforms.
  *
- * A plaintext file from before iOS linked SQLCipher is encrypted in place first ([encrypt]). If
- * that fails it is opened unencrypted as it is and the next launch tries again: the recovery in
- * DatabaseManager would otherwise wipe a file the key can't open.
+ * Which key is used, made or refused is [decideRawKey]'s call. A plaintext file from before iOS
+ * linked SQLCipher is encrypted in place first ([encrypt]). If that fails, or the key can't be
+ * read or stored, it is opened unencrypted as it is and the next launch tries again: the recovery
+ * in DatabaseManager would otherwise wipe a file the key can't open.
  */
 internal fun openKeyedNativeSqliteDriver(
     name: String,
@@ -78,9 +82,24 @@ internal fun openKeyedNativeSqliteDriver(
 ): SqlDriver {
     if (passphrase.isNullOrEmpty()) return openNativeSqliteDriver(name, key = null)
     requireSqlCipher()
-    val hex = store.get()?.takeIf(SqlCipherRawKey::isHex) ?: SqlCipherRawKey.newHex().also(store::put)
+    val file = databaseFileState(databasePath(name))
+    val read = store.read()
+    val hex = when (val decision = decideRawKey(read, file)) {
+        is RawKeyDecision.Use -> decision.hex
+        RawKeyDecision.Create -> createRawKey(store)
+            ?: if (file == DatabaseFileState.Plaintext) return openNativeSqliteDriver(name, key = null)
+            else throw DatabaseUnavailableException("The new database key couldn't be stored")
+        RawKeyDecision.OpenUnencrypted -> {
+            logger.w { "Database key unreadable ($read); opening the plaintext database unencrypted until the next launch" }
+            return openNativeSqliteDriver(name, key = null)
+        }
+        RawKeyDecision.FailUnavailable ->
+            throw DatabaseUnavailableException("Database file $file, key $read: can't open yet")
+        RawKeyDecision.FailKeyLost ->
+            throw IllegalStateException("The database is encrypted but its key is gone")
+    }
     val key = SqlCipherRawKey.format(hex)
-    if (isPlaintextDatabase(databasePath(name))) {
+    if (file == DatabaseFileState.Plaintext) {
         try {
             encrypt(name, key)
         } catch (e: Exception) {
@@ -91,6 +110,27 @@ internal fun openKeyedNativeSqliteDriver(
         }
     }
     return openNativeSqliteDriver(name, key)
+}
+
+/** Null when the key didn't read back: the Keychain write failed, and a file keyed with it would be lost. */
+private fun createRawKey(store: RawKeyStore): String? {
+    val hex = SqlCipherRawKey.newHex()
+    store.put(hex)
+    val readBack = store.read()
+    if (readBack == RawKeyRead.Found(hex)) return hex
+    logger.e { "Storing the new database key failed ($readBack)" }
+    return null
+}
+
+internal object KeychainRawKeyStore : RawKeyStore by SecureStorageRawKeyStore {
+    override fun read(): RawKeyRead {
+        val result = SecureStorage.read(SecureStorageRawKeyStore.KEY_DB_RAW_KEY)
+        return when {
+            result.value != null -> RawKeyRead.Found(result.value)
+            result.status == errSecItemNotFound -> RawKeyRead.Missing
+            else -> RawKeyRead.Unavailable("OSStatus ${result.status}")
+        }
+    }
 }
 
 /** [key] is what SQLCipher is handed: a raw `x'<hex>'` key, or null for no encryption. */
@@ -158,6 +198,17 @@ internal fun exportEncryptedCopy(name: String, key: String) {
 internal fun exportPath(name: String): String = "${databasePath(name)}-encrypting"
 
 internal fun databasePath(name: String): String = "${iosDatabasesDir()}/$name"
+
+/** Unreadable is a file whose header can't be read, e.g. under data protection before the first unlock. */
+internal fun databaseFileState(path: String): DatabaseFileState {
+    if ((FileSystem.SYSTEM.metadataOrNull(path.toPath())?.size ?: 0L) == 0L) return DatabaseFileState.Absent
+    return try {
+        if (isPlaintextDatabase(path)) DatabaseFileState.Plaintext else DatabaseFileState.Encrypted
+    } catch (e: IOException) {
+        logger.w(e) { "Couldn't read the database header" }
+        DatabaseFileState.Unreadable
+    }
+}
 
 /** True for a file in SQLite's plaintext format; an encrypted file starts with its random salt. */
 internal fun isPlaintextDatabase(path: String): Boolean {

@@ -295,6 +295,10 @@ class DatabaseManager(
             val key = DatabaseKeyManager.getOrGenerateKey()
             try {
                 initialize { factory.createDriver(key) }
+            } catch (e: DatabaseUnavailableException) {
+                Logger.withTag("DatabaseManager")
+                    .e(e) { "initializeWithRecovery: database unavailable, not resetting" }
+                throw e
             } catch (e: Exception) {
                 Logger.withTag("DatabaseManager")
                     .e(e) { "initializeWithRecovery: open failed, resetting" }
