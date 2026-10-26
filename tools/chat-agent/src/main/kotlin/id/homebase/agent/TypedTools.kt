@@ -164,6 +164,20 @@ suspend fun toolSendContact(backend: AgentBackend, args: JsonObject?): ToolReply
 private fun captionArg(backend: AgentBackend, args: JsonObject?) =
     tagged(backend.sendPrefix, stringArg(args, "caption").orEmpty()).trim().truncateToCodePoints(CAPTION_CODEPOINTS)
 
+private suspend fun probeOutVideo(ffmpeg: Ffmpeg, file: OutFile): OutVideo {
+    val dir = tempDir("probe")
+    try {
+        val source = File(dir, "in.mp4").also { it.writeBytes(file.bytes) }
+        val probe = ffmpeg.probe(source, VIDEO_FORMAT)
+        require(probe != null && probe.width > 0 && probe.height > 0) { "${file.name} is not a playable video" }
+        val poster = ffmpeg.poster(source, probe.durationMs)
+        requireNotNull(poster) { "could not read a frame from ${file.name}" }
+        return OutVideo(file.name, file.bytes, poster, probe.durationMs, probe.width, probe.height, probe.codec)
+    } finally {
+        dir.deleteRecursively()
+    }
+}
+
 suspend fun toolSendVideo(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val conversationId = sendTarget(backend, args)
     val file = fileArg(backend, args)
@@ -173,17 +187,7 @@ suspend fun toolSendVideo(backend: AgentBackend, args: JsonObject?): ToolReply =
     if (!ffmpeg.available) return@guarded asFile("ffmpeg/ffprobe not found on PATH, so no video thumbnail or duration")
     require(file.name.lowercase().endsWith(".mp4")) { "send_video needs an .mp4 file" }
     if (file.bytes.size > VIDEO_MAX_BYTES) return@guarded asFile("the video is over ${formatSize(VIDEO_MAX_BYTES)}, larger videos are not segmented here")
-    val dir = tempDir("probe")
-    val video = try {
-        val source = File(dir, "in.mp4").also { it.writeBytes(file.bytes) }
-        val probe = ffmpeg.probe(source, VIDEO_FORMAT)
-        require(probe != null && probe.width > 0 && probe.height > 0) { "${file.name} is not a playable video" }
-        val poster = ffmpeg.poster(source, probe.durationMs)
-        requireNotNull(poster) { "could not read a frame from ${file.name}" }
-        OutVideo(file.name, file.bytes, poster, probe.durationMs, probe.width, probe.height, probe.codec)
-    } finally {
-        dir.deleteRecursively()
-    }
+    val video = probeOutVideo(ffmpeg, file)
     ToolReply("sent video ${backend.sendVideo(conversationId, video, caption)}")
 }
 
@@ -214,25 +218,13 @@ private suspend fun videoStager(backend: AgentBackend, file: OutFile): Stager {
     val ffmpeg = backend.ffmpeg
     require(ffmpeg.available) { "a view-once video needs ffmpeg and ffprobe, and is never sent as a plain file" }
     require(file.bytes.size <= VIDEO_MAX_BYTES) { "the video is over ${formatSize(VIDEO_MAX_BYTES)}" }
-    val dir = tempDir("probe")
-    val video = try {
-        val source = File(dir, "in.mp4").also { it.writeBytes(file.bytes) }
-        val probe = ffmpeg.probe(source, VIDEO_FORMAT)
-        require(probe != null && probe.width > 0 && probe.height > 0) { "${file.name} is not a playable video" }
-        val poster = ffmpeg.poster(source, probe.durationMs)
-        requireNotNull(poster) { "could not read a frame from ${file.name}" }
-        OutVideo(file.name, file.bytes, poster, probe.durationMs, probe.width, probe.height, probe.codec)
-    } finally {
-        dir.deleteRecursively()
-    }
+    val video = probeOutVideo(ffmpeg, file)
     return { key, ops -> stageVideo(video, key, ops).withoutThumbnails() }
 }
 
-private val VIEW_ONCE_REFUSED_ARGS = listOf("replyTo", "reply", "files", "paths", "path2")
-
 suspend fun toolSendViewOnce(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val conversationId = sendTarget(backend, args)
-    require(VIEW_ONCE_REFUSED_ARGS.none { args?.containsKey(it) == true }) { "view-once media takes exactly one file and cannot be a reply" }
+    require(args?.containsKey("replyTo") != true) { "view-once media cannot be a reply" }
     val file = fileArg(backend, args)
     val caption = fitDisclosed({ backend.disclose(conversationId, it) }, stringArg(args, "caption").orEmpty(), ViewOnceDescriptor.MAX_CAPTION_CODEPOINTS)
         .ifEmpty { null }

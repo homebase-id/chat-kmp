@@ -359,10 +359,10 @@ file: without ffmpeg and ffprobe the tool refuses.
 
 Reading is a one-shot. A received, unopened, unexpired (30 days) view-once item addressed to the bot is opened only when
 the brain is the stream-json default (so the bytes can go to the model over stdin); any other brain leaves it unopened
-and sees `[view-once photo, unopened]`. The loader fetches the payload once, records the open the way the app does
+and sees `[view-once photo, unopened]`. Operators therefore only view items with the default brain (a `{session}` brain never qualifies), and only items addressed to the bot, never in listen mode. The loader fetches the payload once, records the open the way the app does
 (hidden `_vo` reaction), then strips the bot's own copy (payloads deleted, kind-only content, local update). The bytes
 are never written to the attachments directory, the claude run gets `--no-session-persistence` and no session resume,
-and the buffer is zeroed when the message settles. Later reads show `[view-once media, already opened]`; if the open
+and the buffer is zeroed when the message settles. Opened ids persist across restarts (`viewonce-opened.txt`, `viewonce-stripped.txt`); a restart retries a failed strip and never re-reads. Later reads show `[view-once media, already opened]`; if the open
 cannot be recorded the item stays unopened and the model never sees it.
 
 Reading a view-once spends it for good. The bot deliberately acts as a viewer even though the app's desktop client shows

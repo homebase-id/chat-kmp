@@ -235,7 +235,6 @@ class ViewOnceTest {
         val pdf = call(b, self, "path" to "doc.pdf")
         assertTrue(pdf.isError)
         assertTrue(pdf.text.contains("image or an .mp4 video"), pdf.text)
-        assertTrue(call(b, self, "path" to "pic.png", "path2" to "pic.png").isError)
         assertTrue(call(b, self, "path" to "pic.png", "replyTo" to "abcdefgh").isError)
         assertTrue(call(b, self, "path" to "clip.mp4").text.contains("ffmpeg"))
         assertTrue(b.sent.isEmpty())

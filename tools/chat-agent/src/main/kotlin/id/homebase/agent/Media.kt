@@ -233,6 +233,8 @@ class ViewOnceHooks(
     val signalOpened: suspend (ChatMsg) -> Unit,
     val stripOwnCopy: suspend (ChatMsg) -> Unit,
     val now: () -> Long = System::currentTimeMillis,
+    val opened: ProcessedStore = ProcessedStore(null),
+    val stripped: ProcessedStore = ProcessedStore(null),
 )
 
 class AttachmentLoader(
@@ -242,7 +244,7 @@ class AttachmentLoader(
     private val ffmpeg: Ffmpeg? = null,
     private val viewOnce: ViewOnceHooks? = null,
 ) {
-    private val opened = HashSet<Uuid>()
+    private val inFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
 
     suspend fun load(messages: List<Pair<ChatMsg, Boolean>>, viewOnceInMemory: Boolean = false): List<Attachment> {
         val out = ArrayList<Attachment>()
@@ -273,7 +275,13 @@ class AttachmentLoader(
     private suspend fun openViewOnce(msg: ChatMsg, fileId: Uuid, descriptor: ViewOnceDescriptor?, inMemory: Boolean, room: Int): List<Attachment> {
         val hooks = viewOnce ?: return emptyList()
         if (msg.author?.toString() == hooks.self) return emptyList()
-        if (msg.id in opened) return listOf(Attachment(msg.id, false, "view-once", "application/octet-stream", 0, note = "view-once media, already opened"))
+        val spent = listOf(Attachment(msg.id, false, "view-once", "application/octet-stream", 0, note = "view-once media, already opened"))
+        if (synchronized(hooks.opened) { msg.id in hooks.opened }) {
+            if (inFlight.add(msg.id)) {
+                try { strip(hooks, msg) } finally { inFlight.remove(msg.id) }
+            }
+            return spent
+        }
         val p = msg.payloads.orEmpty().firstOrNull { it.key == VIEW_ONCE_PAYLOAD_KEY } ?: return emptyList()
         if (hooks.now() - (msg.createdMs ?: msg.userDate) >= ViewOnceRules.MAX_LIFESPAN_MS) return emptyList()
         if (!inMemory) { log("${msg.id} view-once left unopened: this brain cannot view it in memory"); return emptyList() }
@@ -281,49 +289,69 @@ class AttachmentLoader(
         if (!video && descriptor?.kind != ViewOnceDescriptor.KIND_IMAGE) return emptyList()
         val cap = if (video) KEYFRAME_VIDEO_MAX_BYTES else IMAGE_MAX_BYTES
         if ((p.bytesWritten ?: 0L) > cap) { log("${msg.id} view-once left unopened: over ${formatSize(cap)}"); return emptyList() }
-        val type = p.contentType.orEmpty()
-        val fetched: ByteArray
-        val items: List<Attachment>
+        if (!inFlight.add(msg.id)) return spent
         try {
-            fetched = fetcher.fetch(fileId, VIEW_ONCE_PAYLOAD_KEY, cap) ?: run { log("${msg.id} view-once payload missing"); return emptyList() }
-            if (fetched.size > cap) return emptyList()
-            val note = "view-once ${if (video) "video" else "photo"}, opened now for this reply and gone for good afterwards"
-            val caption = descriptor?.caption?.takeIf { it.isNotBlank() }
-            items = if (video) {
-                val frames = viewOnceFrames(fetched, p, minOf(KEYFRAMES_MAX, room))
-                if (frames.isEmpty()) { log("${msg.id} view-once video left unopened: no frames"); return emptyList() }
-                frames.mapIndexed { i, jpeg -> Attachment(msg.id, false, "view-once-frame-${i + 1}.jpg", "image/jpeg", jpeg.size.toLong(), bytes = jpeg, text = caption.takeIf { i == 0 }, note = "$note; video frame ${i + 1}", ephemeral = true) }
-            } else {
-                if (type !in VIEWABLE_IMAGES) { log("${msg.id} view-once image format not viewable"); return emptyList() }
-                listOf(Attachment(msg.id, false, "view-once.${extensionFor(type)}", type, fetched.size.toLong(), bytes = fetched, text = caption, note = note, ephemeral = true))
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log("${msg.id} view-once fetch error: ${e.message}")
-            return emptyList()
-        }
-        try {
-            hooks.signalOpened(msg)
-        } catch (e: CancellationException) {
-            items.forEach { it.wipe() }
-            throw e
-        } catch (e: Exception) {
-            log("${msg.id} view-once left unopened: could not record the open (${e.message})")
-            items.forEach { it.wipe() }
-            return emptyList()
+            return fetchAndOpen(hooks, msg, fileId, descriptor, p, video, cap, room)
         } finally {
-            if (video) fetched.fill(0)
+            inFlight.remove(msg.id)
         }
-        opened += msg.id
+    }
+
+    private suspend fun strip(hooks: ViewOnceHooks, msg: ChatMsg) {
+        if (synchronized(hooks.stripped) { msg.id in hooks.stripped }) return
         try {
             hooks.stripOwnCopy(msg)
+            synchronized(hooks.stripped) { hooks.stripped.add(msg.id) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log("ERROR ${msg.id} view-once was opened but our own copy could NOT be stripped: ${e.message}")
         }
-        return items
+    }
+
+    private suspend fun fetchAndOpen(hooks: ViewOnceHooks, msg: ChatMsg, fileId: Uuid, descriptor: ViewOnceDescriptor?, p: PayloadDescriptor, video: Boolean, cap: Long, room: Int): List<Attachment> {
+        var fetched: ByteArray? = null
+        var handedOn = false
+        try {
+            val items: List<Attachment>
+            try {
+                val bytes = fetcher.fetch(fileId, VIEW_ONCE_PAYLOAD_KEY, cap) ?: run { log("${msg.id} view-once payload missing"); return emptyList() }
+                fetched = bytes
+                if (bytes.size > cap) return emptyList()
+                val note = "view-once ${if (video) "video" else "photo"}, opened now for this reply and gone for good afterwards"
+                val caption = descriptor?.caption?.takeIf { it.isNotBlank() }
+                val type = p.contentType.orEmpty()
+                items = if (video) {
+                    val frames = viewOnceFrames(bytes, p, minOf(KEYFRAMES_MAX, room))
+                    if (frames.isEmpty()) { log("${msg.id} view-once video left unopened: no frames"); return emptyList() }
+                    frames.mapIndexed { i, jpeg -> Attachment(msg.id, false, "view-once-frame-${i + 1}.jpg", "image/jpeg", jpeg.size.toLong(), bytes = jpeg, text = caption.takeIf { i == 0 }, note = "$note; video frame ${i + 1}", ephemeral = true) }
+                } else {
+                    if (type !in VIEWABLE_IMAGES) { log("${msg.id} view-once image format not viewable"); return emptyList() }
+                    handedOn = true
+                    listOf(Attachment(msg.id, false, "view-once.${extensionFor(type)}", type, bytes.size.toLong(), bytes = bytes, text = caption, note = note, ephemeral = true))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("${msg.id} view-once fetch error: ${e.message}")
+                return emptyList()
+            }
+            try {
+                hooks.signalOpened(msg)
+            } catch (e: CancellationException) {
+                items.forEach { it.wipe() }
+                throw e
+            } catch (e: Exception) {
+                log("${msg.id} view-once left unopened: could not record the open (${e.message})")
+                items.forEach { it.wipe() }
+                return emptyList()
+            }
+            synchronized(hooks.opened) { hooks.opened.add(msg.id) }
+            strip(hooks, msg)
+            return items
+        } finally {
+            if (!handedOn) fetched?.fill(0)
+        }
     }
 
     private suspend fun viewOnceFrames(bytes: ByteArray, p: PayloadDescriptor, room: Int): List<ByteArray> {

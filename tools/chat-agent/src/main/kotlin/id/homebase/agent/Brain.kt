@@ -142,7 +142,7 @@ suspend fun runBrain(
         val ephemeral = attachments.any { it.ephemeral }
         val placeholders = buildMap {
             mcpConfig?.let { put(MCP_PLACEHOLDER, shellWord(it.absolutePath)) }
-            if (tier == Tier.OPERATOR) put(SESSION_PLACEHOLDER, if (ephemeral) "" else sessionFlags.orEmpty())
+            if (tier == Tier.OPERATOR) put(SESSION_PLACEHOLDER, sessionFlags.orEmpty())
         }
         val command = placeholders.entries.fold(brain.command) { c, (k, v) -> c.replace(k, v) }.let { if (ephemeral) "$it $NO_PERSISTENCE_FLAG" else it }
         val outcome = runBrainProcess(

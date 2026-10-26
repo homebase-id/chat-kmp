@@ -78,6 +78,8 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
                 self = session.identity.toString(),
                 signalOpened = { addViewOnceSignal(session, config.allowlist, it.conversationId, it) },
                 stripOwnCopy = { stripOwnViewOnceCopy(session, it.conversationId, it) },
+                opened = ProcessedStore(File(dir, "viewonce-opened.txt")),
+                stripped = ProcessedStore(File(dir, "viewonce-stripped.txt")),
             ),
         ),
         fetcher = fetcher,
