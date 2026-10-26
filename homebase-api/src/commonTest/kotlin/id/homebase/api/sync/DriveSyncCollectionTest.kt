@@ -521,8 +521,9 @@ class DriveSyncCollectionTest {
             val small = List(2) { Uuid.random() }
             // Head and tail are mounted away from their final positions so the ordering is proven.
             val mounts = linkedMapOf(
+                feedLike to "Feed",
                 small[0] to "Contacts", small[1] to "Profile",
-                feedLike to "Feed", chatLike to "Chat",
+                chatLike to "Chat",
             )
             lateinit var engine: MockEngine
             engine = MockEngine { request ->
