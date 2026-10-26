@@ -7,29 +7,27 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import id.homebase.core.email.EmailPreferences
 import id.homebase.core.ui.navigation.Route
 import org.koin.compose.koinInject
 
 /**
- * Owns the email biometric-session signals for the whole email flow. Staying inside the flow
- * suppresses the idle lock; leaving it (or backgrounding the app) starts the 5-minute clock.
+ * Owns the email biometric-session signals. Only the gated screens count as active: the Email
+ * root is ungated, so letting it suppress the idle lock would revive a session that aged out
+ * while the user was elsewhere in the app.
  */
 @Composable
 fun EmailSessionTracker(
     navController: NavHostController,
     emailPreferences: EmailPreferences = koinInject(),
 ) {
-    val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
-    val inEmailFlow = backStack.any {
-        val d = it.destination
-        d.hasRoute(Route.Email::class) ||
-            d.hasRoute(Route.EmailSecrets::class) ||
-            d.hasRoute(Route.EmailThunderbirdSetup::class)
-    }
+    val current by navController.currentBackStackEntryAsState()
+    val inEmailFlow = current?.destination?.let {
+        it.hasRoute(Route.EmailSecrets::class) || it.hasRoute(Route.EmailThunderbirdSetup::class)
+    } == true
     LaunchedEffect(inEmailFlow) {
         emailPreferences.setEmailScreenActive(inEmailFlow)
     }
