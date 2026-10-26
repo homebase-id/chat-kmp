@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@file:OptIn(kotlinx.coroutines.FlowPreview::class)
 
 package id.homebase.chat.conversationlist
 

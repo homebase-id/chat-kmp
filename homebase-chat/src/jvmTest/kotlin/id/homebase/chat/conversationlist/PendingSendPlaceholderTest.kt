@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-
 package id.homebase.chat.conversationlist
 
 import id.homebase.api.client.KeyHeader

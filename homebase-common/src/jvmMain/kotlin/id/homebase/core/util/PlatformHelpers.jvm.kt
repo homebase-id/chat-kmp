@@ -19,3 +19,5 @@ actual fun isDesktopOrWeb(): Boolean {
 actual fun isNativeMobile(): Boolean {
     return false
 }
+
+actual fun inputCapabilities(): InputCapabilities = InputCapabilities(primaryTouch = false, anyTouch = false, anyHover = true)

@@ -69,10 +69,12 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
 
     private fun log(before: CallState, event: CallEvent, t: CallTransition) {
         val after = t.state
-        if (before.phase == after.phase && before.callId == after.callId) return
+        val notable = (event is CallEvent.TimerFired && event.callId == before.callId) || (event is CallEvent.Media && event.event !is MediaEvent.LocalIce)
+        if (before.phase == after.phase && before.callId == after.callId && !notable) return
         val hangup = t.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().firstOrNull()
         Logger.i(tag = TAG) {
             "call=${after.callId} ${before.phase} -> ${after.phase} on ${describe(event)}" +
+                (if (after.phase == CallPhase.Reconnecting) " attempt=${after.reconnectAttempt}" else "") +
                 (hangup?.let { " sends hangup(${it.reason})" } ?: "")
         }
     }

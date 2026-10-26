@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.toArgb
 import co.touchlab.kermit.Logger
 import id.homebase.resources.MR
 import id.homebase.resources.chat_view_once_capture_blocked
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.darwin.NSObject
@@ -48,7 +47,6 @@ actual fun SecureWindowEffect(active: Boolean) {
 }
 
 // this::class would resolve a private UIKit class to its nearest Kotlin-known superclass, hiding "CanvasView".
-@OptIn(BetaInteropApi::class)
 private fun NSObject.className(): String = `class`()?.let { NSStringFromClass(it) }.orEmpty()
 
 private fun Int.toUIColor(): UIColor = UIColor(

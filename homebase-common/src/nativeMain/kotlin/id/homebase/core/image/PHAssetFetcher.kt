@@ -12,7 +12,6 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.size.Dimension
 import id.homebase.api.lib.image.ImageFormatDetector
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -47,7 +46,7 @@ class PHAssetFetcher(
     private val options: Options,
 ) : Fetcher {
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     override suspend fun fetch(): FetchResult? {
         val localIdentifier = data.removePrefix("ph://")
 
@@ -66,7 +65,7 @@ class PHAssetFetcher(
         }
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     private suspend fun fetchImageData(asset: PHAsset): FetchResult? {
         val nsData = suspendCancellableCoroutine<NSData?> { continuation ->
             val requestOptions = PHImageRequestOptions().apply {
@@ -90,7 +89,7 @@ class PHAssetFetcher(
         return imageFromNSData(nsData)
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     private suspend fun fetchVideoFrame(asset: PHAsset): FetchResult? {
         // Pick the best target size from the Coil request — falls back to a sane
         // thumbnail size if the layout hasn't measured yet.
@@ -127,7 +126,7 @@ class PHAssetFetcher(
         return imageFromNSData(jpegData)
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     private fun imageFromNSData(nsData: NSData): FetchResult {
         // Peek at header to detect HEIC without copying the full image
         val header = ByteArray(minOf(12, nsData.length.toInt()))

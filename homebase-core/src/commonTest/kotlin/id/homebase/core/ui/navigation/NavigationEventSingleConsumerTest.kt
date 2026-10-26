@@ -1,7 +1,6 @@
 package id.homebase.core.ui.navigation
 
 import id.homebase.core.notifications.NotificationNavigationEvent
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -50,7 +49,6 @@ class NavigationEventSingleConsumerTest {
     private fun event(id: String) =
         NotificationNavigationEvent.OpenConversation(conversationId = id)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun multiple_collectors_split_a_single_consumer_channel_instead_of_each_seeing_every_event() =
         runTest {
@@ -84,7 +82,6 @@ class NavigationEventSingleConsumerTest {
             jobs.forEach { it.cancel() }
         }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun single_collector_receives_every_event() = runTest {
         // The post-fix shape: exactly one live AppViewModel, so every event

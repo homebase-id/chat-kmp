@@ -3,7 +3,6 @@ package id.homebase.core.sync
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OdinDatabase
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 
@@ -22,7 +21,6 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
  *
  * Must be called from within `runTest` (it's a [TestScope] extension).
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 fun TestScope.createTestDatabaseManager(): DatabaseManager {
     val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
     OdinDatabase.Schema.create(driver)

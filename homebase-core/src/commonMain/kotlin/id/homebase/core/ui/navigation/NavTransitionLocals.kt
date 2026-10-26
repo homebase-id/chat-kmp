@@ -20,3 +20,11 @@ internal fun SharedTransitionHost(modifier: Modifier = Modifier, content: @Compo
         CompositionLocalProvider(LocalSharedTransitionScope provides this, content = content)
     }
 }
+
+/** Keeps this element still across a NavHost transition against the same [key] on the other route. */
+@Composable
+internal fun Modifier.navSharedElement(key: Any): Modifier {
+    val shared = LocalSharedTransitionScope.current ?: return this
+    val visibility = LocalNavAnimatedVisibilityScope.current ?: return this
+    return with(shared) { this@navSharedElement.sharedElement(rememberSharedContentState(key), visibility) }
+}
