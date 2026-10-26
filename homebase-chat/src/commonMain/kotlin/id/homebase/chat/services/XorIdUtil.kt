@@ -4,6 +4,12 @@ import id.homebase.api.common.OdinId
 import io.ktor.utils.io.core.toByteArray
 import kotlin.uuid.Uuid
 
+/**
+ * SHA-256 of the raw bytes in [input], exactly as given: no text encoding, no normalisation.
+ * Callers hashing text pass its UTF-8 bytes. Always returns 32 bytes, including for an empty
+ * [input] (the digest of the empty message). Synchronous and pure, so safe on any thread; a
+ * large [input] blocks the caller for as long as it takes to hash it.
+ */
 expect fun sha256(input: ByteArray): ByteArray
 
 object XorIdUtil {

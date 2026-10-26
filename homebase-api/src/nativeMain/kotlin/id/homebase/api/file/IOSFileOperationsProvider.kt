@@ -1,7 +1,6 @@
 package id.homebase.api.file
 
 import io.ktor.client.request.forms.InputProvider
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -142,7 +141,7 @@ class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, 
         return dir
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     override suspend fun resolveToFilePath(path: String): String {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
             // A video PHAsset must be read via PHAssetResourceManager: requestImageDataForAsset
@@ -221,7 +220,7 @@ class IOSFileOperationsProvider : OkioFileOperationsProvider(FileSystem.SYSTEM, 
             )
         }
 
-    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     private suspend fun readPhotoLibraryAsset(phUri: String): ByteArray = suspendCancellableCoroutine { continuation ->
             val assetId = phUri.removePrefix("ph://")
             val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)

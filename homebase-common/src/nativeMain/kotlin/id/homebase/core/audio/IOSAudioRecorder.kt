@@ -1,7 +1,6 @@
 package id.homebase.core.audio
 
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
@@ -24,7 +23,7 @@ class IOSAudioRecorder: AudioRecorder {
         return "m4a"
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     override fun startRecording(fileName: String) {
         Logger.d { "Starting recording to $fileName" }
         val url = NSURL.fileURLWithPath(fileName)

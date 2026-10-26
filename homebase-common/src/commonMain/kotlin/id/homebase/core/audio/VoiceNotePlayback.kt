@@ -68,12 +68,13 @@ class DefaultVoiceNotePlayback(
             it.copy(playingKey = key, positionMs = 0, durationMs = 0, isPlaying = true)
         }
         val speed = _state.value.speed
+        // Before play(): a failed play fires onComplete synchronously, which must be the last word.
+        proximityRouter.start()
         withContext(Dispatchers.Default) {
             player.stop()
             player.play(filePath)
             player.setSpeed(speed)
         }
-        proximityRouter.start()
     }
 
     override fun pause() {

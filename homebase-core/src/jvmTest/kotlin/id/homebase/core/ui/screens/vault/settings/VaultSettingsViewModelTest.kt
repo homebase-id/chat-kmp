@@ -4,7 +4,6 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.feed.newInMemoryJdbcDriver
 import id.homebase.core.vault.VaultPreferences
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -17,7 +16,6 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class VaultSettingsViewModelTest {
 
     private val dispatcher = UnconfinedTestDispatcher()

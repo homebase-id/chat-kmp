@@ -79,6 +79,19 @@ expect class DatabaseDriverFactory {
      *
      * wasmJs is the exception: sql.js is one in-memory connection on the browser's single
      * thread, with no journal and no pragmas.
+     *
+     * Encryption at rest: a non-empty [passphrase] means the file must be unreadable without
+     * it. Android and desktop encrypt with SQLCipher; the key actually handed to SQLCipher is
+     * a raw key derived from [passphrase] and cached in SecureStorage (SqlCipherKeyMode).
+     * A null or empty [passphrase] opens a plaintext database and stores no key. iOS does NOT
+     * meet this today: the system SQLite ignores the key, so the file is plaintext (#1400).
+     * wasmJs has no file at all, so there is nothing to encrypt.
+     *
+     * Wrong key: when the file exists and neither the cached key nor [passphrase] decrypts it,
+     * Android and desktop throw from this call, not on the first query, and leave nothing
+     * open; [DatabaseManager.initializeWithRecovery] then deletes the files and starts fresh.
+     * iOS and wasmJs never reject a key. Blocking: runs on the caller's thread and may do
+     * file I/O and, once per install, a slow key derivation off-thread.
      */
     fun createDriver(passphrase: String? = null): SqlDriver
 

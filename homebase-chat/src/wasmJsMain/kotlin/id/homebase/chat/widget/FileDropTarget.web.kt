@@ -1,5 +1,3 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
-
 package id.homebase.chat.widget
 
 import androidx.compose.runtime.Composable

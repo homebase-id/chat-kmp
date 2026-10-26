@@ -8,7 +8,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 
@@ -66,7 +65,6 @@ class ManagedCallMediaDevicesTest {
         assertNull(prefs.get(MediaDeviceKind.Mic))
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun aDeviceThatFailsToSwitchTellsTheUserWhatIsStillInUse() = runTest(UnconfinedTestDispatcher()) {
         val hw = everything()
@@ -78,7 +76,6 @@ class ManagedCallMediaDevicesTest {
         assertEquals(listOf<MediaDeviceNotice>(MediaDeviceNotice.SwitchFailed(MediaDeviceKind.Mic, "USB Mic", "MacBook Microphone")), notices)
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun unpluggingTheSelectedDeviceFallsBackToTheDefaultAndSaysSoOnce() = runTest(UnconfinedTestDispatcher()) {
         val hw = everything()
@@ -99,7 +96,6 @@ class ManagedCallMediaDevicesTest {
         job.cancel()
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun repluggingTheRememberedDeviceOffersItBackWithoutSwitching() = runTest(UnconfinedTestDispatcher()) {
         val hw = everything()

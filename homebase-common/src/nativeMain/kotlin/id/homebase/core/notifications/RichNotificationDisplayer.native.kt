@@ -1,7 +1,6 @@
 package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -31,7 +30,7 @@ import platform.UserNotifications.UNUserNotificationCenter
  */
 actual class RichNotificationDisplayer actual constructor() {
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     actual fun show(data: RichNotificationData) {
         val content = UNMutableNotificationContent().apply {
             setTitle(data.title)
@@ -83,7 +82,7 @@ actual class RichNotificationDisplayer actual constructor() {
      * Applies Communication Notification style via INSendMessageIntent.
      * Returns the updated content on success, or null on failure (caller falls back to regular style).
      */
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     private fun applyCommunicationStyle(
         data: RichNotificationData,
         content: UNMutableNotificationContent,
@@ -162,7 +161,7 @@ actual class RichNotificationDisplayer actual constructor() {
      * Attaches sender avatar as a UNNotificationAttachment (fallback for non-chat notifications
      * or when Communication style fails).
      */
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
     private fun attachAvatarImage(data: RichNotificationData, content: UNMutableNotificationContent) {
         data.senderImageBytes?.takeIf { it.isNotEmpty() }?.let { bytes ->
             try {

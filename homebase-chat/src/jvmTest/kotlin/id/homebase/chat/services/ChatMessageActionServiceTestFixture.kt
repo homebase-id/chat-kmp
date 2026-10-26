@@ -47,7 +47,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -262,7 +261,6 @@ class ChatMessageActionServiceTestFixture(
      * the test deterministically observes drain completion rather than relying
      * on `advanceUntilIdle` alone.
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
     suspend fun drainOutboxAndAwaitHttp(testScope: TestScope) {
         check(captureHttp) {
             "drainOutboxAndAwaitHttp requires captureHttp = true; with the default fixture " +

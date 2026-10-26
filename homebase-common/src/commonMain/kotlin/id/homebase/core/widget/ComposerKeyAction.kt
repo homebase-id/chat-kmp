@@ -4,6 +4,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
@@ -25,6 +26,10 @@ fun Modifier.composerKeyHandler(
     isComposerEmpty: () -> Boolean = { false },
     // False when there was nothing to edit, so the caret moves as usual.
     onEditLast: (() -> Boolean)? = null,
+    onLink: (() -> Unit)? = null,
+    onFormat: ((ComposerKeyAction) -> Boolean)? = null,
+    onPasteOverSelection: ((clipboardText: () -> String?) -> Boolean)? = null,
+    clipboardText: () -> String? = { null },
 ): Modifier = onPreviewKeyEvent { event ->
     handleComposerKey(
         isImeComposing = event.isImeComposing(),
@@ -40,7 +45,12 @@ fun Modifier.composerKeyHandler(
         onSend = onSend,
         onNewline = onNewline,
         onEditLast = onEditLast,
-        pasteImage = { onPasteImage != null && event.pasteClipboardImage(clipboardImage, onPasteImage) },
+        onLink = onLink,
+        onFormat = onFormat,
+        pasteImage = {
+            (onPasteImage != null && event.pasteClipboardImage(clipboardImage, onPasteImage)) ||
+                (onPasteOverSelection != null && event.pasteTextOverSelection(clipboardText, onPasteOverSelection))
+        },
     )
 }
 
@@ -51,6 +61,8 @@ internal fun handleComposerKey(
     onSend: () -> Unit,
     onNewline: (() -> Unit)?,
     onEditLast: (() -> Boolean)?,
+    onLink: (() -> Unit)? = null,
+    onFormat: ((ComposerKeyAction) -> Boolean)? = null,
     pasteImage: () -> Boolean,
 ): Boolean {
     // Ahead of the controller, which commits on Enter: an IME's Enter confirms its own candidate.
@@ -70,6 +82,21 @@ internal fun handleComposerKey(
 
         ComposerKeyAction.EditLast -> if (onEditLast?.invoke() == true) return true
 
+        ComposerKeyAction.Link -> onLink?.let {
+            it()
+            return true
+        }
+
+        ComposerKeyAction.Bold,
+        ComposerKeyAction.Italic,
+        ComposerKeyAction.InlineCode,
+        ComposerKeyAction.Strike,
+        ComposerKeyAction.BulletList,
+        ComposerKeyAction.NumberedList,
+        ComposerKeyAction.Redo -> if (onFormat?.invoke(action) == true) return true
+
+        // The open suggestion list already took Escape above; with none open it is not ours.
+        ComposerKeyAction.DismissTrigger,
         ComposerKeyAction.Ignore -> Unit
     }
     // Deliberately not gated like the Enter chord: an iPad's hardware keyboard pastes but never sends.
@@ -80,16 +107,37 @@ private fun KeyEvent.pasteClipboardImage(
     clipboardImage: () -> ByteArray?,
     onPasteImage: (ByteArray) -> Unit,
 ): Boolean {
-    if (type != KeyEventType.KeyDown || key != Key.V || !(isCtrlPressed || isMetaPressed)) return false
+    if (!isPasteChord()) return false
     val imageBytes = clipboardImage() ?: return false
     onPasteImage(imageBytes)
     return true
 }
 
-internal enum class ComposerKeyAction {
+private fun KeyEvent.pasteTextOverSelection(
+    clipboardText: () -> String?,
+    onPasteOverSelection: (() -> String?) -> Boolean,
+): Boolean {
+    if (!isPasteChord()) return false
+    return onPasteOverSelection(clipboardText)
+}
+
+// AltGr+V types "@" on a Hungarian layout.
+private fun KeyEvent.isPasteChord(): Boolean =
+    type == KeyEventType.KeyDown && key == Key.V && (isCtrlPressed || isMetaPressed) && !isAltPressed
+
+enum class ComposerKeyAction {
     Send,
+    Link,
     Newline,
     EditLast,
+    Bold,
+    Italic,
+    InlineCode,
+    Strike,
+    BulletList,
+    NumberedList,
+    Redo,
+    DismissTrigger,
     Ignore,
 }
 
@@ -99,6 +147,16 @@ internal class ComposerKeyChord(
     val isKeyDown: Boolean,
     val isShiftPressed: Boolean,
     val isCtrlOrCmdPressed: Boolean,
+    val isK: Boolean = false,
+    val isB: Boolean = false,
+    val isI: Boolean = false,
+    val isE: Boolean = false,
+    val isX: Boolean = false,
+    val isY: Boolean = false,
+    val isSeven: Boolean = false,
+    val isEight: Boolean = false,
+    val isEscape: Boolean = false,
+    val isAltPressed: Boolean = false,
 )
 
 internal fun KeyEvent.toKeyChord(): ComposerKeyChord = ComposerKeyChord(
@@ -108,6 +166,17 @@ internal fun KeyEvent.toKeyChord(): ComposerKeyChord = ComposerKeyChord(
     isKeyDown = type == KeyEventType.KeyDown,
     isShiftPressed = isShiftPressed,
     isCtrlOrCmdPressed = isCtrlPressed || isMetaPressed,
+    isK = key == Key.K,
+    isB = key == Key.B,
+    isI = key == Key.I,
+    isE = key == Key.E,
+    isX = key == Key.X,
+    isY = key == Key.Y,
+    isSeven = key == Key.Seven,
+    isEight = key == Key.Eight,
+    isEscape = key == Key.Escape,
+    // Windows reports AltGr as Ctrl+Alt, and AltGr+key types a character.
+    isAltPressed = isAltPressed,
 )
 
 /** An Enter the composer decides on: it sends or breaks the line, whatever else is showing. */
@@ -122,16 +191,40 @@ internal fun composerKeyAction(
     arrowUpEditsLastMessage: Boolean,
     isComposerEmpty: () -> Boolean,
 ): ComposerKeyAction {
-    if (!chord.isKeyDown || !handlesHardwareKeys) return ComposerKeyAction.Ignore
+    if (!chord.isKeyDown) return ComposerKeyAction.Ignore
+    // Not gated on handlesHardwareKeys: an iPad or Android hardware keyboard sends these chords too.
+    formatAction(chord)?.let { return it }
+    if (!handlesHardwareKeys) return ComposerKeyAction.Ignore
     if (chord.isArrowUp) {
         // Shift+Up, with or without Ctrl/Cmd, extends a selection.
         val editsLast = !chord.isShiftPressed &&
             (chord.isCtrlOrCmdPressed || (arrowUpEditsLastMessage && isComposerEmpty()))
         return if (editsLast) ComposerKeyAction.EditLast else ComposerKeyAction.Ignore
     }
+    if (chord.isK) {
+        val isLinkChord = chord.isCtrlOrCmdPressed && !chord.isShiftPressed && !chord.isAltPressed
+        return if (isLinkChord) ComposerKeyAction.Link else ComposerKeyAction.Ignore
+    }
     if (!chord.isEnter) return ComposerKeyAction.Ignore
     if (chord.isCtrlOrCmdPressed) return ComposerKeyAction.Send
 
     return if (chord.isShiftPressed != enterSendsMessage) ComposerKeyAction.Send
     else ComposerKeyAction.Newline
+}
+
+private fun formatAction(chord: ComposerKeyChord): ComposerKeyAction? {
+    if (chord.isEscape) return ComposerKeyAction.DismissTrigger
+    if (!chord.isCtrlOrCmdPressed || chord.isAltPressed) return null
+    return if (chord.isShiftPressed) when {
+        chord.isX -> ComposerKeyAction.Strike
+        chord.isEight -> ComposerKeyAction.BulletList
+        chord.isSeven -> ComposerKeyAction.NumberedList
+        else -> null
+    } else when {
+        chord.isB -> ComposerKeyAction.Bold
+        chord.isI -> ComposerKeyAction.Italic
+        chord.isE -> ComposerKeyAction.InlineCode
+        chord.isY -> ComposerKeyAction.Redo
+        else -> null
+    }
 }

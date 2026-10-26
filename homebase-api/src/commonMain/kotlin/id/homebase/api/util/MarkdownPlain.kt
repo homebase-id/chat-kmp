@@ -48,7 +48,6 @@ fun markdownToPlainPreview(markdown: String, maxCodePoints: Int): String {
 private val markupOnlyLeafTokens: Set<IElementType> = setOf(
     MarkdownTokenTypes.EMPH,                 // * or _
     MarkdownTokenTypes.BACKTICK,             // ` for inline code
-    MarkdownTokenTypes.ESCAPED_BACKTICKS,
     MarkdownTokenTypes.LIST_BULLET,          // - / * / + at list start
     MarkdownTokenTypes.LIST_NUMBER,          // 1. at ordered-list start
     MarkdownTokenTypes.BLOCK_QUOTE,          // > marker
@@ -80,6 +79,14 @@ private val linkLikeNodes: Set<IElementType> = setOf(
     MarkdownElementTypes.SHORT_REFERENCE_LINK,
 )
 
+private val codeContainerNodes: Set<IElementType> = setOf(
+    MarkdownElementTypes.CODE_SPAN,
+    MarkdownElementTypes.CODE_FENCE,
+    MarkdownElementTypes.CODE_BLOCK,
+)
+
+private val backslashEscape = Regex("\\\\([!-/:-@\\[-`{-~])")
+
 /** Node subtrees to drop entirely (URLs, titles, link definitions). */
 private val dropSubtreeNodes: Set<IElementType> = setOf(
     MarkdownElementTypes.LINK_DESTINATION,
@@ -96,8 +103,9 @@ private val dropSubtreeNodes: Set<IElementType> = setOf(
  * trailing `!` and broke "Hello there!" previews. Link/image nodes recurse only
  * into their label; their destination/title subtrees are skipped.
  */
-private fun appendPlainText(node: ASTNode, source: String, out: StringBuilder) {
+private fun appendPlainText(node: ASTNode, source: String, out: StringBuilder, inCode: Boolean = false) {
     val type = node.type
+    val codeContext = inCode || type in codeContainerNodes
 
     if (type in dropSubtreeNodes) return
 
@@ -130,13 +138,16 @@ private fun appendPlainText(node: ASTNode, source: String, out: StringBuilder) {
             in whitespaceLeafTokens -> out.append(' ')
             // LINK_LABEL/LINK_TEXT brackets are handled by appendLinkLabel; any
             // stray bracket tokens reaching here are literal text, keep them.
-            else -> out.append(node.getTextInNode(source))
+            else -> {
+                val text = node.getTextInNode(source).toString()
+                out.append(if (codeContext) text else text.replace(backslashEscape, "$1"))
+            }
         }
         return
     }
 
     for (child in children) {
-        appendPlainText(child, source, out)
+        appendPlainText(child, source, out, codeContext)
     }
 }
 
@@ -207,7 +218,11 @@ fun markdownHasBlockElements(content: String): Boolean {
     } catch (_: Throwable) {
         return false
     }
+    return markdownTreeHasBlockElements(tree)
+}
 
+/** [markdownHasBlockElements] over an already-parsed ChatMarkdownFlavour tree. */
+fun markdownTreeHasBlockElements(tree: ASTNode): Boolean {
     // The root is MARKDOWN_FILE; its direct children are the block-level nodes.
     // A pure inline message yields a single PARAGRAPH plus whitespace/EOL tokens.
     // Any other top-level child (a second paragraph, or any heading/list/quote/

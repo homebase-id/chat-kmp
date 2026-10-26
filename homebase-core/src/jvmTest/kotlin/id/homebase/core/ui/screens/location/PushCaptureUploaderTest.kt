@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-
 package id.homebase.core.ui.screens.location
 
 import id.homebase.api.client.eventbus.BackendEvent
