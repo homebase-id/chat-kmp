@@ -27,53 +27,129 @@ private fun String.splitsSurrogatePairAt(index: Int): Boolean =
 const val QUOTE_PREFIX = "> "
 const val TASK_PREFIX = "- [ ] "
 private const val FENCE = "```"
+private const val LIST_BULLETS = "\u2022\u25E6\u25AA\u25AB\u2023\u25CF\u25CB\u25A0"
 
-data class BlockEdit(val range: TextRange, val replacement: String, val selection: TextRange) {
-    fun applyTo(text: String): String = text.replaceRange(range.min, range.max, replacement)
+data class Splice(val at: Int, val delete: Int, val insert: String)
+
+data class BlockEdit(val splices: List<Splice>, val selection: TextRange) {
+    fun applyTo(text: String): String =
+        splices.asReversed().fold(text) { acc, s -> acc.replaceRange(s.at, s.at + s.delete, s.insert) }
 }
 
-private fun String.lineStart(index: Int): Int = lastIndexOf('\n', index - 1) + 1
+data class BlockLine(val start: Int, val end: Int, val isList: Boolean = false)
 
-private fun String.lineEnd(index: Int): Int = indexOf('\n', index).let { if (it < 0) length else it }
-
-fun String.linePrefixEdit(selection: TextRange, prefix: String): BlockEdit {
-    val sel = codePointBoundedRange(selection)
-    val start = lineStart(sel.min)
-    val lastIndex = if (sel.max > sel.min && this[sel.max - 1] == '\n') sel.max - 1 else sel.max
-    val end = lineEnd(lastIndex)
-    val lines = substring(start, end).split('\n')
-    val allPrefixed = lines.all { it.startsWith(prefix) }
-    val replacement = lines.joinToString("\n") {
-        if (allPrefixed) it.removePrefix(prefix) else if (it.startsWith(prefix)) it else prefix + it
+private fun String.plainLines(): List<BlockLine> {
+    val lines = ArrayList<BlockLine>()
+    var start = 0
+    while (true) {
+        val nl = indexOf('\n', start)
+        if (nl < 0) {
+            lines += BlockLine(start, length)
+            return lines
+        }
+        lines += BlockLine(start, nl)
+        start = nl + 1
     }
-    return BlockEdit(TextRange(start, end), replacement, TextRange(start + replacement.length))
 }
+
+private fun String.isListMarkerAt(start: Int, end: Int): Boolean {
+    if (start >= end) return false
+    if (this[start] in LIST_BULLETS) return start + 1 < end && this[start + 1] == ' '
+    var i = start
+    while (i < end && this[i].isDigit()) i++
+    return i > start && i + 1 < end && this[i] == '.' && this[i + 1] == ' '
+}
+
+fun RichTextState.blockLines(): List<BlockLine> {
+    val text = annotatedString.text
+    val ranges = annotatedString.paragraphStyles.map { it.start to it.end }.sortedBy { it.first }
+    if (ranges.isEmpty()) return listOf(BlockLine(0, text.length))
+    return ranges.mapIndexed { i, (start, end) ->
+        val lineEnd = if (i < ranges.lastIndex) end - 1 else end
+        BlockLine(start, lineEnd, text.isListMarkerAt(start, lineEnd))
+    }
+}
+
+private fun List<BlockLine>.touching(sel: TextRange): List<BlockLine> {
+    val last = if (sel.max > sel.min && any { it.start == sel.max }) sel.max - 1 else sel.max
+    return filter { it.start <= last && it.end >= sel.min }
+}
+
+private fun List<Splice>.caretAfter(at: Int): Int = at + sumOf { it.insert.length - it.delete }
+
+private fun linePrefixEdit(text: String, lines: List<BlockLine>, selection: TextRange, prefix: String): BlockEdit {
+    val sel = text.codePointBoundedRange(selection)
+    val targets = lines.touching(sel).filterNot { it.isList }
+    if (targets.isEmpty()) return BlockEdit(emptyList(), sel)
+    val has = { l: BlockLine -> l.end - l.start >= prefix.length && text.startsWith(prefix, l.start) }
+    val allPrefixed = targets.all(has)
+    val splices = targets.mapNotNull {
+        when {
+            allPrefixed -> Splice(it.start, prefix.length, "")
+            has(it) -> null
+            else -> Splice(it.start, 0, prefix)
+        }
+    }
+    return BlockEdit(splices, TextRange(splices.caretAfter(targets.last().end)))
+}
+
+private fun codeBlockEdit(text: String, lines: List<BlockLine>, selection: TextRange): BlockEdit {
+    val sel = text.codePointBoundedRange(selection)
+    if (sel.collapsed) {
+        val line = lines.touching(sel).firstOrNull()
+        if (line?.isList == true) return BlockEdit(emptyList(), sel)
+        val lead = if (line == null || sel.min == line.start) "" else "\n"
+        val insert = "$lead$FENCE\n\n$FENCE"
+        return BlockEdit(listOf(Splice(sel.min, 0, insert)), TextRange(sel.min + lead.length + FENCE.length + 1))
+    }
+    val touched = lines.touching(sel)
+    if (touched.any { it.isList }) return BlockEdit(emptyList(), sel)
+    if (touched.size <= 1) {
+        val selected = text.substring(sel.min, sel.max)
+        val body = selected.trimEnd('\n')
+        val end = sel.min + body.length
+        val splices = listOf(Splice(sel.min, 0, "`"), Splice(end, 0, "`"))
+        return BlockEdit(splices, TextRange(splices.caretAfter(end)))
+    }
+    val start = touched.first().start
+    val end = touched.last().end
+    val splices = listOf(Splice(start, 0, "$FENCE\n"), Splice(end, 0, "\n$FENCE"))
+    return BlockEdit(splices, TextRange(splices.caretAfter(end)))
+}
+
+fun String.linePrefixEdit(selection: TextRange, prefix: String): BlockEdit =
+    linePrefixEdit(this, plainLines(), selection, prefix)
 
 fun String.quoteEdit(selection: TextRange): BlockEdit = linePrefixEdit(selection, QUOTE_PREFIX)
 
 fun String.taskListEdit(selection: TextRange): BlockEdit = linePrefixEdit(selection, TASK_PREFIX)
 
-fun String.codeBlockEdit(selection: TextRange): BlockEdit {
-    val sel = codePointBoundedRange(selection)
-    if (sel.collapsed) {
-        val lead = if (sel.min == lineStart(sel.min)) "" else "\n"
-        val replacement = "$lead$FENCE\n\n$FENCE"
-        return BlockEdit(sel, replacement, TextRange(sel.min + lead.length + FENCE.length + 1))
-    }
-    val selected = substring(sel.min, sel.max)
-    if ('\n' !in selected.trimEnd('\n')) {
-        val body = selected.trimEnd('\n')
-        val replacement = "`$body`"
-        return BlockEdit(TextRange(sel.min, sel.min + body.length), replacement, TextRange(sel.min + replacement.length))
-    }
-    val start = lineStart(sel.min)
-    val lastIndex = if (this[sel.max - 1] == '\n') sel.max - 1 else sel.max
-    val end = lineEnd(lastIndex)
-    val replacement = "$FENCE\n${substring(start, end)}\n$FENCE"
-    return BlockEdit(TextRange(start, end), replacement, TextRange(start + replacement.length))
-}
+fun String.codeBlockEdit(selection: TextRange): BlockEdit = codeBlockEdit(this, plainLines(), selection)
 
+fun RichTextState.quoteEdit(): BlockEdit =
+    linePrefixEdit(annotatedString.text, blockLines(), selection, QUOTE_PREFIX)
+
+fun RichTextState.taskListEdit(): BlockEdit =
+    linePrefixEdit(annotatedString.text, blockLines(), selection, TASK_PREFIX)
+
+fun RichTextState.codeBlockEdit(): BlockEdit = codeBlockEdit(annotatedString.text, blockLines(), selection)
+
+// richeditor mis-places a multi-character insert next to a list paragraph and mangles one containing a newline, so each char goes in alone.
 fun RichTextState.applyBlockEdit(edit: BlockEdit) {
-    replaceTextRangeSafely(edit.range, edit.replacement)
+    for (s in edit.splices.asReversed()) {
+        if (s.delete > 0) {
+            selection = TextRange(s.at)
+            removeTextRange(TextRange(s.at, s.at + s.delete))
+        }
+        if (s.insert.isNotEmpty()) {
+            s.insert.forEachIndexed { i, c ->
+                selection = TextRange(s.at + i)
+                addTextAtIndex(s.at + i, c.toString())
+            }
+            val inserted = TextRange(s.at, s.at + s.insert.length)
+            clearSpanStyles(inserted)
+            clearRichSpans(inserted)
+        }
+    }
     selection = edit.selection
 }

@@ -1664,6 +1664,7 @@ fun RichTextEditorButtons(
             )
         }
 
+        // richeditor rc14 keeps heading typography internal, so the composer H1-H3 cannot be mapped to MarkdownRenderer's bubbleHeading scale (1.5x/1.3x/1.15x).
         // Heading: cycle Normal -> H1 -> H2 -> H3 -> Normal (ATX prefix).
         item {
             RichTextStyleButton(
@@ -1679,7 +1680,7 @@ fun RichTextEditorButtons(
 
         item {
             RichTextStyleButton(
-                onClick = { state.applyBlockEdit(state.annotatedString.text.quoteEdit(state.selection)) },
+                onClick = { state.applyBlockEdit(state.quoteEdit()) },
                 enabled = enabled,
                 icon = Icons.Outlined.FormatQuote,
                 contentDescription = blockquoteLabel,
@@ -1688,7 +1689,7 @@ fun RichTextEditorButtons(
 
         item {
             RichTextStyleButton(
-                onClick = { state.applyBlockEdit(state.annotatedString.text.taskListEdit(state.selection)) },
+                onClick = { state.applyBlockEdit(state.taskListEdit()) },
                 enabled = enabled,
                 icon = Icons.Outlined.Checklist,
                 contentDescription = taskListLabel,
@@ -1697,7 +1698,7 @@ fun RichTextEditorButtons(
 
         item {
             RichTextStyleButton(
-                onClick = { state.applyBlockEdit(state.annotatedString.text.codeBlockEdit(state.selection)) },
+                onClick = { state.applyBlockEdit(state.codeBlockEdit()) },
                 enabled = enabled,
                 icon = Icons.Outlined.Terminal,
                 contentDescription = codeBlockLabel,
