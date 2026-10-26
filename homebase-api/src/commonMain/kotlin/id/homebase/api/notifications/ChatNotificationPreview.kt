@@ -65,7 +65,7 @@ suspend fun fetchChatNotificationPreview(
 
 private const val INBOX_BATCH_SIZE = 10
 private val HEADER_TIMEOUT = 4.seconds
-private val INBOX_TIMEOUT = 8.seconds
+internal val INBOX_TIMEOUT = 8.seconds
 
 // The NSE gets ~30 s in all; this leaves room for its badge read (2 s) and avatar fetch (5 s).
 internal val PREVIEW_DEADLINE = 18.seconds
@@ -76,6 +76,7 @@ internal suspend fun fetchChatNotificationPreview(
     conversationId: String,
     messageId: String,
     deadline: Duration = PREVIEW_DEADLINE,
+    inboxTimeout: Duration = INBOX_TIMEOUT,
 ): ChatNotificationPreview {
     val conversation = Uuid.parseOrNull(conversationId)
         ?: return ChatNotificationPreview.missed("typeId is not a uuid")
@@ -85,7 +86,7 @@ internal suspend fun fetchChatNotificationPreview(
 
     return withTimeoutOrNull(deadline) {
         try {
-            fetchedPreview(httpClient, credentials, conversation, message)
+            fetchedPreview(httpClient, credentials, conversation, message, inboxTimeout)
         } catch (e: StepFailed) {
             ChatNotificationPreview.missed(e.reason)
         }
@@ -102,6 +103,7 @@ private suspend fun fetchedPreview(
     credentials: ApiCredentials,
     conversation: Uuid,
     message: Uuid,
+    inboxTimeout: Duration,
 ): ChatNotificationPreview {
     val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
     val chatDrive = SystemDriveConstants.chatDrive.alias
@@ -110,7 +112,7 @@ private suspend fun fetchedPreview(
 
     val file = readHeader("header fetch")
         ?: run {
-            step("header not found (404); inbox process", INBOX_TIMEOUT) {
+            step("header not found (404); inbox process", inboxTimeout) {
                 DriveInboxProcessor(httpClient, credentialsManager).processInbox(chatDrive, INBOX_BATCH_SIZE)
             }
             readHeader("header retry")

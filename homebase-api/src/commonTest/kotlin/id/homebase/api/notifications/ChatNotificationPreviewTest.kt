@@ -15,16 +15,18 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
@@ -106,12 +108,10 @@ class ChatNotificationPreviewTest {
         inbox: String? = inboxStatus,
         inboxCode: HttpStatusCode = HttpStatusCode.OK,
         deadline: Duration = PREVIEW_DEADLINE,
+        inboxTimeout: Duration = INBOX_TIMEOUT,
     ): ChatNotificationPreview {
         var inboxProcessed = false
-        // On the test's own dispatcher, so the virtual clock behind the timeouts waits for it.
-        val testDispatcher = currentCoroutineContext()[CoroutineDispatcher]
         val http = HttpClient(MockEngine.create {
-            dispatcher = testDispatcher
             addHandler { request ->
                 val path = request.url.encodedPath
                 requests += path
@@ -125,7 +125,7 @@ class ChatNotificationPreviewTest {
                 }
             }
         })
-        return fetchChatNotificationPreview(http, credentials, conversation.toString(), message.toString(), deadline)
+        return fetchChatNotificationPreview(http, credentials, conversation.toString(), message.toString(), deadline, inboxTimeout)
     }
 
     // Sealed with the shared secret and flagged X-SSE, as the identity answers a 200.
@@ -137,13 +137,16 @@ class ChatNotificationPreviewTest {
         return respond(sealed, status, headers)
     }
 
+    // On wasm WebCrypto resolves on the JS event loop, and a virtual clock would jump past it into every timeout.
+    private fun realTimeTest(block: suspend CoroutineScope.() -> Unit) = runTest { withContext(Dispatchers.Default, block) }
+
     private fun assertMissed(expected: String, preview: ChatNotificationPreview) {
         assertNull(preview.text)
         assertTrue(preview.missReason.orEmpty().contains(expected), "missReason=${preview.missReason}")
     }
 
     @Test
-    fun plainTextMessageIsDecryptedFromItsChatDriveHeader() = runTest {
+    fun plainTextMessageIsDecryptedFromItsChatDriveHeader() = realTimeTest {
         val requests = mutableListOf<String>()
         val result = preview(header("""{"message":"NSE 1091 check charlie"}"""), requests = requests)
         assertEquals(ChatNotificationPreview("NSE 1091 check charlie", null), result)
@@ -152,7 +155,7 @@ class ChatNotificationPreviewTest {
     }
 
     @Test
-    fun aMessageStillInTheInboxIsReadAfterProcessingIt() = runTest {
+    fun aMessageStillInTheInboxIsReadAfterProcessingIt() = realTimeTest {
         val requests = mutableListOf<String>()
         val result = preview(
             notFound, HttpStatusCode.NotFound, requests = requests,
@@ -166,7 +169,7 @@ class ChatNotificationPreviewTest {
     }
 
     @Test
-    fun aFailedInboxProcessKeepsThePlaceholder() = runTest {
+    fun aFailedInboxProcessKeepsThePlaceholder() = realTimeTest {
         val requests = mutableListOf<String>()
         val result = preview(
             notFound, HttpStatusCode.NotFound, requests = requests,
@@ -177,55 +180,55 @@ class ChatNotificationPreviewTest {
     }
 
     @Test
-    fun aMessageStillMissingAfterTheInboxKeepsThePlaceholder() = runTest {
+    fun aMessageStillMissingAfterTheInboxKeepsThePlaceholder() = realTimeTest {
         assertMissed("after processing the inbox", preview(notFound, HttpStatusCode.NotFound))
     }
 
     @Test
-    fun anInboxThatNeverAnswersTimesOutOnItsOwn() = runTest {
+    fun anInboxThatNeverAnswersTimesOutOnItsOwn() = realTimeTest {
         val requests = mutableListOf<String>()
-        assertMissed("inbox process timed out", preview(notFound, HttpStatusCode.NotFound, requests = requests, inbox = null))
+        assertMissed("inbox process timed out", preview(notFound, HttpStatusCode.NotFound, requests = requests, inbox = null, inboxTimeout = 200.milliseconds))
         assertEquals(2, requests.size, requests.toString())
     }
 
     @Test
-    fun theWholeReadGivesUpAtTheDeadline() = runTest {
+    fun theWholeReadGivesUpAtTheDeadline() = realTimeTest {
         assertMissed("timed out after 1s", preview(null, deadline = 1.seconds))
     }
 
     @Test
-    fun legacyRichTextMessageBecomesItsPlainText() = runTest {
+    fun legacyRichTextMessageBecomesItsPlainText() = realTimeTest {
         val rich = """{"message":[{"type":"p","children":[{"text":"Not all"},{"text":"who wander"}]}]}"""
         assertEquals("Not all who wander", preview(header(rich)).text)
     }
 
     @Test
-    fun typedKindsKeepTheSendersLabel() = runTest {
+    fun typedKindsKeepTheSendersLabel() = realTimeTest {
         assertMissed("dataType 214", preview(header("""{"question":"Mordor?"}""", dataType = 214)))
     }
 
     @Test
-    fun statusMessagesKeepTheSendersBody() = runTest {
+    fun statusMessagesKeepTheSendersBody() = realTimeTest {
         assertMissed("dataType 202", preview(header("""{"message":"x"}""", dataType = 202)))
     }
 
     @Test
-    fun mediaOnlyMessageHasNoText() = runTest {
+    fun mediaOnlyMessageHasNoText() = realTimeTest {
         assertMissed("no message text", preview(header("""{"message":"","version":1}""")))
     }
 
     @Test
-    fun aMessageFromAnotherConversationIsNotShown() = runTest {
+    fun aMessageFromAnotherConversationIsNotShown() = realTimeTest {
         assertMissed("groupId", preview(header("""{"message":"hi"}""", groupId = Uuid.random())))
     }
 
     @Test
-    fun aDeletedMessageIsNotShown() = runTest {
+    fun aDeletedMessageIsNotShown() = realTimeTest {
         assertMissed("deleted", preview(header("""{"message":"hi"}""", fileState = "deleted")))
     }
 
     @Test
-    fun aKeyHeaderSealedWithAnotherSecretIsNotShown() = runTest {
+    fun aKeyHeaderSealedWithAnotherSecretIsNotShown() = realTimeTest {
         val result = preview(header("""{"message":"hi"}""", encryptWith = ByteArray(16) { 4 }))
         assertNull(result.text)
         // A wrong key still unpads cleanly about 1 time in 256, failing at the content instead.
@@ -234,33 +237,33 @@ class ChatNotificationPreviewTest {
     }
 
     @Test
-    fun anEmptyKeyHeaderNamesTheFailingStep() = runTest {
+    fun anEmptyKeyHeaderNamesTheFailingStep() = realTimeTest {
         val empty = """{"encryptionVersion":1,"type":"aes","iv":"AAAAAAAAAAAAAAAAAAAAAA==","encryptedAesKey":"AAAAAAAAAAAAAAAAAAAAAA=="}"""
         assertMissed("header fetch threw", preview(header("""{"message":"hi"}""", keyHeaderJson = empty)))
     }
 
     @Test
-    fun contentThatFailsToDecryptIsNotShownAsItsPlaceholder() = runTest {
+    fun contentThatFailsToDecryptIsNotShownAsItsPlaceholder() = realTimeTest {
         // Not block-aligned: whole blocks under a random key still pass the PKCS7 check 1 run in 256.
         val undecryptable = Base64.encode(ByteArray(31) { 1 })
         assertMissed("content failed to decrypt", preview(header("", encryptedContent = undecryptable)))
     }
 
     @Test
-    fun aMissingOrFailedFetchFallsBack() = runTest {
+    fun aMissingOrFailedFetchFallsBack() = realTimeTest {
         assertMissed("404", preview(notFound, HttpStatusCode.NotFound))
         assertMissed("header fetch threw", preview("boom", HttpStatusCode.InternalServerError))
     }
 
     @Test
-    fun aMomentsPostPushIsNeverFetched() = runTest {
+    fun aMomentsPostPushIsNeverFetched() = realTimeTest {
         val requests = mutableListOf<String>()
         assertMissed("moments", preview("{}", conversation = messageId, message = messageId, requests = requests))
         assertTrue(requests.isEmpty())
     }
 
     @Test
-    fun aMomentsCommentPushIsNeverFetched() = runTest {
+    fun aMomentsCommentPushIsNeverFetched() = realTimeTest {
         val requests = mutableListOf<String>()
         val moment = Uuid.random()
         val preview = fetchChatNotificationPreview(
