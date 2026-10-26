@@ -70,4 +70,35 @@ class RichTextLinkEditTest {
         s.selection = TextRange(start)
         assertEquals(false, s.pasteUrlOverSelection("https://x.test"))
     }
+
+    @Test
+    fun `probing a caret past a link end leaves the selection unchanged`() {
+        val s = state()
+        val end = s.annotatedString.text.indexOf("label") + "label".length
+        s.caretAt(end)
+        assertNotNull(s.linkAtSelection())
+        assertEquals(TextRange(end), s.selection)
+    }
+
+    @Test
+    fun `update and remove work from a caret past the link end and restore it`() {
+        val s = state()
+        val end = s.annotatedString.text.indexOf("label") + "label".length
+        s.caretAt(end)
+        s.updateLinkAtSelection("https://b.test")
+        assertEquals(TextRange(end), s.selection)
+        assertEquals("before [label](https://b.test) after", s.toMessageMarkdown())
+        s.removeLinkAtSelection()
+        assertEquals(TextRange(end), s.selection)
+        assertEquals("before label after", s.toMessageMarkdown())
+    }
+
+    @Test
+    fun `adding a link over a selection replaces it instead of duplicating`() {
+        val s = RichTextState().applyMarkDownContent("see docs now")
+        val start = s.annotatedString.text.indexOf("docs")
+        s.selection = TextRange(start, start + 4)
+        s.addLinkReplacingSelection("docs", "https://x.test")
+        assertEquals("see [docs](https://x.test) now", s.toMessageMarkdown())
+    }
 }

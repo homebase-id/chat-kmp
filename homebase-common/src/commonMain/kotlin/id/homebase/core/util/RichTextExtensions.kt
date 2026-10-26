@@ -149,20 +149,30 @@ val URL_REGEX = Regex(
 
 data class LinkAtSelection(val text: String, val url: String)
 
-fun RichTextState.linkAtSelection(): LinkAtSelection? {
-    if (!isLink && !selectionTouchesLinkEnd()) return null
-    val url = selectedLinkUrl ?: return null
-    return LinkAtSelection(text = selectedLinkText.orEmpty(), url = url)
+fun RichTextState.linkAtSelection(): LinkAtSelection? = withLinkProbe {
+    val url = selectedLinkUrl ?: return@withLinkProbe null
+    LinkAtSelection(text = selectedLinkText.orEmpty(), url = url)
 }
 
-// rc14 reports no link for a caret sitting just past a span's last character, so probe the character before it.
-private fun RichTextState.selectionTouchesLinkEnd(): Boolean {
-    val caret = selection
-    if (!caret.collapsed || caret.start == 0) return false
-    selection = TextRange(caret.start - 1, caret.start)
-    val inLink = isLink
-    if (!inLink) selection = caret
-    return inLink
+fun RichTextState.updateLinkAtSelection(url: String) = withLinkProbe { updateLink(url) }
+
+fun RichTextState.removeLinkAtSelection() = withLinkProbe { removeLink() }
+
+// rc14 reports no link for a caret just past a span's last character, so probe the character before it, then restore.
+private fun <T> RichTextState.withLinkProbe(block: RichTextState.() -> T?): T? {
+    val original = selection
+    val probe = !isLink && original.collapsed && original.start > 0
+    if (probe) selection = TextRange(original.start - 1, original.start)
+    try {
+        return if (isLink) block() else null
+    } finally {
+        selection = original
+    }
+}
+
+fun RichTextState.addLinkReplacingSelection(text: String, url: String) {
+    if (!selection.collapsed) removeSelectedText()
+    addLink(text = text, url = url)
 }
 
 fun RichTextState.selectedPlainText(): String =

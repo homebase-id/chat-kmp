@@ -166,7 +166,11 @@ import id.homebase.resources.chat_markdown_link_dialog_edit_title
 import id.homebase.resources.chat_markdown_link_dialog_remove
 import id.homebase.resources.chat_markdown_link_dialog_save
 import id.homebase.core.util.URL_REGEX
+import id.homebase.core.util.LinkAtSelection
+import id.homebase.core.util.addLinkReplacingSelection
 import id.homebase.core.util.linkAtSelection
+import id.homebase.core.util.removeLinkAtSelection
+import id.homebase.core.util.updateLinkAtSelection
 import id.homebase.core.util.pasteUrlOverSelection
 import id.homebase.core.util.selectedPlainText
 import id.homebase.resources.chat_markdown_link_dialog_insert
@@ -489,7 +493,7 @@ fun MessageTextFieldExpanded(
                             }
                         }
                         .composerKeyHandler(
-                            onLink = linkDialog::open,
+                            onLink = { linkDialog.open(state) },
                             onPasteOverSelection = state::pasteUrlOverSelection,
                             clipboardText = clipboardText,
                             autocomplete = autocomplete,
@@ -803,7 +807,7 @@ fun MessageTextFieldCompact(
                                             }
                                         }
                                         .composerKeyHandler(
-                                            onLink = linkDialog::open,
+                                            onLink = { linkDialog.open(state) },
                                             onPasteOverSelection = state::pasteUrlOverSelection,
                                             clipboardText = clipboardText,
                                             autocomplete = autocomplete,
@@ -1402,7 +1406,7 @@ fun MessageTextFieldForAttachment(
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
                         .composerKeyHandler(
-                            onLink = linkDialog::open,
+                            onLink = { linkDialog.open(state) },
                             onPasteOverSelection = state::pasteUrlOverSelection,
                             clipboardText = clipboardText,
                             autocomplete = autocomplete,
@@ -1620,7 +1624,7 @@ fun RichTextEditorButtons(
         // Insert a link via dialog (text + URL).
         item {
             RichTextStyleButton(
-                onClick = linkDialog::open,
+                onClick = { linkDialog.open(state) },
                 enabled = enabled,
                 isSelected = state.isLink,
                 icon = Icons.Outlined.AddLink,
@@ -1711,22 +1715,22 @@ fun RichTextEditorButtons(
     }
 
     if (linkDialog.visible) {
-        val existing = remember(linkDialog.visible) { state.linkAtSelection() }
+        val existing = linkDialog.existing
         MarkdownLinkDialog(
-            initialText = existing?.text ?: state.selectedPlainText(),
+            initialText = existing?.text ?: linkDialog.selectedText,
             initialUrl = existing?.url.orEmpty(),
             isEdit = existing != null,
             onDismiss = linkDialog::close,
             onConfirm = { text, url ->
                 if (existing != null) {
-                    if (url.isNotBlank()) state.updateLink(url)
+                    if (url.isNotBlank()) state.updateLinkAtSelection(url)
                 } else if (text.isNotBlank() && url.isNotBlank()) {
-                    state.addLink(text = text, url = url)
+                    state.addLinkReplacingSelection(text = text, url = url)
                 }
                 linkDialog.close()
             },
             onRemove = {
-                state.removeLink()
+                state.removeLinkAtSelection()
                 linkDialog.close()
             },
         )
@@ -1737,7 +1741,14 @@ class LinkDialogState {
     var visible by mutableStateOf(false)
         private set
 
-    fun open() {
+    var existing: LinkAtSelection? = null
+        private set
+    var selectedText: String = ""
+        private set
+
+    fun open(state: RichTextState) {
+        existing = state.linkAtSelection()
+        selectedText = state.selectedPlainText()
         visible = true
     }
 
