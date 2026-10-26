@@ -51,10 +51,9 @@ class DriveSyncManager(
     // homebase-core's AppModule where chat-specific fileTypes are visible; this layer
     // stays drive-agnostic.
     private val driveSyncPolicies: Map<Uuid, DriveSyncPolicy> = emptyMap(),
-    // Drives likely to carry a large backlog (feed, moments, chat), ordered — placed LAST in the
-    // syncAll collection so the greedy budget serves every small drive first; a big drive only
-    // takes the remainder and continues per-drive. Assembled in AppModule, same key space as
-    // [mandatoryDrives]; this layer stays drive-agnostic.
+    // Ordered drives placed FIRST in the syncAll collection (first claim on the greedy budget) and
+    // LAST (only the remainder; a big backlog continues per-drive). Same key space as
+    // [mandatoryDrives], assembled in AppModule; this layer stays drive-agnostic.
     private val collectionHead: List<Uuid> = emptyList(),
     private val collectionTail: List<Uuid> = emptyList(),
 ) {
