@@ -2223,6 +2223,11 @@
     <string name="contactbook_action_blocked_connection_removed">Connection removed. They're still blocked.</string>
     <string name="contactbook_action_not_blocked">They're no longer blocked, so there was nothing to remove.</string>
     <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
+    <string name="contactbook_detail_rebuild_conversation">Rebuild conversation</string>
+    <string name="contactbook_action_conversation_rebuilt">Conversation rebuilt and sent to them</string>
+    <string name="contactbook_action_conversation_rebuild_not_needed">Your server still has this conversation. Nothing to rebuild.</string>
+    <string name="contactbook_action_conversation_rebuild_queued">This conversation is still being sent. Try again once it's done.</string>
+    <string name="contactbook_error_conversation_rebuild">Couldn't rebuild the conversation</string>
     <string name="contactbook_action_request_accepted">Connection request accepted.</string>
     <string name="contactbook_action_request_rejected">Connection request declined.</string>
     <string name="contactbook_action_request_cancelled">Connection request canceled.</string>

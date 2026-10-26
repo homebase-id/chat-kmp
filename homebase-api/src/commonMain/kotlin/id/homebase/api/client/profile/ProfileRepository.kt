@@ -2,6 +2,7 @@
 
 package id.homebase.api.client.profile
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.QueryBatchRequest
@@ -178,7 +179,7 @@ class ProfileRepository(
                                 pixelWidth = it.naturalPixelWidth,
                                 pixelHeight = it.naturalPixelHeight,
                                 contentType = it.contentType,
-                                content = Base64.encode(it.bytes),
+                                content = Base64Bytes(it.bytes),
                             )
                         },
                     )

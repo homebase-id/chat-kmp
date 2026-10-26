@@ -2,6 +2,7 @@ package id.homebase.upload
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -13,7 +14,6 @@ import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OutboxSync
 import kotlinx.coroutines.CoroutineScope
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**
@@ -214,7 +214,7 @@ private fun PayloadBundle.toPayloadDescriptors(): List<PayloadDescriptor>? =
             key = payload.key,
             contentType = payload.contentType.ifEmpty { null },
             thumbnails = thumbnailDescriptorsFor(payload.key),
-            iv = payload.iv?.let { Base64.encode(it) },
+            iv = payload.iv?.let { Base64Bytes(it) },
             descriptorContent = payload.descriptorContent,
             previewThumbnail = payload.previewThumbnail?.let {
                 ThumbnailDescriptor(

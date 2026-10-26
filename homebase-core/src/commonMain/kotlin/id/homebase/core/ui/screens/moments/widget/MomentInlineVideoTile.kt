@@ -77,7 +77,6 @@ import id.homebase.resources.moment_video_unmute
 import id.homebase.resources.moment_video_watch_again
 import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.delay
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**
@@ -174,7 +173,7 @@ fun MomentInlineVideoTile(
      */
     fitToContent: Boolean = false,
 ) {
-    val payloadIv = remember(payload.iv) { payload.iv?.let { Base64.decode(it) } }
+    val payloadIv = remember(payload.iv) { payload.iv?.bytes }
     if (payloadIv == null) {
         Logger.w(tag = "MomentVideo") {
             "tile IV missing — falling back to thumbnail-only render: fileId=$fileId key=${payload.key}"
