@@ -1,12 +1,12 @@
 package id.homebase.chat.contactcard
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.ImageSize
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,12 +19,12 @@ import kotlin.uuid.Uuid
 class ContactCardPhotoTest {
 
     private val key = ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB + "0"
-    private val iv = Base64.encode(ByteArray(16) { it.toByte() })
+    private val iv = Base64Bytes(ByteArray(16) { it.toByte() })
 
     private fun photo(
         key: String = this.key,
         contentType: String? = "image/jpeg",
-        iv: String? = this.iv,
+        iv: Base64Bytes? = this.iv,
     ) = PayloadDescriptor(key = key, contentType = contentType, iv = iv)
 
     private fun data(payloads: List<PayloadDescriptor>?) = contactCardPhotoData(
@@ -69,14 +69,13 @@ class ContactCardPhotoTest {
         val built = assertNotNull(data(listOf(photo())))
 
         assertEquals(key, built.payloadKey)
-        assertContentEqualsHex(Base64.decode(iv), built.keyHeader.iv)
+        assertContentEqualsHex(iv.bytes, built.keyHeader.iv)
         assertContentEqualsHex(ByteArray(16) { 7 }, built.keyHeader.aesKey.toByteArray())
     }
 
     @Test
     fun `a payload with no IV yields no image data`() {
         assertNull(data(listOf(photo(iv = null))))
-        assertNull(data(listOf(photo(iv = "not base64 @@@"))))
     }
 
     @Test

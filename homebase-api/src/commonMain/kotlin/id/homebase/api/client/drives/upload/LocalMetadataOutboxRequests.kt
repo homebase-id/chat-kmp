@@ -1,5 +1,7 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.serialization.LenientBase64BytesSerializer
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
@@ -23,5 +25,5 @@ data class UpdateLocalAppdataContentOutboxRequest(
     val fileId: Uuid,
     val versionTag: String?,
     val content: String?,
-    val iv: String?
+    @Serializable(with = LenientBase64BytesSerializer::class) val iv: Base64Bytes? = null
 )

@@ -1,5 +1,9 @@
+@file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+
 package id.homebase.chat.widget
 
+import id.homebase.api.serialization.Base64Bytes
+import kotlin.io.encoding.Base64
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +59,7 @@ class LinkPreviewImageSizeTest {
                                 pixelWidth = thumbWidth,
                                 pixelHeight = thumbHeight,
                                 contentType = "image/png",
-                                content = onePxPngBase64,
+                                content = Base64Bytes(Base64.decode(onePxPngBase64)),
                             ),
                             isUploading = true,
                             wideImageMaxHeight = wideMaxHeight ?: 180.dp,

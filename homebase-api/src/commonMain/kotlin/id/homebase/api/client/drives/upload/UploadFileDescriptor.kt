@@ -9,6 +9,8 @@ import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.serialization.LenientBase64BytesSerializer
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
@@ -25,7 +27,7 @@ data class EmbeddedThumb(
         val pixelWidth: Int,
         val pixelHeight: Int,
         val contentType: String? = null,
-        val content: String? = null
+        @Serializable(with = LenientBase64BytesSerializer::class) val content: Base64Bytes? = null
 )
 
 /** Application file metadata for uploads. */
