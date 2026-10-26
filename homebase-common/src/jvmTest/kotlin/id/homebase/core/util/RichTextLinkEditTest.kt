@@ -1,6 +1,8 @@
 package id.homebase.core.util
 
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import com.mohamedrejeb.richeditor.model.RichTextState
 import kotlin.test.Test
 import kotlinx.coroutines.runBlocking
@@ -79,6 +81,15 @@ class RichTextLinkEditTest {
         s.caretAt(end)
         assertNotNull(s.linkAtSelection())
         assertEquals(TextRange(end), s.selection)
+    }
+
+    @Test
+    fun `looking for a link away from one keeps the caret's pending bold`() {
+        val s = state()
+        s.caretAt(2)
+        s.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+        assertNull(s.linkAtSelection())
+        assertEquals(FontWeight.Bold, s.currentSpanStyle.fontWeight)
     }
 
     @Test

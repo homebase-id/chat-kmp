@@ -4,6 +4,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextDecoration
 import co.touchlab.kermit.Logger
+import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
+import com.mohamedrejeb.richeditor.model.RichSpanStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.core.ui.theme.LightColors
 
@@ -159,10 +161,15 @@ fun RichTextState.updateLinkAtSelection(url: String) = withLinkProbe { updateLin
 fun RichTextState.removeLinkAtSelection() = withLinkProbe { removeLink() }
 
 // rc14 reports no link for a caret just past a span's last character, so probe the character before it, then restore.
+// Every selection write drops the caret's pending bold/italic, so only move it when a link is really there.
+@OptIn(ExperimentalRichTextApi::class)
 private fun <T> RichTextState.withLinkProbe(block: RichTextState.() -> T?): T? {
+    if (isLink) return block()
     val original = selection
-    val probe = !isLink && original.collapsed && original.start > 0
-    if (probe) selection = TextRange(original.start - 1, original.start)
+    if (!original.collapsed || original.start == 0) return null
+    val probe = TextRange(original.start - 1, original.start)
+    if (getRichSpanStyle(probe) !is RichSpanStyle.Link) return null
+    selection = probe
     try {
         return if (isLink) block() else null
     } finally {
