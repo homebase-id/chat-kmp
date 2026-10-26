@@ -23,14 +23,9 @@ class VaultPreferences(
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
     val biometricsEnabled: StateFlow<Boolean> = _biometricsEnabled.asStateFlow()
 
-    // In-memory biometric session tracking — not persisted, resets on app restart.
-    // All reads/writes are confined to the main thread (lifecycle callbacks, composable effects).
-    private var lastAuthTimeMs: Long = 0L
-    private var lastBackgroundTimeMs: Long = 0L
-    private var lastActionTimeMs: Long = 0L
+    private val session = BiometricSession(clock, BACKGROUND_THRESHOLD_MS)
 
-    var isVaultScreenActive: Boolean = false
-        private set
+    val isVaultScreenActive: Boolean get() = session.isScreenActive
 
     // True while a system picker/camera is presented from the Vault. Leaving to a picker
     // stops the Activity, which must NOT count as a genuine app-background (it would re-lock
@@ -39,7 +34,7 @@ class VaultPreferences(
         private set
 
     fun setVaultScreenActive(active: Boolean) {
-        isVaultScreenActive = active
+        session.setScreenActive(active)
     }
 
     fun setPickerActive(active: Boolean) {
@@ -49,46 +44,17 @@ class VaultPreferences(
     fun reset() {
         _iconVisible.value = readIconVisible()
         _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
-        lastAuthTimeMs = 0L
-        lastBackgroundTimeMs = 0L
-        lastActionTimeMs = 0L
-        isVaultScreenActive = false
+        session.reset()
         isPickerActive = false
     }
 
-    fun recordAuthSuccess() {
-        val now = clock.now().toEpochMilliseconds()
-        lastAuthTimeMs = now
-        lastActionTimeMs = now
-    }
+    fun recordAuthSuccess() = session.recordAuthSuccess()
 
-    fun recordAppBackgrounded() {
-        val now = clock.now().toEpochMilliseconds()
-        // The biometric prompt itself stops the Activity briefly right around a successful
-        // unlock on some devices (e.g. MIUI), which would otherwise record a "background"
-        // timestamped just after the auth and re-lock via (B) once you're gone >30s. Churn
-        // within a short settle window of a successful unlock is not a genuine app-background.
-        if (lastAuthTimeMs != 0L && now - lastAuthTimeMs in 0..POST_AUTH_SETTLE_MS) return
-        lastBackgroundTimeMs = now
-    }
+    fun recordAppBackgrounded() = session.recordAppBackgrounded()
 
-    fun recordUserAction() {
-        lastActionTimeMs = clock.now().toEpochMilliseconds()
-    }
+    fun recordUserAction() = session.recordUserAction()
 
-    fun isAuthSessionValid(): Boolean {
-        if (lastAuthTimeMs == 0L) return false
-        val now = clock.now().toEpochMilliseconds()
-        // (B) Genuine app-background re-lock — always applies, even mid-session.
-        if (lastBackgroundTimeMs > lastAuthTimeMs &&
-            now - lastBackgroundTimeMs > BACKGROUND_THRESHOLD_MS
-        ) return false
-        // (A) Idle auto-lock — suppressed while the user is actively inside the Vault
-        // (any sub-screen). Uninterrupted foreground work never idle-locks; a real
-        // background still re-locks via (B) above.
-        if (!isVaultScreenActive && now - lastActionTimeMs > AUTH_SESSION_DURATION_MS) return false
-        return true
-    }
+    fun isAuthSessionValid(): Boolean = session.isAuthSessionValid()
 
     suspend fun setIconVisible(value: Boolean) {
         if (_iconVisible.value == value) return
@@ -121,8 +87,6 @@ class VaultPreferences(
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0102")
         val BIOMETRICS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0103")
 
-        private const val AUTH_SESSION_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
-        private const val BACKGROUND_THRESHOLD_MS = 30 * 1000L       // 30 seconds
-        private const val POST_AUTH_SETTLE_MS = 2 * 1000L            // ignore bg churn for 2s after unlock
+        private const val BACKGROUND_THRESHOLD_MS = 30 * 1000L
     }
 }
