@@ -106,16 +106,29 @@ private fun codeBlockEdit(text: String, lines: List<BlockLine>, selection: TextR
     val touched = lines.touching(sel)
     if (touched.any { it.isList }) return BlockEdit(emptyList(), sel)
     if (touched.size <= 1) {
-        val selected = text.substring(sel.min, sel.max)
-        val body = selected.trimEnd('\n')
+        val body = text.substring(sel.min, sel.max).trimEnd('\n')
+        if (body.isEmpty()) return codeBlockEdit(text, lines, TextRange(sel.min))
         val end = sel.min + body.length
-        val splices = listOf(Splice(sel.min, 0, "`"), Splice(end, 0, "`"))
+        val ticks = "`".repeat(body.longestBacktickRun() + 1)
+        val pad = if (body.first() == '`' || body.last() == '`') " " else ""
+        val splices = listOf(Splice(sel.min, 0, ticks + pad), Splice(end, 0, pad + ticks))
         return BlockEdit(splices, TextRange(splices.caretAfter(end)))
     }
     val start = touched.first().start
     val end = touched.last().end
-    val splices = listOf(Splice(start, 0, "$FENCE\n"), Splice(end, 0, "\n$FENCE"))
+    val fence = "`".repeat(maxOf(FENCE.length, text.substring(start, end).longestBacktickRun() + 1))
+    val splices = listOf(Splice(start, 0, "$fence\n"), Splice(end, 0, "\n$fence"))
     return BlockEdit(splices, TextRange(splices.caretAfter(end)))
+}
+
+private fun String.longestBacktickRun(): Int {
+    var best = 0
+    var run = 0
+    for (c in this) {
+        run = if (c == '`') run + 1 else 0
+        if (run > best) best = run
+    }
+    return best
 }
 
 fun String.linePrefixEdit(selection: TextRange, prefix: String): BlockEdit =

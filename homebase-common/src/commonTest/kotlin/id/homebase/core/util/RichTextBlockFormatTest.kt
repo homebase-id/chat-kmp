@@ -96,5 +96,28 @@ class RichTextBlockFormatTest {
         assertEquals("x`😀`y", codeBlockEdit_apply(inline, TextRange(2, 3)))
     }
 
+    @Test
+    fun inlineCode_selectionContainingBacktickUsesLongerDelimiter() {
+        assertEquals("a ``b`c`` d", codeBlockEdit_apply("a b`c d", TextRange(2, 5)))
+    }
+
+    @Test
+    fun inlineCode_selectionEdgeBacktickIsPadded() {
+        assertEquals("a `` `b `` d", codeBlockEdit_apply("a `b d", TextRange(2, 4)))
+    }
+
+    @Test
+    fun codeFence_selectionOfOnlyALineBreakInsertsAnEmptyFence() {
+        val edit = "ab\ncd".codeBlockEdit(TextRange(2, 3))
+        assertEquals("ab\n```\n\n```\ncd", edit.applyTo("ab\ncd"))
+        assertEquals(TextRange(7), edit.selection)
+    }
+
+    @Test
+    fun codeFence_wrappedLinesContainingAFenceUseALongerOne() {
+        val text = "```\nx"
+        assertEquals("````\n```\nx\n````", codeBlockEdit_apply(text, TextRange(0, text.length)))
+    }
+
     private fun codeBlockEdit_apply(text: String, sel: TextRange) = text.codeBlockEdit(sel).applyTo(text)
 }
