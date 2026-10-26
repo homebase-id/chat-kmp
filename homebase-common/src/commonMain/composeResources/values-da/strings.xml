@@ -1852,6 +1852,9 @@
     <string name="profile_card_cards_public">Offentlig: alle</string>
     <string name="profile_card_make_public_title">Gør dette offentligt?</string>
     <string name="profile_card_make_public_message">Alle på internettet kan se %1$s.</string>
+    <string name="profile_card_nameless_public_title">Fjern navnet fra dit offentlige kort?</string>
+    <string name="profile_card_nameless_public_message">Dit offentlige kort får intet navn. Vil du fortsætte?</string>
+    <string name="profile_card_nameless_public_confirm">Fortsæt</string>
     <string name="profile_card_content_now_public">%1$s er nu offentlig</string>
     <string name="profile_card_content_now_hidden">%1$s er ikke længere offentlig</string>
     <string name="profile_card_editor_title">Kortdesign</string>

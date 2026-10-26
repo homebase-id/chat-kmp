@@ -66,4 +66,19 @@ class ComposerMarkdownNormalizeTest {
         assertEquals("hello", state.toMessageMarkdown())
         assertFalse(state.toMessageMarkdown().contains("<br>"))
     }
+
+    @Test
+    fun brLineInsideFencedCode_isKept() {
+        val md = "intro\n\n```kotlin\nval a = 1\n<br>\nval b = 2\n```\n\n<br>\noutro"
+        assertEquals(
+            "intro\n\n```kotlin\nval a = 1\n<br>\nval b = 2\n```\n\noutro",
+            md.stripComposerLineBreakArtifacts(),
+        )
+    }
+
+    @Test
+    fun brLineInsideTildeFence_isKept() {
+        val md = "~~~\n<br>\n~~~"
+        assertEquals(md, md.stripComposerLineBreakArtifacts())
+    }
 }

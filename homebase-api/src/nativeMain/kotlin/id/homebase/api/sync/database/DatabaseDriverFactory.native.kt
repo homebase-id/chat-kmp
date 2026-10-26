@@ -13,6 +13,7 @@ import co.touchlab.sqliter.createDatabaseManager
 import co.touchlab.sqliter.getVersion
 import co.touchlab.sqliter.longForQuery
 import co.touchlab.sqliter.stringForQuery
+import id.homebase.api.storage.SecureRead
 import id.homebase.api.storage.SecureStorage
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
@@ -117,18 +118,18 @@ private fun createRawKey(store: RawKeyStore): String? {
     val hex = SqlCipherRawKey.newHex()
     store.put(hex)
     val readBack = store.read()
-    if (readBack == RawKeyRead.Found(hex)) return hex
+    if (readBack == SecureRead.Found(hex)) return hex
     logger.e { "Storing the new database key failed ($readBack)" }
     return null
 }
 
 internal object KeychainRawKeyStore : RawKeyStore by SecureStorageRawKeyStore {
-    override fun read(): RawKeyRead {
-        val result = SecureStorage.read(SecureStorageRawKeyStore.KEY_DB_RAW_KEY)
+    override fun read(): SecureRead {
+        val result = SecureStorage.readKeychain(SecureStorageRawKeyStore.KEY_DB_RAW_KEY)
         return when {
-            result.value != null -> RawKeyRead.Found(result.value)
-            result.status == errSecItemNotFound -> RawKeyRead.Missing
-            else -> RawKeyRead.Unavailable("OSStatus ${result.status}")
+            result.value != null -> SecureRead.Found(result.value)
+            result.status == errSecItemNotFound -> SecureRead.Missing
+            else -> SecureRead.Unavailable(IllegalStateException("OSStatus ${result.status}"))
         }
     }
 }

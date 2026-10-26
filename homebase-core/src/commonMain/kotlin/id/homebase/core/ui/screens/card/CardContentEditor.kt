@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -149,7 +150,7 @@ internal fun CardContentEditor(
     val missingSocials = CARD_SOCIAL_TYPES.filter { it !in present }
     val missingMore = ATTRIBUTE_SPECS.filter { it.type in MORE_TYPES && it.type !in present }
     val row: @Composable (CardContentItem, Int, Int) -> Unit = { item, index, count ->
-        EditorRow(
+        key(item.id) { EditorRow(
             item = item,
             circles = circles,
             shape = groupedShape(index, count),
@@ -161,7 +162,7 @@ internal fun CardContentEditor(
                 onAudience(item.id, it)
             },
             onOpen = { editingId = item.id },
-        )
+        ) }
     }
 
     Column(

@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.compareStringUuId
@@ -93,6 +94,7 @@ data class ProfileCardUiState(
     val contentFailures: Int = 0,
     val pendingImport: CardAudience? = null,
     val pendingPublic: ContentWrite? = null,
+    val pendingNameless: ContentWrite? = null,
 ) {
     internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience)
 
@@ -506,10 +508,23 @@ class ProfileCardViewModel(
 
     fun onPublicCancelled() = _uiState.update { it.copy(pendingPublic = null) }
 
+    fun onNamelessConfirmed() {
+        val pending = _uiState.value.pendingNameless ?: return
+        _uiState.update { it.copy(pendingNameless = null) }
+        if (_uiState.value.isContentBusy) return
+        writeContent(pending)
+    }
+
+    fun onNamelessCancelled() = _uiState.update { it.copy(pendingNameless = null) }
+
     private fun requestWrite(write: ContentWrite) {
         val wasPublic = write.existing?.audience(_uiState.value.circles) == ProfileAudience.Public
         if (write.audience == ProfileAudience.Public && !wasPublic) {
             _uiState.update { it.copy(pendingPublic = write) }
+            return
+        }
+        if (wasPublic && write.audience != ProfileAudience.Public && write.type == ProfileAttributeTypes.NAME) {
+            _uiState.update { it.copy(pendingNameless = write) }
             return
         }
         writeContent(write)

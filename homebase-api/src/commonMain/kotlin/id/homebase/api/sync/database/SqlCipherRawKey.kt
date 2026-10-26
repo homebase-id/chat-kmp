@@ -1,29 +1,19 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.storage.SecureRead
 import id.homebase.api.storage.SecureStorage
 
 internal interface RawKeyStore {
-    fun get(): String?
+    fun read(): SecureRead
     fun put(hex: String)
-    fun remove()
-
-    /** Tells "no key stored" apart from "a key may be stored but can't be read right now". */
-    fun read(): RawKeyRead = get()?.let(RawKeyRead::Found) ?: RawKeyRead.Missing
-}
-
-internal sealed interface RawKeyRead {
-    data class Found(val value: String) : RawKeyRead
-    data object Missing : RawKeyRead
-    data class Unavailable(val reason: String) : RawKeyRead
 }
 
 internal object SecureStorageRawKeyStore : RawKeyStore {
     internal const val KEY_DB_RAW_KEY = "odin_db_raw_key"
 
-    override fun get(): String? = SecureStorage.get(KEY_DB_RAW_KEY)
+    override fun read(): SecureRead = SecureStorage.read(KEY_DB_RAW_KEY)
     override fun put(hex: String) = SecureStorage.put(KEY_DB_RAW_KEY, hex)
-    override fun remove() = SecureStorage.remove(KEY_DB_RAW_KEY)
 }
 
 /** The 32-byte key SQLCipher takes as `x'<64 hex>'`, skipping its per-connection PBKDF2. */
@@ -55,14 +45,14 @@ internal sealed interface RawKeyDecision {
  * A random raw key can't be re-derived, so a new one is only made when no key is stored and no
  * encrypted file depends on one; a key that can't be read now never leads to a write or a wipe.
  */
-internal fun decideRawKey(key: RawKeyRead, file: DatabaseFileState): RawKeyDecision {
+internal fun decideRawKey(key: SecureRead, file: DatabaseFileState): RawKeyDecision {
     if (file == DatabaseFileState.Unreadable) return RawKeyDecision.FailUnavailable
     return when (key) {
-        is RawKeyRead.Found ->
-            if (SqlCipherRawKey.isHex(key.value)) RawKeyDecision.Use(key.value) else decideRawKey(RawKeyRead.Missing, file)
-        RawKeyRead.Missing ->
+        is SecureRead.Found ->
+            if (SqlCipherRawKey.isHex(key.value)) RawKeyDecision.Use(key.value) else decideRawKey(SecureRead.Missing, file)
+        SecureRead.Missing ->
             if (file == DatabaseFileState.Encrypted) RawKeyDecision.FailKeyLost else RawKeyDecision.Create
-        is RawKeyRead.Unavailable ->
+        is SecureRead.Unavailable ->
             if (file == DatabaseFileState.Plaintext) RawKeyDecision.OpenUnencrypted else RawKeyDecision.FailUnavailable
     }
 }
@@ -71,4 +61,4 @@ internal fun decideRawKey(key: RawKeyRead, file: DatabaseFileState): RawKeyDecis
  * The database file or its key can't be read yet, e.g. an iOS launch before the first unlock.
  * [DatabaseManager.initializeWithRecovery] rethrows it without wiping; a later launch retries.
  */
-class DatabaseUnavailableException(message: String) : Exception(message)
+class DatabaseUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)

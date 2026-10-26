@@ -42,7 +42,6 @@ import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownDimens
 import com.mikepenz.markdown.model.markdownPadding
 import id.homebase.api.util.markdownToPlainPreview
-import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 
@@ -128,6 +127,8 @@ import id.homebase.core.ui.theme.withEmojiFont
  * flattening a mention inside a code span is indistinguishable from one in prose — the highlight is
  * what that surface is for.
  *
+ * [surface] is the colour the text sits on; fenced-code contrast is computed against it.
+ *
  * [mentions] names the reader (so a mention of THEM gets [selfMentionSpanStyle]) and carries
  * already-resolved display names, both resolved upstream and both absent by default — which is how
  * the feed's bodies render through this same composable unchanged. Who is mentioned is decided on
@@ -154,6 +155,7 @@ fun ChatMarkdown(
     searchQuery: String? = null,
     isCurrentSearchResult: Boolean = false,
     mentions: MentionContext? = null,
+    surface: Color = MaterialTheme.colorScheme.surface,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
     onTextLayout: (TextLayoutResult) -> Unit = {},
@@ -315,12 +317,12 @@ fun ChatMarkdown(
             checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) },
             codeFence = {
                 MarkdownCodeFence(it.content, it.node, style = it.typography.code) { code, language, codeStyle ->
-                    BubbleCodeContainer(code = code, language = language, style = codeStyle, color = color)
+                    BubbleCodeContainer(code = code, language = language, style = codeStyle, color = color, surface = surface)
                 }
             },
             codeBlock = {
                 MarkdownCodeBlock(it.content, it.node, style = it.typography.code) { code, language, codeStyle ->
-                    BubbleCodeContainer(code = code, language = language, style = codeStyle, color = color)
+                    BubbleCodeContainer(code = code, language = language, style = codeStyle, color = color, surface = surface)
                 }
             },
         ),
@@ -371,10 +373,11 @@ internal fun buildChatInlineAnnotatedString(
     ).toSpanStyle().copy(background = color.copy(alpha = INLINE_CODE_BG_ALPHA))
     val cache = LocalChatMarkdownParseCache.current
     val parsed = remember(cache, content) { cache.get(content) }
+    val annotator = rememberMentionAnnotator(parsed, style, color, mentions)
     val settings = annotatorSettings(
         linkTextSpanStyle = linkSpanStyle,
         codeSpanStyle = inlineCodeStyle,
-        annotator = rememberMentionAnnotator(parsed, style, color, mentions),
+        annotator = annotator,
         referenceLinkHandler = null,
         // The default reads LocalMarkdownColors, which only Markdown() provides; this path has none.
         highlightSpanStyle = SpanStyle(
@@ -386,7 +389,7 @@ internal fun buildChatInlineAnnotatedString(
     // where withEmojiFont returns the string untouched. Part of the remember key so the emoji
     // pass is memoized with the parse rather than redone on every recomposition.
     val emojiFamily = emojiFontFamily()
-    return remember(parsed, style, color, emojiFamily, mentions) {
+    return remember(parsed, style, color, emojiFamily, mentions, annotator) {
         val node = parsed.inlineNode
         val built = when {
             parsed.ast == null -> AnnotatedString(parsed.text)
@@ -435,14 +438,11 @@ private fun BubbleCodeContainer(
     language: String?,
     style: TextStyle,
     color: Color,
+    surface: Color,
 ) {
     val codeBlockPadding = LocalMarkdownPadding.current.codeBlock
     val scheme = MaterialTheme.colorScheme
-    val extended = HomebaseTheme.extendedColors
-    val codeStyle = remember(scheme, extended, color) {
-        val bubble = if (color == extended.bubbleSentOnSurface) extended.bubbleSentSurface else scheme.surfaceContainerHigh
-        bubbleCodeStyle(scheme, color, bubble)
-    }
+    val codeStyle = remember(scheme, color, surface) { bubbleCodeStyle(scheme, color, surface) }
     MarkdownCodeBackground(
         color = codeStyle.background,
         shape = RoundedCornerShape(8.dp),

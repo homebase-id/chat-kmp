@@ -90,6 +90,28 @@ even after you fix it. The point is twofold:
     `homebase-chat`-only (Stopped-gate widening); zero overlap with the
     failing test. Passed on retry. Expected until #623 merges to main.
 
+## Profile card wire tests — `TimeoutCancellationException` in an await (JVM)
+
+- **Status:** Watching. Fixed in the tests (PR #2089).
+- **Where:** `homebase-core/src/jvmTest/.../ui/screens/card/ProfileCardViewModelTest.kt` and `CardContentTest.kt`, the tests
+  that drive `ProfileCardViewModel` over `CardWireHarness`.
+- **Target:** `homebase-core:jvmTest` in the "Run unittests" CI job. Seen 2026-10-26 on #2070, #2083 (twice) and main, at
+  `workWithNoSavedCardRendersLinksAndResetReturnsToIt` and `undoAfterAnAudienceChangeRestoresThePreviousAclExactly`.
+- **Symptom:**
+  ```
+  kotlinx.coroutines.TimeoutCancellationException: Timed out waiting for 10000 ms
+      at ...ProfileCardViewModelTest$awaitUntil$2$1.invokeSuspend(ProfileCardViewModelTest.kt:1616)
+  ```
+- **Cause:** The waits were `withContext(Dispatchers.Default) { withTimeout { while (!cond) delay(10) } }` under an
+  `UnconfinedTestDispatcher` Main, so the test body came back on a Default worker and its next ViewModel call ran there
+  while earlier ViewModel coroutines were still running on another worker. A `load(force = true)` cancelled the older
+  load, but that one was already in `onLoaded` (no suspension point) and finished last, writing stale state. Production
+  Main is one thread, so this cannot happen there. Reproduced with the test looped under 16 CPU hogs (failed at iterations
+  30 and 397 of 1000; a thread trace showed two loads on two workers at once).
+- **Fix:** `SettledWaits.kt`: `settle { }` drains the test scheduler and checks on the test thread. The wire is inline
+  (MockEngine on `Dispatchers.Unconfined`), so idle means done. 2000 looped iterations each passed under the same load.
+  This is likely also behind the `rendered.last()` entry below. **Never** wait on `Dispatchers.Default` in these tests.
+
 ## CardContentTest — `rendered.last()` read before the redraw (JVM)
 
 - **Status:** Watching. Fixed in the test (#1952); also seen at `publicCardTurnsAnItemOnLiveAndOffBackToItsPreviousCircles` (PR #1951).
