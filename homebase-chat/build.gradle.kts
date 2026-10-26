@@ -185,6 +185,7 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
             implementation(libs.androidx.navigationevent)
+            implementation(libs.androidx.navigationevent.compose)
         }
     }
 
