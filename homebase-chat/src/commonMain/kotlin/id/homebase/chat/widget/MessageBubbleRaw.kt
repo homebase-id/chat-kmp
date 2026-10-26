@@ -832,6 +832,7 @@ fun MessageBubbleRaw(
                                 searchQuery = effectiveSearchQuery,
                                 isCurrentSearchResult = isCurrentSearchResult,
                                 mentions = mentionContext,
+                                surface = backgroundColor,
                             )
                         }
                     }
@@ -976,6 +977,7 @@ fun MessageBubbleRaw(
                                             searchQuery = effectiveSearchQuery,
                                             isCurrentSearchResult = isCurrentSearchResult,
                                             mentions = mentionContext,
+                                            surface = backgroundColor,
                                             maxLines = bodyMaxLines,
                                             overflow = TextOverflow.Ellipsis,
                                             onTextLayout = { textLayoutResult = it },
