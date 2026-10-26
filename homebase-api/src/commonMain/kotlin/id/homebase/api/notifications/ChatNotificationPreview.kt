@@ -47,21 +47,20 @@ suspend fun fetchChatNotificationPreview(
     conversationId: String,
     messageId: String,
     encryptedPreview: String? = null,
-): ChatNotificationPreview = createPlatformHttpClient().use { client ->
-    fetchChatNotificationPreview(client, credentials, conversationId, messageId, encryptedPreview)
-}
+): ChatNotificationPreview =
+    fetchChatNotificationPreview({ createPlatformHttpClient() }, credentials, conversationId, messageId, encryptedPreview)
 
 /**
  * [encryptedPreview] is the header the identity sealed into the push (see [openPushPreview]).
  * It is read first because the push usually lands while the message is still in the transit
- * inbox, where the by-uid fetch answers 404; the fetch is the fallback.
+ * inbox, where the by-uid fetch answers 404; the fetch is the fallback, and only it builds a client.
  */
 internal suspend fun fetchChatNotificationPreview(
-    httpClient: HttpClient,
+    httpClient: () -> HttpClient,
     credentials: ApiCredentials,
     conversationId: String,
     messageId: String,
-    encryptedPreview: String? = null,
+    encryptedPreview: String?,
 ): ChatNotificationPreview {
     val conversation = Uuid.parseOrNull(conversationId)
         ?: return ChatNotificationPreview.missed("typeId is not a uuid")
@@ -85,21 +84,22 @@ internal suspend fun fetchChatNotificationPreview(
         }
     }
 
-    return fetchedPreview(httpClient, credentials, conversation, message).let { fetched ->
-        fetched.missReason?.let { ChatNotificationPreview.missed("$pushMiss; $it") } ?: fetched
-    }
+    val fetched = fetchedPreview(httpClient, credentials, conversation, message)
+    return fetched.missReason?.let { ChatNotificationPreview.missed("$pushMiss; $it") } ?: fetched
 }
 
 private suspend fun fetchedPreview(
-    httpClient: HttpClient,
+    httpClient: () -> HttpClient,
     credentials: ApiCredentials,
     conversation: Uuid,
     message: Uuid,
 ): ChatNotificationPreview {
     val file = try {
         val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
-        DriveFileHeaderReader(httpClient, credentialsManager)
-            .getFileHeaderByUid(SystemDriveConstants.chatDrive.alias, message)
+        httpClient().use { client ->
+            DriveFileHeaderReader(client, credentialsManager)
+                .getFileHeaderByUid(SystemDriveConstants.chatDrive.alias, message)
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -115,27 +115,21 @@ private fun Throwable.causeChain(): String =
 
 /** Null when the preview can't decide (content dropped to fit the push), so the header is fetched. */
 private fun pushPreviewResult(preview: PushPreview, conversationId: Uuid, messageId: Uuid): ChatNotificationPreview? {
-    val miss = when {
-        Uuid.parseOrNull(preview.uniqueId.orEmpty()) != messageId -> "push preview is for another file"
-        preview.fileType != CHAT_MESSAGE_FILE_TYPE -> "fileType ${preview.fileType}"
-        preview.dataType != PLAIN_MESSAGE_DATA_TYPE -> "dataType ${preview.dataType}"
-        Uuid.parseOrNull(preview.groupId.orEmpty()) != conversationId -> "groupId ${preview.groupId} is not the push typeId"
-        preview.content.isNullOrEmpty() -> return null
-        else -> null
+    if (Uuid.parseOrNull(preview.uniqueId.orEmpty()) != messageId) {
+        return ChatNotificationPreview.missed("push preview is for another file")
     }
-    if (miss != null) return ChatNotificationPreview.missed(miss)
+    plainChatMessageMiss(preview.fileType, preview.dataType, Uuid.parseOrNull(preview.groupId.orEmpty()), conversationId)
+        ?.let { return ChatNotificationPreview.missed(it) }
+    val content = preview.content?.takeIf { it.isNotEmpty() } ?: return null
 
-    val result = messageText(preview.content!!, "from the push")
+    val result = messageText(content, "from the push")
     return if (preview.contentTruncated && result.text != null) ChatNotificationPreview.shown("${result.text}…") else result
 }
 
 internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): ChatNotificationPreview {
     val appData = file.fileMetadata.appData
     val dataType = appData.dataType ?: PLAIN_MESSAGE_DATA_TYPE
-    val miss = when {
-        appData.fileType != CHAT_MESSAGE_FILE_TYPE -> "fileType ${appData.fileType}"
-        dataType != PLAIN_MESSAGE_DATA_TYPE -> "dataType $dataType"
-        appData.groupId != conversationId -> "groupId ${appData.groupId} is not the push typeId"
+    val miss = plainChatMessageMiss(appData.fileType, dataType, appData.groupId, conversationId) ?: when {
         file.isSoftDeleted() -> "deleted (${file.fileState}, ${appData.archivalStatus})"
         appData.content.isNullOrEmpty() -> "no content (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
         appData.content == DECRYPTION_FAILURE_APP_DATA -> "content failed to decrypt"
@@ -144,6 +138,13 @@ internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): ChatN
     if (miss != null) return ChatNotificationPreview.missed(miss)
 
     return messageText(appData.content!!, "serverFileIsEncrypted=${file.serverFileIsEncrypted}")
+}
+
+private fun plainChatMessageMiss(fileType: Int?, dataType: Int, groupId: Uuid?, conversationId: Uuid): String? = when {
+    fileType != CHAT_MESSAGE_FILE_TYPE -> "fileType $fileType"
+    dataType != PLAIN_MESSAGE_DATA_TYPE -> "dataType $dataType"
+    groupId != conversationId -> "groupId $groupId is not the push typeId"
+    else -> null
 }
 
 private fun messageText(content: String, source: String): ChatNotificationPreview {

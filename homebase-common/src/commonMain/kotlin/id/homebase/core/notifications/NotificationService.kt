@@ -2,6 +2,7 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.isIos
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi
@@ -397,7 +398,7 @@ class NotificationService(
             friendlyName = friendlyName,
             voipDeviceToken = voipToken,
             // Only the iOS extension can't wait for the inbox to be processed before reading the message.
-            withPushPreviews = isIosDevice(),
+            withPushPreviews = isIos(),
         )
         Logger.i(tag = "NotificationService") { "Token registered successfully" }
     }
@@ -506,7 +507,7 @@ class NotificationService(
                 if (isAppInForeground) {
                     // Show in-app banner instead of system notification
                     _inAppNotificationEvents.tryEmit(richData)
-                } else if (isIosDevice()) {
+                } else if (isIos()) {
                     // iOS: the Notification Service Extension owns both the visible
                     // notification and the badge. It runs for every mutable-content push
                     // whether or not this process is alive, so counting here double-counts.
@@ -1036,6 +1037,3 @@ fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
     val summaryId = SUMMARY_ID_OFFSET + maskedHash
     return messageId to summaryId
 }
-
-private fun isIosDevice(): Boolean =
-    Platform.osName.contains("iOS", ignoreCase = true) || Platform.osName.contains("iPadOS", ignoreCase = true)

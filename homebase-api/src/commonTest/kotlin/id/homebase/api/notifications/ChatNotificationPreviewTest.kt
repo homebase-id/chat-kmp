@@ -101,7 +101,7 @@ class ChatNotificationPreviewTest {
             requests += request.url.encodedPath
             respond(sealed, status, headers)
         })
-        return fetchChatNotificationPreview(http, credentials, conversation.toString(), message.toString(), encryptedPreview)
+        return fetchChatNotificationPreview({ http }, credentials, conversation.toString(), message.toString(), encryptedPreview)
     }
 
     private fun assertMissed(expected: String, preview: ChatNotificationPreview) {
