@@ -54,7 +54,12 @@ class EmailPreferences(
         private set
 
     fun setEmailScreenActive(active: Boolean) {
-        if (isEmailScreenActive && !active) lastActionTimeMs = clock.now().toEpochMilliseconds()
+        val now = clock.now().toEpochMilliseconds()
+        // Otherwise leaving a still-locked screen would stamp a fresh action and revive the session.
+        if (!isEmailScreenActive && active && now - lastActionTimeMs > AUTH_SESSION_DURATION_MS) {
+            lastAuthTimeMs = 0L
+        }
+        if (isEmailScreenActive && !active) lastActionTimeMs = now
         isEmailScreenActive = active
     }
 

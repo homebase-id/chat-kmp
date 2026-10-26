@@ -103,6 +103,19 @@ class EmailPreferencesAuthSessionTest {
     }
 
     @Test
+    fun `backing out of a locked screen does not revive an aged-out session`() = runTest {
+        val clock = clock()
+        val prefs = EmailPreferences(createTestDatabaseManager(), clock)
+        prefs.recordAuthSuccess()
+        prefs.setEmailScreenActive(true)
+        prefs.setEmailScreenActive(false)
+        clock += 6.minutes
+        prefs.setEmailScreenActive(true)
+        prefs.setEmailScreenActive(false)
+        assertTrue(prefs.requiresUnlock())
+    }
+
+    @Test
     fun `toggle off never gates`() = runTest {
         val prefs = EmailPreferences(createTestDatabaseManager(), clock())
         prefs.setBiometricsEnabled(false)
