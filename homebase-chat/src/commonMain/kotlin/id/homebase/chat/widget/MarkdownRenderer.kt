@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextLinkStyles
@@ -307,6 +308,9 @@ fun ChatMarkdown(
                     )
                 }
             },
+            table = {
+                BubbleTable(it.content, it.node, it.typography.table)
+            },
             checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) },
             codeFence = {
                 MarkdownCodeFence(it.content, it.node, style = it.typography.code) { code, language, codeStyle ->
@@ -444,8 +448,10 @@ private fun BubbleCodeContainer(
         language = language,
         code = code,
     ) {
+        val darkSyntax = color.luminance() > 0.5f
+        val text = remember(code, language, darkSyntax) { highlightCode(code, language, darkSyntax) }
         MarkdownBasicText(
-            text = AnnotatedString(code),
+            text = text,
             style = style,
             color = color,
             modifier = Modifier

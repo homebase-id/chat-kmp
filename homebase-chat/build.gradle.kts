@@ -102,6 +102,7 @@ kotlin {
             // AnnotatorSettingsKt at first render.
             implementation(libs.markdown.renderer)
             implementation(libs.markdown.renderer.m3)
+            implementation(libs.markdown.renderer.code)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }
