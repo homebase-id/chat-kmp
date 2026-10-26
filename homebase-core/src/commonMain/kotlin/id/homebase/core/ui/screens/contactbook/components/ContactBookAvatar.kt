@@ -20,8 +20,8 @@ import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.rememberOpenStoredImage
 import id.homebase.core.image.HomebaseImage
-import id.homebase.core.ui.navigation.navSharedElement
 import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.ui.navigation.navSharedElement
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_contact
