@@ -1,16 +1,10 @@
 package id.homebase.core.ui.screens.vault.auth
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import id.homebase.core.ui.navigation.Route
+import id.homebase.core.ui.screens.auth.BiometricFlowTracker
 import id.homebase.core.vault.VaultPreferences
 import org.koin.compose.koinInject
 
@@ -34,24 +28,15 @@ fun VaultSessionTracker(
     navController: NavHostController,
     vaultPreferences: VaultPreferences = koinInject(),
 ) {
-    val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
-    val inVaultFlow = backStack.any { it.destination.hasRoute(Route.Vault::class) }
-    LaunchedEffect(inVaultFlow) {
-        vaultPreferences.setVaultScreenActive(inVaultFlow)
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, inVaultFlow) {
-        if (!inVaultFlow) return@DisposableEffect onDispose { }
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP &&
-                vaultPreferences.biometricsEnabled.value &&
-                !vaultPreferences.isPickerActive
-            ) {
+    BiometricFlowTracker(
+        navController = navController,
+        anywhereInBackStack = true,
+        inFlow = { it.hasRoute(Route.Vault::class) },
+        onFlowActive = vaultPreferences::setVaultScreenActive,
+        onStop = {
+            if (vaultPreferences.biometricsEnabled.value && !vaultPreferences.isPickerActive) {
                 vaultPreferences.recordAppBackgrounded()
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
+        },
+    )
 }
