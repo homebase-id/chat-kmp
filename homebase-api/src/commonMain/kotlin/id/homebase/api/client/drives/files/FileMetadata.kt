@@ -2,6 +2,8 @@
 
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.serialization.LenientBase64BytesSerializer
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -54,7 +56,7 @@ data class AppFileMetaData(
 data class LocalAppMetadata(
     val tags: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
     val versionTag: Uuid? = null,
-    val iv: String? = null,
+    @Serializable(with = LenientBase64BytesSerializer::class) val iv: Base64Bytes? = null,
     val content: String? = null,
     val readTime: UnixTimeUtc? = null,
     val localReactions: List<String>? = null,

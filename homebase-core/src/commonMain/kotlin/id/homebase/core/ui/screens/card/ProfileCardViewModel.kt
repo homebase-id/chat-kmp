@@ -92,7 +92,7 @@ data class ProfileCardUiState(
     val contentSaves: Int = 0,
     val contentFailures: Int = 0,
     val pendingImport: CardAudience? = null,
-    val pendingPublic: PendingPublic? = null,
+    val pendingPublic: ContentWrite? = null,
 ) {
     internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience)
 
@@ -128,7 +128,7 @@ data class ProfileCardUiState(
 
 data class CardCircle(val id: String, val name: String)
 
-data class PendingPublic(
+data class ContentWrite(
     val type: String,
     val data: JsonObject,
     val audience: ProfileAudience,
@@ -494,32 +494,25 @@ class ProfileCardViewModel(
         val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
         if (audience == attribute.audience(state.circles)) return
-        requestWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true)
+        requestWrite(ContentWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true))
     }
 
     fun onPublicConfirmed() {
         val pending = _uiState.value.pendingPublic ?: return
         _uiState.update { it.copy(pendingPublic = null) }
         if (_uiState.value.isContentBusy) return
-        writeContent(pending.type, pending.data, pending.audience, pending.existing, pending.announce, pending.itemLabel)
+        writeContent(pending)
     }
 
     fun onPublicCancelled() = _uiState.update { it.copy(pendingPublic = null) }
 
-    private fun requestWrite(
-        type: String,
-        data: JsonObject,
-        audience: ProfileAudience,
-        existing: ProfileAttribute?,
-        itemLabel: String,
-        announce: Boolean = false,
-    ) {
-        val wasPublic = existing?.audience(_uiState.value.circles) == ProfileAudience.Public
-        if (audience == ProfileAudience.Public && !wasPublic) {
-            _uiState.update { it.copy(pendingPublic = PendingPublic(type, data, audience, existing, itemLabel, announce)) }
+    private fun requestWrite(write: ContentWrite) {
+        val wasPublic = write.existing?.audience(_uiState.value.circles) == ProfileAudience.Public
+        if (write.audience == ProfileAudience.Public && !wasPublic) {
+            _uiState.update { it.copy(pendingPublic = write) }
             return
         }
-        writeContent(type, data, audience, existing, announce, itemLabel)
+        writeContent(write)
     }
 
     fun onContentAdded(type: String, updates: Map<String, String>) {
@@ -531,7 +524,7 @@ class ProfileCardViewModel(
         val existingAudience = existing?.audience(state.circles)
         val audience = existingAudience?.let { it.shownOn(state.selectedAudience, true, null) ?: it } ?: state.selectedAudience.newItemAudience()
         val edit = computeAttributeEdit(existing, type, updates, audience, existingAudience) ?: return
-        requestWrite(edit.type, edit.data, edit.audience, existing, labelOf(state, existing?.id, updates))
+        requestWrite(ContentWrite(edit.type, edit.data, edit.audience, existing, labelOf(state, existing?.id, updates)))
     }
 
     fun onCardSelected(audience: CardAudience) = selectAudience(audience)
@@ -544,7 +537,7 @@ class ProfileCardViewModel(
         if (state.isContentBusy || !audience.isSavableWith(state.circles)) return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
         val edit = computeAttributeEdit(attribute, attribute.type, updates, audience, attribute.audience(state.circles)) ?: return
-        requestWrite(edit.type, edit.data, edit.audience, attribute, labelOf(state, id, updates))
+        requestWrite(ContentWrite(edit.type, edit.data, edit.audience, attribute, labelOf(state, id, updates)))
     }
 
     private fun labelOf(state: ProfileCardUiState, id: Uuid?, updates: Map<String, String>): String =
@@ -569,14 +562,8 @@ class ProfileCardViewModel(
         _events.tryEmit(ProfileCardEvent.ImportUndoExpired)
     }
 
-    private fun writeContent(
-        type: String,
-        data: JsonObject,
-        audience: ProfileAudience,
-        existing: ProfileAttribute?,
-        announce: Boolean = false,
-        itemLabel: String = "",
-    ) {
+    private fun writeContent(write: ContentWrite) {
+        val (type, data, audience, existing, itemLabel, announce) = write
         dropImportUndo()
         val card = _uiState.value.selectedAudience
         _uiState.update { it.copy(isContentBusy = true) }

@@ -21,7 +21,6 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.math.abs
 import kotlin.uuid.Uuid
@@ -106,7 +105,7 @@ fun rememberWaveformAmplitudes(
 
         val decoded = withContext(Dispatchers.Default) {
             runCatching {
-                val payloadIv = payload.iv?.let { Base64.decode(it) }
+                val payloadIv = payload.iv?.bytes
                 val requestedSize = ImageSize(
                     pixelWidth = thumbnail.pixelWidth ?: 320,
                     pixelHeight = thumbnail.pixelHeight ?: 64,

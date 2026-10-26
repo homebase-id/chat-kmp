@@ -57,7 +57,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Instant
 
@@ -212,9 +211,7 @@ private fun AlbumMomentCell(
             // pass `previewThumbnail` so the embedded tiny thumb shows
             // immediately while the higher-res server thumb loads.
             val payloadIv = remember(firstImagePayload.iv) {
-                firstImagePayload.iv?.let {
-                    runCatching { Base64.decode(it) }.getOrNull()
-                }
+                firstImagePayload.iv?.bytes
             }
             if (payloadIv != null) {
                 HomebaseImage(
