@@ -598,8 +598,13 @@ private val svgRootRegex = Regex("""<svg\b[^>]*>""")
 private val whitespaceRegex = Regex("""\s+""")
 private val viewBoxSeparatorRegex = Regex("""[\s,]+""")
 
+private val svgAttrRegexes: Map<String, Regex> = listOf(
+    "dominant-baseline", "fill", "font-size", "font-weight", "text-anchor",
+    "x", "y", "preserveAspectRatio", "viewBox",
+).associateWith { Regex("""(?<![\w-])$it\s*=\s*["']([^"']*)["']""") }
+
 private fun svgAttr(attrs: String, name: String): String? =
-    Regex("""(?<![\w-])$name\s*=\s*["']([^"']*)["']""").find(attrs)?.groupValues?.get(1)
+    svgAttrRegexes.getValue(name).find(attrs)?.groupValues?.get(1)
 
 private fun parseSvgColor(value: String?): Int {
     val v = value?.trim()?.lowercase() ?: return 0xFF000000.toInt()

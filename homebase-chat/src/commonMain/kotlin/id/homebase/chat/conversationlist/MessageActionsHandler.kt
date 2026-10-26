@@ -79,8 +79,11 @@ import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import id.homebase.core.files.toUploadPath
@@ -120,10 +123,9 @@ internal suspend fun RichTextState.clearedForSend(content: String, send: suspend
     }
 }
 
-/**
- * Awaits [send] under the already-registered placeholder [messageId]: drops it once the real
- * bubble has landed, or drops it and its progress and rethrows if [send] fails.
- */
+private val PLACEHOLDER_HANDOFF_TIMEOUT = 5.seconds
+
+// Dropping the placeholder on send() return left its key missing for a few frames, stranding a ghost row.
 internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     messageId: Uuid,
     send: suspend () -> Unit,
@@ -133,6 +135,12 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     } catch (e: Throwable) {
         update { it.withoutPendingSend(messageId, clearProgress = true) }
         throw e
+    }
+    withTimeoutOrNull(PLACEHOLDER_HANDOFF_TIMEOUT) {
+        first { state ->
+            state.hasNewerMessages ||
+                state.messages.any { it is MessageListContentModel.Message && it.message.id == messageId }
+        }
     }
     update { it.withoutPendingSend(messageId, clearProgress = false) }
 }
