@@ -393,12 +393,7 @@ class NotificationService(
             "Registering token with server... ($friendlyName, voip=${voipToken != null})"
         }
         api.subscribe(
-            deviceToken = token,
-            devicePlatform = platformName,
-            friendlyName = friendlyName,
-            voipDeviceToken = voipToken,
-            // Only the iOS extension can't wait for the inbox to be processed before reading the message.
-            withPushPreviews = isIos(),
+            deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName, voipDeviceToken = voipToken
         )
         Logger.i(tag = "NotificationService") { "Token registered successfully" }
     }

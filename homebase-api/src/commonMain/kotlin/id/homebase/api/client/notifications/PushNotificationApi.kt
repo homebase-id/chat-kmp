@@ -2,7 +2,6 @@ package id.homebase.api.client.notifications
 
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.notifications.pushPreviewKey
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -11,7 +10,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlin.io.encoding.Base64
 
 @Serializable
 data class PushSubscriptionRequest(
@@ -20,8 +18,6 @@ data class PushSubscriptionRequest(
     @SerialName("FriendlyName") val friendlyName: String,
     /** PushKit token; only sent from a build that handles CallKit. */
     @SerialName("VoipDeviceToken") val voipDeviceToken: String? = null,
-    /** Asks the identity to seal each incoming file's header into its push; see [pushPreviewKey]. */
-    @SerialName("PreviewKey") val previewKey: String? = null,
 )
 
 /**
@@ -50,13 +46,7 @@ data class PushSubscriptionResponse(
 class PushNotificationApi(httpClient: HttpClient, credentialsManager: CredentialsManager) :
     OdinApiProviderBase(httpClient, credentialsManager) {
 
-    suspend fun subscribe(
-        deviceToken: String,
-        devicePlatform: String,
-        friendlyName: String,
-        voipDeviceToken: String? = null,
-        withPushPreviews: Boolean = false,
-    ) {
+    suspend fun subscribe(deviceToken: String, devicePlatform: String, friendlyName: String, voipDeviceToken: String? = null) {
         val creds = requireCreds()
         val requestBody =
             PushSubscriptionRequest(
@@ -64,7 +54,6 @@ class PushNotificationApi(httpClient: HttpClient, credentialsManager: Credential
                 devicePlatform = devicePlatform,
                 friendlyName = friendlyName,
                 voipDeviceToken = voipDeviceToken,
-                previewKey = if (withPushPreviews) Base64.encode(pushPreviewKey(creds.secret)) else null,
             )
 
         val jsonBody = OdinSystemSerializer.serialize(requestBody)

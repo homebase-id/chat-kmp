@@ -46,21 +46,15 @@ suspend fun fetchChatNotificationPreview(
     credentials: ApiCredentials,
     conversationId: String,
     messageId: String,
-    encryptedPreview: String? = null,
-): ChatNotificationPreview =
-    fetchChatNotificationPreview({ createPlatformHttpClient() }, credentials, conversationId, messageId, encryptedPreview)
+): ChatNotificationPreview = createPlatformHttpClient().use { client ->
+    fetchChatNotificationPreview(client, credentials, conversationId, messageId)
+}
 
-/**
- * [encryptedPreview] is the header the identity sealed into the push (see [openPushPreview]).
- * It is read first because the push usually lands while the message is still in the transit
- * inbox, where the by-uid fetch answers 404; the fetch is the fallback, and only it builds a client.
- */
 internal suspend fun fetchChatNotificationPreview(
-    httpClient: () -> HttpClient,
+    httpClient: HttpClient,
     credentials: ApiCredentials,
     conversationId: String,
     messageId: String,
-    encryptedPreview: String?,
 ): ChatNotificationPreview {
     val conversation = Uuid.parseOrNull(conversationId)
         ?: return ChatNotificationPreview.missed("typeId is not a uuid")
@@ -69,37 +63,10 @@ internal suspend fun fetchChatNotificationPreview(
     // A Moments post push carries the moment id in both fields; it is not a chat message.
     if (conversation == message) return ChatNotificationPreview.missed("moments push")
 
-    var pushMiss = "no push preview"
-    if (encryptedPreview != null) {
-        val opened = try {
-            openPushPreview(encryptedPreview, pushPreviewKey(credentials.sharedSecret))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null.also { pushMiss = "push preview did not open ${e.causeChain()}" }
-        }
-        if (opened != null) {
-            pushPreviewResult(opened, conversation, message)?.let { return it }
-            pushMiss = "push preview has no content"
-        }
-    }
-
-    val fetched = fetchedPreview(httpClient, credentials, conversation, message)
-    return fetched.missReason?.let { ChatNotificationPreview.missed("$pushMiss; $it") } ?: fetched
-}
-
-private suspend fun fetchedPreview(
-    httpClient: () -> HttpClient,
-    credentials: ApiCredentials,
-    conversation: Uuid,
-    message: Uuid,
-): ChatNotificationPreview {
     val file = try {
         val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
-        httpClient().use { client ->
-            DriveFileHeaderReader(client, credentialsManager)
-                .getFileHeaderByUid(SystemDriveConstants.chatDrive.alias, message)
-        }
+        DriveFileHeaderReader(httpClient, credentialsManager)
+            .getFileHeaderByUid(SystemDriveConstants.chatDrive.alias, message)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -113,23 +80,13 @@ private suspend fun fetchedPreview(
 private fun Throwable.causeChain(): String =
     generateSequence(this) { it.cause }.take(4).joinToString(" <- ") { it::class.simpleName ?: "?" }
 
-/** Null when the preview can't decide (content dropped to fit the push), so the header is fetched. */
-private fun pushPreviewResult(preview: PushPreview, conversationId: Uuid, messageId: Uuid): ChatNotificationPreview? {
-    if (Uuid.parseOrNull(preview.uniqueId.orEmpty()) != messageId) {
-        return ChatNotificationPreview.missed("push preview is for another file")
-    }
-    plainChatMessageMiss(preview.fileType, preview.dataType, Uuid.parseOrNull(preview.groupId.orEmpty()), conversationId)
-        ?.let { return ChatNotificationPreview.missed(it) }
-    val content = preview.content?.takeIf { it.isNotEmpty() } ?: return null
-
-    val result = messageText(content, "from the push")
-    return if (preview.contentTruncated && result.text != null) ChatNotificationPreview.shown("${result.text}…") else result
-}
-
 internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): ChatNotificationPreview {
     val appData = file.fileMetadata.appData
     val dataType = appData.dataType ?: PLAIN_MESSAGE_DATA_TYPE
-    val miss = plainChatMessageMiss(appData.fileType, dataType, appData.groupId, conversationId) ?: when {
+    val miss = when {
+        appData.fileType != CHAT_MESSAGE_FILE_TYPE -> "fileType ${appData.fileType}"
+        dataType != PLAIN_MESSAGE_DATA_TYPE -> "dataType $dataType"
+        appData.groupId != conversationId -> "groupId ${appData.groupId} is not the push typeId"
         file.isSoftDeleted() -> "deleted (${file.fileState}, ${appData.archivalStatus})"
         appData.content.isNullOrEmpty() -> "no content (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
         appData.content == DECRYPTION_FAILURE_APP_DATA -> "content failed to decrypt"
@@ -137,21 +94,12 @@ internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): ChatN
     }
     if (miss != null) return ChatNotificationPreview.missed(miss)
 
-    return messageText(appData.content!!, "serverFileIsEncrypted=${file.serverFileIsEncrypted}")
-}
-
-private fun plainChatMessageMiss(fileType: Int?, dataType: Int, groupId: Uuid?, conversationId: Uuid): String? = when {
-    fileType != CHAT_MESSAGE_FILE_TYPE -> "fileType $fileType"
-    dataType != PLAIN_MESSAGE_DATA_TYPE -> "dataType $dataType"
-    groupId != conversationId -> "groupId $groupId is not the push typeId"
-    else -> null
-}
-
-private fun messageText(content: String, source: String): ChatNotificationPreview {
     val message = try {
-        OdinSystemSerializer.json.parseToJsonElement(content).jsonObject["message"]
+        OdinSystemSerializer.json.parseToJsonElement(appData.content!!).jsonObject["message"]
     } catch (_: Exception) {
-        return ChatNotificationPreview.missed("content is not a json object ($source)")
+        return ChatNotificationPreview.missed(
+            "content is not a json object (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
+        )
     }
     val text = when (message) {
         is JsonPrimitive -> message.content.takeIf { message.isString }
