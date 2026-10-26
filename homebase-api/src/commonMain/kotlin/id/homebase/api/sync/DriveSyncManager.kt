@@ -55,6 +55,7 @@ class DriveSyncManager(
     // syncAll collection so the greedy budget serves every small drive first; a big drive only
     // takes the remainder and continues per-drive. Assembled in AppModule, same key space as
     // [mandatoryDrives]; this layer stays drive-agnostic.
+    private val collectionHead: List<Uuid> = emptyList(),
     private val collectionTail: List<Uuid> = emptyList(),
 ) {
     // Immutable map reference — always replaced, never mutated in-place, preventing CME.
@@ -272,12 +273,13 @@ class DriveSyncManager(
         // beginBatchedRound holds each drive's sync lock across the round trip, so killroy
         // coalescing and cursor confinement keep exactly sync()'s semantics; every fallback —
         // whole-call failure, failed section, missing section — is resumeBatchedRound(null),
-        // which IS today's per-drive round. [collectionTail] drives go last so the greedy
-        // budget serves every small drive before a large backlog takes the remainder.
+        // which IS today's per-drive round. [collectionHead] drives go first so they get first
+        // claim on the greedy budget; [collectionTail] drives go last, after every small drive.
         // Remote (owner-hosted) drives can't join an own-host collection: kicked fire-and-forget
         // as before, so an offline owner never stalls the aggregate round.
+        val headOrder = collectionHead.withIndex().associate { (i, id) -> id to i - collectionHead.size }
         val tailOrder = collectionTail.withIndex().associate { (i, id) -> id to i }
-        val ordered = snapshot.sortedBy { (driveId, _) -> tailOrder[driveId] ?: -1 }
+        val ordered = snapshot.sortedBy { (driveId, _) -> headOrder[driveId] ?: tailOrder[driveId] ?: -1 }
 
         val rounds = mutableListOf<BatchedDrive>()
         for ((driveId, sync) in ordered) {

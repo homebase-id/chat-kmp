@@ -546,12 +546,12 @@ val appModule = module {
                     ),
                 ),
             ),
-            // Likely-large drives go LAST in the syncAll batch-collection so the greedy budget
-            // serves every small drive first; chat is expected largest and goes very last.
+            // Chat is the landing screen (and web's first paint): first claim on the greedy budget.
+            // Feed and Moments are large and not visible on first paint: after every small drive.
+            collectionHead = listOf(chatLabeledDrive.drive.alias),
             collectionTail = listOf(
                 feedLabeledDrive.drive.alias,
                 momentsLabeledDrive.drive.alias,
-                chatLabeledDrive.drive.alias,
             ),
         )
     }

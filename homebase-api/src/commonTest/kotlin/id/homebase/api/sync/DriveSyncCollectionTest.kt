@@ -68,6 +68,7 @@ class DriveSyncCollectionTest {
         scope: CoroutineScope,
         mockEngine: MockEngine,
         mandatoryDrives: Map<Uuid, String>,
+        collectionHead: List<Uuid> = emptyList(),
         collectionTail: List<Uuid> = emptyList(),
         driveSyncPolicies: Map<Uuid, DriveSyncPolicy> = emptyMap(),
     ): DriveSyncManager {
@@ -80,6 +81,7 @@ class DriveSyncCollectionTest {
             databaseManager = db,
             mandatoryDrives = mandatoryDrives,
             driveSyncPolicies = driveSyncPolicies,
+            collectionHead = collectionHead,
             collectionTail = collectionTail,
         )
     }
@@ -510,7 +512,7 @@ class DriveSyncCollectionTest {
     }
 
     @Test
-    fun collectionTailDrivesOrderedLast() {
+    fun collectionHeadFirstAndTailLast() {
         val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
@@ -535,7 +537,8 @@ class DriveSyncCollectionTest {
             val manager = buildManager(
                 db, buildCredentials(), eventBus, backgroundScope, engine,
                 mandatoryDrives = mounts,
-                collectionTail = listOf(feedLike, chatLike), // chat expected largest → very last
+                collectionHead = listOf(chatLike),
+                collectionTail = listOf(feedLike),
             )
 
             manager.start()
@@ -546,9 +549,9 @@ class DriveSyncCollectionTest {
             val parsed = parseCollectionRequest(engine.requestHistory.single { isCollectionPath(it) })
             val names = parsed.queries.map { it.name }
             assertEquals(
-                listOf(small[0].toString(), small[1].toString(), feedLike.toString(), chatLike.toString()),
+                listOf(chatLike.toString(), small[0].toString(), small[1].toString(), feedLike.toString()),
                 names,
-                "Small drives first (mount order), then the tail in its given order, chat very last"
+                "Head drive first, then small drives (mount order), then the tail"
             )
         }
         db.close()
