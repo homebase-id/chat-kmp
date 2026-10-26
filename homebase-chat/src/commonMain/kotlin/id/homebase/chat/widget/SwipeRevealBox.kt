@@ -22,16 +22,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
@@ -149,6 +154,69 @@ fun SwipeRevealBox(
         }
     }
 
+    // A nested horizontal scroller (code block, table) consumes the pointer events, so the loop
+    // below never sees its drags. What the scroller cannot use arrives here as leftover instead,
+    // but only when it had not scrolled yet: a swipe that began mid-scroll stays a scroll.
+    val handoff = remember {
+        object : NestedScrollConnection {
+            var scrolledThisGesture = false
+            var handingOff = false
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!handingOff || source != NestedScrollSource.UserInput) return Offset.Zero
+                val back = if (offsetPx > 0f) available.x.coerceAtMost(0f) else available.x.coerceAtLeast(0f)
+                val used = if (back.absoluteValue > offsetPx.absoluteValue) -offsetPx else back
+                if (used != 0f) offsetPx += used
+                return Offset(used, 0f)
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (consumed.x != 0f) scrolledThisGesture = true
+                if (scrolledThisGesture || available.x == 0f) return Offset.Zero
+                var next = offsetPx + available.x
+                if (currentOnSwipeRight == null) next = next.coerceAtMost(0f)
+                if (currentOnSwipeLeft == null) next = next.coerceAtLeast(0f)
+                val clamped = next.coerceIn(-currentMaxOffsetPx, currentMaxOffsetPx)
+                if (!handingOff) {
+                    handingOff = true
+                    isDragging = true
+                    hapticFired = false
+                    slideOutDirection = 0
+                }
+                val used = clamped - offsetPx
+                offsetPx = clamped
+                if (!hapticFired && offsetPx.absoluteValue >= currentThresholdPx) {
+                    hapticFired = true
+                    haptics.perform(HapticEvent.LongPress)
+                } else if (hapticFired && offsetPx.absoluteValue < currentThresholdPx) {
+                    hapticFired = false
+                }
+                return Offset(used, 0f)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val wasHandingOff = handingOff
+                scrolledThisGesture = false
+                handingOff = false
+                if (!wasHandingOff) return Velocity.Zero
+                val commit = shouldCommitSwipe(
+                    offsetPx = offsetPx,
+                    thresholdPx = currentThresholdPx,
+                    velocityPxPerSecond = available.x,
+                    escapeVelocityPxPerSecond = currentEscapeVelocityPx,
+                )
+                if (commit) {
+                    val toRight = offsetPx > 0f
+                    if (toRight) currentOnSwipeRight?.invoke() else currentOnSwipeLeft?.invoke()
+                    if (if (toRight) currentSlideOutRight else currentSlideOutLeft) slideOutDirection = if (toRight) 1 else -1
+                }
+                isDragging = false
+                return available
+            }
+        }
+    }
+
     val revealState = remember { SwipeRevealState({ offsetPx }, { currentThresholdPx }) }
     val revealing by remember { derivedStateOf { offsetPx != 0f } }
 
@@ -160,6 +228,7 @@ fun SwipeRevealBox(
         Box(
             modifier = Modifier
                 .absoluteOffset { IntOffset(offsetPx.roundToInt(), 0) }
+                .nestedScroll(handoff)
                 .pointerInput(Unit) {
                     val slop = viewConfiguration.touchSlop
                     awaitEachGesture {
