@@ -92,6 +92,7 @@ data class ProfileCardUiState(
     val contentSaves: Int = 0,
     val contentFailures: Int = 0,
     val pendingImport: CardAudience? = null,
+    val pendingPublic: PendingPublic? = null,
 ) {
     internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience)
 
@@ -127,6 +128,15 @@ data class ProfileCardUiState(
 
 data class CardCircle(val id: String, val name: String)
 
+data class PendingPublic(
+    val type: String,
+    val data: JsonObject,
+    val audience: ProfileAudience,
+    val existing: ProfileAttribute?,
+    val itemLabel: String,
+    val announce: Boolean = false,
+)
+
 internal data class CardImportSource(val audience: CardAudience, val newItems: Int)
 
 sealed interface ProfileCardEvent {
@@ -141,6 +151,7 @@ sealed interface ProfileCardEvent {
     data object ContentSaveFailed : ProfileCardEvent
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
+    data class AudienceChanged(val itemLabel: String, val nowPublic: Boolean) : ProfileCardEvent
 }
 
 interface ProfileCardSource {
@@ -313,7 +324,7 @@ class ProfileCardViewModel(
     private var cardJob: Job? = null
     private var circles: List<CardCircle> = emptyList()
     private var importUndo: List<ProfileAttribute>? = null
-    private val audiencesBeforePublic = mutableMapOf<Uuid, ProfileAudience>()
+    private var audienceUndo: ProfileAttribute? = null
     private val templateLock = Mutex()
     private var shownBefore = false
     private var shownAt: TimeMark? = null
@@ -477,14 +488,38 @@ class ProfileCardViewModel(
         }
     }
 
-    fun onContentToggled(id: Uuid, on: Boolean) {
+    fun onContentAudienceChosen(id: Uuid, audience: ProfileAudience) {
         val state = _uiState.value
-        if (state.isContentBusy) return
+        if (state.isContentBusy || !audience.isSavableWith(state.circles)) return
         val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
-        val next = item.audience.shownOn(state.selectedAudience, on, audiencesBeforePublic[id], state.circles) ?: return
-        if (on && state.selectedAudience == CardAudience.Public) audiencesBeforePublic[id] = item.audience
-        writeContent(attribute.type, attribute.data, next, attribute)
+        if (audience == attribute.audience(state.circles)) return
+        requestWrite(attribute.type, attribute.data, audience, attribute, item.text, announce = true)
+    }
+
+    fun onPublicConfirmed() {
+        val pending = _uiState.value.pendingPublic ?: return
+        _uiState.update { it.copy(pendingPublic = null) }
+        if (_uiState.value.isContentBusy) return
+        writeContent(pending.type, pending.data, pending.audience, pending.existing, pending.announce, pending.itemLabel)
+    }
+
+    fun onPublicCancelled() = _uiState.update { it.copy(pendingPublic = null) }
+
+    private fun requestWrite(
+        type: String,
+        data: JsonObject,
+        audience: ProfileAudience,
+        existing: ProfileAttribute?,
+        itemLabel: String,
+        announce: Boolean = false,
+    ) {
+        val wasPublic = existing?.audience(_uiState.value.circles) == ProfileAudience.Public
+        if (audience == ProfileAudience.Public && !wasPublic) {
+            _uiState.update { it.copy(pendingPublic = PendingPublic(type, data, audience, existing, itemLabel, announce)) }
+            return
+        }
+        writeContent(type, data, audience, existing, announce, itemLabel)
     }
 
     fun onContentAdded(type: String, updates: Map<String, String>) {
@@ -496,7 +531,7 @@ class ProfileCardViewModel(
         val existingAudience = existing?.audience(state.circles)
         val audience = existingAudience?.let { it.shownOn(state.selectedAudience, true, null) ?: it } ?: state.selectedAudience.newItemAudience()
         val edit = computeAttributeEdit(existing, type, updates, audience, existingAudience) ?: return
-        writeContent(edit.type, edit.data, edit.audience, existing)
+        requestWrite(edit.type, edit.data, edit.audience, existing, labelOf(state, existing?.id, updates))
     }
 
     fun onCardSelected(audience: CardAudience) = selectAudience(audience)
@@ -509,8 +544,11 @@ class ProfileCardViewModel(
         if (state.isContentBusy || !audience.isSavableWith(state.circles)) return
         val attribute = state.attributes.firstOrNull { it.id == id } ?: return
         val edit = computeAttributeEdit(attribute, attribute.type, updates, audience, attribute.audience(state.circles)) ?: return
-        writeContent(edit.type, edit.data, edit.audience, attribute)
+        requestWrite(edit.type, edit.data, edit.audience, attribute, labelOf(state, id, updates))
     }
+
+    private fun labelOf(state: ProfileCardUiState, id: Uuid?, updates: Map<String, String>): String =
+        updates.values.filter { it.isNotBlank() }.joinToString(", ").ifBlank { state.contentItems.firstOrNull { it.id == id }?.text.orEmpty() }
 
     fun onContentDeleted(id: Uuid) {
         val state = _uiState.value
@@ -525,12 +563,20 @@ class ProfileCardViewModel(
     }
 
     private fun dropImportUndo() {
-        if (importUndo == null) return
+        if (importUndo == null && audienceUndo == null) return
         importUndo = null
+        audienceUndo = null
         _events.tryEmit(ProfileCardEvent.ImportUndoExpired)
     }
 
-    private fun writeContent(type: String, data: JsonObject, audience: ProfileAudience, existing: ProfileAttribute?) {
+    private fun writeContent(
+        type: String,
+        data: JsonObject,
+        audience: ProfileAudience,
+        existing: ProfileAttribute?,
+        announce: Boolean = false,
+        itemLabel: String = "",
+    ) {
         dropImportUndo()
         val card = _uiState.value.selectedAudience
         _uiState.update { it.copy(isContentBusy = true) }
@@ -543,6 +589,29 @@ class ProfileCardViewModel(
                 return@launch
             }
             applyAttributes(listOf(saved), saved = true, removed = deleteDuplicates(existing))
+            val movedAcrossPublic = existing != null && (audience == ProfileAudience.Public) != (existing.audience(circles) == ProfileAudience.Public)
+            if (announce && movedAcrossPublic) {
+                audienceUndo = existing
+                _events.tryEmit(ProfileCardEvent.AudienceChanged(itemLabel, nowPublic = audience == ProfileAudience.Public))
+            }
+        }
+    }
+
+    fun onAudienceUndone() {
+        val previous = audienceUndo ?: return
+        if (_uiState.value.isContentBusy) return
+        audienceUndo = null
+        _uiState.update { it.copy(isContentBusy = true) }
+        viewModelScope.launch {
+            val current = _uiState.value.attributes.firstOrNull { it.id == previous.id }
+            if (current == null) {
+                applyAttributes(emptyList(), saved = false)
+                return@launch
+            }
+            val kept = existingCircles(previous.acl.circleIdList.orEmpty())
+            val restored = restoreAcls(listOf(previous to current), kept)
+            if (restored.failed.isNotEmpty()) _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
+            applyAttributes(restored.attributes, saved = restored.failed.isEmpty(), failed = restored.failed.isNotEmpty())
         }
     }
 
@@ -590,7 +659,6 @@ class ProfileCardViewModel(
         val plan = importPlan(state.attributes, state.circles, from, state.selectedAudience)
         if (plan.isEmpty()) return
         dropImportUndo()
-        if (state.selectedAudience == CardAudience.Public) plan.forEach { audiencesBeforePublic[it.attribute.id] = it.previous }
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
             persistTemplateIfUnsaved(state.selectedAudience)
@@ -601,7 +669,6 @@ class ProfileCardViewModel(
                     source.saveProfileAttribute(step.attribute.type, step.attribute.data, step.next.keepingOtherCircles(kept), step.attribute)
                 }
                 if (saved == null) {
-                    plan.forEach { audiencesBeforePublic.remove(it.attribute.id) }
                     val rolledBack = restoreAcls(written, kept).attributes
                     _events.tryEmit(ProfileCardEvent.ContentSaveFailed)
                     applyAttributes(rolledBack, saved = false, failed = true)
@@ -619,7 +686,6 @@ class ProfileCardViewModel(
         val previous = importUndo ?: return
         if (_uiState.value.isContentBusy) return
         importUndo = null
-        previous.forEach { audiencesBeforePublic.remove(it.id) }
         _uiState.update { it.copy(isContentBusy = true) }
         viewModelScope.launch {
             val current = _uiState.value.attributes.associateBy { it.id }
