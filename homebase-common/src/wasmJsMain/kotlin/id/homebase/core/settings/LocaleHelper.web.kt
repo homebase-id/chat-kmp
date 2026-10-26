@@ -1,9 +1,7 @@
 package id.homebase.core.settings
 
-@OptIn(ExperimentalWasmJsInterop::class)
 actual fun getSystemLocale(): String = js("navigator.language || navigator.userLanguage || 'en'")
 
-@OptIn(ExperimentalWasmJsInterop::class)
 actual fun setPlatformSystemLocale(languageCode: String): Unit = js(
     """{
         if (languageCode === 'system') {

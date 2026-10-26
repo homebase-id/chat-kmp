@@ -31,6 +31,16 @@ val fetchSqlCipherXcframework by tasks.registering(Exec::class) {
 kotlin {
     applyDefaultHierarchyTemplate()
 
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+    sourceSets.matching { it.name.startsWith("wasmJs") }.configureEach {
+        languageSettings.optIn("kotlin.js.ExperimentalWasmJsInterop")
+    }
+    sourceSets.matching { s -> listOf("native", "apple", "ios").any { s.name.startsWith(it) } }.configureEach {
+        languageSettings.optIn("kotlinx.cinterop.BetaInteropApi")
+    }
+
     // ✅ GLOBAL opt-ins for ALL source sets & targets
     sourceSets.all {
         languageSettings.apply {
@@ -40,9 +50,6 @@ kotlin {
             optIn("kotlin.time.ExperimentalTime")
             optIn("dev.whyoleg.cryptography.DelicateCryptographyApi")
         }
-    }
-    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
-        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
     }
 
     // Target declarations - add or remove as needed below. These define
@@ -266,6 +273,10 @@ kotlin {
         // compilable for the cross-platform FfmpegDecoderCommonTest without losing JVM/iOS
         // coverage of these tests.
         val jvmAndNativeTest = create("jvmAndNativeTest") { dependsOn(commonTest.get()) }
+        val skiaTest = create("skiaTest") { dependsOn(commonTest.get()) }
+        jvmTest.get().dependsOn(skiaTest)
+        nativeTest.get().dependsOn(skiaTest)
+        wasmJsTest.get().dependsOn(skiaTest)
         jvmTest.get().dependsOn(jvmAndNativeTest)
         nativeTest.get().dependsOn(jvmAndNativeTest)
         // androidHostTest is in the "test" source-set tree (runs on the host JVM with the

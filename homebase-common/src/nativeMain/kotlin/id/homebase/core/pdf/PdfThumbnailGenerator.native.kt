@@ -2,7 +2,6 @@
 
 package id.homebase.core.pdf
 
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.useContents
@@ -23,6 +22,7 @@ import platform.CoreGraphics.CGImageRelease
 import platform.CoreGraphics.CGPDFDocumentCreateWithProvider
 import platform.CoreGraphics.CGPDFDocumentCreateWithURL
 import platform.CoreGraphics.CGPDFDocumentGetNumberOfPages
+import platform.CoreGraphics.CGPDFDocumentIsUnlocked
 import platform.CoreGraphics.CGPDFDocumentGetPage
 import platform.CoreGraphics.CGPDFDocumentRef
 import platform.CoreGraphics.CGPDFDocumentRelease
@@ -89,6 +89,7 @@ private fun renderFirstPageThumbnail(
     document: CGPDFDocumentRef,
     maxWidth: Int,
 ): PdfThumbnailResult? {
+    if (!CGPDFDocumentIsUnlocked(document)) return null
     val pageCount = CGPDFDocumentGetNumberOfPages(document).toInt()
     val page = CGPDFDocumentGetPage(document, 1u) ?: return null
     val mediaBox = CGPDFPageGetBoxRect(page, kCGPDFMediaBox)
@@ -138,7 +139,6 @@ private fun renderFirstPageThumbnail(
     }
 }
 
-@OptIn(BetaInteropApi::class)
 private fun NSData.toKotlinByteArray(): ByteArray {
     val length = this.length.toInt()
     if (length == 0) return ByteArray(0)

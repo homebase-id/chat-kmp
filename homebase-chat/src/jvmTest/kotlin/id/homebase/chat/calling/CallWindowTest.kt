@@ -72,7 +72,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -90,7 +89,7 @@ import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 
-@OptIn(ExperimentalCoroutinesApi::class, ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class)
 class CallWindowTest {
     private val sam = "samwise.gamgee.demo.rocks"
 

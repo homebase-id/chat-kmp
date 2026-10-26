@@ -97,7 +97,7 @@ class ChatMarkdownParseCacheTest {
     }
 
     @Test
-    fun softBreaksReparseOnlyWhenPromoted() {
+    fun softBreaksArePromotedToHardBreaks() {
         val plain = parseChatMarkdown("one line")
         val multi = parseChatMarkdown("one\ntwo")
         assertEquals("one line", plain.text)

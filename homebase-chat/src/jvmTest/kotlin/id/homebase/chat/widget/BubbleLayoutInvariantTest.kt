@@ -18,7 +18,14 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.russhwolf.settings.PreferencesSettings
+import id.homebase.core.settings.UserPreferences
+import java.util.prefs.Preferences
 import coil3.ImageLoader
+import kotlinx.collections.immutable.persistentListOf
+import id.homebase.api.client.drives.files.ReactionEntry
+import id.homebase.api.client.drives.files.ReactionSummary
 import coil3.PlatformContext
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -50,6 +57,7 @@ import org.koin.dsl.module
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -90,6 +98,7 @@ class BubbleLayoutInvariantTest {
     private val koin = koinConfiguration {
         modules(module {
             single { AvatarResolver(MutableStateFlow(emptyList())) }
+            single { UserPreferences(PreferencesSettings(Preferences.userRoot().node("/id/homebase/test"))) }
             // The Koin singletons any rendered MediaItem resolves. An empty Coil
             // ImageLoader is enough — the images never need to decode; the invariants
             // are about the media container's laid-out bounds, not pixel content.
@@ -904,5 +913,55 @@ class BubbleLayoutInvariantTest {
             assertTrue(exists(ChatBubbleTestTags.CAPTION), "caption missing for $cap")
             assertTrue(!exists(ChatBubbleTestTags.MEDIA), "unexpected media for text-only $cap")
         }
+    }
+
+    @Test
+    fun messageBubbleShape_aloneFullyRound_otherPositionsUnchanged() {
+        val big = Dimens.Message.cornerRadius
+        val small = Dimens.Message.cornerCollapseRadius
+        for (sent in listOf(true, false)) {
+            assertEquals(RoundedCornerShape(big), messageBubbleShape(sent, MessageClusterPosition.ALONE))
+        }
+        assertEquals(RoundedCornerShape(big, big, small, big), messageBubbleShape(true, MessageClusterPosition.START))
+        assertEquals(RoundedCornerShape(big, small, small, big), messageBubbleShape(true, MessageClusterPosition.MIDDLE))
+        assertEquals(RoundedCornerShape(big, small, big, big), messageBubbleShape(true, MessageClusterPosition.END))
+        assertEquals(RoundedCornerShape(big, big, big, small), messageBubbleShape(false, MessageClusterPosition.START))
+        assertEquals(RoundedCornerShape(small, big, big, small), messageBubbleShape(false, MessageClusterPosition.MIDDLE))
+        assertEquals(RoundedCornerShape(small, big, big, big), messageBubbleShape(false, MessageClusterPosition.END))
+    }
+
+    @Test
+    fun groupAvatar_bottomFlushWithBubble_withAndWithoutReaction() = runComposeUiTest {
+        val failures = mutableListOf<String>()
+        val base = Case("text/recv", sent = false, images = 0, caption = Caption.SHORT).message()
+        val withReaction = base.copy(
+            reactionPreview = ReactionSummary(
+                reactions = mapOf("alice.example.com" to ReactionEntry(key = "x", count = 1, reactionContent = "x")),
+            ),
+        )
+        for ((name, msg) in listOf("no reaction" to base, "reaction" to withReaction)) {
+            setContent {
+                Host {
+                    ReceivedMessageBubble(
+                        message = msg,
+                        userDefaultReactions = persistentListOf(),
+                        decryptedFiles = persistentMapOf(),
+                        isGroupConversation = true,
+                        clusterPosition = MessageClusterPosition.ALONE,
+                        onDelete = {},
+                        onMarkAsRead = {},
+                        onMediaClick = {},
+                        onClickMessageId = {},
+                        downloadingFiles = emptySet(),
+                    )
+                }
+            }
+            waitForIdle()
+            val avatar = boundsOf(ChatBubbleTestTags.AVATAR)
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            if (!approx(avatar.bottom.value, bubble.bottom.value))
+                failures += "[$name] avatar bottom ${avatar.bottom.value}dp vs bubble bottom ${bubble.bottom.value}dp"
+        }
+        assertTrue(failures.isEmpty(), "avatar flush failures:\n" + failures.joinToString("\n"))
     }
 }

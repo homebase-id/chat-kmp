@@ -18,3 +18,7 @@ internal actual fun createFileLogWriter(
 internal actual fun listHomebaseLogFiles(logDirectory: Path): List<Path> = emptyList()
 
 internal actual fun deleteHomebaseLogFiles(logDirectory: Path): Boolean = true
+
+internal actual fun <T> useHomebaseLogLines(logDirectory: Path, block: (List<Sequence<String>>) -> T): T = block(emptyList())
+
+internal actual fun writeLogExport(file: Path, text: String): Boolean = false

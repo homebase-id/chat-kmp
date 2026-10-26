@@ -1,7 +1,6 @@
 package id.homebase.core.vault
 
 import id.homebase.core.sync.createTestDatabaseManager
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -14,7 +13,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
-@OptIn(ExperimentalCoroutinesApi::class, ExperimentalTime::class)
+@OptIn(ExperimentalTime::class)
 class VaultPreferencesAuthSessionTest {
 
     private class MutableClock(var current: Instant) : Clock {

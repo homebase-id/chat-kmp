@@ -1,5 +1,3 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
-
 package id.homebase.core.clipboard
 
 import id.homebase.api.file.readWebFileBytes

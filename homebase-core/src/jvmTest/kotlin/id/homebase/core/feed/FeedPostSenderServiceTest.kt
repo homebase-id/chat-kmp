@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalCoroutinesApi::class)
-
 package id.homebase.core.feed
 
 import id.homebase.api.client.KeyHeader
@@ -15,7 +13,6 @@ import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
