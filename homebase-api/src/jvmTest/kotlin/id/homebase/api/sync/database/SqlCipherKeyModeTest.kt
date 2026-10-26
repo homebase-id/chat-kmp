@@ -79,7 +79,7 @@ class SqlCipherKeyModeTest {
 
         val cached = assertNotNull(store.value, "raw key should be cached for the next launch")
         assertEquals(SqlCipherKeyMode.deriveRawKeyHex(passphrase, SqlCipherKeyMode.readSalt(db)), cached)
-        assertEquals("kept", readMarker(cipherUrl(db, SqlCipherKeyMode.rawKey(cached))))
+        assertEquals("kept", readMarker(cipherUrl(db, SqlCipherRawKey.format(cached))))
         assertEquals(
             "kept",
             readMarker(cipherUrl(db, passphrase)),
@@ -143,13 +143,13 @@ class SqlCipherKeyModeTest {
             driver.execute(null, "INSERT INTO probe VALUES ('born-raw')", 0)
         }
         val cached = assertNotNull(store.value)
-        assertTrue(SqlCipherKeyMode.isRawKeyHex(cached))
+        assertTrue(SqlCipherRawKey.isHex(cached))
 
         assertEquals("born-raw", openKeyedSqliteDriver(db, "unused-passphrase", store, inline).marker())
-        assertEquals("born-raw", readMarker(cipherUrl(db, SqlCipherKeyMode.rawKey(cached))))
+        assertEquals("born-raw", readMarker(cipherUrl(db, SqlCipherRawKey.format(cached))))
         assertEquals(1, store.writes, "reopening must reuse the cached key")
         assertFalse(
-            SqlCipherKeyMode.isRawKeyHex("not-hex"),
+            SqlCipherRawKey.isHex("not-hex"),
             "hex validation must reject a garbled cache entry",
         )
     }
@@ -176,7 +176,7 @@ class SqlCipherKeyModeTest {
 
         assertEquals(1, store.writes, "nothing may be written while the key can't be read")
         assertEquals(key, store.value)
-        assertEquals("born-raw", readMarker(cipherUrl(db, SqlCipherKeyMode.rawKey(key))))
+        assertEquals("born-raw", readMarker(cipherUrl(db, SqlCipherRawKey.format(key))))
     }
 
     @Test
@@ -251,7 +251,7 @@ class SqlCipherKeyModeTest {
 
         SqlCipherKeyMode.openDriver(db, passphrase, store, inline, recordingOpen(db, keys)).close()
         assertEquals(listOf<String?>(passphrase), keys, "the first launch after the update opens with the passphrase, once")
-        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        val raw = SqlCipherRawKey.format(assertNotNull(store.value))
 
         keys.clear()
         repeat(3) {
@@ -273,7 +273,7 @@ class SqlCipherKeyModeTest {
         }
         assertEquals("born-raw", SqlCipherKeyMode.openDriver(db, passphrase, store, noDerivation, recordingOpen(db, keys)).marker())
 
-        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        val raw = SqlCipherRawKey.format(assertNotNull(store.value))
         assertEquals(listOf<String?>(raw, raw), keys)
     }
 
@@ -285,7 +285,7 @@ class SqlCipherKeyModeTest {
         val c = SqlCipherKeyMode.deriveRawKeyHex("passphrase", ByteArray(16))
 
         assertEquals(a, b)
-        assertTrue(SqlCipherKeyMode.isRawKeyHex(a))
+        assertTrue(SqlCipherRawKey.isHex(a))
         assertTrue(a != c, "the file's own salt must feed the derivation")
     }
 }

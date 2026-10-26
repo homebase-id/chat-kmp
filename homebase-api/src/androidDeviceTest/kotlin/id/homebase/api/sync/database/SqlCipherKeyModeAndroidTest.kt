@@ -51,7 +51,7 @@ class SqlCipherKeyModeAndroidTest {
 
         assertEquals("kept", openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.marker())
 
-        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        val raw = SqlCipherRawKey.format(assertNotNull(store.value))
         assertEquals("kept", openAndroidSqliteDriver(context, DB, raw).marker())
         assertEquals("kept", openAndroidSqliteDriver(context, DB, PASSPHRASE).marker(), "the file must not be re-encrypted")
     }
@@ -74,7 +74,7 @@ class SqlCipherKeyModeAndroidTest {
         val store = FakeStore()
 
         openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.createMarker()
-        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        val raw = SqlCipherRawKey.format(assertNotNull(store.value))
 
         assertEquals("kept", openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.marker())
         assertEquals("kept", openAndroidSqliteDriver(context, DB, raw).marker())
