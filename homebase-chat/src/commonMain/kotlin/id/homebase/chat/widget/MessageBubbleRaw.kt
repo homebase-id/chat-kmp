@@ -1389,14 +1389,14 @@ internal fun messageBubbleShape(sentByYou: Boolean, clusterPosition: MessageClus
     val small = Dimens.Message.cornerCollapseRadius
     return if (sentByYou) {
         when (clusterPosition) {
-            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big)
             MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
             MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
             MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
         }
     } else {
         when (clusterPosition) {
-            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big)
             MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
             MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
             MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)
