@@ -8,17 +8,10 @@ expect fun getImageFromClipboard(): ByteArray?
 
 class ClipboardContents(val image: ByteArray?, val text: String?)
 
-/**
- * Reads the clipboard's image (original bytes) and plain text for a menu Paste, in one read so web
- * asks the browser once. suspend for web's async Clipboard API; other platforms read synchronously.
- */
+/** Image (original bytes) and plain text in one read, so web asks the browser once. */
 expect suspend fun readClipboard(): ClipboardContents
 
-/**
- * Whether the clipboard may hold an image, checked without reading it (so iOS shows no paste
- * alert and Android no paste toast). False only when the platform can tell there is none; web
- * cannot tell without a permissioned read, so it is always true there.
- */
+/** Checked without reading, so iOS shows no paste alert; web cannot tell and always says true. */
 expect fun clipboardMayHoldImage(): Boolean
 
 // Pure mime-selection core, stdlib-typed so it's unit-testable without Robolectric/mockito:

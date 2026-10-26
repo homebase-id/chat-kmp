@@ -4,10 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 /**
- * Makes the text context menu (and Android's floating toolbar) offer one Paste that also takes
- * images. While [clipboardMayHoldImage] is false the built-in Paste is left alone, so a text paste
- * keeps the editor's own handling; otherwise the built-in is replaced by an item that runs [onPaste],
- * which reads the clipboard itself ([readClipboard]).
+ * One Paste in the text context menu that also takes images: replaces the built-in Paste (or, on
+ * iOS, takes its slot) while [clipboardMayHoldImage], running [onPaste], which reads [readClipboard].
  */
 @Composable
 expect fun Modifier.pasteContextMenuItem(label: String, onPaste: () -> Unit): Modifier
