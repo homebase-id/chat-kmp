@@ -18,9 +18,12 @@ internal class FakeCameraEngine(initial: CameraUiState = DefaultFakeState) : Cam
     var reportsRecordingStart = true
     val calls = mutableListOf<String>()
 
+    /** Like a real bind, which starts the new lens at 1x. */
+    var resetsZoomOnLens = false
+
     override fun setLens(lens: CameraLens) {
         calls += "lens:$lens"
-        uiState.update { it.copy(lens = lens, hasPhotoFlash = lens == CameraLens.Back, hasTorch = lens == CameraLens.Back, focusPoint = null, focusLocked = false) }
+        uiState.update { it.copy(zoomRatio = if (resetsZoomOnLens) 1f else it.zoomRatio, maxZoom = if (resetsZoomOnLens && lens == CameraLens.Front) 5f else it.maxZoom, lens = lens, hasPhotoFlash = lens == CameraLens.Back, hasTorch = lens == CameraLens.Back, focusPoint = null, focusLocked = false) }
     }
 
     /** Leaves an animated zoom at its start, so a test can step the ramp itself. */

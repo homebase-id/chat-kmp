@@ -90,6 +90,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.rememberResourceEnvironment
@@ -110,6 +111,9 @@ private const val FLING_DP_PER_SECOND = 800f
 private const val CAPTURE_FEEDBACK_MS = 180L
 private const val ZOOM_READOUT_LINGER_MS = 600L
 private const val PRESET_ARRIVAL_TOLERANCE = 0.005f
+private const val ZOOM_RESTORE_WAIT_MS = 2_000L
+
+private class KeptZoom(val ratio: Float)
 private val ZoomBarFullRange = 240.dp
 private val ExposureTravel = 160.dp
 internal val ShutterRowPadding = 32.dp
@@ -186,6 +190,7 @@ internal fun CameraCaptureContent(
     var barTravel by remember { mutableFloatStateOf(0f) }
     // A tapped preset shows as selected at once while the zoom ramps up to it underneath.
     var presetTarget by remember { mutableStateOf<Float?>(null) }
+    var zoomAcrossFlip by remember { mutableStateOf<KeptZoom?>(null) }
     var focusGate by remember { mutableStateOf(false) }
     var ignoredFocus by remember { mutableStateOf<Offset?>(null) }
     var keyDown by remember { mutableStateOf(false) }
@@ -243,6 +248,15 @@ internal fun CameraCaptureContent(
         presetTarget = null
     }
     LaunchedEffect(ui.lens) { presetTarget = null }
+    LaunchedEffect(zoomAcrossFlip) {
+        val kept = zoomAcrossFlip?.ratio ?: return@LaunchedEffect
+        // The new lens's bind resets zoom; a timeout covers a bind that leaves it alone.
+        val reset = withTimeoutOrNull(ZOOM_RESTORE_WAIT_MS) {
+            snapshotFlow { liveUi.value.zoomRatio }.first { abs(it - kept) > kept * PRESET_ARRIVAL_TOLERANCE }
+        }
+        if (reset != null) engine.setZoomRatio(liveUi.value.clampZoom(kept))
+        zoomAcrossFlip = null
+    }
     LaunchedEffect(ui.focusPoint) {
         if (focusGate && ui.focusPoint != null) ignoredFocus = ui.focusPoint
     }
@@ -360,6 +374,7 @@ internal fun CameraCaptureContent(
             delay(viewConfiguration.doubleTapTimeoutMillis * 2)
             focusGate = false
         }
+        zoomAcrossFlip = KeptZoom(state.zoomRatio)
         engine.setLens(if (state.lens == CameraLens.Back) CameraLens.Front else CameraLens.Back)
     }
 

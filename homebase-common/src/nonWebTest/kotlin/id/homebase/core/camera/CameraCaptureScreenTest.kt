@@ -457,6 +457,17 @@ class CameraCaptureScreenTest {
     }
 
     @Test
+    fun zoomSurvivesALensFlipWithinTheNewLensRange() = runComposeUiTest {
+        val engine = FakeCameraEngine(FakeCameraEngine().uiState.value.copy(zoomRatio = 8f, maxZoom = 10f))
+        engine.resetsZoomOnLens = true
+        showCamera(engine)
+        onNodeWithTag(FLIP_TAG).performClick()
+        waitForIdle()
+        assertEquals(CameraLens.Front, engine.uiState.value.lens)
+        assertEquals(5f, engine.uiState.value.zoomRatio)
+    }
+
+    @Test
     fun doubleTapOnThePreviewFlipsTheLens() = runComposeUiTest {
         val engine = FakeCameraEngine()
         showCamera(engine)
