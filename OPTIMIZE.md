@@ -50,6 +50,24 @@ DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'  
   Not covered yet: ConversationListViewModel's own reads when opening (it needs Koin), the
   push-tap path, mark-as-read, typed messages (polls, events) that auto-pin.
 
+### Chat UI benchmarks (desktop JVM, headless)
+
+```bash
+CHAT_UI_BENCH=1 ./gradlew :homebase-chat:jvmTest --tests '*bench.*Bench*' --rerun
+# CHAT_UI_BENCH_RUNS=30 for tighter timings
+```
+
+- `ChatMarkdownPerfBench`: `parseChatMarkdown` per message kind and per synthetic 50/100-message
+  conversation, cold and through `ChatMarkdownParseCache`; the cache's retained heap at 256
+  entries; `highlightCode` per block. Timings are the median of 15 timed runs after a JIT warm-up.
+- `ComposerRecompositionBench`: restart scopes entered per keystroke in `MessageInputBar`, counted
+  with the runtime's `CompositionObserver` (every composition, subcompositions included) and
+  attributed to the composable that first entered each scope; plus an A/B of the editor's
+  `onFormat` argument. Counts are deterministic.
+- Results go to the test's stdout (`homebase-chat/build/test-results/jvmTest/TEST-*Bench.xml`).
+  Skipped unless `CHAT_UI_BENCH=1`, so CI never runs them.
+- A warm desktop JVM is the best case. A phone, and the first open on a cold process, are slower.
+
 ### On a device
 
 `homebase.log` already carries:
@@ -80,6 +98,49 @@ Median / p95 in ms. The desktop driver opens a new JDBC connection per statement
 All plans use indexes. The chat fetch seeks `idx_chatmessage_convid_userDate`, so conversation
 size barely matters. The per-conversation SQL isn't the slow part of opening a conversation
 on desktop.
+
+### 2026-10-26, 6ee395a35, desktop JVM (macOS, Apple M1 Pro, 16 GB), chat UI benches
+
+Temurin 21.0.12 test JVM, 8 cpus. Two runs back to back agreed within 10%; the first is shown.
+Fixtures are synthetic (`MarkdownFixtures`): mostly short text, some emoji, mentions, links,
+inline formatting, multi-line, lists, a few fenced Kotlin blocks and tables.
+
+| Measurement | Result | Verdict |
+|---|---|---|
+| `parseChatMarkdown`, one short message (plain / emoji / mention / link) | 1.8 / 2.3 / 2.4 / 3.9 µs | |
+| one message: inline formatting / bullet list / 10-line code block / table | 7.0 / 12.1 / 6.7 / 21.9 µs | |
+| one ~4 KB message | 110 µs | |
+| 50-message conversation (3.1K chars), cold / all cache hits | 0.26 / 0.003 ms | no action |
+| 100-message conversation (7.6K chars), cold / all cache hits | 0.54 / 0.008 ms | no action: 3% of a 16 ms frame on JVM |
+| `ChatMarkdownParseCache`, 256 typical messages (avg 67 chars) | 0.19 MiB (of which 0.03 MiB the strings) | no action |
+| `ChatMarkdownParseCache`, 256 ~4 KB messages | 4.8 MiB (of which 1.0 MiB the strings) | no action: that ceiling needs every entry to be a 4 KB message |
+| `highlightCode`, 10-line Kotlin block | 0.15 ms | no action |
+| `highlightCode`, 200-line Kotlin block | 4.8 ms | worth fixing: paid again every time the item scrolls back in |
+| `MessageInputBar`, restart scopes entered per keystroke | 59 (incl. `MessageInputBar` 1, `MessageTextFieldCompact` 1) | see below |
+| scopes from `onFormat = state::applyFormatShortcut` | 0 | no action |
+
+Memory method: `System.gc()` until used heap stops falling, then the used-heap delta of holding
+8 filled caches, divided by 8; 5 samples, median. Spread across samples: 0.18–0.24 MiB (typical),
+4.82–4.83 MiB (long). The parse result's lazy render state is built as rendering would. The
+message strings are counted because the cache key keeps them alive; their share is measured
+separately.
+
+Highlight per scroll-back-in: the highlighted string is `remember`ed inside the bubble, so it's
+dropped when the item leaves the LazyColumn and recomputed on return, even though the parse
+itself comes from the cache. A bubble pays the sum over its fenced blocks.
+
+`onFormat` A/B (parent recomposes, nothing else changes; editor subtree scopes per parent
+recomposition): bound reference 15, remembered lambda 15, no `onFormat` 15, no
+`composerKeyHandler` at all 1. The reference costs nothing extra: what defeats skipping is
+`composerKeyHandler` itself: it builds a new `onPreviewKeyEvent` lambda on
+every call, so `RichTextEditor`'s modifier is never equal and its whole subtree re-runs whenever
+its parent does. In the real bar the parent does recompose on every keystroke (`MessageInputBar`
+and `MessageTextFieldCompact` each enter once per character), so the editor subtree runs anyway.
+Not measured as time; check a keystroke frame on a phone before acting on it.
+
+Still needs the iPhone: the share of the 400–700 ms conversation open spent in
+`parseChatMarkdown` versus layout, cold and warm, and the one-time SQLCipher in-place encryption
+of a large database on an old device.
 
 ## Findings
 
