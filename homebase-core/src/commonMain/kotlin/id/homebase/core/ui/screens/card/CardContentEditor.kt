@@ -26,8 +26,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -85,6 +83,7 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Button
@@ -92,8 +91,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.platform.testTag
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
@@ -418,7 +415,7 @@ private fun EditorRow(
                         Icon(Icons.Outlined.Style, contentDescription = chooseCards)
                     }
                     if (choosing) {
-                        CardsMenu(
+                        CardsSheet(
                             item = item,
                             circles = circles,
                             onApply = onApply,
@@ -444,7 +441,7 @@ internal fun cardsDraftAudience(public: Boolean, ticked: Set<String>, otherIds: 
 }
 
 @Composable
-internal fun CardsMenu(
+internal fun CardsSheet(
     item: CardContentItem,
     circles: List<CardCircle>,
     onApply: (ProfileAudience) -> Unit,
@@ -465,68 +462,74 @@ internal fun CardsMenu(
     var beforePublic by remember { mutableStateOf(emptySet<String>()) }
     val untouched = public == (stored == ProfileAudience.Public) && ticked == initialTicked
     val draft = if (untouched) stored else cardsDraftAudience(public, ticked, otherIds)
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        CardsMenuRow(
-            label = stringResource(MR.string.profile_card_cards_public),
-            checked = public,
-            enabled = !item.required,
-            tag = "cards_menu_public",
-            onClick = {
-                if (public) {
-                    ticked = beforePublic.ifEmpty { allIds }
-                    public = false
-                } else {
-                    beforePublic = ticked
-                    ticked = allIds
-                    public = true
-                }
-            },
-        )
-        circles.forEach { circle ->
-            CardsMenuRow(
-                label = circle.name,
-                checked = circle.id in ticked,
-                enabled = !public,
-                tag = "cards_menu_circle_${circle.id}",
-                onClick = { ticked = if (circle.id in ticked) ticked - circle.id else ticked + circle.id },
-            )
-        }
-        if (draft == ProfileAudience.OnlyMe) {
-            Text(
-                text = stringResource(MR.string.profile_edit_audience_only_me_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.End,
+    AdaptiveSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            TextButton(onClick = onDismiss, modifier = Modifier.testTag("cards_menu_cancel")) { Text(stringResource(MR.string.cancel)) }
-            TextButton(
+            PanelHeader(
+                icon = Icons.Outlined.Style,
+                title = stringResource(MR.string.profile_card_content_choose_cards, item.text),
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            CardsSheetRow(
+                label = stringResource(MR.string.profile_card_cards_public),
+                checked = public,
+                enabled = !item.required,
+                tag = "cards_sheet_public",
                 onClick = {
-                    if (draft != stored) onApply(draft)
-                    onDismiss()
+                    if (public) {
+                        ticked = beforePublic.ifEmpty { allIds }
+                        public = false
+                    } else {
+                        beforePublic = ticked
+                        ticked = allIds
+                        public = true
+                    }
                 },
-                modifier = Modifier.testTag("cards_menu_done"),
-            ) { Text(stringResource(MR.string.done)) }
+            )
+            circles.forEach { circle ->
+                CardsSheetRow(
+                    label = circle.name,
+                    checked = circle.id in ticked,
+                    enabled = !public,
+                    tag = "cards_sheet_circle_${circle.id}",
+                    onClick = { ticked = if (circle.id in ticked) ticked - circle.id else ticked + circle.id },
+                )
+            }
+            if (draft == ProfileAudience.OnlyMe) {
+                Text(
+                    text = stringResource(MR.string.profile_edit_audience_only_me_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { dismiss() }, modifier = Modifier.testTag("cards_sheet_cancel")) {
+                    Text(stringResource(MR.string.cancel))
+                }
+                TextButton(
+                    onClick = { dismiss { onDismiss(); if (draft != stored) onApply(draft) } },
+                    modifier = Modifier.testTag("cards_sheet_done"),
+                ) { Text(stringResource(MR.string.done)) }
+            }
         }
     }
 }
 
 @Composable
-private fun CardsMenuRow(label: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = { Checkbox(checked = checked, onCheckedChange = null, enabled = enabled) },
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.testTag(tag).semantics {
-            role = Role.Checkbox
-            toggleableState = ToggleableState(checked)
-        },
-    )
+private fun CardsSheetRow(label: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(tag)
+            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
+        Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }
 
 @Composable

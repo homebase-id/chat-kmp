@@ -25,7 +25,7 @@ import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-class CardsMenuTest {
+class CardsSheetTest {
 
     private val circles = listOf(
         CardCircle(FRIENDS_CIRCLE_ID, "Friends"),
@@ -51,11 +51,11 @@ class CardsMenuTest {
     ) =
         setContent {
             MaterialTheme {
-                Box { CardsMenu(item = item, circles = menuCircles, onApply = { applied += it }, onDismiss = { dismissed += Unit }) }
+                Box { CardsSheet(item = item, circles = menuCircles, onApply = { applied += it }, onDismiss = { dismissed += Unit }) }
             }
         }
 
-    private fun ComposeUiTest.circle(id: String) = onNodeWithTag("cards_menu_circle_$id")
+    private fun ComposeUiTest.circle(id: String) = onNodeWithTag("cards_sheet_circle_$id")
 
     @Test
     fun tickingPublicTicksAndDisablesEveryCircleAndUntickingRestoresThePreviousTicks() = runComposeUiTest {
@@ -65,10 +65,10 @@ class CardsMenuTest {
         circle(FAMILY_CIRCLE_ID).assertIsOff()
         circle(WORK_CIRCLE_ID).assertIsOff()
 
-        onNodeWithTag("cards_menu_public").performClick()
+        onNodeWithTag("cards_sheet_public").performClick()
         circles.forEach { circle(it.id).assertIsOn().assertIsNotEnabled() }
 
-        onNodeWithTag("cards_menu_public").performClick()
+        onNodeWithTag("cards_sheet_public").performClick()
         circle(FRIENDS_CIRCLE_ID).assertIsOn().assertIsEnabled()
         circle(FAMILY_CIRCLE_ID).assertIsOff().assertIsEnabled()
         circle(WORK_CIRCLE_ID).assertIsOff().assertIsEnabled()
@@ -78,7 +78,7 @@ class CardsMenuTest {
     fun untickingPublicOnAnItemThatWasPublicLeavesEveryCircleTicked() = runComposeUiTest {
         menu(item(ProfileAudience.Public), mutableListOf())
 
-        onNodeWithTag("cards_menu_public").performClick()
+        onNodeWithTag("cards_sheet_public").performClick()
 
         circles.forEach { circle(it.id).assertIsOn().assertIsEnabled() }
     }
@@ -87,22 +87,32 @@ class CardsMenuTest {
     fun aRequiredItemKeepsPublicTickedAndDisabled() = runComposeUiTest {
         menu(item(ProfileAudience.Public, required = true), mutableListOf())
 
-        onNodeWithTag("cards_menu_public").assertIsOn().assertIsNotEnabled()
+        onNodeWithTag("cards_sheet_public").assertIsOn().assertIsNotEnabled()
         circles.forEach { circle(it.id).assertIsOn().assertIsNotEnabled() }
     }
 
     @Test
-    fun doneWithAnUnchangedDraftAndCancelCallNothing() = runComposeUiTest {
+    fun doneWithAnUnchangedDraftDismissesWithoutApplying() = runComposeUiTest {
         val applied = mutableListOf<ProfileAudience>()
         val dismissed = mutableListOf<Unit>()
         menu(item(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))), applied, dismissed)
 
-        onNodeWithTag("cards_menu_done").performClick()
+        onNodeWithTag("cards_sheet_done").performClick()
+        waitUntil { dismissed.isNotEmpty() }
+
         assertEquals(emptyList(), applied)
-        assertEquals(1, dismissed.size)
+    }
+
+    @Test
+    fun cancelDiscardsATouchedDraft() = runComposeUiTest {
+        val applied = mutableListOf<ProfileAudience>()
+        val dismissed = mutableListOf<Unit>()
+        menu(item(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))), applied, dismissed)
 
         circle(FAMILY_CIRCLE_ID).performClick()
-        onNodeWithTag("cards_menu_cancel").performClick()
+        onNodeWithTag("cards_sheet_cancel").performClick()
+        waitUntil { dismissed.isNotEmpty() }
+
         assertEquals(emptyList(), applied)
     }
 
@@ -111,7 +121,8 @@ class CardsMenuTest {
         val applied = mutableListOf<ProfileAudience>()
         menu(item(ProfileAudience.Circles(emptySet(), emptySet())), applied, menuCircles = emptyList())
 
-        onNodeWithTag("cards_menu_done").performClick()
+        onNodeWithTag("cards_sheet_done").performClick()
+        waitForIdle()
 
         assertEquals(emptyList(), applied)
     }
@@ -122,7 +133,8 @@ class CardsMenuTest {
         menu(item(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID), setOf("other-app"))), applied)
 
         circle(FAMILY_CIRCLE_ID).performClick()
-        onNodeWithTag("cards_menu_done").performClick()
+        onNodeWithTag("cards_sheet_done").performClick()
+        waitUntil { applied.isNotEmpty() }
 
         assertEquals(listOf<ProfileAudience>(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID), setOf("other-app"))), applied)
     }
