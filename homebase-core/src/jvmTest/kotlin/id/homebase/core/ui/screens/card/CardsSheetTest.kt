@@ -12,7 +12,9 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.runSkikoComposeUiTest
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
@@ -137,6 +139,18 @@ class CardsSheetTest {
         waitUntil { applied.isNotEmpty() }
 
         assertEquals(listOf<ProfileAudience>(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID), setOf("other-app"))), applied)
+    }
+
+    @Test
+    fun compactWidthBottomSheetAppliesTheDraft() = runSkikoComposeUiTest(size = Size(400f, 800f)) {
+        val applied = mutableListOf<ProfileAudience>()
+        menu(item(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))), applied)
+
+        circle(FAMILY_CIRCLE_ID).performClick()
+        onNodeWithTag("cards_sheet_done").performClick()
+        waitUntil { applied.isNotEmpty() }
+
+        assertEquals(listOf<ProfileAudience>(ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID))), applied)
     }
 
     @Test

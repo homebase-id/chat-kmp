@@ -410,17 +410,12 @@ private fun EditorRow(
             var choosing by remember { mutableStateOf(false) }
             when {
                 pending -> LoadingIndicator(modifier = Modifier.size(40.dp).padding(8.dp))
-                showCardsButton -> Box {
+                showCardsButton -> {
                     IconButton(onClick = { choosing = true }, enabled = enabled, modifier = Modifier.testTag("cards_button")) {
                         Icon(Icons.Outlined.Style, contentDescription = chooseCards)
                     }
                     if (choosing) {
-                        CardsSheet(
-                            item = item,
-                            circles = circles,
-                            onApply = onApply,
-                            onDismiss = { choosing = false },
-                        )
+                        CardsSheet(item = item, circles = circles, onApply = onApply, onDismiss = { choosing = false })
                     }
                 }
                 item.required || item.locked -> Icon(
