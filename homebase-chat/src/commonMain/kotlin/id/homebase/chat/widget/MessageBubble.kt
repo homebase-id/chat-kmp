@@ -571,6 +571,7 @@ fun ReceivedMessageBubble(
             { popupMode = MessagePopupMode.Reaction }
         } else null
 
+    val pillInset = animateReactionPillInset(message.reactionPreview != null)
     Row(
         modifier = Modifier.fillMaxWidth()
             .padding(start = if (isGroupConversation) 8.dp else 16.dp, end = 16.dp)
@@ -585,8 +586,10 @@ fun ReceivedMessageBubble(
             Box(
                 modifier = Modifier
                     .align(Alignment.Bottom)
+                    .bottomInset(pillInset)
                     .padding(start = 4.dp, end = 8.dp)
-                    .size(Dimens.Message.senderAvatarSize),
+                    .size(Dimens.Message.senderAvatarSize)
+                    .testTag(ChatBubbleTestTags.AVATAR),
             ) {
                 if (showAvatar && message.originalAuthor != null) {
                     IdentityAvatar(
@@ -640,7 +643,7 @@ fun ReceivedMessageBubble(
                     Box(Modifier.handbackSource(handback)) {
                         MessageBubbleRaw(
                             modifier = Modifier
-                                .bottomInset(animateReactionPillInset(message.reactionPreview != null))
+                                .bottomInset(pillInset)
                                 .onSizeChanged { bubbleWidthPx = it.width },
                             message = message,
                             decryptedFiles = decryptedFiles,
