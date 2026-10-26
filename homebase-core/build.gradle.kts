@@ -21,6 +21,13 @@ sqldelight {
 kotlin {
     applyDefaultHierarchyTemplate()
 
+    sourceSets.matching { it.name.startsWith("wasmJs") }.configureEach {
+        languageSettings.optIn("kotlin.js.ExperimentalWasmJsInterop")
+    }
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+
     android {
         namespace = "id.homebase.core"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
@@ -155,6 +162,7 @@ kotlin {
             // consume homebase-chat normally and got these transitively.)
             implementation(libs.markdown.renderer)
             implementation(libs.markdown.renderer.m3)
+            implementation(libs.markdown.renderer.code)
             implementation(libs.markdown.renderer.coil3)
             implementation(libs.filekit.dialogs.compose)
         }

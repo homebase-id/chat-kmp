@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-
 package id.homebase.chat.viewonce
 
 import id.homebase.api.client.auth.OwnerSession

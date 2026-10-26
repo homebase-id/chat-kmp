@@ -1,6 +1,5 @@
 package id.homebase.core.auth
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -8,7 +7,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 // runTest uses a single-threaded TestDispatcher, so plain Int counters are safe here.
-@OptIn(ExperimentalCoroutinesApi::class)
 class DebouncedActionTest {
 
     @Test

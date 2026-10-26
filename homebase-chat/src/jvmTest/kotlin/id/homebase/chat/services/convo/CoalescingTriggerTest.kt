@@ -1,7 +1,6 @@
 package id.homebase.chat.services.convo
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -18,7 +17,6 @@ import kotlin.test.assertEquals
  * drives it) but with its own [Job] we cancel at the end, so its infinite drain loop doesn't
  * trip runTest's "uncompleted coroutines" check.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class CoalescingTriggerTest {
 
     @Test

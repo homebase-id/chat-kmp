@@ -31,7 +31,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.video_error_generic
 import id.homebase.core.util.KeepScreenOn
 import org.jetbrains.compose.resources.stringResource
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -464,7 +463,6 @@ actual fun VideoPlayerSurface(
     }
 }
 
-@OptIn(BetaInteropApi::class)
 private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
     NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
 }

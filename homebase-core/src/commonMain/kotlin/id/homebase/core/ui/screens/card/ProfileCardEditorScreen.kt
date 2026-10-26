@@ -157,6 +157,10 @@ import id.homebase.resources.profile_card_import_undo
 import id.homebase.resources.profile_card_import_public_title
 import id.homebase.resources.profile_card_import_public_message
 import id.homebase.resources.profile_card_import_public_confirm
+import id.homebase.resources.profile_card_make_public_message
+import id.homebase.resources.profile_card_make_public_title
+import id.homebase.resources.profile_card_content_now_hidden
+import id.homebase.resources.profile_card_content_now_public
 import id.homebase.resources.profile_card_import_done
 import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_avatar_edit_error_too_large
@@ -283,6 +287,17 @@ fun ProfileCardEditorScreen(
                     if (result == SnackbarResult.ActionPerformed) viewModel.onImportUndone()
                 }
                 ProfileCardEvent.ImportUndoExpired -> snackbarHostState.currentSnackbarData?.dismiss()
+                is ProfileCardEvent.AudienceChanged -> launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = TranslationUtil.getString(
+                            if (event.nowPublic) MR.string.profile_card_content_now_public else MR.string.profile_card_content_now_hidden,
+                            event.itemLabel,
+                        ),
+                        actionLabel = importUndo,
+                        withDismissAction = true,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.onAudienceUndone()
+                }
                 is ProfileCardEvent.ShareImage, ProfileCardEvent.ShareFailed, ProfileCardEvent.ResetFailed -> Unit
             }
         }
@@ -350,7 +365,7 @@ fun ProfileCardEditorScreen(
             },
             onImport = viewModel::onImportRequested,
             snackbarHostState = snackbarHostState,
-            onContentToggle = viewModel::onContentToggled,
+            onContentAudience = viewModel::onContentAudienceChosen,
             onContentEdit = viewModel::onContentEdited,
             onContentDelete = viewModel::onContentDeleted,
             onContentAdd = viewModel::onContentAdded,
@@ -374,6 +389,9 @@ fun ProfileCardEditorScreen(
         if (uiState.pendingImport != null) {
             ImportPublicDialog(onConfirm = viewModel::onImportConfirmed, onDismiss = viewModel::onImportCancelled)
         }
+        uiState.pendingPublic?.let { pending ->
+            MakePublicDialog(itemLabel = pending.itemLabel, onConfirm = viewModel::onPublicConfirmed, onDismiss = viewModel::onPublicCancelled)
+        }
     }
 }
 
@@ -384,6 +402,22 @@ private fun ImportPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
         title = { Text(stringResource(MR.string.profile_card_import_public_title), textAlign = TextAlign.Center) },
         text = { Text(stringResource(MR.string.profile_card_import_public_message)) },
+        confirmButton = {
+            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_import_public_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_make_public_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_make_public_message, itemLabel)) },
         confirmButton = {
             Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_import_public_confirm)) }
         },
@@ -413,7 +447,7 @@ internal fun ProfileCardEditorContent(
     onChangePhoto: () -> Unit = {},
     onRemovePhoto: () -> Unit = {},
     onImport: (CardAudience) -> Unit = {},
-    onContentToggle: (Uuid, Boolean) -> Unit = { _, _ -> },
+    onContentAudience: (Uuid, ProfileAudience) -> Unit = { _, _ -> },
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
     onContentDelete: (Uuid) -> Unit = {},
     onContentAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
@@ -459,7 +493,8 @@ internal fun ProfileCardEditorContent(
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
-                    onContentToggle = onContentToggle,
+                    showCardsButton = showCard,
+                    onContentAudience = onContentAudience,
                     onContentEdit = onContentEdit,
                     onContentDelete = onContentDelete,
                     onRetry = onRetryLoad,
@@ -730,7 +765,8 @@ private fun EditorPanel(
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
-    onContentToggle: (Uuid, Boolean) -> Unit,
+    showCardsButton: Boolean,
+    onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
     onContentDelete: (Uuid) -> Unit,
     onRetry: () -> Unit,
@@ -778,7 +814,8 @@ private fun EditorPanel(
                     photo = photo,
                     enabled = !uiState.isContentBusy && !uiState.loadFailed,
                     importSources = importSources,
-                    onToggle = onContentToggle,
+                    showCardsButton = showCardsButton,
+                    onAudience = onContentAudience,
                     onEdit = onContentEdit,
                     onDelete = onContentDelete,
                     onAdd = onContentAdd,

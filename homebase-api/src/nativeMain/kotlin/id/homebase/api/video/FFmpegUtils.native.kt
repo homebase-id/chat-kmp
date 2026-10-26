@@ -38,7 +38,7 @@ object FFmpegKitBridgeHolder {
     }
 }
 
-@OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class)
 actual object FFmpegUtils {
 
     private val bridge: FFmpegKitBridge

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUuidApi::class, ExperimentalCoroutinesApi::class)
+@file:OptIn(ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.vault
 
@@ -17,7 +17,6 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest

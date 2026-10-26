@@ -4,7 +4,6 @@ import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailboxMode
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +14,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class SetupStepSourceTest {
 
     private fun status(mailbox: Boolean) = MailAppStatus(

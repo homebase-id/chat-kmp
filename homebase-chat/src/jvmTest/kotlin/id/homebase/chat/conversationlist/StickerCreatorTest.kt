@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUuidApi::class, ExperimentalCoroutinesApi::class)
+@file:OptIn(ExperimentalUuidApi::class)
 
 package id.homebase.chat.conversationlist
 
@@ -9,7 +9,6 @@ import id.homebase.resources.chat_sticker_send_failed
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
