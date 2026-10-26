@@ -85,15 +85,12 @@ private fun renderBlocks(nodes: List<RichTextNode>): List<String> {
     return blocks
 }
 
-private fun plainText(node: RichTextNode): String =
-    if (node.children.isNullOrEmpty()) node.text.orEmpty() else node.children.joinToString("") { plainText(it) }
-
 private fun renderCodeBlock(node: RichTextNode): String {
     val children = node.children.orEmpty()
     val code = if (children.any { it.type == "code_line" }) {
-        children.joinToString("\n") { plainText(it) }
+        children.joinToString("\n") { it.plainText("") }
     } else {
-        plainText(node)
+        node.plainText("")
     }
     val fence = "`".repeat(maxOf(3, code.longestBacktickRun() + 1))
     return "$fence\n$code\n$fence"
