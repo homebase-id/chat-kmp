@@ -6,14 +6,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration.Companion.seconds
 
 /** The Notification Service Extension's entry into the shared decrypt path. */
 object NotificationPreviewBridge {
-
-    // Well inside the extension's ~30 s window, leaving room for the avatar fetch after it.
-    private val RESOLVE_TIMEOUT = 10.seconds
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -23,7 +18,7 @@ object NotificationPreviewBridge {
     /**
      * Calls [completion] exactly once, on a background thread, with the decrypted text of
      * [messageId] — or a null text and the reason it was not shown: no shared credentials, not
-     * plain text, or not fetched within [RESOLVE_TIMEOUT]. The reason never carries content.
+     * plain text, or not read within the preview's deadline. The reason never carries content.
      */
     fun resolvePreview(
         conversationId: String,
@@ -33,11 +28,8 @@ object NotificationPreviewBridge {
         val credentials = NotificationExtensionStore.readCredentials()
             ?: return completion(null, "no shared credentials")
         scope.launch {
-            val preview = withTimeoutOrNull(RESOLVE_TIMEOUT) {
-                fetchChatNotificationPreview(credentials, conversationId, messageId)
-            }
-            if (preview == null) completion(null, "timed out after $RESOLVE_TIMEOUT")
-            else completion(preview.text, preview.missReason)
+            val preview = fetchChatNotificationPreview(credentials, conversationId, messageId)
+            completion(preview.text, preview.missReason)
         }
     }
 }
