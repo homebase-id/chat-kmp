@@ -1,6 +1,5 @@
 package id.homebase.api.sync.database
 
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.common.OdinId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -30,7 +29,7 @@ import kotlin.uuid.Uuid
 class WrapperReadsRouteThroughLaneTest {
 
     private fun newDbm(): DatabaseManager =
-        DatabaseManager({ JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) })
+        DatabaseManager({ createRawInMemoryDriver() })
 
     @Test
     fun outboxReads_routeThroughLane() {
