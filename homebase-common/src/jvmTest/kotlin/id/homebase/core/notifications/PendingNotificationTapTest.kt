@@ -1,6 +1,5 @@
 package id.homebase.core.notifications
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -19,7 +18,7 @@ import kotlin.uuid.Uuid
  * dedup window (and any other Instant-based check inside the holder) advances
  * with `advanceTimeBy(...)` rather than wall-clock time.
  */
-@OptIn(ExperimentalTime::class, ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalTime::class)
 private fun TestScope.virtualClock(): () -> Instant =
     { Instant.fromEpochMilliseconds(testScheduler.currentTime) }
 
@@ -27,7 +26,6 @@ private fun TestScope.virtualClock(): () -> Instant =
  * Locks down the PendingNotificationTap contract consumed by
  * NotificationService and ConversationListViewModel.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class PendingNotificationTapTest {
 
     private val convoA = Uuid.random()

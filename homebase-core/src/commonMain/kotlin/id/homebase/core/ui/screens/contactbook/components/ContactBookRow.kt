@@ -35,6 +35,7 @@ fun ContactBookRow(
     disabledReason: String? = null,
     /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
     trailing: (@Composable () -> Unit)? = null,
+    morphAvatar: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val disabled = disabledReason != null
@@ -45,7 +46,7 @@ fun ContactBookRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ContactBookAvatar(entry = entry)
+        ContactBookAvatar(entry = entry, morphAcrossNav = morphAvatar)
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             val name = if (entry.isSelf) {

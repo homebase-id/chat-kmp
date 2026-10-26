@@ -13,7 +13,6 @@ import id.homebase.core.location.tracking.RawLocationPoint
 import id.homebase.core.location.tracking.StepSample
 import id.homebase.core.location.tracking.TrackingProfile
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -34,7 +33,6 @@ import kotlin.test.assertTrue
  * [OneShotLocationProvider.acquireFreshFix]); the cache-vs-radio orchestration is the real common
  * [OneShotLocationProvider.getCurrentFix], so these tests also exercise the cache/age/cacheOnly path.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class LocationServiceTest {
 
     private val now = 1_000_000L

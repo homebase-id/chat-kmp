@@ -9,7 +9,6 @@ import id.homebase.api.client.peer.temporal.TemporalAccessStatus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.config.AppConfig
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runCurrent
@@ -23,7 +22,6 @@ import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class EmergencyContactServiceTest {
 
     private val ourSlot = AppConfig.APP_ID.toCanonicalAppId()

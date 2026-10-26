@@ -3,7 +3,6 @@ package id.homebase.auth.login
 import id.homebase.api.client.profile.ProfileCard
 import id.homebase.api.common.OdinId
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -27,7 +26,6 @@ private fun profileCard(name: String, status: String? = null) = ProfileCard(
 
 // Not advanceUntilIdle(): it stops as soon as the FOREGROUND work is idle, so it never runs a
 // backgroundScope job — every assertion below would pass or fail for the wrong reason.
-@OptIn(ExperimentalCoroutinesApi::class)
 private fun TestScope.settle() {
     advanceTimeBy(1_000)
     runCurrent()
@@ -38,7 +36,6 @@ private fun TestScope.settle() {
  * scheduler assertions meaningful — a `MockEngine` would park on Ktor's own dispatcher and let
  * every negative case pass vacuously. Each one asserts the call count for the same reason.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class IdentityPreviewResolverTest {
 
     @Test

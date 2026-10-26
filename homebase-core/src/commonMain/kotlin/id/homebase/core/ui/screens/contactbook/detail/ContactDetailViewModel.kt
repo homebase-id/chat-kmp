@@ -61,6 +61,7 @@ import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
+import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.core.ui.screens.contactbook.resolveCircleDrives
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
@@ -84,6 +85,15 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "ContactDetailViewModel"
 private const val OVERVIEW_MESSAGE_CAP = 1000
+
+// The push transition's shared avatar needs the header in the very first frame, before the collector runs.
+internal fun seededDetailEntry(
+    contacts: List<Contact>,
+    uniqueId: String,
+    overrides: Map<Uuid, ContactFieldOverlay>,
+): ContactBookEntry? = contacts.firstOrNull { it.uniqueId.toString() == uniqueId }
+    ?.toContactBookEntry()
+    ?.let { it.withOverride(overrides[it.uniqueId]) }
 
 class ContactDetailViewModel(
     savedStateHandle: SavedStateHandle,
@@ -154,7 +164,11 @@ class ContactDetailViewModel(
 
     /** The drive whose temporal grant gates "can I locate this contact in an emergency?". */
 
-    private val _uiState = MutableStateFlow(ContactDetailUiState())
+    private val _uiState = MutableStateFlow(
+        ContactDetailUiState(
+            entry = seededDetailEntry(contactRepository.contacts.value, route.uniqueId, overrideStore.overrides.value),
+        )
+    )
     val uiState: StateFlow<ContactDetailUiState> = _uiState.asStateFlow()
 
     private val _events = MutableSharedFlow<ContactDetailEvent>(extraBufferCapacity = 8)

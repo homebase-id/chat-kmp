@@ -166,6 +166,7 @@ fun ContactBookContent(
                                 ContactBookRow(
                                     entry = entry,
                                     onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
+                                    morphAvatar = true,
                                     modifier = Modifier.animateItem(),
                                     // Check shows whenever the identity is connected, in every
                                     // filter (a New contact is still a connection).

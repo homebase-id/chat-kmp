@@ -222,6 +222,8 @@ import id.homebase.resources.call_accept_video_from
 import id.homebase.resources.call_back_to_chat
 import id.homebase.resources.call_hide_self_view
 import id.homebase.resources.call_key_escape
+import id.homebase.resources.call_report_problem
+import id.homebase.resources.call_report_unavailable
 import id.homebase.resources.call_show_self_view
 import id.homebase.resources.call_swap_views
 import id.homebase.resources.call_tooltip_shortcut
@@ -313,6 +315,7 @@ class CallScreenActions(
     val endFromKeyboard: () -> Unit,
     val selectDevice: (MediaDeviceKind, String) -> Unit = { _, _ -> },
     val toggleMini: (() -> Unit)? = null,
+    val reportProblem: ((onUnavailable: () -> Unit) -> Unit)? = null,
 )
 
 private val ContentMaxWidth = 480.dp
@@ -765,7 +768,7 @@ private fun BoxScope.OutgoingLayout(
         RingingCard(
             peerName, status, avatar,
             if (narrow) Modifier.align(Alignment.TopStart).padding(top = 4.dp, end = 104.dp)
-            else Modifier.align(Alignment.TopCenter).padding(top = 32.dp),
+            else Modifier.align(Alignment.TopCenter).padding(top = 56.dp),
         )
     } else PeerHeader(
         name = peerName,
@@ -776,6 +779,7 @@ private fun BoxScope.OutgoingLayout(
         modifier = Modifier.align(Alignment.Center).padding(bottom = if (LocalCallLayout.current.tier == CallTier.Minimal) 56.dp else if (large) 120.dp else if (LocalCallLayout.current.compactHeight) 104.dp else 190.dp),
     )
     if (LocalCallLayout.current.windowed) CallTopBar(ui, center = null, actions = actions, modifier = Modifier.align(Alignment.TopCenter))
+    else CornerBetaBadge()
     ControlDock(ui, large, actions, Modifier.align(Alignment.BottomCenter), placing = true)
 }
 
@@ -921,31 +925,39 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
         val narrow = LocalCallLayout.current.tier == CallTier.Compact || minimal
         val code = ui.verificationCode
         val trailing = (if (code != null) 1 else 0) + (if (mini != null) 1 else 0) + (if (desktop) 1 else 0)
-        val reserve = (trailing * 48).dp
+        val reserve = (trailing * 48).dp + CallBetaBadgeReserve
         if (center != null) {
             Box(
                 if (narrow) Modifier.align(Alignment.TopStart).padding(end = reserve)
                 else Modifier.align(Alignment.TopCenter).padding(horizontal = if (desktop) reserve else 60.dp),
             ) { center() }
         }
-        if (code != null || desktop || mini != null) {
-            Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (code != null) {
-                    ChromeIconButton(
-                        Icons.Default.VerifiedUser,
-                        stringResource(MR.string.call_verification_show),
-                        actions.onVerificationClick,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                if (mini != null) {
-                    val label = stringResource(MR.string.call_mini_mode)
-                    ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys("M", shift = true)))
-                }
-                if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
+        Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            CallBetaBadge()
+            if (code != null) {
+                ChromeIconButton(
+                    Icons.Default.VerifiedUser,
+                    stringResource(MR.string.call_verification_show),
+                    actions.onVerificationClick,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
+            if (mini != null) {
+                val label = stringResource(MR.string.call_mini_mode)
+                ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys("M", shift = true)))
+            }
+            if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
         }
     }
+}
+
+/** Where CallTopBar puts the badge, for the screens that draw no top bar. */
+@Composable
+private fun BoxScope.CornerBetaBadge() {
+    Box(
+        Modifier.align(Alignment.TopEnd).padding(horizontal = 12.dp, vertical = 8.dp).height(40.dp),
+        contentAlignment = Alignment.Center,
+    ) { CallBetaBadge() }
 }
 
 @Composable
@@ -1234,97 +1246,98 @@ private fun ControlDock(ui: CallUiState, large: Boolean, actions: CallScreenActi
     // Desktop webcams are single-facing, so flip only earns a slot on phone widths.
     val showFlip = ui.localVideo && !large && !placing && !pickers
     // With pickers each of mic and camera is a split button: a toggle segment and its own menu segment in the same group.
-    val split = if (pickers) 1 else 0
-    val count = 1 + split + listOf(showRoute, showCamera, showFlip).count { it } + (if (showCamera) split else 0)
-    val routeSlot = 1 + split
-    val cameraSlot = routeSlot + if (showRoute) 1 else 0
-    val flipSlot = cameraSlot + if (showCamera) 1 + split else 0
     val micDevice = currentDeviceName(ui, MediaDeviceKind.Mic)
     val muteDescription = stringResource(if (ui.muted) MR.string.call_unmute else MR.string.call_mute)
     val cameraDescription = stringResource(if (ui.localVideo) MR.string.call_camera_off else MR.string.call_camera_on)
     val flipDescription = stringResource(MR.string.call_switch_camera)
     val muteTip = shortcutTip(muteDescription, callShortcutKeys("D"))
     val cameraTip = shortcutTip(cameraDescription, callShortcutKeys("E"))
-    val toggles: ButtonGroupScope.() -> Unit = {
-        dockItem(if (ui.muted) Icons.Default.Mic else Icons.Default.MicOff, muteDescription, actions.toggleMute) {
-            val muteInteraction = remember { MutableInteractionSource() }
-            CallToggle(
-                tooltip = muteTip,
-                checked = ui.muted,
-                onCheckedChange = { actions.toggleMute() },
-                icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
-                label = stringResource(MR.string.call_label_mute).takeIf { showLabels },
-                description = muteDescription,
-                state = when {
-                    ui.muted -> stringResource(MR.string.call_state_muted)
-                    micDevice != null -> stringResource(MR.string.call_state_mic_on_device, micDevice)
-                    else -> stringResource(MR.string.call_state_mic_on)
-                },
-                shapes = segmentShapes(0, count),
-                interaction = muteInteraction,
-                modifier = Modifier.animateWidth(muteInteraction),
-                level = LocalMicLevel.current.takeIf { pickers && !ui.muted && ui.micLevelSeen },
-            )
-        }
-        if (pickers) {
-            customItem(
-                buttonGroupContent = { DeviceMenuSegment(ui, MediaDeviceKind.Mic, actions, segmentShapes(1, count)) },
-                menuContent = { menu -> OverflowDeviceItems(ui, MediaDeviceKind.Mic, actions, menu) },
-            )
-        }
+    val controls = buildList {
+        add(
+            DockControl.action(if (ui.muted) Icons.Default.Mic else Icons.Default.MicOff, muteDescription, actions.toggleMute) { shapes, grow ->
+                val interaction = remember { MutableInteractionSource() }
+                CallToggle(
+                    tooltip = muteTip,
+                    checked = ui.muted,
+                    onCheckedChange = { actions.toggleMute() },
+                    icon = if (ui.muted) Icons.Default.MicOff else Icons.Default.Mic,
+                    label = stringResource(MR.string.call_label_mute).takeIf { showLabels },
+                    description = muteDescription,
+                    state = when {
+                        ui.muted -> stringResource(MR.string.call_state_muted)
+                        micDevice != null -> stringResource(MR.string.call_state_mic_on_device, micDevice)
+                        else -> stringResource(MR.string.call_state_mic_on)
+                    },
+                    shapes = shapes,
+                    interaction = interaction,
+                    modifier = grow(interaction),
+                    level = LocalMicLevel.current.takeIf { pickers && !ui.muted && ui.micLevelSeen },
+                )
+            },
+        )
+        if (pickers) add(DockControl.devices(ui, MediaDeviceKind.Mic, actions))
         if (showRoute) {
-            customItem(
-                buttonGroupContent = {
-                    val routeInteraction = remember { MutableInteractionSource() }
-                    RouteToggle(ui, actions, showLabels, segmentShapes(routeSlot, count), routeInteraction, Modifier.animateWidth(routeInteraction))
-                },
-                menuContent = { menu ->
-                    Column {
-                        RouteMenuItems(ui) { route ->
-                            menu.dismiss()
-                            actions.setRoute(route)
+            add(
+                DockControl(
+                    inline = { shapes, grow ->
+                        val interaction = remember { MutableInteractionSource() }
+                        RouteToggle(ui, actions, showLabels, shapes, interaction, grow(interaction))
+                    },
+                    menu = { menu ->
+                        Column {
+                            RouteMenuItems(ui) { route ->
+                                menu.dismiss()
+                                actions.setRoute(route)
+                            }
                         }
-                    }
-                },
+                    },
+                ),
             )
         }
         if (showCamera) {
             val off = !ui.localVideo
-            dockItem(if (off) Icons.Default.Videocam else Icons.Default.VideocamOff, cameraDescription, actions.toggleVideo) {
-                val cameraInteraction = remember { MutableInteractionSource() }
-                CallToggle(
-                    tooltip = cameraTip,
-                    checked = off,
-                    onCheckedChange = { actions.toggleVideo() },
-                    icon = if (off) Icons.Default.VideocamOff else Icons.Default.Videocam,
-                    label = stringResource(MR.string.call_label_camera).takeIf { showLabels },
-                    description = cameraDescription,
-                    state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on),
-                    shapes = segmentShapes(cameraSlot, count),
-                    interaction = cameraInteraction,
-                    modifier = Modifier.animateWidth(cameraInteraction),
-                )
-            }
-            if (pickers) {
-                customItem(
-                    buttonGroupContent = { DeviceMenuSegment(ui, MediaDeviceKind.Camera, actions, segmentShapes(cameraSlot + 1, count)) },
-                    menuContent = { menu -> OverflowDeviceItems(ui, MediaDeviceKind.Camera, actions, menu) },
-                )
-            }
+            add(
+                DockControl.action(if (off) Icons.Default.Videocam else Icons.Default.VideocamOff, cameraDescription, actions.toggleVideo) { shapes, grow ->
+                    val interaction = remember { MutableInteractionSource() }
+                    CallToggle(
+                        tooltip = cameraTip,
+                        checked = off,
+                        onCheckedChange = { actions.toggleVideo() },
+                        icon = if (off) Icons.Default.VideocamOff else Icons.Default.Videocam,
+                        label = stringResource(MR.string.call_label_camera).takeIf { showLabels },
+                        description = cameraDescription,
+                        state = stringResource(if (off) MR.string.call_no_video else MR.string.call_state_camera_on),
+                        shapes = shapes,
+                        interaction = interaction,
+                        modifier = grow(interaction),
+                    )
+                },
+            )
+            if (pickers) add(DockControl.devices(ui, MediaDeviceKind.Camera, actions))
         }
         if (showFlip) {
-            dockItem(Icons.Default.Cameraswitch, flipDescription, actions.switchCamera) {
-                val flipInteraction = remember { MutableInteractionSource() }
-                CallAction(
-                    icon = Icons.Default.Cameraswitch,
-                    label = stringResource(MR.string.call_label_flip).takeIf { showLabels },
-                    description = flipDescription,
-                    onClick = actions.switchCamera,
-                    shapes = segmentShapes(flipSlot, count),
-                    interaction = flipInteraction,
-                    modifier = Modifier.animateWidth(flipInteraction),
-                )
-            }
+            add(
+                DockControl.action(Icons.Default.Cameraswitch, flipDescription, actions.switchCamera) { shapes, grow ->
+                    val interaction = remember { MutableInteractionSource() }
+                    CallAction(
+                        icon = Icons.Default.Cameraswitch,
+                        label = stringResource(MR.string.call_label_flip).takeIf { showLabels },
+                        description = flipDescription,
+                        onClick = actions.switchCamera,
+                        shapes = shapes,
+                        interaction = interaction,
+                        modifier = grow(interaction),
+                    )
+                },
+            )
+        }
+    }
+    val toggles: ButtonGroupScope.() -> Unit = {
+        controls.forEachIndexed { index, control ->
+            customItem(
+                buttonGroupContent = { control.inline(segmentShapes(index, controls.size)) { Modifier.animateWidth(it) } },
+                menuContent = control.menu,
+            )
         }
     }
     val overflow: @Composable (ButtonGroupMenuState) -> Unit = { menu ->
@@ -1582,8 +1595,20 @@ private fun OverflowDeviceItems(ui: CallUiState, kind: MediaDeviceKind, actions:
     Column { CallDeviceMenuItems(menu::dismiss, ui, kind.dockMenuKinds(), actions.selectDevice) }
 }
 
-private fun ButtonGroupScope.dockItem(menuIcon: ImageVector, menuText: String, onMenuClick: () -> Unit, content: @Composable () -> Unit) =
-    customItem(buttonGroupContent = content, menuContent = { menu -> OverflowItem(menuIcon, menuText, menu, onMenuClick) })
+private class DockControl(
+    val inline: @Composable (IconToggleButtonShapes, (MutableInteractionSource) -> Modifier) -> Unit,
+    val menu: @Composable (ButtonGroupMenuState) -> Unit,
+) {
+    companion object {
+        fun action(menuIcon: ImageVector, menuText: String, onClick: () -> Unit, inline: @Composable (IconToggleButtonShapes, (MutableInteractionSource) -> Modifier) -> Unit) =
+            DockControl(inline) { menu -> OverflowItem(menuIcon, menuText, menu, onClick) }
+
+        fun devices(ui: CallUiState, kind: MediaDeviceKind, actions: CallScreenActions) = DockControl(
+            inline = { shapes, _ -> DeviceMenuSegment(ui, kind, actions, shapes) },
+            menu = { menu -> OverflowDeviceItems(ui, kind, actions, menu) },
+        )
+    }
+}
 
 @Composable
 private fun OverflowItem(icon: ImageVector, text: String, menu: ButtonGroupMenuState, onClick: () -> Unit) {
@@ -1763,6 +1788,7 @@ private fun BoxScope.EndedLayout(
             onClick = actions.retry,
             modifier = slot,
         )
+        ReportProblemButton(actions, slot)
         CloseButton(onClick = actions.close, modifier = slot)
     }
 }
@@ -1789,6 +1815,7 @@ private fun BoxScope.EndScaffold(
     header: @Composable (Modifier) -> Unit,
     buttons: @Composable (slot: Modifier) -> Unit,
 ) {
+    CornerBetaBadge()
     if (!LocalCallLayout.current.windowed) {
         header(Modifier.align(Alignment.Center).padding(bottom = headerBottom))
         EndActions(large, spacing, buttons)
@@ -1827,6 +1854,23 @@ private fun BoxScope.EndActions(large: Boolean, spacing: Dp, content: @Composabl
 }
 
 @Composable
+private fun ReportProblemButton(actions: CallScreenActions, modifier: Modifier) {
+    val report = actions.reportProblem ?: return
+    var unavailable by remember { mutableStateOf(false) }
+    TextButton(
+        onClick = { report { unavailable = true } },
+        enabled = !unavailable,
+        modifier = modifier.heightIn(min = 56.dp),
+        contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
+    ) {
+        Text(
+            stringResource(if (unavailable) MR.string.call_report_unavailable else MR.string.call_report_problem),
+            style = ButtonDefaults.textStyleFor(56.dp),
+        )
+    }
+}
+
+@Composable
 private fun CloseButton(onClick: () -> Unit, modifier: Modifier) {
     OutlinedButton(
         onClick = onClick,
@@ -1860,6 +1904,7 @@ private fun BoxScope.FailedLayout(
         header = { modifier -> FailedHeader(badge, title, body, peerName, avatar, modifier) },
     ) { slot ->
         RetryButton(Icons.Default.Refresh, stringResource(MR.string.action_retry), actions.retry, slot)
+        ReportProblemButton(actions, slot)
         TextButton(
             onClick = actions.close,
             modifier = slot.heightIn(min = 56.dp),

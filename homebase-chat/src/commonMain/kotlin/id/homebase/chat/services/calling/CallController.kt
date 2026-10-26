@@ -1,6 +1,7 @@
 package id.homebase.chat.services.calling
 
 import co.touchlab.kermit.Logger
+import id.homebase.core.util.Platform
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -265,6 +266,7 @@ class CallController(
         engineFactory.create(stunUrls())
     }.also { created ->
         engine = created
+        log.i { "call=${_state.value.callId} engine created on ${Platform.osName} ${Platform.osVersion}" }
         _mediaDevices.value = created.mediaDevices
         remoteReady = false
         engineEvents = scope.launch(start = CoroutineStart.UNDISPATCHED) {

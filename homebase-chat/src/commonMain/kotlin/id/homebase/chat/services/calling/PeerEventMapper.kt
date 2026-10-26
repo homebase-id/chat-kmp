@@ -1,5 +1,6 @@
 package id.homebase.chat.services.calling
 
+import co.touchlab.kermit.Logger
 import kotlin.concurrent.Volatile
 
 enum class PeerLinkState { New, Connecting, Connected, Disconnected, Failed, Closed }
@@ -10,6 +11,7 @@ class PeerEventMapper(private val emit: (MediaEvent) -> Unit) {
     private var everConnected = false
 
     fun linkState(state: PeerLinkState) {
+        Logger.i(tag = "PeerLink") { "link state $state everConnected=$everConnected" }
         when (state) {
             PeerLinkState.Connected -> {
                 everConnected = true

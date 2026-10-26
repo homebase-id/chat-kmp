@@ -385,7 +385,7 @@ val appModule = module {
     }
     single {
         LiveLocationShareService(
-            relay = get<LiveRelayProvider>()::relay,
+            relay = { channelKey, recipients, blob -> get<LiveRelayProvider>().relay(channelKey, recipients, blob, wakeCause = "live-share-send") },
             locationPointStore = get(),
             databaseManager = get(),
             // The coordinator is the single owner of the GPS tracker; the share service only declares

@@ -1114,6 +1114,7 @@
     <string name="chat_markdown_blockquote">Block quote</string>
     <string name="chat_markdown_inline_code">Inline code</string>
     <string name="chat_markdown_code_block">Code block</string>
+    <string name="chat_markdown_task_list">Task list</string>
     <string name="chat_markdown_link">Insert link</string>
     <string name="chat_markdown_nested_list">Indent list</string>
     <string name="chat_markdown_link_dialog_title">Insert link</string>
@@ -1121,6 +1122,9 @@
     <string name="chat_markdown_link_dialog_url">URL</string>
     <string name="chat_markdown_link_dialog_insert">Insert</string>
     <string name="chat_markdown_link_dialog_cancel">Cancel</string>
+    <string name="chat_markdown_link_dialog_edit_title">Edit link</string>
+    <string name="chat_markdown_link_dialog_save">Save</string>
+    <string name="chat_markdown_link_dialog_remove">Remove link</string>
 
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>
@@ -3046,4 +3050,7 @@
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
     <string name="vault_chat_image_name">Chat image, %1$s</string>
+    <string name="call_beta_label">Beta</string>
+    <string name="call_report_problem">Report a problem</string>
+    <string name="call_report_unavailable">No log found for this call</string>
 </resources>

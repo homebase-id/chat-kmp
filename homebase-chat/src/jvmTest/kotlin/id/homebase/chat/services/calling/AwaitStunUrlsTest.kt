@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-
 package id.homebase.chat.services.calling
 
 import kotlin.test.Test

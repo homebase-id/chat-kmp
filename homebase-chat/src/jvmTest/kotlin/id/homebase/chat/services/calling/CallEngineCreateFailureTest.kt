@@ -3,13 +3,11 @@ package id.homebase.chat.services.calling
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 // An Error from the engine constructor (missing native lib) must end the call, not kill the inbox loop.
-@OptIn(ExperimentalCoroutinesApi::class)
 class CallEngineCreateFailureTest {
     private val frodo = "frodo.baggins.demo.rocks"
     private val sam = "samwise.gamgee.demo.rocks"

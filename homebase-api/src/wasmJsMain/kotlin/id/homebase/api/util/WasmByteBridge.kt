@@ -1,4 +1,4 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, kotlin.wasm.unsafe.UnsafeWasmMemoryApi::class)
+@file:OptIn(kotlin.wasm.unsafe.UnsafeWasmMemoryApi::class)
 
 package id.homebase.api.util
 

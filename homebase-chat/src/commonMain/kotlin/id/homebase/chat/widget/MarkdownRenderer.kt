@@ -22,14 +22,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.annotator.annotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
-import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
 import com.mikepenz.markdown.compose.LocalMarkdownPadding
 import com.mikepenz.markdown.compose.Markdown
 import com.mikepenz.markdown.compose.components.markdownComponents
@@ -42,11 +40,8 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownDimens
 import com.mikepenz.markdown.model.markdownPadding
-import com.mikepenz.markdown.model.rememberMarkdownState
-import id.homebase.api.util.ChatMarkdownFlavour
-import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.api.util.markdownToPlainPreview
-import id.homebase.api.util.withChatHardLineBreaks
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 
@@ -118,7 +113,7 @@ import id.homebase.core.ui.theme.withEmojiFont
  *     search row) strip to plain via [markdownToPlainPreview] rather than using
  *     this renderer.
  *
- * Use [markdownHasBlockElements] to decide between (2) and (3) — the SAME helper
+ * Use [ParsedChatMarkdown.hasBlockElements] to decide between (2) and (3) — the SAME helper
  * the caller uses to choose the layout container — so the rendering shape and the
  * container never disagree.
  *
@@ -189,28 +184,11 @@ fun ChatMarkdown(
         return
     }
 
-    // Inline-only path: no block elements, so the whole body is one paragraph of
-    // inline spans. Render it as a SINGLE [Text] over the annotated string mikepenz
-    // would have produced for that paragraph — bold/italic/strike/inline-code/links
-    // included. Links ride as native Compose LinkAnnotations (emitted by
-    // buildMarkdownAnnotatedString via annotatorSettings' linkInteractionListener,
-    // which opens the URL through LocalUriHandler), so a plain Text handles taps
-    // without any pointerInput reading the layout result. This single stable node
-    // is what keeps the bubble's last-line timestamp tuck reentrancy-free.
-    // Memoize the inline-vs-block decision: markdownHasBlockElements runs a full
-    // MarkdownParser tree build, a pure function of `content`. Recomputing it on every
-    // recomposition (e.g. each scroll-in) is wasted work AND lets the chosen render path
-    // momentarily differ across frames, which shows up as a height bounce as a rich-text
-    // bubble re-enters view. Keying on `content` makes the path stable.
-    val isBlock = remember(content) { markdownHasBlockElements(content) }
-    if (!isBlock) {
-        // Single stable Text over the inline annotated string (bold/italic/strike/
-        // inline-code + native Compose link annotations, with chat soft breaks
-        // promoted to hard breaks). See [buildChatInlineAnnotatedString] for the full
-        // rationale — why the link TextLinkStyles carries a single style (Desktop-hover
-        // reentrancy safety) and why annotatorSettings is built explicitly outside
-        // Markdown(). Keeping this as one stable node is what makes the bubble's
-        // last-line timestamp tuck reentrancy-free.
+    val cache = LocalChatMarkdownParseCache.current
+    val parsed = remember(cache, content) { cache.get(content) }
+    if (!parsed.hasBlockElements) {
+        // See [buildChatInlineAnnotatedString] for why the inline body is one stable Text
+        // (bubble timestamp tuck, Desktop-hover reentrancy).
         val annotated = buildChatInlineAnnotatedString(content, style, color, mentions)
         Text(
             text = annotated,
@@ -244,6 +222,7 @@ fun ChatMarkdown(
         // table reads on BOTH bubbles.
         tableBackground = color.copy(alpha = FENCED_CODE_BG_ALPHA),
     )
+    val linkStyles = remember(style, color) { chatLinkStyles(style, color) }
     val typography = markdownTypography(
         // Heading ladder. The M3 title/headline scale is too compressed to give a
         // legible six-level hierarchy inside a chat bubble (titleLarge 22 → titleMedium
@@ -272,38 +251,20 @@ fun ChatMarkdown(
         quote = style.copy(color = color, fontStyle = FontStyle.Italic),
         // Links: bubble [color], bold + underlined — readable on sent AND received
         // bubbles (it equals the content colour), matching the inline path.
-        textLink = TextLinkStyles(
-            style = style.copy(
-                color = color,
-                fontWeight = FontWeight.Bold,
-                textDecoration = TextDecoration.Underline,
-            ).toSpanStyle(),
-        ),
+        textLink = linkStyles,
     )
 
-    // Hoisted out of rememberMarkdownState's argument, which is re-evaluated on every
-    // recomposition: withChatHardLineBreaks runs a full MarkdownParser pass. It is also the exact
-    // string the mention scanner indexes into.
-    val parsedContent = remember(content) { content.withChatHardLineBreaks() }
-    // Parse the markdown SYNCHRONOUSLY (immediate = true) so the block bubble measures
-    // at its final height on the first frame. The default async parse renders an empty
-    // loading placeholder for ~400ms then jumps to full height, reflowing the message
-    // list — the "bubble shifts down" bug (#938). Chat bodies are size-capped (7 KB
-    // header) and the parse is remember(content)-memoized, so the synchronous cost is
-    // small; the library's "blocks composition" warning targets large documents.
-    val markdownState = rememberMarkdownState(
-        content = parsedContent,
-        immediate = true,
-        flavour = ChatMarkdownFlavour,
-    )
+    // Synchronous so the bubble measures at its final height on the first frame (#938); the
+    // parse already happened once in [ChatMarkdownParseCache].
+    val markdownState = parsed.blockState ?: return
     Markdown(
-        markdownState = markdownState,
+        state = markdownState,
         colors = colors,
         typography = typography,
         // Published as LocalMarkdownAnnotator, so paragraphs, headings, list items, quotes and
         // table cells all pick up the same mention chip the inline path draws. Code fences take a
         // different route inside mikepenz and are never offered to an annotator.
-        annotator = rememberMentionAnnotator(parsedContent, style, color, mentions),
+        annotator = rememberMentionAnnotator(parsed, style, color, mentions),
         // Default is fillMaxSize(); a chat bubble must wrap its content.
         modifier = modifier.wrapContentSize(),
         dimens = markdownDimens(
@@ -329,7 +290,6 @@ fun ChatMarkdown(
             // Offset the quote text from its accent bar.
             blockQuoteText = PaddingValues(start = 12.dp, top = 2.dp, bottom = 2.dp),
         ),
-        imageTransformer = Coil3ImageTransformerImpl,
         // Custom code components: same default body, but the container is a [color]
         // tint with a subtle [color] border so the fenced block reads as a distinct
         // surface on both bubbles. Keep the M3 checkbox (the Markdown() default
@@ -339,6 +299,18 @@ fun ChatMarkdown(
         // timestamp-tuck callback removes it from the bubble's reentrant custom-Layout
         // coupling on Desktop hover.
         components = markdownComponents(
+            image = {
+                val image = imageLinkOf(it.content, it.node)
+                if (image != null) {
+                    MarkdownBasicText(
+                        text = image.toAnnotated(linkStyles),
+                        style = it.typography.text,
+                    )
+                }
+            },
+            table = {
+                BubbleTable(it.content, it.node, it.typography.table)
+            },
             checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) },
             codeFence = {
                 MarkdownCodeFence(it.content, it.node, style = it.typography.code) { code, language, codeStyle ->
@@ -391,41 +363,31 @@ internal fun buildChatInlineAnnotatedString(
     color: Color,
     mentions: MentionContext? = null,
 ): AnnotatedString {
-    val linkSpanStyle = TextLinkStyles(
-        style = style.copy(
-            color = color,
-            fontWeight = FontWeight.Bold,
-            textDecoration = TextDecoration.Underline,
-        ).toSpanStyle(),
-    )
+    val linkSpanStyle = chatLinkStyles(style, color)
     val inlineCodeStyle = style.copy(
         color = color,
         fontFamily = FontFamily.Monospace,
     ).toSpanStyle().copy(background = color.copy(alpha = INLINE_CODE_BG_ALPHA))
-    // annotatorSettings is @Composable (it can read CompositionLocals), so it stays in
-    // composition; its output here is fully determined by the stable link/code styles.
-    val parsedContent = remember(content) { content.withChatHardLineBreaks() }
+    val cache = LocalChatMarkdownParseCache.current
+    val parsed = remember(cache, content) { cache.get(content) }
     val settings = annotatorSettings(
         linkTextSpanStyle = linkSpanStyle,
         codeSpanStyle = inlineCodeStyle,
-        annotator = rememberMentionAnnotator(parsedContent, style, color, mentions),
+        annotator = rememberMentionAnnotator(parsed, style, color, mentions),
         referenceLinkHandler = null,
     )
-    // The actual parse (buildMarkdownAnnotatedString) is a pure, non-composable string
-    // build over `content` + `style` + the bubble `color`-derived styles. Memoize it so
-    // a scroll-in recomposition doesn't re-parse the body each frame — pure work whose
-    // result is identical for unchanged inputs, and re-parsing it is part of the
-    // rich-text scroll-in bounce.
     // Web bundles a colour-emoji font and scopes it to the emoji runs; null everywhere else,
     // where withEmojiFont returns the string untouched. Part of the remember key so the emoji
     // pass is memoized with the parse rather than redone on every recomposition.
     val emojiFamily = emojiFontFamily()
-    return remember(parsedContent, style, color, emojiFamily, mentions) {
-        parsedContent.buildMarkdownAnnotatedString(
-            style = style,
-            annotatorSettings = settings,
-            flavour = ChatMarkdownFlavour,
-        ).withEmojiFont(emojiFamily)
+    return remember(parsed, style, color, emojiFamily, mentions) {
+        val node = parsed.inlineNode
+        val built = when {
+            parsed.ast == null -> AnnotatedString(parsed.text)
+            node == null -> AnnotatedString("")
+            else -> parsed.text.buildMarkdownAnnotatedString(node, style, settings)
+        }
+        built.withEmojiFont(emojiFamily)
     }
 }
 
@@ -433,7 +395,7 @@ internal fun buildChatInlineAnnotatedString(
 private const val INLINE_CODE_BG_ALPHA = 0.15f
 
 /** Slightly softer tint behind a fenced-code container (it also carries a border). */
-private const val FENCED_CODE_BG_ALPHA = 0.12f
+internal const val FENCED_CODE_BG_ALPHA = 0.12f
 
 /** Border around a fenced-code container — a touch stronger than its fill. */
 private const val FENCED_CODE_BORDER_ALPHA = 0.25f
@@ -460,14 +422,7 @@ private fun TextStyle.bubbleHeading(color: Color, scale: Float, weight: FontWeig
     )
 }
 
-/**
- * Fenced/code-block container for a chat bubble: a faint [color] tint with a subtle
- * [color] border, both alpha-blended onto the bubble content colour so the block
- * reads as a distinct surface on BOTH a sent (primary) and received (surface) bubble.
- * Mirrors mikepenz's own private `MarkdownCode` body (rounded [MarkdownCodeBackground]
- * + horizontally-scrollable monospace text) but swaps the surface-role fill for the
- * bubble-relative tint and adds the border.
- */
+/** Fenced/code-block container: the [bubbleCodeStyle] background with a subtle [color] border. */
 @Composable
 private fun BubbleCodeContainer(
     code: String,
@@ -476,8 +431,14 @@ private fun BubbleCodeContainer(
     color: Color,
 ) {
     val codeBlockPadding = LocalMarkdownPadding.current.codeBlock
+    val scheme = MaterialTheme.colorScheme
+    val extended = HomebaseTheme.extendedColors
+    val codeStyle = remember(scheme, extended, color) {
+        val bubble = if (color == extended.bubbleSentOnSurface) extended.bubbleSentSurface else scheme.surfaceContainerHigh
+        bubbleCodeStyle(scheme, color, bubble)
+    }
     MarkdownCodeBackground(
-        color = color.copy(alpha = FENCED_CODE_BG_ALPHA),
+        color = codeStyle.background,
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, color.copy(alpha = FENCED_CODE_BORDER_ALPHA)),
         modifier = Modifier
@@ -486,8 +447,9 @@ private fun BubbleCodeContainer(
         language = language,
         code = code,
     ) {
+        val text = remember(code, language, codeStyle) { highlightCode(code, language, codeStyle.theme) }
         MarkdownBasicText(
-            text = AnnotatedString(code),
+            text = text,
             style = style,
             color = color,
             modifier = Modifier
