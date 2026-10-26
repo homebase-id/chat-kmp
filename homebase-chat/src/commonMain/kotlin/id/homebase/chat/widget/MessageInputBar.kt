@@ -130,6 +130,8 @@ import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.readClipboardImage
+import id.homebase.core.clipboard.readClipboardText
+import id.homebase.core.util.isWeb
 import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.settings.rememberArrowUpEditsLastMessage
 import id.homebase.core.settings.rememberEnterSendsMessage
@@ -171,6 +173,7 @@ import id.homebase.core.util.addLinkReplacingSelection
 import id.homebase.core.util.linkAtSelection
 import id.homebase.core.util.removeLinkAtSelection
 import id.homebase.core.util.updateLinkAtSelection
+import id.homebase.core.util.pasteOverSelectionAsync
 import id.homebase.core.util.pasteUrlOverSelection
 import id.homebase.core.util.selectedPlainText
 import id.homebase.resources.chat_markdown_link_dialog_insert
@@ -494,7 +497,7 @@ fun MessageTextFieldExpanded(
                         }
                         .composerKeyHandler(
                             onLink = { linkDialog.open(state) },
-                            onPasteOverSelection = state::pasteUrlOverSelection,
+                            onPasteOverSelection = rememberPasteOverSelection(state),
                             clipboardText = clipboardText,
                             autocomplete = autocomplete,
                             enterSendsMessage = enterSendsMessage,
@@ -808,7 +811,7 @@ fun MessageTextFieldCompact(
                                         }
                                         .composerKeyHandler(
                                             onLink = { linkDialog.open(state) },
-                                            onPasteOverSelection = state::pasteUrlOverSelection,
+                                            onPasteOverSelection = rememberPasteOverSelection(state),
                                             clipboardText = clipboardText,
                                             autocomplete = autocomplete,
                                             enterSendsMessage = enterSendsMessage,
@@ -1407,7 +1410,7 @@ fun MessageTextFieldForAttachment(
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
                         .composerKeyHandler(
                             onLink = { linkDialog.open(state) },
-                            onPasteOverSelection = state::pasteUrlOverSelection,
+                            onPasteOverSelection = rememberPasteOverSelection(state),
                             clipboardText = clipboardText,
                             autocomplete = autocomplete,
                             enterSendsMessage = enterSendsMessage,
@@ -1531,6 +1534,23 @@ private fun ComposerExpandToggle(expanded: Boolean, onToggle: () -> Unit) {
             contentDescription = if (expanded) stringResource(MR.string.collapse)
             else stringResource(MR.string.expand),
         )
+    }
+}
+
+@Composable
+private fun rememberPasteOverSelection(state: RichTextState): (String?) -> Boolean {
+    val scope = rememberCoroutineScope()
+    return remember(state, scope) {
+        { syncText ->
+            when {
+                state.selection.collapsed -> false
+                isWeb() -> {
+                    scope.launch { state.pasteOverSelectionAsync(::readClipboardText) }
+                    true
+                }
+                else -> state.pasteUrlOverSelection(syncText)
+            }
+        }
     }
 }
 

@@ -187,3 +187,10 @@ fun RichTextState.pasteUrlOverSelection(clipboardText: String?): Boolean {
     addLink(text = label, url = url)
     return true
 }
+
+suspend fun RichTextState.pasteOverSelectionAsync(readText: suspend () -> String?) {
+    val text = readText() ?: return
+    if (pasteUrlOverSelection(text)) return
+    if (!selection.collapsed) removeSelectedText()
+    addTextAfterSelection(text)
+}

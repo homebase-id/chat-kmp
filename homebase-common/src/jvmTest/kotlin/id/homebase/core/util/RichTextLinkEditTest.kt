@@ -3,6 +3,7 @@ package id.homebase.core.util
 import androidx.compose.ui.text.TextRange
 import com.mohamedrejeb.richeditor.model.RichTextState
 import kotlin.test.Test
+import kotlinx.coroutines.runBlocking
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -100,5 +101,33 @@ class RichTextLinkEditTest {
         s.selection = TextRange(start, start + 4)
         s.addLinkReplacingSelection("docs", "https://x.test")
         assertEquals("see [docs](https://x.test) now", s.toMessageMarkdown())
+    }
+
+    private fun selectDocs(): RichTextState {
+        val s = RichTextState().applyMarkDownContent("see docs now")
+        val start = s.annotatedString.text.indexOf("docs")
+        s.selection = TextRange(start, start + 4)
+        return s
+    }
+
+    @Test
+    fun `async paste of a url over a selection labels it`() {
+        val s = selectDocs()
+        runBlocking { s.pasteOverSelectionAsync { "https://x.test" } }
+        assertEquals("see [docs](https://x.test) now", s.toMessageMarkdown())
+    }
+
+    @Test
+    fun `async paste of plain text replaces the selection`() {
+        val s = selectDocs()
+        runBlocking { s.pasteOverSelectionAsync { "notes" } }
+        assertEquals("see notes now", s.toMessageMarkdown())
+    }
+
+    @Test
+    fun `async paste with an empty clipboard keeps the selection text`() {
+        val s = selectDocs()
+        runBlocking { s.pasteOverSelectionAsync { null } }
+        assertEquals("see docs now", s.toMessageMarkdown())
     }
 }
