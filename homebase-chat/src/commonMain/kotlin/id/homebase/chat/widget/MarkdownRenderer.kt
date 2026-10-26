@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextLinkStyles
@@ -395,7 +394,7 @@ internal fun buildChatInlineAnnotatedString(
 private const val INLINE_CODE_BG_ALPHA = 0.15f
 
 /** Slightly softer tint behind a fenced-code container (it also carries a border). */
-private const val FENCED_CODE_BG_ALPHA = 0.12f
+internal const val FENCED_CODE_BG_ALPHA = 0.12f
 
 /** Border around a fenced-code container — a touch stronger than its fill. */
 private const val FENCED_CODE_BORDER_ALPHA = 0.25f
@@ -448,8 +447,9 @@ private fun BubbleCodeContainer(
         language = language,
         code = code,
     ) {
-        val darkSyntax = color.luminance() > 0.5f
-        val text = remember(code, language, darkSyntax) { highlightCode(code, language, darkSyntax) }
+        val scheme = MaterialTheme.colorScheme
+        val syntax = remember(scheme, color) { bubbleCodeStyle(scheme, color).theme }
+        val text = remember(code, language, syntax) { highlightCode(code, language, syntax) }
         MarkdownBasicText(
             text = text,
             style = style,
