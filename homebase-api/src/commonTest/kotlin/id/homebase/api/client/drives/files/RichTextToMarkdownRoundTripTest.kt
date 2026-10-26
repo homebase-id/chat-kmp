@@ -97,14 +97,28 @@ class RichTextToMarkdownRoundTripTest {
             x.second.copy(code = false) != plain && y.second.copy(code = false) != plain
     }
 
-    @Test
-    fun every_mark_combination_next_to_punctuation_round_trips() {
-        val texts = listOf("a", "(b)", "c,", " d")
-        val marks = listOf(plain, b, i, bi, M(code = true), M(bold = true, code = true), M(strike = true))
-        val leaves = texts.flatMap { t -> marks.map { t to it } }
-        for (x in leaves) for (y in leaves) for (z in leaves) {
+    private val texts = listOf("a", "(b)", "c,", " d")
+    private val leaves = texts.flatMap { t ->
+        listOf(plain, b, i, bi, M(code = true), M(bold = true, code = true), M(strike = true)).map { t to it }
+    }
+
+    // Split by first text so each test stays under the wasm browser runner's 2 s Mocha timeout.
+    private fun everyMarkCombinationStartingWith(first: String) {
+        for (x in leaves.filter { it.first == first }) for (y in leaves) for (z in leaves) {
             val sequence = listOf(x, y, z)
             assertRoundTrips(sequence, strictMarks = !changesInsideAWord(sequence))
         }
     }
+
+    @Test
+    fun every_mark_combination_starting_with_a_word_round_trips() = everyMarkCombinationStartingWith(texts[0])
+
+    @Test
+    fun every_mark_combination_starting_with_parentheses_round_trips() = everyMarkCombinationStartingWith(texts[1])
+
+    @Test
+    fun every_mark_combination_starting_with_a_comma_round_trips() = everyMarkCombinationStartingWith(texts[2])
+
+    @Test
+    fun every_mark_combination_starting_with_a_space_round_trips() = everyMarkCombinationStartingWith(texts[3])
 }
