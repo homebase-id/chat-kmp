@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.runtime.compositionLocalOf
 import com.mikepenz.markdown.model.ReferenceLinkHandlerImpl
 import com.mikepenz.markdown.model.State
+import com.mikepenz.markdown.utils.EntityConverter
 import id.homebase.api.util.ChatMarkdownFlavour
 import id.homebase.api.util.Mention
 import id.homebase.api.util.findMentions
@@ -32,19 +33,36 @@ class ParsedChatMarkdown(
 
     val blockState: State.Success? by lazy(LazyThreadSafetyMode.NONE) {
         val root = ast ?: return@lazy null
-        val handler = ReferenceLinkHandlerImpl().also { storeLinkDefinitions(it, root, text) }
+        val handler = ReferenceLinkHandlerImpl().also { handler ->
+            val links = LinkedHashMap<String, String>()
+            collectLinkDefinitions(links, root, text)
+            links.forEach { (k, v) -> handler.store(k, v) }
+        }
         State.Success(root, text, true, handler)
     }
 }
 
-private fun storeLinkDefinitions(handler: ReferenceLinkHandlerImpl, node: ASTNode, text: String) {
-    if (node.type == MarkdownElementTypes.LINK_DEFINITION) {
-        val label = node.findChildOfType(MarkdownElementTypes.LINK_LABEL)?.getTextInNode(text)?.toString()
-        val destination = node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(text)?.toString()
-        if (label != null && destination != null) handler.store(label, destination)
+// Mirrors mikepenz 0.40.2 lookupLinkDefinition(recursive = true, onlyDefinitions = false), which is internal.
+private fun collectLinkDefinitions(out: MutableMap<String, String>, node: ASTNode, text: String) {
+    var isAutoLink = false
+    val label = when (node.type) {
+        MarkdownElementTypes.LINK_DEFINITION -> node.findChildOfType(MarkdownElementTypes.LINK_LABEL)?.unescaped(text)
+        MarkdownElementTypes.INLINE_LINK -> node.findChildOfType(MarkdownElementTypes.LINK_TEXT)?.unescaped(text)
+        MarkdownElementTypes.AUTOLINK -> {
+            isAutoLink = true
+            (node.children.firstOrNull { it.type.name == MarkdownElementTypes.AUTOLINK.name } ?: node).unescaped(text)
+        }
+        else -> null
     }
-    for (child in node.children) storeLinkDefinitions(handler, child, text)
+    if (label != null) {
+        val destination = if (isAutoLink) label else node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.unescaped(text)
+        if (destination != null) out[label] = destination
+    }
+    for (child in node.children) collectLinkDefinitions(out, child, text)
 }
+
+private fun ASTNode.unescaped(text: String): String =
+    EntityConverter.replaceEntities(getTextInNode(text).toString(), false, true)
 
 internal fun parseChatMarkdown(content: String): ParsedChatMarkdown {
     val normalized = content.normalizeChatNewlines()
