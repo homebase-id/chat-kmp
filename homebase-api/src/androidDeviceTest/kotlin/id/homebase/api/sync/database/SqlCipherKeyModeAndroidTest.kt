@@ -4,10 +4,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import id.homebase.api.storage.SecureRead
+import id.homebase.api.storage.toSecureRead
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -23,13 +24,9 @@ class SqlCipherKeyModeAndroidTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     private class FakeStore(var value: String? = null) : RawKeyStore {
-        override fun get(): String? = value
+        override fun read(): SecureRead = value.toSecureRead()
         override fun put(hex: String) {
             value = hex
-        }
-
-        override fun remove() {
-            value = null
         }
     }
 
@@ -55,13 +52,13 @@ class SqlCipherKeyModeAndroidTest {
 
         assertEquals("kept", openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.marker())
 
-        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        val raw = SqlCipherRawKey.format(assertNotNull(store.value))
         assertEquals("kept", openAndroidSqliteDriver(context, DB, raw).marker())
         assertEquals("kept", openAndroidSqliteDriver(context, DB, PASSPHRASE).marker(), "the file must not be re-encrypted")
     }
 
     @Test
-    fun aDatabaseNoKeyOpensFailsAndForgetsTheCachedKey() {
+    fun aDatabaseNoKeyOpensFailsAndKeepsTheCachedKey() {
         openAndroidSqliteDriver(context, DB, PASSPHRASE).createMarker()
         val store = FakeStore("11".repeat(32))
 
@@ -69,7 +66,7 @@ class SqlCipherKeyModeAndroidTest {
             openKeyedAndroidSqliteDriver(context, DB, "another-passphrase", store) { error("must not derive") }
         }
 
-        assertNull(store.value)
+        assertEquals("11".repeat(32), store.value)
         assertEquals("kept", openAndroidSqliteDriver(context, DB, PASSPHRASE).marker())
     }
 
@@ -78,7 +75,7 @@ class SqlCipherKeyModeAndroidTest {
         val store = FakeStore()
 
         openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.createMarker()
-        val raw = SqlCipherKeyMode.rawKey(assertNotNull(store.value))
+        val raw = SqlCipherRawKey.format(assertNotNull(store.value))
 
         assertEquals("kept", openKeyedAndroidSqliteDriver(context, DB, PASSPHRASE, store) { it() }.marker())
         assertEquals("kept", openAndroidSqliteDriver(context, DB, raw).marker())

@@ -2,8 +2,10 @@ package id.homebase.api.storage
 
 import id.homebase.api.file.JvmFileSystemUtil
 import java.io.File
+import java.security.InvalidKeyException
 import java.security.KeyStore
 import java.security.SecureRandom
+import java.security.UnrecoverableKeyException
 import java.util.Base64
 import java.util.Properties
 import javax.crypto.Cipher
@@ -18,24 +20,37 @@ import javax.crypto.spec.GCMParameterSpec
  * in a properties file.
  */
 actual object SecureStorage {
-    private const val KEYSTORE_FILE = "secure_storage.p12"
-    private const val DATA_FILE = "secure_storage.properties"
-    private const val KEY_ALIAS = "SecureStorageKey"
-    private const val KEYSTORE_PASSWORD =
-        "SecureStorageKeyStorePassword" // In production, derive from machine-specific data
-    private const val TRANSFORMATION = "AES/GCM/NoPadding"
-    private const val GCM_TAG_LENGTH = 128
-    private const val GCM_IV_LENGTH = 12
+    private val storage by lazy { KeyStoreFileStorage(JvmFileSystemUtil.getAppDataDirectory()) }
 
-    private val storageDir: File by lazy {
-        val appDir = JvmFileSystemUtil.getAppDataDirectory()
-        appDir
+    actual fun put(key: String, value: String) = storage.put(key, value)
+
+    actual fun get(key: String): String? = (read(key) as? SecureRead.Found)?.value
+
+    actual fun read(key: String): SecureRead = storage.read(key)
+
+    actual fun remove(key: String) = storage.remove(key)
+
+    actual fun contains(key: String): Boolean = storage.contains(key)
+
+    actual fun clear() = storage.clear()
+}
+
+internal class KeyStoreFileStorage(storageDir: File) {
+    private companion object {
+        const val KEYSTORE_FILE = "secure_storage.p12"
+        const val DATA_FILE = "secure_storage.properties"
+        const val KEY_ALIAS = "SecureStorageKey"
+        const val KEYSTORE_PASSWORD =
+            "SecureStorageKeyStorePassword" // In production, derive from machine-specific data
+        const val TRANSFORMATION = "AES/GCM/NoPadding"
+        const val GCM_TAG_LENGTH = 128
+        const val GCM_IV_LENGTH = 12
     }
 
-    private val keyStoreFile: File by lazy { File(storageDir, KEYSTORE_FILE) }
-    private val dataFile: File by lazy { File(storageDir, DATA_FILE) }
+    private val keyStoreFile = File(storageDir, KEYSTORE_FILE)
+    private val dataFile = File(storageDir, DATA_FILE)
 
-    private fun getOrCreateKeyStore(): KeyStore {
+    private fun loadKeyStore(): KeyStore {
         val keyStore = KeyStore.getInstance("PKCS12")
 
         if (keyStoreFile.exists()) {
@@ -55,20 +70,28 @@ actual object SecureStorage {
         }
     }
 
-    private fun getOrCreateSecretKey(): SecretKey {
-        val keyStore = getOrCreateKeyStore()
+    // The password is a constant, so an unrecoverable or non-secret entry stays that way.
+    private fun storedKey(keyStore: KeyStore): SecretKey {
+        if (!keyStore.containsAlias(KEY_ALIAS)) throw SecureStorageKeyLostException("$KEY_ALIAS is not in $keyStoreFile")
+        val key = try {
+            keyStore.getKey(KEY_ALIAS, KEYSTORE_PASSWORD.toCharArray())
+        } catch (e: UnrecoverableKeyException) {
+            throw SecureStorageKeyLostException("$KEY_ALIAS can't be recovered", e)
+        }
+        return key as? SecretKey ?: throw SecureStorageKeyLostException("$KEY_ALIAS is not a secret key")
+    }
 
-        return if (keyStore.containsAlias(KEY_ALIAS)) {
-            keyStore.getKey(KEY_ALIAS, KEYSTORE_PASSWORD.toCharArray()) as SecretKey
-        } else {
+    private fun keyForEncrypt(): SecretKey {
+        val keyStore = loadKeyStore()
+        return try {
+            storedKey(keyStore)
+        } catch (_: SecureStorageKeyLostException) {
             val keyGenerator = KeyGenerator.getInstance("AES")
             keyGenerator.init(256, SecureRandom())
-            val secretKey = keyGenerator.generateKey()
-
-            keyStore.setKeyEntry(KEY_ALIAS, secretKey, KEYSTORE_PASSWORD.toCharArray(), null)
-            saveKeyStore(keyStore)
-
-            secretKey
+            keyGenerator.generateKey().also { secretKey ->
+                keyStore.setKeyEntry(KEY_ALIAS, secretKey, KEYSTORE_PASSWORD.toCharArray(), null)
+                saveKeyStore(keyStore)
+            }
         }
     }
 
@@ -86,7 +109,7 @@ actual object SecureStorage {
 
     private fun encrypt(plaintext: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
+        cipher.init(Cipher.ENCRYPT_MODE, keyForEncrypt())
 
         val iv = cipher.iv
         val encryptedBytes = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
@@ -108,41 +131,38 @@ actual object SecureStorage {
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), spec)
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, storedKey(loadKeyStore()), spec)
+        } catch (e: InvalidKeyException) {
+            throw SecureStorageKeyLostException("$KEY_ALIAS no longer fits $TRANSFORMATION", e)
+        }
 
         val decryptedBytes = cipher.doFinal(encryptedBytes)
         return String(decryptedBytes, Charsets.UTF_8)
     }
 
-    actual fun put(key: String, value: String) {
+    fun put(key: String, value: String) {
         val encryptedValue = encrypt(value)
         val properties = loadProperties()
         properties.setProperty(key, encryptedValue)
         saveProperties(properties)
     }
 
-    actual fun get(key: String): String? {
-        val properties = loadProperties()
-        val encryptedValue = properties.getProperty(key) ?: return null
-        return try {
-            decrypt(encryptedValue)
-        } catch (e: Exception) {
-            null
-        }
-    }
+    fun read(key: String): SecureRead =
+        readEncrypted({ loadProperties().getProperty(key) }, ::decrypt)
 
-    actual fun remove(key: String) {
+    fun remove(key: String) {
         val properties = loadProperties()
         properties.remove(key)
         saveProperties(properties)
     }
 
-    actual fun contains(key: String): Boolean {
+    fun contains(key: String): Boolean {
         val properties = loadProperties()
         return properties.containsKey(key)
     }
 
-    actual fun clear() {
+    fun clear() {
         val properties = Properties()
         saveProperties(properties)
     }

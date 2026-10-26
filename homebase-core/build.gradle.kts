@@ -52,7 +52,6 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-            linkerOpts("-lsqlite3")
             linkerOpts("-lz", "-lbz2", "-liconv")
 
             freeCompilerArgs += listOf("-Xbinary=bundleId=id.homebase.core")

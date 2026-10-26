@@ -3,8 +3,10 @@ package id.homebase.api.storage
 import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.io.IOException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -59,19 +61,32 @@ actual object SecureStorage {
         }
     }
 
-    private fun getSecretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
-        keyStore.load(null)
-        return keyStore.getKey(KEY_ALIAS, null) as SecretKey
+    private fun loadKeyStore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+
+    private fun storedKey(): SecretKey {
+        val keyStore = loadKeyStore()
+        if (!keyStore.containsAlias(KEY_ALIAS)) throw SecureStorageKeyLostException("$KEY_ALIAS is not in the AndroidKeyStore")
+        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+            ?: throw SecureStorageKeyLostException("$KEY_ALIAS is not a secret key")
     }
 
     private fun getPrefs(): SharedPreferences {
         return applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    private fun encrypt(plaintext: String): String {
+    // What the lost key sealed is unreadable anyway, so a fresh key replaces it.
+    private fun encrypt(plaintext: String): String = try {
+        seal(plaintext)
+    } catch (e: Exception) {
+        if (!e.isKeyLost()) throw e
+        loadKeyStore().deleteEntry(KEY_ALIAS)
+        ensureKeyExists()
+        seal(plaintext)
+    }
+
+    private fun seal(plaintext: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getSecretKey())
+        cipher.init(Cipher.ENCRYPT_MODE, storedKey())
 
         val iv = cipher.iv
         val encryptedBytes = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
@@ -93,25 +108,26 @@ actual object SecureStorage {
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.DECRYPT_MODE, getSecretKey(), spec)
-
-        val decryptedBytes = cipher.doFinal(encryptedBytes)
-        return String(decryptedBytes, Charsets.UTF_8)
-    }
-
-    actual fun put(key: String, value: String) {
-        val encryptedValue = encrypt(value)
-        getPrefs().edit { putString(key, encryptedValue) }
-    }
-
-    actual fun get(key: String): String? {
-        val encryptedValue = getPrefs().getString(key, null) ?: return null
-        return try {
-            decrypt(encryptedValue)
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, storedKey(), spec)
+            return String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
         } catch (e: Exception) {
-            null
+            throw if (e !is SecureStorageKeyLostException && e.isKeyLost()) SecureStorageKeyLostException("$KEY_ALIAS was invalidated", e) else e
         }
     }
+
+    // commit, not apply: a kill before an async write lands loses a fresh database's only key.
+    actual fun put(key: String, value: String) {
+        val encryptedValue = encrypt(value)
+        if (!getPrefs().edit().putString(key, encryptedValue).commit()) {
+            throw IOException("SecureStorage could not persist $key")
+        }
+    }
+
+    actual fun get(key: String): String? = (read(key) as? SecureRead.Found)?.value
+
+    actual fun read(key: String): SecureRead =
+        readEncrypted({ getPrefs().getString(key, null) }, ::decrypt)
 
     actual fun remove(key: String) {
         getPrefs().edit { remove(key) }
@@ -125,3 +141,7 @@ actual object SecureStorage {
         getPrefs().edit { clear() }
     }
 }
+
+// Only KeyPermanentlyInvalidatedException marks a lost key: the Keystore's other errors also cover a daemon that isn't ready.
+internal fun Throwable.isKeyLost(): Boolean =
+    generateSequence(this) { it.cause }.any { it is SecureStorageKeyLostException || it is KeyPermanentlyInvalidatedException }
