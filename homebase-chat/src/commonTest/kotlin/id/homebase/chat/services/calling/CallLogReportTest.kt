@@ -21,7 +21,7 @@ class CallLogReportTest {
             line(4, "CallStateMachine", "call=$id Connected -> Reconnecting on media Disconnected attempt=1"),
             line(20, "PeerLink", "link state Connected everConnected=true"),
         )
-        val kept = CallLogReport.select(listOf(file), id)
+        val kept = CallLogReport.select(listOf(file.asSequence()), id)
         assertEquals(listOf(1, 2, 4), kept.map { it.substring(17, 19).toInt() })
     }
 
@@ -32,7 +32,7 @@ class CallLogReportTest {
             line(2, "CallController", "call=$other timer Ring started"),
             line(3, "CallStateMachine", "call=$id Outgoing -> Connecting on signal Answer"),
         )
-        val kept = CallLogReport.select(listOf(file), id)
+        val kept = CallLogReport.select(listOf(file.asSequence()), id)
         assertEquals(2, kept.size)
         assertTrue(kept.none { other in it })
     }
@@ -45,7 +45,7 @@ class CallLogReportTest {
             "\tat id.homebase.Foo.bar(Foo.kt:1)",
             line(2, "HttpIO", "→ GET unrelated"),
         )
-        val kept = CallLogReport.select(listOf(file), id)
+        val kept = CallLogReport.select(listOf(file.asSequence()), id)
         assertEquals(3, kept.size)
         assertTrue(kept.last().startsWith("\tat "))
     }
@@ -54,7 +54,7 @@ class CallLogReportTest {
     fun mergesRolledFilesInTimeOrder() {
         val older = listOf(line(1, "CallStateMachine", "call=$id Idle -> Outgoing on UserCall"))
         val newer = listOf(line(9, "CallStateMachine", "call=$id Reconnecting -> Ended on timer Reconnect"))
-        assertEquals(listOf(1, 9), CallLogReport.select(listOf(newer, older), id).map { it.substring(17, 19).toInt() })
+        assertEquals(listOf(1, 9), CallLogReport.select(listOf(newer.asSequence(), older.asSequence()), id).map { it.substring(17, 19).toInt() })
     }
 
     @Test
@@ -62,7 +62,7 @@ class CallLogReportTest {
         val file = listOf(
             line(1, "CallController", "call=$id applying a=ice-pwd:SECRETPASSWORD123 key=abcdef token: xyz"),
         )
-        val kept = CallLogReport.select(listOf(file), id).single()
+        val kept = CallLogReport.select(listOf(file.asSequence()), id).single()
         assertFalse("SECRETPASSWORD123" in kept)
         assertFalse("abcdef" in kept)
         assertFalse("xyz" in kept)
@@ -71,8 +71,17 @@ class CallLogReportTest {
 
     @Test
     fun anUnknownCallYieldsNothing() {
-        assertTrue(CallLogReport.select(listOf(listOf(line(1, "CallController", "call=$other x"))), id).isEmpty())
-        assertTrue(CallLogReport.select(listOf(listOf(line(1, "CallController", "call=$other x"))), "").isEmpty())
+        assertTrue(CallLogReport.select(listOf(sequenceOf(line(1, "CallController", "call=$other x"))), id).isEmpty())
+        assertTrue(CallLogReport.select(listOf(sequenceOf(line(1, "CallController", "call=$other x"))), "").isEmpty())
+    }
+
+    @Test
+    fun anUntaggedLineStartsItsOwnEntryInsteadOfJoiningTheCallLineAbove() {
+        val file = listOf(
+            line(1, "CallStateMachine", "call=$id Idle -> Outgoing on UserCall"),
+            "2026-10-26T10:00:02.123456Z Warn: unrelated untagged line",
+        )
+        assertEquals(1, CallLogReport.select(listOf(file.asSequence()), id).size)
     }
 
     @Test

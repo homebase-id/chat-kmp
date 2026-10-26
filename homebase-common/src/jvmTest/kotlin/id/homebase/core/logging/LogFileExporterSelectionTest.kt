@@ -17,10 +17,10 @@ class LogFileExporterSelectionTest {
         d.resolve("unrelated.txt").writeText("ignored\n")
         var seen: List<List<String>> = emptyList()
         val out = LogFileExporter.exportSelection(Path(d.path), "call-report-x.txt") { files ->
-            seen = files
+            seen = files.map { it.toList() }
             "report"
         }
-        assertEquals(setOf(listOf("one", "two", ""), listOf("three", "")), seen.toSet())
+        assertEquals(setOf(listOf("one", "two"), listOf("three")), seen.toSet())
         assertEquals("report", d.resolve("call-report-x.txt").readText())
         assertEquals("call-report-x.txt", out?.name)
     }
