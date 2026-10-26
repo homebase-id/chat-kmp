@@ -53,14 +53,17 @@ fun EmailBiometricGate(
     LaunchedEffect(authorized, unlockAttempt) {
         if (authorized || isAuthenticating) return@LaunchedEffect
         isAuthenticating = true
-        when (authenticateBiometric(title, subtitle)) {
-            BiometricResult.Success, BiometricResult.Unavailable -> {
-                emailPreferences.recordAuthSuccess()
-                authorized = true
+        try {
+            when (authenticateBiometric(title, subtitle)) {
+                BiometricResult.Success, BiometricResult.Unavailable -> {
+                    emailPreferences.recordAuthSuccess()
+                    authorized = true
+                }
+                BiometricResult.Failure -> Unit
             }
-            BiometricResult.Failure -> Unit
+        } finally {
+            isAuthenticating = false
         }
-        isAuthenticating = false
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -74,11 +77,14 @@ fun EmailBiometricGate(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (authorized) content() else EmailLockedContent(onUnlock = { unlockAttempt++ })
+    if (authorized) content() else EmailLockedContent(
+        unlockEnabled = !isAuthenticating,
+        onUnlock = { unlockAttempt++ },
+    )
 }
 
 @Composable
-private fun EmailLockedContent(onUnlock: () -> Unit) {
+private fun EmailLockedContent(unlockEnabled: Boolean, onUnlock: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -105,7 +111,7 @@ private fun EmailLockedContent(onUnlock: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
-        FilledTonalButton(onClick = onUnlock) {
+        FilledTonalButton(onClick = onUnlock, enabled = unlockEnabled) {
             Text(stringResource(MR.string.email_locked_unlock))
         }
     }
