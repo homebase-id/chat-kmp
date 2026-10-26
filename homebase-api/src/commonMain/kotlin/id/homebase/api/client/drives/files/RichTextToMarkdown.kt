@@ -15,13 +15,7 @@ private const val markdownSpecialChars = "\\*_`~[]|<&"
 private val newlineWithSpaces = Regex("\\s*\n\\s*")
 private val headingClosingSequence = Regex("(^|\\s)(#+)$")
 
-private data class Marks(val bold: Boolean, val italic: Boolean, val strike: Boolean, val code: Boolean) {
-    fun without(mark: Int) = when (mark) {
-        0 -> copy(strike = false)
-        1 -> copy(bold = false)
-        else -> copy(italic = false)
-    }
-}
+private data class Marks(val bold: Boolean, val italic: Boolean, val strike: Boolean, val code: Boolean)
 
 private sealed interface Inline {
     class Text(val text: String, var marks: Marks) : Inline
@@ -173,11 +167,13 @@ private fun collectInline(nodes: List<RichTextNode>, out: MutableList<Inline>) {
     }
 }
 
-private val wrapperMarks = listOf<Pair<String, (Marks) -> Boolean>>(
-    "~~" to { it.strike },
-    "**" to { it.bold },
+private class Wrapper(val delimiter: String, val has: (Marks) -> Boolean, val without: (Marks) -> Marks)
+
+private val wrapperMarks = listOf(
+    Wrapper("~~", { it.strike }) { it.copy(strike = false) },
+    Wrapper("**", { it.bold }) { it.copy(bold = false) },
     // `_` cannot open or close inside a word, `*` can.
-    "*" to { it.italic },
+    Wrapper("*", { it.italic }) { it.copy(italic = false) },
 )
 
 private class Delimiter(val start: Int, val end: Int, val mark: Int, val opens: Boolean, val unit: Int)
@@ -186,7 +182,7 @@ private class Segment(val start: Int, val firstUnit: Int, val lastUnit: Int, val
 
 private class RenderedInline(val markdown: String, val delimiters: List<Delimiter>, val segments: List<Segment>)
 
-private fun markBits(marks: Marks) = wrapperMarks.indices.sumOf { if (wrapperMarks[it].second(marks)) 1 shl it else 0 }
+private fun markBits(marks: Marks) = wrapperMarks.indices.sumOf { if (wrapperMarks[it].has(marks)) 1 shl it else 0 }
 
 private val punctuationCategories = setOf(
     CharCategory.CONNECTOR_PUNCTUATION, CharCategory.DASH_PUNCTUATION, CharCategory.START_PUNCTUATION,
@@ -215,11 +211,10 @@ private fun RenderedInline.flanking(d: Delimiter, isDelimiter: BooleanArray): Pa
 
 private fun Inline.isMovable() = this is Inline.Text && (marks.code || text.single().isMarkdownPunctuation())
 
-// Mark index and delimiter length per side.
 private val parsedWrappers = mapOf(
-    GFMElementTypes.STRIKETHROUGH to (0 to 2),
-    MarkdownElementTypes.STRONG to (1 to 2),
-    MarkdownElementTypes.EMPH to (2 to 1),
+    GFMElementTypes.STRIKETHROUGH to 0,
+    MarkdownElementTypes.STRONG to 1,
+    MarkdownElementTypes.EMPH to 2,
 )
 
 /** The first segment the app's parser reads with other marks, or next to a delimiter it left as text. */
@@ -227,10 +222,10 @@ private fun RenderedInline.misparsedSegment(): Segment? {
     val marksAt = IntArray(markdown.length)
     val consumed = BooleanArray(markdown.length)
     fun walk(node: ASTNode, marks: Int) {
-        val wrapper = parsedWrappers[node.type]
-        val inner = if (wrapper == null) marks else marks or (1 shl wrapper.first)
-        if (wrapper != null) {
-            for (i in 0 until wrapper.second) {
+        val mark = parsedWrappers[node.type]
+        val inner = if (mark == null) marks else marks or (1 shl mark)
+        if (mark != null) {
+            for (i in wrapperMarks[mark].delimiter.indices) {
                 consumed[node.startOffset + i] = true
                 consumed[node.endOffset - 1 - i] = true
             }
@@ -255,7 +250,7 @@ private fun renderInline(nodes: List<RichTextNode>): String {
     val items = mutableListOf<Inline>()
     collectInline(nodes, items)
     val units = items.flatMap { item ->
-        if (item is Inline.Text && !item.marks.code) item.text.map { Inline.Text(it.toString(), item.marks) } else listOf(item)
+        if (item is Inline.Text && !item.marks.code && markBits(item.marks) != 0) item.text.map { Inline.Text(it.toString(), item.marks) } else listOf(item)
     }
     while (true) {
         val rendered = renderUnits(units)
@@ -270,14 +265,14 @@ private fun renderInline(nodes: List<RichTextNode>): String {
         if (bad != null) {
             val edge = units[bad.unit] as Inline.Text
             if (edge.isMovable()) {
-                edge.marks = edge.marks.without(bad.mark)
+                edge.marks = wrapperMarks[bad.mark].without(edge.marks)
             } else {
                 val step = if (bad.opens) 1 else -1
                 var i = bad.unit
                 while (true) {
                     val unit = units.getOrNull(i) as? Inline.Text ?: break
-                    if (!wrapperMarks[bad.mark].second(unit.marks)) break
-                    unit.marks = unit.marks.without(bad.mark)
+                    if (!wrapperMarks[bad.mark].has(unit.marks)) break
+                    unit.marks = wrapperMarks[bad.mark].without(unit.marks)
                     i += step
                 }
             }
@@ -287,7 +282,7 @@ private fun renderInline(nodes: List<RichTextNode>): String {
         var dropped = false
         for (i in misparsed.firstUnit..misparsed.lastUnit) {
             val unit = units[i] as? Inline.Text ?: continue
-            val plain = Marks(bold = false, italic = false, strike = false, code = unit.marks.code)
+            val plain = unit.marks.copy(bold = false, italic = false, strike = false)
             if (unit.marks != plain) dropped = true
             unit.marks = plain
         }
@@ -305,15 +300,15 @@ private fun renderUnits(units: List<Inline>): RenderedInline {
     val pending = StringBuilder()
     val pendingUnits = mutableListOf<Int>()
     // Per mark, the last unit of the unbroken run each unit is in: the mark that ends first nests innermost.
-    val runEnd = wrapperMarks.map { (_, has) ->
-        val on = BooleanArray(units.size) { (units[it] as? Inline.Text)?.marks?.let(has) == true }
+    val runEnd = wrapperMarks.map { wrapper ->
+        val on = BooleanArray(units.size) { (units[it] as? Inline.Text)?.marks?.let(wrapper.has) == true }
         IntArray(units.size).also { end ->
             for (i in units.indices.reversed()) end[i] = if (i + 1 < units.size && on[i] && on[i + 1]) end[i + 1] else i
         }
     }
 
     fun emit(mark: Int, opens: Boolean, unit: Int) {
-        val delimiter = wrapperMarks[mark].first
+        val delimiter = wrapperMarks[mark].delimiter
         delimiters.add(Delimiter(out.length, out.length + delimiter.length, mark, opens, unit))
         out.append(delimiter)
     }
@@ -336,7 +331,7 @@ private fun renderUnits(units: List<Inline>): RenderedInline {
                 val trailing = body.substring(leading.length + core.length)
                 if (leading.isNotEmpty()) closeFrom(0)
                 out.append(leading)
-                val wanted = wrapperMarks.indices.filter { wrapperMarks[it].second(marks) }
+                val wanted = wrapperMarks.indices.filter { wrapperMarks[it].has(marks) }
                 // Escaping never touches whitespace, so the trimmed lengths index the raw units too.
                 val firstUnit = pendingUnits[leading.length]
                 val lastUnit = pendingUnits[pendingUnits.size - trailing.length - 1]
