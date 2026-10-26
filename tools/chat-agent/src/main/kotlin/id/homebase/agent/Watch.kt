@@ -105,6 +105,36 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null
     val schedules = if (config.operatorBrain != null) ScheduleStore(File(dir, "schedules.json"), config.zone, log = ::log) else null
     val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules, voice, notifier) }
+    val sessionStore = if (config.sessions) SessionStore(File(dir, "sessions.json"), config.sessionMaxTokens, config.sessionMaxTurns, config.sessionWarmMs) else null
+    val operatorBrain = config.operatorBrain
+    val transcribeCommand = config.transcribe
+    if (agentCalls != null && operatorBrain != null && transcribeCommand != null) {
+        val ownerChat = { peer: OdinId -> config.allowlist.directWith(session.identity, peer) }
+        agentCalls.hooks = CallHooks(
+            transcribe = shellTranscriber(transcribeCommand, ::log, emptyOk = true),
+            brain = { peer, prompt ->
+                val lease = ownerChat(peer)?.let { chatTools?.lease(it, Tier.OPERATOR, peer) }
+                try {
+                    runBrain(Brain(operatorBrain), prompt, CALL_BRAIN_TIMEOUT_MS, tier = Tier.OPERATOR, operatorCwd = config.operatorCwd, lease = lease, mcpGroup = config.operatorGroup)
+                } finally {
+                    lease?.close()
+                }
+            },
+            command = { peer, command ->
+                val chat = ownerChat(peer)
+                when (command) {
+                    OperatorCommand.Status -> jobs?.status(peer.toString())
+                    is OperatorCommand.Cancel -> jobs?.cancel(command.id) { it == chat }
+                    OperatorCommand.New -> if (sessionStore != null && chat != null) {
+                        sessionStore.forget(chat)
+                        tagged(config.replyPrefix, "session forgotten, notes kept")
+                    } else null
+                    else -> null
+                }
+            },
+            notes = { peer, text -> ownerChat(peer)?.let { sendToConversation(session, config.allowlist, it, tagged(config.replyPrefix, text)) } },
+        )
+    }
     val processor = WatchProcessor(
         config = config,
         identity = session.identity.toString(),
@@ -128,7 +158,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         voice = voice,
         notifier = notifier,
         sendVoice = { conversation, spoken, caption -> timings.time("send") { sendVoiceNote(conversation, spoken, caption) } },
-        sessions = if (config.sessions) SessionStore(File(dir, "sessions.json"), config.sessionMaxTokens, config.sessionMaxTurns, config.sessionWarmMs) else null,
+        sessions = sessionStore,
         brain = { prompt, tier, attachments, lease, session ->
             timings.time("brain") {
                 if (tier == Tier.OPERATOR) runBrain(Brain(config.operatorBrain!!), prompt, config.operatorTimeoutMs, tier = tier, operatorCwd = config.operatorCwd, attachments = attachments, lease = lease, mcpGroup = config.operatorGroup, sessionFlags = session)

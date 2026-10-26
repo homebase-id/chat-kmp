@@ -1,0 +1,23 @@
+# ~/.config/containers/systemd/chat-agent.container   (podman quadlet; unit name chat-agent.service)
+# Only the lines that matter for voice and calls are shown; merge them into the existing file.
+[Unit]
+Description=Homebase chat agent
+After=network-online.target quag-tts.socket
+Wants=network-online.target
+
+[Container]
+Image=localhost/chat-agent:CHANGE_ME
+# The agent, whisper and a fast callTts engine fit here. KittenTTS 2 does not (7.4 GB RSS): it is the host sidecar, reached over the socket below.
+PodmanArgs=--memory=4g --cpus=4
+Volume=%h/.local/share/homebase-chat-agent:/data:Z
+# TTS sidecar socket (deploy/tts/): speak.sh posts to it with curl --unix-socket
+Volume=%t/quag-tts:/run/quag-tts
+Environment=TTS_SOCKET=/run/quag-tts/tts.sock
+# Calls need the websocket: leave transport at auto (or websocket) in agent.conf. Outbound UDP must work for the call media.
+
+[Service]
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -141,6 +141,10 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | ttsReference, ttsReferenceText | 5 to 30 s wav and its transcript for voice cloning (`TTS_REFERENCE`, `TTS_REFERENCE_TEXT`); overrides `ttsVoice` (warns if both are set). With the sidecar the clip path is resolved on the host under `TTS_REFERENCE_DIR`, so give the host path, not a container path. A knob only: nothing is fetched or shipped | none |
 | ttsTimeout | e.g. `240s`; the command is killed after this | 240s |
 | ttsMaxChars | the spoken text is cut to this many characters (1 to 600; about 1 s of synthesis per character plus a 47 s cold start must fit in `ttsTimeout`, else a warning) | 150 |
+| callTts | command for live call speech, same contract as `tts=` (`<cmd> "<text file>" "<out file>"`, m4a out; `speak.sh` works). Default: the `tts=` command. A live conversation needs a fast engine here, see Choosing a fast callTts engine; 30 s limit per sentence | `tts` |
+| callFiller | text played once while a reply is being made (synthesized once at call start, kept in memory only) | `Hang on.` |
+| callMaxMinutes | a call is ended after this long (1 to 120) | 15 |
+| callConverse | `on` or `off`: after an urgent escalation call plays its message, keep listening and answering until the call ends | on |
 | ownerCallAfter | how long an urgent notice may go unanswered before the bot places a call, e.g. `10m` | 10m |
 | maxOwnerCallsPerDay | calls placed to the owner in any 24 h, persisted in `owner-calls.txt`; 0 turns calls off | 3 |
 | ownerQuietHours | `HH:MM-HH:MM` in `timezone` (may wrap midnight), none by default. No voice notes for attention notices in it, and no calls unless `urgentOverridesQuiet` | none |
@@ -237,7 +241,7 @@ load average of 13 to 15 from another job, so pessimistic (idle box maybe 2 to 4
 - 7.4 GB RSS, so it cannot live in the 4 GB container. It runs as a host sidecar that loads on the first request and exits when idle.
 
 Consequences: voice notes are asynchronous (expect 1 to 2 minutes per sentence, and `mirror` holds the reply path while it
-speaks); a live two-way call turn loop is not viable with this engine (a separate fast engine would need its own knob);
+speaks); a live two-way call turn loop is not viable with this engine (use the separate `callTts` knob for a fast engine, see Call loop);
 an outbound urgent call has to synthesize its message before dialing.
 
 Voice candidates, median F0 on the same line (numbers, not listening tests; pick by ear): Marcus expressive 107 Hz (deepest, the
@@ -287,21 +291,63 @@ With no such chat it logs `owner has no 1:1 with the bot` and the tool returns a
 
 Privacy: notices go through the same encrypted Homebase chat as every other message and nothing leaves it. Push notification bodies stay
 generic (`conversationTransitOptions`), so the text is never in the push payload. Voice synthesis stays on the box (see Voice replies);
-a live phone call needs a fast engine, which is a separate decision (KittenTTS 2 is far slower than real time).
+a live phone conversation needs a fast `callTts` engine, which is a separate decision (KittenTTS 2 is far slower than real time).
 
 ### Calling the owner (`calls=on`)
 
 `calls=on` (default off; needs `tts=`, a websocket transport and the person in `operators`) makes escalation place a real one-to-one audio
 call with the app's own calling stack: the message is synthesized first (same `tts=` command), decoded to 48 kHz mono PCM with ffmpeg,
-then the bot dials, waits for the answer, waits 800 ms, plays the message, waits 1.5 s and hangs up. A headless audio module and a
+then the bot dials, waits for the answer, waits 800 ms and plays the message. With `callConverse=on` (default) the call then turns into a
+conversation (see Call loop); with `off` it waits 1.5 s and hangs up. A headless audio module and a
 `CustomAudioSource` stand in for the sound card; the call log entry lands in the 1:1 like any app-placed call. One call at a time, a
-second request reports `unavailable`. The outcome is answered, missed, declined, unavailable or failed. While `calls=on` the bot
-declines every incoming call (answering is a later slice). `chat-agent call --to <id> --say "<text>"` places one by hand.
+second request reports `unavailable`. The outcome is answered, missed, declined, unavailable or failed.
+`chat-agent call --to <id> --say "<text>"` places one by hand (message only, no conversation).
 
-Deploy notes: webrtc-java's `linux-x86_64` native needs shared libraries from the base image (`eclipse-temurin` noble). Run `ldd` on the
-extracted `libwebrtc-java.so` during the deploy step and install what is missing (likely X11, pulse and asound packages; unverified).
-`gradle :chat-agent:trimmedTest` must pass before deploying: the engine runs with `renderVideo=false`, which is what keeps compose and skiko
-(stripped from the trimmed classpath) from loading.
+Incoming calls: an operator who calls the bot while `calls=on`, `transcribe=` and `operatorBrain=` are set is answered after 1 s and greeted
+("Quagmire here.", from `nickname`) and the call loop runs. Anyone else is declined at once (the log line names the caller's domain
+only), as is any call that arrives while another call is running, and every call when those three are not all set. The caller's own app
+writes the call log entry; the bot writes nothing extra for an inbound call.
+
+### Call loop
+
+Remote audio (48 kHz, downmixed to mono if needed) is cut into utterances by an energy detector on 20 ms frames with an adaptive noise
+floor: speech starts after 3 voiced frames, ends after 700 ms of silence, utterances under 400 ms are dropped, and one is cut at 20 s.
+Each utterance becomes an in-memory WAV and goes through `transcribe=` (the temp copy is deleted; whisper filler such as
+`[BLANK_AUDIO]` or `(silence)` is ignored). Then:
+
+- a one or two word `status`, `cancel`, `cancel <n>` or `new` runs that job command (the owner 1:1 context) and the answer is spoken;
+- anything else goes to the operator brain with the owner conversation's chat tools and this prompt: "You are on a live voice call with
+  <owner>. Answer in at most two short spoken sentences, no markdown. Say GOODBYE to end the call." plus the last 6 turns of the call;
+- the reply goes to `callTts=`, ffmpeg decodes it to PCM and it is played. After 1.5 s without a reply the `callFiller` is played once;
+- `GOODBYE` in the reply is spoken, then the bot hangs up. The owner talking while the bot speaks cuts the bot off (barge-in): playback is
+  flushed and the reply in flight is cancelled.
+
+Limits: `callMaxMinutes`, 3 consecutive transcribe, brain or speech failures (the bot says "I'm losing you." and hangs up) and 60 s per
+brain turn. After the call a one-line `call notes: ...` summary (a brain one-liner over the transcript, or the last thing the owner said if
+the brain fails) is posted to the owner 1:1 so the chat history keeps what was agreed. Transcripts live in memory for the call only; the
+only trace in `agent.log` is length-only lines (`call heard 23 chars in 1840 ms`).
+
+Latency per turn is segment end (700 ms) + transcribe + brain + `callTts` + playback start. Measured on the G14 (load average 13 to 15, so
+pessimistic):
+
+| piece | measured | note |
+|---|---|---|
+| silence that ends an utterance | 0.7 s | fixed |
+| KittenTTS 2 (`tts=` default), 16 words | 89 to 96 s for 5.5 to 8.3 s of audio | 11 to 17x slower than real time, 47 s cold start, 7.4 GB RSS |
+| transcribe (`whisper.cpp`, base) | not measured here | roughly the clip length or less on this CPU |
+| operator brain | not measured here | a few seconds for a short answer |
+
+A live conversation therefore does not work with KittenTTS 2 as `callTts`: each sentence would take over a minute and the 30 s limit
+fails it, 3 failures in a row end the call. Outbound urgent calls still work because their message is synthesized before dialing.
+
+#### Choosing a fast callTts engine
+
+`callTts` is any command that turns a text file into an audio file the same way `tts=` does, so a wrapper only has to write an m4a (or
+any ffmpeg-readable file named `.m4a`/`.wav`). It needs to be several times faster than real time on 4 CPU threads and fit next to the
+agent in the 4 GB cap. Candidates, none installed or downloaded by this repo (an owner decision): piper (ONNX, CPU, roughly 10x or more
+faster than real time for a medium voice) or a small ONNX voice such as a nano model. Write a `speak-fast.sh` next to `speak.sh` that runs
+the engine and the same ffmpeg conversion, then set `callTts=/opt/chat-agent/scripts/speak-fast.sh`. The persona voice keys (`ttsVoice` etc.)
+are passed to it as the same `TTS_*` environment variables and can be ignored.
 
 ## Deploy (Linux box, systemd)
 
@@ -318,6 +364,45 @@ extracted `libwebrtc-java.so` during the deploy step and install what is missing
    `ExecStart` path, then `systemctl --user daemon-reload && systemctl --user enable --now chat-agent@bot.service`;
    `loginctl enable-linger $USER` so it starts at boot without a login. Logs: `journalctl --user -u chat-agent@bot -f`
    and `<data dir>/bot/logs/agent.log`.
+
+### Container (podman quadlet) with calls
+
+TTS stays on the host (the sidecar above), so the image does not grow and stays inside the 4 GB cap. `deploy/container/chat-agent.container`
+is a commented quadlet with the additions for voice and calls:
+
+- `Volume=%t/quag-tts:/run/quag-tts` and `Environment=TTS_SOCKET=/run/quag-tts/tts.sock` (from the TTS sidecar section);
+- calls use the websocket, so `transport=auto` (the default) or `websocket` in agent.conf; `transport=poll` keeps calls off;
+- the call audio is peer-to-peer or relayed by the identity server's TURN, so the container needs outbound UDP; with rootless podman's
+  default `pasta` networking nothing extra is needed. A fixed memory limit of `--memory=4g --cpus=4` is enough for the agent, whisper and a fast `callTts`.
+
+Image changes in `~/chat-agent-docker/Dockerfile` (keep the existing JDK 21 `eclipse-temurin` noble base):
+
+    RUN apt-get update && apt-get install -y --no-install-recommends \
+          ffmpeg curl jq ca-certificates \
+          libasound2t64 libpulse0 libx11-6 libxext6 libxrender1 libxtst6 libxi6 libxrandr2 libxfixes3 libxcomposite1 \
+          libxdamage1 libgl1 libglib2.0-0 \
+        && rm -rf /var/lib/apt/lists/*
+    # no TTS engine here: tts= and callTts= are host scripts reached over the socket (or a fast engine added later)
+
+The webrtc-java native (`libwebrtc-java.so`, unpacked at first use into the temp dir) links against these; run `ldd` on it inside the image
+and add whatever it reports missing (the list above is the expected set, unverified until the first build). Rebuild the image tag, then change `Image=` in the quadlet.
+`gradle :chat-agent:trimmedTest` must pass before building the tarball.
+
+### Smoke test for calls (owner only)
+
+Nobody else should be called. Do this once after deploying, with the owner at the phone:
+
+1. In agent.conf set `calls=on`, `callConverse=on`, `transcribe=`, `tts=`, `operatorBrain=` and `operators=<owner>`; restart the service by hand and read
+   the startup log: `calls=on`, no `WARNING:` about calls.
+2. From the owner's phone open the bot's 1:1 and place a call. The bot should answer after about 1 s (log `answered incoming call from <owner>`).
+3. Say a sentence. Expect `call heard N chars`, then `call replying N chars`, then the spoken answer (with a slow `callTts` this is where it
+   fails; see Choosing a fast callTts engine).
+4. Interrupt the bot mid-sentence: log `call barge-in`, the voice stops.
+5. Say "status": the spoken job status, no brain run. Say goodbye: the bot says `GOODBYE` and hangs up.
+6. Check the owner 1:1 for the `call notes: ...` message, and `agent.log` for length-only lines (no transcript text).
+7. Call from a second, non-operator account (or ask someone to): it is declined at once, `declining incoming call from <domain>`.
+8. Escalation: from the owner chat ask the bot to `notify_owner` with urgency urgent, do not answer for `ownerCallAfter`, answer the call: the
+   message plays, then the conversation continues.
 
 ## Operator machine checklist
 

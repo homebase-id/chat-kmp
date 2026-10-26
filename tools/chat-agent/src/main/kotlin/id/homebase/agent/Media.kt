@@ -537,7 +537,7 @@ suspend fun runShell(command: String, args: List<String>, env: Map<String, Strin
 suspend fun probeSeconds(ffmpeg: Ffmpeg, file: File): Int? =
     if (ffmpeg.available) ffmpeg.probe(file)?.let { ((it.durationMs + 500) / 1000).toInt() } else null
 
-fun shellTranscriber(command: String, log: (String) -> Unit = {}): suspend (ByteArray, String) -> String? = { bytes, name ->
+fun shellTranscriber(command: String, log: (String) -> Unit = {}, emptyOk: Boolean = false): suspend (ByteArray, String) -> String? = { bytes, name ->
     val dir = tempDir("voice")
     try {
         val file = File(dir, safeName(name)).also { it.writeBytes(bytes) }
@@ -546,7 +546,7 @@ fun shellTranscriber(command: String, log: (String) -> Unit = {}): suspend (Byte
         when {
             r.timedOut -> fail("timed out after ${TRANSCRIBE_TIMEOUT_MS / 1000}s")
             r.exit != 0 -> fail("exit ${r.exit}: ${r.errTail}")
-            else -> r.out.trim().takeIf { it.isNotEmpty() }?.truncateToCodePoints(INLINE_TEXT_CODEPOINTS) ?: fail("empty output: ${r.errTail}")
+            else -> r.out.trim().takeIf { it.isNotEmpty() }?.truncateToCodePoints(INLINE_TEXT_CODEPOINTS) ?: if (emptyOk) "" else fail("empty output: ${r.errTail}")
         }
     } finally {
         dir.deleteRecursively()

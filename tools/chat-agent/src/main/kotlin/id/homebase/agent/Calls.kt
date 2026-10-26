@@ -14,6 +14,7 @@ import id.homebase.chat.services.calling.CallEngineFactory
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallService
 import id.homebase.chat.services.calling.CallSession
+import id.homebase.chat.services.calling.CallState
 import id.homebase.chat.services.calling.RING_TIMEOUT_MS
 import id.homebase.chat.services.calling.WebRtcJavaCallEngine
 import id.homebase.chat.services.content.MessageContent
@@ -109,7 +110,7 @@ class PcmPacer(sampleRate: Int, private val push: (ByteArray) -> Unit) {
     }
 }
 
-class PcmPlayer(private val sampleRate: Int = CALL_SAMPLE_RATE) {
+class PcmPlayer(private val sampleRate: Int = CALL_SAMPLE_RATE) : CallAudioOut {
     private val pacer = PcmPacer(sampleRate) { frame -> source.pushAudio(frame, 16, sampleRate, 1, frame.size / 2) }
     private var executor: ScheduledExecutorService? = null
     private var created: CustomAudioSource? = null
@@ -124,7 +125,7 @@ class PcmPlayer(private val sampleRate: Int = CALL_SAMPLE_RATE) {
         }
     }
 
-    suspend fun play(pcm: ByteArray) {
+    override suspend fun play(pcm: ByteArray) {
         if (closed) return
         val done = pacer.enqueue(pcm)
         try {
@@ -135,7 +136,7 @@ class PcmPlayer(private val sampleRate: Int = CALL_SAMPLE_RATE) {
         }
     }
 
-    fun flush() = pacer.flush()
+    override fun flush() = pacer.flush()
 
     @Synchronized fun stop() {
         closed = true
@@ -198,6 +199,13 @@ fun callOutcomeFor(reason: CallEndReason): CallOutcome = when (reason) {
     is CallEndReason.Failed -> CallOutcome.FAILED
 }
 
+internal suspend fun whileConnected(calls: CallSession, work: suspend () -> Unit) = coroutineScope {
+    val running = launch { work() }
+    val watcher = launch { calls.state.first { it.phase is CallPhase.Ended }; running.cancel() }
+    running.join()
+    watcher.cancel()
+}
+
 class OwnerCallDriver(
     private val operators: Set<OdinId>,
     private val enabled: Boolean,
@@ -210,8 +218,9 @@ class OwnerCallDriver(
     private val settleMs: Long = CALL_SETTLE_MS,
     private val tailMs: Long = CALL_TAIL_MS,
     private val log: (String) -> Unit = {},
+    private val converse: (suspend (OdinId) -> Unit)? = null,
+    private val single: Mutex = Mutex(),
 ) : OwnerCaller {
-    private val single = Mutex()
 
     override suspend fun call(peer: OdinId, say: String): CallOutcome {
         if (peer !in operators) return CallOutcome.UNAVAILABLE.also { log("call refused: $peer is not an operator") }
@@ -246,12 +255,8 @@ class OwnerCallDriver(
             (settled.phase as? CallPhase.Ended)?.let { return callOutcomeFor(it.reason).also { o -> log("call to $peer ended before connecting: ${it.reason} -> $o") } }
             log("call to $peer connected, speaking ${pcm.size / (CALL_SAMPLE_RATE * 2 / 1000)} ms")
             delay(settleMs)
-            coroutineScope {
-                val speaking = launch { play(pcm) }
-                val watcher = launch { calls.state.first { it.phase is CallPhase.Ended }; speaking.cancel() }
-                speaking.join()
-                watcher.cancel()
-            }
+            whileConnected(calls) { play(pcm) }
+            if (converse != null && calls.state.value.phase !is CallPhase.Ended) whileConnected(calls) { converse.invoke(peer) }
             if (calls.state.value.phase !is CallPhase.Ended) delay(tailMs)
             return CallOutcome.ANSWERED
         } finally {
@@ -260,12 +265,72 @@ class OwnerCallDriver(
     }
 }
 
+const val INBOUND_ACCEPT_DELAY_MS = 1_000L
+const val INBOUND_CONNECT_MS = 30_000L
+
+class InboundCalls(
+    private val operators: Set<OdinId>,
+    private val enabled: Boolean,
+    private val calls: CallSession,
+    private val single: Mutex,
+    private val converse: suspend (OdinId) -> Unit,
+    private val ready: () -> Boolean = { true },
+    private val acceptDelayMs: Long = INBOUND_ACCEPT_DELAY_MS,
+    private val connectTimeoutMs: Long = INBOUND_CONNECT_MS,
+    private val log: (String) -> Unit = {},
+) {
+    fun start(scope: CoroutineScope) = scope.launch {
+        var handled: String? = null
+        calls.state.filter { it.phase == CallPhase.Incoming && it.direction == CallDirection.Incoming && it.callId != null }.collect {
+            if (it.callId != handled) {
+                handled = it.callId
+                scope.launch { handle(it) }
+            }
+        }
+    }
+
+    suspend fun handle(incoming: CallState) {
+        val peer = incoming.peer?.let { runCatching { OdinId(it) }.getOrNull() }
+        if (peer == null || peer !in operators) return decline("declining incoming call from ${incoming.peer}")
+        if (!enabled || !ready()) return decline("declining incoming call from $peer: answering needs calls=on, transcribe= and operatorBrain=")
+        if (!single.tryLock()) return decline("declining incoming call from $peer: already in a call")
+        try {
+            delay(acceptDelayMs)
+            val live = calls.state.value
+            if (live.callId != incoming.callId || live.phase != CallPhase.Incoming) return log("incoming call from $peer ended before answering")
+            calls.accept()
+            val settled = withTimeoutOrNull(connectTimeoutMs) {
+                calls.state.first { it.callId == incoming.callId && (it.phase == CallPhase.Connected || it.phase is CallPhase.Ended) }
+            }
+            if (settled?.phase != CallPhase.Connected) return log("incoming call from $peer did not connect")
+            log("answered incoming call from $peer")
+            whileConnected(calls) { converse(peer) }
+        } finally {
+            withContext(NonCancellable) { if (calls.state.value.phase !is CallPhase.Ended) calls.hangup() }
+            single.unlock()
+        }
+    }
+
+    private fun decline(why: String) {
+        log(why)
+        calls.decline()
+    }
+}
+
+class CallHooks(
+    val transcribe: suspend (ByteArray, String) -> String?,
+    val brain: suspend (OdinId, String) -> BrainOutcome,
+    val command: suspend (OdinId, OperatorCommand) -> String?,
+    val notes: suspend (OdinId, String) -> Unit,
+)
+
 class AgentCalls(
     session: Session,
     eventBus: EventBus,
     scope: CoroutineScope,
     private val config: AgentConfig,
     speaker: suspend (String) -> OutVoice?,
+    callSpeaker: suspend (String) -> OutVoice? = speaker,
     sendTyped: suspend (Uuid, MessageContent) -> Unit,
     private val log: (String) -> Unit = {},
     ffmpeg: Ffmpeg = DEFAULT_FFMPEG,
@@ -299,6 +364,8 @@ class AgentCalls(
             }
         },
     )
+    private val single = Mutex()
+    @Volatile var hooks: CallHooks? = null
     private val driver = OwnerCallDriver(
         operators = config.operators,
         enabled = config.calls,
@@ -307,15 +374,36 @@ class AgentCalls(
         synthesize = { text -> speaker(text)?.let { decode(ffmpeg, it) } },
         play = { player.play(it) },
         log = log,
+        converse = { peer -> if (config.callConverse) converse(peer, null) },
+        single = single,
+    )
+    private val callSynth: suspend (String) -> ByteArray? = { text -> callSpeaker(text)?.let { decode(ffmpeg, it) } }
+    private val greeting = "${config.nickname.replaceFirstChar { it.uppercase() }} here."
+
+    private suspend fun converse(peer: OdinId, opening: String?) {
+        val h = hooks ?: return
+        val loop = CallTurnLoop(
+            peer = peer.toString(), nickname = config.nickname, frames = remote.frames, audio = player,
+            transcribe = h.transcribe, brain = { h.brain(peer, it) }, speak = callSynth, command = { h.command(peer, it) },
+            postNotes = { h.notes(peer, it) }, hangup = service::hangup,
+            fillerText = config.callFiller, maxMinutes = config.callMaxMinutes, persona = config.persona, log = log,
+        )
+        try {
+            log("call loop ended: ${loop.run(opening)}")
+        } finally {
+            withContext(NonCancellable) { loop.postSummary() }
+        }
+    }
+
+    private val inbound = InboundCalls(
+        config.operators, config.calls, service, single,
+        converse = { peer -> converse(peer, greeting) },
+        ready = { hooks != null },
+        log = log,
     )
 
     init {
-        scope.launch {
-            service.state.filter { it.phase == CallPhase.Incoming && it.direction == CallDirection.Incoming }.collect {
-                log("declining incoming call from ${it.peer}")
-                service.decline()
-            }
-        }
+        inbound.start(scope)
         scope.launch {
             remote.frames.map { rms(it) }.filter { it > 0.01 }.first()
             log("remote audio level ${"%.3f".format(java.util.Locale.ROOT, remote.level)}")
@@ -353,6 +441,7 @@ fun buildAgentCalls(session: Session, eventBus: EventBus, scope: CoroutineScope,
     return AgentCalls(
         session, eventBus, scope, config,
         speaker = shellSpeaker(command, ttsEnvironment(config), config.ttsTimeoutMs, log, config.ttsMaxChars),
+        callSpeaker = shellSpeaker(config.callTts ?: command, ttsEnvironment(config), CALL_TTS_TIMEOUT_MS, log, CALL_REPLY_CHARS),
         sendTyped = { conversation, content -> sendToConversation(session, config.allowlist, conversation, "", typed = content) },
         log = log,
     )
