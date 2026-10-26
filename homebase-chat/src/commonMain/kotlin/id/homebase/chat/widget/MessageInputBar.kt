@@ -99,8 +99,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1846,7 +1844,7 @@ private fun MarkdownLinkDialog(
                 if (isEdit) {
                     TextButton(
                         onClick = onRemove,
-                        modifier = Modifier.testTag(LINK_DIALOG_REMOVE_TAG).semantics { contentDescription = removeLabel },
+                        modifier = Modifier.testTag(LINK_DIALOG_REMOVE_TAG),
                     ) {
                         Text(removeLabel)
                     }
