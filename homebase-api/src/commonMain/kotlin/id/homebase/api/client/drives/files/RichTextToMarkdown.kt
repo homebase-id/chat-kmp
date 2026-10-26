@@ -1,5 +1,7 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.util.longestBacktickRun
+
 private val headingLevels = mapOf("h1" to 1, "h2" to 2, "h3" to 3, "h4" to 4, "h5" to 5, "h6" to 6)
 private val blockTypes = setOf("p", "paragraph", "blockquote", "code_block", "ul", "ol", "li") + headingLevels.keys
 
@@ -93,7 +95,7 @@ private fun renderCodeBlock(node: RichTextNode): String {
     } else {
         plainText(node)
     }
-    val fence = "`".repeat(maxOf(3, longestBacktickRun(code) + 1))
+    val fence = "`".repeat(maxOf(3, code.longestBacktickRun() + 1))
     return "$fence\n$code\n$fence"
 }
 
@@ -242,20 +244,10 @@ private fun renderInline(nodes: List<RichTextNode>): String {
     return out.toString()
 }
 
-private fun longestBacktickRun(text: String): Int {
-    var longest = 0
-    var run = 0
-    for (c in text) {
-        run = if (c == '`') run + 1 else 0
-        if (run > longest) longest = run
-    }
-    return longest
-}
-
 private fun codeSpan(raw: String): String {
     // A code span renders a newline as a space anyway, and a raw one lets the next line start a block.
     val text = raw.replace('\n', ' ')
-    val fence = "`".repeat(longestBacktickRun(text) + 1)
+    val fence = "`".repeat(text.longestBacktickRun() + 1)
     val pad = if (text.startsWith('`') || text.endsWith('`')) " " else ""
     return fence + pad + text + pad + fence
 }

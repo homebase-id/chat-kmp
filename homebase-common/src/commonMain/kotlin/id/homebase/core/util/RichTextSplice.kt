@@ -2,6 +2,7 @@ package id.homebase.core.util
 
 import androidx.compose.ui.text.TextRange
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.util.longestBacktickRun
 
 /**
  * The single splice the inline `:shortcode:` replacement and the composer autocomplete commit both
@@ -119,16 +120,6 @@ private fun codeBlockEdit(text: String, lines: List<BlockLine>, selection: TextR
     val fence = "`".repeat(maxOf(FENCE.length, text.substring(start, end).longestBacktickRun() + 1))
     val splices = listOf(Splice(start, 0, "$fence\n"), Splice(end, 0, "\n$fence"))
     return BlockEdit(splices, TextRange(splices.caretAfter(end)))
-}
-
-private fun String.longestBacktickRun(): Int {
-    var best = 0
-    var run = 0
-    for (c in this) {
-        run = if (c == '`') run + 1 else 0
-        if (run > best) best = run
-    }
-    return best
 }
 
 fun String.linePrefixEdit(selection: TextRange, prefix: String): BlockEdit =

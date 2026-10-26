@@ -202,7 +202,7 @@ class RichTextToMarkdownTest {
 
     @Test
     fun html_and_entity_text_is_escaped() {
-        assertEquals("\\<br\\> \\&amp;", richTextToMarkdown(listOf(p("<br> &amp;"))))
+        assertEquals("\\<br> \\&amp;", richTextToMarkdown(listOf(p("<br> &amp;"))))
         assertEquals("<br> &amp;", markdownToPlainPreview(richTextToMarkdown(listOf(p("<br> &amp;"))), 100))
     }
 
