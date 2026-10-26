@@ -268,5 +268,17 @@ class RichTextRenderingTest {
         kotlin.test.assertTrue(onNodeWithText("dog", substring = true).hasLinkAnnotation())
         kotlin.test.assertEquals(0, imageNodeCount())
     }
-}
 
+    @Test
+    fun imageLinkUnescapesAltText() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "![snake\\_case](https://example.test/a.png)")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("snake_case").fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("snake_case").hasLinkAnnotation())
+    }
+}
