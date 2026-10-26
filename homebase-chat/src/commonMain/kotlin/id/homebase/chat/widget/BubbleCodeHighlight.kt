@@ -45,9 +45,7 @@ internal const val MIN_CODE_CONTRAST = 4.5f
 
 internal class BubbleCodeStyle(val background: Color, val theme: SyntaxTheme)
 
-internal fun bubbleCodeStyle(scheme: ColorScheme, content: Color): BubbleCodeStyle {
-    val sent = content == scheme.onPrimary
-    val bubble = if (sent) scheme.primary else scheme.surfaceContainerHigh
+internal fun bubbleCodeStyle(scheme: ColorScheme, content: Color, bubble: Color, sent: Boolean): BubbleCodeStyle {
     val bg = content.copy(alpha = FENCED_CODE_BG_ALPHA).compositeOver(bubble)
     fun tone(accent: Color) = readable(accent, content, bg)
     val comment = tone(lerp(content, bg, 0.35f))

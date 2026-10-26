@@ -41,6 +41,7 @@ import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownDimens
 import com.mikepenz.markdown.model.markdownPadding
 import id.homebase.api.util.markdownToPlainPreview
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 
@@ -448,7 +449,12 @@ private fun BubbleCodeContainer(
         code = code,
     ) {
         val scheme = MaterialTheme.colorScheme
-        val syntax = remember(scheme, color) { bubbleCodeStyle(scheme, color).theme }
+        val extended = HomebaseTheme.extendedColors
+        val syntax = remember(scheme, extended, color) {
+            val sent = color == extended.bubbleSentOnSurface
+            val bubble = if (sent) extended.bubbleSentSurface else scheme.surfaceContainerHigh
+            bubbleCodeStyle(scheme, color, bubble, sent).theme
+        }
         val text = remember(code, language, syntax) { highlightCode(code, language, syntax) }
         MarkdownBasicText(
             text = text,
