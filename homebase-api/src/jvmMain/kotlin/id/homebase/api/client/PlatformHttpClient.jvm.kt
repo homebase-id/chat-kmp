@@ -25,7 +25,7 @@ import javax.net.ssl.X509TrustManager
  * extra roots in [ExtraTrustRoots] (currently ISRG Root X2). Android/iOS/Web use
  * their OS trust stores and don't need this.
  */
-actual fun createPlatformHttpClient(
+internal actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit,
 ): HttpClient = HttpClient(CIO) {
     block()

@@ -47,6 +47,11 @@ kotlin {
         }
     }
 
+    // homebase-api's sqliter references sqlite3 symbols; these tests never open a DB, so the system one satisfies the link.
+    iosSimulatorArm64().binaries
+        .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
+        .linkerOpts("-lsqlite3")
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.datetime)

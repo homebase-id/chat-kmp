@@ -2,12 +2,12 @@ package id.homebase.notifshared
 
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.createPlatformHttpClient
-import id.homebase.api.client.drives.DECRYPTION_FAILURE_APP_DATA
+import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.appDataFailedToDecrypt
 import id.homebase.api.client.drives.files.RichText
 import id.homebase.api.client.drives.files.getPlainTextFromRichText
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -52,7 +52,7 @@ internal suspend fun fetchChatNotificationPreview(
     credentials: ApiCredentials,
     conversationId: String,
     messageId: String,
-): ChatNotificationPreview = createPlatformHttpClient().use { client ->
+): ChatNotificationPreview = HttpClientProvider.create().use { client ->
     fetchChatNotificationPreview(client, credentials, conversationId, messageId)
 }
 
@@ -134,7 +134,7 @@ internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): ChatN
         appData.groupId != conversationId -> "groupId ${appData.groupId} is not the push typeId"
         file.isSoftDeleted() -> "deleted (${file.fileState}, ${appData.archivalStatus})"
         appData.content.isNullOrEmpty() -> "no content (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
-        appData.content == DECRYPTION_FAILURE_APP_DATA -> "content failed to decrypt"
+        file.appDataFailedToDecrypt() -> "content failed to decrypt"
         else -> null
     }
     if (miss != null) return ChatNotificationPreview.missed(miss)

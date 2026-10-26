@@ -14,6 +14,6 @@ import io.ktor.client.HttpClientConfig
  * (see `PlatformHttpClient.jvm.kt`). Android/iOS/Web defer entirely to the OS
  * trust store, so their actuals just name the engine and apply [block] verbatim.
  */
-expect fun createPlatformHttpClient(
+internal expect fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit = {},
 ): HttpClient

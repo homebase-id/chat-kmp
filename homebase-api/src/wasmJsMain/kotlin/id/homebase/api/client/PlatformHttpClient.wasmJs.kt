@@ -9,6 +9,6 @@ import io.ktor.client.engine.js.Js
  * and therefore the browser's own trust store. No extra roots needed — name the
  * engine and apply the shared config.
  */
-actual fun createPlatformHttpClient(
+internal actual fun createPlatformHttpClient(
     block: HttpClientConfig<*>.() -> Unit,
 ): HttpClient = HttpClient(Js) { block() }
