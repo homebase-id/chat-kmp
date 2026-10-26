@@ -86,4 +86,18 @@ class RichTextRoundTripProbeTest {
 
         assertTrue(state.currentSpanStyle.fontWeight != null, "WYSIWYG must survive for lossless bodies")
     }
+
+    @Test
+    fun blockFormatEdits_roundTripByteIdentical() {
+        val cases = mapOf(
+            "quote" to "one\ntwo".let { it.quoteEdit(TextRange(0, it.length)).applyTo(it) },
+            "task" to "buy milk".let { it.taskListEdit(TextRange(0)).applyTo(it) },
+            "fence" to "one\ntwo".let { it.codeBlockEdit(TextRange(0, it.length)).applyTo(it) },
+            "inline" to "a bc d".let { it.codeBlockEdit(TextRange(2, 4)).applyTo(it) },
+            "empty-fence" to "".codeBlockEdit(TextRange(0)).applyTo(""),
+        )
+        for ((name, source) in cases) {
+            assertEquals(source, RichTextState().applyMarkDownContent(source).toMessageMarkdown(), "[$name]")
+        }
+    }
 }

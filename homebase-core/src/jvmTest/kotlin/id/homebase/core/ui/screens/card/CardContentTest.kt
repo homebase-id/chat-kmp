@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.card
 
 import id.homebase.api.client.profile.ProfileAttributeTypes
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.card.ProfileCardViewModelTest.FakeHost
 import id.homebase.core.ui.screens.card.ProfileCardViewModelTest.FakeSource
 import id.homebase.core.ui.screens.profile.ProfileAudience
@@ -15,7 +16,9 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
@@ -108,6 +111,14 @@ class CardContentTest {
         host.rendered.last()
     }
 
+    private fun ProfileCardViewModel.toggle(id: Uuid, on: Boolean) {
+        val state = uiState.value
+        val item = state.contentItems.firstOrNull { it.id == id }?.takeUnless { it.required } ?: return
+        val next = item.audience.shownOn(state.selectedAudience, on, null, state.circles) ?: return
+        onContentAudienceChosen(id, next)
+        if (uiState.value.pendingPublic != null) onPublicConfirmed()
+    }
+
     private fun Rig.item(type: String) = vm.uiState.value.contentItems.single { it.type == type }
 
     private fun Rig.circleIds() = wire.putBodies.last().jsonObject["circleIds"]?.jsonArray?.map { it.jsonPrimitive.content }
@@ -120,7 +131,7 @@ class CardContentTest {
 
         rig.open(friends)
         assertFalse(rig.item(ProfileAttributeTypes.PHONE).shown)
-        rig.write { rig.vm.onContentToggled(rig.item(ProfileAttributeTypes.PHONE).id, true) }
+        rig.write { rig.vm.toggle(rig.item(ProfileAttributeTypes.PHONE).id, true) }
 
         val put = wire.putBodies.single().jsonObject
         assertEquals("connected", put.str("visibility"))
@@ -145,7 +156,7 @@ class CardContentTest {
 
         val name = rig.item(ProfileAttributeTypes.NAME)
         assertTrue(name.required && name.shown)
-        rig.vm.onContentToggled(name.id, false)
+        rig.vm.toggle(name.id, false)
 
         assertFalse(rig.vm.uiState.value.isContentBusy)
         assertEquals(0, wire.puts)
@@ -195,14 +206,14 @@ class CardContentTest {
         assertFalse(emails().single { it.id == home }.shown)
 
         rig.open(friends)
-        rig.write { rig.vm.onContentToggled(home, true) }
+        rig.write { rig.vm.toggle(home, true) }
         assertTrue(emails().single { it.id == home }.shown)
         assertFalse(emails().single { it.id == work2.id }.shown)
 
         rig.open(work)
         assertTrue(emails().single { it.id == work2.id }.shown)
         assertFalse(emails().single { it.id == home }.shown)
-        rig.write { rig.vm.onContentToggled(work2.id, false) }
+        rig.write { rig.vm.toggle(work2.id, false) }
         assertTrue(emails().none { it.shown })
         rig.open(friends)
         assertTrue(emails().single { it.id == home }.shown)
@@ -218,7 +229,7 @@ class CardContentTest {
 
         val item = rig.item(ProfileAttributeTypes.BIO_SUMMARY)
         assertTrue(item.shown && item.locked)
-        rig.vm.onContentToggled(bio, false)
+        rig.vm.toggle(bio, false)
         assertEquals(0, wire.puts)
         assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
 
@@ -229,7 +240,7 @@ class CardContentTest {
     }
 
     @Test
-    fun publicCardTurnsAnItemOnLiveAndOffBackToItsPreviousCircles() = runTest(dispatcher) {
+    fun publicCardTurnsAnItemOnLiveAndOffToEveryCircle() = runTest(dispatcher) {
         val wire = CardWireHarness()
         val bio = wire.seed(
             ProfileAttributeTypes.BIO_SUMMARY, "connected", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"),
@@ -239,14 +250,14 @@ class CardContentTest {
         assertNull(rig.host.rendered.last().data.bio)
         assertFalse(rig.item(ProfileAttributeTypes.BIO_SUMMARY).shown)
 
-        rig.write { rig.vm.onContentToggled(bio, true) }
+        rig.write { rig.vm.toggle(bio, true) }
         assertEquals("anonymous", wire.putBodies.last().jsonObject.str("visibility"))
         assertNull(rig.circleIds())
         assertEquals("Second breakfast", rig.rendered { it.data.bio != null }.data.bio)
 
-        rig.write { rig.vm.onContentToggled(bio, false) }
+        rig.write { rig.vm.toggle(bio, false) }
         assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
-        assertEquals(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID), rig.circleIds()!!.toSet())
+        assertEquals(setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID), rig.circleIds()!!.toSet())
         assertNull(rig.rendered { it.data.bio == null }.data.bio)
     }
 
@@ -262,7 +273,7 @@ class CardContentTest {
         assertEquals(0, wire.puts)
 
         rig.open(friends)
-        rig.write { rig.vm.onContentToggled(id, false) }
+        rig.write { rig.vm.toggle(id, false) }
 
         assertEquals("connected", wire.putBodies.single().jsonObject.str("visibility"))
         assertEquals(setOf(FAMILY_CIRCLE_ID, WORK_CIRCLE_ID), rig.circleIds()!!.toSet())
@@ -390,7 +401,7 @@ class CardContentTest {
         rig.import(friends, expectedPuts = 3)
         val phoneId = rig.vm.uiState.value.attributes.single { it.type == ProfileAttributeTypes.PHONE }.id
 
-        rig.write { rig.vm.onContentEdited(phoneId, emptyMap(), ProfileAudience.Public) }
+        rig.write { rig.vm.onContentEdited(phoneId, emptyMap(), ProfileAudience.Public); rig.vm.onPublicConfirmed() }
         val putsAfterEdit = wire.puts
         rig.vm.onImportUndone()
         rig.vm.await { !it.isContentBusy }
@@ -429,8 +440,8 @@ class CardContentTest {
         rig.vm.await { !it.isContentBusy }
         val phoneId = rig.vm.uiState.value.attributes.single { it.type == ProfileAttributeTypes.PHONE }.id
 
-        rig.write { rig.vm.onContentEdited(phoneId, emptyMap(), ProfileAudience.Public) }
-        rig.write { rig.vm.onContentToggled(phoneId, false) }
+        rig.write { rig.vm.onContentEdited(phoneId, emptyMap(), ProfileAudience.Public); rig.vm.onPublicConfirmed() }
+        rig.write { rig.vm.toggle(phoneId, false) }
 
         assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
         assertEquals(listOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds()?.sorted())
@@ -663,7 +674,7 @@ class CardContentTest {
         assertEquals(setOf("https://shire.example/f", "https://shire.example/p"), rig.host.rendered.last().data.links.map { it.target }.toSet())
         val friendsLink = rig.vm.uiState.value.contentItems.single { it.text == "https://shire.example/f" }
 
-        rig.write { rig.vm.onContentToggled(friendsLink.id, false) }
+        rig.write { rig.vm.toggle(friendsLink.id, false) }
 
         assertEquals(2, wire.puts)
         val bodies = wire.putBodies.map { it.jsonObject }
@@ -686,7 +697,7 @@ class CardContentTest {
         val link = rig.vm.uiState.value.contentItems.single { it.text == "https://shire.example/w" }
         assertFalse(link.shown)
 
-        rig.write { rig.vm.onContentToggled(link.id, true) }
+        rig.write { rig.vm.toggle(link.id, true) }
 
         assertEquals(setOf(FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID), rig.circleIds()!!.toSet())
         assertEquals(listOf("https://shire.example/w"), rig.rendered { p -> p.data.links.size == 1 }.data.links.map { it.target })
@@ -705,7 +716,7 @@ class CardContentTest {
         assertEquals(CardDesign.LINKS, rig.vm.uiState.value.design)
         assertEquals(0, wire.puts)
 
-        rig.write { rig.vm.onContentToggled(rig.item(ProfileAttributeTypes.PHONE).id, true) }
+        rig.write { rig.vm.toggle(rig.item(ProfileAttributeTypes.PHONE).id, true) }
         withContext(Dispatchers.Default) { withTimeout(10.seconds) { while (wire.puts < 2) delay(10) } }
 
         val card = wire.putBodies.map { it.jsonObject }.single { it.str("type") == ProfileAttributeTypes.PROFILE_CARD }
@@ -714,7 +725,7 @@ class CardContentTest {
         assertEquals(listOf(WORK_CIRCLE_ID), card["circleIds"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertFalse(rig.vm.uiState.value.selectedCard!!.isDefault)
 
-        rig.write { rig.vm.onContentToggled(rig.item(ProfileAttributeTypes.PHONE).id, false) }
+        rig.write { rig.vm.toggle(rig.item(ProfileAttributeTypes.PHONE).id, false) }
         assertEquals(1, wire.putBodies.count { it.jsonObject.str("type") == ProfileAttributeTypes.PROFILE_CARD })
     }
 
@@ -755,7 +766,7 @@ class CardContentTest {
         rig.open(CardAudience.Public)
         assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).everyCard)
 
-        rig.write { rig.vm.onContentToggled(bio, false) }
+        rig.write { rig.vm.toggle(bio, false) }
 
         assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
         assertEquals(listOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID).sorted(), rig.circleIds()?.sorted())
@@ -773,7 +784,7 @@ class CardContentTest {
         val rig = rig(wire)
         rig.open(friends)
 
-        rig.write { rig.vm.onContentToggled(phoneId, false) }
+        rig.write { rig.vm.toggle(phoneId, false) }
 
         assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
         assertEquals(listOf(FAMILY_CIRCLE_ID), rig.circleIds())
@@ -838,7 +849,7 @@ class CardContentTest {
         val rig = rig(wire)
         rig.open(CardAudience.Public)
 
-        rig.write { rig.vm.onContentToggled(bio, false) }
+        rig.write { rig.vm.toggle(bio, false) }
         rig.vm.await { state -> state.attributes.none { it.id == leftover } }
 
         assertEquals(listOf(leftover.toString()), wire.deletedIds.toList())
@@ -890,4 +901,100 @@ class CardContentTest {
         assertFalse(rig.vm.uiState.value.viewing)
     }
 
+    private val otherAppCircle = "3b9d1f7a5c2e4d6b8a0c1e3f5a7b9d2c"
+
+    private fun ProfileCardViewModel.pending() = uiState.value.pendingPublic
+
+    @Test
+    fun choosingPublicAsksFirstAndOnlyTheConfirmationWrites() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val phoneId = wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, phone), listOf(FRIENDS_CIRCLE_ID))
+        val rig = rig(wire)
+
+        rig.vm.onContentAudienceChosen(phoneId, ProfileAudience.Public)
+        assertEquals(0, wire.puts)
+        assertNotNull(rig.vm.pending())
+        assertFalse(rig.vm.uiState.value.isContentBusy)
+
+        rig.vm.onPublicCancelled()
+        assertNull(rig.vm.pending())
+        assertEquals(0, wire.puts)
+
+        rig.vm.onContentAudienceChosen(phoneId, ProfileAudience.Public)
+        rig.write { rig.vm.onPublicConfirmed() }
+        assertNull(rig.vm.pending())
+        assertEquals(ProfileVisibility.ANONYMOUS.wireValue, wire.putBodies.single().jsonObject.str("visibility"))
+    }
+
+    @Test
+    fun choosingCirclesOrNobodyWritesWithoutAskingAndKeepsOtherAppCircles() = runTest(dispatcher) {
+        val all = setOf(FAMILY_CIRCLE_ID, FRIENDS_CIRCLE_ID, WORK_CIRCLE_ID, otherAppCircle)
+        val wire = CardWireHarness(circlesOnServer = all)
+        val phoneId = wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, phone), listOf(FRIENDS_CIRCLE_ID, otherAppCircle))
+        val rig = rig(wire, serverCircles = all)
+
+        rig.write { rig.vm.onContentAudienceChosen(phoneId, ProfileAudience.Circles(setOf(FAMILY_CIRCLE_ID), setOf(otherAppCircle))) }
+        assertNull(rig.vm.pending())
+        assertEquals(listOf(FAMILY_CIRCLE_ID, otherAppCircle).sorted(), rig.circleIds()?.sorted())
+
+        rig.write { rig.vm.onContentAudienceChosen(phoneId, ProfileAudience.OnlyMe) }
+        assertNull(rig.vm.pending())
+        assertEquals(ProfileVisibility.OWNER.wireValue, wire.putBodies.last().jsonObject.str("visibility"))
+    }
+
+    @Test
+    fun addingOnThePublicCardAsksForANewItemAndForAnExistingPrivateOne() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        wire.seed(ProfileAttributeTypes.PHONE, "owner", JsonObject(emptyMap()))
+        val rig = rig(wire)
+        rig.open(CardAudience.Public)
+
+        rig.vm.onContentAdded(ProfileAttributeTypes.EMAIL, mapOf(ProfileAttributeTypes.KEY_EMAIL to "frodo@shire.me"))
+        assertEquals(0, wire.puts)
+        assertEquals(ProfileAudience.Public, rig.vm.pending()?.audience)
+        rig.vm.onPublicCancelled()
+
+        rig.vm.onContentAdded(ProfileAttributeTypes.PHONE, mapOf(ProfileAttributeTypes.KEY_PHONE to phone))
+        assertEquals(0, wire.puts)
+        assertNotNull(rig.vm.pending()?.existing)
+        rig.write { rig.vm.onPublicConfirmed() }
+        assertEquals(ProfileVisibility.ANONYMOUS.wireValue, wire.putBodies.single().jsonObject.str("visibility"))
+    }
+
+    @Test
+    fun editingToPublicAsksUnlessTheItemIsAlreadyPublic() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val privatePhone = wire.seed(ProfileAttributeTypes.PHONE, "owner", data(ProfileAttributeTypes.KEY_PHONE, phone))
+        val publicEmail = wire.seed(ProfileAttributeTypes.EMAIL, "anonymous", data(ProfileAttributeTypes.KEY_EMAIL, "frodo@shire.me"))
+        val rig = rig(wire)
+
+        rig.vm.onContentEdited(privatePhone, mapOf(ProfileAttributeTypes.KEY_PHONE to "+4520000000"), ProfileAudience.Public)
+        assertEquals(0, wire.puts)
+        assertNotNull(rig.vm.pending())
+        rig.vm.onPublicCancelled()
+
+        rig.write { rig.vm.onContentEdited(publicEmail, mapOf(ProfileAttributeTypes.KEY_EMAIL to "baggins@bagend.me"), ProfileAudience.Public) }
+        assertNull(rig.vm.pending())
+        assertEquals(1, wire.puts)
+    }
+
+    @Test
+    fun undoAfterAnAudienceChangeRestoresThePreviousAclExactly() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val phoneId = wire.seed(ProfileAttributeTypes.PHONE, "connected", data(ProfileAttributeTypes.KEY_PHONE, phone), listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID))
+        val rig = rig(wire)
+        val before = rig.vm.uiState.value.attributes.single { it.id == phoneId }.acl
+        val changed = async { rig.vm.events.first { it is ProfileCardEvent.AudienceChanged } }
+
+        rig.vm.onContentAudienceChosen(phoneId, ProfileAudience.Public)
+        rig.write { rig.vm.onPublicConfirmed() }
+        val event = assertIs<ProfileCardEvent.AudienceChanged>(withContext(Dispatchers.Default) { withTimeout(10.seconds) { changed.await() } })
+        assertTrue(event.nowPublic)
+
+        rig.write { rig.vm.onAudienceUndone() }
+
+        assertEquals(before.circleIdList, rig.circleIds())
+        assertEquals("connected", wire.putBodies.last().jsonObject.str("visibility"))
+        assertEquals(before, rig.vm.uiState.value.attributes.single { it.id == phoneId }.acl)
+    }
 }

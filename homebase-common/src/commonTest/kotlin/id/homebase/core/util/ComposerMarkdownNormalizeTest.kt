@@ -1,6 +1,8 @@
 package id.homebase.core.util
 
+import com.mohamedrejeb.richeditor.model.RichTextState
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 
 /**
@@ -56,5 +58,12 @@ class ComposerMarkdownNormalizeTest {
     @Test
     fun blankString_becomesEmpty() {
         assertEquals("", "   ".stripComposerLineBreakArtifacts())
+    }
+
+    @Test
+    fun richTextStateWithTrailingBlankLine_toMessageMarkdownHasNoBr() {
+        val state = RichTextState().apply { setText("hello\n") }
+        assertEquals("hello", state.toMessageMarkdown())
+        assertFalse(state.toMessageMarkdown().contains("<br>"))
     }
 }

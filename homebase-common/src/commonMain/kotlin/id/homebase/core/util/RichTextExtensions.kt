@@ -4,6 +4,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextDecoration
 import co.touchlab.kermit.Logger
+import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
+import com.mohamedrejeb.richeditor.model.HeadingStyle
+import com.mohamedrejeb.richeditor.model.RichSpanStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.core.ui.theme.LightColors
 
@@ -142,3 +145,67 @@ private fun getCodePointAt(text: String, index: Int): Int {
 private fun isEmojiModifier(cp: Int): Boolean = cp in 0x1F3FB..0x1F3FF
 private fun isZWJ(cp: Int): Boolean = cp == 0x200D
 private fun isVariationSelector(cp: Int): Boolean = cp in 0xFE00..0xFE0F
+
+val URL_REGEX = Regex(
+    "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
+)
+
+data class LinkAtSelection(val text: String, val url: String)
+
+fun RichTextState.linkAtSelection(): LinkAtSelection? = withLinkProbe {
+    val url = selectedLinkUrl ?: return@withLinkProbe null
+    LinkAtSelection(text = selectedLinkText.orEmpty(), url = url)
+}
+
+fun RichTextState.updateLinkAtSelection(url: String) = withLinkProbe { updateLink(url) }
+
+fun RichTextState.removeLinkAtSelection() = withLinkProbe { removeLink() }
+
+// rc14 reports no link for a caret just past a span's last character, so probe the character before it, then restore.
+// Every selection write drops the caret's pending bold/italic, so only move it when a link is really there.
+@OptIn(ExperimentalRichTextApi::class)
+private fun <T> RichTextState.withLinkProbe(block: RichTextState.() -> T?): T? {
+    if (isLink) return block()
+    val original = selection
+    if (!original.collapsed || original.start == 0) return null
+    val probe = TextRange(original.start - 1, original.start)
+    if (getRichSpanStyle(probe) !is RichSpanStyle.Link) return null
+    selection = probe
+    try {
+        return if (isLink) block() else null
+    } finally {
+        selection = original
+    }
+}
+
+fun RichTextState.addLinkReplacingSelection(text: String, url: String) {
+    if (!selection.collapsed) removeSelectedText()
+    addLink(text = text, url = url)
+}
+
+fun RichTextState.selectedPlainText(): String =
+    annotatedString.text.substring(selection.min, selection.max)
+
+fun RichTextState.pasteUrlOverSelection(clipboardText: String?): Boolean {
+    if (selection.collapsed) return false
+    val url = clipboardText?.trim()?.takeIf { URL_REGEX.matchEntire(it) != null } ?: return false
+    val label = selectedPlainText()
+    if (label.isBlank()) return false
+    removeSelectedText()
+    addLink(text = label, url = url)
+    return true
+}
+
+suspend fun RichTextState.pasteOverSelectionAsync(readText: suspend () -> String?) {
+    val text = readText() ?: return
+    if (pasteUrlOverSelection(text)) return
+    if (!selection.collapsed) removeSelectedText()
+    addTextAfterSelection(text)
+}
+
+fun HeadingStyle.nextInComposerCycle(): HeadingStyle = when (this) {
+    HeadingStyle.Normal -> HeadingStyle.H1
+    HeadingStyle.H1 -> HeadingStyle.H2
+    HeadingStyle.H2 -> HeadingStyle.H3
+    else -> HeadingStyle.Normal
+}

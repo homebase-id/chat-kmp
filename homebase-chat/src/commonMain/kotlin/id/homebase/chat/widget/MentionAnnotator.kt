@@ -6,11 +6,13 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import com.mikepenz.markdown.model.MarkdownAnnotator
 import com.mikepenz.markdown.model.markdownAnnotator
-import id.homebase.api.util.findMentions
+import id.homebase.api.util.Mention
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import org.intellij.markdown.IElementType
@@ -57,9 +59,6 @@ internal fun selfMentionSpanStyle(
     chipStyle(style, selfContent, selfBackground)
 }
 
-/** The library's own no-op annotator: default handling for every node. */
-private val NoMentionAnnotator: MarkdownAnnotator = markdownAnnotator()
-
 /**
  * Parents whose `TEXT` children are not prose. `@alice.example.test` inside a code span is a
  * literal the author asked us to show verbatim, and inside a link label it is already spoken for by
@@ -85,9 +84,8 @@ private class ResolvedMention(val range: IntRange, val style: SpanStyle, val tex
  * `annotatorSettings`, and the block path hands it to `Markdown()`, which publishes it for
  * paragraphs, headings, list items, quotes and table cells alike.
  *
- * [parsedContent] must be the exact string handed to the parser (i.e. post
- * [id.homebase.api.util.withChatHardLineBreaks], which shifts offsets) — the ranges are offsets
- * into it, and the annotator slices the node's own span out of it.
+ * [parsed] carries the post-soft-break-promotion text the AST was built from, which shifts offsets
+ * — the mention ranges are offsets into it, and the annotator slices the node's own span out of it.
  *
  * The scan, the self-test and the name lookup all happen once per remembered key, never per AST
  * node and never per recomposition: the annotator lambda runs for every paragraph, list item and
@@ -97,35 +95,37 @@ private class ResolvedMention(val range: IntRange, val style: SpanStyle, val tex
  */
 @Composable
 internal fun rememberMentionAnnotator(
-    parsedContent: String,
+    parsed: ParsedChatMarkdown,
     style: TextStyle,
     color: Color,
     context: MentionContext?,
 ): MarkdownAnnotator {
     val selfBackground = MaterialTheme.colorScheme.tertiaryContainer
     val selfContent = MaterialTheme.colorScheme.onTertiaryContainer
-    return remember(parsedContent, style, color, selfBackground, selfContent, context) {
+    val linkStyles = remember(style, color) { chatLinkStyles(style, color) }
+    return remember(parsed, style, color, selfBackground, selfContent, context) {
         val resolved = resolveMentions(
-            content = parsedContent,
+            content = parsed.text,
+            mentions = parsed.mentionRanges,
             style = style,
             color = color,
             selfBackground = selfBackground,
             selfContent = selfContent,
             context = context,
         )
-        if (resolved.isEmpty()) NoMentionAnnotator else mentionAnnotator(resolved)
+        chatAnnotator(resolved, linkStyles)
     }
 }
 
 private fun resolveMentions(
     content: String,
+    mentions: List<Mention>,
     style: TextStyle,
     color: Color,
     selfBackground: Color,
     selfContent: Color,
     context: MentionContext?,
 ): List<ResolvedMention> {
-    val mentions = findMentions(content)
     if (mentions.isEmpty()) return emptyList()
 
     val mentionStyle = mentionSpanStyle(style, color)
@@ -154,9 +154,14 @@ private fun resolveMentions(
     }
 }
 
-private fun mentionAnnotator(mentions: List<ResolvedMention>): MarkdownAnnotator =
+private fun chatAnnotator(mentions: List<ResolvedMention>, linkStyles: TextLinkStyles): MarkdownAnnotator =
     markdownAnnotator { content, child ->
-        if (child.type != MarkdownTokenTypes.TEXT) return@markdownAnnotator false
+        if (child.type == MarkdownElementTypes.IMAGE) {
+            val image = imageLinkOf(content, child) ?: return@markdownAnnotator false
+            append(image.toAnnotated(linkStyles))
+            return@markdownAnnotator true
+        }
+        if (mentions.isEmpty() || child.type != MarkdownTokenTypes.TEXT) return@markdownAnnotator false
         if (child.parent?.type in nonProseParents) return@markdownAnnotator false
 
         val start = child.startOffset
@@ -185,3 +190,11 @@ private fun mentionAnnotator(mentions: List<ResolvedMention>): MarkdownAnnotator
         if (cursor < end) append(content.substring(cursor, end))
         true
     }
+
+internal fun chatLinkStyles(style: TextStyle, color: Color): TextLinkStyles = TextLinkStyles(
+    style = style.copy(
+        color = color,
+        fontWeight = FontWeight.Bold,
+        textDecoration = TextDecoration.Underline,
+    ).toSpanStyle(),
+)
