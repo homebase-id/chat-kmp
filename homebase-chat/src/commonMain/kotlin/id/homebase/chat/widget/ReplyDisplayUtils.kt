@@ -4,10 +4,15 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import kotlin.uuid.Uuid
+
+fun String.replyQuotePlainText(): String =
+    markdownToPlainPreview(stripComposerLineBreakArtifacts(), maxCodePoints = 400)
 
 fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
     this?.filter { payload ->
