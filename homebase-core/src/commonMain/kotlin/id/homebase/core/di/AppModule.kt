@@ -99,6 +99,7 @@ import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationMapper
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.GroupHealConversationOps
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -546,12 +547,12 @@ val appModule = module {
                     ),
                 ),
             ),
-            // Likely-large drives go LAST in the syncAll batch-collection so the greedy budget
-            // serves every small drive first; chat is expected largest and goes very last.
+            // Chat is the landing screen (and web's first paint): first claim on the greedy budget.
+            // Feed and Moments are large and not visible on first paint: after every small drive.
+            collectionHead = listOf(chatLabeledDrive.drive.alias),
             collectionTail = listOf(
                 feedLabeledDrive.drive.alias,
                 momentsLabeledDrive.drive.alias,
-                chatLabeledDrive.drive.alias,
             ),
         )
     }
@@ -860,6 +861,7 @@ val appModule = module {
     // singleton (`NoDefinitionFoundException` at app startup). Spelling
     // the injections out lets the Long default through.
     single {
+        val driveFiles = get<id.homebase.api.client.drives.files.DriveFileProvider>()
         ConversationService(
             credentialsManager = get(),
             payloadBundleEncryptionService = get(),
@@ -873,8 +875,11 @@ val appModule = module {
             conversationStream = get(),
             participantLookup = get(),
             driveSyncManager = get(),
-            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
+            driveFileProvider = driveFiles,
             fileOperationsProvider = get(),
+            serverConversationHeader = { uniqueId ->
+                driveFiles.getFileHeaderByUid(chatTargetDrive.alias, uniqueId)
+            },
         )
     }
     single<LocalLastReadUpdater> { get<ConversationService>() }
