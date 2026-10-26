@@ -4,10 +4,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import id.homebase.api.storage.SecureRead
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -23,13 +23,9 @@ class SqlCipherKeyModeAndroidTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     private class FakeStore(var value: String? = null) : RawKeyStore {
-        override fun get(): String? = value
+        override fun read(): SecureRead = value?.let(SecureRead::Found) ?: SecureRead.Missing
         override fun put(hex: String) {
             value = hex
-        }
-
-        override fun remove() {
-            value = null
         }
     }
 
@@ -61,7 +57,7 @@ class SqlCipherKeyModeAndroidTest {
     }
 
     @Test
-    fun aDatabaseNoKeyOpensFailsAndForgetsTheCachedKey() {
+    fun aDatabaseNoKeyOpensFailsAndKeepsTheCachedKey() {
         openAndroidSqliteDriver(context, DB, PASSPHRASE).createMarker()
         val store = FakeStore("11".repeat(32))
 
@@ -69,7 +65,7 @@ class SqlCipherKeyModeAndroidTest {
             openKeyedAndroidSqliteDriver(context, DB, "another-passphrase", store) { error("must not derive") }
         }
 
-        assertNull(store.value)
+        assertEquals("11".repeat(32), store.value)
         assertEquals("kept", openAndroidSqliteDriver(context, DB, PASSPHRASE).marker())
     }
 

@@ -12,7 +12,7 @@ package id.homebase.api.storage
  */
 expect object SecureStorage {
     /**
-     * Securely store a value with the given key.
+     * Securely store a value with the given key. Returns once the value is persisted.
      * @param key Unique identifier for the stored value
      * @param value The value to store
      */
@@ -21,9 +21,12 @@ expect object SecureStorage {
     /**
      * Retrieve a securely stored value.
      * @param key The key to look up
-     * @return The stored value, or null if not found
+     * @return The stored value, or null if not found or not readable right now; see [read]
      */
     fun get(key: String): String?
+
+    /** [get] that tells a value that isn't there apart from one that can't be read right now. */
+    fun read(key: String): SecureRead
 
     /**
      * Remove a stored value.
@@ -40,4 +43,14 @@ expect object SecureStorage {
 
     /** Clear all stored values from secure storage. */
     fun clear()
+}
+
+sealed interface SecureRead {
+    data class Found(val value: String) : SecureRead
+
+    /** Nothing is stored, or what is stored can never be decrypted again. */
+    data object Missing : SecureRead
+
+    /** A value may be stored but reading it failed; retry later, never overwrite it. */
+    data class Unavailable(val cause: Throwable) : SecureRead
 }

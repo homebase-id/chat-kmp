@@ -121,15 +121,10 @@ actual object SecureStorage {
         saveProperties(properties)
     }
 
-    actual fun get(key: String): String? {
-        val properties = loadProperties()
-        val encryptedValue = properties.getProperty(key) ?: return null
-        return try {
-            decrypt(encryptedValue)
-        } catch (e: Exception) {
-            null
-        }
-    }
+    actual fun get(key: String): String? = (read(key) as? SecureRead.Found)?.value
+
+    actual fun read(key: String): SecureRead =
+        readEncrypted({ loadProperties().getProperty(key) }, ::decrypt)
 
     actual fun remove(key: String) {
         val properties = loadProperties()

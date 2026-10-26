@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.io.IOException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -99,19 +100,18 @@ actual object SecureStorage {
         return String(decryptedBytes, Charsets.UTF_8)
     }
 
+    // commit, not apply: a kill before an async write lands loses a fresh database's only key.
     actual fun put(key: String, value: String) {
         val encryptedValue = encrypt(value)
-        getPrefs().edit { putString(key, encryptedValue) }
-    }
-
-    actual fun get(key: String): String? {
-        val encryptedValue = getPrefs().getString(key, null) ?: return null
-        return try {
-            decrypt(encryptedValue)
-        } catch (e: Exception) {
-            null
+        if (!getPrefs().edit().putString(key, encryptedValue).commit()) {
+            throw IOException("SecureStorage could not persist $key")
         }
     }
+
+    actual fun get(key: String): String? = (read(key) as? SecureRead.Found)?.value
+
+    actual fun read(key: String): SecureRead =
+        readEncrypted({ getPrefs().getString(key, null) }, ::decrypt)
 
     actual fun remove(key: String) {
         getPrefs().edit { remove(key) }

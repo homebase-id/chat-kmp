@@ -165,6 +165,10 @@ actual object SecureStorage {
         return null
     }
 
+    // Never Unavailable yet: the iOS database ignores its key, so a locked keychain mustn't block it.
+    actual fun read(key: String): SecureRead =
+        get(key)?.let(SecureRead::Found) ?: SecureRead.Missing
+
     actual fun remove(key: String) {
         val query = createBaseQuery(key) ?: return
         SecItemDelete(query)

@@ -291,23 +291,35 @@ class DatabaseManager(
          * with the prior per-platform implementations — `Error` (OOM,
          * `StackOverflow`) is not swallowed.
          */
-        suspend fun initializeWithRecovery(factory: DatabaseDriverFactory) {
-            val key = DatabaseKeyManager.getOrGenerateKey()
+        suspend fun initializeWithRecovery(factory: DatabaseDriverFactory) =
+            initializeWithRecovery(factory::createDriver, factory::deleteOnDiskFiles)
+
+        internal suspend fun initializeWithRecovery(
+            createDriver: (passphrase: String) -> SqlDriver,
+            deleteOnDiskFiles: () -> Unit,
+            getKey: () -> String = DatabaseKeyManager::getOrGenerateKey,
+            clearKey: () -> Unit = DatabaseKeyManager::clearKey,
+        ) {
+            val key = getKey()
             try {
-                initialize { factory.createDriver(key) }
+                initialize { createDriver(key) }
+            } catch (e: DatabaseUnavailableException) {
+                Logger.withTag("DatabaseManager")
+                    .e(e) { "initializeWithRecovery: database unavailable, not resetting" }
+                throw e
             } catch (e: Exception) {
                 Logger.withTag("DatabaseManager")
                     .e(e) { "initializeWithRecovery: open failed, resetting" }
-                factory.deleteOnDiskFiles()
-                DatabaseKeyManager.clearKey()
-                val freshKey = DatabaseKeyManager.getOrGenerateKey()
+                deleteOnDiskFiles()
+                clearKey()
+                val freshKey = getKey()
                 // Wrap the retry: if the reset *also* fails (e.g. the on-disk files
                 // couldn't be removed, or the fresh open is itself broken), surface a
                 // clear, logged fatal instead of letting an opaque exception escape
                 // uncaught from the recovery path — which is how the iOS
                 // "no such column: fileState" double-fault reached users as a bare crash.
                 try {
-                    initialize { factory.createDriver(freshKey) }
+                    initialize { createDriver(freshKey) }
                 } catch (retry: Exception) {
                     Logger.withTag("DatabaseManager")
                         .e(retry) { "initializeWithRecovery: reset retry also failed — database unopenable" }
