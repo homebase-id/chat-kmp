@@ -201,6 +201,26 @@ class RichTextToMarkdownTest {
     }
 
     @Test
+    fun html_and_entity_text_is_escaped() {
+        assertEquals("\\<br\\> \\&amp;", richTextToMarkdown(listOf(p("<br> &amp;"))))
+        assertEquals("<br> &amp;", markdownToPlainPreview(richTextToMarkdown(listOf(p("<br> &amp;"))), 100))
+    }
+
+    @Test
+    fun bang_before_a_link_does_not_make_an_image() {
+        assertEquals(
+            "Wow\\![site](https://a.example)",
+            richTextToMarkdown(listOf(p(leaf("Wow!"), el("a", leaf("site"), url = "https://a.example")))),
+        )
+    }
+
+    @Test
+    fun heading_ending_in_hashes_keeps_them() {
+        assertEquals("# Issue \\#", richTextToMarkdown(listOf(el("h1", leaf("Issue #")))))
+        assertEquals("# C#", richTextToMarkdown(listOf(el("h1", leaf("C#")))))
+    }
+
+    @Test
     fun newline_inside_inline_code_becomes_space() {
         assertEquals("`a # b`", richTextToMarkdown(listOf(p(leaf("a\n# b", code = true)))))
     }
