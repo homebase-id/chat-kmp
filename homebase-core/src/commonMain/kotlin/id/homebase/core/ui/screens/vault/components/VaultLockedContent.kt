@@ -12,6 +12,7 @@ import org.jetbrains.compose.resources.stringResource
 fun VaultLockedContent(
     onUnlock: () -> Unit,
     modifier: Modifier = Modifier,
+    unlockEnabled: Boolean = true,
 ) {
     BiometricLockedContent(
         title = stringResource(MR.string.vault_locked_title),
@@ -19,5 +20,6 @@ fun VaultLockedContent(
         unlockLabel = stringResource(MR.string.vault_locked_unlock),
         onUnlock = onUnlock,
         modifier = modifier,
+        unlockEnabled = unlockEnabled,
     )
 }
