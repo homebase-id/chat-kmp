@@ -98,6 +98,11 @@ $legacyPlate
         "@sam.example", "👨‍👩‍👧", "${'$'}5", "legacy", "plate message",
     )
 
+    private val rawMarkers = listOf("**", "~~", "](", "```", "[x]", "[ ]", "|---", "# ")
+
+    // Tables and fences fail the editor round-trip, which drops the whole body to raw source.
+    private val composerSource = "# Heading one\n\nBody with **bold** and *italic*.\n\n- first bullet\n- second bullet\n\nEnd."
+
     private val outDir: File = run {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null && !File(dir, "settings.gradle.kts").exists()) dir = dir.parentFile
@@ -116,6 +121,7 @@ $legacyPlate
         waitUntil(timeoutMillis = 10_000) { "plate message" in allText() }
         val text = allText()
         for (s in sections) assertTrue(s in text, "missing '$s' in:\n$text")
+        for (m in rawMarkers) assertTrue(m !in text, "raw markdown '$m' rendered in:\n$text")
         val images = onAllNodes(
             SemanticsMatcher("image") { it.config.getOrNull(SemanticsProperties.Role) == Role.Image },
             useUnmergedTree = true,
@@ -162,7 +168,7 @@ $legacyPlate
         setContent {
             HomebaseTheme(darkTheme = dark, followsSystemTheme = false, updatesSystemChrome = false) {
                 val state = rememberRichTextState()
-                remember(state) { state.applyMarkDownContent(source) }
+                remember(state) { state.applyMarkDownContent(composerSource) }
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.padding(16.dp)) {
                         RichTextEditor(state = state, modifier = Modifier.widthIn(max = 360.dp))
@@ -172,6 +178,9 @@ $legacyPlate
         }
         waitUntil(timeoutMillis = 10_000) { "Heading one" in allText() }
         waitForIdle()
+        val text = allText()
+        for (s in listOf("bold", "italic", "first bullet", "End.")) assertTrue(s in text, "missing '$s' in:\n$text")
+        for (m in rawMarkers + "*") assertTrue(m !in text, "composer shows raw markdown '$m':\n$text")
         save(name)
     }
 
