@@ -1,5 +1,6 @@
 package id.homebase.core.feed.services
 
+import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -51,7 +52,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
@@ -407,7 +407,7 @@ class PostCommentsService(
                 PayloadDescriptor(
                     key = payload.key,
                     contentType = payload.contentType.ifEmpty { null },
-                    iv = payload.iv?.let { Base64.encode(it) },
+                    iv = payload.iv?.let { Base64Bytes(it) },
                     descriptorContent = payload.descriptorContent,
                     previewThumbnail = payload.previewThumbnail?.let {
                         ThumbnailDescriptor(

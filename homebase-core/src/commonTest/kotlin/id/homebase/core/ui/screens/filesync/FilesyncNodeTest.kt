@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
@@ -31,7 +32,7 @@ class FilesyncNodeTest {
     private val nodeId = Uuid.random()
     private val fileKey = ByteArray(16) { it.toByte() }
     private val payloadIv = ByteArray(16) { (it + 100).toByte() }
-    private val hash = PayloadHash("blake3", "cw==", "Yw==")
+    private val hash = PayloadHash("blake3", Base64Bytes(byteArrayOf(0x73)), Base64Bytes(byteArrayOf(0x63)))
 
     private fun row(
         fileType: Int?,
@@ -61,7 +62,7 @@ class FilesyncNodeTest {
         serverMetadata = ServerMetadata(),
     )
 
-    private val syncData = PayloadDescriptor(key = FilesyncProtocol.PayloadKey, iv = Base64.encode(payloadIv), hash = hash)
+    private val syncData = PayloadDescriptor(key = FilesyncProtocol.PayloadKey, iv = Base64Bytes(payloadIv), hash = hash)
 
     @Test
     fun aFolderHasANameAndNoPayload() {

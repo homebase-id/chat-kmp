@@ -1,5 +1,9 @@
+@file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+
 package id.homebase.chat.widget
 
+import id.homebase.api.serialization.Base64Bytes
+import kotlin.io.encoding.Base64
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertTextEquals
@@ -27,7 +31,7 @@ class InlineReplyPreviewAudioTest {
         pixelWidth = 1,
         pixelHeight = 1,
         contentType = "image/png",
-        content = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
+        content = Base64Bytes(Base64.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC")),
     )
 
     private fun message(contentType: String, descriptorContent: String) = MessageUiModel(
