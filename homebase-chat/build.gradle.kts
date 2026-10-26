@@ -23,8 +23,9 @@ kotlin {
 
     android {
         namespace = "id.homebase.chat"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
-        compileSdkExtension = 19
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         // Enable the Android resource pipeline so PlayerView's XML layout in
         // src/androidMain/res/layout/ is picked up and an R class is

@@ -191,7 +191,7 @@ internal fun AudiencePicker(
                     }
                 },
                 shapes = shapes,
-                colors = ToggleButtonDefaults.toggleButtonColors(
+                colors = ToggleButtonDefaults.colors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
@@ -290,12 +290,12 @@ private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> U
         ToggleButton(
             checked = selected,
             onCheckedChange = onToggle,
-            shapes = ToggleButtonDefaults.shapes(
+            shapes = ToggleButtonShapes(
                 shape = MaterialTheme.shapes.medium,
                 pressedShape = MaterialTheme.shapes.small,
                 checkedShape = CircleShape,
             ),
-            colors = ToggleButtonDefaults.toggleButtonColors(
+            colors = ToggleButtonDefaults.colors(
                 containerColor = colors.surfaceContainerHighest,
                 contentColor = colors.onSurface,
                 checkedContainerColor = colors.secondaryContainer,

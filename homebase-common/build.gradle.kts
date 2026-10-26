@@ -41,8 +41,9 @@ kotlin {
     // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
     android {
         namespace = "id.homebase.common"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
-        compileSdkExtension = 19
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}

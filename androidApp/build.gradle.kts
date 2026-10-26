@@ -20,9 +20,8 @@ play {
 android {
     namespace = "id.homebase.feed"
     compileSdk {
-        version = release(libs.versions.android.targetSdk.get().toInt())
+        version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
     }
-    compileSdkExtension = 19
 
     defaultConfig {
         applicationId = "id.homebase.feed"
