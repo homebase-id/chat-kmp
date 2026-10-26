@@ -220,6 +220,8 @@ import id.homebase.resources.call_accept
 import id.homebase.resources.call_accept_audio_from
 import id.homebase.resources.call_accept_video_from
 import id.homebase.resources.call_back_to_chat
+import id.homebase.resources.call_report_problem
+import id.homebase.resources.call_report_unavailable
 import id.homebase.resources.call_hide_self_view
 import id.homebase.resources.call_key_escape
 import id.homebase.resources.call_show_self_view
@@ -313,6 +315,7 @@ class CallScreenActions(
     val endFromKeyboard: () -> Unit,
     val selectDevice: (MediaDeviceKind, String) -> Unit = { _, _ -> },
     val toggleMini: (() -> Unit)? = null,
+    val reportProblem: ((onUnavailable: () -> Unit) -> Unit)? = null,
 )
 
 private val ContentMaxWidth = 480.dp
@@ -921,29 +924,28 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
         val narrow = LocalCallLayout.current.tier == CallTier.Compact || minimal
         val code = ui.verificationCode
         val trailing = (if (code != null) 1 else 0) + (if (mini != null) 1 else 0) + (if (desktop) 1 else 0)
-        val reserve = (trailing * 48).dp
+        val reserve = (trailing * 48).dp + CallBetaBadgeReserve
         if (center != null) {
             Box(
                 if (narrow) Modifier.align(Alignment.TopStart).padding(end = reserve)
                 else Modifier.align(Alignment.TopCenter).padding(horizontal = if (desktop) reserve else 60.dp),
             ) { center() }
         }
-        if (code != null || desktop || mini != null) {
-            Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (code != null) {
-                    ChromeIconButton(
-                        Icons.Default.VerifiedUser,
-                        stringResource(MR.string.call_verification_show),
-                        actions.onVerificationClick,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                if (mini != null) {
-                    val label = stringResource(MR.string.call_mini_mode)
-                    ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys("M", shift = true)))
-                }
-                if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
+        Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            CallBetaBadge()
+            if (code != null) {
+                ChromeIconButton(
+                    Icons.Default.VerifiedUser,
+                    stringResource(MR.string.call_verification_show),
+                    actions.onVerificationClick,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
+            if (mini != null) {
+                val label = stringResource(MR.string.call_mini_mode)
+                ChromeIconButton(Icons.Default.PictureInPicture, label, mini, tooltip = shortcutTip(label, callShortcutKeys("M", shift = true)))
+            }
+            if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
         }
     }
 }
@@ -1763,6 +1765,7 @@ private fun BoxScope.EndedLayout(
             onClick = actions.retry,
             modifier = slot,
         )
+        ReportProblemButton(actions, slot)
         CloseButton(onClick = actions.close, modifier = slot)
     }
 }
@@ -1827,6 +1830,23 @@ private fun BoxScope.EndActions(large: Boolean, spacing: Dp, content: @Composabl
 }
 
 @Composable
+private fun ReportProblemButton(actions: CallScreenActions, modifier: Modifier) {
+    val report = actions.reportProblem ?: return
+    var unavailable by remember { mutableStateOf(false) }
+    TextButton(
+        onClick = { report { unavailable = true } },
+        enabled = !unavailable,
+        modifier = modifier.heightIn(min = 56.dp),
+        contentPadding = ButtonDefaults.contentPaddingFor(56.dp),
+    ) {
+        Text(
+            stringResource(if (unavailable) MR.string.call_report_unavailable else MR.string.call_report_problem),
+            style = ButtonDefaults.textStyleFor(56.dp),
+        )
+    }
+}
+
+@Composable
 private fun CloseButton(onClick: () -> Unit, modifier: Modifier) {
     OutlinedButton(
         onClick = onClick,
@@ -1860,6 +1880,7 @@ private fun BoxScope.FailedLayout(
         header = { modifier -> FailedHeader(badge, title, body, peerName, avatar, modifier) },
     ) { slot ->
         RetryButton(Icons.Default.Refresh, stringResource(MR.string.action_retry), actions.retry, slot)
+        ReportProblemButton(actions, slot)
         TextButton(
             onClick = actions.close,
             modifier = slot.heightIn(min = 56.dp),

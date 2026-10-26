@@ -28,3 +28,7 @@ internal expect fun createFileLogWriter(
 internal expect fun listHomebaseLogFiles(logDirectory: Path): List<Path>
 
 internal expect fun deleteHomebaseLogFiles(logDirectory: Path): Boolean
+
+internal expect fun readHomebaseLogLines(logDirectory: Path): List<List<String>>
+
+internal expect fun writeLogExport(file: Path, text: String): Boolean

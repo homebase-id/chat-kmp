@@ -3037,4 +3037,7 @@
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
     <string name="vault_chat_image_name">Chat image, %1$s</string>
+    <string name="call_beta_label">Beta</string>
+    <string name="call_report_problem">Report a problem</string>
+    <string name="call_report_unavailable">No log found for this call</string>
 </resources>

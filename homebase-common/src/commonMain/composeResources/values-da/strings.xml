@@ -2021,4 +2021,7 @@
     <string name="vault_saved">Gemt i Vault</string>
     <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
     <string name="vault_chat_image_name">Chatbillede, %1$s</string>
+    <string name="call_beta_label">Beta</string>
+    <string name="call_report_problem">Rapportér et problem</string>
+    <string name="call_report_unavailable">Ingen log fundet for dette opkald</string>
 </resources>

@@ -124,7 +124,8 @@ fun CallOverlay(
     val deviceMenu = events.deviceMenu
     val hold = remember { ChromeHold() }
     CompositionLocalProvider(LocalChromeHold provides hold) { HoldChromeWhile(events.dialogOpen) }
-    val actions = remember(viewModel, gate, onMinimize, onToggleMini) {
+    val reportProblem = rememberCallProblemReporter { viewModel.uiState.value.callId }
+    val actions = remember(viewModel, gate, onMinimize, onToggleMini, reportProblem) {
         CallScreenActions(
             accept = { gate.run(video = viewModel.uiState.value.isVideoCall) { camera -> viewModel.accept(cameraGranted = camera) } },
             decline = viewModel::decline,
@@ -143,6 +144,7 @@ fun CallOverlay(
             endFromKeyboard = viewModel::endFromKeyboard,
             selectDevice = viewModel::selectDevice,
             toggleMini = onToggleMini,
+            reportProblem = reportProblem,
         )
     }
 
