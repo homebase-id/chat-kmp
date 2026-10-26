@@ -409,14 +409,15 @@ private fun ContactDetailContent(
                         // Edit + the management menu (block/disconnect/delete) act on a saved
                         // contact — meaningless for a not-yet-accepted incoming request, whose
                         // only actions are Accept/Reject in the profile card below (#921).
-                        if (uiState.requestReview == null) {
+                        // A save before the collector lands has no synced baseline to diff against.
+                        if (uiState.requestReview == null && !uiState.isLoading) {
                             IconButton(onClick = { onAction(ContactDetailAction.EditClicked) }) {
                                 Icon(
                                     Icons.Outlined.Edit,
                                     contentDescription = stringResource(MR.string.contactbook_detail_edit),
                                 )
                             }
-                            if (uiState.entry != null && !uiState.isLoading) {
+                            if (uiState.entry != null) {
                                 ManagementMenu(uiState = uiState, onAction = onAction)
                             }
                         }
@@ -763,7 +764,7 @@ private fun DetailHeader(
         // Connection status line (only for Homebase contacts), with a small inline "sync profile"
         // affordance — identity contacts pull their details from the profile, so a quick re-sync
         // belongs right next to the status.
-        if (uiState.hasOdinId) {
+        if (uiState.hasOdinId && !uiState.isLoading) {
             val statusColor = when {
                 connected -> MaterialTheme.colorScheme.primary
                 blocked -> MaterialTheme.colorScheme.error
@@ -831,7 +832,8 @@ private fun DetailHeader(
         }
 
         when {
-            // Until the collector lands the status is unknown; a default would offer Connect to a connection.
+            // Until the collector lands the status is unknown; a default would offer Connect to a connection,
+            // and the status line above would read Not connected.
             uiState.isLoading -> {}
             connected -> {
                 Spacer(modifier = Modifier.height(12.dp))
