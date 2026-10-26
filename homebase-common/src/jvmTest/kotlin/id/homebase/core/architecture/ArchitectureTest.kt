@@ -73,6 +73,8 @@ class ArchitectureTest {
             .files
             .filter { !it.hasNameEndingWith("Test") }
             .filter { !it.hasNameEndingWith("UploadService") }
+            // The headless chat-agent has no outbox DB, so UploadService (which needs OutboxSync) can't serve it.
+            .filter { !it.path.contains("/tools/chat-agent/") }
             .functions()
             .filter { it.name !in documentedExceptions }
             .assertFalse(
