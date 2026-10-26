@@ -54,8 +54,11 @@ class EmailPreferences(
         private set
 
     fun setEmailScreenActive(active: Boolean) {
+        if (isEmailScreenActive && !active) lastActionTimeMs = clock.now().toEpochMilliseconds()
         isEmailScreenActive = active
     }
+
+    fun requiresUnlock(): Boolean = _biometricsEnabled.value && !isAuthSessionValid()
 
     fun reset() {
         _iconVisible.value = readIconVisible()
@@ -145,7 +148,8 @@ class EmailPreferences(
         val SERVER_SUPPORTS_MAIL_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0705")
 
         private const val AUTH_SESSION_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
-        private const val BACKGROUND_THRESHOLD_MS = 30 * 1000L       // 30 seconds
+        // Deliberately longer than Vault's 30s: setting up a mail client means constant app switching.
+        private const val BACKGROUND_THRESHOLD_MS = 5 * 60 * 1000L
         private const val POST_AUTH_SETTLE_MS = 2 * 1000L
     }
 }
