@@ -137,4 +137,81 @@ class ComposerEnterChordTest {
             )
         }
     }
+
+    private fun key(
+        ctrlOrCmd: Boolean = true,
+        shift: Boolean = false,
+        keyDown: Boolean = true,
+        b: Boolean = false,
+        i: Boolean = false,
+        e: Boolean = false,
+        x: Boolean = false,
+        y: Boolean = false,
+        seven: Boolean = false,
+        eight: Boolean = false,
+        escape: Boolean = false,
+    ) = ComposerKeyChord(
+        isEnter = false,
+        isArrowUp = false,
+        isKeyDown = keyDown,
+        isShiftPressed = shift,
+        isCtrlOrCmdPressed = ctrlOrCmd,
+        isB = b,
+        isI = i,
+        isE = e,
+        isX = x,
+        isY = y,
+        isSeven = seven,
+        isEight = eight,
+        isEscape = escape,
+    )
+
+    @Test
+    fun `every formatting shortcut maps to its action`() {
+        val table = listOf(
+            key(b = true) to ComposerKeyAction.Bold,
+            key(i = true) to ComposerKeyAction.Italic,
+            key(e = true) to ComposerKeyAction.InlineCode,
+            key(x = true, shift = true) to ComposerKeyAction.Strike,
+            key(eight = true, shift = true) to ComposerKeyAction.BulletList,
+            key(seven = true, shift = true) to ComposerKeyAction.NumberedList,
+            key(y = true) to ComposerKeyAction.Redo,
+        )
+        for ((chord, expected) in table) {
+            assertEquals(expected, action(chord), "$expected")
+        }
+    }
+
+    @Test
+    fun `formatting shortcuts work where plain enter is inert`() {
+        assertEquals(ComposerKeyAction.Bold, action(key(b = true), handlesHardwareKeys = false))
+        assertEquals(ComposerKeyAction.Ignore, action(chord(), handlesHardwareKeys = false))
+    }
+
+    @Test
+    fun `a key up or an unmodified letter is ignored`() {
+        assertEquals(ComposerKeyAction.Ignore, action(key(b = true, keyDown = false)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(b = true, ctrlOrCmd = false)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(x = true, ctrlOrCmd = false, shift = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(eight = true, ctrlOrCmd = false, shift = true)))
+    }
+
+    @Test
+    fun `shift changes which shortcut a digit or letter is`() {
+        assertEquals(ComposerKeyAction.Ignore, action(key(x = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(eight = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(b = true, shift = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(y = true, shift = true)))
+    }
+
+    @Test
+    fun `escape maps to dismiss trigger without a modifier`() {
+        assertEquals(ComposerKeyAction.DismissTrigger, action(key(ctrlOrCmd = false, escape = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(ctrlOrCmd = false, escape = true, keyDown = false)))
+    }
+
+    @Test
+    fun `shift enter is a newline when enter sends`() {
+        assertEquals(ComposerKeyAction.Newline, action(chord(shift = true), enterSends = true))
+    }
 }

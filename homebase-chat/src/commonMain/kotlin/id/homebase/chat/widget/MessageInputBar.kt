@@ -147,6 +147,7 @@ import id.homebase.core.util.codeBlockEdit
 import id.homebase.core.util.nextInComposerCycle
 import id.homebase.core.util.quoteEdit
 import id.homebase.core.util.taskListEdit
+import id.homebase.core.widget.ComposerKeyAction
 import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.EmojiAutocomplete
 import id.homebase.core.widget.EmojiSelection
@@ -502,6 +503,7 @@ fun MessageTextFieldExpanded(
                         }
                         .composerKeyHandler(
                             onLink = { linkDialog.open(state) },
+                            onFormat = state::applyFormatShortcut,
                             onPasteOverSelection = rememberPasteOverSelection(state),
                             clipboardText = clipboardText,
                             autocomplete = autocomplete,
@@ -816,6 +818,7 @@ fun MessageTextFieldCompact(
                                         }
                                         .composerKeyHandler(
                                             onLink = { linkDialog.open(state) },
+                                            onFormat = state::applyFormatShortcut,
                                             onPasteOverSelection = rememberPasteOverSelection(state),
                                             clipboardText = clipboardText,
                                             autocomplete = autocomplete,
@@ -1415,6 +1418,7 @@ fun MessageTextFieldForAttachment(
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
                         .composerKeyHandler(
                             onLink = { linkDialog.open(state) },
+                            onFormat = state::applyFormatShortcut,
                             onPasteOverSelection = rememberPasteOverSelection(state),
                             clipboardText = clipboardText,
                             autocomplete = autocomplete,
@@ -1591,9 +1595,7 @@ fun RichTextEditorButtons(
         item {
             RichTextStyleButton(
                 onClick = {
-                    state.toggleSpanStyle(
-                        SpanStyle(fontWeight = FontWeight.Bold)
-                    )
+                    state.toggleBold()
                 },
                 enabled = enabled,
                 isSelected = state.currentSpanStyle.fontWeight == FontWeight.Bold,
@@ -1604,9 +1606,7 @@ fun RichTextEditorButtons(
         item {
             RichTextStyleButton(
                 onClick = {
-                    state.toggleSpanStyle(
-                        SpanStyle(fontStyle = FontStyle.Italic)
-                    )
+                    state.toggleItalic()
                 },
                 enabled = enabled,
                 isSelected = state.currentSpanStyle.fontStyle == FontStyle.Italic,
@@ -1622,11 +1622,7 @@ fun RichTextEditorButtons(
         item {
             RichTextStyleButton(
                 onClick = {
-                    state.toggleSpanStyle(
-                        SpanStyle(
-                            textDecoration = TextDecoration.LineThrough
-                        )
-                    )
+                    state.toggleStrike()
                 },
                 enabled = enabled,
                 isSelected = state.currentSpanStyle.textDecoration?.contains(
@@ -1874,4 +1870,24 @@ private fun Modifier.pasteImageMenuItem(onPasteImage: ((ByteArray) -> Unit)?): M
     return pasteImageContextMenuItem(label = label, enabled = true) {
         scope.launch { readClipboardImage()?.let(onPasteImage) }
     }
+}
+
+private fun RichTextState.toggleBold() = toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+
+private fun RichTextState.toggleItalic() = toggleSpanStyle(SpanStyle(fontStyle = FontStyle.Italic))
+
+private fun RichTextState.toggleStrike() = toggleSpanStyle(SpanStyle(textDecoration = TextDecoration.LineThrough))
+
+internal fun RichTextState.applyFormatShortcut(action: ComposerKeyAction): Boolean {
+    when (action) {
+        ComposerKeyAction.Bold -> toggleBold()
+        ComposerKeyAction.Italic -> toggleItalic()
+        ComposerKeyAction.InlineCode -> toggleCodeSpan()
+        ComposerKeyAction.Strike -> toggleStrike()
+        ComposerKeyAction.BulletList -> toggleUnorderedList()
+        ComposerKeyAction.NumberedList -> toggleOrderedList()
+        ComposerKeyAction.Redo -> return history.redo()
+        else -> return false
+    }
+    return true
 }

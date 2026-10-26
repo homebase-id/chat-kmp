@@ -125,4 +125,38 @@ class ComposerKeyHandlerTest {
         )
         assertEquals(1, opened)
     }
+
+    @Test
+    fun `a format action is claimed only when the composer applies it`() {
+        val applied = mutableListOf<ComposerKeyAction>()
+        fun run(onFormat: ((ComposerKeyAction) -> Boolean)?, claims: Boolean = false) = handleComposerKey(
+            isImeComposing = false,
+            claimedByAutocomplete = { claims },
+            action = ComposerKeyAction.Bold,
+            onSend = {},
+            onNewline = null,
+            onEditLast = null,
+            onFormat = onFormat,
+            pasteImage = { false },
+        )
+        assertTrue(run({ applied += it; true }))
+        assertEquals(listOf(ComposerKeyAction.Bold), applied)
+        assertFalse(run({ false }))
+        assertFalse(run(null))
+    }
+
+    @Test
+    fun `escape is consumed only when the autocomplete is open`() {
+        fun escape(open: Boolean) = handleComposerKey(
+            isImeComposing = false,
+            claimedByAutocomplete = { open },
+            action = ComposerKeyAction.DismissTrigger,
+            onSend = {},
+            onNewline = null,
+            onEditLast = null,
+            pasteImage = { false },
+        )
+        assertTrue(escape(open = true))
+        assertFalse(escape(open = false))
+    }
 }
