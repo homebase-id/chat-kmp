@@ -1,7 +1,7 @@
 package id.homebase.chat.services
 
 import id.homebase.api.client.drives.files.RichText
-import id.homebase.api.client.drives.files.getPlainTextFromRichText
+import id.homebase.api.client.drives.files.richTextToMarkdown
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -35,6 +35,9 @@ data class MessageAppData(
     val version: Int? = null
 ) {
 
+    val bodyIsMarkdown: Boolean
+        get() = message is JsonArray || (version ?: 0) >= 1
+
     fun getMessage(): String {
         return when {
             version == null -> getMessageAsString()
@@ -58,7 +61,7 @@ data class MessageAppData(
                 try {
                     val richText =
                         OdinSystemSerializer.json.decodeFromJsonElement<RichText>(message)
-                    getPlainTextFromRichText(richText) ?: ""
+                    richTextToMarkdown(richText)
                 } catch (e: Exception) {
                     "" // Fallback if decoding fails
                 }

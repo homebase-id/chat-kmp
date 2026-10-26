@@ -1114,6 +1114,7 @@
     <string name="chat_markdown_blockquote">Block quote</string>
     <string name="chat_markdown_inline_code">Inline code</string>
     <string name="chat_markdown_code_block">Code block</string>
+    <string name="chat_markdown_task_list">Task list</string>
     <string name="chat_markdown_link">Insert link</string>
     <string name="chat_markdown_nested_list">Indent list</string>
     <string name="chat_markdown_link_dialog_title">Insert link</string>
@@ -1121,6 +1122,9 @@
     <string name="chat_markdown_link_dialog_url">URL</string>
     <string name="chat_markdown_link_dialog_insert">Insert</string>
     <string name="chat_markdown_link_dialog_cancel">Cancel</string>
+    <string name="chat_markdown_link_dialog_edit_title">Edit link</string>
+    <string name="chat_markdown_link_dialog_save">Save</string>
+    <string name="chat_markdown_link_dialog_remove">Remove link</string>
 
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>
@@ -2411,8 +2415,6 @@
     <string name="profile_card_content_could_add">Also on your profile</string>
     <string name="profile_card_content_every_card">On every card</string>
     <string name="profile_card_content_every_card_desc">Public, so everyone sees these on every card.</string>
-    <string name="profile_card_content_hide_this">Hide %1$s from this card</string>
-    <string name="profile_card_content_show_this">Show %1$s on this card</string>
     <string name="profile_card_content_edit_this">Edit %1$s</string>
     <string name="profile_card_content_edit_title">Edit</string>
     <string name="profile_card_content_delete">Delete from every card</string>
@@ -2431,6 +2433,12 @@
     <string name="profile_card_import_public_title">Show these to everyone?</string>
     <string name="profile_card_import_public_message">These items become visible to everyone who sees your public card.</string>
     <string name="profile_card_import_public_confirm">Show to everyone</string>
+    <string name="profile_card_content_choose_cards">Choose which cards show %1$s</string>
+    <string name="profile_card_cards_public">Public: everyone</string>
+    <string name="profile_card_make_public_title">Make this public?</string>
+    <string name="profile_card_make_public_message">Everyone on the internet will be able to see %1$s.</string>
+    <string name="profile_card_content_now_public">%1$s is now public</string>
+    <string name="profile_card_content_now_hidden">%1$s is no longer public</string>
     <string name="profile_card_audience_public">Public</string>
     <string name="profile_card_audience_circle">Circle</string>
     <string name="profile_card_intro_title">Your cards</string>
