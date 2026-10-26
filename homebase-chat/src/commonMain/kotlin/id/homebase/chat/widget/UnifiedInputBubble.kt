@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.usesPointerUx
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
@@ -262,7 +262,7 @@ internal fun SendChordTooltip(
     content: @Composable () -> Unit,
 ) {
     // A compile-time constant, so the wrapper is still permanent wherever a tooltip can appear.
-    if (!isDesktopOrWeb()) {
+    if (!usesPointerUx()) {
         content()
         return
     }

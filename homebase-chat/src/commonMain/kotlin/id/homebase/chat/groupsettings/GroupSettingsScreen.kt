@@ -1143,30 +1143,6 @@ private fun GroupParticipantRow(
     }
 }
 
-@Composable
-private fun TransferStatusIcon(
-    status: RecipientFileStatus?,
-    okDescription: String,
-    problemDescription: String,
-) {
-    val size = 12.dp
-    when (status) {
-        RecipientFileStatus.Ok -> Icon(
-            imageVector = Icons.Default.Check,
-            contentDescription = okDescription,
-            tint = LocalContentColor.current.copy(alpha = 0.55f),
-            modifier = Modifier.size(size)
-        )
-        is RecipientFileStatus.Problem -> Icon(
-            imageVector = Icons.Default.ErrorOutline,
-            contentDescription = problemDescription,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(size)
-        )
-        null -> Spacer(modifier = Modifier.size(size))
-    }
-}
-
 /**
  * 12dp status icon for a single peer's file-exists outcome. Reused by the
  * per-member status section and (next) by the overall-group summary row.
@@ -1252,16 +1228,11 @@ private fun GroupParticipantSummaryIcon(
 ) {
     val size = 16.dp
 
-    // Loading wins over OK/problem so we don't flash a red cloud while the
-    // peer-exists check is still in flight. The only genuine in-flight signal
-    // is the peer-exists Loading enum: the transfer-history map loads
-    // atomically (null → fully populated in one update), so once its column is
-    // shown a missing peer entry means "this peer was never a recipient of
-    // that file" — a permanent state, not loading. Treating a null transfer
-    // entry as loading left peers who never received a file (e.g. the admin
-    // file) spinning forever instead of showing the red cloud their Missing
-    // peer-exists already implies.
+    // A file still in the outbox is in flight, not failed. A missing transfer entry is
+    // permanent (that peer was never a recipient), so it is not loading.
     val anyLoading =
+        (showMainColumn && mainStatus is RecipientFileStatus.Pending) ||
+        (showAdminColumn && adminStatus is RecipientFileStatus.Pending) ||
         (showMainPeerExistsColumn && mainPeerExists is MemberFileExistsStatus.Loading) ||
         (showAdminPeerExistsColumn && adminPeerExists is MemberFileExistsStatus.Loading)
 
