@@ -504,6 +504,7 @@ class ContactDetailViewModel(
         when (action) {
             ContactDetailAction.MessageClicked -> handleMessage()
             ContactDetailAction.SyncClicked -> handleSync()
+            ContactDetailAction.RebuildConversationClicked -> handleRebuildConversation()
             ContactDetailAction.EditClicked -> _uiState.update { it.copy(editOpen = true) }
             ContactDetailAction.CloseEdit -> _uiState.update { it.copy(editOpen = false) }
             is ContactDetailAction.SaveContact -> handleSave(action)
@@ -564,6 +565,25 @@ class ContactDetailViewModel(
                 return@launch
             }
             _events.tryEmit(ContactDetailEvent.OpenConversation(id))
+        }
+    }
+
+    private fun handleRebuildConversation() {
+        val conversationId = _uiState.value.conversationId ?: return
+        viewModelScope.launch {
+            val event = try {
+                when (conversationService.rebuildOneOnOneConversation(conversationId).outcome) {
+                    ConversationService.OneOnOneRebuildOutcome.Rebuilt -> ContactDetailEvent.ConversationRebuilt
+                    ConversationService.OneOnOneRebuildOutcome.AlreadyOnServer -> ContactDetailEvent.ConversationRebuildNotNeeded
+                    ConversationService.OneOnOneRebuildOutcome.AlreadyQueued -> ContactDetailEvent.ConversationRebuildQueued
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "Rebuild of 1:1 conversation $conversationId failed" }
+                ContactDetailEvent.ConversationRebuildFailed
+            }
+            _events.tryEmit(event)
         }
     }
 

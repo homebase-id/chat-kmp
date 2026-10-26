@@ -90,11 +90,11 @@ class OptimisticWriter(
         fileSystemType: FileSystemType,
         payloadDescriptors: List<PayloadDescriptor>? = null,
         fileId: Uuid = Uuid.random(),
+        created: UnixTimeUtc = UnixTimeUtc.now(),
     ): Uuid {
 
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
-        val created = UnixTimeUtc.now()
 
         val file = HomebaseFile(
             fileId = fileId,
