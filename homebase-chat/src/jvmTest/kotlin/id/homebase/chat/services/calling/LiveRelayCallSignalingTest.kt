@@ -50,7 +50,7 @@ class LiveRelayCallSignalingTest {
             respond("", status)
         }
         val provider = LiveRelayProvider(HttpClient(engine), creds)
-        return LiveRelayCallSignaling(frodo, provider::relay, bus)
+        return LiveRelayCallSignaling(frodo, { channelKey, recipients, blob, push -> provider.relay(channelKey, recipients, blob, push, wakeCause = null) }, bus)
     }
 
     @Test
