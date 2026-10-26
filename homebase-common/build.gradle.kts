@@ -95,6 +95,12 @@ kotlin {
         jvmMain.get().dependsOn(cameraStubMain)
         wasmJsMain.get().dependsOn(cameraStubMain)
 
+        // The paste menu shared by every target but iOS, which takes UIKit's own paste: slot.
+        val nonIosPasteMain = create("nonIosPasteMain") { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(nonIosPasteMain)
+        jvmMain.get().dependsOn(nonIosPasteMain)
+        wasmJsMain.get().dependsOn(nonIosPasteMain)
+
         // FileKit's PlatformFile.path and lastModified() exist on every target but the web.
         val nonWebMain = create("nonWebMain") { dependsOn(commonMain.get()) }
         androidMain.get().dependsOn(nonWebMain)

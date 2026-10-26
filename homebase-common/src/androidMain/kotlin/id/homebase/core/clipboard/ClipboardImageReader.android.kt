@@ -10,15 +10,23 @@ actual fun getImageFromClipboard(): ByteArray? {
     return null
 }
 
-actual suspend fun readClipboardImage(): ByteArray? {
+actual suspend fun readClipboard(): ClipboardContents {
     val context = ActivityProvider.requireApplicationContext()
-    val clipboardManager =
-        context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
-    val clip = clipboardManager.primaryClip ?: return null
-    if (clip.itemCount == 0) return null
+    val clip = context.clipboardManager()?.primaryClip
+    if (clip == null || clip.itemCount == 0) return ClipboardContents(image = null, text = null)
     val mimeTypes = (0 until clip.description.mimeTypeCount).map { clip.description.getMimeType(it) }
-    val uri = clip.getItemAt(0).uri ?: return null
-    return selectImageBytes(mimeTypes) {
-        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+    val item = clip.getItemAt(0)
+    val image = item.uri?.let { uri ->
+        selectImageBytes(mimeTypes) { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } }
     }
+    return ClipboardContents(image = image, text = item.text?.toString())
 }
+
+actual fun clipboardMayHoldImage(): Boolean {
+    val description = ActivityProvider.requireApplicationContext().clipboardManager()?.primaryClipDescription
+        ?: return false
+    return (0 until description.mimeTypeCount).any { description.getMimeType(it).startsWith("image/") }
+}
+
+private fun Context.clipboardManager(): ClipboardManager? =
+    getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
