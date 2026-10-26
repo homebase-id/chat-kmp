@@ -1,5 +1,7 @@
 package id.homebase.api.sync.database
 
+import id.homebase.api.storage.SecureRead
+import id.homebase.api.storage.toSecureRead
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import co.touchlab.sqliter.JournalMode
@@ -27,10 +29,9 @@ class IosDatabaseEncryptionTest {
     private class FakeStore(var value: String? = null) : RawKeyStore {
         var locked = false
         var writes = 0
-        override fun get() = value
         override fun put(hex: String) { value = hex; writes++ }
-        override fun remove() { value = null }
-        override fun read() = if (locked) RawKeyRead.Unavailable("locked") else super.read()
+        override fun read(): SecureRead =
+            if (locked) SecureRead.Unavailable(IllegalStateException("locked")) else value.toSecureRead()
     }
 
     @BeforeTest

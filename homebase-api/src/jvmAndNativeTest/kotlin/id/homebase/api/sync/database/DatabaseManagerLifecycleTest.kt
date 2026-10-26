@@ -4,8 +4,6 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import kotlinx.coroutines.test.runTest
-import java.io.File
-import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,29 +12,28 @@ import kotlin.test.assertTrue
 
 class DatabaseManagerLifecycleTest {
 
-    private val dir: File = Files.createTempDirectory("dbm-lifecycle").toFile()
-    private val dbFile = File(dir, "t.db")
+    private val db = openWalFileDb()
 
     @AfterTest
     fun cleanup() {
-        dir.deleteRecursively()
+        db.cleanup()
     }
 
     @Test
     fun aFailedOpenClosesTheDriver() {
-        val driver = FailingCreateDriver(openSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}"))
+        val driver = FailingCreateDriver(db.driver)
         assertFailsWith<IllegalStateException> { DatabaseManager({ driver }) }
         assertTrue(driver.closed)
     }
 
     @Test
     fun vacuumLeavesAnEmptyWal() = runTest {
-        val dbm = DatabaseManager({ openSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}") })
+        val dbm = DatabaseManager({ db.driver })
         dbm.driver.execute(null, "CREATE TABLE junk(b BLOB)", 0)
         repeat(4) { dbm.driver.execute(null, "INSERT INTO junk VALUES (randomblob(1000000))", 0) }
         dbm.driver.execute(null, "DELETE FROM junk", 0)
         dbm.vacuum()
-        assertEquals(0L, File(dbFile.path + "-wal").length())
+        assertEquals(0L, db.walBytes())
         dbm.close()
     }
 

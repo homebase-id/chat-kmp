@@ -82,7 +82,7 @@ actual object SecureStorage {
         val defaults = NSUserDefaults.standardUserDefaults
         if (defaults.boolForKey(INSTALL_MARKER)) return
         // Before the first unlock UserDefaults reads as empty too, which would look like a fresh install.
-        if (read(key = null).status == errSecInteractionNotAllowed) return
+        if (readKeychain(key = null).status == errSecInteractionNotAllowed) return
 
         clear()
         defaults.setBool(true, INSTALL_MARKER)
@@ -150,12 +150,12 @@ actual object SecureStorage {
         }
     }
 
-    actual fun get(key: String): String? = read(key).value
+    actual fun get(key: String): String? = readKeychain(key).value
 
     internal class KeychainRead(val status: OSStatus, val value: String?)
 
     /** [get] with the OSStatus kept, so errSecItemNotFound can be told apart from a locked keychain. */
-    internal fun read(key: String?): KeychainRead {
+    internal fun readKeychain(key: String?): KeychainRead {
         val query = createBaseQuery(key) ?: return KeychainRead(errSecAllocate, null)
 
         CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue)
@@ -176,6 +176,10 @@ actual object SecureStorage {
             return KeychainRead(status, null)
         }
     }
+
+    // Never Unavailable: on iOS the passphrase only switches encryption on; KeychainRawKeyStore reads the raw key's OSStatus.
+    actual fun read(key: String): SecureRead =
+        get(key).toSecureRead()
 
     actual fun remove(key: String) {
         val query = createBaseQuery(key) ?: return

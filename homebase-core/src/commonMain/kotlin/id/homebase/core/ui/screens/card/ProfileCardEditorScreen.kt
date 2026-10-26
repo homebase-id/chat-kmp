@@ -159,6 +159,9 @@ import id.homebase.resources.profile_card_import_public_message
 import id.homebase.resources.profile_card_import_public_confirm
 import id.homebase.resources.profile_card_make_public_message
 import id.homebase.resources.profile_card_make_public_title
+import id.homebase.resources.profile_card_nameless_public_confirm
+import id.homebase.resources.profile_card_nameless_public_message
+import id.homebase.resources.profile_card_nameless_public_title
 import id.homebase.resources.profile_card_content_now_hidden
 import id.homebase.resources.profile_card_content_now_public
 import id.homebase.resources.profile_card_import_done
@@ -392,6 +395,9 @@ fun ProfileCardEditorScreen(
         uiState.pendingPublic?.let { pending ->
             MakePublicDialog(itemLabel = pending.itemLabel, onConfirm = viewModel::onPublicConfirmed, onDismiss = viewModel::onPublicCancelled)
         }
+        if (uiState.pendingNameless != null) {
+            NamelessPublicDialog(onConfirm = viewModel::onNamelessConfirmed, onDismiss = viewModel::onNamelessCancelled)
+        }
     }
 }
 
@@ -420,6 +426,22 @@ internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismis
         text = { Text(stringResource(MR.string.profile_card_make_public_message, itemLabel)) },
         confirmButton = {
             Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_import_public_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+internal fun NamelessPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_nameless_public_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_nameless_public_message)) },
+        confirmButton = {
+            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_nameless_public_confirm)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }

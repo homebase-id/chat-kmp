@@ -2442,6 +2442,9 @@
     <string name="profile_card_cards_public">Public: everyone</string>
     <string name="profile_card_make_public_title">Make this public?</string>
     <string name="profile_card_make_public_message">Everyone on the internet will be able to see %1$s.</string>
+    <string name="profile_card_nameless_public_title">Remove the name from your public card?</string>
+    <string name="profile_card_nameless_public_message">Your public card will have no name. Continue?</string>
+    <string name="profile_card_nameless_public_confirm">Continue</string>
     <string name="profile_card_content_now_public">%1$s is now public</string>
     <string name="profile_card_content_now_hidden">%1$s is no longer public</string>
     <string name="profile_card_audience_public">Public</string>
@@ -3050,6 +3053,8 @@
     <string name="vault_saved">Saved to Vault</string>
     <string name="vault_save_failed">Couldn't save to Vault</string>
     <string name="vault_chat_image_name">Chat image, %1$s</string>
+    <string name="email_locked_title">Mail setup is locked</string>
+    <string name="email_locked_unlock">Unlock</string>
     <string name="call_beta_label">Beta</string>
     <string name="call_report_problem">Report a problem</string>
     <string name="call_report_unavailable">No log found for this call</string>

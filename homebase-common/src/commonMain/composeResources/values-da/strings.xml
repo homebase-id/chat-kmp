@@ -1853,6 +1853,9 @@
     <string name="profile_card_cards_public">Offentlig: alle</string>
     <string name="profile_card_make_public_title">Gør dette offentligt?</string>
     <string name="profile_card_make_public_message">Alle på internettet kan se %1$s.</string>
+    <string name="profile_card_nameless_public_title">Fjern navnet fra dit offentlige kort?</string>
+    <string name="profile_card_nameless_public_message">Dit offentlige kort får intet navn. Vil du fortsætte?</string>
+    <string name="profile_card_nameless_public_confirm">Fortsæt</string>
     <string name="profile_card_content_now_public">%1$s er nu offentlig</string>
     <string name="profile_card_content_now_hidden">%1$s er ikke længere offentlig</string>
     <string name="profile_card_editor_title">Kortdesign</string>
@@ -2035,6 +2038,10 @@
     <string name="vault_saved">Gemt i Vault</string>
     <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
     <string name="vault_chat_image_name">Chatbillede, %1$s</string>
+    <string name="email_biometric_prompt_title">Lås mailopsætning op</string>
+    <string name="email_biometric_prompt_subtitle">Godkend for at se dine mailadgangskoder og nøgler</string>
+    <string name="email_locked_title">Mailopsætning er låst</string>
+    <string name="email_locked_unlock">Lås op</string>
     <string name="call_beta_label">Beta</string>
     <string name="call_report_problem">Rapportér et problem</string>
     <string name="call_report_unavailable">Ingen log fundet for dette opkald</string>

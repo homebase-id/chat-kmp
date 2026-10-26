@@ -3,6 +3,7 @@ package id.homebase.api.sync.database
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import co.touchlab.kermit.Logger
+import id.homebase.api.storage.SecureRead
 import java.io.File
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
@@ -26,8 +27,9 @@ internal object SqlCipherKeyMode {
      * [open] builds the driver for a key, or for no encryption when it gets null (an empty
      * [passphrase]). Without a cached raw key that decrypts the file, this launch opens with the
      * passphrase and [deriveIn] derives the raw key for the next one: Android's PBKDF2 runs in
-     * Java, 3.3 s on an emulator. A file the passphrase can't open fails in DatabaseManager's
-     * recovery as before.
+     * Java, 3.3 s on an emulator. A file neither key opens fails in DatabaseManager's recovery,
+     * unless the stored key couldn't be read: then it throws [DatabaseUnavailableException] and
+     * nothing is written. A stored key is only ever replaced by one the passphrase proved.
      */
     fun openDriver(
         dbFile: File,
@@ -37,9 +39,12 @@ internal object SqlCipherKeyMode {
         open: (key: String?) -> SqlDriver,
     ): SqlDriver {
         if (passphrase.isNullOrEmpty()) return open(null).verified()
-        val cached = store.get()?.takeIf(SqlCipherRawKey::isHex)
+        val stored = store.read()
+        val unavailable = (stored as? SecureRead.Unavailable)?.cause
+        val cached = (stored as? SecureRead.Found)?.value?.takeIf(SqlCipherRawKey::isHex)
 
         if (!dbFile.isFile || dbFile.length() < SALT_BYTES) {
+            if (unavailable != null) throw DatabaseUnavailableException("Raw key unreadable", unavailable)
             // Store before the driver creates the file, so a crash in between leaves the
             // key that the next run will open it with.
             val hex = cached ?: SqlCipherRawKey.newHex().also(store::put)
@@ -49,10 +54,15 @@ internal object SqlCipherKeyMode {
         if (cached != null) {
             tryOpen(open, SqlCipherRawKey.format(cached))?.let { return it }
             logger.w { "Cached raw key doesn't open the database; using the passphrase" }
-            store.remove()
         }
 
-        val driver = open(passphrase).verified()
+        val driver = try {
+            open(passphrase).verified()
+        } catch (e: Exception) {
+            if (unavailable != null) throw DatabaseUnavailableException("Raw key unreadable and the passphrase doesn't open the database", e)
+            throw e
+        }
+        if (unavailable != null) return driver
         deriveIn {
             val started = TimeSource.Monotonic.markNow()
             store.put(deriveRawKeyHex(passphrase, readSalt(dbFile)))

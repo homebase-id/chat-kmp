@@ -1111,7 +1111,7 @@ fun InlineReplyPreview(
 
     // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
     // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
-    val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }
+    val replyText = remember(replyPreview.message) { replyPreview.message.replyQuotePlainText() }
     val viewOnceOpened = remember(replyMessage, currentOdinId) {
         replyMessage?.takeIf { it.messageContent is MessageContent.ViewOnce }?.let {
             ViewOnceRules.isSpent(it, Clock.System.now().toEpochMilliseconds(), runCatching { OdinId(currentOdinId) }.getOrNull())
