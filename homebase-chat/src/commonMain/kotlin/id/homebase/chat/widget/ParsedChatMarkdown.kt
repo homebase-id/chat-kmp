@@ -3,7 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.runtime.compositionLocalOf
 import com.mikepenz.markdown.model.ReferenceLinkHandlerImpl
 import com.mikepenz.markdown.model.State
-import com.mikepenz.markdown.utils.EntityConverter
+import com.mikepenz.markdown.utils.getUnescapedTextInNode
 import id.homebase.api.util.ChatMarkdownFlavour
 import id.homebase.api.util.Mention
 import id.homebase.api.util.findMentions
@@ -14,12 +14,10 @@ import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
-import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.parser.MarkdownParser
 
-/** [text] is [content] with soft breaks promoted to hard ones; [ast] and [mentionRanges] index into it. */
+/** [text] is the content with soft breaks promoted to hard ones; [ast] and [mentionRanges] index into it. */
 class ParsedChatMarkdown(
-    val content: String,
     val text: String,
     val ast: ASTNode?,
     val hasBlockElements: Boolean,
@@ -46,23 +44,27 @@ class ParsedChatMarkdown(
 private fun collectLinkDefinitions(out: MutableMap<String, String>, node: ASTNode, text: String) {
     var isAutoLink = false
     val label = when (node.type) {
-        MarkdownElementTypes.LINK_DEFINITION -> node.findChildOfType(MarkdownElementTypes.LINK_LABEL)?.unescaped(text)
-        MarkdownElementTypes.INLINE_LINK -> node.findChildOfType(MarkdownElementTypes.LINK_TEXT)?.unescaped(text)
+        MarkdownElementTypes.LINK_DEFINITION ->
+            node.findChildOfType(MarkdownElementTypes.LINK_LABEL)?.getUnescapedTextInNode(text)
+        MarkdownElementTypes.INLINE_LINK ->
+            node.findChildOfType(MarkdownElementTypes.LINK_TEXT)?.getUnescapedTextInNode(text)
         MarkdownElementTypes.AUTOLINK -> {
             isAutoLink = true
-            (node.children.firstOrNull { it.type.name == MarkdownElementTypes.AUTOLINK.name } ?: node).unescaped(text)
+            (node.children.firstOrNull { it.type.name == MarkdownElementTypes.AUTOLINK.name } ?: node)
+                .getUnescapedTextInNode(text)
         }
         else -> null
     }
     if (label != null) {
-        val destination = if (isAutoLink) label else node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.unescaped(text)
+        val destination = if (isAutoLink) {
+            label
+        } else {
+            node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.getUnescapedTextInNode(text)
+        }
         if (destination != null) out[label] = destination
     }
     for (child in node.children) collectLinkDefinitions(out, child, text)
 }
-
-private fun ASTNode.unescaped(text: String): String =
-    EntityConverter.replaceEntities(getTextInNode(text).toString(), false, true)
 
 internal fun parseChatMarkdown(content: String): ParsedChatMarkdown {
     val normalized = content.normalizeChatNewlines()
@@ -70,12 +72,12 @@ internal fun parseChatMarkdown(content: String): ParsedChatMarkdown {
     val first = try {
         parser.buildMarkdownTreeFromString(normalized)
     } catch (_: Throwable) {
-        return ParsedChatMarkdown(content, normalized, null, false, emptyList())
+        return ParsedChatMarkdown(normalized, null, false, emptyList())
     }
     val hasBlock = markdownTreeHasBlockElements(first)
     val promoted = normalized.withParagraphSoftBreaksPromoted(first)
     val tree = if (promoted == normalized) first else parser.buildMarkdownTreeFromString(promoted)
-    return ParsedChatMarkdown(content, promoted, tree, hasBlock, findMentions(promoted))
+    return ParsedChatMarkdown(promoted, tree, hasBlock, findMentions(promoted))
 }
 
 /** Single-threaded by contract: touched from composition only. */

@@ -149,7 +149,7 @@ abstract class OdinApiProviderBase(
     private fun looksLikeEncryptedEnvelope(body: String): Boolean {
         return try {
             val payload = OdinSystemSerializer.deserialize<SharedSecretEncryptedPayload>(body)
-            payload.iv.isNotBlank() && payload.data.isNotBlank()
+            payload.iv.bytes.isNotEmpty() && payload.data.bytes.isNotEmpty()
         } catch (_: Exception) {
             false
         }

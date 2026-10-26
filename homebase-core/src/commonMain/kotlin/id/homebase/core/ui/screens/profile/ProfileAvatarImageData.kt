@@ -5,7 +5,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.image.HomebaseImageData
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 private const val TAG = "ProfileAvatarImageData"
@@ -57,9 +56,7 @@ fun ProfileAttribute.photoImageData(): HomebaseImageData? {
     } else {
         val rawIv = descriptor.iv
             ?: return dropped("payload '$payloadKey' expected encrypted ($visibility) but has no iv")
-        runCatching { Base64.decode(rawIv) }.getOrElse {
-            return dropped("payload '$payloadKey' iv present but undecodable (raw=$rawIv)")
-        }
+        rawIv.bytes
     }
 
     return HomebaseImageData.from(

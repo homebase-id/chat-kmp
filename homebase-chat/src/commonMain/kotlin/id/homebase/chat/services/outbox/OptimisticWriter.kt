@@ -1,5 +1,6 @@
 package id.homebase.chat.services.outbox
 
+import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -997,7 +998,7 @@ class OptimisticWriter(
         // processes this later, possibly after the participant-update has removed
         // us from the group — at which point getFileHeader returns isEncrypted=false
         // and the server rejects the update with "A string IV is required".
-        val ivBase64: String?
+        val ivBase64: Base64Bytes?
         val encryptedContent: String?
         if (localOnly) {
             ivBase64 = null
@@ -1006,7 +1007,7 @@ class OptimisticWriter(
             val iv = ByteArrayUtil.getRndByteArray(16)
             val keyHeader = KeyHeader(iv = iv, aesKey = existingFile.keyHeader.aesKey)
             val encrypted = keyHeader.encryptDataAes(content.encodeToByteArray())
-            ivBase64 = Base64.encode(iv)
+            ivBase64 = Base64Bytes(iv)
             encryptedContent = Base64.encode(encrypted)
         } else {
             ivBase64 = null

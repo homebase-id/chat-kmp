@@ -1,5 +1,9 @@
+@file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+
 package id.homebase.chat.widget
 
+import id.homebase.api.serialization.Base64Bytes
+import kotlin.io.encoding.Base64
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
@@ -59,7 +63,7 @@ class LinkPreviewPendingImageTest {
                         pixelWidth = 1,
                         pixelHeight = 1,
                         contentType = "image/png",
-                        content = onePxPngBase64,
+                        content = Base64Bytes(Base64.decode(onePxPngBase64)),
                     ),
                     isUploading = true,
                 )

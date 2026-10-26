@@ -414,7 +414,7 @@ class MomentDetailViewModel(
                     }
 
                     payload.isVideo() -> {
-                        val ivBytes = payload.iv?.let { Base64.decode(it) }
+                        val ivBytes = payload.iv?.bytes
                         // The video player needs a per-payload KeyHeader (the
                         // payload's IV + the moment's master AES key). If the IV
                         // is somehow missing, fall back to a 16-byte zero IV so
@@ -681,7 +681,7 @@ class MomentDetailViewModel(
             _events.tryEmit(MomentDetailUiEvent.ShareFailed("Payload missing key header"))
             return
         }
-        val keyHeader = KeyHeader(Base64.decode(ivString), moment.keyHeader.aesKey)
+        val keyHeader = KeyHeader(ivString.bytes, moment.keyHeader.aesKey)
         val caption = moment.description.takeIf { it.isNotBlank() }
 
         _screenLocal.update { it.copy(isSharingMedia = true) }
@@ -760,7 +760,7 @@ class MomentDetailViewModel(
             _events.tryEmit(MomentDetailUiEvent.MediaSaveFailed("Payload missing key header"))
             return
         }
-        val keyHeader = KeyHeader(Base64.decode(ivString), moment.keyHeader.aesKey)
+        val keyHeader = KeyHeader(ivString.bytes, moment.keyHeader.aesKey)
 
         _screenLocal.update { it.copy(isSavingMedia = true) }
         viewModelScope.launch {
