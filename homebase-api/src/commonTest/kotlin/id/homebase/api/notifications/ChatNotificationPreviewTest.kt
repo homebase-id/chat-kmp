@@ -241,7 +241,8 @@ class ChatNotificationPreviewTest {
 
     @Test
     fun contentThatFailsToDecryptIsNotShownAsItsPlaceholder() = runTest {
-        val undecryptable = Base64.encode(ByteArray(32) { 1 })
+        // Not block-aligned: whole blocks under a random key still pass the PKCS7 check 1 run in 256.
+        val undecryptable = Base64.encode(ByteArray(31) { 1 })
         assertMissed("content failed to decrypt", preview(header("", encryptedContent = undecryptable)))
     }
 

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 7A1C0DE02F9000020055AA02 /* WebRTC */; };
+		5C1A0DE02F9000030055AA13 /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = 5C1A0DE02F9000020055AA12 /* SQLCipher */; };
 		031DFB24DCA72A98A492CB45 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB32F3A0C08000B3AFE /* libswscale.xcframework */; };
 		1B3A45515D60DA2487B59C66 /* fixture_4k.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E5FC7FF390C4D1659F6B3703 /* fixture_4k.mp4 */; };
 		3C162F9B622E66316002D712 /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB12F3A0C08000B3AFE /* libavcodec.xcframework */; };
@@ -240,6 +241,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7A1C0DE02F9000030055AA03 /* WebRTC in Frameworks */,
+				5C1A0DE02F9000030055AA13 /* SQLCipher in Frameworks */,
 				43296FC22F3A0C08000B3AFE /* libavdevice.xcframework in Frameworks */,
 				43296FBA2F3A0C08000B3AFE /* libavfilter.xcframework in Frameworks */,
 				4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */,
@@ -366,6 +368,7 @@
 				4332A0A82F3B761C00F895B5 /* FirebaseMessaging */,
 				4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */,
 				7A1C0DE02F9000020055AA02 /* WebRTC */,
+				5C1A0DE02F9000020055AA12 /* SQLCipher */,
 			);
 			productName = iosApp;
 			productReference = E036487443061F6060AA1439 /* Homebase.app */;
@@ -476,6 +479,7 @@
 			packageReferences = (
 				4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */,
+				5C1A0DE02F9000010055AA11 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0FA39D98867DA0943346125E /* Products */;
@@ -1364,6 +1368,14 @@
 				version = 125.0.0;
 			};
 		};
+		5C1A0DE02F9000010055AA11 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sqlcipher/SQLCipher.swift";
+			requirement = {
+				kind = exactVersion;
+				version = 4.19.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1411,6 +1423,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 7A1C0DE02F9000010055AA01 /* XCRemoteSwiftPackageReference "WebRTC" */;
 			productName = WebRTC;
+		};
+		5C1A0DE02F9000020055AA12 /* SQLCipher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5C1A0DE02F9000010055AA11 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */;
+			productName = SQLCipher;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

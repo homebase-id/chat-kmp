@@ -239,4 +239,18 @@ enum class ThemeState {
     Light,
 }
 
+/**
+ * Key-value store for small user preferences, shared by the whole app. Reads and writes are
+ * synchronous and cheap; call from any thread. Absent keys return the caller's default.
+ *
+ * Persistence: values survive process restarts and app updates on every platform. Reinstall:
+ * Android and iOS lose them (app data is removed on uninstall); desktop keeps them, since they
+ * live in the OS preferences store (`java.util.prefs`, node `/id/homebase/app/window`) outside
+ * the app; web keeps them in `localStorage` until the user clears site data, and a private
+ * window may drop or reject them.
+ *
+ * Not secret: nothing here is encrypted. Android has no no-arg form: `createSettings()` throws
+ * there; use `createSettings(Context)`, which backs this with SharedPreferences
+ * `app_preferences`.
+ */
 expect fun createSettings(): Settings

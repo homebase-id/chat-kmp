@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.chat.calling.CallBetaBadge
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallLogDirection
 import id.homebase.chat.calling.CallOutcome
@@ -155,7 +156,12 @@ fun CallsContent(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.calls_title)) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(MR.string.calls_title))
+                        CallBetaBadge()
+                    }
+                },
                 actions = { NavVisibilityMenu(showInNav, onShowInNavChange) },
             )
         },

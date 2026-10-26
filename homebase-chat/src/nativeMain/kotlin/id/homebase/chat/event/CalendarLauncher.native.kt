@@ -5,7 +5,6 @@ import androidx.compose.runtime.remember
 import co.touchlab.kermit.Logger
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCAction
 import platform.EventKit.EKEntityType
@@ -25,7 +24,7 @@ actual fun rememberCalendarLauncher(): CalendarLauncher {
     return remember { IosCalendarLauncher() }
 }
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalUuidApi::class)
+@OptIn(ExperimentalForeignApi::class, ExperimentalUuidApi::class)
 private class IosCalendarLauncher : CalendarLauncher {
     override fun addToCalendar(event: EventDescriptor, messageId: Uuid) {
         val store = EKEventStore()

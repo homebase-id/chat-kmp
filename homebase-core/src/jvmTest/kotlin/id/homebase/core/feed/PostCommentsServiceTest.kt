@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalCoroutinesApi::class)
-
 package id.homebase.core.feed
 
 import id.homebase.api.client.KeyHeader
@@ -30,7 +28,6 @@ import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.feed.services.PostCommentItem
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first

@@ -193,8 +193,6 @@ class YouAuthFlowManager(
         }
 
         // If we got here, we are not authenticated
-        // The App Group keychain outlives an uninstall, unlike the app's own SecureStorage purge.
-        NotificationExtensionStore.clearCredentials()
         _authState.value = YouAuthState.Unauthenticated
     }
 

@@ -189,13 +189,11 @@ private val inlineSafeTopLevelTypes: Set<IElementType> = setOf(
 )
 
 /**
- * Returns true when [content] contains any markdown BLOCK element beyond a single
- * paragraph / inline run.
+ * Returns true when [tree], parsed with [ChatMarkdownFlavour], contains any markdown
+ * BLOCK element beyond a single paragraph / inline run.
  *
- * Parses with the SAME engine the chat block renderer (mikepenz) sits on — its
- * default flavour is GFM, so tables and strikethrough are recognised here exactly
- * as the renderer would. The result drives the renderer's inline-vs-block
- * decision in `ChatMarkdown`: an inline-only body renders as a single stable
+ * The result drives the renderer's inline-vs-block decision in `ChatMarkdown`: an
+ * inline-only body renders as a single stable
  * [androidx.compose.ui.text.Text] node (compatible with the bubble's custom
  * timestamp-tucking Layout), while a body with block elements renders through the
  * multi-node block `Markdown()` Column (kept OUT of that Layout's
@@ -205,23 +203,7 @@ private val inlineSafeTopLevelTypes: Set<IElementType> = setOf(
  * or indented code blocks, block quotes, GFM tables, thematic breaks, HTML
  * blocks — any top-level node that is not a single PARAGRAPH or surrounding
  * whitespace.
- *
- * Defensive: an unparseable body is treated as inline (returns false) so the
- * decision never crashes the renderer; a malformed body that the parser cannot
- * structure is no worse than a plain paragraph for the inline path.
  */
-fun markdownHasBlockElements(content: String): Boolean {
-    if (content.isEmpty()) return false
-
-    val tree = try {
-        MarkdownParser(ChatMarkdownFlavour).buildMarkdownTreeFromString(content)
-    } catch (_: Throwable) {
-        return false
-    }
-    return markdownTreeHasBlockElements(tree)
-}
-
-/** [markdownHasBlockElements] over an already-parsed ChatMarkdownFlavour tree. */
 fun markdownTreeHasBlockElements(tree: ASTNode): Boolean {
     // The root is MARKDOWN_FILE; its direct children are the block-level nodes.
     // A pure inline message yields a single PARAGRAPH plus whitespace/EOL tokens.

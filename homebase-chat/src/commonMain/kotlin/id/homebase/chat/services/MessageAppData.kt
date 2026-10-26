@@ -35,35 +35,14 @@ data class MessageAppData(
     val version: Int? = null
 ) {
 
-    val bodyIsMarkdown: Boolean
-        get() = message is JsonArray || (version ?: 0) >= 1
-
     fun getMessage(): String {
-        return when {
-            version == null -> getMessageAsString()
-            version >= 1 -> getMessageAsMarkdown()
-            else -> getMessageAsString() // safe fallback
-        }
-    }
-
-    fun getMessageAsMarkdown(): String {
-        return when (message) {
-            is JsonPrimitive -> message.content
-            else -> ""
-        }
-    }
-
-    /** Returns the message as a plain string, extracting from RichText if necessary */
-    fun getMessageAsString(): String {
         return when (message) {
             is JsonPrimitive -> message.content
             is JsonArray -> {
                 try {
-                    val richText =
-                        OdinSystemSerializer.json.decodeFromJsonElement<RichText>(message)
-                    richTextToMarkdown(richText)
+                    richTextToMarkdown(OdinSystemSerializer.json.decodeFromJsonElement<RichText>(message))
                 } catch (e: Exception) {
-                    "" // Fallback if decoding fails
+                    ""
                 }
             }
 

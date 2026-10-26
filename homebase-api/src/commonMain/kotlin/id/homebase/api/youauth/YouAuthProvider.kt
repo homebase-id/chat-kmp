@@ -135,16 +135,16 @@ class YouAuthProvider(
 
         val sharedSecret =
             AesCbc.decrypt(
-                Base64.decode(token.base64SharedSecretCipher),
+                token.base64SharedSecretCipher.bytes,
                 exchangedSecret.unsafeBytes,
-                Base64.decode(token.base64SharedSecretIv)
+                token.base64SharedSecretIv.bytes
             )
 
         val clientAuthToken =
             AesCbc.decrypt(
-                Base64.decode(token.base64ClientAuthTokenCipher),
+                token.base64ClientAuthTokenCipher.bytes,
                 exchangedSecret.unsafeBytes,
-                Base64.decode(token.base64ClientAuthTokenIv)
+                token.base64ClientAuthTokenIv.bytes
             )
 
         return AuthResult(

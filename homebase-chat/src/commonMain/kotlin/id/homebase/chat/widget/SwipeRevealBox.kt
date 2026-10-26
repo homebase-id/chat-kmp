@@ -22,6 +22,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -32,6 +36,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
@@ -149,6 +154,82 @@ fun SwipeRevealBox(
         }
     }
 
+    fun updateHaptic() {
+        if (!hapticFired && offsetPx.absoluteValue >= currentThresholdPx) {
+            hapticFired = true
+            haptics.perform(HapticEvent.LongPress)
+        } else if (hapticFired && offsetPx.absoluteValue < currentThresholdPx) {
+            hapticFired = false
+        }
+    }
+
+    fun beginDrag() {
+        isDragging = true
+        hapticFired = false
+        slideOutDirection = 0
+    }
+
+    fun clampOffset(value: Float): Float {
+        var next = value
+        if (currentOnSwipeRight == null) next = next.coerceAtMost(0f)
+        if (currentOnSwipeLeft == null) next = next.coerceAtLeast(0f)
+        return next.coerceIn(-currentMaxOffsetPx, currentMaxOffsetPx)
+    }
+
+    fun commitOnRelease(velocityPxPerSecond: Float) {
+        val commit = shouldCommitSwipe(
+            offsetPx = offsetPx,
+            thresholdPx = currentThresholdPx,
+            velocityPxPerSecond = velocityPxPerSecond,
+            escapeVelocityPxPerSecond = currentEscapeVelocityPx,
+        )
+        if (!commit) return
+        val toRight = offsetPx > 0f
+        if (toRight) currentOnSwipeRight?.invoke() else currentOnSwipeLeft?.invoke()
+        if (if (toRight) currentSlideOutRight else currentSlideOutLeft) slideOutDirection = if (toRight) 1 else -1
+    }
+
+    // A nested horizontal scroller consumes the pointer events; only its leftover drag arrives here, and only if it had not scrolled yet.
+    val handoff = remember {
+        object : NestedScrollConnection {
+            var scrolledThisGesture = false
+            var handingOff = false
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!handingOff || source != NestedScrollSource.UserInput) return Offset.Zero
+                val back = if (offsetPx > 0f) available.x.coerceAtMost(0f) else available.x.coerceAtLeast(0f)
+                val used = if (back.absoluteValue > offsetPx.absoluteValue) -offsetPx else back
+                if (used != 0f) offsetPx += used
+                return Offset(used, 0f)
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (consumed.x != 0f) scrolledThisGesture = true
+                if (scrolledThisGesture || available.x == 0f) return Offset.Zero
+                val clamped = clampOffset(offsetPx + available.x)
+                if (!handingOff) {
+                    handingOff = true
+                    beginDrag()
+                }
+                val used = clamped - offsetPx
+                offsetPx = clamped
+                updateHaptic()
+                return Offset(used, 0f)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val wasHandingOff = handingOff
+                scrolledThisGesture = false
+                handingOff = false
+                if (!wasHandingOff) return Velocity.Zero
+                commitOnRelease(available.x)
+                isDragging = false
+                return available
+            }
+        }
+    }
+
     val revealState = remember { SwipeRevealState({ offsetPx }, { currentThresholdPx }) }
     val revealing by remember { derivedStateOf { offsetPx != 0f } }
 
@@ -160,6 +241,7 @@ fun SwipeRevealBox(
         Box(
             modifier = Modifier
                 .absoluteOffset { IntOffset(offsetPx.roundToInt(), 0) }
+                .nestedScroll(handoff)
                 .pointerInput(Unit) {
                     val slop = viewConfiguration.touchSlop
                     awaitEachGesture {
@@ -192,9 +274,7 @@ fun SwipeRevealBox(
                                         isHorizontal =
                                             totalX.absoluteValue > totalY.absoluteValue * 1.5f
                                         if (!isHorizontal) break
-                                        isDragging = true
-                                        hapticFired = false
-                                        slideOutDirection = 0
+                                        beginDrag()
                                         offsetPx = 0f
                                         change.consume()
                                     }
@@ -203,36 +283,15 @@ fun SwipeRevealBox(
 
                                 change.consume()
                                 velocityTracker.addPointerInputChange(change)
-                                var newValue = offsetPx + delta.x
-                                if (currentOnSwipeRight == null) newValue = newValue.coerceAtMost(0f)
-                                if (currentOnSwipeLeft == null) newValue = newValue.coerceAtLeast(0f)
-                                offsetPx = newValue.coerceIn(-currentMaxOffsetPx, currentMaxOffsetPx)
+                                offsetPx = clampOffset(offsetPx + delta.x)
 
-                                if (!hapticFired && offsetPx.absoluteValue >= currentThresholdPx) {
-                                    hapticFired = true
-                                    haptics.perform(HapticEvent.LongPress)
-                                } else if (hapticFired && offsetPx.absoluteValue < currentThresholdPx) {
-                                    hapticFired = false
-                                }
+                                updateHaptic()
                             }
 
                             if (isHorizontal) {
-                                val commit = shouldCommitSwipe(
-                                    offsetPx = offsetPx,
-                                    thresholdPx = currentThresholdPx,
-                                    velocityPxPerSecond = velocityTracker.calculateVelocity().x,
-                                    escapeVelocityPxPerSecond = currentEscapeVelocityPx,
-                                )
                                 // Act on release rather than after the spring-back, so the
                                 // action never trails the gesture by an animation.
-                                if (commit) {
-                                    val toRight = offsetPx > 0f
-                                    if (toRight) currentOnSwipeRight?.invoke()
-                                    else currentOnSwipeLeft?.invoke()
-                                    val slidesOut =
-                                        if (toRight) currentSlideOutRight else currentSlideOutLeft
-                                    if (slidesOut) slideOutDirection = if (toRight) 1 else -1
-                                }
+                                commitOnRelease(velocityTracker.calculateVelocity().x)
                             }
                         } finally {
                             // awaitEachGesture swallows a gesture-level cancellation and

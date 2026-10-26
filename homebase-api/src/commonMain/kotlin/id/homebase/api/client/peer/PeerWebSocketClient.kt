@@ -1,5 +1,6 @@
 package id.homebase.api.client.peer
 
+import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
@@ -33,7 +34,6 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlin.concurrent.Volatile
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -144,8 +144,8 @@ class PeerWebSocketClient(
                 Logger.w(tag = TAG) { "peer WS[$ownerOdinId] preauth failed — no token" }
                 return
             }
-            authToken64 = token.authenticationToken64
-            peerSharedSecret = Base64.decode(token.sharedSecret)
+            authToken64 = token.authenticationToken64.toBase64()
+            peerSharedSecret = token.sharedSecret.bytes
         }
         val token64 = authToken64 ?: return
         val ss = peerSharedSecret ?: return
@@ -305,7 +305,7 @@ class PeerWebSocketClient(
         val iv = ByteArrayUtil.getRndByteArray(16)
         val json = OdinSystemSerializer.serialize(command)
         val encrypted = AesCbc.encrypt(json.encodeToByteArray(), ss, iv)
-        return SharedSecretEncryptedPayload(iv = iv.toBase64(), data = encrypted.toBase64())
+        return SharedSecretEncryptedPayload(iv = Base64Bytes(iv), data = Base64Bytes(encrypted))
     }
 
     private suspend fun decryptData(text: String, ss: ByteArray): String {
@@ -313,8 +313,8 @@ class PeerWebSocketClient(
         if (!envelope.isEncrypted) return envelope.payload
         val encryptedPayload =
             OdinSystemSerializer.deserialize<SharedSecretEncryptedPayload>(envelope.payload)
-        val iv = Base64.decode(encryptedPayload.iv)
-        val encryptedData = Base64.decode(encryptedPayload.data)
+        val iv = encryptedPayload.iv.bytes
+        val encryptedData = encryptedPayload.data.bytes
         return AesCbc.decrypt(encryptedData, ss, iv).decodeToString()
     }
 

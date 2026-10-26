@@ -135,13 +135,7 @@ private suspend fun FileMetadata.decryptLocalAppData(
         throw FileDecryptionException.ContentBase64DecodeFailed(e)
     }
 
-    val ivBytes = local.iv?.let {
-        try {
-            Base64.Default.decode(it)
-        } catch (e: Throwable) {
-            throw FileDecryptionException.ContentBase64DecodeFailed(e)
-        }
-    }
+    val ivBytes = local.iv?.bytes
 
     val decryptedBytes = try {
         keyHeader.decryptWithIv(encryptedBytes, ivBytes)

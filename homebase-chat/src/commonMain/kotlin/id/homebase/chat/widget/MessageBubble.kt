@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.serialization.Base64Bytes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -571,6 +572,7 @@ fun ReceivedMessageBubble(
             { popupMode = MessagePopupMode.Reaction }
         } else null
 
+    val pillInset = animateReactionPillInset(message.reactionPreview != null)
     Row(
         modifier = Modifier.fillMaxWidth()
             .padding(start = if (isGroupConversation) 8.dp else 16.dp, end = 16.dp)
@@ -585,8 +587,10 @@ fun ReceivedMessageBubble(
             Box(
                 modifier = Modifier
                     .align(Alignment.Bottom)
+                    .bottomInset(pillInset)
                     .padding(start = 4.dp, end = 8.dp)
-                    .size(Dimens.Message.senderAvatarSize),
+                    .size(Dimens.Message.senderAvatarSize)
+                    .testTag(ChatBubbleTestTags.AVATAR),
             ) {
                 if (showAvatar && message.originalAuthor != null) {
                     IdentityAvatar(
@@ -640,7 +644,7 @@ fun ReceivedMessageBubble(
                     Box(Modifier.handbackSource(handback)) {
                         MessageBubbleRaw(
                             modifier = Modifier
-                                .bottomInset(animateReactionPillInset(message.reactionPreview != null))
+                                .bottomInset(pillInset)
                                 .onSizeChanged { bubbleWidthPx = it.width },
                             message = message,
                             decryptedFiles = decryptedFiles,
@@ -1093,10 +1097,9 @@ fun InlineReplyPreview(
     // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
     val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData, showThumbnail) {
         if (imageData != null || !showThumbnail) return@remember null
-        replyPreview.previewThumbnail?.content?.let { base64Content ->
+        replyPreview.previewThumbnail?.content?.let { thumbContent ->
             try {
-                val bytes = Base64.decode(base64Content)
-                bytes.decodeToImageBitmap()
+                thumbContent.bytes.decodeToImageBitmap()
             } catch (_: Exception) {
                 null
             }
@@ -1350,7 +1353,7 @@ private fun testMessageUiModel(message: String): MessageUiModel {
                     pixelWidth = 100,
                     pixelHeight = 100,
                     contentType = "image/png",
-                    content = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAMCAQAYnY20AAAAAE5ErkJggg==",
+                    content = Base64Bytes(Base64.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAMCAQAYnY20AAAAAE5ErkJggg==")),
                 )
             )
         ),

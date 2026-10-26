@@ -2,7 +2,6 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -38,7 +37,7 @@ class MessageFetchPlanTest {
 
     @Test
     fun chatShape_usesPerConversationIndex() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val driver = createRawInMemoryDriver()
         OdinDatabase.Schema.create(driver)
         seedMessages(driver)
         val plan = explainPlan(driver, chatFetchSql)
@@ -54,7 +53,7 @@ class MessageFetchPlanTest {
 
     @Test
     fun momentsShape_stillUsesGlobalUserDateIndex() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val driver = createRawInMemoryDriver()
         OdinDatabase.Schema.create(driver)
         seedMessages(driver)
         val plan = explainPlan(driver, momentsFetchSql)

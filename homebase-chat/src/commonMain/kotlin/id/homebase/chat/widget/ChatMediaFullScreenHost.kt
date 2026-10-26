@@ -50,7 +50,6 @@ import id.homebase.resources.file_share_failed
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
@@ -188,7 +187,7 @@ private fun SharedMediaViewer(
         onShare = { _, _ ->
             scope.launch {
                 try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
+                    val iv = item.payload.iv?.bytes ?: return@launch
                     // Stream-decrypt straight into share_outbound (#845) —
                     // bounded RAM for any payload size; the old byte path
                     // buffered the whole payload (~2×) in memory.
@@ -224,7 +223,7 @@ private fun SharedMediaViewer(
         onSaveToVault = if (vaultActive) { _, _ ->
             scope.launch {
                 val saved = try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) }
+                    val iv = item.payload.iv?.bytes
                     val contentType = item.payload.contentType
                     val path = if (iv != null && contentType != null) {
                         actionService.streamPayloadToUploadTemp(
@@ -273,7 +272,7 @@ fun rememberSharedMediaSaver(
         { item ->
             scope.launch {
                 try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
+                    val iv = item.payload.iv?.bytes ?: return@launch
                     val ext = item.payload.contentType?.substringAfterLast('/')
                         ?.takeIf { it.isNotBlank() } ?: "bin"
                     val name = item.payload.filename() ?: "${item.payload.key}.$ext"

@@ -106,7 +106,6 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -407,7 +406,7 @@ fun MessageBubbleRaw(
                 val mapPayload = message.payloads?.firstOrNull {
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
-                val pIv = mapPayload?.iv?.let { Base64.decode(it) }
+                val pIv = mapPayload?.iv?.bytes
                 // One fused bubble: the map "card" stays neutral grey; only the user's caption section
                 // takes the message-bubble background (blue when sent). The outer modifier supplies the
                 // single rounded clip — the card sets the grey, the caption section sets the blue.
@@ -833,6 +832,7 @@ fun MessageBubbleRaw(
                                 searchQuery = effectiveSearchQuery,
                                 isCurrentSearchResult = isCurrentSearchResult,
                                 mentions = mentionContext,
+                                surface = backgroundColor,
                             )
                         }
                     }
@@ -977,6 +977,7 @@ fun MessageBubbleRaw(
                                             searchQuery = effectiveSearchQuery,
                                             isCurrentSearchResult = isCurrentSearchResult,
                                             mentions = mentionContext,
+                                            surface = backgroundColor,
                                             maxLines = bodyMaxLines,
                                             overflow = TextOverflow.Ellipsis,
                                             onTextLayout = { textLayoutResult = it },
@@ -1389,14 +1390,14 @@ internal fun messageBubbleShape(sentByYou: Boolean, clusterPosition: MessageClus
     val small = Dimens.Message.cornerCollapseRadius
     return if (sentByYou) {
         when (clusterPosition) {
-            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big)
             MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
             MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
             MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
         }
     } else {
         when (clusterPosition) {
-            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big)
             MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
             MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
             MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)

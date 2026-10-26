@@ -1,8 +1,8 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@file:OptIn(ExperimentalForeignApi::class)
 
 package id.homebase.api.storage
 
-import kotlinx.cinterop.BetaInteropApi
+import id.homebase.api.share.NotificationExtensionStore
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
@@ -28,6 +28,8 @@ import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
+import platform.Security.errSecAllocate
+import platform.Security.errSecInteractionNotAllowed
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
@@ -40,6 +42,7 @@ import platform.Security.kSecMatchLimit
 import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
+import platform.darwin.OSStatus
 
 /**
  * iOS implementation of SecureStorage using Keychain Services.
@@ -79,12 +82,15 @@ actual object SecureStorage {
     private fun purgeKeychainIfFreshInstall() {
         val defaults = NSUserDefaults.standardUserDefaults
         if (defaults.boolForKey(INSTALL_MARKER)) return
+        // Before the first unlock UserDefaults reads as empty too, which would look like a fresh install.
+        if (readKeychain(key = null).status == errSecInteractionNotAllowed) return
 
         clear()
+        NotificationExtensionStore.clearCredentials()
         defaults.setBool(true, INSTALL_MARKER)
     }
 
-    private fun createBaseQuery(key: String): CFDictionaryRef? {
+    private fun createBaseQuery(key: String?): CFDictionaryRef? {
         val dict = CFDictionaryCreateMutable(
             null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
         ) ?: return null
@@ -97,10 +103,12 @@ actual object SecureStorage {
         CFDictionarySetValue(dict, kSecAttrService, serviceCf)
         CFRelease(serviceCf)
 
-        // Add account (key)
-        val keyCf = CFBridgingRetain(key)
-        CFDictionarySetValue(dict, kSecAttrAccount, keyCf)
-        CFRelease(keyCf)
+        // Add account (key); null matches every item of the service
+        if (key != null) {
+            val keyCf = CFBridgingRetain(key)
+            CFDictionarySetValue(dict, kSecAttrAccount, keyCf)
+            CFRelease(keyCf)
+        }
 
         return dict
     }
@@ -144,8 +152,13 @@ actual object SecureStorage {
         }
     }
 
-    actual fun get(key: String): String? {
-        val query = createBaseQuery(key) ?: return null
+    actual fun get(key: String): String? = readKeychain(key).value
+
+    internal class KeychainRead(val status: OSStatus, val value: String?)
+
+    /** [get] with the OSStatus kept, so errSecItemNotFound can be told apart from a locked keychain. */
+    internal fun readKeychain(key: String?): KeychainRead {
+        val query = createBaseQuery(key) ?: return KeychainRead(errSecAllocate, null)
 
         CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue)
         CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitOne)
@@ -159,12 +172,16 @@ actual object SecureStorage {
             if (status == errSecSuccess && result.value != null) {
                 val data = CFBridgingRelease(result.value) as? NSData
                 if (data != null) {
-                    return NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
+                    return KeychainRead(status, NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString())
                 }
             }
+            return KeychainRead(status, null)
         }
-        return null
     }
+
+    // Never Unavailable: on iOS the passphrase only switches encryption on; KeychainRawKeyStore reads the raw key's OSStatus.
+    actual fun read(key: String): SecureRead =
+        get(key).toSecureRead()
 
     actual fun remove(key: String) {
         val query = createBaseQuery(key) ?: return

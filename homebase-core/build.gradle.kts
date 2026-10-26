@@ -21,6 +21,13 @@ sqldelight {
 kotlin {
     applyDefaultHierarchyTemplate()
 
+    sourceSets.matching { it.name.startsWith("wasmJs") }.configureEach {
+        languageSettings.optIn("kotlin.js.ExperimentalWasmJsInterop")
+    }
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+
     android {
         namespace = "id.homebase.core"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
@@ -45,7 +52,6 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-            linkerOpts("-lsqlite3")
             linkerOpts("-lz", "-lbz2", "-liconv")
 
             freeCompilerArgs += listOf("-Xbinary=bundleId=id.homebase.core")

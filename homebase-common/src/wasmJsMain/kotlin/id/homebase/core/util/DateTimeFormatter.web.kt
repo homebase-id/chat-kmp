@@ -20,7 +20,6 @@ actual fun formatMediumDateNoYear(instant: Instant): String {
     return formatMediumDateNoYearJs(instant.toEpochMilliseconds())
 }
 
-@OptIn(ExperimentalWasmJsInterop::class)
 fun formatShortDateJs(epochMs: Long): String = js(
     """{
         let date = new Date(Number(epochMs));
@@ -28,7 +27,6 @@ fun formatShortDateJs(epochMs: Long): String = js(
 }"""
 )
 
-@OptIn(ExperimentalWasmJsInterop::class)
  fun formatTimeJs(epochMs: Long): String = js(
     """{
         let date = new Date(Number(epochMs));
@@ -36,7 +34,6 @@ fun formatShortDateJs(epochMs: Long): String = js(
 }"""
 )
 
-@OptIn(ExperimentalWasmJsInterop::class)
 fun formatMediumDateJs(epochMs: Long): String = js(
     """{
         let date = new Date(Number(epochMs));
@@ -44,7 +41,6 @@ fun formatMediumDateJs(epochMs: Long): String = js(
 }"""
 )
 
-@OptIn(ExperimentalWasmJsInterop::class)
 fun formatMediumDateNoYearJs(epochMs: Long): String = js(
     """{
         let date = new Date(Number(epochMs));
