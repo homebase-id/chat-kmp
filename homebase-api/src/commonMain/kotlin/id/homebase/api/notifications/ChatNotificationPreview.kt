@@ -22,6 +22,15 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
+/** Tag of a Moments comment push; a post push repeats the moment id in both fields. */
+const val MOMENT_COMMENT_TAG_SENTINEL = "00000000-0000-4000-8000-0000c0117e57"
+
+fun isMomentsPush(typeId: String, tagId: String): Boolean {
+    if (typeId.isBlank()) return false
+    val tag = Uuid.parseOrNull(tagId)
+    return (tag != null && tag == Uuid.parseOrNull(MOMENT_COMMENT_TAG_SENTINEL)) || typeId == tagId
+}
+
 private const val CHAT_MESSAGE_FILE_TYPE = 7878
 private const val PLAIN_MESSAGE_DATA_TYPE = 0
 
@@ -72,8 +81,7 @@ internal suspend fun fetchChatNotificationPreview(
         ?: return ChatNotificationPreview.missed("typeId is not a uuid")
     val message = Uuid.parseOrNull(messageId)
         ?: return ChatNotificationPreview.missed("tagId is not a uuid")
-    // A Moments post push carries the moment id in both fields; it is not a chat message.
-    if (conversation == message) return ChatNotificationPreview.missed("moments push")
+    if (isMomentsPush(conversationId, messageId)) return ChatNotificationPreview.missed("moments push")
 
     return withTimeoutOrNull(deadline) {
         try {

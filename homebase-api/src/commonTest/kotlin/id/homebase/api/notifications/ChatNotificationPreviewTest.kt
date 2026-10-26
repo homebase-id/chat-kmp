@@ -257,4 +257,16 @@ class ChatNotificationPreviewTest {
         assertMissed("moments", preview("{}", conversation = messageId, message = messageId, requests = requests))
         assertTrue(requests.isEmpty())
     }
+
+    @Test
+    fun aMomentsCommentPushIsNeverFetched() = runTest {
+        val requests = mutableListOf<String>()
+        val moment = Uuid.random()
+        val preview = fetchChatNotificationPreview(
+            HttpClient(MockEngine.create { addHandler { request -> requests += request.url.encodedPath; respond("", HttpStatusCode.NotFound) } }),
+            credentials, moment.toString(), MOMENT_COMMENT_TAG_SENTINEL.uppercase(),
+        )
+        assertMissed("moments", preview)
+        assertTrue(requests.isEmpty(), "requests=$requests")
+    }
 }

@@ -3,6 +3,8 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.isIos
+import id.homebase.api.notifications.MOMENT_COMMENT_TAG_SENTINEL as API_MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.api.notifications.isMomentsPush
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi
@@ -951,7 +953,8 @@ internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>?
  *
  * Shared with the send path ([id.homebase.core.moments.services.MomentsPostSenderService]).
  */
-const val MOMENT_COMMENT_TAG_SENTINEL = "00000000-0000-4000-8000-0000c0117e57"
+
+const val MOMENT_COMMENT_TAG_SENTINEL = API_MOMENT_COMMENT_TAG_SENTINEL
 
 /** What a tapped Moments push resolves to: which moment to open, and whether to expand comments. */
 internal data class MomentsTapTarget(val momentId: String, val openComments: Boolean)
@@ -983,8 +986,7 @@ internal fun resolveMomentsTap(typeId: String, tagId: String): MomentsTapTarget?
 }
 
 /** Convenience predicate over [resolveMomentsTap]. */
-internal fun isMomentsTap(typeId: String, tagId: String): Boolean =
-    resolveMomentsTap(typeId, tagId) != null
+internal fun isMomentsTap(typeId: String, tagId: String): Boolean = isMomentsPush(typeId, tagId)
 
 /**
  * The body to display for a chat notification. When real content is shown
