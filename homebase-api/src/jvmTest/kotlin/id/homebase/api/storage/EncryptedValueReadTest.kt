@@ -2,6 +2,7 @@ package id.homebase.api.storage
 
 import java.io.IOException
 import java.security.ProviderException
+import java.security.UnrecoverableKeyException
 import javax.crypto.AEADBadTagException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,5 +38,20 @@ class EncryptedValueReadTest {
     @Test
     fun `a malformed value is missing`() {
         assertEquals(SecureRead.Missing, readEncrypted({ "not base64" }) { throw IllegalArgumentException() })
+    }
+
+    @Test
+    fun `a value whose key is lost for good is missing`() {
+        assertEquals(SecureRead.Missing, readEncrypted({ "sealed" }) { throw SecureStorageKeyLostException("alias gone") })
+    }
+
+    @Test
+    fun `a value too short to hold its IV is missing`() {
+        assertEquals(SecureRead.Missing, readEncrypted({ "AAAA" }) { ByteArray(3).copyOfRange(0, 12).decodeToString() })
+    }
+
+    @Test
+    fun `an unrecoverable key the platform did not mark as lost is unavailable`() {
+        assertIs<SecureRead.Unavailable>(readEncrypted({ "sealed" }) { throw UnrecoverableKeyException("keystore daemon") })
     }
 }

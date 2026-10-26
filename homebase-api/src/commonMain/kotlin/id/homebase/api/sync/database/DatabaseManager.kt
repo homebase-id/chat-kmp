@@ -299,10 +299,11 @@ class DatabaseManager(
             deleteOnDiskFiles: () -> Unit,
             getKey: () -> String = DatabaseKeyManager::getOrGenerateKey,
             clearKey: () -> Unit = DatabaseKeyManager::clearKey,
+            open: suspend (driverProvider: () -> SqlDriver) -> Unit = { initialize(it) },
         ) {
             val key = getKey()
             try {
-                initialize { createDriver(key) }
+                open { createDriver(key) }
             } catch (e: DatabaseUnavailableException) {
                 Logger.withTag("DatabaseManager")
                     .e(e) { "initializeWithRecovery: database unavailable, not resetting" }
@@ -319,7 +320,7 @@ class DatabaseManager(
                 // uncaught from the recovery path — which is how the iOS
                 // "no such column: fileState" double-fault reached users as a bare crash.
                 try {
-                    initialize { createDriver(freshKey) }
+                    open { createDriver(freshKey) }
                 } catch (retry: Exception) {
                     Logger.withTag("DatabaseManager")
                         .e(retry) { "initializeWithRecovery: reset retry also failed — database unopenable" }

@@ -3,6 +3,7 @@ package id.homebase.api.storage
 import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.io.IOException
@@ -60,19 +61,32 @@ actual object SecureStorage {
         }
     }
 
-    private fun getSecretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
-        keyStore.load(null)
-        return keyStore.getKey(KEY_ALIAS, null) as SecretKey
+    private fun loadKeyStore(): KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+
+    private fun storedKey(): SecretKey {
+        val keyStore = loadKeyStore()
+        if (!keyStore.containsAlias(KEY_ALIAS)) throw SecureStorageKeyLostException("$KEY_ALIAS is not in the AndroidKeyStore")
+        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+            ?: throw SecureStorageKeyLostException("$KEY_ALIAS is not a secret key")
     }
 
     private fun getPrefs(): SharedPreferences {
         return applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    private fun encrypt(plaintext: String): String {
+    // What the lost key sealed is unreadable anyway, so a fresh key replaces it.
+    private fun encrypt(plaintext: String): String = try {
+        seal(plaintext)
+    } catch (e: Exception) {
+        if (!e.isKeyLost()) throw e
+        loadKeyStore().deleteEntry(KEY_ALIAS)
+        ensureKeyExists()
+        seal(plaintext)
+    }
+
+    private fun seal(plaintext: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getSecretKey())
+        cipher.init(Cipher.ENCRYPT_MODE, storedKey())
 
         val iv = cipher.iv
         val encryptedBytes = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
@@ -94,10 +108,12 @@ actual object SecureStorage {
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.DECRYPT_MODE, getSecretKey(), spec)
-
-        val decryptedBytes = cipher.doFinal(encryptedBytes)
-        return String(decryptedBytes, Charsets.UTF_8)
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, storedKey(), spec)
+            return String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
+        } catch (e: Exception) {
+            throw if (e !is SecureStorageKeyLostException && e.isKeyLost()) SecureStorageKeyLostException("$KEY_ALIAS was invalidated", e) else e
+        }
     }
 
     // commit, not apply: a kill before an async write lands loses a fresh database's only key.
@@ -125,3 +141,7 @@ actual object SecureStorage {
         getPrefs().edit { clear() }
     }
 }
+
+// Only KeyPermanentlyInvalidatedException marks a lost key: the Keystore's other errors also cover a daemon that isn't ready.
+internal fun Throwable.isKeyLost(): Boolean =
+    generateSequence(this) { it.cause }.any { it is SecureStorageKeyLostException || it is KeyPermanentlyInvalidatedException }
