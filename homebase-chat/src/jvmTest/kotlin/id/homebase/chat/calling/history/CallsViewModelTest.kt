@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalCoroutinesApi::class, ExperimentalUuidApi::class)
+@file:OptIn(ExperimentalUuidApi::class)
 
 package id.homebase.chat.calling.history
 
@@ -17,7 +17,6 @@ import id.homebase.chat.services.calling.history.CallHistoryEntry
 import id.homebase.chat.services.calling.history.CallHistorySource
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

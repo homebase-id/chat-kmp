@@ -1,5 +1,3 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
-
 package id.homebase.chat.conversationlist
 
 import id.homebase.api.util.isBlobUrl

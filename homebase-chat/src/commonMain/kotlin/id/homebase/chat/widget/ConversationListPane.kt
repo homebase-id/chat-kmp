@@ -93,7 +93,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.Dimens
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.usesPointerUx
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
@@ -149,7 +149,7 @@ fun ConversationListPane(
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
     val twoPaneWindow = isExpandedLayout()
-    val persistentSearch = isDesktopOrWeb() && !uiState.showArchived
+    val persistentSearch = usesPointerUx() && !uiState.showArchived
     val searchTyping by remember(searchTextState) { derivedStateOf { searchTextState.text.isNotEmpty() } }
     val searchActive = uiState.isSearchActive || (persistentSearch && searchTyping)
     val paneContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest

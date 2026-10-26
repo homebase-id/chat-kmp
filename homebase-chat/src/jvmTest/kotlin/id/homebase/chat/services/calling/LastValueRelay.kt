@@ -58,7 +58,8 @@ class LastValueRelay {
             if (signal is CallSignal.Ice) delay(iceSendDelayMs)
             respond("", HttpStatusCode.NoContent)
         }
-        return LiveRelayProvider(HttpClient(engine), creds)::relay
+        val provider = LiveRelayProvider(HttpClient(engine), creds)
+        return { channelKey, recipients, blob, push -> provider.relay(channelKey, recipients, blob, push, wakeCause = null) }
     }
 
     private fun accept(sender: String, body: JsonObject): CallSignal {
