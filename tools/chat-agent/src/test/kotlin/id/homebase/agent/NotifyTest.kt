@@ -38,14 +38,12 @@ class NotifyTest {
         owner: OdinId,
         policy: NotifyPolicy,
         tts: Boolean,
-        withMedia: Boolean = true,
     ) {
         var ownerConversation: Uuid? = dm
         var outcome = CallOutcome.MISSED
         var sendFails = false
         val sent = CopyOnWriteArrayList<Pair<Uuid, String>>()
         val voices = CopyOnWriteArrayList<String>()
-        val media = CopyOnWriteArrayList<NotifyMedia>()
         val calls = CopyOnWriteArrayList<String>()
         val logs = CopyOnWriteArrayList<String>()
         val caller = object : OwnerCaller {
@@ -59,7 +57,6 @@ class NotifyTest {
             send = { c, t -> if (sendFails) error("net down"); sent += c to t; Uuid.random() },
             speak = if (tts) { t -> OutVoice("v.m4a", ByteArray(1), "audio/mp4", 2).also { voices += t } } else null,
             sendVoice = if (tts) { c, _, _ -> Uuid.random() } else null,
-            sendMedia = if (withMedia) { _, m -> media += m; Uuid.random() } else null,
             caller = caller,
             store = File(dir, "escalations.json"),
             calls = CallBudget(File(dir, "calls.txt"), policy.maxCallsPerDay, clock),
@@ -73,9 +70,8 @@ class NotifyTest {
         policy: NotifyPolicy = NotifyPolicy(zone = ZoneOffset.UTC),
         tts: Boolean = false,
         dir: File = Files.createTempDirectory("quag-notify").toFile(),
-        withMedia: Boolean = true,
         scope: CoroutineScope = backgroundScope,
-    ) = Rig(scope, { base + testScheduler.currentTime }, dir, dm, owner, policy, tts, withMedia).also { it.notifier.start() }
+    ) = Rig(scope, { base + testScheduler.currentTime }, dir, dm, owner, policy, tts).also { it.notifier.start() }
 
     private fun ownerMsg(r: Rig, text: String = "ok", at: Long = r.clock(), parent: Uuid? = null) = ChatMsg(
         Uuid.random(), dm, owner, text, at, sender = owner,
@@ -149,19 +145,45 @@ class NotifyTest {
     }
 
     @Test
-    fun noCallerMeansUnavailableAndDoesNotSpendTheBudget() = runTest {
-        val dir = Files.createTempDirectory("quag-notify").toFile()
-        val clock = { base + testScheduler.currentTime }
+    fun noCallerMeansNoEscalationAtAll() = runTest {
         val sent = CopyOnWriteArrayList<String>()
-        val n = OwnerNotifier(backgroundScope, clock, owner, { dm }, NotifyPolicy(maxCallsPerDay = 1), { _, t -> sent += t; Uuid.random() }, calls = CallBudget(File(dir, "c.txt"), 1, clock))
+        val n = OwnerNotifier(backgroundScope, { base + testScheduler.currentTime }, owner, { dm }, NotifyPolicy(), { _, t -> sent += t; Uuid.random() })
         n.notify("x", Urgency.URGENT, "a")
+        assertEquals(0, n.pendingCount())
+        advanceTimeBy(20 * minute)
+        runCurrent()
+        assertEquals(listOf("x"), sent)
+    }
+
+    @Test
+    fun aReplyFromAPhoneWithASlowClockStillStopsTheCall() = runTest {
+        val r = rig()
+        r.notifier.notify("prod is down", Urgency.URGENT, "s")
+        advanceTimeBy(minute)
+        r.notifier.observe(ownerMsg(r, at = r.clock() - 5 * minute))
+        assertEquals(0, r.notifier.pendingCount())
+    }
+
+    @Test
+    fun aNewUrgentWhileACallIsRingingDoesNotCancelIt() = runTest {
+        val r = rig()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val ringing = object : OwnerCaller {
+            override suspend fun call(peer: OdinId, say: String): CallOutcome {
+                r.calls += say
+                release.await()
+                return CallOutcome.ANSWERED
+            }
+        }
+        val n = OwnerNotifier(backgroundScope, r.clock, owner, { dm }, NotifyPolicy(), { c, t -> r.sent += c to t; Uuid.random() }, caller = ringing)
+        n.notify("first", Urgency.URGENT, "same")
         advanceTimeBy(10 * minute)
         runCurrent()
-        assertTrue(sent.last().startsWith("could not call you"))
-        n.notify("y", Urgency.URGENT, "b")
-        advanceTimeBy(10 * minute)
+        assertEquals(listOf("first"), r.calls)
+        n.notify("second", Urgency.URGENT, "same")
+        release.complete(Unit)
         runCurrent()
-        assertTrue(sent.last().startsWith("could not call you"), "budget must not be spent by an unavailable caller")
+        assertTrue(r.texts.any { it.startsWith("called you (answered) about: first") }, r.texts.toString())
     }
 
     @Test
@@ -183,7 +205,6 @@ class NotifyTest {
         advanceTimeBy(minute)
         r.notifier.observe(ChatMsg(Uuid.random(), Uuid.random(), owner, "hi", r.clock(), sender = owner))
         r.notifier.observe(ChatMsg(Uuid.random(), dm, OdinId("x.example.com"), "hi", r.clock(), sender = OdinId("x.example.com")))
-        r.notifier.observe(ownerMsg(r, at = base - 1))
         assertEquals(1, r.notifier.pendingCount())
         advanceTimeBy(10 * minute)
         runCurrent()
@@ -335,23 +356,21 @@ class NotifyTest {
         assertTrue(r.sent.isEmpty())
     }
 
-    @Test
-    fun mediaIsSentAfterTheTextAndAFailureDoesNotLoseIt() = runTest {
-        val r = rig()
-        val file = OutFile("pic.png", ByteArray(3))
-        val ok = r.notifier.notify("look", Urgency.INFO, "s", NotifyMedia.Attachment(file))
-        assertTrue(ok.warnings.isEmpty())
-        assertEquals(1, r.media.size)
-        val bare = rig(withMedia = false)
-        val res = bare.notifier.notify("look", Urgency.INFO, "s", NotifyMedia.Attachment(file))
-        assertEquals(listOf("look"), bare.texts)
-        assertEquals(1, res.warnings.size)
-    }
-
-    private class ToolBackend(override val notifier: OwnerNotifier?, override val filesDir: File? = null) : AgentBackend {
+    private class ToolBackend(override val notifier: OwnerNotifier?, override val filesDir: File? = null, override val conversation: Uuid? = null) : AgentBackend {
+        val sentKinds = CopyOnWriteArrayList<Pair<Uuid, String>>()
+        var mediaFails = false
         override val allowlist = Allowlist.default(OdinId("owner.example.com"))
         override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = emptyList<ChatMsg>()
         override suspend fun send(conversationId: Uuid, text: String, replyTo: id.homebase.chat.services.ReplyPreview?) = Uuid.random()
+        override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid {
+            if (mediaFails) error("upload failed")
+            sentKinds += conversationId to "file"
+            return Uuid.random()
+        }
+        override suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?): Uuid {
+            sentKinds += conversationId to "voice"
+            return Uuid.random()
+        }
     }
 
     private fun args(vararg pairs: Pair<String, String>) = buildJsonObject { pairs.forEach { (k, v) -> put(k, v) } }
@@ -398,18 +417,43 @@ class NotifyTest {
     }
 
     @Test
-    fun theToolSendsAnyFileFromTheFilesDirectoryAsMedia() = runTest {
+    fun theToolSendsAnyFileThroughTheBackendToTheOwnerConversation() = runTest {
         val files = Files.createTempDirectory("quag-files").toFile()
         File(files, "report.pdf").writeBytes(ByteArray(10) { 1 })
         File(files, "note.m4a").writeBytes(ByteArray(10) { 2 })
         val r = rig()
         val b = ToolBackend(r.notifier, files)
         assertFalse(toolNotifyOwner(b, args("text" to "see", "path" to "report.pdf")).isError)
-        assertTrue(r.media.single() is NotifyMedia.Attachment)
+        assertEquals(listOf(dm to "file"), b.sentKinds)
         assertFalse(toolNotifyOwner(b, args("text" to "listen", "path" to "note.m4a")).isError)
-        assertTrue(r.media.last() is NotifyMedia.Voice)
+        assertEquals(dm to "voice", b.sentKinds.last())
         assertTrue(toolNotifyOwner(b, args("text" to "x", "path" to "../etc/passwd")).isError)
         assertTrue(toolNotifyOwner(ToolBackend(r.notifier, null), args("text" to "x", "path" to "report.pdf")).isError)
+        b.mediaFails = true
+        val reply = toolNotifyOwner(b, args("text" to "again", "path" to "report.pdf"))
+        assertFalse(reply.isError)
+        assertTrue("attachment failed" in reply.text)
+        assertEquals("again", r.texts.last())
+    }
+
+    @Test
+    fun escalationsFromDifferentChatsKeepTheirOwnKeys() = runTest {
+        val r = rig()
+        val a = ToolBackend(r.notifier, conversation = Uuid.random())
+        val c = ToolBackend(r.notifier, conversation = Uuid.random())
+        toolNotifyOwner(a, args("text" to "from a", "urgency" to "urgent"))
+        toolNotifyOwner(c, args("text" to "from c", "urgency" to "urgent"))
+        assertEquals(2, r.notifier.pendingCount())
+    }
+
+    @Test
+    fun aMissingOwnerConversationDoesNotSpendAHourlySlot() = runTest {
+        val r = rig()
+        val b = ToolBackend(r.notifier)
+        r.ownerConversation = null
+        repeat(10) { assertTrue(toolNotifyOwner(b, args("text" to "x")).isError) }
+        r.ownerConversation = dm
+        assertFalse(toolNotifyOwner(b, args("text" to "x")).isError)
     }
 
     @Test
@@ -437,13 +481,14 @@ class NotifyTest {
         fun report(conv: Uuid, status: JobStatus, ms: Long, line: String = "all good", schedule: String? = null) = JobReport(3, conv, status, ms, line, schedule)
         assertNull(jobNotice(report(ownerConv, JobStatus.DONE, minute), "owner", ownerConv, 2 * minute))
         assertNull(jobNotice(report(ownerConv, JobStatus.FAILED, minute), "owner", ownerConv, 2 * minute))
-        assertEquals(Urgency.INFO to "job 3 done in owner: all good", jobNotice(report(ownerConv, JobStatus.DONE, 2 * minute), "owner", ownerConv, 2 * minute))
-        assertEquals(Urgency.INFO to "job 3 done in ops: all good", jobNotice(report(elsewhere, JobStatus.DONE, 1), "ops", ownerConv, 2 * minute))
+        assertNull(jobNotice(report(ownerConv, JobStatus.DONE, 5 * minute), "owner", ownerConv, 2 * minute))
+        assertNull(jobNotice(report(elsewhere, JobStatus.DONE, 1), "ops", ownerConv, 2 * minute))
+        assertEquals(Urgency.INFO to "job 3 done in ops: all good", jobNotice(report(elsewhere, JobStatus.DONE, 2 * minute), "ops", ownerConv, 2 * minute))
         assertEquals(Urgency.ATTENTION to "job 3 failed in ops: boom", jobNotice(report(elsewhere, JobStatus.FAILED, 1, "boom"), "ops", ownerConv, 2 * minute))
         assertEquals(Urgency.ATTENTION to "scheduled task ab12 (job 3) failed in owner: boom", jobNotice(report(ownerConv, JobStatus.FAILED, 1, "boom", "ab12"), "owner", ownerConv, 2 * minute))
         assertNull(jobNotice(report(ownerConv, JobStatus.DONE, 1, schedule = "ab12"), "owner", ownerConv, 2 * minute))
-        assertEquals(Urgency.INFO to "job 3 cancelled in ops", jobNotice(report(elsewhere, JobStatus.CANCELLED, 1, ""), "ops", ownerConv, 2 * minute))
-        assertEquals(Urgency.INFO to "job 3 done in ops", jobNotice(report(elsewhere, JobStatus.DONE, 1, ""), "ops", ownerConv, 2 * minute))
+        assertEquals(Urgency.INFO to "job 3 cancelled in ops", jobNotice(report(elsewhere, JobStatus.CANCELLED, 3 * minute, ""), "ops", ownerConv, 2 * minute))
+        assertEquals(Urgency.INFO to "job 3 done in ops", jobNotice(report(elsewhere, JobStatus.DONE, 3 * minute, ""), "ops", ownerConv, 2 * minute))
     }
 
     @Test

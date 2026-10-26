@@ -172,6 +172,13 @@ class ConfigTest {
     }
 
     @Test
+    fun ownerThatIsTheBotItselfWarnsAndTurnsNotificationsOff() {
+        val c = parseConfig("bot=true\noperatorBrain=x\noperators=${owner}\nowner=${owner}", owner)
+        assertNull(c.notifyOwner)
+        assertTrue(c.warnings.any { "bot's own identity" in it })
+    }
+
+    @Test
     fun badQuietHoursAndDurationsAreHandled() {
         val c = parseConfig("ownerQuietHours=night", owner)
         assertNull(c.ownerQuietHours)

@@ -169,10 +169,13 @@ class WatcherBackend(
     override val schedules: ScheduleScope? = null,
     private val voice: VoiceOut? = null,
     override val notifier: OwnerNotifier? = null,
+    override val conversation: Uuid? = null,
     private val visibleTo: (List<ChatMsg>) -> List<ChatMsg>,
 ) : AgentBackend {
     override val filesDir: File? = config.mcpFilesDir
     override val sendPrefix: String = config.replyPrefix
+
+    override fun toOwner(): AgentBackend = WatcherBackend(session, config, config.allowlist, previews, voice = voice, visibleTo = visibleTo)
 
     override suspend fun messages(conversationId: Uuid, limit: Int, beforeMs: Long?) = fetchMessages(session, conversationId, limit, beforeMs)
 
@@ -239,7 +242,7 @@ class ChatTools(private val server: ChatToolServer, private val config: AgentCon
         val timeout = if (tier == Tier.OPERATOR) config.operatorTimeoutMs else BRAIN_TIMEOUT_MS
         return server.open(
             RunScope(conversation, tier, sender),
-            WatcherBackend(session, config, allowlist, previews, schedules?.takeIf { tier == Tier.OPERATOR }?.let { ScheduleScope(it, conversation, (sender ?: session.identity).toString()) }, voice, notifier?.takeIf { tier == Tier.OPERATOR }, visible),
+            WatcherBackend(session, config, allowlist, previews, schedules?.takeIf { tier == Tier.OPERATOR }?.let { ScheduleScope(it, conversation, (sender ?: session.identity).toString()) }, voice, notifier?.takeIf { tier == Tier.OPERATOR }, conversation, visible),
             chatToolNames(tier, voice != null).let { if (notifier == null) it - NOTIFY_TOOL else it },
             cap = if (tier == Tier.LOCKED) LOCKED_TOOL_CALL_CAP else null,
             timeoutMs = timeout,

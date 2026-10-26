@@ -55,6 +55,8 @@ interface AgentBackend {
     val filesDir: File? get() = null
     val schedules: ScheduleScope? get() = null
     val notifier: OwnerNotifier? get() = null
+    val conversation: Uuid? get() = null
+    fun toOwner(): AgentBackend = this
     val sendPrefix: String get() = if (allowlist.delegate) BOT_PREFIX else ""
     suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending files is not supported")
     fun visible(messages: List<ChatMsg>, conversationId: Uuid): List<ChatMsg> =

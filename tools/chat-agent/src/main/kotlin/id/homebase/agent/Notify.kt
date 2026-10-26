@@ -55,12 +55,6 @@ interface OwnerCaller {
     }
 }
 
-sealed interface NotifyMedia {
-    class Attachment(val file: OutFile) : NotifyMedia
-    class Video(val video: OutVideo) : NotifyMedia
-    class Voice(val voice: OutVoice) : NotifyMedia
-}
-
 class QuietHours(val start: LocalTime, val end: LocalTime) {
     fun contains(ms: Long, zone: ZoneId): Boolean {
         val t = Instant.ofEpochMilli(ms).atZone(zone).toLocalTime()
@@ -112,7 +106,7 @@ class CallBudget(private val file: File?, val perDay: Int, private val now: () -
 
 class Escalation(val id: String, val messageId: Uuid, val sentAt: Long, val text: String, val source: String)
 
-class NotifyResult(val messageId: Uuid, val warnings: List<String>)
+class NotifyResult(val messageId: Uuid, val conversation: Uuid)
 
 class OwnerNotifier(
     private val scope: CoroutineScope,
@@ -123,7 +117,6 @@ class OwnerNotifier(
     private val send: suspend (Uuid, String) -> Uuid,
     private val speak: (suspend (String) -> OutVoice)? = null,
     private val sendVoice: (suspend (Uuid, OutVoice, String) -> Uuid)? = null,
-    private val sendMedia: (suspend (Uuid, NotifyMedia) -> Uuid)? = null,
     private val caller: OwnerCaller = OwnerCaller.None,
     private val store: File? = null,
     private val calls: CallBudget = CallBudget(null, policy.maxCallsPerDay, clock),
@@ -144,13 +137,20 @@ class OwnerNotifier(
 
     fun start() {
         val now = clock()
-        val loaded = load().filter { now - it.sentAt < DAY_MS }
+        val loaded = if (caller === OwnerCaller.None) emptyList() else load().filter { now - it.sentAt < DAY_MS }
         synchronized(lock) {
             loaded.forEach { pending[it.source] = it; recent[it.messageId] = it.text }
             save()
         }
         loaded.forEach { e -> schedule(e, (e.sentAt + policy.callAfterMs).takeIf { it > now } ?: (now + RESTART_GRACE_MS)) }
         if (loaded.isNotEmpty()) log("owner escalations: ${loaded.size} pending after restart")
+    }
+
+    fun ownerConversation(): Uuid? = conversation()
+
+    fun target(): Uuid = conversation() ?: run {
+        log(NO_OWNER_CONVERSATION)
+        throw IllegalArgumentException("the owner has no 1:1 conversation with the bot")
     }
 
     fun pendingCount() = synchronized(lock) { pending.size }
@@ -161,29 +161,15 @@ class OwnerNotifier(
         (toolCalls.size < MAX_NOTIFY_PER_HOUR).also { if (it) toolCalls.addLast(now) }
     }
 
-    suspend fun notify(text: String, urgency: Urgency, source: String, media: NotifyMedia? = null): NotifyResult {
-        val target = conversation() ?: run {
-            log(NO_OWNER_CONVERSATION)
-            throw IllegalArgumentException("the owner has no 1:1 conversation with the bot")
-        }
+    suspend fun notify(text: String, urgency: Urgency, source: String): NotifyResult {
+        val target = target()
         val id = send(target, tagged(prefix, text))
         val sentAt = clock()
         synchronized(lock) { recent[id] = text }
         log("owner notified (${urgency.name.lowercase()}) from $source")
-        if (urgency == Urgency.URGENT) escalate(Escalation(newToken(4), id, sentAt, text, source))
-        val warnings = ArrayList<String>()
-        if (media != null) {
-            try {
-                (sendMedia ?: throw IllegalArgumentException("media is not supported here"))(target, media)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                warnings += "text sent, but the attachment failed: ${e.message}"
-                log("owner media failed: ${e.message}")
-            }
-        }
+        if (urgency == Urgency.URGENT && caller !== OwnerCaller.None) escalate(Escalation(newToken(4), id, sentAt, text, source))
         if (urgency != Urgency.INFO) voiceNote(target, text, urgency, sentAt)
-        return NotifyResult(id, warnings)
+        return NotifyResult(id, target)
     }
 
     private fun voiceNote(target: Uuid, text: String, urgency: Urgency, at: Long) {
@@ -221,7 +207,7 @@ class OwnerNotifier(
     private fun drop(e: Escalation, cancelTimer: Boolean) = synchronized(lock) {
         if (pending[e.source]?.id == e.id) {
             pending.remove(e.source)
-            if (cancelTimer) timers.remove(e.source)?.cancel()
+            timers.remove(e.source)?.let { if (cancelTimer) it.cancel() }
             save()
         }
     }
@@ -288,7 +274,7 @@ class OwnerNotifier(
             val text = answered(parent)
             if (text != null) synchronized(lock) { replying[msg.id] = text }
         }
-        ownerSpoke(target, msg.userDate)
+        ownerSpoke(target, clock())
     }
 
     private fun answered(parent: Uuid): String? {
@@ -325,7 +311,8 @@ class OwnerNotifier(
 
 fun jobNotice(report: JobReport, title: String, ownerConversation: Uuid?, afterMs: Long): Pair<Urgency, String>? {
     val failed = report.status == JobStatus.FAILED
-    val worth = report.conversation != ownerConversation || report.durationMs >= afterMs || (report.schedule != null && failed)
+    val elsewhere = report.conversation != ownerConversation
+    val worth = (elsewhere && (failed || report.durationMs >= afterMs)) || (report.schedule != null && failed)
     if (!worth) return null
     val label = if (report.schedule != null) "scheduled task ${report.schedule} (job ${report.id})" else "job ${report.id}"
     val tail = report.firstLine.takeIf { it.isNotEmpty() }?.let { ": $it" }.orEmpty()
@@ -343,16 +330,24 @@ fun jobSummary(outcome: BrainOutcome): String = when (outcome) {
     }
 }
 
-internal suspend fun notifyMedia(backend: AgentBackend, file: OutFile): NotifyMedia {
+private suspend fun sendAttachment(backend: AgentBackend, conversation: Uuid, file: OutFile) {
     val ext = file.name.substringAfterLast('.', "").lowercase()
-    VOICE_TYPES[ext]?.let { return NotifyMedia.Voice(OutVoice(file.name, file.bytes, it, voiceSeconds(backend.ffmpeg, file) ?: 0)) }
+    VOICE_TYPES[ext]?.let {
+        backend.sendVoice(conversation, OutVoice(file.name, file.bytes, it, voiceSeconds(backend.ffmpeg, file) ?: 0), "")
+        return
+    }
     if (ext == "mp4" && backend.ffmpeg.available && file.bytes.size <= VIDEO_MAX_BYTES) {
-        try {
-            return NotifyMedia.Video(probeOutVideo(backend.ffmpeg, file))
+        val video = try {
+            probeOutVideo(backend.ffmpeg, file)
         } catch (_: IllegalArgumentException) {
+            null
+        }
+        if (video != null) {
+            backend.sendVideo(conversation, video, "")
+            return
         }
     }
-    return NotifyMedia.Attachment(file)
+    backend.sendFile(conversation, file, "")
 }
 
 suspend fun toolNotifyOwner(backend: AgentBackend, args: kotlinx.serialization.json.JsonObject?): ToolReply = guarded {
@@ -360,11 +355,22 @@ suspend fun toolNotifyOwner(backend: AgentBackend, args: kotlinx.serialization.j
     val text = stringArg(args, "text") ?: return@guarded ToolReply("text is empty", true)
     require(text.codePointCount(0, text.length) <= NOTIFY_TEXT_CODEPOINTS) { "text is longer than $NOTIFY_TEXT_CODEPOINTS characters" }
     val urgency = Urgency.parse(stringArg(args, "urgency"))
+    notifier.target()
+    val file = stringArg(args, "path")?.let { fileArg(backend, args) }
     require(notifier.allowToolCall()) { "notify_owner is limited to $MAX_NOTIFY_PER_HOUR calls per hour" }
-    val media = stringArg(args, "path")?.let { notifyMedia(backend, fileArg(backend, args)) }
-    val source = "chat:${stringArg(args, "conversationId")?.take(ID_PREFIX) ?: "brain"}"
-    val r = notifier.notify(text, urgency, source, media)
-    ToolReply("notified owner (${urgency.name.lowercase()}), message ${r.messageId.toString().take(ID_PREFIX)}" + r.warnings.joinToString("") { "; $it" })
+    val source = "chat:${backend.conversation?.toString()?.take(ID_PREFIX) ?: "brain"}"
+    val r = notifier.notify(text, urgency, source)
+    val warning = file?.let {
+        try {
+            sendAttachment(backend.toOwner(), r.conversation, it)
+            ""
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "; text sent, but the attachment failed: ${e.message}"
+        }
+    }.orEmpty()
+    ToolReply("notified owner (${urgency.name.lowercase()}), message ${r.messageId.toString().take(ID_PREFIX)}$warning")
 }
 
 private fun prop(type: String, description: String) = buildJsonObject {
@@ -384,9 +390,3 @@ fun notifyTools(): List<ToolDef> = listOf(
         listOf("text"), stdio = false, write = true,
     ) { b, a -> toolNotifyOwner(b, a) },
 )
-
-suspend fun sendOwnerMedia(session: Session, allowlist: Allowlist, conversation: Uuid, media: NotifyMedia): Uuid = when (media) {
-    is NotifyMedia.Attachment -> sendToConversation(session, allowlist, conversation, "", files = listOf(media.file))
-    is NotifyMedia.Video -> sendToConversation(session, allowlist, conversation, "", media = { key, ops -> stageVideo(media.video, key, ops) })
-    is NotifyMedia.Voice -> sendToConversation(session, allowlist, conversation, "", media = { _, _ -> stageVoice(media.voice) })
-}

@@ -8,6 +8,7 @@ import id.homebase.chat.services.XorIdUtil
 import java.io.File
 import java.time.Instant
 import kotlin.coroutines.coroutineContext
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -65,6 +66,9 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             RunLimiter(File(dir, "voice.txt"), Int.MAX_VALUE, config.maxVoicePerDay),
         )
     }
+    val sendVoiceNote: suspend (Uuid, OutVoice, String) -> Uuid = { conversation, spoken, caption ->
+        sendToConversation(session, config.allowlist, conversation, caption, media = { _, _ -> stageVoice(spoken) })
+    }
     val notifier = config.notifyOwner?.takeIf { config.operatorBrain != null }?.let { ownerId ->
         OwnerNotifier(
             scope = background,
@@ -74,10 +78,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             policy = config.notifyPolicy,
             send = { conversation, text -> sendToConversation(session, config.allowlist, conversation, text) },
             speak = voice?.let { v -> { text: String -> v.speak(text) } },
-            sendVoice = { conversation, spoken, caption ->
-                sendToConversation(session, config.allowlist, conversation, caption, media = { _, _ -> stageVoice(spoken) })
-            },
-            sendMedia = { conversation, media -> sendOwnerMedia(session, config.allowlist, conversation, media) },
+            sendVoice = sendVoiceNote,
             store = File(dir, "escalations.json"),
             calls = CallBudget(File(dir, "owner-calls.txt"), config.maxOwnerCallsPerDay),
             prefix = config.replyPrefix,
@@ -89,7 +90,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
             background, JobLedger(File(dir, "jobs.txt"), config.maxJobsPerDay), ::log, prefix = config.replyPrefix, journal = File(dir, "jobs-pending.txt"), ackDelayMs = JOB_ACK_DELAY_MS,
             onFinished = notifier?.let { n ->
                 { report ->
-                    val owned = config.allowlist.directWith(session.identity, n.owner)
+                    val owned = n.ownerConversation()
                     jobNotice(report, config.allowlist.title(report.conversation) ?: report.conversation.toString().take(ID_PREFIX), owned, config.notifyJobsAfterMs)
                         ?.let { (urgency, text) -> n.notify(text, urgency, "job ${report.id}") }
                 }
@@ -122,9 +123,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         schedules = schedules,
         voice = voice,
         notifier = notifier,
-        sendVoice = { conversation, spoken, caption ->
-            timings.time("send") { sendToConversation(session, config.allowlist, conversation, caption, media = { _, _ -> stageVoice(spoken) }) }
-        },
+        sendVoice = { conversation, spoken, caption -> timings.time("send") { sendVoiceNote(conversation, spoken, caption) } },
         sessions = if (config.sessions) SessionStore(File(dir, "sessions.json"), config.sessionMaxTokens, config.sessionMaxTurns, config.sessionWarmMs) else null,
         brain = { prompt, tier, attachments, lease, session ->
             timings.time("brain") {
@@ -164,7 +163,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     notifier?.start()
     jobs?.recoverDropped { conversation, text ->
         sendToConversation(session, config.allowlist, conversation, text)
-        if (notifier != null && conversation != config.allowlist.directWith(session.identity, notifier.owner)) {
+        if (notifier != null && conversation != notifier.ownerConversation()) {
             notifier.notify(text.removePrefix(config.replyPrefix).trim(), Urgency.INFO, "restart")
         }
     }

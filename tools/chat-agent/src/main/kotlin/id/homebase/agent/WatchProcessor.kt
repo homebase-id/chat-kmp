@@ -61,8 +61,8 @@ class WatchProcessor(
         fetched.clear()
         resolveReplies(batch)
         for (msg in batch) {
-            notifier?.observe(msg)
             if (msg.id in seen && msg.id !in pending) { results[msg.id] = "seen"; continue }
+            notifier?.observe(msg)
             if (isAwayCommand(msg)) { toggleAway(msg, results); continue }
             val skip = precheck(msg)
             if (skip != null) { finish(msg.id, skip, results); continue }

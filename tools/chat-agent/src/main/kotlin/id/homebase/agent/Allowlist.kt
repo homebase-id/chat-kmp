@@ -32,12 +32,16 @@ class Allowlist(
             it.derived.putAll(derived)
         }
 
+    private val direct = HashMap<Pair<OdinId, OdinId>, Uuid?>()
+
     fun learn(conversations: List<ConversationInfo>) {
         known = conversations.associateBy { it.id }
+        synchronized(direct) { direct.clear() }
     }
 
     fun learnDerived(conversation: ConversationInfo) {
         derived[conversation.id] = conversation
+        synchronized(direct) { direct.clear() }
     }
 
     private fun lookup(id: Uuid): ConversationInfo? = known[id] ?: derived[id]
@@ -71,7 +75,12 @@ class Allowlist(
 
     fun info(id: Uuid): ConversationInfo? = lookup(id)
 
-    fun directWith(self: OdinId, peer: OdinId): Uuid? =
+    fun directWith(self: OdinId, peer: OdinId): Uuid? = synchronized(direct) {
+        val key = self to peer
+        if (key in direct) direct[key] else findDirect(self, peer).also { direct[key] = it }
+    }
+
+    private fun findDirect(self: OdinId, peer: OdinId): Uuid? =
         (known.values + derived.values).filter { it.id != ChatProtocol.ConversationWithYourselfId && it.members.toSet() == setOf(self, peer) && allowsSend(it.id) }
             .minByOrNull { it.id.toString() }?.id
 

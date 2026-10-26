@@ -248,7 +248,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
     } ?: DEFAULT_TTS_TIMEOUT_MS
     val quietText = str("ownerQuietHours")
     val quiet = quietText?.let(::parseQuietHours)
-    val notifyOwner = ownerKey?.takeIf { it in operatorSet }
+    val notifyOwner = ownerKey?.takeIf { it in operatorSet && it != owner }
     return AgentConfig(
         allowlist = Allowlist(conversations, authors, kind, memberMode, selfOwned = ownerKey == owner),
         nickname = str("nickname") ?: DEFAULT_NICKNAME,
@@ -308,7 +308,8 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
             parseDurationMs(it) ?: throw IllegalArgumentException("invalid notifyJobsAfter '$it': use e.g. 90s, 2m, 1h")
         } ?: DEFAULT_NOTIFY_JOBS_AFTER_MS,
         warnings = listOfNotNull(
-            "WARNING: owner=$ownerKey is not in operators, so owner notifications (notify_owner, job results, call escalation) are off".takeIf { ownerKey != null && notifyOwner == null && str("operatorBrain") != null },
+            "WARNING: owner=$ownerKey is not in operators, so owner notifications (notify_owner, job results, call escalation) are off".takeIf { ownerKey != null && ownerKey != owner && notifyOwner == null && str("operatorBrain") != null },
+            "WARNING: owner=$ownerKey is the bot's own identity, so there is no 1:1 to notify and owner notifications are off".takeIf { ownerKey != null && ownerKey == owner && str("operatorBrain") != null },
             "WARNING: invalid ownerQuietHours '$quietText', use HH:MM-HH:MM with different start and end; quiet hours are off".takeIf { quietText != null && quiet == null },
             "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },
             "WARNING: listenRooms is ignored unless bot=true (never for the $DELEGATE_PROFILE profile)".takeIf { !bot && str("listenRooms") != null },
