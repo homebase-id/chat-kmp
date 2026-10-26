@@ -188,7 +188,7 @@ internal fun exportEncryptedCopy(name: String, key: String) {
         }
         version to tables
     }
-    withConnection(export.substringAfterLast('/'), key, JournalMode.DELETE) { connection ->
+    withConnection(name + ENCRYPTING_COPY_SUFFIX, key, JournalMode.DELETE) { connection ->
         check(connection.getVersion() == version && connection.longForQuery("SELECT count(*) FROM sqlite_master") == tables) {
             "The encrypted copy doesn't match the plaintext database"
         }
@@ -225,7 +225,7 @@ private fun sqlString(value: String) = "'${value.replace("'", "''")}'"
 
 private fun DatabaseConnection.applyKey(key: String) = rawExecSql("PRAGMA key = \"$key\"")
 
-private fun <T> withConnection(name: String, key: String?, journalMode: JournalMode, block: (DatabaseConnection) -> T): T {
+internal fun <T> withConnection(name: String, key: String?, journalMode: JournalMode, block: (DatabaseConnection) -> T): T {
     val manager = createDatabaseManager(
         DatabaseConfiguration(
             name = name,

@@ -2,9 +2,7 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
-import co.touchlab.sqliter.DatabaseConfiguration
-import co.touchlab.sqliter.NO_VERSION_CHECK
-import co.touchlab.sqliter.createDatabaseManager
+import co.touchlab.sqliter.JournalMode
 import co.touchlab.sqliter.getVersion
 import co.touchlab.sqliter.longForQuery
 import okio.FileSystem
@@ -39,7 +37,6 @@ class IosDatabaseEncryptionTest {
     @AfterTest
     fun cleanup() {
         deleteDatabaseFiles(path)
-        deleteDatabaseFiles(exportPath(name))
     }
 
     @Test
@@ -151,27 +148,9 @@ class IosDatabaseEncryptionTest {
     private fun exists(path: String) = FileSystem.SYSTEM.exists(path.toPath())
 
     private fun schemaRows(key: String?, sql: String = "SELECT count(*) FROM sqlite_master"): Long =
-        withRawConnection(key) { it.longForQuery(sql) }
+        withConnection(name, key, JournalMode.WAL) { it.longForQuery(sql) }
 
-    private fun userVersion(key: String?): Int = withRawConnection(key) { it.getVersion() }
-
-    private fun <T> withRawConnection(key: String?, block: (co.touchlab.sqliter.DatabaseConnection) -> T): T {
-        val connection = createDatabaseManager(
-            DatabaseConfiguration(
-                name = name,
-                version = NO_VERSION_CHECK,
-                create = {},
-                lifecycleConfig = DatabaseConfiguration.Lifecycle(
-                    onCreateConnection = { c -> key?.let { c.rawExecSql("PRAGMA key = \"$it\"") } },
-                ),
-            ),
-        ).createMultiThreadedConnection()
-        try {
-            return block(connection)
-        } finally {
-            connection.close()
-        }
-    }
+    private fun userVersion(key: String?): Int = withConnection(name, key, JournalMode.WAL) { it.getVersion() }
 
     private fun SqlDriver.useDriver(block: (SqlDriver) -> Unit) {
         try {
