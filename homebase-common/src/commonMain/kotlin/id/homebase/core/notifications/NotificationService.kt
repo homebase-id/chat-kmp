@@ -2,6 +2,9 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.isIos
+import id.homebase.api.notifications.MOMENT_COMMENT_TAG_SENTINEL as API_MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.api.notifications.isMomentsPush
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi
@@ -9,6 +12,7 @@ import id.homebase.api.client.notifications.PushSubscriptionResponse
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.share.NotificationContentLevel
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.COMMUNITY_APP_ID
@@ -453,17 +457,14 @@ class NotificationService(
                     )
 
                 // Apply privacy content level filtering
-                val contentLevel = userPreferences.notificationContentLevel
+                val contentLevel =
+                    NotificationContentLevel.fromCode(userPreferences.notificationContentLevel)
                 val (displayTitle, displayBody) = when (contentLevel) {
-                    "name_content_actions" -> Pair(appName, bodyText)
-                    "name_only" -> Pair(displayName, "New notification")
-                    "no_name_or_content" -> Pair("Homebase", "New notification")
-                    else -> Pair(appName, bodyText)
+                    NotificationContentLevel.NAME_CONTENT_ACTIONS -> Pair(appName, bodyText)
+                    NotificationContentLevel.NAME_ONLY -> Pair(displayName, "New notification")
+                    NotificationContentLevel.NO_NAME_OR_CONTENT -> Pair("Homebase", "New notification")
                 }
-                // Full content is shown at name_content_actions (and the default/unknown case,
-                // which fromCode() treats as that level) — never at the redacted levels.
-                val showsRealContent =
-                    contentLevel != "name_only" && contentLevel != "no_name_or_content"
+                val showsRealContent = contentLevel == NotificationContentLevel.NAME_CONTENT_ACTIONS
 
                 // Track per-conversation message count for summary display
                 val messageCount = if (conversationId != null) {
@@ -503,9 +504,7 @@ class NotificationService(
                 if (isAppInForeground) {
                     // Show in-app banner instead of system notification
                     _inAppNotificationEvents.tryEmit(richData)
-                } else if (Platform.osName.contains("iOS", ignoreCase = true) ||
-                    Platform.osName.contains("iPadOS", ignoreCase = true)
-                ) {
+                } else if (isIos()) {
                     // iOS: the Notification Service Extension owns both the visible
                     // notification and the badge. It runs for every mutable-content push
                     // whether or not this process is alive, so counting here double-counts.
@@ -954,7 +953,8 @@ internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>?
  *
  * Shared with the send path ([id.homebase.core.moments.services.MomentsPostSenderService]).
  */
-const val MOMENT_COMMENT_TAG_SENTINEL = "00000000-0000-4000-8000-0000c0117e57"
+
+const val MOMENT_COMMENT_TAG_SENTINEL = API_MOMENT_COMMENT_TAG_SENTINEL
 
 /** What a tapped Moments push resolves to: which moment to open, and whether to expand comments. */
 internal data class MomentsTapTarget(val momentId: String, val openComments: Boolean)
@@ -986,8 +986,7 @@ internal fun resolveMomentsTap(typeId: String, tagId: String): MomentsTapTarget?
 }
 
 /** Convenience predicate over [resolveMomentsTap]. */
-internal fun isMomentsTap(typeId: String, tagId: String): Boolean =
-    resolveMomentsTap(typeId, tagId) != null
+internal fun isMomentsTap(typeId: String, tagId: String): Boolean = isMomentsPush(typeId, tagId)
 
 /**
  * The body to display for a chat notification. When real content is shown

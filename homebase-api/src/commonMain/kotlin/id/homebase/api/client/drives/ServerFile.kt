@@ -74,6 +74,10 @@ data class ServerFile(
     }
 }
 
+/** What [HomebaseFile] appData content holds when it couldn't be decrypted. */
+internal const val DECRYPTION_FAILURE_APP_DATA =
+    """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}"""
+
 fun FileMetadata.withDecryptedContent(bytes: ByteArray): FileMetadata =
     this.copy(
         appData = appData.copy(
@@ -99,7 +103,7 @@ private suspend fun FileMetadata.decryptAppData(
         // a `type` key on this placeholder will safely treat the file as unparseable and skip it.
         Logger.e("Base64 decode failure for AppData content: ${e.message}")
         return withDecryptedContent(
-            """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""".toByteArray(Charsets.UTF_8)
+            DECRYPTION_FAILURE_APP_DATA.toByteArray(Charsets.UTF_8)
         )
     }
 
@@ -113,7 +117,7 @@ private suspend fun FileMetadata.decryptAppData(
         keyHeader.decrypt(encryptedBytes)
     } catch (_: Throwable) {
         Logger.e("Decryption failure for AppData content")
-        """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""".toByteArray(Charsets.UTF_8)
+        DECRYPTION_FAILURE_APP_DATA.toByteArray(Charsets.UTF_8)
     }
 
     return withDecryptedContent(decryptedBytes)

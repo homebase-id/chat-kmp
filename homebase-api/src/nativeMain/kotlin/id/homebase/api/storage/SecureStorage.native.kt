@@ -2,6 +2,7 @@
 
 package id.homebase.api.storage
 
+import id.homebase.api.share.NotificationExtensionStore
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
@@ -85,6 +86,7 @@ actual object SecureStorage {
         if (readKeychain(key = null).status == errSecInteractionNotAllowed) return
 
         clear()
+        NotificationExtensionStore.clearCredentials()
         defaults.setBool(true, INSTALL_MARKER)
     }
 

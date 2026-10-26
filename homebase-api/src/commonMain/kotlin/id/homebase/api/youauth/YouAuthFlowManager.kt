@@ -22,6 +22,7 @@ import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.share.NotificationExtensionStore
 import id.homebase.api.share.ShareAuthBridge
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
@@ -185,6 +186,7 @@ class YouAuthFlowManager(
                         sharedSecret = Base64.encode(credentials.sharedSecret.unsafeBytes)
                     )
                 ShareAuthBridge.setAuthenticated(true, identity.domainName)
+                NotificationExtensionStore.publishCredentials(apiCredentials)
                 Logger.i(tag = TAG) { "Session restored for $identity" }
                 return
             }
@@ -365,6 +367,7 @@ class YouAuthFlowManager(
                 )
 
             ShareAuthBridge.setAuthenticated(true, result.identity.domainName)
+            NotificationExtensionStore.publishCredentials(apiCredentials)
             Logger.i(tag = TAG) { "Authentication completed successfully for ${result.identity}" }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error completing auth" }
@@ -458,6 +461,7 @@ class YouAuthFlowManager(
         stepOrLog("removeActiveCredentials") { credentialsManager.removeActiveCredentials() }
         stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
         stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
+        stepOrLog("clearNotificationCredentials") { NotificationExtensionStore.clearCredentials() }
 
         stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
         stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }

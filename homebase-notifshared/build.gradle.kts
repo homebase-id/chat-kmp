@@ -22,8 +22,8 @@ kotlin {
         browser()
     }
 
-    // Tiny leaf framework linked into the iOS NSE. Keep deps to stdlib +
-    // kotlinx-datetime so the NSE's RAM budget (~24 MB) is preserved.
+    // Leaf framework linked into the iOS NSE, which has a ~24 MB RAM budget: iosMain reaches
+    // homebase-api only for the one-header fetch + decrypt, never its DB, DI or image caches.
     listOf(
         iosArm64(),
         iosSimulatorArm64()
@@ -40,6 +40,10 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        iosMain.dependencies {
+            implementation(project(":homebase-api"))
+            implementation(libs.kotlinx.coroutines.core)
         }
     }
 
