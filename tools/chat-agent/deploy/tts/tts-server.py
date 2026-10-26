@@ -7,7 +7,7 @@ GET  /health -> {"loaded": bool, "busy": bool}
 Socket: systemd socket activation (LISTEN_FDS, fd 3) or --socket PATH.
 Env: TTS_REPO (experiment repo, default ~/Github/kittytts-voice-exp), TTS_CACHE_DIR (default $TTS_REPO/.cache/huggingface),
      TTS_THREADS (6), TTS_IDLE_EXIT seconds (600), TTS_REFERENCE_DIR (reference wavs must live under it; unset = cloning off),
-     TTS_MODEL (model id passed to kittenml, default the one speak.py uses).
+     TTS_MODEL (default KittenML/kitten-tts-2, as speak.py), TTS_WEIGHTS (emb4 or packed, default emb4).
 """
 import argparse
 import io
@@ -30,7 +30,8 @@ REPO = os.path.expanduser(os.environ.get("TTS_REPO", "~/Github/kittytts-voice-ex
 CACHE_DIR = os.path.expanduser(os.environ.get("TTS_CACHE_DIR", os.path.join(REPO, ".cache", "huggingface")))
 IDLE_EXIT = float(os.environ.get("TTS_IDLE_EXIT", "600"))
 REFERENCE_DIR = os.environ.get("TTS_REFERENCE_DIR")
-MODEL_ID = os.environ.get("TTS_MODEL")
+MODEL_ID = os.environ.get("TTS_MODEL", "KittenML/kitten-tts-2")
+WEIGHTS = os.environ.get("TTS_WEIGHTS", "emb4")
 MAX_CHARS = 600
 MAX_BODY = 16 * 1024
 MAX_WAITING = 2
@@ -54,8 +55,7 @@ def log(line):
 def load_model():
     from kittenml import KittenTTS
 
-    args = {"cache_dir": CACHE_DIR}
-    return KittenTTS(MODEL_ID, **args) if MODEL_ID else KittenTTS(**args)
+    return KittenTTS(MODEL_ID, device="cpu", weights=WEIGHTS, cache_dir=CACHE_DIR)
 
 
 def synthesize(tts, text, voice, preset, reference, reference_text):
