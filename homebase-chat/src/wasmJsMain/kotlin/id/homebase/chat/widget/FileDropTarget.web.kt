@@ -10,7 +10,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import io.github.vinceglb.filekit.BrowserFile
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.WebFile
+import kotlin.js.unsafeCast
 import kotlinx.browser.window
 import org.w3c.dom.DataTransferItem
 import org.w3c.dom.DragEvent
@@ -86,7 +89,7 @@ actual fun Modifier.fileDropTarget(
                     event.items()
                         .filter { it.kind == "file" && !isDirectoryEntry(it) }
                         .mapNotNull { it.getAsFile() }
-                        .map { PlatformFile(it) },
+                        .map { PlatformFile(WebFile.FileWrapper(it.unsafeCast<BrowserFile>())) },
                 )
             }
         }

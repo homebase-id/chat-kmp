@@ -2,8 +2,9 @@ package id.homebase.core.clipboard
 
 import id.homebase.api.file.readWebFileBytes
 import id.homebase.api.util.toJsBlob
+import io.github.vinceglb.filekit.BrowserFile
 import io.github.vinceglb.filekit.PlatformFile
-import org.w3c.files.File
+import io.github.vinceglb.filekit.WebFile
 
 /**
  * The browser has no filesystem, but the wasm build's temp files are real: [readWebFileBytes]
@@ -21,7 +22,7 @@ actual fun platformFileFromPath(path: String): PlatformFile {
         ?: error("No file at $path on the web filesystem")
     val name = path.substringAfterLast('/')
     val mimeType = mimeTypeForExtension(name.substringAfterLast('.', ""))
-    return PlatformFile(makeJsFile(bytes.toJsBlob(mimeType), name, mimeType))
+    return PlatformFile(WebFile.FileWrapper(makeJsFile(bytes.toJsBlob(mimeType), name, mimeType)))
 }
 
 private fun mimeTypeForExtension(extension: String): String = when (extension.lowercase()) {
@@ -32,5 +33,5 @@ private fun mimeTypeForExtension(extension: String): String = when (extension.lo
     else -> "application/octet-stream"
 }
 
-private fun makeJsFile(blob: JsAny, fileName: String, mimeType: String): File =
+private fun makeJsFile(blob: JsAny, fileName: String, mimeType: String): BrowserFile =
     js("new File([blob], fileName, { type: mimeType })")

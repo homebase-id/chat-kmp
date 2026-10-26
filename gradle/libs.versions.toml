@@ -22,16 +22,16 @@ composeMultiplatform = "1.13.0-beta01"
 composeHotReload = "1.3.0-beta02"
 composenativetray = "1.3.3"
 composenativewebview = "1.0.0-beta-02"
-konsist = "0.17.3"
-nucleus = "1.14.4"
+konsist = "0.18.1"
+nucleus = "1.15.7"
 conveyor = "2.0"
 conveyorControl = "1.1"
 ffmpegKit = "1.0"
 androidx-pdf-viewer = "1.0.0-alpha18"
-pdfbox = "3.0.5"
+pdfbox = "3.0.8"
 vlcj = "4.8.2"
-composemediaplayer = "0.10.0"
-jna = "5.18.1"
+composemediaplayer = "0.11.4"
+jna = "5.19.1"
 webrtcKmp = "0.125.11" # iosApp pins the stasel/WebRTC SPM package to the matching M125 build; bump both together
 webrtcJava = "0.19.0"
 jetbrains-compose-material3 = "1.13.0-beta01"
@@ -47,22 +47,15 @@ sqlite-jdbc-crypt = "3.53.4.0"
 junit = "4.13.2"
 kotlin = "2.4.21"
 browser = "1.10.0"
-okio = "3.17.0"
-# richeditorCompose: 1.0.0-rc14 is the newest published build (2026-04-26); no
-# stable release exists, so there is no upgrade target. Kept as the WYSIWYG
+okio = "3.18.2"
+# richeditorCompose: held at 1.0.0-rc14 although 1.2.1 is out; moving to 1.x is its own
+# change (the composer's markdown round-trip depends on it). Kept as the WYSIWYG
 # composer/editor (the only CMP library that does true inline editing on all
 # four targets, incl. wasmJs). Read-only rendering uses mikepenz below.
 richeditorCompose = "1.0.0-rc14"
-# Read-only markdown RENDERER (mikepenz). Built on org.jetbrains:markdown:0.7.3
-# (the CommonMark engine richeditor already pulls in — no version conflict).
-# Publishes m3 + coil3 artifacts for android/jvm/iosArm64/iosSimulatorArm64/wasmJs.
-# Pinned to 0.40.2 (NOT 0.41.0): 0.41.0's bytecode references the synthetic
-# `androidx.compose.ui.graphics.painter.Painter.$stable` field, which Compose 1.10
-# removed — so 0.41.0 throws NoSuchFieldError at runtime on our Compose 1.10.3 the
-# moment it renders an inline markdown image (MarkdownInlineImageWithSize). 0.40.2
-# is the newest release whose bytecode carries no removed-field reference (verified
-# via javap), and 0.39.x release notes confirm the 0.39–0.40 line targets CMP 1.10.
-markdownRenderer = "0.40.2"
+# Read-only markdown RENDERER (mikepenz). 0.41.0-0.46.0 reference Painter.$stable, which
+# Compose 1.10 dropped and 1.12 restored, so they need CMP >= 1.12.
+markdownRenderer = "0.46.0"
 # Drag-to-reorder for Compose Multiplatform (Calvin-LL/Reorderable). 3.1.0 is the
 # latest release and publishes for android/jvm/iosArm64/iosSimulatorArm64/iosX64/
 # wasmJs/js. Used by the Poll composer's option list (ReorderableColumn).
@@ -75,13 +68,11 @@ kotlin-immutable-collections = "0.5.2"
 kotlinx-io = "0.9.1"
 ktor = "3.6.0"
 kermit = "2.2.0"
-cryptography = "0.5.0"
+cryptography = "0.6.0"
 robolectric = "4.17"
 navigation = "2.10.0"
 koin = "4.2.2"
-# Held at 0.13.0: 0.14.2+ publishes klibs with abi_version 2.4.0, unreadable by Kotlin 2.3.x.
-# Bumping needs the Kotlin 2.4 upgrade first, or every Kotlin/Native target fails to resolve.
-filekit = "0.13.0"
+filekit = "0.16.0"
 androidx-work = "2.12.0"
 atomicfu = "0.33.0"
 runner = "1.0.2"
@@ -96,12 +87,12 @@ firebase-crashlytics = "20.1.1"
 firebase-crashlytics-plugin = "3.0.8"
 google-services = "4.5.0"
 sharetarget = "1.2.0"
-playPublisher = "4.0.0"
-buildconfig = "6.0.9"
+playPublisher = "4.1.1"
+buildconfig = "6.1.2"
 play-app-update = "2.1.0"
 play-services-location = "21.4.0"
 mlkit-subject-segmentation = "16.0.0-beta1"
-metadataExtractor = "2.19.0"
+metadataExtractor = "2.22.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -185,7 +176,7 @@ markdown-renderer = { module = "com.mikepenz:multiplatform-markdown-renderer", v
 markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
 markdown-renderer-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "markdownRenderer" }
 markdown-renderer-code = { module = "com.mikepenz:multiplatform-markdown-renderer-code", version.ref = "markdownRenderer" }
-jetbrains-markdown = { module = "org.jetbrains:markdown", version = "0.7.3" }
+jetbrains-markdown = { module = "org.jetbrains:markdown", version = "0.7.18" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }

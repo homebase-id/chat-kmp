@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -375,6 +376,11 @@ internal fun buildChatInlineAnnotatedString(
         codeSpanStyle = inlineCodeStyle,
         annotator = rememberMentionAnnotator(parsed, style, color, mentions),
         referenceLinkHandler = null,
+        // The default reads LocalMarkdownColors, which only Markdown() provides; this path has none.
+        highlightSpanStyle = SpanStyle(
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            background = MaterialTheme.colorScheme.secondaryContainer,
+        ),
     )
     // Web bundles a colour-emoji font and scopes it to the emoji runs; null everywhere else,
     // where withEmojiFont returns the string untouched. Part of the remember key so the emoji
