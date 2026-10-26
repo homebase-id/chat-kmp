@@ -768,7 +768,7 @@ private fun BoxScope.OutgoingLayout(
         RingingCard(
             peerName, status, avatar,
             if (narrow) Modifier.align(Alignment.TopStart).padding(top = 4.dp, end = 104.dp)
-            else Modifier.align(Alignment.TopCenter).padding(top = 32.dp),
+            else Modifier.align(Alignment.TopCenter).padding(top = 56.dp),
         )
     } else PeerHeader(
         name = peerName,
@@ -779,6 +779,7 @@ private fun BoxScope.OutgoingLayout(
         modifier = Modifier.align(Alignment.Center).padding(bottom = if (LocalCallLayout.current.tier == CallTier.Minimal) 56.dp else if (large) 120.dp else if (LocalCallLayout.current.compactHeight) 104.dp else 190.dp),
     )
     if (LocalCallLayout.current.windowed) CallTopBar(ui, center = null, actions = actions, modifier = Modifier.align(Alignment.TopCenter))
+    else CornerBetaBadge()
     ControlDock(ui, large, actions, Modifier.align(Alignment.BottomCenter), placing = true)
 }
 
@@ -948,6 +949,15 @@ private fun CallTopBar(ui: CallUiState, center: (@Composable () -> Unit)?, actio
             if (desktop) ChromeIconButton(Icons.AutoMirrored.Filled.Chat, stringResource(MR.string.call_back_to_chat), actions.minimize)
         }
     }
+}
+
+/** Where CallTopBar puts the badge, for the screens that draw no top bar. */
+@Composable
+private fun BoxScope.CornerBetaBadge() {
+    Box(
+        Modifier.align(Alignment.TopEnd).padding(horizontal = 12.dp, vertical = 8.dp).height(40.dp),
+        contentAlignment = Alignment.Center,
+    ) { CallBetaBadge() }
 }
 
 @Composable
@@ -1792,6 +1802,7 @@ private fun BoxScope.EndScaffold(
     header: @Composable (Modifier) -> Unit,
     buttons: @Composable (slot: Modifier) -> Unit,
 ) {
+    CornerBetaBadge()
     if (!LocalCallLayout.current.windowed) {
         header(Modifier.align(Alignment.Center).padding(bottom = headerBottom))
         EndActions(large, spacing, buttons)
