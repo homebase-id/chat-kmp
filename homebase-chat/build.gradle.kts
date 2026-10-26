@@ -87,8 +87,8 @@ kotlin {
             // distributable's repackaged platform JAR (see the markdown note below
             // for the same transitive-strip reason).
             implementation(libs.reorderable)
-            // mikepenz read-only markdown renderer (m3 styling + in-markdown
-            // images via the existing Coil3 loader). m3/coil3 ship commonMain +
+            // mikepenz read-only markdown renderer (m3 styling; remote images render as
+            // links, never fetched). m3 ships commonMain +
             // android/jvm/ios/wasmJs, so no per-target block is needed.
             //
             // The CORE artifact is declared explicitly because MarkdownRenderer.kt
@@ -102,7 +102,7 @@ kotlin {
             // AnnotatorSettingsKt at first render.
             implementation(libs.markdown.renderer)
             implementation(libs.markdown.renderer.m3)
-            implementation(libs.markdown.renderer.coil3)
+            implementation(libs.markdown.renderer.code)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }

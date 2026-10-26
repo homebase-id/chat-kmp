@@ -19,14 +19,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -84,19 +85,26 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.platform.testTag
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
 import id.homebase.resources.profile_card_content_every_card
 import id.homebase.resources.profile_card_content_every_card_desc
-import id.homebase.resources.profile_card_content_hide_this
-import id.homebase.resources.profile_card_content_show_this
+import id.homebase.resources.cancel
+import id.homebase.resources.done
+import id.homebase.resources.profile_card_cards_public
+import id.homebase.resources.profile_card_content_choose_cards
+import id.homebase.resources.profile_edit_audience_only_me_hint
 import id.homebase.resources.profile_card_content_edit_this
 import id.homebase.resources.profile_card_content_every_card_circle
 import id.homebase.resources.profile_card_switcher
@@ -121,7 +129,8 @@ internal fun CardContentEditor(
     photo: CardPhotoUi,
     enabled: Boolean,
     importSources: List<CardImportSource>,
-    onToggle: (Uuid, Boolean) -> Unit,
+    showCardsButton: Boolean,
+    onAudience: (Uuid, ProfileAudience) -> Unit,
     onEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
     onDelete: (Uuid) -> Unit,
     onAdd: (String, Map<String, String>) -> Unit,
@@ -149,9 +158,10 @@ internal fun CardContentEditor(
             shape = groupedShape(index, count),
             enabled = enabled,
             pending = !enabled && pendingId == item.id,
-            onToggle = {
+            showCardsButton = showCardsButton,
+            onApply = {
                 pendingId = item.id
-                onToggle(item.id, !item.shown)
+                onAudience(item.id, it)
             },
             onOpen = { editingId = item.id },
         )
@@ -239,7 +249,10 @@ internal fun CardContentEditor(
             card = card,
             circles = circles,
             socials = if (type in CARD_SOCIAL_TYPES) missingSocials else emptyList(),
-            onAdd = onAdd,
+            onAdd = { t, updates ->
+                pendingId = null
+                onAdd(t, updates)
+            },
             onDismiss = { adding = null },
         )
     }
@@ -254,7 +267,14 @@ internal fun CardContentEditor(
         )
     }
     if (copying) {
-        CopyFromSheet(sources = importSources, onPick = onImport, onDismiss = { copying = false })
+        CopyFromSheet(
+            sources = importSources,
+            onPick = {
+                pendingId = null
+                onImport(it)
+            },
+            onDismiss = { copying = false },
+        )
     }
 }
 
@@ -336,14 +356,14 @@ private fun EditorRow(
     shape: Shape,
     enabled: Boolean,
     pending: Boolean,
-    onToggle: () -> Unit,
+    showCardsButton: Boolean,
+    onApply: (ProfileAudience) -> Unit,
     onOpen: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val label = stringResource(typeLabel(item.type))
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
-    val hide = stringResource(MR.string.profile_card_content_hide_this, item.text)
-    val show = stringResource(MR.string.profile_card_content_show_this, item.text)
+    val chooseCards = stringResource(MR.string.profile_card_content_choose_cards, item.text)
     val edit = stringResource(MR.string.profile_card_content_edit_this, label)
     Surface(
         onClick = onOpen,
@@ -390,23 +410,123 @@ private fun EditorRow(
                 }
             }
             Spacer(Modifier.width(8.dp))
+            var choosing by remember { mutableStateOf(false) }
             when {
                 pending -> LoadingIndicator(modifier = Modifier.size(40.dp).padding(8.dp))
+                showCardsButton -> Box {
+                    IconButton(onClick = { choosing = true }, enabled = enabled, modifier = Modifier.testTag("cards_button")) {
+                        Icon(Icons.Outlined.Style, contentDescription = chooseCards)
+                    }
+                    if (choosing) {
+                        CardsMenu(
+                            item = item,
+                            circles = circles,
+                            onApply = onApply,
+                            onDismiss = { choosing = false },
+                        )
+                    }
+                }
                 item.required || item.locked -> Icon(
                     Icons.Outlined.Edit,
                     contentDescription = null,
                     tint = colors.onSurfaceVariant,
                     modifier = Modifier.size(40.dp).padding(8.dp),
                 )
-                item.shown -> IconButton(onClick = onToggle, enabled = enabled) {
-                    Icon(Icons.Outlined.VisibilityOff, contentDescription = hide)
-                }
-                else -> FilledTonalIconButton(onClick = onToggle, enabled = enabled) {
-                    Icon(Icons.Filled.Add, contentDescription = show)
-                }
             }
         }
     }
+}
+
+internal fun cardsDraftAudience(public: Boolean, ticked: Set<String>, otherIds: Set<String>): ProfileAudience = when {
+    public -> ProfileAudience.Public
+    ticked.isNotEmpty() || otherIds.isNotEmpty() -> ProfileAudience.Circles(ticked, otherIds)
+    else -> ProfileAudience.OnlyMe
+}
+
+@Composable
+internal fun CardsMenu(
+    item: CardContentItem,
+    circles: List<CardCircle>,
+    onApply: (ProfileAudience) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val allIds = circles.map { it.id }.toSet()
+    val stored = item.audience
+    val otherIds = (stored as? ProfileAudience.Circles)?.otherIds.orEmpty()
+    var public by remember { mutableStateOf(stored == ProfileAudience.Public) }
+    val initialTicked = remember {
+        when (stored) {
+            ProfileAudience.Public -> allIds
+            ProfileAudience.OnlyMe -> emptySet()
+            is ProfileAudience.Circles -> stored.ids.filter { it in allIds }.toSet()
+        }
+    }
+    var ticked by remember { mutableStateOf(initialTicked) }
+    var beforePublic by remember { mutableStateOf(emptySet<String>()) }
+    val untouched = public == (stored == ProfileAudience.Public) && ticked == initialTicked
+    val draft = if (untouched) stored else cardsDraftAudience(public, ticked, otherIds)
+    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
+        CardsMenuRow(
+            label = stringResource(MR.string.profile_card_cards_public),
+            checked = public,
+            enabled = !item.required,
+            tag = "cards_menu_public",
+            onClick = {
+                if (public) {
+                    ticked = beforePublic.ifEmpty { allIds }
+                    public = false
+                } else {
+                    beforePublic = ticked
+                    ticked = allIds
+                    public = true
+                }
+            },
+        )
+        circles.forEach { circle ->
+            CardsMenuRow(
+                label = circle.name,
+                checked = circle.id in ticked,
+                enabled = !public,
+                tag = "cards_menu_circle_${circle.id}",
+                onClick = { ticked = if (circle.id in ticked) ticked - circle.id else ticked + circle.id },
+            )
+        }
+        if (draft == ProfileAudience.OnlyMe) {
+            Text(
+                text = stringResource(MR.string.profile_edit_audience_only_me_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("cards_menu_cancel")) { Text(stringResource(MR.string.cancel)) }
+            TextButton(
+                onClick = {
+                    if (draft != stored) onApply(draft)
+                    onDismiss()
+                },
+                modifier = Modifier.testTag("cards_menu_done"),
+            ) { Text(stringResource(MR.string.done)) }
+        }
+    }
+}
+
+@Composable
+private fun CardsMenuRow(label: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Checkbox(checked = checked, onCheckedChange = null, enabled = enabled) },
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.testTag(tag).semantics {
+            role = Role.Checkbox
+            toggleableState = ToggleableState(checked)
+        },
+    )
 }
 
 @Composable
