@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+@file:OptIn(ExperimentalForeignApi::class)
 
 package id.homebase.core.audio
 

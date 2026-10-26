@@ -1,6 +1,5 @@
 package id.homebase.core.clipboard
 
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -25,7 +24,7 @@ import platform.posix.memcpy
  *
  * Returns null when no image is on the pasteboard.
  */
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class)
 actual fun getImageFromClipboard(): ByteArray? {
     val pasteboard = UIPasteboard.generalPasteboard
 
@@ -43,7 +42,7 @@ actual fun getImageFromClipboard(): ByteArray? {
 
 actual suspend fun readClipboardImage(): ByteArray? = getImageFromClipboard()
 
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class)
 private fun NSData.toByteArray(): ByteArray? {
     val length = this.length.toInt()
     if (length <= 0) return null

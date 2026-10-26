@@ -93,6 +93,7 @@ class CallScreenshotTest {
             close = { calls += "close" },
             minimize = { calls += "minimize" },
             endFromKeyboard = { calls += "end" },
+            reportProblem = { calls += "report" },
         )
     }
 
@@ -198,6 +199,21 @@ class CallScreenshotTest {
         onNodeWithText("Retry").performClick()
         onNodeWithText("Close").performClick()
         assertEquals(listOf("retry", "close"), recorder.calls)
+    }
+
+    @Test
+    fun phoneCallScreensWithoutATopBarStillShowTheBetaBadgeAndEndedOnesOfferAReport() {
+        for (name in listOf("outgoing", "connected", "failed", "ended")) for (video in listOf(false, true)) {
+            runDesktopComposeUiTest(390, 844) {
+                val recorder = Recorder()
+                show(false, shot(name, video), recorder, chromeHeld = true)
+                assertShown("Beta")
+                if (name == "failed" || name == "ended") {
+                    onNodeWithText("Report a problem").performClick()
+                    assertEquals(listOf("report"), recorder.calls, "$name video=$video")
+                }
+            }
+        }
     }
 
     @Test

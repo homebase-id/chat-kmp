@@ -1,8 +1,4 @@
-@file:OptIn(
-    androidx.compose.ui.InternalComposeUiApi::class,
-    kotlin.js.ExperimentalWasmJsInterop::class,
-    kotlin.io.encoding.ExperimentalEncodingApi::class,
-)
+@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
 
 package id.homebase.core.clipboard
 
