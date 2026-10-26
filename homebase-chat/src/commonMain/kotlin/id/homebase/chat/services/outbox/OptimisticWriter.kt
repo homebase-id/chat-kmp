@@ -91,11 +91,12 @@ class OptimisticWriter(
         fileSystemType: FileSystemType,
         payloadDescriptors: List<PayloadDescriptor>? = null,
         fileId: Uuid = Uuid.random(),
+        created: UnixTimeUtc = UnixTimeUtc.now(),
+        localAppData: LocalAppMetadata? = null,
     ): Uuid {
 
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
-        val created = UnixTimeUtc.now()
 
         val file = HomebaseFile(
             fileId = fileId,
@@ -116,9 +117,9 @@ class OptimisticWriter(
                     previewThumbnail = unecryptedMetadata.appData.previewThumbnail,
                     archivalStatus = unecryptedMetadata.appData.archivalStatus
                 ),
-                localAppData = LocalAppMetadata(
-                    tags = listOf(ChatProtocol.isPendingSendTag)
-                ),
+                localAppData = localAppData?.let {
+                    it.copy(tags = (it.tags.orEmpty() + ChatProtocol.isPendingSendTag).distinct(), versionTag = null)
+                } ?: LocalAppMetadata(tags = listOf(ChatProtocol.isPendingSendTag)),
                 created = created,
                 updated = UnixTimeUtc.ZeroTime,
                 isEncrypted = unecryptedMetadata.isEncrypted,
