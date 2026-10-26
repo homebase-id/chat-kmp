@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -30,7 +31,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -163,6 +163,19 @@ fun SwipeRevealBox(
         }
     }
 
+    fun beginDrag() {
+        isDragging = true
+        hapticFired = false
+        slideOutDirection = 0
+    }
+
+    fun clampOffset(value: Float): Float {
+        var next = value
+        if (currentOnSwipeRight == null) next = next.coerceAtMost(0f)
+        if (currentOnSwipeLeft == null) next = next.coerceAtLeast(0f)
+        return next.coerceIn(-currentMaxOffsetPx, currentMaxOffsetPx)
+    }
+
     fun commitOnRelease(velocityPxPerSecond: Float) {
         val commit = shouldCommitSwipe(
             offsetPx = offsetPx,
@@ -176,9 +189,7 @@ fun SwipeRevealBox(
         if (if (toRight) currentSlideOutRight else currentSlideOutLeft) slideOutDirection = if (toRight) 1 else -1
     }
 
-    // A nested horizontal scroller (code block, table) consumes the pointer events, so the loop
-    // below never sees its drags. What the scroller cannot use arrives here as leftover instead,
-    // but only when it had not scrolled yet: a swipe that began mid-scroll stays a scroll.
+    // A nested horizontal scroller consumes the pointer events; only its leftover drag arrives here, and only if it had not scrolled yet.
     val handoff = remember {
         object : NestedScrollConnection {
             var scrolledThisGesture = false
@@ -196,15 +207,10 @@ fun SwipeRevealBox(
                 if (source != NestedScrollSource.UserInput) return Offset.Zero
                 if (consumed.x != 0f) scrolledThisGesture = true
                 if (scrolledThisGesture || available.x == 0f) return Offset.Zero
-                var next = offsetPx + available.x
-                if (currentOnSwipeRight == null) next = next.coerceAtMost(0f)
-                if (currentOnSwipeLeft == null) next = next.coerceAtLeast(0f)
-                val clamped = next.coerceIn(-currentMaxOffsetPx, currentMaxOffsetPx)
+                val clamped = clampOffset(offsetPx + available.x)
                 if (!handingOff) {
                     handingOff = true
-                    isDragging = true
-                    hapticFired = false
-                    slideOutDirection = 0
+                    beginDrag()
                 }
                 val used = clamped - offsetPx
                 offsetPx = clamped
@@ -268,9 +274,7 @@ fun SwipeRevealBox(
                                         isHorizontal =
                                             totalX.absoluteValue > totalY.absoluteValue * 1.5f
                                         if (!isHorizontal) break
-                                        isDragging = true
-                                        hapticFired = false
-                                        slideOutDirection = 0
+                                        beginDrag()
                                         offsetPx = 0f
                                         change.consume()
                                     }
@@ -279,10 +283,7 @@ fun SwipeRevealBox(
 
                                 change.consume()
                                 velocityTracker.addPointerInputChange(change)
-                                var newValue = offsetPx + delta.x
-                                if (currentOnSwipeRight == null) newValue = newValue.coerceAtMost(0f)
-                                if (currentOnSwipeLeft == null) newValue = newValue.coerceAtLeast(0f)
-                                offsetPx = newValue.coerceIn(-currentMaxOffsetPx, currentMaxOffsetPx)
+                                offsetPx = clampOffset(offsetPx + delta.x)
 
                                 updateHaptic()
                             }
