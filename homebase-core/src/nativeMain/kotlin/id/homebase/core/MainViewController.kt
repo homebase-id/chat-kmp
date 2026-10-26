@@ -216,11 +216,7 @@ private fun initializeAfterDatabase(startMark: kotlin.time.TimeSource.Monotonic.
 @OptIn(ExperimentalForeignApi::class, ExperimentalFoundationApi::class)
 fun MainViewController(): UIViewController {
     initializeApp()
-    // iOS routes the text context menu through the native selection toolbar, which renders only
-    // built-in actions (Cut/Copy/Paste/…) and silently drops custom appendTextContextMenuComponents
-    // items — so the "Paste image" composer item (#1046) never shows. This opt-in switches iOS to
-    // the new Compose context-menu implementation (iOS support is complete in CMP 1.10.3), which
-    // does render custom items. iOS-only: Android/desktop already render them without the flag.
+    // Off by default on iOS; the old menu renders only built-in actions and drops custom items.
     ComposeFoundationFlags.isNewContextMenuEnabled = true
     // Promote AuthCC out of headless mode — this is the iOS analogue of
     // Android's MainActivity.onCreate: it fires only when SwiftUI actually

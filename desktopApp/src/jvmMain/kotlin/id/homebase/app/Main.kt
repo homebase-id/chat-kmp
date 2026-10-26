@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.foundation.ComposeFoundationFlags
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.window.rememberWindowState
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import chat_kmp.homebase_common.BuildConfig
@@ -89,7 +91,10 @@ import java.awt.desktop.AppReopenedListener
 import java.awt.event.WindowStateListener
 import java.io.File
 
+@OptIn(ExperimentalFoundationApi::class)
 fun main() {
+    // Off by default on desktop and web; without it custom text context menu items are dropped.
+    ComposeFoundationFlags.isNewContextMenuEnabled = true
     // Force JNA to load its bundled native library. Without this, Windows may resolve
     // a mismatched jnidispatch.dll from the system path, causing Native.<clinit> to throw.
     // Must be set before any JNA-using class (FileKit, compose-native-tray) loads.

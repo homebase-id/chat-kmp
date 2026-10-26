@@ -126,9 +126,10 @@ import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.clipboard.ClipboardImagePasteEffect
 import id.homebase.core.clipboard.KeyboardImageReceiver
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
-import id.homebase.core.clipboard.pasteImageContextMenuItem
+import id.homebase.core.clipboard.pasteContextMenuItem
+import id.homebase.core.clipboard.pastedText
 import id.homebase.core.clipboard.getImageFromClipboard
-import id.homebase.core.clipboard.readClipboardImage
+import id.homebase.core.clipboard.readClipboard
 import id.homebase.core.clipboard.readClipboardText
 import id.homebase.core.util.isWeb
 import id.homebase.core.emoji.EmojiShortcodeEffect
@@ -161,7 +162,7 @@ import id.homebase.resources.chat_message_emoji
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
-import id.homebase.resources.chat_message_paste_image
+import id.homebase.resources.chat_message_paste
 import id.homebase.resources.chat_message_processing
 import id.homebase.resources.chat_markdown_blockquote
 import id.homebase.resources.chat_markdown_code_block
@@ -179,6 +180,7 @@ import id.homebase.core.util.linkAtSelection
 import id.homebase.core.util.removeLinkAtSelection
 import id.homebase.core.util.updateLinkAtSelection
 import id.homebase.core.util.pasteOverSelectionAsync
+import id.homebase.core.util.pasteText
 import id.homebase.core.util.pasteUrlOverSelection
 import id.homebase.core.util.selectedPlainText
 import id.homebase.resources.chat_markdown_link_dialog_insert
@@ -493,7 +495,7 @@ fun MessageTextFieldExpanded(
                     state = state,
                     modifier = Modifier.fillMaxWidth()
                         .then(pasteModifier)
-                        .pasteImageMenuItem(onPasteImage)
+                        .pasteMenuItem(state, onPasteImage)
                         .focusRequester(focusRequester)
                         .onFocusChanged { focusState ->
                             isFieldFocused = focusState.isFocused
@@ -808,7 +810,7 @@ fun MessageTextFieldCompact(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .then(pasteModifier)
-                                        .pasteImageMenuItem(onPasteImage)
+                                        .pasteMenuItem(state, onPasteImage)
                                         .focusRequester(focusRequester)
                                         .onFocusChanged { focusState ->
                                             isKeyboardFocused = focusState.isFocused
@@ -1412,7 +1414,7 @@ fun MessageTextFieldForAttachment(
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
-                        .pasteImageMenuItem(onPasteImage)
+                        .pasteMenuItem(state, onPasteImage)
                         .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
@@ -1863,12 +1865,16 @@ private fun MarkdownLinkDialog(
 }
 
 @Composable
-private fun Modifier.pasteImageMenuItem(onPasteImage: ((ByteArray) -> Unit)?): Modifier {
+private fun Modifier.pasteMenuItem(state: RichTextState, onPasteImage: ((ByteArray) -> Unit)?): Modifier {
     val scope = rememberCoroutineScope()
-    val label = stringResource(MR.string.chat_message_paste_image)
+    val label = stringResource(MR.string.chat_message_paste)
     if (onPasteImage == null) return this
-    return pasteImageContextMenuItem(label = label, enabled = true) {
-        scope.launch { readClipboardImage()?.let(onPasteImage) }
+    return pasteContextMenuItem(label) {
+        scope.launch {
+            val clipboard = readClipboard()
+            clipboard.image?.let(onPasteImage)
+            pastedText(clipboard.image, clipboard.text)?.let(state::pasteText)
+        }
     }
 }
 

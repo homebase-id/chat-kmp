@@ -3,6 +3,8 @@ package id.homebase.app
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
+import androidx.compose.foundation.ComposeFoundationFlags
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.navigation.ExperimentalBrowserHistoryApi
 import androidx.navigation.bindToBrowserNavigation
 import id.homebase.api.common.OdinId
@@ -45,10 +47,12 @@ private fun recordAutocompleteMismatch(report: String): Unit =
 private fun recordAutocompleteComposing(composing: String): Unit =
     js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteComposing = composing; }")
 
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class, ExperimentalFoundationApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
     initLazyStabilityFlags()
+    // Off by default on desktop and web; without it custom text context menu items are dropped.
+    ComposeFoundationFlags.isNewContextMenuEnabled = true
     WebAppLink.captureFromUrl()
     configureWebResources {
         resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
