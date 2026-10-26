@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.annotator.annotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
-import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
 import com.mikepenz.markdown.compose.LocalMarkdownPadding
 import com.mikepenz.markdown.compose.Markdown
 import com.mikepenz.markdown.compose.components.markdownComponents
@@ -244,6 +243,7 @@ fun ChatMarkdown(
         // table reads on BOTH bubbles.
         tableBackground = color.copy(alpha = FENCED_CODE_BG_ALPHA),
     )
+    val linkStyles = chatLinkStyles(style, color)
     val typography = markdownTypography(
         // Heading ladder. The M3 title/headline scale is too compressed to give a
         // legible six-level hierarchy inside a chat bubble (titleLarge 22 → titleMedium
@@ -272,13 +272,7 @@ fun ChatMarkdown(
         quote = style.copy(color = color, fontStyle = FontStyle.Italic),
         // Links: bubble [color], bold + underlined — readable on sent AND received
         // bubbles (it equals the content colour), matching the inline path.
-        textLink = TextLinkStyles(
-            style = style.copy(
-                color = color,
-                fontWeight = FontWeight.Bold,
-                textDecoration = TextDecoration.Underline,
-            ).toSpanStyle(),
-        ),
+        textLink = linkStyles,
     )
 
     // Hoisted out of rememberMarkdownState's argument, which is re-evaluated on every
@@ -329,7 +323,6 @@ fun ChatMarkdown(
             // Offset the quote text from its accent bar.
             blockQuoteText = PaddingValues(start = 12.dp, top = 2.dp, bottom = 2.dp),
         ),
-        imageTransformer = Coil3ImageTransformerImpl,
         // Custom code components: same default body, but the container is a [color]
         // tint with a subtle [color] border so the fenced block reads as a distinct
         // surface on both bubbles. Keep the M3 checkbox (the Markdown() default
@@ -339,6 +332,15 @@ fun ChatMarkdown(
         // timestamp-tuck callback removes it from the bubble's reentrant custom-Layout
         // coupling on Desktop hover.
         components = markdownComponents(
+            image = {
+                val image = imageLinkOf(it.content, it.node)
+                if (image != null) {
+                    MarkdownBasicText(
+                        text = image.toAnnotated(linkStyles),
+                        style = it.typography.text,
+                    )
+                }
+            },
             checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) },
             codeFence = {
                 MarkdownCodeFence(it.content, it.node, style = it.typography.code) { code, language, codeStyle ->
@@ -391,13 +393,7 @@ internal fun buildChatInlineAnnotatedString(
     color: Color,
     mentions: MentionContext? = null,
 ): AnnotatedString {
-    val linkSpanStyle = TextLinkStyles(
-        style = style.copy(
-            color = color,
-            fontWeight = FontWeight.Bold,
-            textDecoration = TextDecoration.Underline,
-        ).toSpanStyle(),
-    )
+    val linkSpanStyle = chatLinkStyles(style, color)
     val inlineCodeStyle = style.copy(
         color = color,
         fontFamily = FontFamily.Monospace,

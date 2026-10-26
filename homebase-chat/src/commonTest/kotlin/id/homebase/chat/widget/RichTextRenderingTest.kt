@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.semantics.getOrNull
 import kotlin.test.Test
 
 /**
@@ -211,4 +212,61 @@ class RichTextRenderingTest {
         waitForIdle()
         onNodeWithTag("md").assertExists()
     }
+
+    private fun androidx.compose.ui.test.SemanticsNodeInteractionsProvider.imageNodeCount() =
+        onAllNodes(
+            androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(
+                androidx.compose.ui.semantics.SemanticsProperties.ContentDescription,
+            ),
+        ).fetchSemanticsNodes().size
+
+    private fun androidx.compose.ui.test.SemanticsNodeInteraction.hasLinkAnnotation(): Boolean {
+        val text = fetchSemanticsNode().config
+            .getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+            ?: return false
+        return text.any { it.getLinkAnnotations(0, it.length).isNotEmpty() }
+    }
+
+    @Test
+    fun blockImageRendersAsLinkNotImage() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "# Title\n\n![cat](https://example.test/cat.png)")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("cat").fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("cat").hasLinkAnnotation())
+        kotlin.test.assertEquals(0, imageNodeCount())
+    }
+
+    @Test
+    fun inlineImageWithoutAltShowsUrlAsLink() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "![](https://example.test/x.png)")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("https://example.test/x.png").fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("https://example.test/x.png").hasLinkAnnotation())
+        kotlin.test.assertEquals(0, imageNodeCount())
+    }
+
+    @Test
+    fun imageInsideListItemRendersAsLink() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "- ![dog](https://example.test/dog.png)\n- plain")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("dog", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("dog", substring = true).hasLinkAnnotation())
+        kotlin.test.assertEquals(0, imageNodeCount())
+    }
 }
+
