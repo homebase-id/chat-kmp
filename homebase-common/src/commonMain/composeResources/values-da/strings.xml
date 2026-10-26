@@ -975,6 +975,7 @@
     <string name="chat_markdown_blockquote">Citat</string>
     <string name="chat_markdown_inline_code">Indlejret kode</string>
     <string name="chat_markdown_code_block">Kodeblok</string>
+    <string name="chat_markdown_task_list">Opgaveliste</string>
     <string name="chat_markdown_link">Indsæt link</string>
     <string name="chat_markdown_nested_list">Indryk liste</string>
     <string name="chat_markdown_link_dialog_title">Indsæt link</string>

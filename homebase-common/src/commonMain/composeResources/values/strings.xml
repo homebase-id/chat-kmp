@@ -1114,6 +1114,7 @@
     <string name="chat_markdown_blockquote">Block quote</string>
     <string name="chat_markdown_inline_code">Inline code</string>
     <string name="chat_markdown_code_block">Code block</string>
+    <string name="chat_markdown_task_list">Task list</string>
     <string name="chat_markdown_link">Insert link</string>
     <string name="chat_markdown_nested_list">Indent list</string>
     <string name="chat_markdown_link_dialog_title">Insert link</string>

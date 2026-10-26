@@ -50,6 +50,7 @@ import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.FormatStrikethrough
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.AlertDialog
@@ -141,6 +142,11 @@ import id.homebase.core.util.keyboardPanelSlot
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberKeyboardPanelState
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.core.util.applyBlockEdit
+import id.homebase.core.util.codeBlockEdit
+import id.homebase.core.util.nextInComposerCycle
+import id.homebase.core.util.quoteEdit
+import id.homebase.core.util.taskListEdit
 import id.homebase.core.widget.composerKeyHandler
 import id.homebase.core.widget.EmojiAutocomplete
 import id.homebase.core.widget.EmojiSelection
@@ -161,6 +167,7 @@ import id.homebase.resources.chat_markdown_code_block
 import id.homebase.resources.chat_markdown_heading
 import id.homebase.resources.chat_markdown_inline_code
 import id.homebase.resources.chat_markdown_link
+import id.homebase.resources.chat_markdown_task_list
 import id.homebase.resources.chat_markdown_link_dialog_cancel
 import id.homebase.resources.chat_markdown_link_dialog_edit_title
 import id.homebase.resources.chat_markdown_link_dialog_remove
@@ -1575,6 +1582,7 @@ fun RichTextEditorButtons(
     val inlineCodeLabel = stringResource(MR.string.chat_markdown_inline_code)
     val codeBlockLabel = stringResource(MR.string.chat_markdown_code_block)
     val linkLabel = stringResource(MR.string.chat_markdown_link)
+    val taskListLabel = stringResource(MR.string.chat_markdown_task_list)
     val nestedListLabel = stringResource(MR.string.chat_markdown_nested_list)
 
     val dividerColor = MaterialTheme.colorScheme.outlineVariant
@@ -1656,17 +1664,11 @@ fun RichTextEditorButtons(
             )
         }
 
-        // Heading: cycle Normal -> H1 -> H2 -> Normal (richeditor serialises the
-        // level as a CommonMark ATX prefix `# ` / `## `).
+        // Heading: cycle Normal -> H1 -> H2 -> H3 -> Normal (ATX prefix).
         item {
             RichTextStyleButton(
                 onClick = {
-                    val next = when (state.currentHeadingStyle) {
-                        HeadingStyle.Normal -> HeadingStyle.H1
-                        HeadingStyle.H1 -> HeadingStyle.H2
-                        else -> HeadingStyle.Normal
-                    }
-                    state.setHeadingStyle(next)
+                    state.setHeadingStyle(state.currentHeadingStyle.nextInComposerCycle())
                 },
                 enabled = enabled,
                 isSelected = state.currentHeadingStyle != HeadingStyle.Normal,
@@ -1675,12 +1677,9 @@ fun RichTextEditorButtons(
             )
         }
 
-        // Blockquote and fenced code block. richeditor has no paragraph-level
-        // toggle for these, so we insert the CommonMark markers at the cursor;
-        // the editor renders them live and toMarkdown() emits them verbatim.
         item {
             RichTextStyleButton(
-                onClick = { state.addTextAfterSelection("\n> ") },
+                onClick = { state.applyBlockEdit(state.annotatedString.text.quoteEdit(state.selection)) },
                 enabled = enabled,
                 icon = Icons.Outlined.FormatQuote,
                 contentDescription = blockquoteLabel,
@@ -1689,7 +1688,16 @@ fun RichTextEditorButtons(
 
         item {
             RichTextStyleButton(
-                onClick = { state.addTextAfterSelection("\n```\n\n```\n") },
+                onClick = { state.applyBlockEdit(state.annotatedString.text.taskListEdit(state.selection)) },
+                enabled = enabled,
+                icon = Icons.Outlined.Checklist,
+                contentDescription = taskListLabel,
+            )
+        }
+
+        item {
+            RichTextStyleButton(
+                onClick = { state.applyBlockEdit(state.annotatedString.text.codeBlockEdit(state.selection)) },
                 enabled = enabled,
                 icon = Icons.Outlined.Terminal,
                 contentDescription = codeBlockLabel,

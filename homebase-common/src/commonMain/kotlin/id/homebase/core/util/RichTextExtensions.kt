@@ -5,6 +5,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextDecoration
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
+import com.mohamedrejeb.richeditor.model.HeadingStyle
 import com.mohamedrejeb.richeditor.model.RichSpanStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.core.ui.theme.LightColors
@@ -200,4 +201,11 @@ suspend fun RichTextState.pasteOverSelectionAsync(readText: suspend () -> String
     if (pasteUrlOverSelection(text)) return
     if (!selection.collapsed) removeSelectedText()
     addTextAfterSelection(text)
+}
+
+fun HeadingStyle.nextInComposerCycle(): HeadingStyle = when (this) {
+    HeadingStyle.Normal -> HeadingStyle.H1
+    HeadingStyle.H1 -> HeadingStyle.H2
+    HeadingStyle.H2 -> HeadingStyle.H3
+    else -> HeadingStyle.Normal
 }
