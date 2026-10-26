@@ -26,7 +26,7 @@ fun Modifier.composerKeyHandler(
     // False when there was nothing to edit, so the caret moves as usual.
     onEditLast: (() -> Boolean)? = null,
     onLink: (() -> Unit)? = null,
-    onPasteOverSelection: ((clipboardText: String?) -> Boolean)? = null,
+    onPasteOverSelection: ((clipboardText: () -> String?) -> Boolean)? = null,
     clipboardText: () -> String? = { null },
 ): Modifier = onPreviewKeyEvent { event ->
     handleComposerKey(
@@ -101,10 +101,10 @@ private fun KeyEvent.pasteClipboardImage(
 
 private fun KeyEvent.pasteTextOverSelection(
     clipboardText: () -> String?,
-    onPasteOverSelection: (String?) -> Boolean,
+    onPasteOverSelection: (() -> String?) -> Boolean,
 ): Boolean {
     if (type != KeyEventType.KeyDown || key != Key.V || !(isCtrlPressed || isMetaPressed)) return false
-    return onPasteOverSelection(clipboardText())
+    return onPasteOverSelection(clipboardText)
 }
 
 internal enum class ComposerKeyAction {

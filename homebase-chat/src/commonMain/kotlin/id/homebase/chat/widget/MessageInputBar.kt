@@ -1538,7 +1538,7 @@ private fun ComposerExpandToggle(expanded: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun rememberPasteOverSelection(state: RichTextState): (String?) -> Boolean {
+private fun rememberPasteOverSelection(state: RichTextState): (() -> String?) -> Boolean {
     val scope = rememberCoroutineScope()
     return remember(state, scope) {
         { syncText ->
@@ -1548,7 +1548,7 @@ private fun rememberPasteOverSelection(state: RichTextState): (String?) -> Boole
                     scope.launch { state.pasteOverSelectionAsync(::readClipboardText) }
                     true
                 }
-                else -> state.pasteUrlOverSelection(syncText)
+                else -> state.pasteUrlOverSelection(syncText())
             }
         }
     }
