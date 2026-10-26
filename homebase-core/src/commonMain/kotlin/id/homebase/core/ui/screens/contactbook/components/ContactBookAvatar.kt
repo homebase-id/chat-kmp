@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.contactbook.components
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -20,10 +21,12 @@ import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.avatars.rememberOpenStoredImage
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.ui.navigation.navSharedElement
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_contact
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 // A manual (identity-less) entry can only have its stored photo or initials.
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -31,9 +34,28 @@ import org.jetbrains.compose.resources.stringResource
 fun ContactBookAvatar(
     entry: ContactBookEntry,
     size: Dp = 44.dp,
+    modifier: Modifier = Modifier,
+    morphAcrossNav: Boolean = false,
     onClick: ((SubSamplingImageSource) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+) {
+    val shared = if (morphAcrossNav) Modifier.navSharedElement(contactAvatarNavKey(entry.uniqueId)) else Modifier
+    Box(shared.then(modifier)) {
+        ContactBookAvatarContent(entry, size, onClick, sharedTransitionScope, animatedVisibilityScope)
+    }
+}
+
+internal fun contactAvatarNavKey(uniqueId: Uuid): String = "contact-avatar-$uniqueId"
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun ContactBookAvatarContent(
+    entry: ContactBookEntry,
+    size: Dp,
+    onClick: ((SubSamplingImageSource) -> Unit)?,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     val options = AvatarOptions(size = size, fontSize = (size.value * 0.4f).sp)
 
