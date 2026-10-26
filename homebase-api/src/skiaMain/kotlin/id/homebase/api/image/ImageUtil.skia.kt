@@ -9,6 +9,7 @@ import id.homebase.api.image.draw.StrokeKind
 import id.homebase.api.image.draw.stackBlur
 import id.homebase.api.lib.image.ImageFormatDetector
 import org.jetbrains.skia.Bitmap as SkiaBitmap
+import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Codec
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorInfo
@@ -17,6 +18,9 @@ import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Data
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Font
+import org.jetbrains.skia.FontMgr
+import org.jetbrains.skia.FontStyle
 import org.jetbrains.skia.IRect
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Paint
@@ -563,6 +567,7 @@ actual object ImageUtils {
         val canvas = surface.canvas
         canvas.scale(targetW.toFloat() / naturalW, targetH.toFloat() / naturalH)
         dom.render(canvas)
+        drawSvgText(canvas, svgBytes.decodeToString(), naturalW.toFloat(), naturalH.toFloat())
 
         val rendered = surface.makeImageSnapshot()
         val encoded = rendered.encodeToData(encodedFormatFor(outputFormat), quality)
@@ -585,4 +590,95 @@ private fun parseSvgDimensions(svgBytes: ByteArray): Pair<Int, Int>? {
     val w = Regex("""width\s*=\s*["']?(\d+)(?:px)?""").find(text)?.groupValues?.get(1)?.toIntOrNull()
     val h = Regex("""height\s*=\s*["']?(\d+)(?:px)?""").find(text)?.groupValues?.get(1)?.toIntOrNull()
     return if (w != null && h != null) w to h else null
+}
+
+private val svgTextRegex = Regex("""<text\b([^>]*?)(?:/>|>(.*?)</text>)""", RegexOption.DOT_MATCHES_ALL)
+private val svgTagRegex = Regex("""<[^>]*>""")
+private val svgRootRegex = Regex("""<svg\b[^>]*>""")
+private val whitespaceRegex = Regex("""\s+""")
+private val viewBoxSeparatorRegex = Regex("""[\s,]+""")
+
+private fun svgAttr(attrs: String, name: String): String? =
+    Regex("""(?<![\w-])$name\s*=\s*["']([^"']*)["']""").find(attrs)?.groupValues?.get(1)
+
+private fun parseSvgColor(value: String?): Int {
+    val v = value?.trim()?.lowercase() ?: return 0xFF000000.toInt()
+    if (v.startsWith("#")) {
+        val hex = v.drop(1).let { h -> if (h.length == 3) h.map { "$it$it" }.joinToString("") else h }
+        hex.toLongOrNull(16)?.takeIf { hex.length == 6 }?.let { return (0xFF000000 or it).toInt() }
+    }
+    return if (v == "white") 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
+}
+
+// skiko's SVGDOM has no FontMgr hook, so Skia's SVG module drops <text>; draw simple ones ourselves.
+private fun drawSvgText(canvas: Canvas, svg: String, containerW: Float, containerH: Float) {
+    val root = svgRootRegex.find(svg)?.value
+    val viewBox = root?.let(::svgViewBox)
+    canvas.save()
+    if (root != null && viewBox != null) {
+        val (vx, vy, vw, vh) = viewBox
+        val par = svgAttr(root, "preserveAspectRatio")?.trim()?.split(whitespaceRegex)
+            ?.filter { it != "defer" }.orEmpty()
+        val align = par.firstOrNull() ?: "xMidYMid"
+        if (align == "none") {
+            val sx = containerW / vw
+            val sy = containerH / vh
+            canvas.translate(-vx * sx, -vy * sy)
+            canvas.scale(sx, sy)
+        } else {
+            val s = if (par.getOrNull(1) == "slice") maxOf(containerW / vw, containerH / vh)
+            else minOf(containerW / vw, containerH / vh)
+            val fx = if (align.startsWith("xMin")) 0f else if (align.startsWith("xMax")) 1f else 0.5f
+            val fy = if (align.endsWith("YMin")) 0f else if (align.endsWith("YMax")) 1f else 0.5f
+            canvas.translate((containerW - vw * s) * fx - vx * s, (containerH - vh * s) * fy - vy * s)
+            canvas.scale(s, s)
+        }
+    }
+    try {
+        drawSvgTextRuns(canvas, svg)
+    } finally {
+        canvas.restore()
+    }
+}
+
+private fun svgViewBox(root: String): List<Float>? {
+    val nums = svgAttr(root, "viewBox")?.trim()?.split(viewBoxSeparatorRegex)?.mapNotNull { it.toFloatOrNull() }
+    return nums?.takeIf { it.size == 4 && it[2] > 0f && it[3] > 0f }
+}
+
+private fun drawSvgTextRuns(canvas: Canvas, svg: String) {
+    val mgr = FontMgr.default
+    for (match in svgTextRegex.findAll(svg)) {
+        val attrs = match.groupValues[1]
+        val text = match.groupValues[2].replace(svgTagRegex, "").trim()
+            .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&amp;", "&")
+        val fill = svgAttr(attrs, "fill")?.trim()?.lowercase()
+        if (text.isEmpty() || fill == "none" || fill == "transparent") continue
+        val size = svgAttr(attrs, "font-size")?.removeSuffix("px")?.toFloatOrNull() ?: 16f
+        val bold = svgAttr(attrs, "font-weight")?.let { it == "bold" || (it.toIntOrNull() ?: 400) >= 600 } == true
+        val style = if (bold) FontStyle.BOLD else FontStyle.NORMAL
+        val typeface = mgr.matchFamilyStyle(null, style)
+            ?: if (mgr.familiesCount > 0) mgr.matchFamilyStyle(mgr.getFamilyName(0), style) else null
+        val font = Font(typeface, size)
+        // measureTextWidth returns a wrong width for multi-glyph strings on wasm; summing glyph advances is right everywhere
+        val width = font.getWidths(font.getStringGlyphs(text)).sum()
+        var x = svgAttr(attrs, "x")?.toFloatOrNull() ?: 0f
+        when (svgAttr(attrs, "text-anchor")) {
+            "middle" -> x -= width / 2
+            "end" -> x -= width
+        }
+        var y = svgAttr(attrs, "y")?.toFloatOrNull() ?: 0f
+        when (svgAttr(attrs, "dominant-baseline")) {
+            "central", "middle" -> y += size * 0.35f
+        }
+        val paint = Paint()
+        try {
+            paint.color = parseSvgColor(fill)
+            paint.isAntiAlias = true
+            canvas.drawString(text, x, y, font, paint)
+        } finally {
+            paint.close()
+            font.close()
+        }
+    }
 }

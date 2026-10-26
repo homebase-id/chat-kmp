@@ -9,7 +9,6 @@ import id.homebase.core.feed.newInMemoryJdbcDriver
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.vault.VaultPreferences
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -19,7 +18,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class BottomBarDefaultsTest {
     private fun TestScope.db(): DatabaseManager {
         val driver = newInMemoryJdbcDriver()

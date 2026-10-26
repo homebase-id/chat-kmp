@@ -1,13 +1,20 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.unit.dp
+import kotlin.test.assertTrue
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.semantics.getOrNull
 import kotlin.test.Test
 
 /**
@@ -200,6 +207,41 @@ class RichTextRenderingTest {
     }
 
     @Test
+    fun wideTableScrollsInsideBoundedBubble() = runComposeUiTest {
+        val cols = (1..6).map { "Column$it" }
+        val cell = "wide cell text that is long"
+        val body = "| ${cols.joinToString(" | ")} |\n| ${cols.joinToString(" | ") { "---" }} |\n" +
+            "| ${cols.joinToString(" | ") { cell }} |"
+        setContent {
+            Box(Modifier.width(300.dp)) {
+                Box(Modifier.testTag("md")) { ChatMarkdown(content = body) }
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("Column6", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("Column6", substring = true).assertExists()
+        val scrollers = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
+        assertTrue(scrollers.fetchSemanticsNodes().isNotEmpty())
+        val bounds = onNodeWithTag("md").getBoundsInRoot()
+        val widthPx = bounds.right - bounds.left
+        assertTrue(widthPx <= 300.dp, "table root width $widthPx exceeds 300.dp")
+    }
+
+    @Test
+    fun narrowTableStillRenders() = runComposeUiTest {
+        setContent {
+            Box(Modifier.width(300.dp)) {
+                ChatMarkdown(content = "| A | B |\n| --- | --- |\n| one | two |")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("two", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("one", substring = true).assertExists()
+    }
+
+    @Test
     fun chatMarkdownRendersInlineAnnotatorSurface() = runComposeUiTest {
         setContent {
             Box(Modifier.testTag("md")) {
@@ -210,5 +252,74 @@ class RichTextRenderingTest {
         // the test would error out before reaching idle.
         waitForIdle()
         onNodeWithTag("md").assertExists()
+    }
+
+    private fun androidx.compose.ui.test.SemanticsNodeInteractionsProvider.imageNodeCount() =
+        onAllNodes(
+            androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(
+                androidx.compose.ui.semantics.SemanticsProperties.ContentDescription,
+            ),
+        ).fetchSemanticsNodes().size
+
+    private fun androidx.compose.ui.test.SemanticsNodeInteraction.hasLinkAnnotation(): Boolean {
+        val text = fetchSemanticsNode().config
+            .getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+            ?: return false
+        return text.any { it.getLinkAnnotations(0, it.length).isNotEmpty() }
+    }
+
+    @Test
+    fun blockImageRendersAsLinkNotImage() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "# Title\n\n![cat](https://example.test/cat.png)")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("cat").fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("cat").hasLinkAnnotation())
+        kotlin.test.assertEquals(0, imageNodeCount())
+    }
+
+    @Test
+    fun inlineImageWithoutAltShowsUrlAsLink() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "![](https://example.test/x.png)")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("https://example.test/x.png").fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("https://example.test/x.png").hasLinkAnnotation())
+        kotlin.test.assertEquals(0, imageNodeCount())
+    }
+
+    @Test
+    fun imageInsideListItemRendersAsLink() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "- ![dog](https://example.test/dog.png)\n- plain")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("dog", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("dog", substring = true).hasLinkAnnotation())
+        kotlin.test.assertEquals(0, imageNodeCount())
+    }
+
+    @Test
+    fun imageLinkUnescapesAltText() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("md")) {
+                ChatMarkdown(content = "![snake\\_case](https://example.test/a.png)")
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("snake_case").fetchSemanticsNodes().isNotEmpty()
+        }
+        kotlin.test.assertTrue(onNodeWithText("snake_case").hasLinkAnnotation())
     }
 }

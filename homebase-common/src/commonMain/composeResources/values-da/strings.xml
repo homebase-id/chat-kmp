@@ -975,6 +975,7 @@
     <string name="chat_markdown_blockquote">Citat</string>
     <string name="chat_markdown_inline_code">Indlejret kode</string>
     <string name="chat_markdown_code_block">Kodeblok</string>
+    <string name="chat_markdown_task_list">Opgaveliste</string>
     <string name="chat_markdown_link">Indsæt link</string>
     <string name="chat_markdown_nested_list">Indryk liste</string>
     <string name="chat_markdown_link_dialog_title">Indsæt link</string>
@@ -982,6 +983,9 @@
     <string name="chat_markdown_link_dialog_url">URL</string>
     <string name="chat_markdown_link_dialog_insert">Indsæt</string>
     <string name="chat_markdown_link_dialog_cancel">Annullér</string>
+    <string name="chat_markdown_link_dialog_edit_title">Rediger link</string>
+    <string name="chat_markdown_link_dialog_save">Gem</string>
+    <string name="chat_markdown_link_dialog_remove">Fjern link</string>
 
     <string name="chat_reactions_title">Reaktioner</string>
     <string name="chat_reactions_all">Alle</string>
@@ -2025,4 +2029,7 @@
     <string name="vault_saved">Gemt i Vault</string>
     <string name="vault_save_failed">Kunne ikke gemme i Vault</string>
     <string name="vault_chat_image_name">Chatbillede, %1$s</string>
+    <string name="call_beta_label">Beta</string>
+    <string name="call_report_problem">Rapportér et problem</string>
+    <string name="call_report_unavailable">Ingen log fundet for dette opkald</string>
 </resources>

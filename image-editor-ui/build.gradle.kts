@@ -17,6 +17,10 @@ compose.resources {
 kotlin {
     applyDefaultHierarchyTemplate()
 
+    sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+        languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
+
     android {
         namespace = "id.homebase.imageeditor.ui"
         compileSdk = libs.versions.android.targetSdk.get().toInt()

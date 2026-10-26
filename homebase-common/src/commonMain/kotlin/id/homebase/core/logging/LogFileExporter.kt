@@ -29,4 +29,11 @@ object LogFileExporter {
     fun getAllLogFiles(logDirectory: Path): List<Path> {
         return listHomebaseLogFiles(logDirectory).sortedByDescending { it.name }
     }
+
+    /** Hands [select] the lines of each log file, readable only inside it, and writes what it returns to [exportName] beside them; null when there is nothing to write. */
+    fun exportSelection(logDirectory: Path, exportName: String, select: (List<Sequence<String>>) -> String?): Path? {
+        val text = useHomebaseLogLines(logDirectory, select) ?: return null
+        val file = Path(logDirectory, exportName)
+        return file.takeIf { writeLogExport(it, text) }
+    }
 }

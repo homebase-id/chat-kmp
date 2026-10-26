@@ -5,7 +5,6 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.sticker.SavedSticker
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -27,7 +26,6 @@ import kotlin.uuid.Uuid
  * eagerly up to its first real suspension — making the in-flight window deterministic
  * without manual scheduler advancement.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class StickerSendGuardTest {
 
     private fun savedSticker(uniqueId: Uuid = Uuid.random()) = SavedSticker(
