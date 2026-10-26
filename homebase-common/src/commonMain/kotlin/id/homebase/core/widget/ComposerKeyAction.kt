@@ -107,7 +107,7 @@ private fun KeyEvent.pasteClipboardImage(
     clipboardImage: () -> ByteArray?,
     onPasteImage: (ByteArray) -> Unit,
 ): Boolean {
-    if (type != KeyEventType.KeyDown || key != Key.V || !(isCtrlPressed || isMetaPressed)) return false
+    if (!isPasteChord()) return false
     val imageBytes = clipboardImage() ?: return false
     onPasteImage(imageBytes)
     return true
@@ -117,9 +117,13 @@ private fun KeyEvent.pasteTextOverSelection(
     clipboardText: () -> String?,
     onPasteOverSelection: (() -> String?) -> Boolean,
 ): Boolean {
-    if (type != KeyEventType.KeyDown || key != Key.V || !(isCtrlPressed || isMetaPressed)) return false
+    if (!isPasteChord()) return false
     return onPasteOverSelection(clipboardText)
 }
+
+// AltGr+V types "@" on a Hungarian layout.
+private fun KeyEvent.isPasteChord(): Boolean =
+    type == KeyEventType.KeyDown && key == Key.V && (isCtrlPressed || isMetaPressed) && !isAltPressed
 
 enum class ComposerKeyAction {
     Send,
@@ -198,7 +202,8 @@ internal fun composerKeyAction(
         return if (editsLast) ComposerKeyAction.EditLast else ComposerKeyAction.Ignore
     }
     if (chord.isK) {
-        return if (chord.isCtrlOrCmdPressed && !chord.isShiftPressed) ComposerKeyAction.Link else ComposerKeyAction.Ignore
+        val isLinkChord = chord.isCtrlOrCmdPressed && !chord.isShiftPressed && !chord.isAltPressed
+        return if (isLinkChord) ComposerKeyAction.Link else ComposerKeyAction.Ignore
     }
     if (!chord.isEnter) return ComposerKeyAction.Ignore
     if (chord.isCtrlOrCmdPressed) return ComposerKeyAction.Send

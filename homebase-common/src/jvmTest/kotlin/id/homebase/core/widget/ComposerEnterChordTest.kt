@@ -142,6 +142,7 @@ class ComposerEnterChordTest {
         ctrlOrCmd: Boolean = true,
         shift: Boolean = false,
         keyDown: Boolean = true,
+        k: Boolean = false,
         b: Boolean = false,
         i: Boolean = false,
         e: Boolean = false,
@@ -157,6 +158,7 @@ class ComposerEnterChordTest {
         isKeyDown = keyDown,
         isShiftPressed = shift,
         isCtrlOrCmdPressed = ctrlOrCmd,
+        isK = k,
         isB = b,
         isI = i,
         isE = e,
@@ -195,6 +197,8 @@ class ComposerEnterChordTest {
         assertEquals(ComposerKeyAction.Ignore, action(key(e = true, alt = true)))
         assertEquals(ComposerKeyAction.Ignore, action(key(x = true, shift = true, alt = true)))
         assertEquals(ComposerKeyAction.Ignore, action(key(b = true, alt = true)))
+        assertEquals(ComposerKeyAction.Link, action(key(k = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(key(k = true, alt = true)))
     }
 
     @Test
