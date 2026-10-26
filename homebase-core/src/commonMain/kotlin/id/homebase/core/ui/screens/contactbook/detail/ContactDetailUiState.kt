@@ -164,6 +164,7 @@ data class UnreviewState(
 sealed interface ContactDetailAction {
     data object MessageClicked : ContactDetailAction
     data object SyncClicked : ContactDetailAction
+    data object RebuildConversationClicked : ContactDetailAction
     data object EditClicked : ContactDetailAction
     data class SaveContact(
         val draft: ContactDraft,
@@ -241,6 +242,10 @@ sealed interface ContactDetailEvent {
     data object NotBlocked : ContactDetailEvent
     /** Best-effort profile sync was requested; the enriched contact lands later via drive sync. */
     data object SyncStarted : ContactDetailEvent
+    data object ConversationRebuilt : ContactDetailEvent
+    data object ConversationRebuildNotNeeded : ContactDetailEvent
+    data object ConversationRebuildQueued : ContactDetailEvent
+    data object ConversationRebuildFailed : ContactDetailEvent
     /** Connection-request action confirmations. */
     data object RequestAccepted : ContactDetailEvent
     data object RequestRejected : ContactDetailEvent

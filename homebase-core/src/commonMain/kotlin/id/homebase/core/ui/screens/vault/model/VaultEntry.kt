@@ -15,7 +15,6 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -138,9 +137,7 @@ fun VaultEntry.imageDataFor(
     previewThumbnail: EmbeddedThumb? = null,
     requestedSize: ImageSize? = null,
 ): HomebaseImageData? {
-    val ivBytes = descriptor.iv?.let {
-        try { Base64.decode(it) } catch (_: Exception) { null }
-    } ?: return null
+    val ivBytes = descriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

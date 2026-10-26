@@ -1,9 +1,10 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -28,7 +29,7 @@ import kotlin.uuid.Uuid
 class SlowDbReadTimingSplitTest {
 
     private fun newDbm(): DatabaseManager {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val driver = createRawInMemoryDriver()
         return DatabaseManager({ driver })
     }
 
@@ -56,7 +57,8 @@ class SlowDbReadTimingSplitTest {
                     // `next()` calls that the TimingCursor classifies as
                     // mapper time rather than SQL. Production mappers (e.g.
                     // QueryBatch) do JSON deserialization here.
-                    Thread.sleep(sleepPerRowMs)
+                    val end = TimeSource.Monotonic.markNow() + sleepPerRowMs.milliseconds
+                    while (end.hasNotPassedNow()) Unit
                 }
                 QueryResult.Value(Unit)
             },

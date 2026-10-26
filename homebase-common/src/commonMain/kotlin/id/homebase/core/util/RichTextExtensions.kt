@@ -56,14 +56,34 @@ fun RichTextState.programmaticBackspace() {
  *
  * This drops standalone `<br>` lines and the leading/trailing blank lines they leave behind, while
  * preserving real text and intentional paragraph breaks (an intended blank line between paragraphs
- * serialises as plain `\n\n`, never `<br>`, so it survives untouched).
+ * serialises as plain `\n\n`, never `<br>`, so it survives untouched). Lines inside a fenced code
+ * block are literal content and are never dropped.
  */
 fun String.stripComposerLineBreakArtifacts(): String =
     lines()
-        .filterNot { it.trim() == "<br>" }
+        .filterInFence { it.trim() != "<br>" }
         .dropWhile { it.isBlank() }
         .dropLastWhile { it.isBlank() }
         .joinToString("\n")
+
+private fun List<String>.filterInFence(keep: (String) -> Boolean): List<String> {
+    var fence: String? = null
+    return filter { line ->
+        val marker = line.trimStart().let { t ->
+            when {
+                t.startsWith("```") -> "```"
+                t.startsWith("~~~") -> "~~~"
+                else -> null
+            }
+        }
+        when {
+            fence == null && marker != null -> { fence = marker; true }
+            fence != null && marker == fence -> { fence = null; true }
+            fence != null -> true
+            else -> keep(line)
+        }
+    }
+}
 
 /**
  * The composer's markdown body as it should be sent: [RichTextState.toMarkdown] with richeditor's

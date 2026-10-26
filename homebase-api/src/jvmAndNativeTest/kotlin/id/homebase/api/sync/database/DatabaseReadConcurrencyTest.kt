@@ -1,19 +1,20 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 /**
@@ -21,20 +22,21 @@ import kotlin.uuid.Uuid
  * new "reads run off-writer" model doesn't crash SQLite / the driver.
  *
  * Both tests use real dispatchers + real threads (not `runTest` virtual time)
- * against the existing single in-memory [JdbcSqliteDriver] — the same single-driver
- * substrate production uses. The in-memory JDBC URL maps to SQLDelight's
- * `StaticConnectionManager` (one shared connection), so reads here serialize at the
+ * against the single in-memory driver — the same single-driver
+ * substrate production uses. A shared in-memory connection means
+ * reads here serialize at the
  * driver lock rather than running truly concurrently — that's fine: this exercises
  * the *coroutine-level* decoupling and the safety of concurrent access to the one
  * driver. The mobile concurrency win (iOS reader pool / Android WAL pool) is
  * validated on-device, not here.
  */
+@OptIn(ExperimentalAtomicApi::class)
 class DatabaseReadConcurrencyTest {
 
     private fun newDbm(): DatabaseManager {
         // DatabaseManager.init creates the schema (CREATE TABLE IF NOT EXISTS) and
         // audits pragmas, so the driver needs no pre-setup.
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val driver = createRawInMemoryDriver()
         return DatabaseManager({ driver })
     }
 
@@ -59,26 +61,27 @@ class DatabaseReadConcurrencyTest {
     fun readDoesNotQueueBehindHeldWriteDispatcher() = runBlocking {
         val dbm = newDbm()
 
-        val writeStarted = CountDownLatch(1)
-        val releaseWrite = CountDownLatch(1)
+        val writeStarted = CompletableDeferred<Unit>()
+        val releaseWrite = AtomicBoolean(false)
 
         // Occupy the single write dispatcher slot. The block is non-suspend, so we
         // block the writer thread synchronously — what a long write would do to the
         // slot. No SQL runs inside, so the shared connection itself stays free.
         val writeJob = launch(Dispatchers.Default) {
             dbm.withWrite {
-                writeStarted.countDown()
-                releaseWrite.await()
+                writeStarted.complete(Unit)
+                val deadline = TimeSource.Monotonic.markNow() + 10.seconds
+                while (!releaseWrite.load() && deadline.hasNotPassedNow()) Unit
             }
         }
-        assertTrue(writeStarted.await(5, TimeUnit.SECONDS), "write never acquired the slot")
+        withTimeout(5.seconds) { writeStarted.await() }
 
         // Issue a read while the writer slot is held; it must return before release.
         val count = withTimeout(5.seconds) { keyValueCount(dbm) }
         assertEquals(0L, count)
 
-        assertEquals(
-            1L, releaseWrite.count,
+        assertTrue(
+            !releaseWrite.load(),
             "read only completed after the write was released — it queued behind the writer",
         )
 
@@ -89,7 +92,7 @@ class DatabaseReadConcurrencyTest {
             "read queued behind the write dispatcher: queueWait=${timing.queueWaitMs}ms",
         )
 
-        releaseWrite.countDown()
+        releaseWrite.store(true)
         writeJob.join()
     }
 
