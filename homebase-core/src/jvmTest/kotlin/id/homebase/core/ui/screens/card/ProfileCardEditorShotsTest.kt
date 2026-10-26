@@ -513,7 +513,7 @@ class ProfileCardEditorShotsTest {
                             onSave = {},
                             snackbarHostState = remember { SnackbarHostState() },
                             // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
-                            onContentToggle = { _, _ ->
+                            onContentAudience = { _, _ ->
                                 uiState = when {
                                     shot.completesToggle -> uiState.copy(contentSaves = uiState.contentSaves + 1)
                                     shot.failsToggle -> uiState.copy(contentFailures = uiState.contentFailures + 1)
