@@ -70,6 +70,7 @@ class NotificationService: UNNotificationServiceExtension {
 
         let unEncryptedMessage = options["unEncryptedMessage"] as? String
         let appDisplayName = payload["appDisplayName"] as? String ?? "Homebase"
+        let encryptedPreview = payload["encryptedPreview"] as? String
 
         // Sequenced ahead of the avatar fetch rather than raced with it: the tray read is a
         // local call that returns in milliseconds, so nesting costs almost nothing of the
@@ -84,6 +85,7 @@ class NotificationService: UNNotificationServiceExtension {
                 appId: appId,
                 conversationId: typeId,
                 messageId: tagId,
+                encryptedPreview: encryptedPreview,
                 contentLevel: contentLevel
             ) { preview in
                 self.decorate(
@@ -102,12 +104,14 @@ class NotificationService: UNNotificationServiceExtension {
 
     // MARK: - Decrypted Content
 
-    /// Same contract as Android's in-app resolver: the message is fetched and decrypted here, on
-    /// the device, and any miss leaves the sender's placeholder in place.
+    /// Same contract as Android's in-app resolver: the message is decrypted here, on the device,
+    /// from the header sealed into the push or else fetched, and any miss leaves the sender's
+    /// placeholder in place.
     private func resolveChatPreview(
         appId: String,
         conversationId: String,
         messageId: String,
+        encryptedPreview: String?,
         contentLevel: String,
         completion: @escaping (String?) -> Void
     ) {
@@ -120,7 +124,8 @@ class NotificationService: UNNotificationServiceExtension {
         }
         NotificationPreviewBridge.shared.resolvePreview(
             conversationId: conversationId,
-            messageId: messageId
+            messageId: messageId,
+            encryptedPreview: encryptedPreview
         ) { preview, missReason in
             // Public: Kermit's default os_log writer redacts every line to <private>.
             if let missReason = missReason {

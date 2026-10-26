@@ -392,7 +392,12 @@ class NotificationService(
             "Registering token with server... ($friendlyName, voip=${voipToken != null})"
         }
         api.subscribe(
-            deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName, voipDeviceToken = voipToken
+            deviceToken = token,
+            devicePlatform = platformName,
+            friendlyName = friendlyName,
+            voipDeviceToken = voipToken,
+            // Only the iOS extension can't wait for the inbox to be processed before reading the message.
+            withPushPreviews = isIosDevice(),
         )
         Logger.i(tag = "NotificationService") { "Token registered successfully" }
     }
@@ -501,9 +506,7 @@ class NotificationService(
                 if (isAppInForeground) {
                     // Show in-app banner instead of system notification
                     _inAppNotificationEvents.tryEmit(richData)
-                } else if (Platform.osName.contains("iOS", ignoreCase = true) ||
-                    Platform.osName.contains("iPadOS", ignoreCase = true)
-                ) {
+                } else if (isIosDevice()) {
                     // iOS: the Notification Service Extension owns both the visible
                     // notification and the badge. It runs for every mutable-content push
                     // whether or not this process is alive, so counting here double-counts.
@@ -1033,3 +1036,6 @@ fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
     val summaryId = SUMMARY_ID_OFFSET + maskedHash
     return messageId to summaryId
 }
+
+private fun isIosDevice(): Boolean =
+    Platform.osName.contains("iOS", ignoreCase = true) || Platform.osName.contains("iPadOS", ignoreCase = true)

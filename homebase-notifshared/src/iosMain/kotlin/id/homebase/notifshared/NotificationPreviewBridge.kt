@@ -24,17 +24,19 @@ object NotificationPreviewBridge {
      * Calls [completion] exactly once, on a background thread, with the decrypted text of
      * [messageId] — or a null text and the reason it was not shown: no shared credentials, not
      * plain text, or not fetched within [RESOLVE_TIMEOUT]. The reason never carries content.
+     * [encryptedPreview] is the push payload's `encryptedPreview`, read before any fetch.
      */
     fun resolvePreview(
         conversationId: String,
         messageId: String,
+        encryptedPreview: String?,
         completion: (text: String?, missReason: String?) -> Unit,
     ) {
         val credentials = NotificationExtensionStore.readCredentials()
             ?: return completion(null, "no shared credentials")
         scope.launch {
             val preview = withTimeoutOrNull(RESOLVE_TIMEOUT) {
-                fetchChatNotificationPreview(credentials, conversationId, messageId)
+                fetchChatNotificationPreview(credentials, conversationId, messageId, encryptedPreview)
             }
             if (preview == null) completion(null, "timed out after $RESOLVE_TIMEOUT")
             else completion(preview.text, preview.missReason)
