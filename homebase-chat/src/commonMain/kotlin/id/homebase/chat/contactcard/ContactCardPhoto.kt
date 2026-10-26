@@ -6,7 +6,6 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -27,7 +26,7 @@ internal fun contactCardPhotoData(
     previewThumbnail: EmbeddedThumb?,
 ): HomebaseImageData? {
     val payload = contactCardPhotoPayload(payloads) ?: return null
-    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    val iv = payload.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,
