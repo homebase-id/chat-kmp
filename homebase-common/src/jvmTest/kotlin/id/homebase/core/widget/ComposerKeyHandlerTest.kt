@@ -86,4 +86,43 @@ class ComposerKeyHandlerTest {
         assertTrue(handle(action = ComposerKeyAction.Ignore, imagePasted = true))
         assertEquals(listOf("autocomplete", "paste"), calls)
     }
+
+    @Test
+    fun `ctrl and meta K map to link and plain K to nothing`() {
+        fun chord(ctrlOrCmd: Boolean, shift: Boolean = false) = ComposerKeyChord(
+            isEnter = false,
+            isArrowUp = false,
+            isKeyDown = true,
+            isShiftPressed = shift,
+            isCtrlOrCmdPressed = ctrlOrCmd,
+            isK = true,
+        )
+        fun action(c: ComposerKeyChord) = composerKeyAction(
+            chord = c,
+            enterSendsMessage = true,
+            handlesHardwareKeys = true,
+            arrowUpEditsLastMessage = false,
+            isComposerEmpty = { true },
+        )
+        assertEquals(ComposerKeyAction.Link, action(chord(ctrlOrCmd = true)))
+        assertEquals(ComposerKeyAction.Ignore, action(chord(ctrlOrCmd = false)))
+    }
+
+    @Test
+    fun `link claims the key and opens the dialog`() {
+        var opened = 0
+        assertTrue(
+            handleComposerKey(
+                isImeComposing = false,
+                claimedByAutocomplete = { false },
+                action = ComposerKeyAction.Link,
+                onSend = {},
+                onNewline = null,
+                onEditLast = null,
+                onLink = { opened++ },
+                pasteImage = { false },
+            )
+        )
+        assertEquals(1, opened)
+    }
 }

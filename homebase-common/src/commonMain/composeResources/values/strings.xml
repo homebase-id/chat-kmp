@@ -1121,6 +1121,9 @@
     <string name="chat_markdown_link_dialog_url">URL</string>
     <string name="chat_markdown_link_dialog_insert">Insert</string>
     <string name="chat_markdown_link_dialog_cancel">Cancel</string>
+    <string name="chat_markdown_link_dialog_edit_title">Edit link</string>
+    <string name="chat_markdown_link_dialog_save">Save</string>
+    <string name="chat_markdown_link_dialog_remove">Remove link</string>
 
     <string name="chat_reactions_title">Reactions</string>
     <string name="chat_reactions_all">All</string>

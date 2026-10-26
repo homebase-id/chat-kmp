@@ -142,3 +142,38 @@ private fun getCodePointAt(text: String, index: Int): Int {
 private fun isEmojiModifier(cp: Int): Boolean = cp in 0x1F3FB..0x1F3FF
 private fun isZWJ(cp: Int): Boolean = cp == 0x200D
 private fun isVariationSelector(cp: Int): Boolean = cp in 0xFE00..0xFE0F
+
+val URL_REGEX = Regex(
+    "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
+)
+
+data class LinkAtSelection(val text: String, val url: String)
+
+fun RichTextState.linkAtSelection(): LinkAtSelection? {
+    if (!isLink && !selectionTouchesLinkEnd()) return null
+    val url = selectedLinkUrl ?: return null
+    return LinkAtSelection(text = selectedLinkText.orEmpty(), url = url)
+}
+
+// rc14 reports no link for a caret sitting just past a span's last character, so probe the character before it.
+private fun RichTextState.selectionTouchesLinkEnd(): Boolean {
+    val caret = selection
+    if (!caret.collapsed || caret.start == 0) return false
+    selection = TextRange(caret.start - 1, caret.start)
+    val inLink = isLink
+    if (!inLink) selection = caret
+    return inLink
+}
+
+fun RichTextState.selectedPlainText(): String =
+    annotatedString.text.substring(selection.min, selection.max)
+
+fun RichTextState.pasteUrlOverSelection(clipboardText: String?): Boolean {
+    if (selection.collapsed) return false
+    val url = clipboardText?.trim()?.takeIf { URL_REGEX.matchEntire(it) != null } ?: return false
+    val label = selectedPlainText()
+    if (label.isBlank()) return false
+    removeSelectedText()
+    addLink(text = label, url = url)
+    return true
+}

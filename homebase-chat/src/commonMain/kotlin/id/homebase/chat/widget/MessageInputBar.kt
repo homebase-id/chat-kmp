@@ -97,7 +97,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -159,6 +162,13 @@ import id.homebase.resources.chat_markdown_heading
 import id.homebase.resources.chat_markdown_inline_code
 import id.homebase.resources.chat_markdown_link
 import id.homebase.resources.chat_markdown_link_dialog_cancel
+import id.homebase.resources.chat_markdown_link_dialog_edit_title
+import id.homebase.resources.chat_markdown_link_dialog_remove
+import id.homebase.resources.chat_markdown_link_dialog_save
+import id.homebase.core.util.URL_REGEX
+import id.homebase.core.util.linkAtSelection
+import id.homebase.core.util.pasteUrlOverSelection
+import id.homebase.core.util.selectedPlainText
 import id.homebase.resources.chat_markdown_link_dialog_insert
 import id.homebase.resources.chat_markdown_link_dialog_text
 import id.homebase.resources.chat_markdown_link_dialog_title
@@ -194,10 +204,6 @@ private fun isComposerEmpty(state: RichTextState, payloadRenderers: List<Payload
     state.annotatedString.isEmpty() && payloadRenderers.isEmpty()
 
 private enum class StandaloneFabAction { Confirm, Send, Attach }
-
-private val URL_REGEX = Regex(
-    "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
-)
 
 @Composable
 fun MessageInputBar(
@@ -418,6 +424,8 @@ fun MessageTextFieldExpanded(
     onCancelEdit: () -> Unit,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
+    val linkDialog = remember { LinkDialogState() }
+    val clipboardText = rememberClipboardText()
     val arrowUpEditsLastMessage = rememberArrowUpEditsLastMessage()
     var isFieldFocused by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
@@ -437,6 +445,7 @@ fun MessageTextFieldExpanded(
                 modifier = Modifier.weight(1f),
                 state = state,
                 enabled = true,
+                linkDialog = linkDialog,
             )
             if (onToggleExpand != null) {
                 ComposerExpandToggle(expanded = true, onToggle = onToggleExpand)
@@ -480,6 +489,9 @@ fun MessageTextFieldExpanded(
                             }
                         }
                         .composerKeyHandler(
+                            onLink = linkDialog::open,
+                            onPasteOverSelection = state::pasteUrlOverSelection,
+                            clipboardText = clipboardText,
                             autocomplete = autocomplete,
                             enterSendsMessage = enterSendsMessage,
                             onSend = sendMessage,
@@ -627,6 +639,8 @@ fun MessageTextFieldCompact(
     var dragOffset by remember { mutableStateOf(0f) }
     val haptics = rememberHaptics()
     val enterSendsMessage = rememberEnterSendsMessage()
+    val linkDialog = remember { LinkDialogState() }
+    val clipboardText = rememberClipboardText()
     val arrowUpEditsLastMessage = rememberArrowUpEditsLastMessage()
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
@@ -723,6 +737,7 @@ fun MessageTextFieldCompact(
                             modifier = Modifier.weight(1f),
                             state = state,
                             enabled = isKeyboardFocused,
+                            linkDialog = linkDialog,
                         )
                         if (onToggleExpand != null) {
                             ComposerExpandToggle(expanded = false, onToggle = onToggleExpand)
@@ -788,6 +803,9 @@ fun MessageTextFieldCompact(
                                             }
                                         }
                                         .composerKeyHandler(
+                                            onLink = linkDialog::open,
+                                            onPasteOverSelection = state::pasteUrlOverSelection,
+                                            clipboardText = clipboardText,
                                             autocomplete = autocomplete,
                                             enterSendsMessage = enterSendsMessage,
                                             onSend = onSendMessage,
@@ -1317,6 +1335,8 @@ fun MessageTextFieldForAttachment(
     viewOnceToggle: ViewOnceToggle? = null,
 ) {
     val enterSendsMessage = rememberEnterSendsMessage()
+    val linkDialog = remember { LinkDialogState() }
+    val clipboardText = rememberClipboardText()
     var hasSent by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
     val isKeyboardVisible by keyboardAsState()
@@ -1366,6 +1386,7 @@ fun MessageTextFieldForAttachment(
                 modifier = Modifier.fillMaxWidth().testTag("attachment_formatting_toolbar"),
                 state = state,
                 enabled = true,
+                linkDialog = linkDialog,
             )
         }
         Row(
@@ -1381,6 +1402,9 @@ fun MessageTextFieldForAttachment(
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false, forKeyboard = true) }
                         .composerKeyHandler(
+                            onLink = linkDialog::open,
+                            onPasteOverSelection = state::pasteUrlOverSelection,
+                            clipboardText = clipboardText,
                             autocomplete = autocomplete,
                             enterSendsMessage = enterSendsMessage,
                             onSend = {
@@ -1506,12 +1530,20 @@ private fun ComposerExpandToggle(expanded: Boolean, onToggle: () -> Unit) {
     }
 }
 
+@Suppress("DEPRECATION")
+@Composable
+private fun rememberClipboardText(): () -> String? {
+    val manager = LocalClipboardManager.current
+    return remember(manager) { { manager.getText()?.text } }
+}
+
 @OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun RichTextEditorButtons(
     modifier: Modifier = Modifier,
     state: RichTextState,
     enabled: Boolean,
+    linkDialog: LinkDialogState = remember { LinkDialogState() },
 ) {
     // Localized a11y labels for the new authoring affordances. Resolved here
     // (outside the LazyRow item lambdas) so the Konsist no-literal-Text gate is
@@ -1523,7 +1555,6 @@ fun RichTextEditorButtons(
     val linkLabel = stringResource(MR.string.chat_markdown_link)
     val nestedListLabel = stringResource(MR.string.chat_markdown_nested_list)
 
-    var showLinkDialog by remember { mutableStateOf(false) }
     val dividerColor = MaterialTheme.colorScheme.outlineVariant
 
     LazyRow(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
@@ -1589,7 +1620,7 @@ fun RichTextEditorButtons(
         // Insert a link via dialog (text + URL).
         item {
             RichTextStyleButton(
-                onClick = { showLinkDialog = true },
+                onClick = linkDialog::open,
                 enabled = enabled,
                 isSelected = state.isLink,
                 icon = Icons.Outlined.AddLink,
@@ -1679,19 +1710,44 @@ fun RichTextEditorButtons(
         }
     }
 
-    if (showLinkDialog) {
+    if (linkDialog.visible) {
+        val existing = remember(linkDialog.visible) { state.linkAtSelection() }
         MarkdownLinkDialog(
-            initialText = "",
-            onDismiss = { showLinkDialog = false },
+            initialText = existing?.text ?: state.selectedPlainText(),
+            initialUrl = existing?.url.orEmpty(),
+            isEdit = existing != null,
+            onDismiss = linkDialog::close,
             onConfirm = { text, url ->
-                if (text.isNotBlank() && url.isNotBlank()) {
+                if (existing != null) {
+                    if (url.isNotBlank()) state.updateLink(url)
+                } else if (text.isNotBlank() && url.isNotBlank()) {
                     state.addLink(text = text, url = url)
                 }
-                showLinkDialog = false
+                linkDialog.close()
+            },
+            onRemove = {
+                state.removeLink()
+                linkDialog.close()
             },
         )
     }
 }
+
+class LinkDialogState {
+    var visible by mutableStateOf(false)
+        private set
+
+    fun open() {
+        visible = true
+    }
+
+    fun close() {
+        visible = false
+    }
+}
+
+internal const val LINK_DIALOG_SAVE_TAG = "link_dialog_save"
+internal const val LINK_DIALOG_REMOVE_TAG = "link_dialog_remove"
 
 /**
  * Small dialog to insert a markdown link as `[text](url)`. The editor's
@@ -1702,14 +1758,25 @@ fun RichTextEditorButtons(
 @Composable
 private fun MarkdownLinkDialog(
     initialText: String,
+    initialUrl: String,
+    isEdit: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (text: String, url: String) -> Unit,
+    onRemove: () -> Unit,
 ) {
     var text by remember { mutableStateOf(initialText) }
-    var url by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf(initialUrl) }
+    val removeLabel = stringResource(MR.string.chat_markdown_link_dialog_remove)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.string.chat_markdown_link_dialog_title)) },
+        title = {
+            Text(
+                stringResource(
+                    if (isEdit) MR.string.chat_markdown_link_dialog_edit_title
+                    else MR.string.chat_markdown_link_dialog_title
+                )
+            )
+        },
         text = {
             Column {
                 OutlinedTextField(
@@ -1717,6 +1784,7 @@ private fun MarkdownLinkDialog(
                     onValueChange = { text = it },
                     label = { Text(stringResource(MR.string.chat_markdown_link_dialog_text)) },
                     singleLine = true,
+                    readOnly = isEdit,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
@@ -1730,13 +1798,31 @@ private fun MarkdownLinkDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text, url) }) {
-                Text(stringResource(MR.string.chat_markdown_link_dialog_insert))
+            TextButton(
+                onClick = { onConfirm(text, url) },
+                modifier = Modifier.testTag(LINK_DIALOG_SAVE_TAG),
+            ) {
+                Text(
+                    stringResource(
+                        if (isEdit) MR.string.chat_markdown_link_dialog_save
+                        else MR.string.chat_markdown_link_dialog_insert
+                    )
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(MR.string.chat_markdown_link_dialog_cancel))
+            Row {
+                if (isEdit) {
+                    TextButton(
+                        onClick = onRemove,
+                        modifier = Modifier.testTag(LINK_DIALOG_REMOVE_TAG).semantics { contentDescription = removeLabel },
+                    ) {
+                        Text(removeLabel)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(MR.string.chat_markdown_link_dialog_cancel))
+                }
             }
         },
     )

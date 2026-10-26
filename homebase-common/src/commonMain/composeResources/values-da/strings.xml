@@ -982,6 +982,9 @@
     <string name="chat_markdown_link_dialog_url">URL</string>
     <string name="chat_markdown_link_dialog_insert">Indsæt</string>
     <string name="chat_markdown_link_dialog_cancel">Annullér</string>
+    <string name="chat_markdown_link_dialog_edit_title">Rediger link</string>
+    <string name="chat_markdown_link_dialog_save">Gem</string>
+    <string name="chat_markdown_link_dialog_remove">Fjern link</string>
 
     <string name="chat_reactions_title">Reaktioner</string>
     <string name="chat_reactions_all">Alle</string>
