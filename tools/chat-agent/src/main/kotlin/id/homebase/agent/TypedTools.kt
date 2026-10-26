@@ -109,7 +109,7 @@ suspend fun toolSendDice(backend: AgentBackend, args: JsonObject?): ToolReply = 
 
 suspend fun toolSendGroodle(backend: AgentBackend, args: JsonObject?): ToolReply = guarded {
     val conversationId = sendTarget(backend, args)
-    val title = stringArg(args, "title")?.oneLine(GroodleDescriptor.MAX_TITLE_CODEPOINTS * 2) ?: return@guarded ToolReply("title is empty", true)
+    val title = stringArg(args, "title")?.oneLine(GroodleDescriptor.MAX_TITLE_CODEPOINTS) ?: return@guarded ToolReply("title is empty", true)
     val zone = stringArg(args, "timezone")?.let { runCatching { ZoneId.of(it) }.getOrNull() ?: throw IllegalArgumentException("unknown timezone '$it'") } ?: ZoneOffset.UTC
     val slots = listArg(args, "slots").map { raw ->
         val start = parseEventInstant(raw.substringBefore('/').trim(), zone)
@@ -468,7 +468,6 @@ fun typedTools(): List<ToolDef> = listOf(
             put("path", prop("string", "File inside the files directory"))
             put("caption", prop("string", "Optional text"))
             put("replyToId", prop("string", "Message id to quote"))
-            put("replyToId", prop("string", "Message id to quote"))
         },
         listOf("conversationId", "path"), stdio = false, write = true,
     ) { b, a -> toolSendVideo(b, a) },
@@ -478,6 +477,7 @@ fun typedTools(): List<ToolDef> = listOf(
             put("conversationId", CONVERSATION_PROP)
             put("path", prop("string", "File inside the files directory"))
             put("caption", prop("string", "Optional text"))
+            put("replyToId", prop("string", "Message id to quote"))
         },
         listOf("conversationId", "path"), stdio = false, write = true,
     ) { b, a -> toolSendVoice(b, a) },

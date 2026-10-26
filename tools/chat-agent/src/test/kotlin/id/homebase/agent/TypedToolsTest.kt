@@ -559,6 +559,18 @@ class TypedToolsTest {
     }
 
     @Test
+    fun castPollVoteSwitchesSingleChoiceAndSkipsRepeat() = runBlocking<Unit> {
+        val poll = PollDescriptor("Lunch?", listOf("Pizza", "Sushi"))
+        val switching = RecordingReactions(listOf("_p0"))
+        assertTrue(castPollVote(switching, poll, 1))
+        assertEquals(listOf("_p0"), switching.removed)
+        assertEquals(listOf("_p1"), switching.added)
+        val repeat = RecordingReactions(listOf("_p1"))
+        assertFalse(castPollVote(repeat, poll, 1))
+        assertTrue(repeat.added.isEmpty() && repeat.removed.isEmpty())
+    }
+
+    @Test
     fun mediaRepliesCarryTheQuotedPreview() = runBlocking<Unit> {
         val dir = Files.createTempDirectory("quag-reply").toFile()
         try {

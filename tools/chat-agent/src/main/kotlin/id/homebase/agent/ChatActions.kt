@@ -61,24 +61,36 @@ private suspend fun ownReactionCodes(provider: DriveFileGroupReactionProvider, f
     return codes
 }
 
-suspend fun voteOnPoll(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean {
-    allowlist.requireSend(conversationId)
+private suspend fun ownReactions(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg): OwnReactions {
     val fileId = fileIdOf(message)
     val provider = DriveFileGroupReactionProvider(session.http, session.credentials)
-    val count = poll.options.size
-    val own = PollVote.ownVotes(ownReactionCodes(provider, fileId, session.identity), count)
-    if (option in own && (poll.allowMultiple || own == setOf(option))) return false
-    val change = PollVote.change(option, own, count, poll.allowMultiple)
     val recipients = conversationRecipients(conversationFor(session, allowlist, conversationId), session.identity)
-    change.remove.filter { PollVote.optionOf(it) in own }.forEach { provider.deleteReaction(chatDrive, fileId, reactionJson(it), recipients) }
-    change.add.filter { PollVote.optionOf(it) !in own }.forEach { provider.addReaction(chatDrive, fileId, reactionJson(it), recipients) }
-    return true
+    return object : OwnReactions {
+        override suspend fun codes() = ownReactionCodes(provider, fileId, session.identity)
+        override suspend fun add(code: String) { provider.addReaction(chatDrive, fileId, reactionJson(code), recipients) }
+        override suspend fun remove(code: String) { provider.deleteReaction(chatDrive, fileId, reactionJson(code), recipients) }
+    }
 }
 
 interface OwnReactions {
     suspend fun codes(): List<String>
     suspend fun add(code: String)
     suspend fun remove(code: String)
+}
+
+suspend fun castPollVote(reactions: OwnReactions, poll: PollDescriptor, option: Int): Boolean {
+    val count = poll.options.size
+    val own = PollVote.ownVotes(reactions.codes(), count)
+    if (option in own && (poll.allowMultiple || own == setOf(option))) return false
+    val change = PollVote.change(option, own, count, poll.allowMultiple)
+    change.remove.filter { PollVote.optionOf(it) in own }.forEach { reactions.remove(it) }
+    change.add.filter { PollVote.optionOf(it) !in own }.forEach { reactions.add(it) }
+    return true
+}
+
+suspend fun voteOnPoll(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg, option: Int, poll: PollDescriptor): Boolean {
+    allowlist.requireSend(conversationId)
+    return castPollVote(ownReactions(session, allowlist, conversationId, message), poll, option)
 }
 
 suspend fun castGroodleVote(reactions: OwnReactions, groodle: GroodleDescriptor, slot: Int, choice: GroodleVote.Choice): Boolean {
@@ -93,14 +105,7 @@ suspend fun castGroodleVote(reactions: OwnReactions, groodle: GroodleDescriptor,
 
 suspend fun voteOnGroodle(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg, slot: Int, choice: GroodleVote.Choice, groodle: GroodleDescriptor): Boolean {
     allowlist.requireSend(conversationId)
-    val fileId = fileIdOf(message)
-    val provider = DriveFileGroupReactionProvider(session.http, session.credentials)
-    val recipients = conversationRecipients(conversationFor(session, allowlist, conversationId), session.identity)
-    return castGroodleVote(object : OwnReactions {
-        override suspend fun codes() = ownReactionCodes(provider, fileId, session.identity)
-        override suspend fun add(code: String) { provider.addReaction(chatDrive, fileId, reactionJson(code), recipients) }
-        override suspend fun remove(code: String) { provider.deleteReaction(chatDrive, fileId, reactionJson(code), recipients) }
-    }, groodle, slot, choice)
+    return castGroodleVote(ownReactions(session, allowlist, conversationId, message), groodle, slot, choice)
 }
 
 suspend fun deleteOwnMessage(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg) {
