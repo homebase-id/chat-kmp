@@ -12,9 +12,10 @@ import kotlinx.coroutines.withContext
 // One fixed file: the clipboard only ever holds the latest copy, so overwriting it is safe.
 internal actual suspend fun writePngToClipboard(png: ByteArray) {
     val context = ActivityProvider.requireApplicationContext()
-    val file = withContext(Dispatchers.IO) {
-        File(context.cacheDir, "clipboard").apply { mkdirs() }
-            .resolve("copied_image.png").apply { writeBytes(png) }
+    val file = File(context.cacheDir, "clipboard/copied_image.png")
+    withContext(Dispatchers.IO) {
+        file.parentFile?.mkdirs()
+        file.writeBytes(png)
     }
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

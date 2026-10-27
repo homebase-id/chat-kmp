@@ -8,9 +8,12 @@ import java.awt.datatransfer.Transferable
 import java.awt.datatransfer.UnsupportedFlavorException
 import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-internal actual suspend fun writePngToClipboard(png: ByteArray) =
+internal actual suspend fun writePngToClipboard(png: ByteArray) = withContext(Dispatchers.IO) {
     writePngToClipboard(Toolkit.getDefaultToolkit().systemClipboard, png)
+}
 
 internal fun writePngToClipboard(clipboard: Clipboard, png: ByteArray) {
     val image = ImageIO.read(ByteArrayInputStream(png)) ?: error("undecodable PNG")

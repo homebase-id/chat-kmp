@@ -6,7 +6,6 @@ import kotlin.io.encoding.Base64
 import kotlin.js.Promise
 import kotlinx.coroutines.await
 
-// Browsers only reliably accept image/png in a ClipboardItem; base64 is the same string bridge readClipboard uses.
 internal actual suspend fun writePngToClipboard(png: ByteArray) {
     writePngJs(Base64.encode(png)).await<JsAny?>()
 }

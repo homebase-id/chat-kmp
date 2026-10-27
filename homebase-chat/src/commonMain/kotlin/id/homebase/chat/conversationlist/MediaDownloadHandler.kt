@@ -167,32 +167,26 @@ internal class MediaDownloadHandler(
     }
 
     fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
+        val message = messagesUiState.value.messages.firstNotNullOfOrNull {
+            (it as? MessageListContentModel.Message)?.message?.takeIf { m -> m.id == action.messageId }
+        } ?: return
+        val payload = message.payloads?.find { it.key == action.payloadKey } ?: return
+        val contentType = payload.contentType ?: return
+        val iv = payload.iv ?: return
         scope.launch {
-            val copied = try {
-                val message =
-                    messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                        .map { it.message }.find { it.id == action.messageId } ?: return@launch
-                val payload =
-                    message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val contentType = payload.contentType ?: return@launch
-                val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
+            val event = try {
                 val bytes = chatMessageActionService.getPayloadBytes(
-                    message.fileId,
-                    action.payloadKey,
-                    KeyHeader(payloadIv, message.keyHeader.aesKey),
-                )
-                if (bytes != null) copyImageToClipboard(bytes, contentType)
-                bytes != null
+                    message.fileId, action.payloadKey, KeyHeader(iv.bytes, message.keyHeader.aesKey),
+                ) ?: error("payload not found")
+                copyImageToClipboard(bytes, contentType)
+                ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = "ConversationListViewModel") { "Failed to copy image: ${e.message}" }
-                false
+                ShowErrorMessage(MR.string.chat_error_copy_image)
             }
-            sendEvent(
-                if (copied) ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
-                else ShowErrorMessage(MR.string.chat_error_copy_image)
-            )
+            sendEvent(event)
         }
     }
 
