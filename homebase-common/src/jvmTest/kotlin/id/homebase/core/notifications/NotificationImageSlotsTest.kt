@@ -1,5 +1,6 @@
 package id.homebase.core.notifications
 
+import id.homebase.core.util.HostOs
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Color
 import org.jetbrains.skia.EncodedImageFormat
@@ -14,29 +15,22 @@ class NotificationImageSlotsTest {
 
     @Test
     fun macOsNeverPutsTheAvatarInTheAttachment() {
-        assertEquals(NotificationImageSlots(null, false), notificationImageSlots(DesktopOs.Mac, hasAvatar = true, hasImage = false))
-        assertEquals(NotificationImageSlots(ImageSource.Photo, false), notificationImageSlots(DesktopOs.Mac, hasAvatar = true, hasImage = true))
+        assertEquals(NotificationImageSlots(null, false), notificationImageSlots(HostOs.Mac, hasAvatar = true, hasImage = false))
+        assertEquals(NotificationImageSlots(ImageSource.Photo, false), notificationImageSlots(HostOs.Mac, hasAvatar = true, hasImage = true))
     }
 
     @Test
     fun windowsUsesTheAvatarAsAppLogoAndThePhotoAsHero() {
-        assertEquals(NotificationImageSlots(null, true), notificationImageSlots(DesktopOs.Windows, hasAvatar = true, hasImage = false))
-        assertEquals(NotificationImageSlots(ImageSource.Photo, true), notificationImageSlots(DesktopOs.Windows, hasAvatar = true, hasImage = true))
-        assertEquals(NotificationImageSlots(ImageSource.Photo, false), notificationImageSlots(DesktopOs.Windows, hasAvatar = false, hasImage = true))
+        assertEquals(NotificationImageSlots(null, true), notificationImageSlots(HostOs.Windows, hasAvatar = true, hasImage = false))
+        assertEquals(NotificationImageSlots(ImageSource.Photo, true), notificationImageSlots(HostOs.Windows, hasAvatar = true, hasImage = true))
+        assertEquals(NotificationImageSlots(ImageSource.Photo, false), notificationImageSlots(HostOs.Windows, hasAvatar = false, hasImage = true))
     }
 
     @Test
     fun linuxShowsThePhotoOrElseTheAvatar() {
-        assertEquals(NotificationImageSlots(ImageSource.Avatar, false), notificationImageSlots(DesktopOs.Linux, hasAvatar = true, hasImage = false))
-        assertEquals(NotificationImageSlots(ImageSource.Photo, false), notificationImageSlots(DesktopOs.Linux, hasAvatar = true, hasImage = true))
-        assertEquals(NotificationImageSlots(null, false), notificationImageSlots(DesktopOs.Linux, hasAvatar = false, hasImage = false))
-    }
-
-    @Test
-    fun osNamesMapToTheirDispatcher() {
-        assertEquals(DesktopOs.Mac, DesktopOs.current("Mac OS X"))
-        assertEquals(DesktopOs.Windows, DesktopOs.current("Windows 11"))
-        assertEquals(DesktopOs.Linux, DesktopOs.current("Linux"))
+        assertEquals(NotificationImageSlots(ImageSource.Avatar, false), notificationImageSlots(HostOs.Linux, hasAvatar = true, hasImage = false))
+        assertEquals(NotificationImageSlots(ImageSource.Photo, false), notificationImageSlots(HostOs.Linux, hasAvatar = true, hasImage = true))
+        assertEquals(NotificationImageSlots(null, false), notificationImageSlots(HostOs.Linux, hasAvatar = false, hasImage = false))
     }
 
     @Test

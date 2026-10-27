@@ -3,6 +3,7 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.file.JvmFileSystemUtil
+import id.homebase.core.util.hostOs
 import io.github.kdroidfilter.nucleus.notification.common.NotificationHandle
 import io.github.kdroidfilter.nucleus.notification.common.NotificationManager
 import io.github.kdroidfilter.nucleus.notification.common.NotificationResult
@@ -34,7 +35,7 @@ internal class NucleusNotificationAdapter private constructor() {
                 "posting notification ${data.notificationId}"
             }
             val slots = notificationImageSlots(
-                os = DesktopOs.current(),
+                os = hostOs,
                 hasAvatar = data.senderImageBytes != null,
                 hasImage = data.imageBytes != null,
             )

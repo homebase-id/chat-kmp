@@ -88,24 +88,24 @@ class ChatNotificationMessageResolverTest {
     @Test
     fun resolvedMessage_yieldsPreviewAndSender() = runTest {
         val preview = resolver(message("Hey there", "Alice"))
-            .resolvePreview(Uuid.random(), Uuid.random())
+            .resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertEquals("Hey there", preview?.preview)
         assertEquals("Alice", preview?.senderName)
     }
 
     @Test
     fun unresolvedMessage_yieldsNull() = runTest {
-        assertNull(resolver(null).resolvePreview(Uuid.random(), Uuid.random()))
+        assertNull(resolver(null).resolvePreview(Uuid.random(), Uuid.random(), withImage = true))
     }
 
     @Test
     fun blankContent_yieldsNull() = runTest {
-        assertNull(resolver(message("   ", "Alice")).resolvePreview(Uuid.random(), Uuid.random()))
+        assertNull(resolver(message("   ", "Alice")).resolvePreview(Uuid.random(), Uuid.random(), withImage = true))
     }
 
     @Test
     fun blankDisplayName_yieldsNullSender_butKeepsPreview() = runTest {
-        val preview = resolver(message("Hi", "")).resolvePreview(Uuid.random(), Uuid.random())
+        val preview = resolver(message("Hi", "")).resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertEquals("Hi", preview?.preview)
         assertNull(preview?.senderName)
     }
@@ -116,7 +116,7 @@ class ChatNotificationMessageResolverTest {
         val preview = ChatNotificationMessageResolver(
             FakeLookup(message("", "Alice", payloads = listOf(photo))),
             loadImage = { loaded += it.payloadKey; thumb },
-        ).resolvePreview(Uuid.random(), Uuid.random())
+        ).resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertEquals("Image", preview?.preview)
         assertContentEquals(thumb, preview?.imageBytes)
         assertEquals(listOf("chat_img1"), loaded)
@@ -127,7 +127,7 @@ class ChatNotificationMessageResolverTest {
         val preview = ChatNotificationMessageResolver(
             FakeLookup(message("Look", "Alice", payloads = listOf(photo))),
             loadImage = { thumb },
-        ).resolvePreview(Uuid.random(), Uuid.random())
+        ).resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertEquals("Look", preview?.preview)
         assertContentEquals(thumb, preview?.imageBytes)
     }
@@ -137,7 +137,7 @@ class ChatNotificationMessageResolverTest {
         val preview = ChatNotificationMessageResolver(
             FakeLookup(message("", "Alice", payloads = listOf(photo), messageContent = MessageContent.ViewOnce(null))),
             loadImage = { error("view-once media must not reach a notification") },
-        ).resolvePreview(Uuid.random(), Uuid.random())
+        ).resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertNull(preview?.imageBytes)
         assertTrue(preview?.preview.orEmpty().isNotBlank())
     }
@@ -147,7 +147,7 @@ class ChatNotificationMessageResolverTest {
         val preview = ChatNotificationMessageResolver(
             FakeLookup(message("Hi", "Alice")),
             loadImage = { error("no media to load") },
-        ).resolvePreview(Uuid.random(), Uuid.random())
+        ).resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertNull(preview?.imageBytes)
     }
 
@@ -156,8 +156,7 @@ class ChatNotificationMessageResolverTest {
         val preview = ChatNotificationMessageResolver(
             FakeLookup(message("Hi", "Alice")),
             conversation = { conversation(isGroup = true, name = "Fellowship") },
-        ).resolvePreview(Uuid.random(), Uuid.random())
-        assertEquals(true, preview?.isGroup)
+        ).resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertEquals("Fellowship", preview?.groupTitle)
     }
 
@@ -166,8 +165,17 @@ class ChatNotificationMessageResolverTest {
         val preview = ChatNotificationMessageResolver(
             FakeLookup(message("Hi", "Alice")),
             conversation = { conversation(isGroup = false, name = "Alice") },
-        ).resolvePreview(Uuid.random(), Uuid.random())
-        assertEquals(false, preview?.isGroup)
+        ).resolvePreview(Uuid.random(), Uuid.random(), withImage = true)
         assertNull(preview?.groupTitle)
+    }
+
+    @Test
+    fun withoutImage_theThumbnailIsNotFetched() = runTest {
+        val preview = ChatNotificationMessageResolver(
+            FakeLookup(message("", "Alice", payloads = listOf(photo))),
+            loadImage = { error("a redacted notification must not fetch the photo") },
+        ).resolvePreview(Uuid.random(), Uuid.random(), withImage = false)
+        assertEquals("Image", preview?.preview)
+        assertNull(preview?.imageBytes)
     }
 }

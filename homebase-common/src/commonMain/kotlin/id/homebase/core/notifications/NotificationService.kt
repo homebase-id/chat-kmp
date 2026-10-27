@@ -29,6 +29,8 @@ import id.homebase.core.ui.navigation.Route
 import id.homebase.core.sync.awaitAuthRestored
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -440,12 +442,21 @@ class NotificationService(
 
                 val contentLevel =
                     NotificationContentLevel.fromCode(userPreferences.notificationContentLevel)
-                val showsRealContent = contentLevel == NotificationContentLevel.NAME_CONTENT_ACTIONS
+                val showsRealContent = contentLevel.showsContent
 
-                // Resolve sender display name from public profile (with timeout/fallback)
-                val displayName = resolveSenderName(notification.senderId)
-
-                val resolved = resolveChatPreview(notification)
+                val (displayName, resolved, senderImageBytes) = coroutineScope {
+                    val name = async { resolveSenderName(notification.senderId) }
+                    val preview = async { resolveChatPreview(notification, withImage = showsRealContent) }
+                    val avatar = async {
+                        if (!contentLevel.showsNames) return@async null
+                        try {
+                            withTimeout(5_000) { contactInfo.avatarBytes(OdinId(notification.senderId)) }
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    Triple(name.await(), preview.await(), avatar.await())
+                }
                 val decryptedMessage = resolved?.preview ?: notification.options.unEncryptedMessage
 
                 // Real content only — not the sender-side placeholder (and not the
@@ -465,30 +476,14 @@ class NotificationService(
                     )
 
                 val chat = if (conversationId != null) {
-                    chatNotificationContent(
-                        level = contentLevel,
-                        senderName = displayName,
-                        groupTitle = resolved?.groupTitle,
-                        isGroup = resolved?.isGroup == true,
-                        text = bodyText,
-                        hasImage = resolved?.imageBytes != null,
-                        labels = NOTIFICATION_LABELS,
-                    )
+                    chatNotificationContent(contentLevel, displayName, resolved?.groupTitle, bodyText, NOTIFICATION_LABELS)
                 } else null
 
                 val (displayTitle, displayBody) = when {
                     chat != null -> chat.title to chat.body
-                    contentLevel == NotificationContentLevel.NAME_CONTENT_ACTIONS -> appName to bodyText
-                    contentLevel == NotificationContentLevel.NAME_ONLY -> displayName to REDACTED_BODY
+                    showsRealContent -> appName to bodyText
+                    contentLevel.showsNames -> displayName to REDACTED_BODY
                     else -> APP_TITLE to REDACTED_BODY
-                }
-
-                val senderImageBytes = if (contentLevel == NotificationContentLevel.NO_NAME_OR_CONTENT) null else try {
-                    withTimeout(5_000) {
-                        contactInfo.avatarBytes(OdinId(notification.senderId))
-                    }
-                } catch (_: Exception) {
-                    null
                 }
 
                 // Track per-conversation message count for summary display
@@ -527,7 +522,7 @@ class NotificationService(
                     isGroupConversation = chat?.groupTitle != null,
                     groupTitle = chat?.groupTitle,
                     messageText = chat?.messageText?.let { notificationBody(it, messageCount, showsRealContent) } ?: finalBody,
-                    imageBytes = resolved?.imageBytes?.takeIf { chat?.showsImage == true },
+                    imageBytes = resolved?.imageBytes?.takeIf { chat != null },
                 )
 
                 if (isAppInForeground) {
@@ -569,14 +564,14 @@ class NotificationService(
      * typed-preview pipeline as the chat UI. Bounded so the push handler stays within budget; a
      * miss/timeout/failure returns null and the caller keeps the sender-provided body.
      */
-    private suspend fun resolveChatPreview(notification: PushNotification): NotificationMessagePreview? {
+    private suspend fun resolveChatPreview(notification: PushNotification, withImage: Boolean): NotificationMessagePreview? {
         val resolver = messageResolver ?: return null
         if (resolveConversationId(notification) == null) return null
         val (conversationId, messageId) =
             extractChatTapIds(notification.options.typeId, notification.options.tagId) ?: return null
         return try {
             withTimeoutOrNull(NOTIFICATION_RESOLVE_TIMEOUT_MS) {
-                resolver.resolvePreview(conversationId, messageId)
+                resolver.resolvePreview(conversationId, messageId, withImage)
             }?.takeIf { it.preview.isNotBlank() }
         } catch (e: Exception) {
             Logger.w(tag = "NotificationService") {
