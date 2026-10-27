@@ -175,7 +175,7 @@ jobs:
           tail -200 smoke.log
           [ $code -eq 0 ] || { echo "::error::desktop app exited $code"; exit 1; }
           [ -f "$HOMEBASE_SMOKE_MARKER" ] || { echo "::error::no first-frame marker"; exit 1; }
-          if grep -E "NoSuchMethodError|NoClassDefFoundError|NoSuchFieldError|AbstractMethodError|UnsatisfiedLinkError|IncompatibleClassChangeError" smoke.log; then echo "::error::linkage error"; exit 1; fi
+          if grep -E "NoSuchMethodError|NoClassDefFoundError|NoSuchFieldError|AbstractMethodError|UnsatisfiedLinkError|IncompatibleClassChangeError" smoke.log ~/.homebase-chat-dev/logs/homebase.log 2>/dev/null; then echo "::error::linkage error"; exit 1; fi
 
       - name: Upload desktop smoke logs
         if: ${{ failure() && matrix.name == 'Android & Desktop' }}

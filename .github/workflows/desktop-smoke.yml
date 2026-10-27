@@ -60,6 +60,7 @@ jobs:
         run: |
           $exe = "desktopApp\build\compose\binaries\main\app\homebase-chat\homebase-chat.exe"
           $p = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput smoke.out -RedirectStandardError smoke.err
+          $null = $p.Handle
           if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Error "timeout"; exit 1 }
           Get-Content smoke.out, smoke.err -ErrorAction SilentlyContinue | Select-Object -Last 200
           if ($p.ExitCode -ne 0) { Write-Error "exit $($p.ExitCode)"; exit 1 }
@@ -74,5 +75,5 @@ jobs:
           path: |
             smoke.out
             smoke.err
-            ${{ env.APPDATA }}\HomebaseChatDev\logs\homebase.log
+            ~\AppData\Roaming\HomebaseChatDev\logs\homebase.log
           if-no-files-found: ignore
