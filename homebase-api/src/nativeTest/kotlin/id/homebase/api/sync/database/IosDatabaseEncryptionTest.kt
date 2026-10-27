@@ -87,6 +87,16 @@ class IosDatabaseEncryptionTest {
     }
 
     @Test
+    fun theFileIsEncryptedWithTheRawKeyItself() {
+        val store = FakeStore()
+        openKeyedNativeSqliteDriver(name, passphrase, store).useDriver { it.writeMarker("raw") }
+        val hex = assertNotNull(store.value)
+        val salt = FileSystem.SYSTEM.read(path.toPath()) { readByteArray(16) }.toHexString()
+
+        assertEquals(1L, schemaRows("x'$hex$salt'", "SELECT count(*) FROM marker"))
+    }
+
+    @Test
     fun encryptedDatabaseIsNotEncryptedAgain() {
         val store = FakeStore()
         openKeyedNativeSqliteDriver(name, passphrase, store).useDriver { it.writeMarker("once") }
