@@ -30,7 +30,7 @@ internal class NucleusNotificationAdapter private constructor() {
     fun show(data: RichNotificationData) {
         try {
             Logger.i(tag = "NucleusNotificationAdapter") {
-                "posting notification '${data.title}'"
+                "posting notification ${data.notificationId}"
             }
             val largeImage = data.senderImageBytes?.let(::cachedAvatarPath)
             val result = notification(
@@ -39,14 +39,14 @@ internal class NucleusNotificationAdapter private constructor() {
                 largeImage = largeImage,
                 onActivated = {
                     Logger.i(tag = "NucleusNotificationAdapter") {
-                        "onActivated fired for '${data.title}'"
+                        "onActivated fired for ${data.notificationId}"
                     }
                     DesktopAppFocusManager.requestFocus("notification-activated")
                     NotificationClickRouter.onClick(data.payloadData)
                 },
                 onFailed = {
                     Logger.w(tag = "NucleusNotificationAdapter") {
-                        "Nucleus reported delivery failure for notification '${data.title}'"
+                        "Nucleus reported delivery failure for notification ${data.notificationId}"
                     }
                 },
             ).send()
