@@ -294,13 +294,13 @@ class NotificationService(
                 title: String?, body: String?, data: PayloadData
             ) {
                 Logger.i(tag = "NotificationService") {
-                    "Push received — title=$title body=$body data=$data"
+                    "Push received — payload keys=${data.keys}"
                 }
                 handleIncomingPayload(data)
             }
 
             override fun onNotificationClicked(data: PayloadData) {
-                Logger.i(tag = "NotificationService") { "Notification clicked: $data" }
+                Logger.i(tag = "NotificationService") { "Notification clicked — payload keys=${data.keys}" }
                 // Route through NotificationEntry so iOS taps (which arrive via
                 // KMPNotifier) hit the same defensive-sync path as Android /
                 // Desktop taps. See NotificationClickRouter.handler comment above.
@@ -309,12 +309,12 @@ class NotificationService(
 
             override fun onPushNotification(title: String?, body: String?) {
                 Logger.i(tag = "NotificationService") {
-                    "Push received — title=$title body=$body"
+                    "Push received without payload"
                 }
             }
 
             override fun onPayloadData(data: PayloadData) {
-                Logger.i(tag = "NotificationService") { "Payload received: $data" }
+                Logger.i(tag = "NotificationService") { "Payload received — keys=${data.keys}" }
                 handleIncomingPayload(data)
             }
         })
@@ -348,7 +348,7 @@ class NotificationService(
      */
     fun onFcmMessageReceived(title: String?, body: String?, data: Map<String, String>) {
         Logger.i(tag = "NotificationService") {
-            "FCM message received — title=$title body=$body data=$data"
+            "FCM message received — payload keys=${data.keys}"
         }
         handleIncomingPayload(data)
     }

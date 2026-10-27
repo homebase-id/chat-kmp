@@ -160,6 +160,33 @@ jobs:
         if: ${{ matrix.name == 'Android & Desktop' }}
         run: test -d desktopApp/build/compose/binaries/main/app && ls desktopApp/build/compose/binaries/main/app
 
+      - name: Desktop launch smoke test
+        if: ${{ matrix.name == 'Android & Desktop' }}
+        timeout-minutes: 6
+        env:
+          HOMEBASE_SMOKE_MARKER: ${{ runner.temp }}/homebase-smoke-ok
+          SKIKO_RENDER_API: SOFTWARE
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
+          set +e
+          timeout 180 dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" \
+            desktopApp/build/compose/binaries/main/app/homebase-chat/bin/homebase-chat > smoke.log 2>&1
+          code=$?; set -e
+          tail -200 smoke.log
+          [ $code -eq 0 ] || { echo "::error::desktop app exited $code"; exit 1; }
+          [ -f "$HOMEBASE_SMOKE_MARKER" ] || { echo "::error::no first-frame marker"; exit 1; }
+          if grep -E "NoSuchMethodError|NoClassDefFoundError|NoSuchFieldError|AbstractMethodError|UnsatisfiedLinkError|IncompatibleClassChangeError" smoke.log ~/.homebase-chat-dev/logs/homebase.log 2>/dev/null; then echo "::error::linkage error"; exit 1; fi
+
+      - name: Upload desktop smoke logs
+        if: ${{ failure() && matrix.name == 'Android & Desktop' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-smoke-logs
+          path: |
+            smoke.log
+            ~/.homebase-chat-dev/logs/homebase.log
+          if-no-files-found: ignore
+
       - name: Upload Desktop artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
         uses: actions/upload-artifact@v6
