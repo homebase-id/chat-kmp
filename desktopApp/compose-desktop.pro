@@ -33,7 +33,8 @@
 
 # Compose native tray
 -keep class com.sun.jna.** { *; }
--keep class com.kdroid.composetray.** { *; }
+-keep class dev.nucleusframework.composenativetray.** { *; }
+-keep class dev.nucleusframework.core.runtime.** { *; }
 
 # Koin
 -keep class org.koin.** { *; }
