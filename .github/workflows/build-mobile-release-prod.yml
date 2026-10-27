@@ -97,8 +97,7 @@ jobs:
         run: ./gradlew publishReleaseBundle --artifact-dir androidApp/build/outputs/bundle/release
 
   build-ios:
-    # Intel for 14 GB RAM: the link's ~10 GB live heap swaps on the 7 GB arm64 runners (IOS_RELEASE_LINK_OOM.md).
-    runs-on: macos-15-intel
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
 
@@ -125,9 +124,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/gradle.properties') }}
           restore-keys: |
-            konan-${{ runner.os }}-${{ runner.arch }}-
+            konan-${{ runner.os }}-
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -188,7 +187,7 @@ jobs:
           COMPILER_INDEX_STORE_ENABLE = NO
           XCEOF
 
-      # CI-only memory tuning for the 14 GB macos-15-intel runner. Appended at build
+      # CI-only memory tuning for the 7 GB macos-15 runner. Appended at build
       # time so the repo's gradle.properties stays untouched for local dev;
       # in a Java properties file the LAST occurrence of a key wins.
       # Rollback: delete this step and the "Upload JVM OOM diagnostics" step.
@@ -201,7 +200,7 @@ jobs:
 
           # --- CI-only overrides (appended by "Apply iOS CI memory overrides") ---
           # Gradle daemon only orchestrates this build; don't let it compete
-          # with the Kotlin/Native compiler for the runner's RAM.
+          # with the Kotlin/Native compiler for the runner's 7 GB of RAM.
           org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
           kotlin.daemon.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
           # One K/N task at a time; incremental-native caches are dead weight

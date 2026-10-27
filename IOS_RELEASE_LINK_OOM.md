@@ -145,3 +145,58 @@ untick it for experiment/CI-debug runs).
    green is better than fast) and, in parallel, MAT the heap dump to see if a
    *new* phase became the owner before assuming it's general growth.
 3. Escalation ladder beyond that: `macos-15-xlarge` (14 GB RAM, ~2× cost/min).
+
+## 2026-10-26: the live set outgrew the 7 GB runner
+
+Dev nightlies hit the 120-min step timeout from Oct 14 onwards (prod, at 180,
+took 132–177 min). Sweep of every `ios-jvm-oom-diagnostics` artifact since
+2026-07-28 (189 runs). "Live" is the lowest heap after a Mixed GC at the
+middle-end peak; "marking" is the summed Concurrent Mark Cycle time:
+
+| Period | Live | Marking | build-ios job |
+|---|---|---|---|
+| late Jul | 7.3–7.6 GB | 5–8 min | 55–80 min |
+| early Sep | 8.0 GB | 8–15 min | 65–100 min |
+| late Sep | 8.5–8.7 GB | 15–24 min | 90–134 min |
+| Oct 7–13 | 9.0–9.3 GB | 20–30 min | 112–141 min |
+| Oct 14–26 | 9.7–9.9 GB | 27–43 min | prod 132–177; dev killed at 121 |
+
+- **`-Xmx12g` is not oversized.** The live set (~9.8 GB) is the floor: a
+  smaller heap would OOM (6g OOM'd at 6.1 GB live in July). Heap after GC
+  sits at 10.2–11.6 GB of 12 GB through the middle-end.
+- **Stop-the-world GC is not the cost.** Total pause time per link is
+  5–10 s with 0 Full GCs. Concurrent marking runs most of the middle-end
+  (live is ~82 % of the heap), 150–224 s per cycle.
+- **Swap is real but not the main cost** (see the Intel run below: 14 GB, no
+  swap, same ~50-min middle-end). The link got slow because its work grew:
+  middle-end ~10 → 36–54 min, LLVM codegen after it ~45 → 60–95 min.
+- **Where the time goes:** the whole Gradle part of the Xcode build is one
+  `Compile Kotlin Framework` script phase (xcpretty hides Gradle's output):
+  78 min in the green dev run 39995126786, 147 min in prod 40065553353, and
+  >117 min when 40284718950 was killed. Link start/end come from the artifact
+  zip's file mtimes. The link was killed in LLVM codegen.
+- **Biggest single step:** +0.5–0.7 GB of live set between run 38525141431
+  (main 340a0032a) and 38575327085 (Oct 14), when PR #1930 (call-video-upgrade)
+  brought `webrtc-kmp` into the iOS framework.
+
+**More RAM alone does not make it fast.** Experiment run 40408054253 (dev, on
+`macos-15-intel`: free standard runner, 4 vCPU, 14 GB, GC log confirms
+`Memory: 14336M`): green, but the job took **160 min** (link 134 min: JVM
+middle-end ~50 min, LLVM ~80 min). With no swap the heap hit the 12g cap
+(12282M) and ran one **211 s Full GC** — the live set is now at the ceiling.
+The slower Intel cores cancel the swap savings, so `build-ios` stays on
+`macos-15` (arm64).
+
+**Change made:** dev's `Build iOS` step timeout is 180 min, like prod's. The
+dev runs that were killed at 121 min are the same build that prod finishes in
+132–177 min.
+
+**Still open (decision for the owner):**
+
+1. **Headroom is about gone.** Live ~9.8 GB under a 12g cap; ~+0.7 GB/month.
+   Expect OOMs or >180-min jobs within weeks. Raising `-Xmx` on a 7 GB runner
+   only adds swap.
+2. **Options:** `macos-15-xlarge` (paid; arm64, more RAM and cores — the
+   escalation already named above), or cut the link's live set. To find what
+   holds it, MAT a heap dump from a deliberately capped run (e.g. `-Xmx9g`
+   on a branch, `upload_to_testflight` off). Start with the webrtc-kmp jump.
