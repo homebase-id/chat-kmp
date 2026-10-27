@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.Flow
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import javax.imageio.ImageIO
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -57,19 +59,20 @@ internal class ViewOnceFakeServer(
     private val iv = ByteArray(16) { 5 }
     val keyHeader = KeyHeader(iv = iv, aesKey = aes)
 
-    var requests = 0
-    var requestedPaths = mutableListOf<String>()
+    private val requestCount = AtomicInteger()
+    val requests: Int get() = requestCount.get()
+    val requestedPaths = CopyOnWriteArrayList<String>()
     var status: HttpStatusCode = HttpStatusCode.OK
     val tempDir: String = Files.createTempDirectory("vo-server").toString()
 
     lateinit var cached: DriveFileProviderCached
     lateinit var provider: DriveFileProvider
-    var evictedImages = mutableListOf<Pair<Uuid, Uuid>>()
+    val evictedImages = CopyOnWriteArrayList<Pair<Uuid, Uuid>>()
     lateinit var loader: ViewOncePayloadLoader
     lateinit var homebaseImageLoader: HomebaseImageLoader
     val coil: ImageLoader = ImageLoader.Builder(PlatformContext.INSTANCE).build()
     val viewOnceTempDir: String get() = AppCacheDirs.scratchDir(tempDir, AppCacheDirs.VIEW_ONCE)
-    val evictedTemps = mutableListOf<String>()
+    val evictedTemps = CopyOnWriteArrayList<String>()
 
     fun tempFiles(): List<java.io.File> = java.io.File(viewOnceTempDir).listFiles()?.toList().orEmpty()
 
@@ -105,7 +108,7 @@ internal class ViewOnceFakeServer(
             )
         }
         val http = HttpClient(MockEngine { request ->
-            requests++
+            requestCount.incrementAndGet()
             requestedPaths += request.url.encodedPath
             respond(
                 content = if (status == HttpStatusCode.OK) cipher else ByteArray(0),
