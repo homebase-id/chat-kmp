@@ -1674,6 +1674,8 @@
     <string name="settings_notifications_status_checking">Checking…</string>
     <string name="settings_notifications_status_on">Push notifications are working</string>
     <string name="settings_notifications_status_error">Push notifications aren't working</string>
+    <string name="settings_notifications_status_allowed">Notifications are on</string>
+    <string name="settings_notifications_status_denied">Notifications are off in system settings</string>
     <string name="settings_appearance_theme">Theme: %1$s</string>
     <string name="settings_moments_desc">Photos, clips and notes</string>
     <string name="settings_vault_desc">Encrypted document storage</string>
