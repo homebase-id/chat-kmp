@@ -130,6 +130,10 @@ jobs:
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.3/bin"
           conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor_production.conf make site
+          # Copies installed by 1.4.1573 poll homebase-chat.appinstaller.
+          sed 's#/homebase-chat-ppbz3tcfg0pp2\.appinstaller"#/homebase-chat.appinstaller"#' \
+            output/homebase-chat-ppbz3tcfg0pp2.appinstaller > output/homebase-chat.appinstaller
+          grep -qF '/homebase-chat.appinstaller"' output/homebase-chat.appinstaller
 
       - name: Create release in production repo
         uses: actions/github-script@v7
@@ -177,7 +181,8 @@ jobs:
               tag_name: `${version}`,
               name: `${version}`,
               body: `Desktop production release v${version}\n\nBuilt from ${context.repo.owner}/${context.repo.repo}@${context.sha.substring(0, 7)}`,
-              draft: false,
+              // A published partial release becomes releases/latest, and the next Conveyor run then starts a fresh site.
+              draft: true,
               prerelease: false  // Set to false for production releases
             });
             
@@ -213,6 +218,13 @@ jobs:
               }
             }
             
+            await github.rest.repos.updateRelease({
+              owner: owner,
+              repo: repo,
+              release_id: release.id,
+              draft: false
+            });
+
             console.log(`\nRelease complete: ${release.html_url}`);
           
           

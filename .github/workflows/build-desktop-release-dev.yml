@@ -139,7 +139,8 @@ jobs:
               tag_name: `${version}`,
               name: `${version}`,
               body: `Desktop development release v${version}\n\nBuilt from ${context.repo.owner}/${context.repo.repo}@${context.sha.substring(0, 7)}`,
-              draft: false,
+              // A published partial release becomes releases/latest, and the next Conveyor run then starts a fresh site.
+              draft: true,
               prerelease: false  // Set to false for production releases
             });
             
@@ -175,6 +176,13 @@ jobs:
               }
             }
             
+            await github.rest.repos.updateRelease({
+              owner: owner,
+              repo: repo,
+              release_id: release.id,
+              draft: false
+            });
+
             console.log(`\nRelease complete: ${release.html_url}`);
           
           
