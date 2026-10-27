@@ -16,19 +16,20 @@ object NotificationPreviewBridge {
 
     /**
      * Calls [completion] exactly once, on a background thread, with the decrypted text of
-     * [messageId] — or a null text and the reason it was not shown: no shared credentials, not
-     * plain text, or not read within the preview's deadline. The reason never carries content.
+     * [messageId] and, for a group conversation, its [ChatNotificationGroup] — or a null text and
+     * the reason it was not shown: no shared credentials, not plain text, or not read within the
+     * preview's deadline. The reason never carries content.
      */
     fun resolvePreview(
         conversationId: String,
         messageId: String,
-        completion: (text: String?, missReason: String?) -> Unit,
+        completion: (text: String?, group: ChatNotificationGroup?, missReason: String?) -> Unit,
     ) {
         val credentials = NotificationExtensionStore.readCredentials()
-            ?: return completion(null, "no shared credentials")
+            ?: return completion(null, null, "no shared credentials")
         scope.launch {
             val preview = fetchChatNotificationPreview(credentials, conversationId, messageId)
-            completion(preview.text, preview.missReason)
+            completion(preview.text, preview.group, preview.missReason)
         }
     }
 }

@@ -25,18 +25,26 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private const val CHAT_MESSAGE_FILE_TYPE = 7878
+private const val CONVERSATION_FILE_TYPE = 8888
 private const val PLAIN_MESSAGE_DATA_TYPE = 0
 
 /**
  * Either the text to show, or why the sender's placeholder stays. [missReason] never carries
  * message content, so the extension can log it unredacted.
  */
-internal data class ChatNotificationPreview(val text: String?, val missReason: String?) {
+internal data class ChatNotificationPreview(
+    val text: String?,
+    val missReason: String?,
+    val group: ChatNotificationGroup? = null,
+) {
     internal companion object {
         fun shown(text: String) = ChatNotificationPreview(text, null)
         fun missed(reason: String) = ChatNotificationPreview(null, reason)
     }
 }
+
+/** A group conversation's name (blank when unnamed) and participants' odinIds, the reader's included. */
+data class ChatNotificationGroup(val title: String, val recipients: List<String>)
 
 /**
  * The text of chat message [messageId] in [conversationId], fetched from the identity and
@@ -93,17 +101,41 @@ private suspend fun fetchedPreview(
     queryTimeout: Duration,
 ): ChatNotificationPreview {
     val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
+    // The conversation file rides in the same query, for the group name.
     val request = QueryBatchRequest(
-        FileQueryParams(clientUniqueIdAtLeastOne = listOf(message)),
-        QueryBatchResultOptionsRequest(maxRecords = 1, includeMetadataHeader = true),
+        FileQueryParams(clientUniqueIdAtLeastOne = listOf(message, conversation)),
+        QueryBatchResultOptionsRequest(maxRecords = 2, includeMetadataHeader = true),
     )
     val response = step("query", queryTimeout) {
         DriveQueryProvider(httpClient, credentialsManager).queryBatch(SystemDriveConstants.chatDrive.alias, request)
     }
     if (response.invalidDrive) return ChatNotificationPreview.missed("query answered invalidDrive")
-    val file = response.searchResults.firstOrNull()
+    val files = response.searchResults
+    val file = files.firstOrNull { it.fileMetadata.appData.uniqueId != conversation }
         ?: return ChatNotificationPreview.missed("query returned 0 results")
-    return chatMessagePreview(file, conversation)
+    val preview = chatMessagePreview(file, conversation)
+    if (preview.text == null) return preview
+    return preview.copy(group = files.firstOrNull { it.fileMetadata.appData.uniqueId == conversation }?.let(::conversationGroup))
+}
+
+private val CONVERSATION_GROUP_TAG = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
+
+/** Null for a 1:1 conversation or a conversation file that can't be read. */
+internal fun conversationGroup(file: HomebaseFile): ChatNotificationGroup? {
+    val appData = file.fileMetadata.appData
+    if (appData.fileType != CONVERSATION_FILE_TYPE || file.appDataFailedToDecrypt()) return null
+    val content = try {
+        OdinSystemSerializer.json.parseToJsonElement(appData.content ?: return null).jsonObject
+    } catch (_: Exception) {
+        return null
+    }
+    val recipients = (content["recipients"] as? JsonArray).orEmpty()
+        .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+        .distinct()
+    val tagged = appData.tags?.contains(CONVERSATION_GROUP_TAG) == true
+    if (!tagged && recipients.size <= 2) return null
+    val title = (content["title"] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
+    return ChatNotificationGroup(title, recipients)
 }
 
 private class StepFailed(val reason: String) : Exception(reason)

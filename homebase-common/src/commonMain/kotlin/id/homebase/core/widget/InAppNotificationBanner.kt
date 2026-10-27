@@ -76,7 +76,7 @@ fun InAppNotificationBanner(
                     // Name + message preview
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = notification.senderName.withEmojiFont(),
+                            text = (notification.groupTitle ?: notification.senderName).withEmojiFont(),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,

@@ -3,21 +3,23 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.file.JvmFileSystemUtil
+import id.homebase.core.util.hostOs
 import io.github.kdroidfilter.nucleus.notification.common.NotificationHandle
 import io.github.kdroidfilter.nucleus.notification.common.NotificationManager
 import io.github.kdroidfilter.nucleus.notification.common.NotificationResult
 import io.github.kdroidfilter.nucleus.notification.common.notification
 import java.io.File
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * JVM-only adapter that wraps the Nucleus cross-platform notification API
  * (Windows toast / macOS user notification / Linux libnotify).
  *
- * Avatar bytes passed in [RichNotificationData.senderImageBytes] are written
- * once per sender-hash to a temp file under the app data directory; Nucleus
- * requires a filesystem path, not in-memory bytes.
+ * Avatar and photo bytes are re-encoded to PNG files under the app data directory;
+ * Nucleus requires a filesystem path, and the OS notification services don't all read WebP.
+ * Which image goes in which slot is [notificationImageSlots].
  */
 internal class NucleusNotificationAdapter private constructor() {
 
@@ -32,11 +34,23 @@ internal class NucleusNotificationAdapter private constructor() {
             Logger.i(tag = "NucleusNotificationAdapter") {
                 "posting notification ${data.notificationId}"
             }
-            val largeImage = data.senderImageBytes?.let(::cachedAvatarPath)
+            val slots = notificationImageSlots(
+                os = hostOs,
+                hasAvatar = data.senderImageBytes != null,
+                hasImage = data.imageBytes != null,
+            )
+            val largeImage = when (slots.largeImage) {
+                ImageSource.Photo -> data.imageBytes?.let(::photoPath)
+                ImageSource.Avatar -> data.senderImageBytes?.let { cachedAvatarPath(it, circle = false) }
+                null -> null
+            }
+            val smallIcon = data.senderImageBytes?.takeIf { slots.smallIconIsAvatar }
+                ?.let { cachedAvatarPath(it, circle = true) }
             val result = notification(
                 title = data.title,
                 message = data.body,
                 largeImage = largeImage,
+                smallIcon = smallIcon,
                 onActivated = {
                     Logger.i(tag = "NucleusNotificationAdapter") {
                         "onActivated fired for ${data.notificationId}"
@@ -90,16 +104,16 @@ internal class NucleusNotificationAdapter private constructor() {
         runCatching { posted.remove(notificationId)?.dismiss() }
     }
 
-    private fun cachedAvatarPath(bytes: ByteArray): String? {
+    private fun cachedAvatarPath(bytes: ByteArray, circle: Boolean): String? {
         return try {
             val digest = MessageDigest.getInstance("SHA-1").digest(bytes)
-            val key = digest.joinToString("") { "%02x".format(it) }
+            val key = digest.joinToString("") { "%02x".format(it) } + if (circle) "-circle" else ""
             avatarCache[key]?.let { existing ->
                 if (File(existing).exists()) return existing
             }
             val file = File(cacheDir, "$key.png")
             if (!file.exists()) {
-                file.writeBytes(bytes)
+                file.writeBytes(encodePng(bytes, circle) ?: return null)
             }
             val path = file.absolutePath
             avatarCache[key] = path
@@ -112,7 +126,22 @@ internal class NucleusNotificationAdapter private constructor() {
         }
     }
 
+    // A fresh file per photo: macOS moves an attachment's file into its own store.
+    private fun photoPath(bytes: ByteArray): String? = try {
+        val dir = File(cacheDir, "photos").apply { mkdirs() }
+        val staleBefore = System.currentTimeMillis() - PHOTO_TTL_MS
+        dir.listFiles()?.filter { it.lastModified() < staleBefore }?.forEach { it.delete() }
+        encodePng(bytes, circle = false)?.let { png ->
+            File(dir, "${UUID.randomUUID()}.png").apply { writeBytes(png) }.absolutePath
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = "NucleusNotificationAdapter") { "Failed to write notification photo: ${e::class.simpleName}" }
+        null
+    }
+
     companion object {
+        private const val PHOTO_TTL_MS = 24 * 60 * 60 * 1000L
+
         /**
          * Attempts to construct the adapter and eagerly initialise Nucleus.
          * Returns null if the platform has no notification backend available
