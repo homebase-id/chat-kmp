@@ -134,6 +134,20 @@ data class MessageUiModel(
             ?.key
     }
 
+    /** Key of the image when this message carries exactly one image payload, which "Copy image" copies. */
+    val copyableImagePayloadKey: String? by lazy {
+        if (messageContent != null || isPendingSend || isDeleted) return@lazy null
+        payloads
+            ?.filter {
+                it.key != ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB &&
+                    it.key != ChatProtocol.DefaultPayloadKey &&
+                    !it.isInternalDescriptor()
+            }
+            ?.singleOrNull()
+            ?.takeIf { it.contentType?.startsWith("image/") == true }
+            ?.key
+    }
+
     val actionPolicy: ActionPolicy
         get() = messageContent?.actions
             ?: if (stickerPayloadKey != null) ActionPolicy.Sticker else ActionPolicy.Standard

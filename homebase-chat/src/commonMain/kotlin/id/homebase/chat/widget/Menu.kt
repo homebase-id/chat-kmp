@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -92,6 +93,7 @@ import id.homebase.resources.chat_group_settings
 import id.homebase.resources.chat_mark_all_as_read
 import id.homebase.resources.chat_message_block
 import id.homebase.resources.chat_message_copy
+import id.homebase.resources.chat_message_copy_image
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_forward
 import id.homebase.resources.chat_message_info
@@ -272,6 +274,7 @@ internal fun ReceivedMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    onCopyImage: (() -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
@@ -279,7 +282,7 @@ internal fun ReceivedMessagePopup(
     onReport: () -> Unit,
 ) {
     val policy = message.actionPolicy
-    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved, onCopyImage != null) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -329,6 +332,14 @@ internal fun ReceivedMessagePopup(
                             onClick = onCopy,
                             text = stringResource(MR.string.chat_message_copy),
                             imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
+                    if (onCopyImage != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopyImage,
+                            text = stringResource(MR.string.chat_message_copy_image),
+                            imageVector = Icons.Filled.Image,
                         )
                     }
                     ListItemActionNormalIcon(
@@ -432,6 +443,7 @@ internal fun SentMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    onCopyImage: (() -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
     onShare: (() -> Unit)?,
     onEdit: (() -> Unit)?,
@@ -439,7 +451,7 @@ internal fun SentMessagePopup(
     onTogglePin: () -> Unit,
 ) {
     val policy = message.actionPolicy
-    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved, onCopyImage != null) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -489,6 +501,14 @@ internal fun SentMessagePopup(
                             onClick = onCopy,
                             text = stringResource(MR.string.chat_message_copy),
                             imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
+                    if (onCopyImage != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopyImage,
+                            text = stringResource(MR.string.chat_message_copy_image),
+                            imageVector = Icons.Filled.Image,
                         )
                     }
                     if (onEdit != null) {

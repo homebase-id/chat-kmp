@@ -1409,6 +1409,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SaveMediaToVault -> mediaDownloadHandler.handleSaveMediaToVault(action)
 
+            is ConversationListUiAction.CopyImage -> mediaDownloadHandler.handleCopyImage(action)
+
             is ConversationListUiAction.ShareMessage -> mediaDownloadHandler.handleShareMessage(action)
 
             is ConversationListUiAction.DownloadMedia -> mediaDownloadHandler.handleDownloadMedia(action)

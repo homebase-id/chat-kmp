@@ -9,8 +9,11 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
+import id.homebase.core.clipboard.copyImageToClipboard
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.core.util.formatMediumDate
+import id.homebase.resources.chat_error_copy_image
+import id.homebase.resources.chat_image_copied
 import id.homebase.core.util.isMobile
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.vault_chat_image_name
@@ -159,6 +162,36 @@ internal class MediaDownloadHandler(
             sendEvent(
                 if (saved) ConversationListUiEvent.ShowInfoMessage(MR.string.vault_saved)
                 else ShowErrorMessage(MR.string.vault_save_failed)
+            )
+        }
+    }
+
+    fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
+        scope.launch {
+            val copied = try {
+                val message =
+                    messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
+                        .map { it.message }.find { it.id == action.messageId } ?: return@launch
+                val payload =
+                    message.payloads?.find { it.key == action.payloadKey } ?: return@launch
+                val contentType = payload.contentType ?: return@launch
+                val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
+                val bytes = chatMessageActionService.getPayloadBytes(
+                    message.fileId,
+                    action.payloadKey,
+                    KeyHeader(payloadIv, message.keyHeader.aesKey),
+                )
+                if (bytes != null) copyImageToClipboard(bytes, contentType)
+                bytes != null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "ConversationListViewModel") { "Failed to copy image: ${e.message}" }
+                false
+            }
+            sendEvent(
+                if (copied) ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
+                else ShowErrorMessage(MR.string.chat_error_copy_image)
             )
         }
     }

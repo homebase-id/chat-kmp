@@ -59,6 +59,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -209,6 +212,7 @@ fun SentMessageBubble(
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
+    onCopyImage: (() -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
@@ -318,6 +322,9 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onCopyText(message.content)
                         },
+                        onCopyImage = onCopyImage?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
+                        },
                         stickerActions = stickerActions?.let { a ->
                             StickerMenuActions(
                                 isSaved = a.isSaved,
@@ -361,7 +368,11 @@ fun SentMessageBubble(
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Box(
-                    modifier = Modifier.handbackSource(handback).then(
+                    modifier = Modifier.handbackSource(handback)
+                        .openMenuOnSecondaryPress(onMessageInfo != null && !message.isDeleted) {
+                            popupMode = MessagePopupMode.Menu
+                        }
+                        .then(
                         if (supportsTouchGestures()) {
                             Modifier.combinedClickable(
                                 interactionSource = remember { MutableInteractionSource() },
@@ -543,6 +554,7 @@ fun ReceivedMessageBubble(
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
+    onCopyImage: (() -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
@@ -641,7 +653,12 @@ fun ReceivedMessageBubble(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Box(Modifier.handbackSource(handback)) {
+                    Box(
+                        Modifier.handbackSource(handback)
+                            .openMenuOnSecondaryPress(onMessageInfo != null && !message.isDeleted) {
+                                popupMode = MessagePopupMode.Menu
+                            },
+                    ) {
                         MessageBubbleRaw(
                             modifier = Modifier
                                 .bottomInset(pillInset)
@@ -784,6 +801,9 @@ fun ReceivedMessageBubble(
                         onCopy = {
                             popupMode = MessagePopupMode.None
                             onCopyText(message.content)
+                        },
+                        onCopyImage = onCopyImage?.let { orig ->
+                            { popupMode = MessagePopupMode.None; orig() }
                         },
                         stickerActions = stickerActions?.let { a ->
                             StickerMenuActions(
@@ -1408,3 +1428,17 @@ private fun AnimatedReactionPill(
         }
     }
 }
+
+// Children that own a right-click (the text selection menu) consume the press and keep it.
+internal fun Modifier.openMenuOnSecondaryPress(enabled: Boolean, open: () -> Unit): Modifier =
+    if (!enabled || !usesPointerUx()) this
+    else pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent()
+                if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed &&
+                    event.changes.none { it.isConsumed }
+                ) open()
+            }
+        }
+    }

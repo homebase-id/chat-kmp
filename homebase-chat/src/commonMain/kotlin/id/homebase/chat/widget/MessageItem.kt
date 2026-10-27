@@ -173,6 +173,10 @@ fun MessageItem(
             )
         }
     } else null
+    val copyImageKey = message.copyableImagePayloadKey
+    val onCopyImage = copyImageKey?.let { key ->
+        remember(message.id, key) { { onUiAction(ConversationListUiAction.CopyImage(message.id, key)) } }
+    }
     if (message.isAuthoredBy(odinId)) {
         val onEdit = if (message.isEditableBy(odinId)) {
             remember(message) {
@@ -226,6 +230,7 @@ fun MessageItem(
                 onSaveContactCard = onSaveContactCard,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
+                onCopyImage = onCopyImage,
                 stickerActions = stickerActions,
             )
         }
@@ -288,6 +293,7 @@ fun MessageItem(
                 onSaveContactCard = onSaveContactCard,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
+                onCopyImage = onCopyImage,
                 stickerActions = stickerActions,
             )
         }
