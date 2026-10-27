@@ -1448,7 +1448,3 @@ private fun AnimatedReactionPill(
         }
     }
 }
-
-/** The image "Copy image" copies: the gallery cell the menu was opened on, else the message's only image. */
-internal fun MessageUiModel.copyImageTarget(menuImageKey: String?): String? =
-    (menuImageKey ?: copyableImagePayloadKey)?.takeIf(::canCopyImage)

@@ -572,14 +572,21 @@ class ChatMessageActionService(
         return response?.bytes
     }
 
-    /** Decrypts the image [payload] of [fileId] onto the system clipboard. Throws on failure. */
-    suspend fun copyImagePayloadToClipboard(fileId: Uuid, payload: PayloadDescriptor, messageKeyHeader: KeyHeader) {
-        val iv = payload.iv ?: error("payload not uploaded")
-        val contentType = payload.contentType ?: error("payload has no content type")
-        val bytes = getPayloadBytes(fileId, payload.key, KeyHeader(iv.bytes, messageKeyHeader.aesKey))
-            ?: error("payload not found")
-        copyImageToClipboard(bytes, contentType)
-    }
+    /** Decrypts the image [payload] of [fileId] onto the system clipboard; false (logged) on failure. */
+    suspend fun copyImagePayloadToClipboard(fileId: Uuid, payload: PayloadDescriptor, messageKeyHeader: KeyHeader): Boolean =
+        try {
+            val iv = payload.iv ?: error("payload not uploaded")
+            val contentType = payload.contentType ?: error("payload has no content type")
+            val bytes = getPayloadBytes(fileId, payload.key, KeyHeader(iv.bytes, messageKeyHeader.aesKey))
+                ?: error("payload not found")
+            copyImageToClipboard(bytes, contentType)
+            true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = "ChatMessageActionService") { "Failed to copy image: ${e.message}" }
+            false
+        }
 
     /**
      * Stream-decrypt a chat payload into a fresh `share_outbound/` file and return

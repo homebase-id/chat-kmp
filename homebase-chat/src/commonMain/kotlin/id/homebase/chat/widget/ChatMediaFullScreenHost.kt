@@ -24,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.AppCacheDirs
@@ -250,15 +249,7 @@ private fun SharedMediaViewer(
         } else null,
         onCopyImage = { _, _ ->
             scope.launch {
-                val copied = try {
-                    actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
-                    true
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.e(throwable = e, tag = "SharedMediaViewer") { "Failed to copy image: ${e.message}" }
-                    false
-                }
+                val copied = actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
                 snackbarHostState.showSnackbar(
                     TranslationUtil.getString(if (copied) MR.string.chat_image_copied else MR.string.chat_error_copy_image)
                 )

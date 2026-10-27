@@ -143,10 +143,9 @@ data class MessageUiModel(
         it.key == payloadKey && it.contentType?.startsWith("image/") == true
     } == true
 
-    /** Key of the image when this message carries exactly one image payload, which "Copy image" copies. */
-    val copyableImagePayloadKey: String? by lazy {
-        soleMediaPayload()?.key?.takeIf(::canCopyImage)
-    }
+    /** The image "Copy image" copies: the gallery cell the menu was opened on, else the message's only image. */
+    fun copyImageTarget(menuImageKey: String?): String? =
+        (menuImageKey ?: soleMediaPayload()?.key)?.takeIf(::canCopyImage)
 
     val actionPolicy: ActionPolicy
         get() = messageContent?.actions

@@ -286,7 +286,7 @@ internal fun ReceivedMessagePopup(
     val policy = message.actionPolicy
     // The menu body is remembered, so the targeted gallery image must be read through this.
     val currentCopyImage by rememberUpdatedState(onCopyImage)
-    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved, onCopyImage != null) {
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -338,7 +338,7 @@ internal fun ReceivedMessagePopup(
                             imageVector = Icons.Default.ContentCopy,
                         )
                     }
-                    if (onCopyImage != null) {
+                    if (currentCopyImage != null) {
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { currentCopyImage?.invoke() },
@@ -457,7 +457,7 @@ internal fun SentMessagePopup(
     val policy = message.actionPolicy
     // The menu body is remembered, so the targeted gallery image must be read through this.
     val currentCopyImage by rememberUpdatedState(onCopyImage)
-    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved, onCopyImage != null) {
+    val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -509,7 +509,7 @@ internal fun SentMessagePopup(
                             imageVector = Icons.Default.ContentCopy,
                         )
                     }
-                    if (onCopyImage != null) {
+                    if (currentCopyImage != null) {
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { currentCopyImage?.invoke() },

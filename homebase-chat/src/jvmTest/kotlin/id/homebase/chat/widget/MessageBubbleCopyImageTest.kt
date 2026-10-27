@@ -191,9 +191,9 @@ class MessageBubbleCopyImageTest {
 
     @Test
     fun copyableImageKeyIsOnlyForASingleImage() {
-        assertEquals("chat_img0", message(payload("chat_img0", "image/webp")).copyableImagePayloadKey)
-        assertNull(message(payload("chat_vid0", "video/mp4")).copyableImagePayloadKey)
-        assertNull(message(payload("chat_img0", "image/png"), payload("chat_img1", "image/png")).copyableImagePayloadKey)
-        assertNull(message(payload("chat_img0", "image/png")).copy(isPendingSend = true).copyableImagePayloadKey)
+        assertEquals("chat_img0", message(payload("chat_img0", "image/webp")).copyImageTarget(null))
+        assertNull(message(payload("chat_vid0", "video/mp4")).copyImageTarget(null))
+        assertNull(message(payload("chat_img0", "image/png"), payload("chat_img1", "image/png")).copyImageTarget(null))
+        assertNull(message(payload("chat_img0", "image/png")).copy(isPendingSend = true).copyImageTarget(null))
     }
 }

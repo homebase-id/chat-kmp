@@ -123,15 +123,14 @@ fun FullScreenMediaViewer(
 
     val currentPayloadKey = data.payloads.getOrNull(pagerState.currentPage)?.key ?: data.selectedPayloadKey
     val currentPayload = data.payloads.firstOrNull { it.key == currentPayloadKey }
-    val copyAction = imageOnlyAction(
-        contentType = currentPayload?.contentType,
-        action = onCopyImage?.let { copy ->
+    fun currentImageAction(action: ((messageId: Uuid, payloadKey: String) -> Unit)?): (() -> Unit)? =
+        imageOnlyAction(currentPayload?.contentType, action?.let { act ->
             {
                 showMenu = false
-                copy(data.messageId, currentPayloadKey)
+                act(data.messageId, currentPayloadKey)
             }
-        },
-    )
+        })
+    val copyAction = currentImageAction(onCopyImage)
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(focusRequester) { focusRequester.requestFocus() }
 
@@ -281,15 +280,7 @@ fun FullScreenMediaViewer(
                     val currentIsSticker = currentPayload
                         ?.descriptorInfo()
                         ?.let { it is DescriptorContent.ImageFile && it.isSticker } == true
-                    val vaultAction = imageOnlyAction(
-                        contentType = currentPayload?.contentType,
-                        action = onSaveToVault?.let { saveToVault ->
-                            {
-                                showMenu = false
-                                saveToVault(data.messageId, currentPayloadKey)
-                            }
-                        },
-                    )
+                    val vaultAction = currentImageAction(onSaveToVault)
                     val hasMenuItems = onSave != null || onDelete != null ||
                         onNavigateToMessage != null || currentIsSticker || vaultAction != null || copyAction != null
                     if (hasMenuItems) {
