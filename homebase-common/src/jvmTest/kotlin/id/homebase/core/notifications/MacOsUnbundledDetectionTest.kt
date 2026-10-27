@@ -1,12 +1,13 @@
 package id.homebase.core.notifications
 
+import id.homebase.core.util.HostOs
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class MacOsUnbundledDetectionTest {
 
-    private fun unbundledOnMac(javaHome: String) = isMacOsRunningUnbundled("Mac OS X", javaHome)
+    private fun unbundledOnMac(javaHome: String) = isMacOsRunningUnbundled(HostOs.Mac, javaHome)
 
     @Test
     fun installedAppWithSpaceInNameIsBundled() {
@@ -33,7 +34,7 @@ class MacOsUnbundledDetectionTest {
 
     @Test
     fun nonMacIsNeverUnbundled() {
-        assertFalse(isMacOsRunningUnbundled("Windows 11", "C:\\Program Files\\Java\\jdk-21"))
-        assertFalse(isMacOsRunningUnbundled("Linux", "/usr/lib/jvm/java-21"))
+        assertFalse(isMacOsRunningUnbundled(HostOs.Windows, "C:\\Program Files\\Java\\jdk-21"))
+        assertFalse(isMacOsRunningUnbundled(HostOs.Linux, "/usr/lib/jvm/java-21"))
     }
 }

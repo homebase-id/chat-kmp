@@ -1,6 +1,8 @@
 package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
+import id.homebase.core.util.HostOs
+import id.homebase.core.util.hostOs
 import io.github.kdroidfilter.nucleus.notification.AuthorizationOption
 import io.github.kdroidfilter.nucleus.notification.AuthorizationStatus
 import io.github.kdroidfilter.nucleus.notification.NotificationCenter
@@ -10,12 +12,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 /** UNUserNotificationCenter drops every notification until the user has authorised the bundle. */
 internal object MacNotificationAuthorization {
 
-    val applies: Boolean
-        get() = System.getProperty("os.name").orEmpty().contains("Mac", ignoreCase = true) &&
-                !isMacOsRunningUnbundled()
+    private val applies: Boolean = hostOs == HostOs.Mac && !isMacOsRunningUnbundled()
 
     /** Prompts only while undecided; afterwards macOS answers with the stored decision. */
-    fun request(onResult: (Boolean) -> Unit = {}) {
+    fun request(onResult: (Boolean) -> Unit) {
         if (!applies) return onResult(true)
         NotificationCenter.requestAuthorization(
             setOf(AuthorizationOption.ALERT, AuthorizationOption.SOUND, AuthorizationOption.BADGE),

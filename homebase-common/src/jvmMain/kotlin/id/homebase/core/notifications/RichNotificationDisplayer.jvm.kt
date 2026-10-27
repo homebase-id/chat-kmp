@@ -2,6 +2,8 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.notification.NotifierManager
+import id.homebase.core.util.HostOs
+import id.homebase.core.util.hostOs
 
 /**
  * Desktop displayer — prefers the Nucleus cross-platform notification backend
@@ -53,6 +55,6 @@ actual class RichNotificationDisplayer actual constructor() {
 
 // Packagers bundle the JRE at <App>.app/Contents/runtime; an IDE's JBR also sits inside a .app.
 internal fun isMacOsRunningUnbundled(
-    osName: String = System.getProperty("os.name").orEmpty(),
+    os: HostOs = hostOs,
     javaHome: String = System.getProperty("java.home").orEmpty(),
-): Boolean = osName.contains("Mac", ignoreCase = true) && !javaHome.contains(".app/Contents/runtime/")
+): Boolean = os == HostOs.Mac && !javaHome.contains(".app/Contents/runtime/")
