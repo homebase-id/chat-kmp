@@ -201,8 +201,8 @@ jobs:
           # --- CI-only overrides (appended by "Apply iOS CI memory overrides") ---
           # Gradle daemon only orchestrates this build; don't let it compete
           # with the Kotlin/Native compiler for the runner's 7 GB of RAM.
-          org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
-          kotlin.daemon.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps
+          org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -XX:ErrorFile=/Users/runner/work/jvm-dumps/hs_err_pid%p.log
+          kotlin.daemon.jvmargs=-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -XX:ErrorFile=/Users/runner/work/jvm-dumps/hs_err_pid%p.log
           # One K/N task at a time; incremental-native caches are dead weight
           # on a one-shot runner.
           kotlin.native.gradle.workers.max=1
@@ -220,7 +220,7 @@ jobs:
           # 28927080827, 65-min job) and leaves headroom for the peak's growth
           # (~+1 GB June->July as the app grew). 12g exceeds the runner's 7 GB
           # RAM; macOS swap absorbs the excess.
-          kotlin.native.jvmArgs=-Xmx12g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
+          kotlin.native.jvmArgs=-Xmx12g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log -XX:ErrorFile=/Users/runner/work/jvm-dumps/hs_err_pid%p.log
           # Skip the K/N LTO phase that owns the bulk of the release link's
           # peak heap (~2 GB of live set, and growing with the app). Cuts the
           # job from 86-99 min to ~65 min and ends the recurring OOM ratchet.
@@ -315,6 +315,19 @@ jobs:
           code-signing-identity: "Apple Distribution"
           team-id: ${{ secrets.IOS_TEAM_ID }}
           certificate-password: ${{ secrets.IOS_FEED_CERTIFICATE_PASSWORD }}
+
+      # A JVM that dies on SIGABRT leaves its reason in the raw xcodebuild
+      # output (xcpretty drops it), a macOS crash report, or an hs_err file.
+      - name: Collect JVM crash evidence
+        if: always()
+        run: |
+          d=/Users/runner/work/jvm-dumps
+          mkdir -p "$d"
+          cp ~/Library/Logs/gym/*.log "$d/" 2>/dev/null || true
+          find ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports \
+            -newer "$GITHUB_WORKSPACE/gradlew" -type f -exec cp {} "$d/" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE" -maxdepth 3 -name 'hs_err_pid*.log' -exec cp {} "$d/" \; 2>/dev/null || true
+          ls -la "$d"
 
       # Companion to "Apply iOS CI memory overrides": if the build OOMs again,
       # the heap dump + GC logs tell us what the live set actually is.
