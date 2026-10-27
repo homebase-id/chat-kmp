@@ -4,9 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.Alignment
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import dev.nucleusframework.composenativetray.menu.api.TrayMenuBuilder
@@ -25,9 +25,10 @@ fun HomebaseTray(
 ) {
     // macOS reopens the hidden window from the Dock instead (AppReopenedListener in Main.kt).
     if (isMacOs) return
+    val fullTooltip = callIndicatorLabel?.let { "$tooltip, $it" } ?: tooltip
     Tray(
-        iconContent = { HomebaseTrayIcon(isMenuBarInDarkMode(), callIndicatorLabel != null, callIndicatorLabel?.let { "$tooltip, $it" } ?: tooltip) },
-        tooltip = callIndicatorLabel?.let { "$tooltip, $it" } ?: tooltip,
+        iconContent = { HomebaseTrayIcon(isMenuBarInDarkMode(), callIndicatorLabel != null, fullTooltip) },
+        tooltip = fullTooltip,
         primaryAction = primaryAction,
         menuContent = menuContent,
     )

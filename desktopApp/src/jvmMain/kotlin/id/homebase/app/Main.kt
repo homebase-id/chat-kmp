@@ -24,8 +24,8 @@ import androidx.compose.ui.window.rememberWindowState
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
-import dev.nucleusframework.core.runtime.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
+import dev.nucleusframework.core.runtime.SingleInstanceManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
 import id.homebase.core.util.HostOs
