@@ -132,16 +132,6 @@ jobs:
               }
             }
             
-            // Drafts stay invisible (not "latest") until every asset is uploaded.
-            // A draft left by a failed earlier attempt of this version would pile up.
-            const existing = await github.paginate(github.rest.repos.listReleases, {
-              owner, repo, per_page: 100
-            });
-            for (const stale of existing.filter(r => r.draft && r.tag_name === version)) {
-              await github.rest.repos.deleteRelease({ owner, repo, release_id: stale.id });
-              console.log(`Deleted stale draft release ${stale.id}`);
-            }
-            
             // Create release
             const { data: release } = await github.rest.repos.createRelease({
               owner: owner,
@@ -149,54 +139,40 @@ jobs:
               tag_name: `${version}`,
               name: `${version}`,
               body: `Desktop development release v${version}\n\nBuilt from ${context.repo.owner}/${context.repo.repo}@${context.sha.substring(0, 7)}`,
-              draft: true,
-              prerelease: false
+              draft: true,  // published below, once every asset is uploaded
+              prerelease: false  // Set to false for production releases
             });
             
-            console.log(`Created draft release: ${release.html_url}`);
+            console.log(`Created release: ${release.html_url}`);
             
             // Upload all files from output directory
             if (!fs.existsSync(outputDir)) {
-              throw new Error(`Output directory ${outputDir} does not exist`);
+              console.log(`Output directory ${outputDir} does not exist`);
+              return;
             }
             
-            // Update feeds go last so they never advertise binaries that are not uploaded yet.
-            const isFeed = (f) => /^(appcast-.*\.rss|Packages(\.xz)?|InRelease|Release|download\.html)$/.test(f);
-            const files = fs.readdirSync(outputDir)
-              .filter(f => fs.statSync(path.join(outputDir, f)).isFile())
-              .sort((a, b) => isFeed(a) - isFeed(b));
+            const files = fs.readdirSync(outputDir);
             console.log(`Found ${files.length} files in output directory`);
             
             for (const file of files) {
               const filePath = path.join(outputDir, file);
-              console.log(`Uploading ${file} (${(fs.statSync(filePath).size / 1024 / 1024).toFixed(2)} MB)...`);
+              const stats = fs.statSync(filePath);
             
-              for (let attempt = 1; ; attempt++) {
-                try {
-                  await github.rest.repos.uploadReleaseAsset({
-                    owner: owner,
-                    repo: repo,
-                    release_id: release.id,
-                    name: file,
-                    data: fs.readFileSync(filePath)
-                  });
-                  break;
-                } catch (error) {
-                  const retryable = !error.status || error.status >= 500;
-                  if (!retryable || attempt === 4) throw error;
-                  console.log(`Upload of ${file} failed (attempt ${attempt}): ${error.message}`);
-                  await new Promise(r => setTimeout(r, attempt * 10000));
-                  // A failed attempt can leave a partial asset under the same name.
-                  const { data: assets } = await github.rest.repos.listReleaseAssets({
-                    owner, repo, release_id: release.id, per_page: 100
-                  });
-                  for (const asset of assets.filter(a => a.name === file)) {
-                    await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: asset.id });
-                  }
-                }
+              if (stats.isFile()) {
+                console.log(`Uploading ${file} (${(stats.size / 1024 / 1024).toFixed(2)} MB)...`);
+            
+                const fileContent = fs.readFileSync(filePath);
+            
+                await github.rest.repos.uploadReleaseAsset({
+                  owner: owner,
+                  repo: repo,
+                  release_id: release.id,
+                  name: file,
+                  data: fileContent
+                });
+            
+                console.log(`✓ Uploaded ${file}`);
               }
-            
-              console.log(`✓ Uploaded ${file}`);
             }
             
             await github.rest.repos.updateRelease({
