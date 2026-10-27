@@ -3,7 +3,7 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.isIos
-import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL as API_MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL
 import id.homebase.notifshared.isMomentsPush
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -593,7 +593,7 @@ class NotificationService(
         // are not conversations. Excluding them keeps moment pushes from being
         // suppressed while the user is on the chat list, counted into a chat
         // conversation's summary, or cancelled as chat notifications.
-        if (isMomentsTap(notification.options.typeId, notification.options.tagId)) return null
+        if (isMomentsPush(notification.options.typeId, notification.options.tagId)) return null
         return notification.options.typeId
     }
 
@@ -943,19 +943,6 @@ internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>?
     return convoUuid to msgUuid
 }
 
-/**
- * Well-known sentinel `tagId` that marks a Moments *comment* push, distinguishing
- * it from a moment-*post* push. Both kinds keep `typeId == momentId` (so the moment
- * to open is always recoverable from `typeId`, and notifications coalesce per moment
- * via `typeId.hashCode()`); the post sets `tagId == typeId == momentId` while the
- * comment sets `tagId` to this sentinel. A chat message's `tagId` is a random
- * messageId, so collision with this fixed value is effectively impossible.
- *
- * Shared with the send path ([id.homebase.core.moments.services.MomentsPostSenderService]).
- */
-
-const val MOMENT_COMMENT_TAG_SENTINEL = API_MOMENT_COMMENT_TAG_SENTINEL
-
 /** What a tapped Moments push resolves to: which moment to open, and whether to expand comments. */
 internal data class MomentsTapTarget(val momentId: String, val openComments: Boolean)
 
@@ -984,9 +971,6 @@ internal fun resolveMomentsTap(typeId: String, tagId: String): MomentsTapTarget?
         else -> null
     }
 }
-
-/** Convenience predicate over [resolveMomentsTap]. */
-internal fun isMomentsTap(typeId: String, tagId: String): Boolean = isMomentsPush(typeId, tagId)
 
 /**
  * The body to display for a chat notification. When real content is shown
