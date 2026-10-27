@@ -1,7 +1,5 @@
 package id.homebase.app
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -58,7 +56,6 @@ import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.core.ui.navigation.Route
-import id.homebase.core.ui.screens.appearance.getIconForTheme
 import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.screens.desktop.DesktopUiAction
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
@@ -324,10 +321,7 @@ fun main() {
 
             Divider()
             Item(label = themeMenuLabel, isEnabled = false)
-            Item(
-                label = themeLabel,
-                icon = uiState.theme.getIconForTheme(),
-            ) {
+            Item(label = themeLabel) {
                 viewModel.onUiAction(DesktopUiAction.ToggleTheme)
             }
 
@@ -336,10 +330,7 @@ fun main() {
             Item(label = appName, isEnabled = false)
             Item(label = versionLabel, isEnabled = false)
             if (uiState.updateAvailable) {
-                Item(
-                    label = updateAvailable,
-                    icon = Icons.Default.Update,
-                ) {
+                Item(label = updateAvailable) {
                     viewModel.onUiAction(DesktopUiAction.TriggerUpdate)
                 }
             }
