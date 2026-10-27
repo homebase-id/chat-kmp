@@ -211,10 +211,16 @@ fun SentMessageBubble(
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
-    onCopyImage: (() -> Unit)? = null,
+    onCopyImage: ((payloadKey: String) -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
+    // The gallery image the menu was opened on, if any.
+    var menuImageKey by remember { mutableStateOf<String?>(null) }
+    fun openPopup(mode: MessagePopupMode, imageKey: String? = null) {
+        menuImageKey = imageKey
+        popupMode = mode
+    }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
     val handback = rememberBubbleHandback()
     SideEffect { handback.active = popupTransition.shownMode == MessagePopupMode.All }
@@ -227,6 +233,11 @@ fun SentMessageBubble(
     // frame then snaps to bubble width on the next composition.
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val haptics = rememberHaptics()
+    fun longPressPopup(imageKey: String? = null) {
+        if (onMessageInfo == null) return
+        haptics.perform(HapticEvent.LongPress)
+        openPopup(MessagePopupMode.All, imageKey)
+    }
     val policy = message.actionPolicy
     val openReactionBar: (() -> Unit)? =
         if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
@@ -253,7 +264,7 @@ fun SentMessageBubble(
                 if (onMessageInfo != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { popupMode = MessagePopupMode.Menu },
+                        onClick = { openPopup(MessagePopupMode.Menu) },
                         enabled = isHovered
                     ) {
                         Icon(
@@ -321,8 +332,10 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onCopyText(message.content)
                         },
-                        onCopyImage = onCopyImage?.let { orig ->
-                            { popupMode = MessagePopupMode.None; orig() }
+                        onCopyImage = onCopyImage?.let { copy ->
+                            message.copyImageTarget(menuImageKey)?.let { key ->
+                                { popupMode = MessagePopupMode.None; copy(key) }
+                            }
                         },
                         stickerActions = stickerActions?.let { a ->
                             StickerMenuActions(
@@ -375,7 +388,7 @@ fun SentMessageBubble(
                                 onClick = {},
                                 onLongClick = {
                                     if (onMessageInfo != null) {
-                                        popupMode = MessagePopupMode.All
+                                        openPopup(MessagePopupMode.All)
                                     }
                                 },
                                 // Only reaches the padding around the bubble and the typed kinds
@@ -384,7 +397,7 @@ fun SentMessageBubble(
                             )
                         } else Modifier,
                     ).ifTrue(onMessageInfo != null && !message.isDeleted) {
-                        Modifier.onSecondaryPress { popupMode = MessagePopupMode.Menu }
+                        Modifier.onSecondaryPress { openPopup(MessagePopupMode.Menu) }
                     },
                 ) {
                     MessageBubbleRaw(
@@ -399,12 +412,11 @@ fun SentMessageBubble(
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
                         isGroupConversation = isGroupConversation,
-                        onLongClick = {
-                            if (onMessageInfo != null) {
-                                haptics.perform(HapticEvent.LongPress)
-                                popupMode = MessagePopupMode.All
-                            }
-                        },
+                        onLongClick = { longPressPopup() },
+                        onMediaLongClick = { longPressPopup(it.key) },
+                        onMediaSecondaryPress = if (onMessageInfo != null && !message.isDeleted) { payload ->
+                            openPopup(MessagePopupMode.Menu, payload.key)
+                        } else null,
                         onDoubleClick = openReactionBar,
                         onMediaClick = onMediaClick,
                         onClickMessageId = onClickMessageId,
@@ -551,10 +563,16 @@ fun ReceivedMessageBubble(
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
-    onCopyImage: (() -> Unit)? = null,
+    onCopyImage: ((payloadKey: String) -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
+    // The gallery image the menu was opened on, if any.
+    var menuImageKey by remember { mutableStateOf<String?>(null) }
+    fun openPopup(mode: MessagePopupMode, imageKey: String? = null) {
+        menuImageKey = imageKey
+        popupMode = mode
+    }
     val popupTransition = updateTransition(popupMode, label = "messagePopup")
     val handback = rememberBubbleHandback()
     SideEffect { handback.active = popupTransition.shownMode == MessagePopupMode.All }
@@ -575,6 +593,11 @@ fun ReceivedMessageBubble(
     val isVoiceNote = mediaOnly &&
         filteredPayloads.singleOrNull()?.isAudio() == true
     val haptics = rememberHaptics()
+    fun longPressPopup(imageKey: String? = null) {
+        if (onMessageInfo == null) return
+        haptics.perform(HapticEvent.LongPress)
+        openPopup(MessagePopupMode.All, imageKey)
+    }
     val policy = message.actionPolicy
     val openReactionBar: (() -> Unit)? =
         if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
@@ -623,7 +646,7 @@ fun ReceivedMessageBubble(
                         onClick = {},
                         onLongClick = {
                             if (onMessageInfo != null) {
-                                popupMode = MessagePopupMode.All
+                                openPopup(MessagePopupMode.All)
                             }
                         },
                         // See SentMessageBubble — MessageBubbleRaw owns the bubble surface.
@@ -652,7 +675,7 @@ fun ReceivedMessageBubble(
                     }
                     Box(
                         Modifier.handbackSource(handback).ifTrue(onMessageInfo != null && !message.isDeleted) {
-                            Modifier.onSecondaryPress { popupMode = MessagePopupMode.Menu }
+                            Modifier.onSecondaryPress { openPopup(MessagePopupMode.Menu) }
                         },
                     ) {
                         MessageBubbleRaw(
@@ -670,12 +693,11 @@ fun ReceivedMessageBubble(
                             else null,
                             authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
                             else null,
-                            onLongClick = {
-                                if (onMessageInfo != null) {
-                                    haptics.perform(HapticEvent.LongPress)
-                                    popupMode = MessagePopupMode.All
-                                }
-                            },
+                            onLongClick = { longPressPopup() },
+                            onMediaLongClick = { longPressPopup(it.key) },
+                            onMediaSecondaryPress = if (onMessageInfo != null && !message.isDeleted) { payload ->
+                                openPopup(MessagePopupMode.Menu, payload.key)
+                            } else null,
                             onDoubleClick = openReactionBar,
                             onMediaClick = onMediaClick,
                             onClickMessageId = onClickMessageId,
@@ -755,7 +777,7 @@ fun ReceivedMessageBubble(
                 if (onMessageInfo != null && supportsHoverActions() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { popupMode = MessagePopupMode.Menu },
+                        onClick = { openPopup(MessagePopupMode.Menu) },
                         enabled = isHovered
                     ) {
                         Icon(
@@ -798,8 +820,10 @@ fun ReceivedMessageBubble(
                             popupMode = MessagePopupMode.None
                             onCopyText(message.content)
                         },
-                        onCopyImage = onCopyImage?.let { orig ->
-                            { popupMode = MessagePopupMode.None; orig() }
+                        onCopyImage = onCopyImage?.let { copy ->
+                            message.copyImageTarget(menuImageKey)?.let { key ->
+                                { popupMode = MessagePopupMode.None; copy(key) }
+                            }
                         },
                         stickerActions = stickerActions?.let { a ->
                             StickerMenuActions(
@@ -1424,3 +1448,7 @@ private fun AnimatedReactionPill(
         }
     }
 }
+
+/** The image "Copy image" copies: the gallery cell the menu was opened on, else the message's only image. */
+internal fun MessageUiModel.copyImageTarget(menuImageKey: String?): String? =
+    (menuImageKey ?: copyableImagePayloadKey)?.takeIf(::canCopyImage)

@@ -9,7 +9,6 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
-import id.homebase.core.clipboard.copyImageToClipboard
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.chat_error_copy_image
@@ -167,18 +166,12 @@ internal class MediaDownloadHandler(
     }
 
     fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
-        val message = messagesUiState.value.messages.firstNotNullOfOrNull {
-            (it as? MessageListContentModel.Message)?.message?.takeIf { m -> m.id == action.messageId }
-        } ?: return
+        val message = messagesUiState.value.messageById(action.messageId)
+            ?.takeIf { it.canCopyImage(action.payloadKey) } ?: return
         val payload = message.payloads?.find { it.key == action.payloadKey } ?: return
-        val contentType = payload.contentType ?: return
-        val iv = payload.iv ?: return
         scope.launch {
             val event = try {
-                val bytes = chatMessageActionService.getPayloadBytes(
-                    message.fileId, action.payloadKey, KeyHeader(iv.bytes, message.keyHeader.aesKey),
-                ) ?: error("payload not found")
-                copyImageToClipboard(bytes, contentType)
+                chatMessageActionService.copyImagePayloadToClipboard(message.fileId, payload, message.keyHeader)
                 ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

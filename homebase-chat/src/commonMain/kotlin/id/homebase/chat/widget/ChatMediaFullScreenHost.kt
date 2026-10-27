@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.AppCacheDirs
@@ -43,6 +44,8 @@ import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.chat_error_copy_image
+import id.homebase.resources.chat_image_copied
 import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
@@ -245,6 +248,22 @@ private fun SharedMediaViewer(
                 )
             }
         } else null,
+        onCopyImage = { _, _ ->
+            scope.launch {
+                val copied = try {
+                    actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
+                    true
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e(throwable = e, tag = "SharedMediaViewer") { "Failed to copy image: ${e.message}" }
+                    false
+                }
+                snackbarHostState.showSnackbar(
+                    TranslationUtil.getString(if (copied) MR.string.chat_image_copied else MR.string.chat_error_copy_image)
+                )
+            }
+        },
         onDelete = { onDismiss() },
         onDismiss = onDismiss,
         onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },

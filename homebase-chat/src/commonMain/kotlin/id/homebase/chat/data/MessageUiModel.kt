@@ -136,12 +136,16 @@ data class MessageUiModel(
             ?.key
     }
 
+    /** Whether "Copy image" may be offered on this message at all; each payload must still be an image. */
+    val allowsImageCopy: Boolean get() = messageContent == null && !isPendingSend && !isDeleted
+
+    fun canCopyImage(payloadKey: String): Boolean = allowsImageCopy && payloads?.any {
+        it.key == payloadKey && it.contentType?.startsWith("image/") == true
+    } == true
+
     /** Key of the image when this message carries exactly one image payload, which "Copy image" copies. */
     val copyableImagePayloadKey: String? by lazy {
-        if (messageContent != null || isPendingSend || isDeleted) return@lazy null
-        soleMediaPayload()
-            ?.takeIf { it.contentType?.startsWith("image/") == true }
-            ?.key
+        soleMediaPayload()?.key?.takeIf(::canCopyImage)
     }
 
     val actionPolicy: ActionPolicy

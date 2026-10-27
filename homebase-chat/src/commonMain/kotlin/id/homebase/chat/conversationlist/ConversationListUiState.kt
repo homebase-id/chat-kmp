@@ -407,6 +407,10 @@ sealed interface FullScreenOverlay {
     ) : FullScreenOverlay.MediaViewer
 }
 
+internal fun MessageListUiState.messageById(id: Uuid): MessageUiModel? = messages.firstNotNullOfOrNull {
+    (it as? MessageListContentModel.Message)?.message?.takeIf { m -> m.id == id }
+}
+
 internal fun MessageListUiState.lastEditableMessage(): MessageUiModel? {
     // A window paged into history doesn't hold the newest messages, so its last one isn't the last sent.
     if (isEditingMessageId != null || hasNewerMessages) return null

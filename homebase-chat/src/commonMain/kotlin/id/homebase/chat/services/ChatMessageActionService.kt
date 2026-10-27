@@ -5,6 +5,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
@@ -32,6 +33,7 @@ import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
+import id.homebase.core.clipboard.copyImageToClipboard
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
 import kotlin.uuid.Uuid
@@ -568,6 +570,15 @@ class ChatMessageActionService(
             chatTargetDrive.alias, fileId, payloadKey, keyHeader
         )
         return response?.bytes
+    }
+
+    /** Decrypts the image [payload] of [fileId] onto the system clipboard. Throws on failure. */
+    suspend fun copyImagePayloadToClipboard(fileId: Uuid, payload: PayloadDescriptor, messageKeyHeader: KeyHeader) {
+        val iv = payload.iv ?: error("payload not uploaded")
+        val contentType = payload.contentType ?: error("payload has no content type")
+        val bytes = getPayloadBytes(fileId, payload.key, KeyHeader(iv.bytes, messageKeyHeader.aesKey))
+            ?: error("payload not found")
+        copyImageToClipboard(bytes, contentType)
     }
 
     /**

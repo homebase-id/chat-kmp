@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
+import androidx.compose.ui.geometry.Offset
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.contactcard.ContactCardBubble
 import id.homebase.chat.contactcard.contactCardPhotoData
@@ -166,6 +167,9 @@ fun MessageBubbleRaw(
     // Null keeps combinedClickable's single-tap path undelayed for bubbles that can't react.
     onDoubleClick: (() -> Unit)? = null,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    // Long-press on one media item, or right-click on one gallery cell; a null [onMediaLongClick] falls back to [onLongClick].
+    onMediaLongClick: ((PayloadDescriptor) -> Unit)? = null,
+    onMediaSecondaryPress: ((PayloadDescriptor) -> Unit)? = null,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     liveControls: LiveLocationBubbleControls? = null,
@@ -500,18 +504,22 @@ fun MessageBubbleRaw(
         }
     }
 
-    fun handleLongClick() {
+    fun handleLongClick(action: () -> Unit = onLongClick) {
         if (isAnimatingLongPress.value) return
         isAnimatingLongPress.value = true
         coroutineScope.launch {
             try {
-                onLongClick()
+                action()
                 scaleAnim.animateTo(0.94f, animationSpec = springSpec)
                 scaleAnim.animateTo(1f, animationSpec = springSpec)
             } finally {
                 isAnimatingLongPress.value = false
             }
         }
+    }
+
+    val onMediaLongPress: (PayloadDescriptor, Offset) -> Unit = { payload, _ ->
+        handleLongClick { onMediaLongClick?.invoke(payload) ?: onLongClick() }
     }
 
     val timestamp = formatMessageTimestamp(message.userDate)
@@ -667,7 +675,8 @@ fun MessageBubbleRaw(
                         driveId = chatTargetDrive.alias,
                         previewThumbnail = message.previewThumbnail,
                         onMediaClick = onMediaClick,
-                        onMediaLongPress = { _, _ -> handleLongClick() },
+                        onMediaLongPress = onMediaLongPress,
+                        onMediaSecondaryPress = onMediaSecondaryPress,
                         liveControls = liveControls,
                         locationHeaderDescriptor = locationDescriptor,
                         onRequestDecryptedFile = onRequestDecryptedFile,
@@ -709,7 +718,8 @@ fun MessageBubbleRaw(
                                 driveId = chatTargetDrive.alias,
                                 previewThumbnail = message.previewThumbnail,
                                 onMediaClick = onMediaClick,
-                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                onMediaLongPress = onMediaLongPress,
+                                onMediaSecondaryPress = onMediaSecondaryPress,
                         liveControls = liveControls,
                         locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
@@ -801,7 +811,8 @@ fun MessageBubbleRaw(
                                     topStart = Dimens.Message.cornerRadius,
                                     topEnd = Dimens.Message.cornerRadius
                                 ) else RoundedCornerShape(0.dp),
-                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                onMediaLongPress = onMediaLongPress,
+                                onMediaSecondaryPress = onMediaSecondaryPress,
                                 liveControls = liveControls,
                                 locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
@@ -917,7 +928,8 @@ fun MessageBubbleRaw(
                                             topStart = Dimens.Message.cornerRadius,
                                             topEnd = Dimens.Message.cornerRadius
                                         ) else RoundedCornerShape(0.dp),
-                                        onMediaLongPress = { _, _ -> handleLongClick() },
+                                        onMediaLongPress = onMediaLongPress,
+                                        onMediaSecondaryPress = onMediaSecondaryPress,
                                         liveControls = liveControls,
                                         locationHeaderDescriptor = locationDescriptor,
                                         onRequestDecryptedFile = onRequestDecryptedFile,

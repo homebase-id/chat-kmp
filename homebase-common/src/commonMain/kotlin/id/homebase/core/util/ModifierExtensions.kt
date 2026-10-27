@@ -35,14 +35,20 @@ fun Modifier.conditional(condition : Boolean, modifier : Modifier.() -> Modifier
 /** East-west resize cursor for drag-to-resize splitters; no-op where there is no mouse. */
 expect fun Modifier.horizontalResizeCursor(): Modifier
 
-/** Runs [onPress] on a right-click, unless a child (e.g. the text selection menu) consumed it. */
+/**
+ * Runs [onPress] on a right-click and consumes it, unless a child (e.g. the text selection menu
+ * or a nested [onSecondaryPress]) consumed it first.
+ */
 fun Modifier.onSecondaryPress(onPress: () -> Unit): Modifier = pointerInput(onPress) {
     awaitPointerEventScope {
         while (true) {
             val event = awaitPointerEvent()
             if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed &&
                 event.changes.none { it.isConsumed }
-            ) onPress()
+            ) {
+                onPress()
+                event.changes.forEach { it.consume() }
+            }
         }
     }
 }

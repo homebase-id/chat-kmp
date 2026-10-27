@@ -173,10 +173,9 @@ fun MessageItem(
             )
         }
     } else null
-    val copyImageKey = message.copyableImagePayloadKey
-    val onCopyImage = copyImageKey?.let { key ->
-        remember(message.id, key) { { onUiAction(ConversationListUiAction.CopyImage(message.id, key)) } }
-    }
+    val onCopyImage: ((String) -> Unit)? = if (message.allowsImageCopy) {
+        remember(message.id) { { key -> onUiAction(ConversationListUiAction.CopyImage(message.id, key)) } }
+    } else null
     if (message.isAuthoredBy(odinId)) {
         val onEdit = if (message.isEditableBy(odinId)) {
             remember(message) {

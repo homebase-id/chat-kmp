@@ -30,6 +30,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.util.onSecondaryPress
 import kotlin.uuid.Uuid
 
 /** Spacing between gallery cells. */
@@ -61,6 +62,8 @@ fun MediaGallery(
     modifier: Modifier = Modifier,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    // Right-click on one cell of a 2+ gallery.
+    onMediaSecondaryPress: ((PayloadDescriptor) -> Unit)? = null,
     shape: Shape =
         RoundedCornerShape(
             topStart = Dimens.Message.cornerRadius,
@@ -125,6 +128,7 @@ fun MediaGallery(
                         keyHeader = keyHeader,
                         onMediaClick = onMediaClick,
                         onMediaLongPress = onMediaLongPress,
+                        onMediaSecondaryPress = onMediaSecondaryPress,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         messageId = messageId,
@@ -141,6 +145,7 @@ fun MediaGallery(
                         keyHeader = keyHeader,
                         onMediaClick = onMediaClick,
                         onMediaLongPress = onMediaLongPress,
+                        onMediaSecondaryPress = onMediaSecondaryPress,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         messageId = messageId,
@@ -157,6 +162,7 @@ fun MediaGallery(
                         keyHeader = keyHeader,
                         onMediaClick = onMediaClick,
                         onMediaLongPress = onMediaLongPress,
+                        onMediaSecondaryPress = onMediaSecondaryPress,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         messageId = messageId,
@@ -168,6 +174,11 @@ fun MediaGallery(
     }
 }
 
+private fun Modifier.onCellSecondaryPress(
+    payload: PayloadDescriptor,
+    onPress: ((PayloadDescriptor) -> Unit)?,
+): Modifier = if (onPress == null) this else onSecondaryPress { onPress(payload) }
+
 /** Layout for 2 images: side by side with equal width. */
 @Composable
 private fun TwoImageLayout(
@@ -178,6 +189,7 @@ private fun TwoImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
+    onMediaSecondaryPress: ((PayloadDescriptor) -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
@@ -195,7 +207,7 @@ private fun TwoImageLayout(
                 driveId = driveId,
                 keyHeader = keyHeader,
                 previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                modifier = Modifier.weight(1f).fillMaxSize(),
+                modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payload, onMediaSecondaryPress),
                 imageSize = ImageSize.THUMB_SMALL,
                 shape = RectangleShape,
                 onClick = { onMediaClick?.invoke(payload) },
@@ -220,6 +232,7 @@ private fun ThreeImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
+    onMediaSecondaryPress: ((PayloadDescriptor) -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
@@ -244,7 +257,7 @@ private fun ThreeImageLayout(
                     driveId = driveId,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                     keyHeader = keyHeader,
-                    modifier = Modifier.weight(1f).fillMaxSize(),
+                    modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payload, onMediaSecondaryPress),
                     imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payload) },
@@ -265,7 +278,7 @@ private fun ThreeImageLayout(
             driveId = driveId,
             keyHeader = keyHeader,
             previewThumbnail = payloads[2].previewThumbnail?.toEmbeddedThumb(),
-            modifier = Modifier.fillMaxWidth().height(rowHeight),
+            modifier = Modifier.fillMaxWidth().height(rowHeight).onCellSecondaryPress(payloads[2], onMediaSecondaryPress),
             imageSize = ImageSize.THUMB_MEDIUM,
             shape = RectangleShape,
             onClick = { onMediaClick?.invoke(payloads[2]) },
@@ -289,6 +302,7 @@ private fun FourPlusImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
+    onMediaSecondaryPress: ((PayloadDescriptor) -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
@@ -314,7 +328,7 @@ private fun FourPlusImageLayout(
                     driveId = driveId,
                     keyHeader = keyHeader,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                    modifier = Modifier.weight(1f).fillMaxSize(),
+                    modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payload, onMediaSecondaryPress),
                     imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payload) },
@@ -340,7 +354,7 @@ private fun FourPlusImageLayout(
                 driveId = driveId,
                 keyHeader = keyHeader,
                 previewThumbnail = payloads[2].previewThumbnail?.toEmbeddedThumb(),
-                modifier = Modifier.weight(1f).fillMaxSize(),
+                modifier = Modifier.weight(1f).fillMaxSize().onCellSecondaryPress(payloads[2], onMediaSecondaryPress),
                 imageSize = ImageSize.THUMB_SMALL,
                 shape = RectangleShape,
                 onClick = { onMediaClick?.invoke(payloads[2]) },
@@ -360,7 +374,7 @@ private fun FourPlusImageLayout(
                     driveId = driveId,
                     keyHeader = keyHeader,
                     previewThumbnail = payloads[3].previewThumbnail?.toEmbeddedThumb(),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().onCellSecondaryPress(payloads[3], onMediaSecondaryPress),
                     imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payloads[3]) },
