@@ -1,6 +1,7 @@
 package id.homebase.api.share
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.storage.KeychainStore
 
 /**
  * iOS implementation that writes auth status to the shared keychain
@@ -8,7 +9,7 @@ import co.touchlab.kermit.Logger
  */
 actual object ShareAuthBridge {
 
-    private val keychain = AppGroupKeychain("id.homebase.share.auth")
+    private val keychain = KeychainStore("id.homebase.share.auth", APP_GROUP_ID)
     private const val KEY_AUTH_ACTIVE = "share_auth_active"
     private const val KEY_USER_DOMAIN = "share_user_domain"
 

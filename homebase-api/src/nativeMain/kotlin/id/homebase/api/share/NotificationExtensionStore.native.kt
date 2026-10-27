@@ -4,13 +4,14 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.storage.KeychainStore
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import platform.Foundation.NSUserDefaults
 
 actual object NotificationExtensionStore {
 
-    private val keychain = AppGroupKeychain("id.homebase.nse.credentials")
+    private val keychain = KeychainStore("id.homebase.nse.credentials", APP_GROUP_ID)
     private const val KEY_CREDENTIALS = "nse_credentials"
     private const val KEY_CONTENT_LEVEL = "notification_content_level"
 

@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalForeignApi::class)
 
-package id.homebase.api.share
+package id.homebase.api.storage
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
@@ -11,13 +11,13 @@ import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFDictionarySetValue
 import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFStringRef
 import platform.CoreFoundation.CFTypeRefVar
 import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
-import platform.Foundation.NSBundle
 import platform.Foundation.NSData
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
@@ -27,6 +27,7 @@ import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
+import platform.Security.errSecAllocate
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessGroup
@@ -40,47 +41,38 @@ import platform.Security.kSecMatchLimit
 import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
+import platform.darwin.OSStatus
 
-/** Each process reads this from its own Info.plist, so the app and every extension must carry it. */
-internal val APP_GROUP_ID: String = NSBundle.mainBundle.infoDictionary
-    ?.get("AppGroupIdentifier") as? String ?: "group.id.homebase.feed"
+/** UTF-8 generic-password items under one [service], optionally in a shared [accessGroup]. */
+internal class KeychainStore(private val service: String, private val accessGroup: String? = null) {
 
-/**
- * Generic-password items in the App Group's keychain access group under one [service], readable
- * by the app and its extensions. Never point this at `SecureStorage`'s service: that one holds
- * the database key.
- */
-internal class AppGroupKeychain(private val service: String) {
+    class Read(val status: OSStatus, val value: String?)
 
     fun put(key: String, value: String) {
         val valueData = NSString.create(string = value).dataUsingEncoding(NSUTF8StringEncoding) ?: return
 
         val query = createQuery(key) ?: return
         val attrs = CFDictionaryCreateMutable(
-            null, 2, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
+            null, 0, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
         )
-        val valueCf = CFBridgingRetain(valueData)
-        CFDictionarySetValue(attrs, kSecValueData, valueCf)
-        CFDictionarySetValue(attrs, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
-        CFRelease(valueCf)
-
+        setValueData(attrs, valueData)
         val status = SecItemUpdate(query, attrs)
         CFRelease(attrs)
         CFRelease(query)
 
         if (status == errSecItemNotFound) {
             val addDict = createQuery(key) ?: return
-            val addValueCf = CFBridgingRetain(valueData)
-            CFDictionarySetValue(addDict, kSecValueData, addValueCf)
-            CFRelease(addValueCf)
-            CFDictionarySetValue(addDict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+            setValueData(addDict, valueData)
             SecItemAdd(addDict, null)
             CFRelease(addDict)
         }
     }
 
-    fun get(key: String): String? {
-        val query = createQuery(key) ?: return null
+    fun get(key: String): String? = read(key).value
+
+    /** A null [key] matches any item of the service, which still reports a locked Keychain. */
+    fun read(key: String?): Read {
+        val query = createQuery(key) ?: return Read(errSecAllocate, null)
         CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue)
         CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitOne)
 
@@ -88,37 +80,48 @@ internal class AppGroupKeychain(private val service: String) {
             val result = alloc<CFTypeRefVar>()
             val status = SecItemCopyMatching(query, result.ptr)
             CFRelease(query)
-            if (status != errSecSuccess || result.value == null) return null
-            val data = CFBridgingRelease(result.value) as? NSData ?: return null
-            return NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
+            if (status == errSecSuccess && result.value != null) {
+                val data = CFBridgingRelease(result.value) as? NSData
+                if (data != null) {
+                    return Read(status, NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString())
+                }
+            }
+            return Read(status, null)
         }
     }
 
-    fun delete(key: String) {
+    fun delete(key: String) = deleteMatching(key)
+
+    fun clear() = deleteMatching(null)
+
+    private fun deleteMatching(key: String?) {
         val query = createQuery(key) ?: return
         SecItemDelete(query)
         CFRelease(query)
     }
 
-    private fun createQuery(key: String): CFDictionaryRef? {
+    private fun setValueData(dict: CFDictionaryRef?, valueData: NSData) {
+        val valueCf = CFBridgingRetain(valueData)
+        CFDictionarySetValue(dict, kSecValueData, valueCf)
+        CFRelease(valueCf)
+        CFDictionarySetValue(dict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+    }
+
+    private fun createQuery(key: String?): CFDictionaryRef? {
         val dict = CFDictionaryCreateMutable(
-            null, 6, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
+            null, 0, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
         ) ?: return null
 
         CFDictionarySetValue(dict, kSecClass, kSecClassGenericPassword)
-
-        val serviceCf = CFBridgingRetain(service)
-        CFDictionarySetValue(dict, kSecAttrService, serviceCf)
-        CFRelease(serviceCf)
-
-        val groupCf = CFBridgingRetain(APP_GROUP_ID)
-        CFDictionarySetValue(dict, kSecAttrAccessGroup, groupCf)
-        CFRelease(groupCf)
-
-        val keyCf = CFBridgingRetain(key)
-        CFDictionarySetValue(dict, kSecAttrAccount, keyCf)
-        CFRelease(keyCf)
-
+        setString(dict, kSecAttrService, service)
+        accessGroup?.let { setString(dict, kSecAttrAccessGroup, it) }
+        key?.let { setString(dict, kSecAttrAccount, it) }
         return dict
+    }
+
+    private fun setString(dict: CFDictionaryRef, attr: CFStringRef?, value: String) {
+        val cf = CFBridgingRetain(value)
+        CFDictionarySetValue(dict, attr, cf)
+        CFRelease(cf)
     }
 }
