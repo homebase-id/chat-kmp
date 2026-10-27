@@ -38,7 +38,7 @@ import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.notifications.MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL
 import id.homebase.resources.MR
 import id.homebase.resources.moments_push_new_comment
 import id.homebase.resources.moments_push_new_post

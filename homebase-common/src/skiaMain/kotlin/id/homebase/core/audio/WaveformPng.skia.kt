@@ -18,6 +18,16 @@ internal fun skiaWaveformPng(amplitudes: FloatArray, width: Int, height: Int): B
         strokeCap = PaintStrokeCap.ROUND
         isAntiAlias = true
     }
-    layout.bars.forEach { surface.canvas.drawLine(it.x, it.top, it.x, it.bottom, paint) }
-    return surface.makeImageSnapshot().encodeToData(EncodedImageFormat.PNG, 100)?.bytes ?: byteArrayOf()
+    try {
+        layout.bars.forEach { surface.canvas.drawLine(it.x, it.top, it.x, it.bottom, paint) }
+        val image = surface.makeImageSnapshot()
+        try {
+            return image.encodeToData(EncodedImageFormat.PNG, 100)?.bytes ?: byteArrayOf()
+        } finally {
+            image.close()
+        }
+    } finally {
+        paint.close()
+        surface.close()
+    }
 }
