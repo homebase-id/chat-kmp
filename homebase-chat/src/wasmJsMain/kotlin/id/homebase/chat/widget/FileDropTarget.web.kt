@@ -13,7 +13,6 @@ import androidx.compose.ui.platform.LocalDensity
 import io.github.vinceglb.filekit.BrowserFile
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.WebFile
-import kotlin.js.unsafeCast
 import kotlinx.browser.window
 import org.w3c.dom.DataTransferItem
 import org.w3c.dom.DragEvent

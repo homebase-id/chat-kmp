@@ -37,6 +37,7 @@ kotlin {
         browser()
     }
 
+    // The NSE links the system SQLite (-lsqlite3) only to satisfy sqliter's symbols and must never open the database.
     // Leaf framework linked into the iOS NSE, which has a ~24 MB RAM budget: this module reaches
     // homebase-api only for the one-header fetch + decrypt, never its DB, DI or image caches.
     listOf(

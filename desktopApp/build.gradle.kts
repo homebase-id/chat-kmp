@@ -98,6 +98,7 @@ kotlin {
             }
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.composenativetray)
+            implementation(libs.nucleus.core.runtime)
             implementation(libs.vlcj.get().toString()) {
                 exclude(group = "net.java.dev.jna", module = "jna-jpms")
                 exclude(group = "net.java.dev.jna", module = "jna-platform-jpms")

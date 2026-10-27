@@ -371,6 +371,7 @@ actual object ImageUtils {
                 is PathCommand.CubicTo -> builder.cubicTo(pc.c1x, pc.c1y, pc.c2x, pc.c2y, pc.x, pc.y)
             }
             val path = builder.detach()
+            builder.close()
 
             when (cmd.kind) {
                 StrokeKind.PAINT -> {
