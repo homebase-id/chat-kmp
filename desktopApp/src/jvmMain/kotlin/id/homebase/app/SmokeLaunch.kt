@@ -33,8 +33,12 @@ internal fun SmokeExit() {
     LaunchedEffect(Unit) {
         withFrameNanos { }
         delay(5_000)
-        File(marker).writeText("ok")
-        println("HOMEBASE_SMOKE_OK")
-        exitProcess(0)
+        passSmokeRun(marker)
     }
+}
+
+private fun passSmokeRun(marker: String) {
+    File(marker).writeText("ok")
+    println("HOMEBASE_SMOKE_OK")
+    exitProcess(0)
 }
