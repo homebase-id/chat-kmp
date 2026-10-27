@@ -51,12 +51,8 @@ actual class RichNotificationDisplayer actual constructor() {
     }
 }
 
-internal fun isMacOsRunningUnbundled(): Boolean {
-    val osName = System.getProperty("os.name") ?: ""
-    if (!osName.contains("Mac", ignoreCase = true)) return false
-    // Packaged HomebaseChat / HomebaseChatDev launchers put the JRE inside the .app
-    // bundle, so java.home contains the bundle name. Anything else (IDE JBR, gradle,
-    // system JDK) is unbundled and macOS native notifications will crash.
-    val javaHome = System.getProperty("java.home") ?: ""
-    return !javaHome.contains("HomebaseChat", ignoreCase = true)
-}
+// Packagers bundle the JRE at <App>.app/Contents/runtime; an IDE's JBR also sits inside a .app.
+internal fun isMacOsRunningUnbundled(
+    osName: String = System.getProperty("os.name").orEmpty(),
+    javaHome: String = System.getProperty("java.home").orEmpty(),
+): Boolean = osName.contains("Mac", ignoreCase = true) && !javaHome.contains(".app/Contents/runtime/")

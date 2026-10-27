@@ -312,7 +312,7 @@ fun NotificationSettingsUi(
             // ── Re-register Push Notifications ──
             // Kept as a Card, not a SettingsRow: it must go inert while a re-registration is in
             // flight, and SettingsRow has no disabled state by design.
-            Card(
+            if (uiState.hasPushRegistration) Card(
                 onClick = { onAction(NotificationSettingsUiAction.ReRegisterPushNotifications) },
                 enabled = !uiState.isReRegistering,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -370,7 +370,7 @@ fun NotificationSettingsUi(
             }
 
             // ── Push Notification Status (always on web, else tap the header 5 times) ──
-            NotificationSectionHeader(
+            if (uiState.hasPushRegistration) NotificationSectionHeader(
                 title = stringResource(MR.string.settings_push_notification_status),
                 modifier = Modifier
                     .testTag("pushNotificationStatusHeader")
@@ -381,7 +381,7 @@ fun NotificationSettingsUi(
             // two FCM rows can only mislead there. The status row is a web user's only view of
             // whether push actually works, so it is not hidden behind the debug gesture.
             val fcmDebugRows = uiState.showDebugInfo && !isWeb()
-            if (uiState.showDebugInfo || isWeb()) {
+            if (uiState.hasPushRegistration && (uiState.showDebugInfo || isWeb())) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         .testTag("pushNotificationStatusCard")
