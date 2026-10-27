@@ -74,6 +74,8 @@ import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.permissions.PermissionType
+import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_label
 import id.homebase.resources.settings_filesync_icon_desc
@@ -107,6 +109,8 @@ import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_status_checking
+import id.homebase.resources.settings_notifications_status_allowed
+import id.homebase.resources.settings_notifications_status_denied
 import id.homebase.resources.settings_notifications_status_error
 import id.homebase.resources.settings_notifications_status_on
 import id.homebase.resources.settings_section_apps
@@ -130,6 +134,14 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
+
+    if (!uiState.hasPushRegistration) {
+        val permissionManager = createPermissionsManager { _, _, _ -> }
+        LaunchedEffect(Unit) {
+            val granted = permissionManager.isPermissionGranted(PermissionType.NOTIFICATION)
+            viewModel.onAction(SettingsUiAction.NotificationPermissionChecked(granted))
+        }
+    }
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
@@ -239,11 +251,15 @@ fun SettingsUi(
                         NotificationVerificationStatus.CHECKING ->
                             stringResource(MR.string.settings_notifications_status_checking)
 
-                        NotificationVerificationStatus.OK ->
-                            stringResource(MR.string.settings_notifications_status_on)
+                        NotificationVerificationStatus.OK -> stringResource(
+                            if (uiState.hasPushRegistration) MR.string.settings_notifications_status_on
+                            else MR.string.settings_notifications_status_allowed
+                        )
 
-                        NotificationVerificationStatus.ERROR ->
-                            stringResource(MR.string.settings_notifications_status_error)
+                        NotificationVerificationStatus.ERROR -> stringResource(
+                            if (uiState.hasPushRegistration) MR.string.settings_notifications_status_error
+                            else MR.string.settings_notifications_status_denied
+                        )
                     },
                     action = SettingsRowAction.Navigate(actions.onNotifications),
                     status = { NotificationStatusIndicator(uiState.notificationStatus) },

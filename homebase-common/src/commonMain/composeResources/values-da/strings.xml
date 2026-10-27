@@ -1245,6 +1245,8 @@
     <string name="settings_notifications_status_checking">Kontrollerer…</string>
     <string name="settings_notifications_status_on">Push-notifikationer virker</string>
     <string name="settings_notifications_status_error">Push-notifikationer virker ikke</string>
+    <string name="settings_notifications_status_allowed">Notifikationer er slået til</string>
+    <string name="settings_notifications_status_denied">Notifikationer er slået fra i systemindstillinger</string>
     <string name="settings_appearance_theme">Tema: %1$s</string>
     <string name="settings_moments_desc">Billeder, klip og noter</string>
     <string name="settings_vault_desc">Krypteret dokumentopbevaring</string>

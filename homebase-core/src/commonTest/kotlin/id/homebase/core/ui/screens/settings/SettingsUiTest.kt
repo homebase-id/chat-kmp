@@ -179,6 +179,34 @@ class SettingsUiTest {
     }
 
     @Test
+    fun desktopRowReportsThePermissionNotPush() = runComposeUiTest {
+        settings(
+            uiState = SettingsUiState(
+                hasPushRegistration = false,
+                notificationStatus = NotificationVerificationStatus.OK,
+            ),
+        )
+        onNodeWithText("Notifications are on").assertExists()
+    }
+
+    @Test
+    fun desktopDeniedPermissionSaysSo() = runComposeUiTest {
+        settings(
+            uiState = SettingsUiState(
+                hasPushRegistration = false,
+                notificationStatus = NotificationVerificationStatus.ERROR,
+            ),
+        )
+        onNodeWithText("Notifications are off in system settings").assertExists()
+    }
+
+    @Test
+    fun permissionDecidesTheDesktopStatus() {
+        assertEquals(NotificationVerificationStatus.OK, permissionStatus(true))
+        assertEquals(NotificationVerificationStatus.ERROR, permissionStatus(false))
+    }
+
+    @Test
     fun appearanceRowShowsTheCurrentTheme() = runComposeUiTest {
         settings(uiState = SettingsUiState(theme = ThemeState.Dark))
         onNodeWithText("Theme: Dark").assertExists()
