@@ -274,7 +274,7 @@ jobs:
           echo "keychain watcher started (log: $RUNNER_TEMP/keychain-watcher.log)"
 
       - name: Build iOS
-        timeout-minutes: 120
+        timeout-minutes: 180
         uses: yukiarrr/ios-build-action@v1.12.0
         with:
           project-path: iosApp/iosApp.xcodeproj
