@@ -20,7 +20,8 @@ androidx-testRunner = "1.7.0"
 androidx-testCore = "1.7.0"
 composeMultiplatform = "1.13.0-beta01"
 composeHotReload = "1.3.0-beta02"
-composenativetray = "1.3.3"
+composenativetray = "2.1.7"
+nucleusTrayRuntime = "2.5.5"
 composenativewebview = "1.0.0-beta-02"
 konsist = "0.18.1"
 nucleus = "1.15.7"
@@ -233,7 +234,8 @@ kmpnotifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "kmpn
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
 firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics", version.ref = "firebase-crashlytics" }
 firebase-crashlytics-ndk = { module = "com.google.firebase:firebase-crashlytics-ndk", version.ref = "firebase-crashlytics" }
-composenativetray = { module = "io.github.kdroidfilter:composenativetray", version.ref = "composenativetray" }
+composenativetray = { module = "dev.nucleusframework:composenativetray", version.ref = "composenativetray" }
+nucleus-core-runtime = { module = "dev.nucleusframework:nucleus.core-runtime", version.ref = "nucleusTrayRuntime" }
 composenativewebview = { module = "io.github.kdroidfilter:composewebview", version.ref = "composenativewebview" }
 conveyor-control = { module = "dev.hydraulic.conveyor:conveyor-control", version.ref = "conveyorControl" }
 play-app-update = { module = "com.google.android.play:app-update-ktx", version.ref = "play-app-update" }

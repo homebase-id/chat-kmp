@@ -1,5 +1,7 @@
 package id.homebase.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,7 +24,7 @@ import androidx.compose.ui.window.rememberWindowState
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
-import com.kdroid.composetray.utils.SingleInstanceManager
+import dev.nucleusframework.core.runtime.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
@@ -56,6 +58,7 @@ import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.core.ui.navigation.Route
+import id.homebase.core.ui.screens.appearance.getIconForTheme
 import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.screens.desktop.DesktopUiAction
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
@@ -122,6 +125,7 @@ fun main() {
 
     // Set up crash handler
     setupCrashHandler()
+    configureSmokeLogging()
     StartupLogger.checkpoint("main() entered, file logger online")
 
     installSwingDoubleBufferSizeGuard()
@@ -321,7 +325,10 @@ fun main() {
 
             Divider()
             Item(label = themeMenuLabel, isEnabled = false)
-            Item(label = themeLabel) {
+            Item(
+                label = themeLabel,
+                icon = uiState.theme.getIconForTheme(),
+            ) {
                 viewModel.onUiAction(DesktopUiAction.ToggleTheme)
             }
 
@@ -330,7 +337,10 @@ fun main() {
             Item(label = appName, isEnabled = false)
             Item(label = versionLabel, isEnabled = false)
             if (uiState.updateAvailable) {
-                Item(label = updateAvailable) {
+                Item(
+                    label = updateAvailable,
+                    icon = Icons.Default.Update,
+                ) {
                     viewModel.onUiAction(DesktopUiAction.TriggerUpdate)
                 }
             }
@@ -350,6 +360,7 @@ fun main() {
             state = state,
             visible = isWindowVisible
         ) {
+            SmokeExit()
             MenuBar {
                 Menu(stringResource(MR.string.desktop_menu_file)) {
                     if (uiState.updateAvailable) {
@@ -487,6 +498,7 @@ private fun setupCrashHandler() {
         }
         try {
             CrashLogger.logCrash(thread.name, throwable)
+            failSmokeRun(throwable)
             val reportPath = CrashReporting.writeReport(thread.name, throwable)
             // Modal dialog; it handles Restart/Reveal/Quit and owns termination.
             CrashRecoveryDialog.showAndBlock(reportPath?.toString())
