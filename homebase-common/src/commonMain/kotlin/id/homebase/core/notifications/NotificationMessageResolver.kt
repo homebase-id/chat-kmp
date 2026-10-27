@@ -17,7 +17,15 @@ interface NotificationMessageResolver {
     suspend fun resolvePreview(conversationId: Uuid, messageId: Uuid): NotificationMessagePreview?
 }
 
-data class NotificationMessagePreview(
+/**
+ * [preview] is the message text, or its media label when it has none. [groupTitle] is set only
+ * for a group conversation (blank when the group has no name). [imageBytes] is the message's
+ * own photo / video poster / sticker, never an avatar.
+ */
+class NotificationMessagePreview(
     val senderName: String?,
     val preview: String,
+    val isGroup: Boolean = false,
+    val groupTitle: String? = null,
+    val imageBytes: ByteArray? = null,
 )

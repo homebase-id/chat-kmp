@@ -24,7 +24,7 @@ import platform.UserNotifications.UNUserNotificationCenter
  *
  * Uses UNMutableNotificationContent with:
  * - Communication Notification style via INSendMessageIntent (chat/community)
- * - Sender avatar as notification attachment (non-chat fallback)
+ * - The message's photo as the notification attachment (never the avatar)
  * - Thread identifier for conversation grouping
  * - Category identifier for actions (reply, mark as read)
  */
@@ -50,15 +50,10 @@ actual class RichNotificationDisplayer actual constructor() {
             setUserInfo(userInfo)
         }
 
-        // For chat/community notifications, apply Communication Notification style.
-        // For other notification types, attach avatar as a regular attachment.
+        attachMessageImage(data, content)
         val finalContent: UNNotificationContent = if (data.conversationId != null) {
-            applyCommunicationStyle(data, content) ?: run {
-                attachAvatarImage(data, content)
-                content
-            }
+            applyCommunicationStyle(data, content) ?: content
         } else {
-            attachAvatarImage(data, content)
             content
         }
 
@@ -157,16 +152,13 @@ actual class RichNotificationDisplayer actual constructor() {
         }
     }
 
-    /**
-     * Attaches sender avatar as a UNNotificationAttachment (fallback for non-chat notifications
-     * or when Communication style fails).
-     */
+    /** The message's own photo as the attachment; the avatar belongs to the Communication style. */
     @OptIn(ExperimentalForeignApi::class)
-    private fun attachAvatarImage(data: RichNotificationData, content: UNMutableNotificationContent) {
-        data.senderImageBytes?.takeIf { it.isNotEmpty() }?.let { bytes ->
+    private fun attachMessageImage(data: RichNotificationData, content: UNMutableNotificationContent) {
+        data.imageBytes?.let { encodePng(it, circle = false) }?.let { bytes ->
             try {
                 val tempDir = NSTemporaryDirectory()
-                val fileName = "${NSUUID().UUIDString}.jpg"
+                val fileName = "${NSUUID().UUIDString}.png"
                 val filePath = "$tempDir$fileName"
 
                 val nsData = bytes.usePinned { pinned ->
@@ -179,7 +171,7 @@ actual class RichNotificationDisplayer actual constructor() {
 
                 val fileUrl = NSURL.fileURLWithPath(filePath)
                 val attachment = UNNotificationAttachment.attachmentWithIdentifier(
-                    identifier = "sender_avatar",
+                    identifier = "message_image",
                     URL = fileUrl,
                     options = null,
                     error = null
@@ -189,7 +181,7 @@ actual class RichNotificationDisplayer actual constructor() {
                 }
             } catch (e: Exception) {
                 Logger.w(tag = "RichNotificationDisplayer") {
-                    "Failed to attach avatar: ${e.message}"
+                    "Failed to attach message image: ${e.message}"
                 }
             }
         }

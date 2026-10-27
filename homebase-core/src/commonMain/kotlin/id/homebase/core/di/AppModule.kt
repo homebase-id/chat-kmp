@@ -201,6 +201,7 @@ import id.homebase.core.sync.RegistryDriveFileType
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.image.ImageSize
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
@@ -962,7 +963,16 @@ val appModule = module {
             messageResolver = get(),
         )
     }
-    single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
+    single<NotificationMessageResolver> {
+        ChatNotificationMessageResolver(
+            messageLookup = get<MessageLookup>(),
+            conversation = { id ->
+                get<ConversationStream>().getConversationById(id)
+                    ?: get<ConversationService>().getConversation(id)
+            },
+            loadImage = { data -> get<HomebaseImageLoader>().loadThumbnail(data, ImageSize.THUMB_MEDIUM)?.bytes },
+        )
+    }
     singleOf(::NotificationEntry)
     singleOf(::WebPushService)
     single {

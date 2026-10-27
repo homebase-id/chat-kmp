@@ -47,6 +47,9 @@ class ChatNotificationPreviewTest {
         encryptWith: ByteArray = secret,
         encryptedContent: String? = null,
         keyHeaderJson: String? = null,
+        uniqueId: Uuid = messageId,
+        fileType: Int = 7878,
+        tags: String = "null",
     ): String {
         val keyHeader = KeyHeader.newRandom16()
         val encryptedKeyHeader = keyHeaderJson ?: OdinSystemSerializer.serialize(
@@ -74,9 +77,9 @@ class ChatNotificationPreviewTest {
                 "versionTag": "${Uuid.random()}",
                 "payloads": [],
                 "appData": {
-                  "uniqueId": "$messageId",
-                  "tags": null,
-                  "fileType": 7878,
+                  "uniqueId": "$uniqueId",
+                  "tags": $tags,
+                  "fileType": $fileType,
                   "dataType": $dataType,
                   "groupId": "$groupId",
                   "userDate": 1761440501900,
@@ -232,5 +235,53 @@ class ChatNotificationPreviewTest {
         )
         assertMissed("moments", preview)
         assertTrue(requests.isEmpty(), "requests=$requests")
+    }
+
+    private suspend fun conversationHeader(content: String, tags: String = "null") =
+        header(content, uniqueId = conversationId, fileType = 8888, tags = tags)
+
+    @Test
+    fun aGroupsNameRidesInTheSameQuery() = realTimeTest {
+        val requests = mutableListOf<String>()
+        val result = preview(
+            found(
+                header("""{"message":"hi all"}"""),
+                conversationHeader(
+                    """{"title":"Fellowship","recipients":["frodo.dotyou.cloud","samwise.gamgee.demo.rocks"]}""",
+                    tags = """["b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f"]""",
+                ),
+            ),
+            requests = requests,
+        )
+        assertEquals("hi all", result.text)
+        assertEquals(
+            ChatNotificationGroup("Fellowship", listOf("frodo.dotyou.cloud", "samwise.gamgee.demo.rocks")),
+            result.group,
+        )
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun anUntaggedConversationOfMoreThanTwoIsALegacyGroup() = realTimeTest {
+        val result = preview(
+            found(
+                conversationHeader("""{"title":"","recipients":["a.example","b.example","c.example"]}"""),
+                header("""{"message":"hi"}"""),
+            ),
+        )
+        assertEquals("hi", result.text)
+        assertEquals(ChatNotificationGroup("", listOf("a.example", "b.example", "c.example")), result.group)
+    }
+
+    @Test
+    fun aOneToOneConversationIsNoGroup() = realTimeTest {
+        val result = preview(
+            found(
+                header("""{"message":"hi"}"""),
+                conversationHeader("""{"title":"Sam","recipients":["frodo.dotyou.cloud","samwise.gamgee.demo.rocks"]}"""),
+            ),
+        )
+        assertEquals("hi", result.text)
+        assertNull(result.group)
     }
 }

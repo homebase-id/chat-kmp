@@ -12,6 +12,11 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import android.net.Uri
+import androidx.core.content.FileProvider
+import co.touchlab.kermit.Logger
+import java.io.File
+import java.util.UUID
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
@@ -115,8 +120,9 @@ actual class RichNotificationDisplayer actual constructor() {
         }
 
         val style = NotificationCompat.MessagingStyle(base?.user ?: person)
-        val history = base?.messages.orEmpty() +
-                NotificationCompat.MessagingStyle.Message(data.body, data.timestamp, person)
+        val message = NotificationCompat.MessagingStyle.Message(data.messageText, data.timestamp, person)
+        data.imageBytes?.let { imageUri(context, it) }?.let { message.setData(IMAGE_MIME_TYPE, it) }
+        val history = base?.messages.orEmpty() + message
         history.takeLast(MAX_STACKED_MESSAGES).forEach { style.addMessage(it) }
 
         if (data.isGroupConversation && data.groupTitle != null) {
@@ -135,6 +141,22 @@ actual class RichNotificationDisplayer actual constructor() {
         val existing = nm.activeNotifications.firstOrNull { it.id == notificationId } ?: return null
         return NotificationCompat.MessagingStyle
             .extractMessagingStyleFromNotification(existing.notification)
+    }
+
+    /** A content:// uri SystemUI may read, as MessagingStyle shows inline images only through one. */
+    private fun imageUri(context: Context, bytes: ByteArray): Uri? = try {
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        val dir = File(context.cacheDir, IMAGE_DIR).apply { mkdirs() }
+        val staleBefore = System.currentTimeMillis() - IMAGE_TTL_MS
+        dir.listFiles()?.filter { it.lastModified() < staleBefore }?.forEach { it.delete() }
+        val file = File(dir, "${UUID.randomUUID()}.jpg")
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file).also {
+            context.grantUriPermission(SYSTEM_UI_PACKAGE, it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = "RichNotificationDisplayer") { "notification image unavailable: ${e::class.simpleName}" }
+        null
     }
 
     private fun buildPerson(name: String, key: String, imageBytes: ByteArray?): Person {
@@ -269,6 +291,12 @@ actual class RichNotificationDisplayer actual constructor() {
     companion object {
         /** Recent messages kept in a conversation's stacked notification (Android shows ~7). */
         private const val MAX_STACKED_MESSAGES = 6
+
+        private const val IMAGE_MIME_TYPE = "image/jpeg"
+        private const val IMAGE_DIR = "notification-images"
+        // Long enough to outlive the stacked messages that still point at an image.
+        private const val IMAGE_TTL_MS = 24 * 60 * 60 * 1000L
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
 
         const val ACTION_REPLY = "id.homebase.feed.NOTIFICATION_REPLY"
         const val ACTION_MARK_READ = "id.homebase.feed.NOTIFICATION_MARK_READ"
