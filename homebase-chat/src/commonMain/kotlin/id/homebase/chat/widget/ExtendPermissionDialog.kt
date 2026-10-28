@@ -14,6 +14,9 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.permissions_extend
+import id.homebase.resources.permissions_install
+import id.homebase.resources.permissions_install_body
+import id.homebase.resources.permissions_install_title
 import id.homebase.resources.permissions_missing_body
 import id.homebase.resources.permissions_missing_title
 import org.jetbrains.compose.resources.stringResource
@@ -47,21 +50,33 @@ fun ExtendPermissionDialog(
                     "rendering AlertDialog for ${state.appName}"
                 }
             }
+            val installs = state.installs
+            val (title, body, confirm) = if (installs != null) {
+                Triple(
+                    stringResource(MR.string.permissions_install_title, installs),
+                    stringResource(MR.string.permissions_install_body, installs, state.appName),
+                    stringResource(MR.string.permissions_install),
+                )
+            } else {
+                Triple(
+                    stringResource(MR.string.permissions_missing_title),
+                    stringResource(MR.string.permissions_missing_body, state.appName),
+                    stringResource(MR.string.permissions_extend),
+                )
+            }
             AlertDialog(
                 onDismissRequest = {
                     viewModel.dismissDialog()
                     onCancel?.invoke()
                 },
-                title = { Text(stringResource(MR.string.permissions_missing_title)) },
-                text = {
-                    Text(stringResource(MR.string.permissions_missing_body, state.appName))
-                },
+                title = { Text(title) },
+                text = { Text(body) },
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.buildExtendPermissionUrl()?.let { uriHandler.openUrl(it) }
                         viewModel.dismissDialog()
                     }) {
-                        Text(stringResource(MR.string.permissions_extend))
+                        Text(confirm)
                     }
                 },
                 dismissButton = {

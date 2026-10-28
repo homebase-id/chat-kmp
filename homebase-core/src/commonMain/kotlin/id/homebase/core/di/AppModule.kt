@@ -28,6 +28,7 @@ import id.homebase.core.config.dataUpgradeReturnUrl
 
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.DriveSyncPolicy
@@ -159,6 +160,7 @@ import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
+import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -1343,11 +1345,14 @@ val appModule = module {
     }
     // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
     viewModel(FilesyncPermissionQualifier) {
+        val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
             get(),
             get(),
             get(),
-            getFilesyncPermissionExtensionConfig(),
+            getFilesyncPermissionExtensionConfig(
+                isInstalled = { drives.isAppRegistered(FilesyncProtocol.AppSlug) },
+            ),
         )
     }
     viewModel(EmailPermissionQualifier) {

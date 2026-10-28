@@ -4,7 +4,10 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
+import id.homebase.api.youauth.AppCircleDeclaration
+import id.homebase.api.youauth.AppInstall
 import id.homebase.api.youauth.AppPermissionType
+import id.homebase.api.youauth.AppRegistrationParams
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
@@ -525,26 +528,47 @@ val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     )
 )
 
-// Not synced: the browser lists folders over the network, so the drive is never mounted.
-val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
-    TargetDriveAccessRequest(
-        alias = filesyncLabeledDrive.drive.alias.toString(),
-        type = filesyncLabeledDrive.drive.type.toString(),
-        name = filesyncLabeledDrive.label,
-        description = "Files synced from your computers by Homebase Filesync",
-        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
-        driveSlug = FilesyncProtocol.DriveSlug,
-        driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
-    )
+// Must match the desktop's own registration exactly (filesync app.rs, permission_request).
+private val filesyncDrive = TargetDriveAccessRequest(
+    alias = filesyncLabeledDrive.drive.alias.toString(),
+    type = filesyncLabeledDrive.drive.type.toString(),
+    name = filesyncLabeledDrive.label,
+    description = "Files synced with your computers by Homebase Filesync",
+    permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    driveSlug = FilesyncProtocol.DriveSlug,
+    driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
 )
 
-fun getFilesyncPermissionExtensionConfig(): PermissionExtensionConfig {
+// Not synced: the browser lists folders over the network, so the drive is never mounted.
+// Grant only: Filesync owns the drive, and installing Filesync is what creates it.
+val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(filesyncDrive.copy(grantOnly = true))
+
+val filesyncAppRegistration = AppRegistrationParams(
+    appId = "03ae1a49cdae483f9da7fedc0e8f20b9",
+    name = "Homebase Filesync",
+    appSlug = FilesyncProtocol.AppSlug,
+    drives = listOf(filesyncDrive),
+    circles = listOf(
+        AppCircleDeclaration(
+            slug = FilesyncProtocol.CircleSlug,
+            name = "Filesync",
+            description = "People who can see the files you share through Homebase Filesync",
+            emoji = "📁",
+            drives = listOf(
+                filesyncDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),
+            ),
+        )
+    ),
+)
+
+fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): PermissionExtensionConfig {
     return PermissionExtensionConfig(
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
         drives = filesyncTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        install = AppInstall(filesyncAppRegistration, isInstalled),
     )
 }
 

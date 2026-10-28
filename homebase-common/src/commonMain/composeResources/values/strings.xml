@@ -395,6 +395,9 @@
     <string name="permissions_missing_title">Missing Permissions</string>
     <string name="permissions_missing_body">The %1$s app is missing permissions. Without the necessary permissions the functionality of %1$s will be limited.</string>
     <string name="permissions_extend">Extend Permissions</string>
+    <string name="permissions_install_title">Install %1$s</string>
+    <string name="permissions_install_body">%1$s isn't installed yet. Install it first, then %2$s can ask for access to it.</string>
+    <string name="permissions_install">Install</string>
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>
