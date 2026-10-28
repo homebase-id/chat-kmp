@@ -276,7 +276,7 @@ sealed interface BackendEvent {
      * endpoint. ExtendPermissionViewModel listens for this and re-runs its check so the
      * dialog dismisses (or re-shows) immediately rather than waiting for the next event.
      */
-    data object PermissionsExtensionReturned : BackendEvent
+    data class PermissionsExtensionReturned(val requester: String? = null) : BackendEvent
 
     /**
      * Emitted when the user explicitly canceled the owner-console "Extend Permissions"
@@ -284,7 +284,7 @@ sealed interface BackendEvent {
      * [PermissionsExtensionReturned] so the VM can route the user back to the chat tab
      * without re-prompting with the same dialog they just dismissed.
      */
-    data object PermissionsExtensionCanceled : BackendEvent
+    data class PermissionsExtensionCanceled(val requester: String? = null) : BackendEvent
 
     /**
      * Emitted when the user returns from the owner-console data-upgrade page

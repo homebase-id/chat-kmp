@@ -403,7 +403,8 @@ fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = feedTargetDriveAccessRequest,
         permissions = feedAppPermissions,
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "feed",
     )
 }
 
@@ -433,6 +434,7 @@ fun getMomentsPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = momentsTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "moments",
     )
 }
 
@@ -461,7 +463,8 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = targetDriveAccessRequest,
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "chat",
     )
 }
 
@@ -471,7 +474,8 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = vaultTargetDriveAccessRequest,
         permissions = emptyList(),
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "vault",
     )
 }
 
@@ -481,7 +485,8 @@ fun getEmailPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = emailTargetDriveAccessRequest,
         permissions = emptyList(),
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "email",
     )
 }
 
@@ -568,6 +573,7 @@ fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): Pe
         drives = filesyncTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "filesync",
         install = AppInstall(filesyncAppRegistration, isInstalled),
     )
 }
@@ -579,6 +585,7 @@ fun getWebDropPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = webDropTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "webdrop",
     )
 }
 
@@ -589,6 +596,7 @@ fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = locationTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "location",
     )
 }
 
@@ -599,5 +607,6 @@ fun getStickerPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = stickerTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "stickers",
     )
 }

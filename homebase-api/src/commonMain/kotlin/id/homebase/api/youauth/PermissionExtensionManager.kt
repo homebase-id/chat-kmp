@@ -1,5 +1,6 @@
 package id.homebase.api.youauth
 
+import io.ktor.http.encodeURLParameter
 import co.touchlab.kermit.Logger
 import id.homebase.api.util.compareStringUuId
 
@@ -20,7 +21,13 @@ data class PermissionExtensionConfig(
      */
     val returnUrl: () -> String,
     val install: AppInstall? = null,
-)
+    /** Which mini-app asks: the owner console's return carries it, so only this config's checker answers to it. */
+    val requester: String? = null,
+) {
+    fun callbackUrl(): String = returnUrl().let { url ->
+        requester?.let { url + (if ('?' in url) "&" else "?") + "${PermissionCallback.REQUESTER_PARAM}=" + it.encodeURLParameter() } ?: url
+    }
+}
 
 /**
  * The app that owns the requested drives. Until it is installed, the owner is sent to install it
@@ -79,7 +86,7 @@ class PermissionExtensionManager(
         Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
         return PermissionCheckResult.Missing(
             result.details.copy(
-                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.returnUrl()) },
+                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.callbackUrl()) },
                 installs = install.registration.name,
             )
         )
@@ -153,7 +160,7 @@ class PermissionExtensionManager(
                         missingDrives = missingDrives,
                         circleDrives = config.circleDrives,
                         missingPermissions = missingPermissionValues,
-                        returnUrl = config.returnUrl()
+                        returnUrl = config.callbackUrl()
                     )
                 }
             )

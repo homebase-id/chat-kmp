@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -97,6 +98,8 @@ class ExtendPermissionViewModel(
         viewModelScope.launch {
             eventBus.events
                 .filterIsInstance<BackendEvent.PermissionsExtensionReturned>()
+                // Another mini-app's answer; an untagged return (an older URL) is everyone's.
+                .filter { it.requester == null || it.requester == config.requester }
                 .collect {
                     Logger.i(tag = TAG) { "Permissions-extension return — rechecking" }
                     recheckPermissions()
@@ -106,6 +109,7 @@ class ExtendPermissionViewModel(
         viewModelScope.launch {
             eventBus.events
                 .filterIsInstance<BackendEvent.PermissionsExtensionCanceled>()
+                .filter { it.requester == null || it.requester == config.requester }
                 .collect {
                     Logger.i(tag = TAG) {
                         "Permissions-extension canceled — dismissing dialog, requesting nav-away"

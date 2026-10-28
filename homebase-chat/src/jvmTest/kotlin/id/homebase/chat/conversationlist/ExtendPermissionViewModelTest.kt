@@ -57,6 +57,7 @@ class ExtendPermissionViewModelTest {
         ),
         permissions = emptyList(),
         returnUrl = { "https://return.example.com" },
+        requester = "test",
     )
 
     // No X-SSE header, so SecurityContextProvider treats the body as plaintext.
@@ -199,9 +200,24 @@ class ExtendPermissionViewModelTest {
         val asked = engine.requestHistory.size
 
         vm.close()
-        eventBus.emit(BackendEvent.PermissionsExtensionReturned)
+        eventBus.emit(BackendEvent.PermissionsExtensionReturned())
         eventBus.emit(BackendEvent.DriveAuthorizationFailed("403"))
 
         assertNull(withTimeoutOrNull(1.seconds) { while (engine.requestHistory.size == asked) delay(20) })
+    }
+
+    @Test
+    fun onlyItsOwnMiniAppsReturnMakesItCheckAgain() = runBlocking<Unit> {
+        val engine = jsonEngine(contextJson(""))
+        val eventBus = EventBus()
+        val vm = viewModel(engine, eventBus)
+        withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+        val asked = engine.requestHistory.size
+
+        eventBus.emit(BackendEvent.PermissionsExtensionReturned("another"))
+        assertNull(withTimeoutOrNull(1.seconds) { while (engine.requestHistory.size == asked) delay(20) })
+
+        eventBus.emit(BackendEvent.PermissionsExtensionReturned("test"))
+        withTimeout(10.seconds) { while (engine.requestHistory.size == asked) delay(20) }
     }
 }

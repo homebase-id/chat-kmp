@@ -331,9 +331,6 @@ struct iOSApp: App {
     /// to the chat tab without re-prompting; success triggers a permission recheck.
     private func handlePermissionCallbackURL(_ url: URL) {
         guard url.host == "permission-callback" else { return }
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let status = components?.queryItems?.first(where: { $0.name == "status" })?.value?.lowercased()
-        let canceled = (status == "canceled" || status == "cancelled")
-        PermissionCallbackBridge.shared.handlePermissionCallback(canceled: canceled)
+        PermissionCallbackBridge.shared.handlePermissionCallback(url: url.absoluteString)
     }
 }

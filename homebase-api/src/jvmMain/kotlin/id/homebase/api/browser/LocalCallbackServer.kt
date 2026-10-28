@@ -1,6 +1,8 @@
 package id.homebase.api.browser
 
+import id.homebase.api.youauth.PermissionCallback
 import co.touchlab.kermit.Logger
+import io.ktor.server.request.uri
 import io.ktor.http.ContentType
 import io.ktor.server.cio.CIO
 import io.ktor.server.cio.CIOApplicationEngine
@@ -39,9 +41,9 @@ object LocalCallbackServer {
      * `BackendEvent.PermissionsExtensionReturned` (success — recheck) or
      * `BackendEvent.PermissionsExtensionCanceled` (skip recheck, route to chat tab).
      */
-    private var onPermissionCallback: ((canceled: Boolean) -> Unit)? = null
+    private var onPermissionCallback: ((PermissionCallback) -> Unit)? = null
 
-    fun setPermissionCallback(handler: (canceled: Boolean) -> Unit) {
+    fun setPermissionCallback(handler: (PermissionCallback) -> Unit) {
         this.onPermissionCallback = handler
     }
 
@@ -88,15 +90,11 @@ object LocalCallbackServer {
                              * or canceled confirmation HTML accordingly.
                              */
                             get("/permission-callback") {
-                                val status = call.request.queryParameters["status"]
-                                val canceled = status.equals("canceled", ignoreCase = true) ||
-                                    status.equals("cancelled", ignoreCase = true)
-                                Logger.d(tag = TAG) {
-                                    "Permission-extend return hit (status=$status canceled=$canceled)"
-                                }
-                                onPermissionCallback?.invoke(canceled)
+                                val callback = PermissionCallback.parse("http://localhost${call.request.uri}")
+                                Logger.d(tag = TAG) { "Permission-extend return hit ($callback)" }
+                                onPermissionCallback?.invoke(callback)
                                 call.respondText(
-                                    text = if (canceled) PERMISSION_CANCELED_HTML
+                                    text = if (callback.canceled) PERMISSION_CANCELED_HTML
                                     else PERMISSION_CALLBACK_HTML,
                                     contentType = ContentType.Text.Html
                                 )
