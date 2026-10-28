@@ -4,7 +4,10 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
+import id.homebase.api.youauth.AppCircleDeclaration
+import id.homebase.api.youauth.AppInstall
 import id.homebase.api.youauth.AppPermissionType
+import id.homebase.api.youauth.AppRegistrationParams
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
@@ -526,25 +529,62 @@ val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 )
 
 // Not synced: the browser lists folders over the network, so the drive is never mounted.
+// Grant only: Filesync owns the drive, and installing Filesync is what creates it.
 val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(
         alias = filesyncLabeledDrive.drive.alias.toString(),
         type = filesyncLabeledDrive.drive.type.toString(),
         name = filesyncLabeledDrive.label,
-        description = "Files synced from your computers by Homebase Filesync",
+        description = "",
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
-        driveSlug = FilesyncProtocol.DriveSlug,
         driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
+        grantOnly = true,
     )
 )
 
-fun getFilesyncPermissionExtensionConfig(): PermissionExtensionConfig {
+// Must match the desktop's own registration exactly (filesync app.rs, permission_request).
+val filesyncAppRegistration = AppRegistrationParams(
+    appId = "03ae1a49cdae483f9da7fedc0e8f20b9",
+    name = "Homebase Filesync",
+    appSlug = FilesyncProtocol.AppSlug,
+    drives = listOf(
+        TargetDriveAccessRequest(
+            alias = FilesyncProtocol.DriveAlias.toString(),
+            type = FilesyncProtocol.DriveType.toString(),
+            name = "Filesync",
+            description = "Files synced with your computers by Homebase Filesync",
+            permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+            driveSlug = FilesyncProtocol.DriveSlug,
+            driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
+        )
+    ),
+    circles = listOf(
+        AppCircleDeclaration(
+            slug = "filesync",
+            name = "Filesync",
+            description = "People who can see the files you share through Homebase Filesync",
+            emoji = "📁",
+            drives = listOf(
+                TargetDriveAccessRequest(
+                    alias = FilesyncProtocol.DriveAlias.toString(),
+                    type = FilesyncProtocol.DriveType.toString(),
+                    name = "",
+                    description = "",
+                    permissions = listOf(DrivePermission.Read),
+                )
+            ),
+        )
+    ),
+)
+
+fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): PermissionExtensionConfig {
     return PermissionExtensionConfig(
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
         drives = filesyncTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        install = AppInstall(filesyncAppRegistration, isInstalled),
     )
 }
 

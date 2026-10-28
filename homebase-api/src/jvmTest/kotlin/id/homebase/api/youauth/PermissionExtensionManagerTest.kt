@@ -112,6 +112,31 @@ class PermissionExtensionManagerTest {
         )
     }
 
+    private val registration = AppRegistrationParams("03ae1a49cdae483f9da7fedc0e8f20b9", "Owner", "owner", config.drives, emptyList())
+
+    private suspend fun extendUrl(installed: Boolean): String {
+        val result = manager(jsonEngine(contextJson("", ""))).getMissingPermissions(
+            config.copy(install = AppInstall(registration) { installed }),
+        )
+        assertTrue(result is PermissionCheckResult.Missing, "expected Missing, got $result")
+        return result.details.buildExtendPermissionUrl()
+    }
+
+    @Test
+    fun theOwningAppIsInstalledBeforeAccessIsAskedFor() = runTest {
+        assertTrue(extendUrl(installed = false).startsWith("https://$me/owner/appreg?appId=03ae1a49cdae483f9da7fedc0e8f20b9&"))
+        assertTrue(extendUrl(installed = true).startsWith("https://$me/owner/appupdate?appId=${config.appId}&"))
+    }
+
+    @Test
+    fun aGrantedAppDoesntAskWhetherTheOwnerIsInstalled() = runTest {
+        val manager = manager(
+            jsonEngine(contextJson(grantedDrive, AppPermissionType.SendPushNotifications.value.toString()))
+        )
+        val config = config.copy(install = AppInstall(registration) { error("not asked") })
+        assertEquals(PermissionCheckResult.AllGranted, manager.getMissingPermissions(config))
+    }
+
     private fun grant(permission: String, hasStorageKey: Boolean?, alias: String = driveAlias) = """
         {
           "permissionedDrive": {

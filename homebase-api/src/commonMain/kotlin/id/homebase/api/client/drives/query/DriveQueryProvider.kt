@@ -1,6 +1,8 @@
 package id.homebase.api.client.drives.query
 
+import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
@@ -46,6 +48,23 @@ class DriveQueryProvider(
         )
         throwForFailure(response)
         return deserialize(response.body)
+    }
+
+    /** GET /apps/{appSlug}/drives/{driveSlug}: the drive at that address, or null when nothing answers to it. */
+    suspend fun getAppDrive(appSlug: String, driveSlug: String): ClientDriveData? {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/apps/$appSlug/drives/$driveSlug"),
+            token = creds.accessToken,
+            secret = creds.secret,
+        )
+        return try {
+            throwForFailure(response)
+            deserialize(response.body)
+        } catch (e: ClientException) {
+            // An unknown app, an unknown drive and one the caller may not see are one answer, by design.
+            if (e.errorCode == OdinClientErrorCode.InvalidDrive) null else throw e
+        }
     }
 
     /**

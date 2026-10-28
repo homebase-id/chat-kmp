@@ -18,7 +18,18 @@ data class PermissionExtensionConfig(
      * clicks Extend Permissions — otherwise the post-flow redirect lands on a
      * dead port.
      */
-    val returnUrl: () -> String
+    val returnUrl: () -> String,
+    val install: AppInstall? = null,
+)
+
+/**
+ * The app that owns the requested drives. Until it is installed, the owner is sent to install it
+ * instead: the owner console would otherwise create its drives for this app, which can't be undone.
+ */
+class AppInstall(
+    val registration: AppRegistrationParams,
+    /** Throws when it can't tell. */
+    val isInstalled: suspend () -> Boolean,
 )
 
 /** Result of missing permission check. */
@@ -59,7 +70,16 @@ class PermissionExtensionManager(
             Logger.w(tag = TAG) { "Could not fetch security context" }
             return PermissionCheckResult.Unknown
         }
-        return getMissingPermissions(config, context)
+        val result = getMissingPermissions(config, context)
+        val install = config.install
+        if (result !is PermissionCheckResult.Missing || install == null || install.isInstalled()) return result
+
+        Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
+        return PermissionCheckResult.Missing(
+            MissingPermissionsResult(result.details.missingDrives, result.details.missingPermissions) {
+                install.registration.url(hostIdentity, config.returnUrl())
+            }
+        )
     }
 
     fun getMissingPermissions(
