@@ -1,5 +1,6 @@
 package id.homebase.api.youauth
 
+import io.ktor.http.formUrlEncode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -26,17 +27,16 @@ data class AppRegistrationParams(
     val drives: List<TargetDriveAccessRequest>,
     val circles: List<AppCircleDeclaration>,
 ) {
-    fun url(host: String, returnUrl: String): String = buildString {
-        append("https://").append(host).append("/owner/appreg")
-        append("?appId=").append(appId.encodeURLParam())
-        append("&n=").append(name.encodeURLParam())
-        append("&as=").append(appSlug.encodeURLParam())
-        append("&d=").append(TargetDriveAccessRequest.encodeList(drives).encodeURLParam())
-        append("&cd=").append("[]".encodeURLParam())
-        append("&ac=").append(encodeCircles().encodeURLParam())
-        append("&return=").append(returnUrl.encodeURLParam())
-        append("&cancel=").append(withQuery(returnUrl, "status=canceled").encodeURLParam())
-    }
+    fun url(host: String, returnUrl: String): String = "https://$host/owner/appreg?" + listOf(
+        "appId" to appId,
+        "n" to name,
+        "as" to appSlug,
+        "d" to TargetDriveAccessRequest.encodeList(drives),
+        "cd" to "[]",
+        "ac" to encodeCircles(),
+        "return" to returnUrl,
+        "cancel" to returnUrl + (if ('?' in returnUrl) "&" else "?") + "status=canceled",
+    ).formUrlEncode()
 
     private fun encodeCircles(): String = Json.encodeToString(
         JsonArray.serializer(),
@@ -47,19 +47,9 @@ data class AppRegistrationParams(
                     put("n", JsonPrimitive(circle.name))
                     put("d", JsonPrimitive(circle.description))
                     put("e", JsonPrimitive(circle.emoji))
-                    put("g", buildJsonArray {
-                        circle.drives.forEach { drive ->
-                            add(buildJsonObject {
-                                put("a", JsonPrimitive(drive.alias))
-                                put("t", JsonPrimitive(drive.type))
-                                put("p", JsonPrimitive(DrivePermission.combine(drive.permissions)))
-                            })
-                        }
-                    })
+                    put("g", JsonArray(circle.drives.map { it.toJsonObject() }))
                 })
             }
         },
     )
-
-    private fun withQuery(url: String, query: String) = url + (if ('?' in url) "&" else "?") + query
 }

@@ -50,29 +50,23 @@ fun ExtendPermissionDialog(
                     "rendering AlertDialog for ${state.appName}"
                 }
             }
+            val installs = state.installs
+            val title = if (installs != null) stringResource(MR.string.permissions_install_title, installs) else stringResource(MR.string.permissions_missing_title)
+            val body = if (installs != null) stringResource(MR.string.permissions_install_body, installs, state.appName) else stringResource(MR.string.permissions_missing_body, state.appName)
+            val confirm = stringResource(if (installs != null) MR.string.permissions_install else MR.string.permissions_extend)
             AlertDialog(
                 onDismissRequest = {
                     viewModel.dismissDialog()
                     onCancel?.invoke()
                 },
-                title = {
-                    Text(
-                        state.installs?.let { stringResource(MR.string.permissions_install_title, it) }
-                            ?: stringResource(MR.string.permissions_missing_title)
-                    )
-                },
-                text = {
-                    Text(
-                        state.installs?.let { stringResource(MR.string.permissions_install_body, it, state.appName) }
-                            ?: stringResource(MR.string.permissions_missing_body, state.appName)
-                    )
-                },
+                title = { Text(title) },
+                text = { Text(body) },
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.buildExtendPermissionUrl()?.let { uriHandler.openUrl(it) }
                         viewModel.dismissDialog()
                     }) {
-                        Text(stringResource(if (state.installs != null) MR.string.permissions_install else MR.string.permissions_extend))
+                        Text(confirm)
                     }
                 },
                 dismissButton = {

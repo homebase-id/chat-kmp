@@ -34,7 +34,7 @@ class AppInstall(
 )
 
 /** Result of missing permission check. */
-class MissingPermissionsResult(
+data class MissingPermissionsResult(
     val missingDrives: List<TargetDriveAccessRequest>,
     val missingPermissions: List<AppPermissionType>,
     /**
@@ -79,9 +79,7 @@ class PermissionExtensionManager(
 
         Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
         return PermissionCheckResult.Missing(
-            MissingPermissionsResult(
-                missingDrives = result.details.missingDrives,
-                missingPermissions = result.details.missingPermissions,
+            result.details.copy(
                 buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.returnUrl()) },
                 installs = install.registration.name,
             )

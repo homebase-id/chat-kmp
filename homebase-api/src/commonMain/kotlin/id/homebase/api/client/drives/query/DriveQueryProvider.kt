@@ -50,8 +50,8 @@ class DriveQueryProvider(
         return deserialize(response.body)
     }
 
-    /** GET /apps/{appSlug}/drives: the app's drives, or null when no app has that slug. */
-    suspend fun getAppDrives(appSlug: String): List<ClientDriveData>? {
+    /** Whether an app holds [appSlug]: GET /apps/{appSlug}/drives answers for any app, even one with no drives. */
+    suspend fun isAppRegistered(appSlug: String): Boolean {
         val creds = requireCreds()
         val response = encryptedGet(
             url = apiUrl(creds.domain, "/apps/$appSlug/drives"),
@@ -60,9 +60,9 @@ class DriveQueryProvider(
         )
         return try {
             throwForFailure(response)
-            deserialize(response.body)
+            true
         } catch (e: ClientException) {
-            if (e.errorCode == OdinClientErrorCode.InvalidDrive) null else throw e
+            if (e.errorCode == OdinClientErrorCode.InvalidDrive) false else throw e
         }
     }
 

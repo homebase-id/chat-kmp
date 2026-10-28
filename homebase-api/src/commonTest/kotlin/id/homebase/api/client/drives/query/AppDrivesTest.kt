@@ -16,48 +16,50 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class AppDrivesTest {
 
-    private suspend fun drives(status: HttpStatusCode, body: String): List<ClientDriveData>? {
+    private suspend fun registered(status: HttpStatusCode, body: String): Boolean {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(ApiCredentials.create(OdinId("frodo.example.com"), "token", SecureByteArray(ByteArray(16) { 5 })))
         val http = HttpClient(MockEngine { request ->
             assertEquals("/api/v2/apps/filesync/drives", request.url.encodedPath)
             respond(body, status, headersOf(HttpHeaders.ContentType, "application/json"))
         })
-        return DriveQueryProvider(http, credentials).getAppDrives("filesync")
+        return DriveQueryProvider(http, credentials).isAppRegistered("filesync")
     }
 
     @Test
-    fun aRegisteredAppListsItsDrives() = runTest {
-        val found = drives(
-            HttpStatusCode.OK,
-            """[{"targetDrive":{"alias":"cfceb937b868496b91cb3402f18320f8","type":"5da48122e946487a8b9d589642f3c91d"},"name":"Filesync"}]""",
+    fun anAppWithDrivesIsRegistered() = runTest {
+        assertTrue(
+            registered(
+                HttpStatusCode.OK,
+                """[{"targetDrive":{"alias":"cfceb937b868496b91cb3402f18320f8","type":"5da48122e946487a8b9d589642f3c91d"},"name":"Filesync"}]""",
+            )
         )
-        assertEquals(listOf("Filesync"), found?.map { it.name })
     }
 
     @Test
     fun aRegisteredAppWithoutDrivesIsStillThere() = runTest {
-        assertEquals(emptyList(), drives(HttpStatusCode.OK, "[]"))
+        assertTrue(registered(HttpStatusCode.OK, "[]"))
     }
 
     @Test
-    fun noAppWithTheSlugIsNull() = runTest {
-        assertNull(drives(HttpStatusCode.BadRequest, """{"title":"No app 'filesync'","status":400,"errorCode":"invalidDrive"}"""))
+    fun noAppWithTheSlugIsNotRegistered() = runTest {
+        assertFalse(registered(HttpStatusCode.BadRequest, """{"title":"No app 'filesync'","status":400,"errorCode":"invalidDrive"}"""))
     }
 
     @Test
     fun anyOtherBadRequestSaysNothing() = runTest {
         assertFailsWith<ClientException> {
-            drives(HttpStatusCode.BadRequest, """{"title":"Bad slug","status":400,"errorCode":"argumentError"}""")
+            registered(HttpStatusCode.BadRequest, """{"title":"Bad slug","status":400,"errorCode":"argumentError"}""")
         }
     }
 
     @Test
     fun anyOtherFailureSaysNothing() = runTest {
-        assertFailsWith<ForbiddenException> { drives(HttpStatusCode.Forbidden, "") }
+        assertFailsWith<ForbiddenException> { registered(HttpStatusCode.Forbidden, "") }
     }
 }

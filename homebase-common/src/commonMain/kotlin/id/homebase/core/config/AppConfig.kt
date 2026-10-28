@@ -528,36 +528,26 @@ val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     )
 )
 
-// Not synced: the browser lists folders over the network, so the drive is never mounted.
-// Grant only: Filesync owns the drive, and installing Filesync is what creates it.
-val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
-    TargetDriveAccessRequest(
-        alias = filesyncLabeledDrive.drive.alias.toString(),
-        type = filesyncLabeledDrive.drive.type.toString(),
-        name = filesyncLabeledDrive.label,
-        description = "",
-        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
-        driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
-        grantOnly = true,
-    )
+// Must match the desktop's own registration exactly (filesync app.rs, permission_request).
+private val filesyncDrive = TargetDriveAccessRequest(
+    alias = filesyncLabeledDrive.drive.alias.toString(),
+    type = filesyncLabeledDrive.drive.type.toString(),
+    name = filesyncLabeledDrive.label,
+    description = "Files synced with your computers by Homebase Filesync",
+    permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    driveSlug = FilesyncProtocol.DriveSlug,
+    driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
 )
 
-// Must match the desktop's own registration exactly (filesync app.rs, permission_request).
+// Not synced: the browser lists folders over the network, so the drive is never mounted.
+// Grant only: Filesync owns the drive, and installing Filesync is what creates it.
+val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(filesyncDrive.copy(grantOnly = true))
+
 val filesyncAppRegistration = AppRegistrationParams(
     appId = "03ae1a49cdae483f9da7fedc0e8f20b9",
     name = "Homebase Filesync",
     appSlug = FilesyncProtocol.AppSlug,
-    drives = listOf(
-        TargetDriveAccessRequest(
-            alias = FilesyncProtocol.DriveAlias.toString(),
-            type = FilesyncProtocol.DriveType.toString(),
-            name = "Filesync",
-            description = "Files synced with your computers by Homebase Filesync",
-            permissions = listOf(DrivePermission.Read, DrivePermission.Write),
-            driveSlug = FilesyncProtocol.DriveSlug,
-            driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
-        )
-    ),
+    drives = listOf(filesyncDrive),
     circles = listOf(
         AppCircleDeclaration(
             slug = "filesync",
@@ -565,13 +555,7 @@ val filesyncAppRegistration = AppRegistrationParams(
             description = "People who can see the files you share through Homebase Filesync",
             emoji = "📁",
             drives = listOf(
-                TargetDriveAccessRequest(
-                    alias = FilesyncProtocol.DriveAlias.toString(),
-                    type = FilesyncProtocol.DriveType.toString(),
-                    name = "",
-                    description = "",
-                    permissions = listOf(DrivePermission.Read),
-                )
+                filesyncDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),
             ),
         )
     ),
