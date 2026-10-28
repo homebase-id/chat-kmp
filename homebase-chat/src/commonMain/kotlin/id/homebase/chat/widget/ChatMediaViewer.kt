@@ -14,6 +14,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.messageById
 import id.homebase.core.widget.quickReactions
 import id.homebase.chat.viewonce.ViewOnceViewer
 
@@ -43,6 +44,9 @@ internal fun ChatMediaViewer(
             },
             onSaveToVault = if (vaultActive) { id, key ->
                 onUiAction(ConversationListUiAction.SaveMediaToVault(id, key))
+            } else null,
+            onCopyImage = if (uiState.messageById(data.messageId)?.allowsImageCopy == true) { id, key ->
+                onUiAction(ConversationListUiAction.CopyImage(id, key))
             } else null,
             onDelete = { onUiAction(DeleteMessage(it)) },
             onDismiss = { onUiAction(CloseFullScreenOverlay) },

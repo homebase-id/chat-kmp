@@ -702,6 +702,9 @@
     <string name="chat_message_forward">Videresend</string>
     <string name="chat_message_forwarded">Besked videresendt</string>
     <string name="chat_message_copy">Kopiér</string>
+    <string name="chat_message_copy_image">Kopiér billede</string>
+    <string name="chat_image_copied">Billede kopieret</string>
+    <string name="chat_error_copy_image">Kunne ikke kopiere billedet</string>
     <string name="chat_message_reaction">Reaktion'</string>
     <string name="chat_message_edit">Redigér</string>
     <string name="chat_message_edit_message">Redigér besked</string>

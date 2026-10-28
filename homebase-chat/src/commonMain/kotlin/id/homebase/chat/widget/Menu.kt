@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -55,7 +56,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -92,6 +95,7 @@ import id.homebase.resources.chat_group_settings
 import id.homebase.resources.chat_mark_all_as_read
 import id.homebase.resources.chat_message_block
 import id.homebase.resources.chat_message_copy
+import id.homebase.resources.chat_message_copy_image
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_forward
 import id.homebase.resources.chat_message_info
@@ -272,6 +276,7 @@ internal fun ReceivedMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    onCopyImage: (() -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
@@ -279,6 +284,8 @@ internal fun ReceivedMessagePopup(
     onReport: () -> Unit,
 ) {
     val policy = message.actionPolicy
+    // The menu body is remembered, so the targeted gallery image must be read through this.
+    val currentCopyImage by rememberUpdatedState(onCopyImage)
     val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
@@ -329,6 +336,14 @@ internal fun ReceivedMessagePopup(
                             onClick = onCopy,
                             text = stringResource(MR.string.chat_message_copy),
                             imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
+                    if (currentCopyImage != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { currentCopyImage?.invoke() },
+                            text = stringResource(MR.string.chat_message_copy_image),
+                            imageVector = Icons.Filled.Image,
                         )
                     }
                     ListItemActionNormalIcon(
@@ -432,6 +447,7 @@ internal fun SentMessagePopup(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
+    onCopyImage: (() -> Unit)? = null,
     stickerActions: StickerMenuActions? = null,
     onShare: (() -> Unit)?,
     onEdit: (() -> Unit)?,
@@ -439,6 +455,8 @@ internal fun SentMessagePopup(
     onTogglePin: () -> Unit,
 ) {
     val policy = message.actionPolicy
+    // The menu body is remembered, so the targeted gallery image must be read through this.
+    val currentCopyImage by rememberUpdatedState(onCopyImage)
     val actionMenu = remember(policy, onBattle, message.isPinned, stickerActions?.isSaved) {
         movableContentOf<Unit> {
             Surface(
@@ -489,6 +507,14 @@ internal fun SentMessagePopup(
                             onClick = onCopy,
                             text = stringResource(MR.string.chat_message_copy),
                             imageVector = Icons.Default.ContentCopy,
+                        )
+                    }
+                    if (currentCopyImage != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { currentCopyImage?.invoke() },
+                            text = stringResource(MR.string.chat_message_copy_image),
+                            imageVector = Icons.Filled.Image,
                         )
                     }
                     if (onEdit != null) {
@@ -756,6 +782,7 @@ fun FullScreenMediaMenu(
     // ordinary photos (which would create a non-transparent "sticker").
     onSaveSticker: (() -> Unit)? = null,
     onSaveToVault: (() -> Unit)? = null,
+    onCopyImage: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -779,6 +806,14 @@ fun FullScreenMediaMenu(
                 text = { Text(text = stringResource(MR.string.save)) },
                 leadingIcon = {
                     Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+                })
+        }
+        if (onCopyImage != null) {
+            DropdownMenuItem(
+                onClick = onCopyImage,
+                text = { Text(text = stringResource(MR.string.chat_message_copy_image)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Filled.Image, contentDescription = null)
                 })
         }
         if (onSaveToVault != null) {

@@ -43,6 +43,8 @@ import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.chat_error_copy_image
+import id.homebase.resources.chat_image_copied
 import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
@@ -245,6 +247,14 @@ private fun SharedMediaViewer(
                 )
             }
         } else null,
+        onCopyImage = { _, _ ->
+            scope.launch {
+                val copied = actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
+                snackbarHostState.showSnackbar(
+                    TranslationUtil.getString(if (copied) MR.string.chat_image_copied else MR.string.chat_error_copy_image)
+                )
+            }
+        },
         onDelete = { onDismiss() },
         onDismiss = onDismiss,
         onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },

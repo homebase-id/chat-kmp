@@ -110,6 +110,8 @@ sealed interface ConversationListUiAction {
 
     data class SaveMediaToVault(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
+    data class CopyImage(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
+
     data class ShareMessage(val message: MessageUiModel) : ConversationListUiAction
     data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class DownloadVideoMedia(

@@ -11,6 +11,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.core.util.formatMediumDate
+import id.homebase.resources.chat_error_copy_image
+import id.homebase.resources.chat_image_copied
 import id.homebase.core.util.isMobile
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.vault_chat_image_name
@@ -129,8 +131,7 @@ internal class MediaDownloadHandler(
         scope.launch {
             val saved = try {
                 val message =
-                    messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                        .map { it.message }.find { it.id == action.messageId } ?: return@launch
+                    messagesUiState.value.messageById(action.messageId) ?: return@launch
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                 val contentType = payload.contentType ?: return@launch
@@ -163,6 +164,19 @@ internal class MediaDownloadHandler(
         }
     }
 
+    fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
+        val message = messagesUiState.value.messageById(action.messageId)
+            ?.takeIf { it.canCopyImage(action.payloadKey) } ?: return
+        val payload = message.payloads?.find { it.key == action.payloadKey } ?: return
+        scope.launch {
+            val copied = chatMessageActionService.copyImagePayloadToClipboard(message.fileId, payload, message.keyHeader)
+            sendEvent(
+                if (copied) ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
+                else ShowErrorMessage(MR.string.chat_error_copy_image)
+            )
+        }
+    }
+
     fun handleShareMessage(action: ConversationListUiAction.ShareMessage) {
         val message = action.message
         val filteredPayloads = message.payloads?.filter {
@@ -185,8 +199,7 @@ internal class MediaDownloadHandler(
 
     fun handleDownloadMedia(action: ConversationListUiAction.DownloadMedia) {
         val message =
-            messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                .map { it.message }.find { it.id == action.messageId } ?: return
+            messagesUiState.value.messageById(action.messageId) ?: return
 
         val fileKey = "${message.id}_${action.payloadKey}"
 
@@ -298,8 +311,7 @@ internal class MediaDownloadHandler(
 
     fun handleDecryptFile(action: ConversationListUiAction.DecryptFile) {
         val message =
-            messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                .map { it.message }.find { it.id == action.messageId } ?: return
+            messagesUiState.value.messageById(action.messageId) ?: return
 
         val fileKey = "${message.id}_${action.payloadKey}"
 

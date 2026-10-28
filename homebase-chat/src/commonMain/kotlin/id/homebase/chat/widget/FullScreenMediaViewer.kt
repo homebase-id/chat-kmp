@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +70,7 @@ import id.homebase.core.media.MediaUnavailablePlaceholder
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.widget.isCopyChord
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
 import id.homebase.resources.chat_media_quality_hd
@@ -79,8 +84,8 @@ import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 import id.homebase.chat.services.collectContext
 
-internal fun vaultSaveMenuAction(contentType: String?, onSaveToVault: (() -> Unit)?): (() -> Unit)? =
-    onSaveToVault.takeIf { contentType?.startsWith("image/") == true }
+internal fun imageOnlyAction(contentType: String?, action: (() -> Unit)?): (() -> Unit)? =
+    action.takeIf { contentType?.startsWith("image/") == true }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +100,7 @@ fun FullScreenMediaViewer(
     // (Moments) that have no sticker library; the chat pane passes a real handler.
     onSaveSticker: (messageId: Uuid, payloadKey: String) -> Unit = { _, _ -> },
     onSaveToVault: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
+    onCopyImage: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onDelete: ((messageId: Uuid) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
@@ -116,6 +122,17 @@ fun FullScreenMediaViewer(
     }
 
     val currentPayloadKey = data.payloads.getOrNull(pagerState.currentPage)?.key ?: data.selectedPayloadKey
+    val currentPayload = data.payloads.firstOrNull { it.key == currentPayloadKey }
+    fun currentImageAction(action: ((messageId: Uuid, payloadKey: String) -> Unit)?): (() -> Unit)? =
+        imageOnlyAction(currentPayload?.contentType, action?.let { act ->
+            {
+                showMenu = false
+                act(data.messageId, currentPayloadKey)
+            }
+        })
+    val copyAction = currentImageAction(onCopyImage)
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(focusRequester) { focusRequester.requestFocus() }
 
     BoxWithConstraints(
         // Deliberate divergence from the chat bubble: the bubble renders stickers
@@ -126,6 +143,13 @@ fun FullScreenMediaViewer(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
+            .focusRequester(focusRequester)
+            .onKeyEvent { event ->
+                val copy = copyAction?.takeIf { event.isCopyChord() } ?: return@onKeyEvent false
+                copy()
+                true
+            }
+            .focusable()
     ) {
         val maxCaptionHeight = (maxHeight * 0.15f).coerceAtLeast(60.dp)
 
@@ -230,9 +254,7 @@ fun FullScreenMediaViewer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        val currentIsHighQuality = data.payloads
-                            .firstOrNull { it.key == currentPayloadKey }
-                            ?.isHighQualityImage() == true
+                        val currentIsHighQuality = currentPayload?.isHighQualityImage() == true
                         val hdLabel = stringResource(MR.string.chat_media_quality_hd)
                         val timestamp = formatTimestamp(data.userDate)
                         Text(
@@ -255,21 +277,12 @@ fun FullScreenMediaViewer(
                     // Offer "Save sticker" only when the current payload is a real
                     // transparent sticker (descriptor ImageFile(isSticker = true)),
                     // never on an ordinary photo.
-                    val currentIsSticker = data.payloads
-                        .firstOrNull { it.key == currentPayloadKey }
+                    val currentIsSticker = currentPayload
                         ?.descriptorInfo()
                         ?.let { it is DescriptorContent.ImageFile && it.isSticker } == true
-                    val vaultAction = vaultSaveMenuAction(
-                        contentType = data.payloads.firstOrNull { it.key == currentPayloadKey }?.contentType,
-                        onSaveToVault = onSaveToVault?.let { saveToVault ->
-                            {
-                                showMenu = false
-                                saveToVault(data.messageId, currentPayloadKey)
-                            }
-                        },
-                    )
+                    val vaultAction = currentImageAction(onSaveToVault)
                     val hasMenuItems = onSave != null || onDelete != null ||
-                        onNavigateToMessage != null || currentIsSticker || vaultAction != null
+                        onNavigateToMessage != null || currentIsSticker || vaultAction != null || copyAction != null
                     if (hasMenuItems) {
                         Box {
                             IconButton(onClick = {
@@ -290,6 +303,7 @@ fun FullScreenMediaViewer(
                                     }
                                 },
                                 onSaveToVault = vaultAction,
+                                onCopyImage = copyAction,
                                 onSaveSticker = if (currentIsSticker) {
                                     {
                                         showMenu = false

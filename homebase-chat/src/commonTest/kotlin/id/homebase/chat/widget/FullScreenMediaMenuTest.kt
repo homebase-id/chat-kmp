@@ -51,14 +51,14 @@ class FullScreenMediaMenuTest {
     }
 
     @Test
-    fun vaultActionOfferedOnlyForImagesWithHandler() {
+    fun imageOnlyActionOfferedOnlyForImagesWithHandler() {
         val handler: () -> Unit = {}
-        assertNotNull(vaultSaveMenuAction("image/jpeg", handler))
-        assertNotNull(vaultSaveMenuAction("image/webp", handler))
-        assertNull(vaultSaveMenuAction("video/mp4", handler))
-        assertNull(vaultSaveMenuAction("audio/mpeg", handler))
-        assertNull(vaultSaveMenuAction("application/pdf", handler))
-        assertNull(vaultSaveMenuAction(null, handler))
-        assertNull(vaultSaveMenuAction("image/jpeg", null))
+        assertNotNull(imageOnlyAction("image/jpeg", handler))
+        assertNotNull(imageOnlyAction("image/webp", handler))
+        assertNull(imageOnlyAction("video/mp4", handler))
+        assertNull(imageOnlyAction("audio/mpeg", handler))
+        assertNull(imageOnlyAction("application/pdf", handler))
+        assertNull(imageOnlyAction(null, handler))
+        assertNull(imageOnlyAction("image/jpeg", null))
     }
 }

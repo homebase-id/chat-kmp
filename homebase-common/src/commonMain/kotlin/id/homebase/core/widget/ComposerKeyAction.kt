@@ -128,6 +128,9 @@ private fun KeyEvent.pasteTextOverSelection(
 private fun KeyEvent.isPasteChord(): Boolean =
     type == KeyEventType.KeyDown && key == Key.V && (isCtrlPressed || isMetaPressed) && !isAltPressed
 
+fun KeyEvent.isCopyChord(): Boolean =
+    type == KeyEventType.KeyDown && key == Key.C && (isCtrlPressed || isMetaPressed) && !isAltPressed && !isShiftPressed
+
 enum class ComposerKeyAction {
     Send,
     Link,

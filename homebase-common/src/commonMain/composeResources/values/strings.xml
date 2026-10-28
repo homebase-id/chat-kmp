@@ -748,6 +748,9 @@
     <string name="chat_message_forward">Forward</string>
     <string name="chat_message_forwarded">Message forwarded</string>
     <string name="chat_message_copy">Copy</string>
+    <string name="chat_message_copy_image">Copy image</string>
+    <string name="chat_image_copied">Image copied</string>
+    <string name="chat_error_copy_image">Couldn't copy the image</string>
     <string name="chat_message_reaction">Reaction</string>
     <string name="chat_message_edit">Edit</string>
     <string name="chat_message_edit_message">Edit message</string>
