@@ -11,6 +11,7 @@ import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpHeaders
@@ -75,13 +76,10 @@ class ExtendPermissionViewModelTest {
         }
     """.trimIndent()
 
-    private fun jsonEngine(body: String) = MockEngine {
-        respond(
-            content = body,
-            status = HttpStatusCode.OK,
-            headers = headersOf(HttpHeaders.ContentType, "application/json"),
-        )
-    }
+    private fun MockRequestHandleScope.respondJson(body: String) =
+        respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+
+    private fun jsonEngine(body: String) = MockEngine { respondJson(body) }
 
     private suspend fun viewModel(engine: MockEngine): ExtendPermissionViewModel {
         val credentials = CredentialsManager()
@@ -151,11 +149,7 @@ class ExtendPermissionViewModelTest {
                 firstAsked.complete(Unit)
                 releaseFirst.await()
             }
-            respond(
-                content = contextJson(if (first) "" else grantedDrive),
-                status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, "application/json"),
-            ).also { if (first) firstAnswered.complete(Unit) }
+            respondJson(contextJson(if (first) "" else grantedDrive)).also { if (first) firstAnswered.complete(Unit) }
         }
         val vm = viewModel(engine)
         withTimeout(10.seconds) { firstAsked.await() }
@@ -177,11 +171,7 @@ class ExtendPermissionViewModelTest {
         val engine = MockEngine {
             asked.complete(Unit)
             release.await()
-            respond(
-                content = contextJson(""),
-                status = HttpStatusCode.OK,
-                headers = headersOf(HttpHeaders.ContentType, "application/json"),
-            ).also { answered.complete(Unit) }
+            respondJson(contextJson("")).also { answered.complete(Unit) }
         }
         val vm = viewModel(engine)
         withTimeout(10.seconds) { asked.await() }

@@ -19,8 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -29,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
@@ -56,7 +56,7 @@ fun FilesyncOnboardingScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onAction(FilesyncUiAction.Paused) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(FilesyncUiAction.Resumed) }
     // Left for another tab, or set up meanwhile: only leaving Chat itself resumes setup.
-    DisposableEffect(Unit) { onDispose { viewModel.onAction(FilesyncUiAction.SetupLeft) } }
+    DisposableEffect(viewModel) { onDispose { viewModel.onAction(FilesyncUiAction.SetupLeft) } }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(MR.string.filesync_label)) }) },

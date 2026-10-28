@@ -126,8 +126,7 @@ class FilesyncViewModel(
                 extendPermissionViewModel.recheckPermissions()
             }
 
-            // Set up spans leaving Chat: what it found before may be stale, and installing an installed app
-            // re-registers it. So leaving drops the dialog and any check in flight, and coming back checks again.
+            // Leaving Chat makes setup's verdict stale (installing an installed app re-registers it): recheck on return.
             FilesyncUiAction.Paused -> if (_uiState.value.setupInitiated) {
                 setupPaused = true
                 extendPermissionViewModel.dismissDialog()
