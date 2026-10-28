@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.upload
 
+import id.homebase.api.client.drives.lockKeyHeader
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.LenientBase64BytesSerializer
 import co.touchlab.kermit.Logger
@@ -152,11 +153,11 @@ class DriveUploadProvider(
         val sharedSecret = creds.secret.unsafeBytes
 
         val transferIv = ByteArrayUtil.getRndByteArray(16)
-        val sharedSecretEncryptedDescriptor = buildEncryptedUploadDescriptor(
-            request.keyHeader,
+        val sharedSecretEncryptedDescriptor = buildSharedSecretEncryptedUploadDescriptor(
+            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv),
             request.metadata,
             sharedSecret,
-            transferIv = transferIv
+            transferIv = transferIv,
         )
 
         val instructions =
@@ -223,7 +224,8 @@ class DriveUploadProvider(
                 request.keyHeader,
                 request.metadata,
                 sharedSecret,
-                request.instructions.transferIv
+                request.instructions.transferIv,
+                request.driveId
             )
 
         val data =
@@ -275,7 +277,8 @@ class DriveUploadProvider(
                 request.keyHeader,
                 request.metadata,
                 sharedSecret,
-                request.instructions.transferIv
+                request.instructions.transferIv,
+                request.driveId
             )
 
         val data =
@@ -472,54 +475,16 @@ class DriveUploadProvider(
     }
 
 
-    /**
-     * Builds an encrypted descriptor (UploadFileDescriptor encrypted with sharedSecret). Matches
-     * TypeScript buildDescriptor function.
-     *
-     * @param keyHeader The key header to encrypt
-     * @param metadata The already-encrypted file metadata
-     * @param sharedSecret The shared secret for encryption
-     * @param transferIv The transfer IV from instructions
-     * @return AES-CBC encrypted descriptor bytes
-     */
-    private suspend fun buildEncryptedUploadDescriptor(
-        keyHeader: KeyHeader?,
-        metadata: UploadFileMetadata,
-        sharedSecret: ByteArray,
-        transferIv: ByteArray
-    ): ByteArray =
-        // Shared with the over-peer transit-send path — see UploadDescriptorBuilder.kt.
-        buildSharedSecretEncryptedUploadDescriptor(keyHeader, metadata, sharedSecret, transferIv)
-
-    /**
-     * Builds an encrypted descriptor (UploadFileDescriptor encrypted with sharedSecret). Matches
-     * TypeScript buildDescriptor function.
-     *
-     * @param keyHeader The key header to encrypt
-     * @param metadata The already-encrypted file metadata
-     * @param sharedSecret The shared secret for encryption
-     * @param transferIv The transfer IV from instructions
-     * @return AES-CBC encrypted descriptor bytes
-     */
     private suspend fun buildSharedSecretEncryptedUpdateDescriptor(
         keyHeader: KeyHeader?,
         metadata: UploadFileMetadata,
         sharedSecret: ByteArray,
-        transferIv: ByteArray
+        transferIv: ByteArray,
+        driveId: Uuid
     ): ByteArray {
-        // Encrypt the key header using shared secret and transferIv (matches TypeScript
-        // encryptKeyHeader)
-        val sharedSecretEncryptedKeyHeader =
-            EncryptedKeyHeader.encryptKeyHeaderAes(
-                keyHeader ?: KeyHeader.empty(),
-                transferIv,
-                SecureByteArray(sharedSecret)
-            )
-
-        // Create the file descriptor
         val descriptor =
             UpdateFileDescriptor(
-                encryptedKeyHeader = sharedSecretEncryptedKeyHeader,
+                encryptedKeyHeader = lockKeyHeader(keyHeader, driveId, sharedSecret, transferIv),
                 fileMetadata = metadata
             )
 

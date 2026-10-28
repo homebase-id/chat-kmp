@@ -29,17 +29,28 @@ data class PermissionGroup(
 
 /** A grant for a specific drive with permissions. */
 @Serializable
-data class DriveGrant(val permissionedDrive: PermissionedDrive, val hasStorageKey: Boolean = false)
+data class DriveGrant(
+    val permissionedDrive: PermissionedDrive,
+    val hasStorageKey: Boolean = false,
+    /** On a zero-knowledge drive only: its key, `zkLock`ed with the app's zero-knowledge key. */
+    val zkAppKeyEncryptedStorageKey: String? = null,
+)
 
 private fun DriveGrant.isFor(alias: String, type: String): Boolean =
     compareStringUuId(permissionedDrive.drive.alias, alias) && compareStringUuId(permissionedDrive.drive.type, type)
 
-private val SecurityContext.driveGrants: List<DriveGrant>
+internal val SecurityContext.driveGrants: List<DriveGrant>
     get() = permissionContext.permissionGroups.flatMap { it.driveGrants.orEmpty() }
 
-/** The server grants Read on every anonymous drive without its storage key, so only a keyed Read decrypts. */
+/**
+ * The server grants Read on every anonymous drive without its storage key, so only a keyed Read decrypts. On a
+ * zero-knowledge drive the app's key is its locked copy, which this device opens if it signed in for it.
+ */
 fun SecurityContext.canDecrypt(alias: String, type: String): Boolean =
-    driveGrants.any { it.isFor(alias, type) && it.hasStorageKey && DrivePermission.Read in it.permissionedDrive.permission }
+    driveGrants.any {
+        it.isFor(alias, type) && (it.hasStorageKey || it.zkAppKeyEncryptedStorageKey != null) &&
+            DrivePermission.Read in it.permissionedDrive.permission
+    }
 
 fun SecurityContext.drivePermissions(alias: String, type: String): List<DrivePermission> =
     driveGrants.filter { it.isFor(alias, type) }.flatMap { it.permissionedDrive.permission }.distinct()

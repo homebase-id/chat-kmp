@@ -28,6 +28,10 @@ data class VaultUiState(
     val pendingEditor: VaultPendingEditor? = null,
     /** Gates the gallery's "Send as WebDrop" affordances on the WebDrop drive being activated. */
     val webDropActivated: Boolean = false,
+    /** Vault is private and this device signed in before it could get the key to open it. */
+    val needsSignIn: Boolean = false,
+    /** Developer menu only, while Vault isn't private yet. */
+    val offerMakePrivate: Boolean = false,
 )
 
 /** Which editor screen a crop/draw request routes to. */
@@ -148,6 +152,8 @@ sealed interface VaultUiAction {
     data class RenameFile(val file: VaultEntry, val newName: String) : VaultUiAction
     data class DeleteFile(val file: VaultEntry) : VaultUiAction
     data object CloseOverlay : VaultUiAction
+    data object SignInAgain : VaultUiAction
+    data object MakePrivate : VaultUiAction
     data object RefreshFiles : VaultUiAction
 }
 
@@ -170,6 +176,8 @@ sealed interface VaultUiEvent {
     data class OpenNoteEditor(val sectionId: Uuid, val entryId: Uuid? = null) : VaultUiEvent
     data class NavigateToCropper(val requestId: Uuid) : VaultUiEvent
     data class NavigateToDrawer(val requestId: Uuid) : VaultUiEvent
+    data class OpenSignIn(val url: String) : VaultUiEvent
+    data class OpenOwnerConsole(val url: String) : VaultUiEvent
 }
 
 sealed interface VaultError {
@@ -189,6 +197,7 @@ sealed interface VaultError {
     data class WebDropTooManyFiles(val max: Int) : VaultError
     data object DownloadPageFailed : VaultError
     data object OutboxUploadFailed : VaultError
+    data object SignInAgainFailed : VaultError
     data object EditPageFailed : VaultError
     data object OpenEditorFailed : VaultError
 }

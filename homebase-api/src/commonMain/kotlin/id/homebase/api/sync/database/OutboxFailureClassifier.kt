@@ -3,6 +3,7 @@ package id.homebase.api.sync.database
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.drives.files.ZkKeyMismatchException
 import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 import id.homebase.api.serialization.OutboxDecodeException
 
@@ -30,6 +31,7 @@ internal fun classifyPermanentFailure(e: Throwable): String? {
     // by DriveUploadProvider's pre-flight BEFORE the network call, so it can't
     // be wrapped into a transient NetworkException.
     if (e is StagedPayloadMissingException) return "staged payload missing: ${e.message}"
+    if (e is ZkKeyMismatchException) return e.message
     if (e is ClientException) {
         when (e.errorCode) {
             OdinClientErrorCode.FileNotFound,

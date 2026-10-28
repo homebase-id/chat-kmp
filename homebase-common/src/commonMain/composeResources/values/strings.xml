@@ -1580,6 +1580,11 @@
     <string name="vault_error_update_label">Failed to update label for %1$s</string>
     <string name="vault_error_download_page">Failed to download page for sharing</string>
     <string name="vault_error_outbox_upload">Upload failed</string>
+    <string name="vault_error_sign_in_again">Couldn't start signing in. Try again.</string>
+    <string name="vault_sign_in_again_title">Sign in again to open your Vault</string>
+    <string name="vault_sign_in_again_body">Your Vault is now private, and this device needs one more sign-in to get its key. Nothing on this device is deleted.</string>
+    <string name="vault_sign_in_again_button">Sign in again</string>
+    <string name="vault_sign_in_again_continue">Continue</string>
     <string name="vault_error_image_unavailable">Image could not be loaded</string>
     <string name="vault_pdf_badge">PDF</string>
     <string name="vault_pdf_preview_error">Unable to preview PDF</string>
@@ -3066,4 +3071,5 @@
     <string name="call_beta_label">Beta</string>
     <string name="call_report_problem">Report a problem</string>
     <string name="call_report_unavailable">No log found for this call</string>
+    <string name="vault_make_private">Click to change your Vault Drive to true zero knowledge encryption</string>
 </resources>

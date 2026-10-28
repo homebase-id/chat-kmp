@@ -614,6 +614,8 @@ fun AppNavHost(
                 is VaultUiEvent.NavigateToCropper,
                 is VaultUiEvent.NavigateToDrawer,
                 is VaultUiEvent.OpenWebDrop,
+                is VaultUiEvent.OpenSignIn,
+                is VaultUiEvent.OpenOwnerConsole,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
             }
         }

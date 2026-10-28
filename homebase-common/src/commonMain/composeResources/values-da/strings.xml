@@ -2053,4 +2053,5 @@
     <string name="call_beta_label">Beta</string>
     <string name="call_report_problem">Rapportér et problem</string>
     <string name="call_report_unavailable">Ingen log fundet for dette opkald</string>
+    <string name="vault_make_private">Klik for at ændre dit Vault-drev til ægte zero knowledge-kryptering</string>
 </resources>

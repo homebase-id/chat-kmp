@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EncryptedKeyHeader
+import id.homebase.api.crypto.EncryptionType
+import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.serialization.UuidSerializer
 import io.ktor.utils.io.charsets.Charsets
@@ -42,7 +44,7 @@ data class ServerFile(
             }
 
             resolvedKeyHeader = try {
-                sharedSecretEncryptedKeyHeader.decryptAesToKeyHeader(sharedSecret)
+                sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret)
             } catch (e: Throwable) {
                 throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             }
@@ -73,6 +75,27 @@ data class ServerFile(
         )
     }
 }
+
+/** Opens a key header as the server returns it: locked with the shared secret, or on a zero-knowledge drive with its key. */
+suspend fun EncryptedKeyHeader.open(driveId: Uuid, sharedSecret: SecureByteArray): KeyHeader = when (type) {
+    EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
+    EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
+    EncryptionType.Sealed -> throw FileDecryptionException.Sealed()
+}
+
+/**
+ * Locks [keyHeader] for an upload to [driveId]: with the shared secret under [transferIv], which the server
+ * re-locks with the drive key; or on a zero-knowledge drive with its key under the file's own IV, stored as sent.
+ */
+suspend fun lockKeyHeader(keyHeader: KeyHeader?, driveId: Uuid, sharedSecret: ByteArray, transferIv: ByteArray): EncryptedKeyHeader =
+    if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
+        EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader, keyHeader.iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
+    } else {
+        EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
+    }
+
+/** The key that locks key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
+private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) ?: throw FileDecryptionException.NoDriveKey(driveId)
 
 internal const val DECRYPTION_FAILURE_APP_DATA =
     """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}"""
@@ -171,4 +194,10 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
 
     class ContentDecryptionFailed(cause: Throwable) :
         FileDecryptionException("Failed to decrypt file content", cause)
+
+    class NoDriveKey(driveId: Uuid) :
+        FileDecryptionException("This device holds no key for the zero-knowledge drive $driveId")
+
+    class Sealed :
+        FileDecryptionException("The key header is sealed to the drive's write-only key")
 }

@@ -214,6 +214,7 @@ kotlin {
         "id.homebase.api.sync.database.FileStateFilterTest",
         "id.homebase.api.sync.database.LocationPointWrapperTest",
         "id.homebase.api.sync.database.MainIndexMetaTest",
+        "id.homebase.api.sync.database.OutboxNoDriveKeyTest",
         "id.homebase.api.sync.database.OutboxSetNextRunTimeTest",
         "id.homebase.api.sync.database.OutboxStorageFullTest",
         "id.homebase.api.sync.database.OutboxSyncTest",
