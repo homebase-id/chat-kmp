@@ -3,6 +3,8 @@ package id.homebase.chat.conversationlist
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.delay
+import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.youauth.DrivePermission
@@ -81,7 +83,7 @@ class ExtendPermissionViewModelTest {
 
     private fun jsonEngine(body: String) = MockEngine { respondJson(body) }
 
-    private suspend fun viewModel(engine: MockEngine): ExtendPermissionViewModel {
+    private suspend fun viewModel(engine: MockEngine, eventBus: EventBus = EventBus()): ExtendPermissionViewModel {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(
             ApiCredentials.create(
@@ -93,7 +95,7 @@ class ExtendPermissionViewModelTest {
         return ExtendPermissionViewModel(
             securityContextProvider = SecurityContextProvider(HttpClient(engine), credentials),
             credentialsManager = credentials,
-            eventBus = EventBus(),
+            eventBus = eventBus,
             config = config,
         )
     }
@@ -182,5 +184,24 @@ class ExtendPermissionViewModelTest {
 
         assertNull(withTimeoutOrNull(1.seconds) { vm.uiState.first { it is ExtendPermissionUiState.ShowDialog } })
         assertEquals(ExtendPermissionUiState.Dismissed, vm.uiState.value)
+    }
+
+    @Test
+    fun aClosedCheckerNoLongerChecksOnEvents() = runBlocking<Unit> {
+        val engine = jsonEngine(contextJson(""))
+        val eventBus = EventBus()
+        val vm = viewModel(engine, eventBus)
+        withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+        // Control: open, the same event makes it check again.
+        val before = engine.requestHistory.size
+        eventBus.emit(BackendEvent.DriveAuthorizationFailed("403"))
+        withTimeout(10.seconds) { while (engine.requestHistory.size == before) delay(20) }
+        val asked = engine.requestHistory.size
+
+        vm.close()
+        eventBus.emit(BackendEvent.PermissionsExtensionReturned)
+        eventBus.emit(BackendEvent.DriveAuthorizationFailed("403"))
+
+        assertNull(withTimeoutOrNull(1.seconds) { while (engine.requestHistory.size == asked) delay(20) })
     }
 }

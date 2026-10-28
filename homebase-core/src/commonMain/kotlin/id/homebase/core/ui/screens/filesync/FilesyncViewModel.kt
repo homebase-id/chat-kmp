@@ -67,6 +67,7 @@ class FilesyncViewModel(
     private var setupPaused = false
 
     init {
+        addCloseable(extendPermissionViewModel)
         viewModelScope.launch {
             snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
         }

@@ -11,6 +11,7 @@ import id.homebase.api.youauth.PermissionCheckResult
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -27,7 +28,10 @@ class ExtendPermissionViewModel(
     private val eventBus: EventBus,
     private val config: PermissionExtensionConfig,
     private val autoCheck: Boolean = true,
-) : ViewModel() {
+) : ViewModel(), AutoCloseable {
+
+    // Never in a ViewModelStore: the owning view model's addCloseable ends it.
+    override fun close() = viewModelScope.cancel()
 
     private val _uiState = MutableStateFlow<ExtendPermissionUiState>(ExtendPermissionUiState.Idle)
     val uiState: StateFlow<ExtendPermissionUiState> = _uiState.asStateFlow()
