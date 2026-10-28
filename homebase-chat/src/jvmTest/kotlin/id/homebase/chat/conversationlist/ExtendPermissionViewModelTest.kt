@@ -192,6 +192,10 @@ class ExtendPermissionViewModelTest {
         val eventBus = EventBus()
         val vm = viewModel(engine, eventBus)
         withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+        // Control: open, the same event makes it check again.
+        val before = engine.requestHistory.size
+        eventBus.emit(BackendEvent.DriveAuthorizationFailed("403"))
+        withTimeout(10.seconds) { while (engine.requestHistory.size == before) delay(20) }
         val asked = engine.requestHistory.size
 
         vm.close()
