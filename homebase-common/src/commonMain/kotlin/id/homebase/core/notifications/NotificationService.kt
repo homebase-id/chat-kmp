@@ -249,6 +249,18 @@ class NotificationService(
                 if (id != null) clearConversationNotifications(id.toString())
             }
         }
+        // Signed in again (same identity, new token): push is registered under the old sign-in, which is retired.
+        scope.launch {
+            var signedIn: YouAuthState.Authenticated? = null
+            authState.collect { state ->
+                if (state is YouAuthState.Authenticated) {
+                    if (signedInAgain(signedIn, state)) getToken()?.let(::registerToken)
+                    signedIn = state
+                } else if (state is YouAuthState.Unauthenticated) {
+                    signedIn = null
+                }
+            }
+        }
         // Logout: drop per-conversation unread counts and the chime cooldown so the
         // previous identity's notification summary state doesn't carry into the next.
         scope.launch {
@@ -1022,3 +1034,6 @@ fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
     val summaryId = SUMMARY_ID_OFFSET + maskedHash
     return messageId to summaryId
 }
+
+internal fun signedInAgain(previous: YouAuthState.Authenticated?, now: YouAuthState.Authenticated): Boolean =
+    previous != null && previous.identity == now.identity && previous.clientAuthToken != now.clientAuthToken

@@ -1,5 +1,6 @@
 package id.homebase.api.youauth
 
+import id.homebase.api.client.notifications.PushNotificationApi
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
@@ -350,6 +351,7 @@ class YouAuthFlowManager(
                     salt = salt
                 )
 
+            val replaced = if (authCodeFlowState.again) credentialsManager.getActiveCredentials() else null
             result.zkAppKey?.let(ZkKeyStore::saveAppKey)
             CredentialStorage.saveCredentials(
                 identity = result.identity,
@@ -375,6 +377,7 @@ class YouAuthFlowManager(
             ShareAuthBridge.setAuthenticated(true, result.identity.domainName)
             NotificationExtensionStore.publishCredentials(apiCredentials)
             Logger.i(tag = TAG) { "Authentication completed successfully for ${result.identity}" }
+            replaced?.let { retireSignIn(httpClient, it) }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error completing auth (again=${authCodeFlowState.again})" }
             if (!authCodeFlowState.again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
@@ -540,4 +543,16 @@ internal suspend fun stepOrLog(name: String, step: suspend () -> Unit) {
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = "YouAuth") { "Logout step '$name' failed — continuing" }
     }
+}
+
+/**
+ * The sign-in that signing in again replaced: its push subscription first, so pushes don't arrive twice
+ * once the new sign-in subscribes, then the sign-in itself. Best effort: a leftover is harmless.
+ */
+internal suspend fun retireSignIn(httpClient: HttpClient, replaced: ApiCredentials) {
+    val old = CredentialsManager().apply { setActiveCredentials(replaced) }
+    runCatching { PushNotificationApi(httpClient, old).unsubscribe() }
+        .onFailure { Logger.w(throwable = it, tag = "YouAuthFlowManager") { "Couldn't unsubscribe the replaced sign-in's push" } }
+    runCatching { ClientRegistrationApi(httpClient, old).deleteThisClient() }
+        .onFailure { Logger.w(throwable = it, tag = "YouAuthFlowManager") { "Couldn't delete the replaced sign-in" } }
 }
