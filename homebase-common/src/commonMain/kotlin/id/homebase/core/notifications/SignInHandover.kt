@@ -1,9 +1,9 @@
 package id.homebase.core.notifications
 
-import co.touchlab.kermit.Logger
+import id.homebase.api.client.RetryConfig
+import id.homebase.api.client.RetryResult
 import id.homebase.api.client.auth.ApiCredentials
-import kotlinx.coroutines.delay
-import kotlin.coroutines.cancellation.CancellationException
+import id.homebase.api.client.withRetryResult
 
 /** What moving push from a replaced sign-in to the current one needs; the server calls behind [handOverPush]. */
 internal interface PushHandoverSteps {
@@ -23,20 +23,10 @@ internal interface PushHandoverSteps {
  * happens or push stays on the replaced sign-in: never two subscriptions (every push twice), never none.
  */
 internal suspend fun handOverPush(replaced: ApiCredentials, steps: PushHandoverSteps, retryDelayMs: Long = 2_000) {
-    suspend fun attempt(what: String, block: suspend () -> Unit): Boolean {
-        repeat(RETRIES) { n ->
-            try {
-                block()
-                return true
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(throwable = e, tag = TAG) { "Push hand-over: $what failed (${n + 1}/$RETRIES)" }
-                if (n < RETRIES - 1) delay(retryDelayMs shl n)
-            }
-        }
-        return false
-    }
+    suspend fun attempt(what: String, block: suspend () -> Unit) =
+        withRetryResult(RetryConfig(maxRetries = RETRIES - 1, initialDelayMs = retryDelayMs), "$TAG: push hand-over, $what") {
+            block()
+        } is RetryResult.Success
 
     if (steps.hasPush) {
         // Web push lives with the sign-in it was made for, and nothing here can move it: the replaced one stays.

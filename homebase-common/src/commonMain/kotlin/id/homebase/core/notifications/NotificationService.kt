@@ -1,7 +1,6 @@
 package id.homebase.core.notifications
 
 import id.homebase.core.util.isDesktop
-import kotlinx.coroutines.flow.emptyFlow
 import io.ktor.client.HttpClient
 import id.homebase.api.youauth.ClientRegistrationApi
 import id.homebase.api.client.NotFoundException
@@ -213,28 +212,25 @@ class NotificationService(
      * is kept. Injected from homebase-chat via [NotificationMessageResolver].
      */
     private val messageResolver: NotificationMessageResolver? = null,
-    private val replacedSignIns: Flow<ApiCredentials> = emptyFlow(),
-    /** For calls as a replaced sign-in; without it, push stays on that sign-in. */
-    private val httpClient: HttpClient? = null,
+    private val replacedSignIns: Flow<ApiCredentials>,
+    private val httpClient: HttpClient,
 ) {
 
-    private val pushHandover: PushHandoverSteps? = httpClient?.let { client ->
-        object : PushHandoverSteps {
-            override val hasPush = !isDesktop()
-            override suspend fun pushToken() = getToken()
-            override suspend fun subscribeCurrent(token: String) = registerTokenSuspend(token)
-            override suspend fun unsubscribeCurrent() = api.unsubscribe()
-            override suspend fun unsubscribeReplaced(replaced: ApiCredentials) {
-                try {
-                    PushNotificationApi(client, credentialsFor(replaced)).unsubscribe()
-                } catch (_: NotFoundException) {
-                }
+    private val pushHandover = object : PushHandoverSteps {
+        override val hasPush = !isDesktop()
+        override suspend fun pushToken() = getToken()
+        override suspend fun subscribeCurrent(token: String) = registerTokenSuspend(token)
+        override suspend fun unsubscribeCurrent() = api.unsubscribe()
+        override suspend fun unsubscribeReplaced(replaced: ApiCredentials) {
+            try {
+                PushNotificationApi(httpClient, credentialsFor(replaced)).unsubscribe()
+            } catch (_: NotFoundException) {
             }
-            override suspend fun deleteReplaced(replaced: ApiCredentials) =
-                ClientRegistrationApi(client, credentialsFor(replaced)).deleteThisClient()
-
-            private suspend fun credentialsFor(replaced: ApiCredentials) = CredentialsManager().apply { setActiveCredentials(replaced) }
         }
+        override suspend fun deleteReplaced(replaced: ApiCredentials) =
+            ClientRegistrationApi(httpClient, credentialsFor(replaced)).deleteThisClient()
+
+        private suspend fun credentialsFor(replaced: ApiCredentials) = CredentialsManager().apply { setActiveCredentials(replaced) }
     }
 
     private var isListening = false
@@ -277,9 +273,8 @@ class NotificationService(
                 if (id != null) clearConversationNotifications(id.toString())
             }
         }
-        // Signed in again: push moves off the replaced sign-in, which is then deleted.
         scope.launch {
-            replacedSignIns.collect { replaced -> pushHandover?.let { handOverPush(replaced, it) } }
+            replacedSignIns.collect { handOverPush(it, pushHandover) }
         }
         // Logout: drop per-conversation unread counts and the chime cooldown so the
         // previous identity's notification summary state doesn't carry into the next.

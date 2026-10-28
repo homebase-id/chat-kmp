@@ -115,7 +115,6 @@ class YouAuthFlowManager(
 
     private val _replacedSignIns = MutableSharedFlow<ApiCredentials>(extraBufferCapacity = 4)
 
-    /** The sign-in each completed sign-in-again replaced. */
     val replacedSignIns: SharedFlow<ApiCredentials> = _replacedSignIns.asSharedFlow()
 
     // True once handleCallback() is invoked, preventing onAppResumed from cancelling a
@@ -220,7 +219,7 @@ class YouAuthFlowManager(
      *   the web seamless-login path, which redirects the top window to the authorize endpoint
      *   (unloading the app) instead of opening a popup. See issue #853.
      * @param again Sign in again for the app's zero-knowledge key. A failure changes nothing; on success the replaced
-     *   sign-in goes out on [replacedSignIns], which moves push off it and then deletes it.
+     *   sign-in goes out on [replacedSignIns].
      */
     suspend fun authorize(
         identity: OdinId,
