@@ -102,7 +102,9 @@ class FilesyncViewModel(
         }
 
         viewModelScope.launch {
-            extendPermissionViewModel.checkFailed.collect { failed -> _uiState.update { it.copy(checkFailed = failed) } }
+            extendPermissionViewModel.checkFailed.collect { failed ->
+                _uiState.update { it.copy(checkFailed = failed, setupInitiated = it.setupInitiated && !failed) }
+            }
         }
 
         viewModelScope.launch {

@@ -1,7 +1,6 @@
 package id.homebase.api.youauth
 
 import io.ktor.http.formUrlEncode
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -38,18 +37,15 @@ data class AppRegistrationParams(
         "cancel" to returnUrl + (if ('?' in returnUrl) "&" else "?") + "status=canceled",
     ).formUrlEncode()
 
-    private fun encodeCircles(): String = Json.encodeToString(
-        JsonArray.serializer(),
-        buildJsonArray {
-            circles.forEach { circle ->
-                add(buildJsonObject {
-                    put("s", JsonPrimitive(circle.slug))
-                    put("n", JsonPrimitive(circle.name))
-                    put("d", JsonPrimitive(circle.description))
-                    put("e", JsonPrimitive(circle.emoji))
-                    put("g", JsonArray(circle.drives.map { it.toJsonObject() }))
-                })
-            }
-        },
-    )
+    private fun encodeCircles(): String = buildJsonArray {
+        circles.forEach { circle ->
+            add(buildJsonObject {
+                put("s", JsonPrimitive(circle.slug))
+                put("n", JsonPrimitive(circle.name))
+                put("d", JsonPrimitive(circle.description))
+                put("e", JsonPrimitive(circle.emoji))
+                put("g", JsonArray(circle.drives.map { it.toJsonObject() }))
+            })
+        }
+    }.toString()
 }

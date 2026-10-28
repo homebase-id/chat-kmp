@@ -31,6 +31,7 @@ import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
 import id.homebase.core.ui.screens.filesync.components.FilesyncDesktopAppCard
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_check_failed
 import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_onboarding_body_1
 import id.homebase.resources.filesync_onboarding_body_2
@@ -44,6 +45,7 @@ import org.jetbrains.compose.resources.stringResource
 fun FilesyncOnboardingScreen(
     viewModel: FilesyncViewModel,
     setupInitiated: Boolean,
+    checkFailed: Boolean,
     onDismiss: () -> Unit,
 ) {
     // The grant is checked silently on open; the dialog only appears once the user asks to set up.
@@ -89,6 +91,15 @@ fun FilesyncOnboardingScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(40.dp))
+            if (checkFailed) {
+                Text(
+                    text = stringResource(MR.string.filesync_check_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             FilledTonalButton(
                 onClick = { viewModel.onAction(FilesyncUiAction.SetupClicked) },
                 modifier = Modifier.fillMaxWidth(),

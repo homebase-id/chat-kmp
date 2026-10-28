@@ -203,6 +203,7 @@ class ExtendPermissionViewModel(
     }
 
     fun dismissDialog() {
+        checkGeneration++
         _uiState.value = ExtendPermissionUiState.Dismissed
     }
 

@@ -2213,6 +2213,7 @@ fun AppNavHost(
                                             false -> FilesyncOnboardingScreen(
                                                 viewModel = filesyncViewModel,
                                                 setupInitiated = filesyncUiState.setupInitiated,
+                                                checkFailed = filesyncUiState.checkFailed,
                                                 onDismiss = { navController.popBackStack() },
                                             )
                                             true -> FilesyncScreen(

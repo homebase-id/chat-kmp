@@ -27,7 +27,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -165,9 +164,8 @@ class ExtendPermissionViewModelTest {
         withTimeout(10.seconds) { vm.permissionsGranted.first { it } }
         releaseFirst.complete(Unit)
         withTimeout(10.seconds) { firstAnswered.await() }
-        delay(200)
 
-        assertTrue(vm.permissionsGranted.value, "the older 'missing' finished last but is stale")
+        assertNull(withTimeoutOrNull(1.seconds) { vm.permissionsGranted.first { !it } }, "the older 'missing' finished last but is stale")
         assertEquals(ExtendPermissionUiState.Idle, vm.uiState.value)
     }
 }
