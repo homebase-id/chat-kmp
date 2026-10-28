@@ -4,10 +4,12 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
+import id.homebase.api.client.drives.files.ZkKeyMismatchException
 import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.uuid.Uuid
 
 private fun clientException(
     status: Int = 400,
@@ -200,6 +202,11 @@ class OutboxFailureClassifierTest {
                 clientException(message = "Some transient condition the server reports as 400")
             )
         )
+    }
+
+    @Test
+    fun aKeyMismatchOnAZeroKnowledgeDriveIsPermanent() {
+        assertNotNull(classifyPermanentFailure(ZkKeyMismatchException(Uuid.random())))
     }
 
     @Test

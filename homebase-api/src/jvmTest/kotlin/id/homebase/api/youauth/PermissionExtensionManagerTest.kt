@@ -199,6 +199,12 @@ class PermissionExtensionManagerTest {
     }
 
     @Test
+    fun aZeroKnowledgeDrivesLockedCopyCountsAsTheKey() = runTest {
+        val zk = context(contextWithGroups(grant("read", hasStorageKey = false).replace("\n}", ", \"zkAppKeyEncryptedStorageKey\": \"AAAA\"\n}")))
+        assertTrue(zk.canDecrypt(driveAlias, driveType))
+    }
+
+    @Test
     fun onlyAKeyedReadGrantOnThatDriveDecrypts() = runTest {
         val dashed = "${driveAlias.substring(0, 8)}-${driveAlias.substring(8, 12)}-${driveAlias.substring(12, 16)}-" +
             "${driveAlias.substring(16, 20)}-${driveAlias.substring(20)}"

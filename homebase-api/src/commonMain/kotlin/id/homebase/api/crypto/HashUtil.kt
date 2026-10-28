@@ -57,16 +57,15 @@ object HashUtil {
     }
 
     /** HKDF (HMAC-based Extract-and-Expand Key Derivation Function) using SHA-256 RFC 5869 */
-    suspend fun hkdf(sharedEccSecret: ByteArray, salt: ByteArray, outputKeySize: Int): ByteArray {
+    suspend fun hkdf(sharedEccSecret: ByteArray, salt: ByteArray?, outputKeySize: Int, info: ByteArray? = null): ByteArray {
         require(outputKeySize >= 16) { "Output key size cannot be less than 16" }
 
-        // Use cryptography-kotlin HKDF with SHA-256
         val derivation =
                 hkdfAlgo.secretDerivation(
                         digest = SHA256,
                         outputSize = outputKeySize.bytes,
                         salt = salt,
-                        info = null // No additional info in our use case
+                        info = info
                 )
 
         return derivation.deriveSecretToByteArray(sharedEccSecret)

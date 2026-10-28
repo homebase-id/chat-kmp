@@ -14,7 +14,8 @@ data class YouAuthorizationParams(
     val publicKey: String,
     val permissionRequest: String,
     val state: String,
-    val redirectUri: String
+    val redirectUri: String,
+    val zkAppKey: Boolean = false
 ) {
     /** Convert to URL query string for the authorization request. */
     fun toQueryString(): String {
@@ -27,6 +28,7 @@ data class YouAuthorizationParams(
                 params.add("permission_request=${encodeUrl(permissionRequest)}")
         if (state.isNotEmpty()) params.add("state=${encodeUrl(state)}")
         if (redirectUri.isNotEmpty()) params.add("redirect_uri=${encodeUrl(redirectUri)}")
+        if (zkAppKey) params.add("zk_app_key=1")
         return params.joinToString("&")
     }
 
@@ -39,5 +41,6 @@ data class YouAuthorizationParams(
         put("permission_request", permissionRequest)
         put("state", state)
         put("redirect_uri", redirectUri)
+        if (zkAppKey) put("zk_app_key", "1")
     }
 }

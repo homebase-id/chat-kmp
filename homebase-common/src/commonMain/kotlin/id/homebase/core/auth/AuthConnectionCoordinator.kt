@@ -20,6 +20,7 @@ import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
+import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.core.config.LabeledDrive
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
@@ -888,6 +889,7 @@ class AuthConnectionCoordinator(
             grantedDriveIds = null
             return
         }
+        ZkKeyStore.openDriveKeys(ctx)
         val readable = ctx.permissionContext.permissionGroups
             .flatMap { it.driveGrants ?: emptyList() }
             .filter { (it.permissionedDrive.permission.sumOf { p -> p.value } and DrivePermission.Read.value) != 0 }

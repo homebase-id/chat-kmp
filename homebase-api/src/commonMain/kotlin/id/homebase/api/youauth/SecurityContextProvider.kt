@@ -121,7 +121,8 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
 
         return DriveGrant(
             permissionedDrive = PermissionedDrive(drive = drive, permission = permissions),
-            hasStorageKey = grantJson["hasStorageKey"]?.jsonPrimitive?.booleanOrNull ?: false
+            hasStorageKey = grantJson["hasStorageKey"]?.jsonPrimitive?.booleanOrNull ?: false,
+            zkAppKeyEncryptedStorageKey = grantJson["zkAppKeyEncryptedStorageKey"]?.jsonPrimitive?.contentOrNull
         )
     }
 

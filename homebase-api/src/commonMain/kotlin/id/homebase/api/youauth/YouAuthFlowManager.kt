@@ -65,7 +65,8 @@ sealed interface YouAuthState {
 private data class AuthCodeFlowState(
     val identity: OdinId,
     val password: SecureByteArray,
-    val keyPair: EccKeyPair
+    val keyPair: EccKeyPair,
+    val again: Boolean = false
 )
 
 /**
@@ -210,6 +211,9 @@ class YouAuthFlowManager(
      *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
      *   the web seamless-login path, which redirects the top window to the authorize endpoint
      *   (unloading the app) instead of opening a popup. See issue #853.
+     * @param again Sign in again while signed in, to get what only a sign-in carries (the app's
+     *   zero-knowledge key). The new token replaces the current one, which stays valid, so nothing
+     *   is cleared; a failure leaves the current session as it is.
      */
     suspend fun authorize(
         identity: OdinId,
@@ -222,16 +226,16 @@ class YouAuthFlowManager(
         circleDrives: List<TargetDriveAccessRequest>? = null,
         circles: List<String>? = null,
         clientFriendlyName: String? = null,
-        persistForRedirect: Boolean = false
+        persistForRedirect: Boolean = false,
+        again: Boolean = false
     ): String {
-        if (_authState.value == YouAuthState.Authenticating ||
-            _authState.value is YouAuthState.Authenticated
-        ) {
-            Logger.e(tag = TAG) { "Already authenticating or authenticated" }
+        val signedIn = _authState.value is YouAuthState.Authenticated
+        if (_authState.value == YouAuthState.Authenticating || signedIn != again) {
+            Logger.e(tag = TAG) { "Can't start a sign-in (again=$again) in ${_authState.value::class.simpleName}" }
             throw AuthInProgressException()
         }
 
-        _authState.value = YouAuthState.Authenticating
+        if (!again) _authState.value = YouAuthState.Authenticating
         try {
             // Generate key pair for ECDH
             val password = SecureByteArray(generateUuidBytes())
@@ -239,7 +243,7 @@ class YouAuthFlowManager(
 
             // Generate unique state for CSRF protection and callback routing
             val state = generateUuidString()
-            val authCodeFlowState = AuthCodeFlowState(identity, password, keyPair)
+            val authCodeFlowState = AuthCodeFlowState(identity, password, keyPair, again)
 
             // Register for callback
             callbackRegistry[state] = authCodeFlowState
@@ -287,7 +291,8 @@ class YouAuthFlowManager(
                     publicKey = publicKeyToJwkBase64Url(keyPair.publicKey),
                     permissionRequest = permissionRequest.toJson(),
                     state = state,
-                    redirectUri = redirectUri
+                    redirectUri = redirectUri,
+                    zkAppKey = true
                 )
 
             // Build authorization URL
@@ -299,7 +304,7 @@ class YouAuthFlowManager(
             return authorizeUrl
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error starting authorization" }
-            _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
+            if (!again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
             throw e
         }
     }
@@ -324,6 +329,9 @@ class YouAuthFlowManager(
             } catch (_: Exception) {
                 throw Exception("Invalid query param: identity")
             }
+            if (authCodeFlowState.again && identity != authCodeFlowState.identity) {
+                throw Exception("Signed in again as $identity, not ${authCodeFlowState.identity}")
+            }
 
             val publicKey = decodeUrl(queryParams["public_key"] ?: "")
             if (publicKey.isEmpty()) throw Exception("Missing query param: public_key")
@@ -344,7 +352,7 @@ class YouAuthFlowManager(
                     salt = salt
                 )
 
-            // Save credentials
+            result.zkAppKey?.let(ZkKeyStore::saveAppKey)
             CredentialStorage.saveCredentials(
                 identity = result.identity,
                 clientAuthToken = result.clientAuthToken,
@@ -370,8 +378,8 @@ class YouAuthFlowManager(
             NotificationExtensionStore.publishCredentials(apiCredentials)
             Logger.i(tag = TAG) { "Authentication completed successfully for ${result.identity}" }
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Error completing auth" }
-            _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
+            Logger.e(throwable = e, tag = TAG) { "Error completing auth (again=${authCodeFlowState.again})" }
+            if (!authCodeFlowState.again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
             callbackRegistry.remove(state)
             SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
@@ -460,6 +468,7 @@ class YouAuthFlowManager(
         // clearStorage() left the Keychain populated.
         stepOrLog("removeActiveCredentials") { credentialsManager.removeActiveCredentials() }
         stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
+        stepOrLog("clearZkKeys") { ZkKeyStore.clear() }
         stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
         stepOrLog("clearNotificationCredentials") { NotificationExtensionStore.clearCredentials() }
 

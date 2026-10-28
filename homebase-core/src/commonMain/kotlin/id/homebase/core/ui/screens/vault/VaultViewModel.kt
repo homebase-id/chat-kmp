@@ -11,6 +11,9 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.scratchDir
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.api.youauth.YouAuthState
+import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContext
@@ -19,6 +22,10 @@ import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
+import id.homebase.core.config.AppConfig
+import id.homebase.core.config.appPermissions
+import id.homebase.core.config.circleDriveTargetRequest
+import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
@@ -74,6 +81,7 @@ class VaultViewModel(
     private val cropResultBus: CropResultBus,
     private val drawResultBus: DrawResultBus,
     private val webDropShareFlowState: WebDropShareFlowState,
+    private val youAuthFlowManager: YouAuthFlowManager,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
@@ -99,11 +107,11 @@ class VaultViewModel(
             Triple(s, e, l)
         },
         combine(_overlayState, _pendingEditor) { o, p -> o to p },
-        _syncingState,
+        combine(_syncingState, ZkKeyStore.lockedDrives) { s, locked -> s to (vaultLabeledDrive.drive.alias in locked) },
         _checkingPermissions,
         combine(_preparingShareKeys, _webDropActivated) { p, w -> p to w },
-    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), syncing, checkingPermissions, (preparing, webDrop) ->
-        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop)
+    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), (syncing, needsSignIn), checkingPermissions, (preparing, webDrop) ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop, needsSignIn)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -125,6 +133,7 @@ class VaultViewModel(
             checkingPermissions = _checkingPermissions.value,
             preparingShareKeys = _preparingShareKeys.value,
             webDropActivated = _webDropActivated.value,
+            needsSignIn = vaultLabeledDrive.drive.alias in ZkKeyStore.lockedDrives.value,
         ),
     )
 
@@ -142,6 +151,7 @@ class VaultViewModel(
         checkingPermissions: Boolean,
         preparingShareKeys: Set<String>,
         webDropActivated: Boolean,
+        needsSignIn: Boolean,
     ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
@@ -163,6 +173,7 @@ class VaultViewModel(
             preparingShareKeys = preparingShareKeys,
             pendingEditor = pendingEditor,
             webDropActivated = webDropActivated,
+            needsSignIn = needsSignIn,
         )
     }
 
@@ -270,6 +281,31 @@ class VaultViewModel(
         }
     }
 
+    /** A new token, asked with the same permissions as at login, brings the key; the current one keeps working. */
+    private suspend fun signInAgain() {
+        val identity = (youAuthFlowManager.authState.value as? YouAuthState.Authenticated)?.identity ?: return
+        try {
+            val url = youAuthFlowManager.authorize(
+                identity = identity,
+                appId = AppConfig.APP_ID,
+                appName = AppConfig.APP_NAME,
+                appSlug = AppConfig.APP_SLUG,
+                drives = targetDriveAccessRequest,
+                permissions = appPermissions,
+                circleDrives = circleDriveTargetRequest,
+                again = true,
+            )
+            _events.tryEmit(VaultUiEvent.OpenSignIn(url))
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "Couldn't start signing in again" }
+            _events.tryEmit(VaultUiEvent.Error(VaultError.SignInAgainFailed))
+        }
+    }
+
+    fun onSignInCallback(url: String) {
+        viewModelScope.launch { youAuthFlowManager.handleCallback(url) }
+    }
+
     fun onAction(action: VaultUiAction) {
         when (action) {
             is VaultUiAction.EntryClicked,
@@ -298,6 +334,8 @@ class VaultViewModel(
         }
 
         when (action) {
+            VaultUiAction.SignInAgain -> viewModelScope.launch { signInAgain() }
+
             VaultUiAction.SetupClicked -> {
                 _checkingPermissions.update { true }
                 if (vaultPermissionViewModel.permissionsGranted.value) {
