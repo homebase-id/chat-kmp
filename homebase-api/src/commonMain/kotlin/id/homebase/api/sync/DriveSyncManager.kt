@@ -415,6 +415,13 @@ class DriveSyncManager(
         d.sync()
     }
 
+    /** Reads [driveId] again from the start: files it couldn't read before may be readable now. */
+    suspend fun resyncDrive(driveId: Uuid) {
+        val sync = driveSyncsMutex.withLock { driveSyncs[driveId] } ?: return
+        sync.forgetCursor()
+        if (_isRunning) sync.sync()
+    }
+
     fun pause() {
         Logger.i(tag = "DriveSync") {
             "pause() (isRunning before=$_isRunning, driveSyncs.size=${driveSyncs.size})"

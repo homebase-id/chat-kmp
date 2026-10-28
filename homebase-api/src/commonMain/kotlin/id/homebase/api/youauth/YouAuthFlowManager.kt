@@ -469,6 +469,8 @@ class YouAuthFlowManager(
         stepOrLog("removeActiveCredentials") { credentialsManager.removeActiveCredentials() }
         stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
         stepOrLog("clearZkKeys") { ZkKeyStore.clear() }
+        // A sign-in-again still open in a browser tab must not land on the next session.
+        stepOrLog("clearPendingFlows") { callbackRegistry.clear() }
         stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
         stepOrLog("clearNotificationCredentials") { NotificationExtensionStore.clearCredentials() }
 

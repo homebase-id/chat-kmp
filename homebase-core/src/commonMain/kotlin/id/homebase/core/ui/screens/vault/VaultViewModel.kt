@@ -8,7 +8,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import kotlinx.coroutines.flow.filterIsInstance
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.scratchDir
 import id.homebase.api.sync.DriveSyncManager
@@ -30,7 +29,6 @@ import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.config.vaultDefaultSections
 import io.ktor.http.encodeURLParameter
 import id.homebase.core.config.returnUrl
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
@@ -88,7 +86,6 @@ class VaultViewModel(
     private val webDropShareFlowState: WebDropShareFlowState,
     private val youAuthFlowManager: YouAuthFlowManager,
     private val userPreferences: UserPreferences,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
@@ -213,13 +210,6 @@ class VaultViewModel(
     }
 
     init {
-        viewModelScope.launch {
-            // Back from the owner console (e.g. Vault made private): its drive key arrives with the grants.
-            eventBus.events
-                .filterIsInstance<BackendEvent.PermissionsExtensionReturned>()
-                .collect { authConnectionCoordinator.refreshDriveGrants() }
-        }
-
         viewModelScope.launch {
             optionalDriveActivation.isActivatedFlow(webDropLabeledDrive).collect { activated ->
                 _webDropActivated.value = activated

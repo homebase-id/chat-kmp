@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
@@ -81,6 +82,12 @@ class DriveSync(
     // resume from a stale QueryBatchCursor that no longer matches on-disk rows.
     fun resetInMemoryState() {
         cursor = null
+    }
+
+    /** Forgets where this drive's sync got to, so the next round reads it from the start. */
+    suspend fun forgetCursor() = mutex.withLock {
+        cursor = null
+        CursorStorage(databaseManager, driveId).deleteCursor()
     }
 
     fun isJobRunning(): Boolean {

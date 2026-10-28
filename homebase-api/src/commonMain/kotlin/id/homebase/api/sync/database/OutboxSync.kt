@@ -1,5 +1,6 @@
 package id.homebase.api.sync.database
 
+import id.homebase.api.client.drives.FileDecryptionException
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.isTransientNetworkFailure
@@ -344,6 +345,22 @@ class OutboxSync(
                     continue
                 }
 
+                // A private drive this device has no key for yet: it waits, uncharged, until the device
+                // signs in again, however long that takes. Charged, the row would drop after ~48h.
+                if (e.isMissingDriveKey()) {
+                    Logger.w(
+                        "OutboxSync: no key for drive ${outboxRecord.driveId} yet — uniqueId=${outboxRecord.uniqueId} " +
+                            "checked back in uncharged, retry in $NO_DRIVE_KEY_RETRY_SECONDS s"
+                    )
+                    databaseManager.outbox.checkInUncharged(
+                        outboxRecord.checkOutStamp!!,
+                        UnixTimeUtc.now().addSeconds(NO_DRIVE_KEY_RETRY_SECONDS).milliseconds
+                    )
+                    recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
+                    continue
+                }
+
                 val attempts = outboxRecord.checkOutCount + 1
 
                 val permanentReason = classifyPermanentFailure(e)
@@ -660,6 +677,8 @@ class OutboxSync(
     }
 
     public companion object {
+        private const val NO_DRIVE_KEY_RETRY_SECONDS = 300L
+
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
@@ -1158,3 +1177,6 @@ class OutboxSync(
         Logger.i("OutboxSync: clearCheckout() DONE — checked $cleared row(s) back in (waited ${UnixTimeUtc.now().milliseconds - start}ms)")
     }
 }
+
+private fun Throwable.isMissingDriveKey(): Boolean =
+    generateSequence(this) { it.cause }.any { it is FileDecryptionException.NoDriveKey }

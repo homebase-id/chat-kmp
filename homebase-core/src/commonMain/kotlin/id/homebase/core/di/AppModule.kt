@@ -1430,7 +1430,6 @@ val appModule = module {
             webDropShareFlowState = get(),
             youAuthFlowManager = get(),
             userPreferences = get(),
-            authConnectionCoordinator = get(),
         )
     }
     viewModel { VaultSettingsViewModel(vaultPreferences = get()) }

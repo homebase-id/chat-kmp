@@ -141,6 +141,8 @@ class AuthConnectionCoordinator(
     // [OdinWebSocketClient] freezes its drive-subscription list at construction time, so we
     // have to close and reopen the socket to pick up a registry change mid-session. If a user
     // activates two add-ons back-to-back, we want one reconnect, not two.
+    private var authToken: String? = null
+
     private val refreshWsSubscription = DebouncedAction(scope, REFRESH_DEBOUNCE_MS) {
         reconnectWebSocket()
     }
@@ -237,6 +239,8 @@ class AuthConnectionCoordinator(
                 if (event is BackendEvent.Connecting) {
                     _connectionState.update { it.copy(isConnecting = true) }
                 }
+                // Back from the owner console (e.g. Vault made private): a drive key may arrive with the grants.
+                if (event is BackendEvent.PermissionsExtensionReturned) scheduleGrantReconcile()
             }
         }
     }
@@ -257,6 +261,9 @@ class AuthConnectionCoordinator(
                 // identity this transition is about, it cannot be null, and it cannot race a
                 // credential write. A null here would have left the UI gated below forever.
                 identitySession.open(state.identity.domainName)
+                // Signed in again (same identity, new token): the socket still runs on the old token.
+                val signedInAgain = authToken != null && authToken != state.clientAuthToken
+                authToken = state.clientAuthToken
                 // Foreground-only UI preload — see kdoc on [headless]. Runs FIRST in
                 // foreground mode (matches pre-headless-mode ordering: preload starts
                 // local-DB warmups while drive mount + WS handshake happen in
@@ -355,6 +362,7 @@ class AuthConnectionCoordinator(
                         "AuthCC: Authenticated — backgrounded on push-capable platform, deferring WS connect"
                     }
                 }
+                if (signedInAgain) refreshWsSubscription.trigger()
                 // Owner-hosted (peer) drives don't ride the own-host WebSocket — open a per-owner
                 // peer websocket for each so live community updates arrive over the owner's host.
                 startPeerConnections(initialDrives)
@@ -377,6 +385,7 @@ class AuthConnectionCoordinator(
             }
             is YouAuthState.Unauthenticated -> {
                 disconnect()
+                authToken = null
                 // Clear the drive snapshot that gates applyWsHold's authResolved check. Without
                 // this a foreground transition after logout rebuilds a WS with no credentials,
                 // whose connectOnce() returns false rather than throwing — so the reconnect loop
@@ -889,7 +898,12 @@ class AuthConnectionCoordinator(
             grantedDriveIds = null
             return
         }
+        val readableBefore = ZkKeyStore.zeroKnowledgeDrives.value - ZkKeyStore.lockedDrives.value
         ZkKeyStore.openDriveKeys(ctx)
+        // A key that just arrived opens files the server hid from this token or the sync couldn't
+        // read, and the cursor is already past them.
+        (ZkKeyStore.zeroKnowledgeDrives.value - ZkKeyStore.lockedDrives.value - readableBefore)
+            .forEach { driveSyncManager.resyncDrive(it) }
         val readable = ctx.permissionContext.permissionGroups
             .flatMap { it.driveGrants ?: emptyList() }
             .filter { (it.permissionedDrive.permission.sumOf { p -> p.value } and DrivePermission.Read.value) != 0 }
@@ -905,9 +919,6 @@ class AuthConnectionCoordinator(
      * `persist = false` — it stops DriveSync + rebuilds the WS subscription filtered, but leaves the
      * persisted DriveRegistry intact (the drive re-mounts on a later startup if the grant returns).
      */
-    /** After the owner changed a grant or a drive in the owner console: the drive keys may have changed with it. */
-    fun refreshDriveGrants() = scheduleGrantReconcile()
-
     private fun scheduleGrantReconcile() {
         grantReconcileJob?.cancel()
         grantReconcileJob = scope.launch {
