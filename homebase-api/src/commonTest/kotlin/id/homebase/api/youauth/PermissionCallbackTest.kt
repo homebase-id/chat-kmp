@@ -34,4 +34,9 @@ class PermissionCallbackTest {
         assertEquals("homebase-fchat://permission-callback?for=vault", config("homebase-fchat://permission-callback").callbackUrl())
         assertEquals("https://x/cb?state=1&for=vault", config("https://x/cb?state=1").callbackUrl())
     }
+
+    @Test
+    fun aMalformedUrlDoesntThrow() {
+        assertEquals(PermissionCallback(canceled = false, requester = null), PermissionCallback.parse("homebase-fchat://permission-callback?status=%zz"))
+    }
 }

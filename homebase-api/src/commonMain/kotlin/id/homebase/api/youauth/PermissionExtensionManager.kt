@@ -1,6 +1,5 @@
 package id.homebase.api.youauth
 
-import io.ktor.http.encodeURLParameter
 import co.touchlab.kermit.Logger
 import id.homebase.api.util.compareStringUuId
 
@@ -22,11 +21,9 @@ data class PermissionExtensionConfig(
     val returnUrl: () -> String,
     val install: AppInstall? = null,
     /** Which mini-app asks: the owner console's return carries it, so only this config's checker answers to it. */
-    val requester: String? = null,
+    val requester: String,
 ) {
-    fun callbackUrl(): String = returnUrl().let { url ->
-        requester?.let { url + (if ('?' in url) "&" else "?") + "${PermissionCallback.REQUESTER_PARAM}=" + it.encodeURLParameter() } ?: url
-    }
+    fun callbackUrl(): String = PermissionCallback.returnUrlFor(returnUrl(), requester)
 }
 
 /**

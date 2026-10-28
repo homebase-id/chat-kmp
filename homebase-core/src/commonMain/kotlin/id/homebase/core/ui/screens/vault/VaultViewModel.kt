@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.api.youauth.PermissionCallback
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -326,7 +328,8 @@ class VaultViewModel(
     /** The owner console asks for the password, makes Vault private, then returns to the permission callback. */
     private fun makePrivate() {
         val identity = signedInIdentity ?: return
-        val query = listOf("redeal" to "vault-private", "returnUrl" to returnUrl()).formUrlEncode()
+        val back = PermissionCallback.returnUrlFor(returnUrl(), getVaultPermissionExtensionConfig().requester)
+        val query = listOf("redeal" to "vault-private", "returnUrl" to back).formUrlEncode()
         _events.tryEmit(VaultUiEvent.OpenOwnerConsole("https://${identity.domainName}/owner/login?$query"))
     }
 

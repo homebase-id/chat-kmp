@@ -34,7 +34,7 @@ data class AppRegistrationParams(
         "cd" to "[]",
         "ac" to encodeCircles(),
         "return" to returnUrl,
-        "cancel" to returnUrl + (if ('?' in returnUrl) "&" else "?") + "status=canceled",
+        "cancel" to returnUrl.withQueryParam("status", "canceled"),
     ).formUrlEncode()
 
     private fun encodeCircles(): String = buildJsonArray {

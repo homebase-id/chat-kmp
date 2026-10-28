@@ -220,4 +220,19 @@ class ExtendPermissionViewModelTest {
         eventBus.emit(BackendEvent.PermissionsExtensionReturned("test"))
         withTimeout(10.seconds) { while (engine.requestHistory.size == asked) delay(20) }
     }
+
+    @Test
+    fun anotherMiniAppsCancelDoesntDismissIt_butItsOwnAndAnUntaggedOneDo() = runBlocking<Unit> {
+        suspend fun dismissedBy(vararg cancels: String?): Boolean {
+            val eventBus = EventBus()
+            val vm = viewModel(jsonEngine(contextJson("")), eventBus)
+            withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+            cancels.forEach { eventBus.emit(BackendEvent.PermissionsExtensionCanceled(it)) }
+            return withTimeoutOrNull(1.seconds) { vm.uiState.first { it is ExtendPermissionUiState.Dismissed } } != null
+        }
+
+        assertFalse(dismissedBy("another"))
+        assertTrue(dismissedBy("another", "test"))
+        assertTrue(dismissedBy(null))
+    }
 }

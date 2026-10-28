@@ -35,11 +35,8 @@ object LocalCallbackServer {
 
     /**
      * Invoked when the browser hits `/permission-callback` after the user finishes the
-     * owner-console "Extend Permissions" flow. The `canceled` flag reflects the
-     * `status=canceled` query parameter the owner console appends when the user
-     * explicitly aborts. Wired from desktop app startup (Main.kt) to broadcast either
-     * `BackendEvent.PermissionsExtensionReturned` (success — recheck) or
-     * `BackendEvent.PermissionsExtensionCanceled` (skip recheck, route to chat tab).
+     * owner-console "Extend Permissions" flow, with the URL read by [PermissionCallback.parse].
+     * Wired from desktop app startup (Main.kt) to emit its event.
      */
     private var onPermissionCallback: ((PermissionCallback) -> Unit)? = null
 
