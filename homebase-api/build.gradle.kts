@@ -157,6 +157,22 @@ kotlin {
     }
     val ffmpegKitFrameworkDir = ffmpegKitSimulatorFrameworkDirs.first()  // ffmpegkit slice
 
+    // iOS 27 simulators refuse to dlopen unsigned frameworks, and the checked-in slices are unsigned.
+    // Test binary loads ad-hoc signed copies; libs/ and iosApp's CodeSignOnCopy embed stay untouched.
+    val signedFfmpegKitDir = layout.buildDirectory.dir("ffmpegkit-signed-simulator")
+    val signFfmpegKitSimulatorFrameworks by tasks.registering(Exec::class) {
+        val out = signedFfmpegKitDir.get().asFile
+        inputs.dir(ffmpegKitBundleRoot)
+        outputs.dir(out)
+        commandLine(
+            "sh", "-c",
+            """set -e; rm -rf "${'$'}0"; mkdir -p "${'$'}0"; for d in "${'$'}@"; do cp -R "${'$'}d"/*.framework "${'$'}0"/; done; for f in "${'$'}0"/*.framework; do codesign --force --sign - "${'$'}f"; done""",
+            out.absolutePath,
+            *ffmpegKitSimulatorFrameworkDirs.toTypedArray(),
+        )
+    }
+    val signedFfmpegKitPath = signedFfmpegKitDir.get().asFile.absolutePath
+
     iosSimulatorArm64().compilations.getByName("test").cinterops.create("ffmpegkit") {
         defFile(project.file("src/nativeTest/cinterop/ffmpegkit.def"))
         compilerOpts("-F$ffmpegKitFrameworkDir")
@@ -169,16 +185,16 @@ kotlin {
     // sqliter's sqlite3 symbols come from SQLCipher, never the system libsqlite3: the app gets
     // it from iosApp's SQLCipher.swift package, this test binary from fetchSqlCipherXcframework.
     val testBinaryLinkerOpts = buildList {
-        add("-F$ffmpegKitFrameworkDir")
+        add("-F$signedFfmpegKitPath")
         add("-framework"); add("ffmpegkit")
-        ffmpegKitSimulatorFrameworkDirs.forEach { add("-rpath"); add(it) }
+        add("-rpath"); add(signedFfmpegKitPath)
         add("-F$sqlCipherSimulatorFrameworkDir")
         add("-framework"); add("SQLCipher")
         add("-rpath"); add(sqlCipherSimulatorFrameworkDir)
     }
     iosSimulatorArm64().binaries
         .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
-        .apply { linkTaskProvider.configure { dependsOn(fetchSqlCipherXcframework) } }
+        .apply { linkTaskProvider.configure { dependsOn(fetchSqlCipherXcframework, signFfmpegKitSimulatorFrameworks) } }
         .linkerOpts(testBinaryLinkerOpts)
 
     // wasmJsTest: SQLDelight has no sql.js-backed test driver wired up yet, so every

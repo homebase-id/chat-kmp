@@ -1,0 +1,79 @@
+name: Desktop Smoke
+
+on:
+  pull_request:
+    paths:
+      - "desktopApp/**"
+      - "gradle/libs.versions.toml"
+      - "gradle/wrapper/**"
+      - "**/*.gradle.kts"
+      - "homebase-common/src/jvmMain/**"
+      - "homebase-core/src/jvmMain/**"
+      - ".github/workflows/desktop-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "desktopApp/**"
+      - "gradle/libs.versions.toml"
+      - "gradle/wrapper/**"
+      - "**/*.gradle.kts"
+      - "homebase-common/src/jvmMain/**"
+      - "homebase-core/src/jvmMain/**"
+      - ".github/workflows/desktop-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Launch desktop app on Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Gradle Cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build distributable
+        shell: bash
+        run: ./gradlew :desktopApp:createDistributable
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Launch smoke test
+        shell: pwsh
+        timeout-minutes: 6
+        env:
+          HOMEBASE_SMOKE_MARKER: ${{ runner.temp }}\homebase-smoke-ok
+        run: |
+          $exe = "desktopApp\build\compose\binaries\main\app\homebase-chat\homebase-chat.exe"
+          $p = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput smoke.out -RedirectStandardError smoke.err
+          $null = $p.Handle
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Error "timeout"; exit 1 }
+          Get-Content smoke.out, smoke.err -ErrorAction SilentlyContinue | Select-Object -Last 200
+          if ($p.ExitCode -ne 0) { Write-Error "exit $($p.ExitCode)"; exit 1 }
+          if (-not (Test-Path $env:HOMEBASE_SMOKE_MARKER)) { Write-Error "no first-frame marker"; exit 1 }
+          if (Select-String -Path smoke.out, smoke.err, "$env:APPDATA\HomebaseChatDev\logs\homebase.log" -Pattern 'NoSuchMethodError|NoClassDefFoundError|NoSuchFieldError|AbstractMethodError|UnsatisfiedLinkError|IncompatibleClassChangeError' -Quiet -ErrorAction SilentlyContinue) { Write-Error "linkage error"; exit 1 }
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-smoke-windows-logs
+          path: |
+            smoke.out
+            smoke.err
+            ~\AppData\Roaming\HomebaseChatDev\logs\homebase.log
+          if-no-files-found: ignore

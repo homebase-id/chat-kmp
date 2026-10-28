@@ -8,6 +8,7 @@ import id.homebase.core.notifications.SubscriptionVerificationStatus
 import id.homebase.core.notifications.WebPushHealth
 import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.util.isDesktop
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +22,7 @@ class NotificationSettingsViewModel(
 ) : ViewModel() {
 
     private var debugTapCount = 0
-    private val _uiState = MutableStateFlow(NotificationSettingsUiState())
+    private val _uiState = MutableStateFlow(NotificationSettingsUiState(hasPushRegistration = !isDesktop()))
     val uiState: StateFlow<NotificationSettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -42,6 +43,7 @@ class NotificationSettingsViewModel(
     }
 
     private fun loadNotificationStatus() {
+        if (isDesktop()) return
         if (webPushService.isSupported) {
             loadWebPushStatus()
             return

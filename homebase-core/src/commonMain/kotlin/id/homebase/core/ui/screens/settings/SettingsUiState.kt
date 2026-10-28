@@ -10,6 +10,8 @@ data class SettingsUiState(
     val isLoggingOut: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
+    /** False on desktop: no push token exists, so the row reports the OS permission instead. */
+    val hasPushRegistration: Boolean = true,
     val useNativeFeed: Boolean = true,
     val filesyncIconVisible: Boolean = true,
     val callsEnabled: Boolean = false,
@@ -24,6 +26,7 @@ data class SettingsUiState(
 
 /** All possible user actions on Settings screen. */
 sealed interface SettingsUiAction {
+    data class NotificationPermissionChecked(val granted: Boolean) : SettingsUiAction
     data object LogoutClicked : SettingsUiAction
     data object DeleteAccount: SettingsUiAction
     data object OpenOwnerConsoleClicked : SettingsUiAction

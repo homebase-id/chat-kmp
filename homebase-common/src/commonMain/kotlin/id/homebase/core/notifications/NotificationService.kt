@@ -3,7 +3,7 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.isIos
-import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL as API_MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL
 import id.homebase.notifshared.isMomentsPush
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -20,12 +20,17 @@ import id.homebase.core.config.FEED_APP_ID
 import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
 import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.resources.MR
+import id.homebase.resources.chat_preview_sender_prefix
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.sync.awaitAuthRestored
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -141,6 +146,16 @@ private const val CONTENTLESS_PLACEHOLDER = "You have a new message"
 /** Budget for the in-app message resolve on push receipt (#859) before falling back to the
  *  generic body — a single-message local read or server header fetch must fit comfortably. */
 private const val NOTIFICATION_RESOLVE_TIMEOUT_MS = 4_000L
+
+// Same literals as the iOS NotificationServiceExtension's redacted notification.
+private const val APP_TITLE = "Homebase"
+private const val REDACTED_BODY = "New notification"
+
+private val NOTIFICATION_LABELS = ChatNotificationLabels(
+    appTitle = APP_TITLE,
+    redactedBody = REDACTED_BODY,
+    senderPrefix = { sender, text -> TranslationUtil.getString(MR.string.chat_preview_sender_prefix, sender, text) },
+)
 
 /**
  * Resolves the companion-app redirect event, AWAITING auth restoration so a tap
@@ -294,13 +309,13 @@ class NotificationService(
                 title: String?, body: String?, data: PayloadData
             ) {
                 Logger.i(tag = "NotificationService") {
-                    "Push received — title=$title body=$body data=$data"
+                    "Push received — payload keys=${data.keys}"
                 }
                 handleIncomingPayload(data)
             }
 
             override fun onNotificationClicked(data: PayloadData) {
-                Logger.i(tag = "NotificationService") { "Notification clicked: $data" }
+                Logger.i(tag = "NotificationService") { "Notification clicked — payload keys=${data.keys}" }
                 // Route through NotificationEntry so iOS taps (which arrive via
                 // KMPNotifier) hit the same defensive-sync path as Android /
                 // Desktop taps. See NotificationClickRouter.handler comment above.
@@ -309,12 +324,12 @@ class NotificationService(
 
             override fun onPushNotification(title: String?, body: String?) {
                 Logger.i(tag = "NotificationService") {
-                    "Push received — title=$title body=$body"
+                    "Push received without payload"
                 }
             }
 
             override fun onPayloadData(data: PayloadData) {
-                Logger.i(tag = "NotificationService") { "Payload received: $data" }
+                Logger.i(tag = "NotificationService") { "Payload received — keys=${data.keys}" }
                 handleIncomingPayload(data)
             }
         })
@@ -348,7 +363,7 @@ class NotificationService(
      */
     fun onFcmMessageReceived(title: String?, body: String?, data: Map<String, String>) {
         Logger.i(tag = "NotificationService") {
-            "FCM message received — title=$title body=$body data=$data"
+            "FCM message received — payload keys=${data.keys}"
         }
         handleIncomingPayload(data)
     }
@@ -425,20 +440,24 @@ class NotificationService(
                     return@launch
                 }
 
-                // Resolve sender display name from public profile (with timeout/fallback)
-                val displayName = resolveSenderName(notification.senderId)
+                val contentLevel =
+                    NotificationContentLevel.fromCode(userPreferences.notificationContentLevel)
+                val showsRealContent = contentLevel.showsContent
 
-                // Fetch sender avatar for rich notification display
-                val senderImageBytes = try {
-                    withTimeout(5_000) {
-                        contactInfo.avatarBytes(OdinId(notification.senderId))
+                val (displayName, resolved, senderImageBytes) = coroutineScope {
+                    val name = async { resolveSenderName(notification.senderId) }
+                    val preview = async { resolveChatPreview(notification, withImage = showsRealContent) }
+                    val avatar = async {
+                        if (!contentLevel.showsNames) return@async null
+                        try {
+                            withTimeout(5_000) { contactInfo.avatarBytes(OdinId(notification.senderId)) }
+                        } catch (_: Exception) {
+                            null
+                        }
                     }
-                } catch (_: Exception) {
-                    null
+                    Triple(name.await(), preview.await(), avatar.await())
                 }
-
-                // Attempt to decrypt notification body (placeholder for future encrypted support)
-                val decryptedMessage = decryptNotificationBody(notification)
+                val decryptedMessage = resolved?.preview ?: notification.options.unEncryptedMessage
 
                 // Real content only — not the sender-side placeholder (and not the
                 // NotificationBodyFormer fallback used when decryptedMessage is null).
@@ -456,15 +475,16 @@ class NotificationService(
                         senderName = displayName
                     )
 
-                // Apply privacy content level filtering
-                val contentLevel =
-                    NotificationContentLevel.fromCode(userPreferences.notificationContentLevel)
-                val (displayTitle, displayBody) = when (contentLevel) {
-                    NotificationContentLevel.NAME_CONTENT_ACTIONS -> Pair(appName, bodyText)
-                    NotificationContentLevel.NAME_ONLY -> Pair(displayName, "New notification")
-                    NotificationContentLevel.NO_NAME_OR_CONTENT -> Pair("Homebase", "New notification")
+                val chat = if (conversationId != null) {
+                    chatNotificationContent(contentLevel, displayName, resolved?.groupTitle, bodyText, NOTIFICATION_LABELS)
+                } else null
+
+                val (displayTitle, displayBody) = when {
+                    chat != null -> chat.title to chat.body
+                    showsRealContent -> appName to bodyText
+                    contentLevel.showsNames -> displayName to REDACTED_BODY
+                    else -> APP_TITLE to REDACTED_BODY
                 }
-                val showsRealContent = contentLevel == NotificationContentLevel.NAME_CONTENT_ACTIONS
 
                 // Track per-conversation message count for summary display
                 val messageCount = if (conversationId != null) {
@@ -499,6 +519,10 @@ class NotificationService(
                     silent = !shouldAlert,
                     hasContent = hasContent,
                     showsRealContent = showsRealContent,
+                    isGroupConversation = chat?.groupTitle != null,
+                    groupTitle = chat?.groupTitle,
+                    messageText = chat?.messageText?.let { notificationBody(it, messageCount, showsRealContent) } ?: finalBody,
+                    imageBytes = resolved?.imageBytes?.takeIf { chat != null },
                 )
 
                 if (isAppInForeground) {
@@ -536,45 +560,25 @@ class NotificationService(
     }
 
     /**
-     * Decrypts the notification body if the backend includes an encrypted payload.
-     *
-     * TODO: When backend sends keyHeader in PushNotificationPayloadOptions:
-     *  1. Extract keyHeader from notification.options.keyHeader
-     *  2. Decrypt using EncryptedKeyHeader.decryptAesToKeyHeader(sharedSecret)
-     *  3. Use decrypted KeyHeader to decrypt the encryptedBody
-     *  4. Return decrypted plaintext message
-     *
-     * Existing crypto infrastructure:
-     *   - EncryptedKeyHeader.decryptAesToKeyHeader() in homebase-api
-     *   - KeyHeader.decrypt() / KeyHeader.decryptWithIv() in homebase-api
-     *   - AesCbc.decrypt() / AesGcm.decrypt() in homebase-api/crypto
-     *
-     * For now, falls back to unEncryptedMessage.
+     * In-app resolve+decrypt of the referenced chat message (#859) through the same decrypt +
+     * typed-preview pipeline as the chat UI. Bounded so the push handler stays within budget; a
+     * miss/timeout/failure returns null and the caller keeps the sender-provided body.
      */
-    private suspend fun decryptNotificationBody(notification: PushNotification): String? {
-        // In-app resolve+decrypt of the referenced chat message (#859): reuses the same
-        // decrypt + typed-preview pipeline as the chat UI via the injected resolver (which lives
-        // in homebase-chat). Bounded by a timeout to stay within the push-handler budget; any
-        // miss/timeout/failure falls through to the sender-provided generic body.
-        val resolver = messageResolver
-        if (resolver != null && resolveConversationId(notification) != null) {
-            val ids = extractChatTapIds(notification.options.typeId, notification.options.tagId)
-            if (ids != null) {
-                val (conversationId, messageId) = ids
-                val preview = try {
-                    withTimeoutOrNull(NOTIFICATION_RESOLVE_TIMEOUT_MS) {
-                        resolver.resolvePreview(conversationId, messageId)?.preview
-                    }
-                } catch (e: Exception) {
-                    Logger.w(tag = "NotificationService") {
-                        "in-app notification content resolve failed: ${e.message}"
-                    }
-                    null
-                }
-                if (!preview.isNullOrBlank()) return preview
+    private suspend fun resolveChatPreview(notification: PushNotification, withImage: Boolean): NotificationMessagePreview? {
+        val resolver = messageResolver ?: return null
+        if (resolveConversationId(notification) == null) return null
+        val (conversationId, messageId) =
+            extractChatTapIds(notification.options.typeId, notification.options.tagId) ?: return null
+        return try {
+            withTimeoutOrNull(NOTIFICATION_RESOLVE_TIMEOUT_MS) {
+                resolver.resolvePreview(conversationId, messageId, withImage)
+            }?.takeIf { it.preview.isNotBlank() }
+        } catch (e: Exception) {
+            Logger.w(tag = "NotificationService") {
+                "in-app notification content resolve failed: ${e::class.simpleName}"
             }
+            null
         }
-        return notification.options.unEncryptedMessage
     }
 
     /** Resolves the notification channel based on the app type. */
@@ -593,7 +597,7 @@ class NotificationService(
         // are not conversations. Excluding them keeps moment pushes from being
         // suppressed while the user is on the chat list, counted into a chat
         // conversation's summary, or cancelled as chat notifications.
-        if (isMomentsTap(notification.options.typeId, notification.options.tagId)) return null
+        if (isMomentsPush(notification.options.typeId, notification.options.tagId)) return null
         return notification.options.typeId
     }
 
@@ -943,19 +947,6 @@ internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>?
     return convoUuid to msgUuid
 }
 
-/**
- * Well-known sentinel `tagId` that marks a Moments *comment* push, distinguishing
- * it from a moment-*post* push. Both kinds keep `typeId == momentId` (so the moment
- * to open is always recoverable from `typeId`, and notifications coalesce per moment
- * via `typeId.hashCode()`); the post sets `tagId == typeId == momentId` while the
- * comment sets `tagId` to this sentinel. A chat message's `tagId` is a random
- * messageId, so collision with this fixed value is effectively impossible.
- *
- * Shared with the send path ([id.homebase.core.moments.services.MomentsPostSenderService]).
- */
-
-const val MOMENT_COMMENT_TAG_SENTINEL = API_MOMENT_COMMENT_TAG_SENTINEL
-
 /** What a tapped Moments push resolves to: which moment to open, and whether to expand comments. */
 internal data class MomentsTapTarget(val momentId: String, val openComments: Boolean)
 
@@ -984,9 +975,6 @@ internal fun resolveMomentsTap(typeId: String, tagId: String): MomentsTapTarget?
         else -> null
     }
 }
-
-/** Convenience predicate over [resolveMomentsTap]. */
-internal fun isMomentsTap(typeId: String, tagId: String): Boolean = isMomentsPush(typeId, tagId)
 
 /**
  * The body to display for a chat notification. When real content is shown

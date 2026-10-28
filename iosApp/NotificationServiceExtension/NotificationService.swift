@@ -85,13 +85,14 @@ class NotificationService: UNNotificationServiceExtension {
                 conversationId: typeId,
                 messageId: tagId,
                 contentLevel: contentLevel
-            ) { preview in
+            ) { preview, group in
                 self.decorate(
                     content: content,
                     senderId: senderId,
                     appId: appId,
                     typeId: typeId,
                     unEncryptedMessage: preview ?? unEncryptedMessage,
+                    group: group,
                     appDisplayName: appDisplayName,
                     contentLevel: contentLevel,
                     contentHandler: contentHandler
@@ -109,24 +110,24 @@ class NotificationService: UNNotificationServiceExtension {
         conversationId: String,
         messageId: String,
         contentLevel: String,
-        completion: @escaping (String?) -> Void
+        completion: @escaping (String?, ChatNotificationGroup?) -> Void
     ) {
         guard Self.showsRealContent(contentLevel),
               [Self.chatAppId, Self.chatAppIdUuid].contains(appId),
               !conversationId.isEmpty, !messageId.isEmpty
         else {
-            completion(nil)
+            completion(nil, nil)
             return
         }
         NotificationPreviewBridge.shared.resolvePreview(
             conversationId: conversationId,
             messageId: messageId
-        ) { preview, missReason in
+        ) { preview, group, missReason in
             // Public: Kermit's default os_log writer redacts every line to <private>.
             if let missReason = missReason {
                 os_log("NSE preview miss: %{public}@", missReason)
             }
-            completion(preview)
+            completion(preview, group)
         }
     }
 
@@ -148,6 +149,7 @@ class NotificationService: UNNotificationServiceExtension {
         appId: String,
         typeId: String,
         unEncryptedMessage: String?,
+        group: ChatNotificationGroup?,
         appDisplayName: String,
         contentLevel: String,
         contentHandler: @escaping (UNNotificationContent) -> Void
@@ -193,8 +195,9 @@ class NotificationService: UNNotificationServiceExtension {
 
             let senderName = self.extractDisplayName(from: senderId)
 
+            var messageText: String?
             if showsContent {
-                content.body = self.formatBody(
+                let text = self.formatBody(
                     senderId: senderId,
                     senderName: senderName,
                     appId: appId,
@@ -202,6 +205,13 @@ class NotificationService: UNNotificationServiceExtension {
                     unEncryptedMessage: unEncryptedMessage,
                     appDisplayName: appDisplayName
                 )
+                messageText = text
+                if let group = group {
+                    content.title = group.title.isEmpty ? appDisplayName : group.title
+                    content.body = "\(senderName): \(text)"
+                } else {
+                    content.body = text
+                }
             } else {
                 content.title = senderName
             }
@@ -213,15 +223,15 @@ class NotificationService: UNNotificationServiceExtension {
                     senderId: senderId,
                     senderName: senderName,
                     conversationId: typeId,
+                    group: group,
+                    messageText: messageText,
                     avatarData: imageData
                 ) {
                     contentHandler(updatedContent)
                     return
                 }
-            }
-
-            // Fallback: attach avatar as image
-            if let imageData = imageData {
+            } else if let imageData = imageData {
+                // Non-chat pushes have no message photo; the person is the picture.
                 self.attachAvatar(to: content, imageData: imageData)
             }
 
@@ -274,8 +284,14 @@ class NotificationService: UNNotificationServiceExtension {
         senderId: String,
         senderName: String,
         conversationId: String,
+        group: ChatNotificationGroup?,
+        messageText: String?,
         avatarData: Data?
     ) -> UNNotificationContent? {
+        // A group's sender shows natively under the group name, so the body drops its prefix.
+        guard let styled = content.mutableCopy() as? UNMutableNotificationContent else { return nil }
+        if group != nil, let messageText = messageText { styled.body = messageText }
+
         let handle = INPersonHandle(value: senderId, type: .unknown)
 
         var personImage: INImage?
@@ -292,11 +308,15 @@ class NotificationService: UNNotificationServiceExtension {
             customIdentifier: senderId
         )
 
+        let recipients = group?.recipients.map {
+            INPerson(personHandle: INPersonHandle(value: $0, type: .unknown), nameComponents: nil,
+                     displayName: nil, image: nil, contactIdentifier: nil, customIdentifier: $0)
+        }
         let intent = INSendMessageIntent(
-            recipients: nil,
+            recipients: recipients,
             outgoingMessageType: INOutgoingMessageType.unknown,
-            content: content.body,
-            speakableGroupName: nil,
+            content: styled.body,
+            speakableGroupName: group.map { _ in INSpeakableString(spokenPhrase: styled.title) },
             conversationIdentifier: conversationId,
             serviceName: "Homebase",
             sender: sender,
@@ -308,7 +328,7 @@ class NotificationService: UNNotificationServiceExtension {
         interaction.donate(completion: nil)
 
         do {
-            let updatedContent = try content.updating(from: intent)
+            let updatedContent = try styled.updating(from: intent)
             guard let restamped = updatedContent.mutableCopy() as? UNMutableNotificationContent
             else { return updatedContent }
             // updating(from:) is not documented to carry the badge across.
