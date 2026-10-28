@@ -30,6 +30,8 @@ data class VaultUiState(
     val webDropActivated: Boolean = false,
     /** Vault is private and this device signed in before it could get the key to open it. */
     val needsSignIn: Boolean = false,
+    /** Developer menu only, while Vault isn't private yet. */
+    val offerMakePrivate: Boolean = false,
 )
 
 /** Which editor screen a crop/draw request routes to. */
@@ -151,6 +153,7 @@ sealed interface VaultUiAction {
     data class DeleteFile(val file: VaultEntry) : VaultUiAction
     data object CloseOverlay : VaultUiAction
     data object SignInAgain : VaultUiAction
+    data object MakePrivate : VaultUiAction
     data object RefreshFiles : VaultUiAction
 }
 
@@ -174,6 +177,7 @@ sealed interface VaultUiEvent {
     data class NavigateToCropper(val requestId: Uuid) : VaultUiEvent
     data class NavigateToDrawer(val requestId: Uuid) : VaultUiEvent
     data class OpenSignIn(val url: String) : VaultUiEvent
+    data class OpenOwnerConsole(val url: String) : VaultUiEvent
 }
 
 sealed interface VaultError {

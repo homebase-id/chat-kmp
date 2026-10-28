@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.vault
 
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
+import id.homebase.core.ui.screens.vault.components.VaultMakePrivateBanner
 import id.homebase.core.ui.screens.vault.components.VaultSignInBanner
 import id.homebase.resources.vault_error_sign_in_again
 import androidx.compose.animation.AnimatedContent
@@ -224,6 +225,7 @@ fun VaultScreen(
                 is VaultUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
                 is VaultUiEvent.NavigateToDrawer -> onNavigateToDrawer(event.requestId)
                 is VaultUiEvent.OpenSignIn -> openSignIn(event.url)
+                is VaultUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
             }
@@ -403,6 +405,9 @@ fun VaultScreen(
                 ) { overlay ->
                     if (overlay == null) {
                         Column(contentModifier) {
+                            if (uiState.offerMakePrivate) {
+                                VaultMakePrivateBanner(onClick = { viewModel.onAction(VaultUiAction.MakePrivate) })
+                            }
                             if (uiState.needsSignIn) {
                                 VaultSignInBanner(
                                     blocked = blockedSignInUrl != null,

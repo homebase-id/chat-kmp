@@ -51,10 +51,15 @@ object ZkKeyStore {
     fun driveKey(alias: Uuid): ByteArray? = loadedDrives()[alias]
 
     private val locked = MutableStateFlow<Set<Uuid>>(emptySet())
+    private val zeroKnowledge = MutableStateFlow<Set<Uuid>>(emptySet())
 
     /** The zero-knowledge drives this device can't open: it signed in before it could get the app's key. */
     val lockedDrives: StateFlow<Set<Uuid>>
         get() = locked.also { loadedDrives() }
+
+    /** Every zero-knowledge drive granted to the app, whether or not this device can open it. */
+    val zeroKnowledgeDrives: StateFlow<Set<Uuid>>
+        get() = zeroKnowledge.also { loadedDrives() }
 
     /** Opens the drive keys [context] carries, each locked with the app's key; a grant that's gone takes its key with it. */
     suspend fun openDriveKeys(context: SecurityContext) {
@@ -91,6 +96,7 @@ object ZkKeyStore {
     private fun publish(loaded: Map<Uuid, ByteArray?>) {
         drives = loaded
         locked.value = loaded.filterValues { it == null }.keys
+        zeroKnowledge.value = loaded.keys
     }
 
     private fun loadedDrives(): Map<Uuid, ByteArray?> = drives ?: run {

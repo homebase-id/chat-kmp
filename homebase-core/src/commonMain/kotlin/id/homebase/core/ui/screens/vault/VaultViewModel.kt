@@ -8,6 +8,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.flow.filterIsInstance
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.scratchDir
 import id.homebase.api.sync.DriveSyncManager
@@ -27,6 +28,10 @@ import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.config.vaultDefaultSections
+import io.ktor.http.encodeURLParameter
+import id.homebase.core.config.returnUrl
+import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.settings.UserPreferences
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.config.webDropLabeledDrive
@@ -82,6 +87,8 @@ class VaultViewModel(
     private val drawResultBus: DrawResultBus,
     private val webDropShareFlowState: WebDropShareFlowState,
     private val youAuthFlowManager: YouAuthFlowManager,
+    private val userPreferences: UserPreferences,
+    private val authConnectionCoordinator: AuthConnectionCoordinator,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
@@ -107,11 +114,19 @@ class VaultViewModel(
             Triple(s, e, l)
         },
         combine(_overlayState, _pendingEditor) { o, p -> o to p },
-        combine(_syncingState, ZkKeyStore.lockedDrives) { s, locked -> s to (vaultLabeledDrive.drive.alias in locked) },
+        combine(
+            _syncingState,
+            ZkKeyStore.lockedDrives,
+            ZkKeyStore.zeroKnowledgeDrives,
+            userPreferences.preferenceState,
+        ) { s, locked, zk, prefs ->
+            val vault = vaultLabeledDrive.drive.alias
+            Triple(s, vault in locked, prefs.showDeveloperMenu && vault !in zk)
+        },
         _checkingPermissions,
         combine(_preparingShareKeys, _webDropActivated) { p, w -> p to w },
-    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), (syncing, needsSignIn), checkingPermissions, (preparing, webDrop) ->
-        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop, needsSignIn)
+    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), (syncing, needsSignIn, offerMakePrivate), checkingPermissions, (preparing, webDrop) ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop, needsSignIn, offerMakePrivate)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -134,6 +149,8 @@ class VaultViewModel(
             preparingShareKeys = _preparingShareKeys.value,
             webDropActivated = _webDropActivated.value,
             needsSignIn = vaultLabeledDrive.drive.alias in ZkKeyStore.lockedDrives.value,
+            offerMakePrivate = userPreferences.preferenceState.value.showDeveloperMenu &&
+                vaultLabeledDrive.drive.alias !in ZkKeyStore.zeroKnowledgeDrives.value,
         ),
     )
 
@@ -152,6 +169,7 @@ class VaultViewModel(
         preparingShareKeys: Set<String>,
         webDropActivated: Boolean,
         needsSignIn: Boolean,
+        offerMakePrivate: Boolean,
     ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
@@ -174,6 +192,7 @@ class VaultViewModel(
             pendingEditor = pendingEditor,
             webDropActivated = webDropActivated,
             needsSignIn = needsSignIn,
+            offerMakePrivate = offerMakePrivate,
         )
     }
 
@@ -194,6 +213,13 @@ class VaultViewModel(
     }
 
     init {
+        viewModelScope.launch {
+            // Back from the owner console (e.g. Vault made private): its drive key arrives with the grants.
+            eventBus.events
+                .filterIsInstance<BackendEvent.PermissionsExtensionReturned>()
+                .collect { authConnectionCoordinator.refreshDriveGrants() }
+        }
+
         viewModelScope.launch {
             optionalDriveActivation.isActivatedFlow(webDropLabeledDrive).collect { activated ->
                 _webDropActivated.value = activated
@@ -302,6 +328,16 @@ class VaultViewModel(
         }
     }
 
+    /** The owner console asks for the password, makes Vault private, then returns to the permission callback. */
+    private fun makePrivate() {
+        val identity = (youAuthFlowManager.authState.value as? YouAuthState.Authenticated)?.identity ?: return
+        _events.tryEmit(
+            VaultUiEvent.OpenOwnerConsole(
+                "https://${identity.domainName}/owner/login?redeal=vault-private&returnUrl=${returnUrl().encodeURLParameter()}"
+            )
+        )
+    }
+
     fun onSignInCallback(url: String) {
         viewModelScope.launch { youAuthFlowManager.handleCallback(url) }
     }
@@ -335,6 +371,7 @@ class VaultViewModel(
 
         when (action) {
             VaultUiAction.SignInAgain -> viewModelScope.launch { signInAgain() }
+            VaultUiAction.MakePrivate -> makePrivate()
 
             VaultUiAction.SetupClicked -> {
                 _checkingPermissions.update { true }

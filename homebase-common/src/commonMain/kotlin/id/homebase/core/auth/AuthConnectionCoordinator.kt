@@ -905,6 +905,9 @@ class AuthConnectionCoordinator(
      * `persist = false` — it stops DriveSync + rebuilds the WS subscription filtered, but leaves the
      * persisted DriveRegistry intact (the drive re-mounts on a later startup if the grant returns).
      */
+    /** After the owner changed a grant or a drive in the owner console: the drive keys may have changed with it. */
+    fun refreshDriveGrants() = scheduleGrantReconcile()
+
     private fun scheduleGrantReconcile() {
         grantReconcileJob?.cancel()
         grantReconcileJob = scope.launch {

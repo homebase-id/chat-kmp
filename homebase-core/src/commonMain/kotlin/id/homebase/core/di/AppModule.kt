@@ -1429,6 +1429,8 @@ val appModule = module {
             drawResultBus = get(),
             webDropShareFlowState = get(),
             youAuthFlowManager = get(),
+            userPreferences = get(),
+            authConnectionCoordinator = get(),
         )
     }
     viewModel { VaultSettingsViewModel(vaultPreferences = get()) }
