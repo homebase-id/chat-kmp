@@ -1,6 +1,6 @@
 package id.homebase.api.youauth
 
-import kotlin.text.iterator
+import io.ktor.http.formUrlEncode
 
 /**
  * Parameters for extending app registration/permissions. These are sent to the /owner/appupdate
@@ -19,13 +19,9 @@ data class AppAuthorizationExtendParams(
         val returnUrl: String
 ) {
     /** Convert to query string for URL building. */
-    fun toQueryString(): String = buildString {
-        append("appId=").append(appId.encodeURLParam())
-        d?.let { append("&d=").append(it.encodeURLParam()) }
-        p?.let { append("&p=").append(it.encodeURLParam()) }
-        cd?.let { append("&cd=").append(it.encodeURLParam()) }
-        append("&return=").append(returnUrl.encodeURLParam())
-    }
+    fun toQueryString(): String =
+        listOfNotNull("appId" to appId, d?.let { "d" to it }, p?.let { "p" to it }, cd?.let { "cd" to it }, "return" to returnUrl)
+            .formUrlEncode()
 
     companion object {
         /**
@@ -56,25 +52,6 @@ data class AppAuthorizationExtendParams(
                             },
                     returnUrl = returnUrl
             )
-        }
-    }
-}
-
-/** URL-encode a string parameter. */
-private fun String.encodeURLParam(): String {
-    return buildString {
-        for (char in this@encodeURLParam) {
-            when {
-                char.isLetterOrDigit() || char in "-_.~" -> append(char)
-                char == ' ' -> append("+")
-                else -> {
-                    val bytes = char.toString().encodeToByteArray()
-                    for (byte in bytes) {
-                        append('%')
-                        append(byte.toInt().and(0xFF).toString(16).uppercase().padStart(2, '0'))
-                    }
-                }
-            }
         }
     }
 }

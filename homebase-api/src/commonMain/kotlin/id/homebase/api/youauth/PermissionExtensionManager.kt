@@ -18,11 +18,22 @@ data class PermissionExtensionConfig(
      * clicks Extend Permissions — otherwise the post-flow redirect lands on a
      * dead port.
      */
-    val returnUrl: () -> String
+    val returnUrl: () -> String,
+    val install: AppInstall? = null,
+)
+
+/**
+ * The app that owns the requested drives. Until it is installed, the owner is sent to install it
+ * instead: the owner console would otherwise create its drives for this app, which can't be undone.
+ */
+class AppInstall(
+    val registration: AppRegistrationParams,
+    /** Throws when it can't tell. A wrong "no" re-registers an installed app, replacing its keys. */
+    val isInstalled: suspend () -> Boolean,
 )
 
 /** Result of missing permission check. */
-class MissingPermissionsResult(
+data class MissingPermissionsResult(
     val missingDrives: List<TargetDriveAccessRequest>,
     val missingPermissions: List<AppPermissionType>,
     /**
@@ -30,7 +41,9 @@ class MissingPermissionsResult(
      * every invocation — call this at click time, not check time, so the URL
      * carries the live callback-server port.
      */
-    val buildExtendPermissionUrl: () -> String
+    val buildExtendPermissionUrl: () -> String,
+    /** The app the URL installs instead, when the owning app isn't installed yet. */
+    val installs: String? = null,
 )
 
 sealed interface PermissionCheckResult {
@@ -59,10 +72,20 @@ class PermissionExtensionManager(
             Logger.w(tag = TAG) { "Could not fetch security context" }
             return PermissionCheckResult.Unknown
         }
-        return getMissingPermissions(config, context)
+        val result = getMissingPermissions(config, context)
+        val install = config.install
+        if (result !is PermissionCheckResult.Missing || install == null || install.isInstalled()) return result
+
+        Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
+        return PermissionCheckResult.Missing(
+            result.details.copy(
+                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.returnUrl()) },
+                installs = install.registration.name,
+            )
+        )
     }
 
-    fun getMissingPermissions(
+    internal fun getMissingPermissions(
         config: PermissionExtensionConfig,
         context: SecurityContext
     ): PermissionCheckResult {

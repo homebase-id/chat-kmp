@@ -374,6 +374,9 @@
     <string name="permissions_missing_title">Manglende tilladelser</string>
     <string name="permissions_missing_body">%1$s-appen mangler tilladelser. Uden de nødvendige tilladelser vil funktionaliteten af %1$s være begrænset.</string>
     <string name="permissions_extend">Udvid tilladelser</string>
+    <string name="permissions_install_title">Installer %1$s</string>
+    <string name="permissions_install_body">%1$s er ikke installeret endnu. Installer den først, så kan %2$s bede om adgang til den.</string>
+    <string name="permissions_install">Installer</string>
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>

@@ -64,6 +64,8 @@ class FilesyncViewModel(
         },
     )
 
+    private var setupPaused = false
+
     init {
         viewModelScope.launch {
             snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
@@ -106,6 +108,11 @@ class FilesyncViewModel(
         }
 
         viewModelScope.launch {
+            // Cancelled in the owner console while away: coming back must not ask again.
+            extendPermissionViewModel.navigateAwayRequest.collect { setupPaused = false }
+        }
+
+        viewModelScope.launch {
             extendPermissionViewModel.uiState
                 .filter { it is ExtendPermissionUiState.Dismissed }
                 .collect { _uiState.update { s -> s.copy(setupInitiated = false) } }
@@ -118,6 +125,19 @@ class FilesyncViewModel(
                 _uiState.update { it.copy(setupInitiated = true) }
                 extendPermissionViewModel.recheckPermissions()
             }
+
+            // Leaving Chat makes setup's verdict stale (installing an installed app re-registers it): recheck on return.
+            FilesyncUiAction.Paused -> if (_uiState.value.setupInitiated) {
+                setupPaused = true
+                extendPermissionViewModel.dismissDialog()
+            }
+
+            FilesyncUiAction.Resumed -> if (setupPaused) {
+                setupPaused = false
+                onAction(FilesyncUiAction.SetupClicked)
+            }
+
+            FilesyncUiAction.SetupLeft -> setupPaused = false
 
             FilesyncUiAction.RetryCheck -> extendPermissionViewModel.recheckPermissions()
 

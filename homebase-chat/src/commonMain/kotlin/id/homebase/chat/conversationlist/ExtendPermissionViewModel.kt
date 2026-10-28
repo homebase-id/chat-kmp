@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 class ExtendPermissionViewModel(
     private val securityContextProvider: SecurityContextProvider,
@@ -76,6 +77,8 @@ class ExtendPermissionViewModel(
      */
     private var lastMissingResult: MissingPermissionsResult? = null
 
+    private var checkGeneration = 0
+
     init {
         if (autoCheck) {
             viewModelScope.launch { checkPermissions() }
@@ -114,6 +117,8 @@ class ExtendPermissionViewModel(
 
     private suspend fun checkPermissions() {
         if (_uiState.value is ExtendPermissionUiState.Dismissed) return
+        // Latest wins: a slow check finishing last must not replace a newer verdict.
+        val generation = ++checkGeneration
         _checkFailed.value = false
         try {
             val active = credentialsManager.getActiveCredentials()
@@ -144,7 +149,9 @@ class ExtendPermissionViewModel(
             }
             val manager = PermissionExtensionManager.create(securityContextProvider, activeDomain)
 
-            when (val result = manager.getMissingPermissions(config)) {
+            val result = manager.getMissingPermissions(config)
+            if (generation != checkGeneration) return
+            when (result) {
                 // An unreachable security context is not a grant. Leaving _permissionsChecked
                 // false is the point: a wrong verdict cached here would be treated as final
                 // for the rest of the session.
@@ -163,7 +170,7 @@ class ExtendPermissionViewModel(
                     lastMissingResult = details
                     _permissionsGranted.value = false
                     _uiState.value =
-                        ExtendPermissionUiState.ShowDialog(appName = config.appName)
+                        ExtendPermissionUiState.ShowDialog(appName = config.appName, installs = details.installs)
                     _permissionsChecked.value = true
                 }
 
@@ -174,7 +181,13 @@ class ExtendPermissionViewModel(
                     _permissionsChecked.value = true
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            if (generation != checkGeneration) {
+                Logger.w(throwable = e, tag = TAG) { "Superseded permission check failed: ${e.message}" }
+                return
+            }
             Logger.e(throwable = e, tag = TAG) { "Error checking permissions: ${e.message}" }
             _checkFailed.value = true
         }
@@ -191,6 +204,7 @@ class ExtendPermissionViewModel(
     }
 
     fun dismissDialog() {
+        checkGeneration++
         _uiState.value = ExtendPermissionUiState.Dismissed
     }
 
@@ -214,7 +228,7 @@ sealed interface ExtendPermissionUiState {
     data object Idle : ExtendPermissionUiState
 
     /** Missing permissions detected, dialog should be shown. */
-    data class ShowDialog(val appName: String) : ExtendPermissionUiState
+    data class ShowDialog(val appName: String, val installs: String? = null) : ExtendPermissionUiState
 
     /** User dismissed the dialog. */
     data object Dismissed : ExtendPermissionUiState

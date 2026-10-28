@@ -13,6 +13,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -110,6 +111,41 @@ class PermissionExtensionManagerTest {
             listOf(AppPermissionType.SendPushNotifications),
             result.details.missingPermissions,
         )
+    }
+
+    private val registration = AppRegistrationParams("03ae1a49cdae483f9da7fedc0e8f20b9", "Owner", "owner", config.drives, emptyList())
+
+    private suspend fun missing(isInstalled: suspend () -> Boolean): MissingPermissionsResult {
+        val result = manager(jsonEngine(contextJson("", ""))).getMissingPermissions(
+            config.copy(install = AppInstall(registration, isInstalled)),
+        )
+        assertTrue(result is PermissionCheckResult.Missing, "expected Missing, got $result")
+        return result.details
+    }
+
+    @Test
+    fun theOwningAppIsInstalledBeforeAccessIsAskedFor() = runTest {
+        val install = missing { false }
+        assertTrue(install.buildExtendPermissionUrl().startsWith("https://$me/owner/appreg?appId=03ae1a49cdae483f9da7fedc0e8f20b9&"))
+        assertEquals("Owner", install.installs)
+
+        val grant = missing { true }
+        assertTrue(grant.buildExtendPermissionUrl().startsWith("https://$me/owner/appupdate?appId=${config.appId}&"))
+        assertEquals(null, grant.installs)
+    }
+
+    @Test
+    fun whenItCantTellTheCheckFails() = runTest {
+        assertFailsWith<IllegalStateException> { missing { throw IllegalStateException("offline") } }
+    }
+
+    @Test
+    fun aGrantedAppDoesntAskWhetherTheOwnerIsInstalled() = runTest {
+        val manager = manager(
+            jsonEngine(contextJson(grantedDrive, AppPermissionType.SendPushNotifications.value.toString()))
+        )
+        val config = config.copy(install = AppInstall(registration) { error("not asked") })
+        assertEquals(PermissionCheckResult.AllGranted, manager.getMissingPermissions(config))
     }
 
     private fun grant(permission: String, hasStorageKey: Boolean?, alias: String = driveAlias) = """

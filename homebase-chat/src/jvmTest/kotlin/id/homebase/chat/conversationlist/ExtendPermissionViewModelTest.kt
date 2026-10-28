@@ -11,6 +11,7 @@ import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpHeaders
@@ -25,6 +26,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -74,13 +76,10 @@ class ExtendPermissionViewModelTest {
         }
     """.trimIndent()
 
-    private fun jsonEngine(body: String) = MockEngine {
-        respond(
-            content = body,
-            status = HttpStatusCode.OK,
-            headers = headersOf(HttpHeaders.ContentType, "application/json"),
-        )
-    }
+    private fun MockRequestHandleScope.respondJson(body: String) =
+        respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+
+    private fun jsonEngine(body: String) = MockEngine { respondJson(body) }
 
     private suspend fun viewModel(engine: MockEngine): ExtendPermissionViewModel {
         val credentials = CredentialsManager()
@@ -136,5 +135,52 @@ class ExtendPermissionViewModelTest {
         assertFalse(vm.permissionsGranted.value)
         assertEquals(ExtendPermissionUiState.ShowDialog(config.appName), vm.uiState.value)
         assertNotNull(vm.buildExtendPermissionUrl(), "the missing drive must reach the extend URL")
+    }
+
+    @Test
+    fun aSlowStaleCheckDoesntReplaceANewerVerdict() = runBlocking<Unit> {
+        val firstAsked = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val firstAnswered = CompletableDeferred<Unit>()
+        var calls = 0
+        val engine = MockEngine {
+            val first = ++calls == 1
+            if (first) {
+                firstAsked.complete(Unit)
+                releaseFirst.await()
+            }
+            respondJson(contextJson(if (first) "" else grantedDrive)).also { if (first) firstAnswered.complete(Unit) }
+        }
+        val vm = viewModel(engine)
+        withTimeout(10.seconds) { firstAsked.await() }
+
+        vm.recheckPermissions()
+        withTimeout(10.seconds) { vm.permissionsGranted.first { it } }
+        releaseFirst.complete(Unit)
+        withTimeout(10.seconds) { firstAnswered.await() }
+
+        assertNull(withTimeoutOrNull(1.seconds) { vm.permissionsGranted.first { !it } }, "the older 'missing' finished last but is stale")
+        assertEquals(ExtendPermissionUiState.Idle, vm.uiState.value)
+    }
+
+    @Test
+    fun aCheckInFlightWhenTheDialogIsDismissedDoesntBringItBack() = runBlocking<Unit> {
+        val asked = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val answered = CompletableDeferred<Unit>()
+        val engine = MockEngine {
+            asked.complete(Unit)
+            release.await()
+            respondJson(contextJson("")).also { answered.complete(Unit) }
+        }
+        val vm = viewModel(engine)
+        withTimeout(10.seconds) { asked.await() }
+
+        vm.dismissDialog()
+        release.complete(Unit)
+        withTimeout(10.seconds) { answered.await() }
+
+        assertNull(withTimeoutOrNull(1.seconds) { vm.uiState.first { it is ExtendPermissionUiState.ShowDialog } })
+        assertEquals(ExtendPermissionUiState.Dismissed, vm.uiState.value)
     }
 }

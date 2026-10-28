@@ -526,7 +526,7 @@ abstract class OdinApiProviderBase(
     protected inline fun <reified T> deserialize(json: String): T =
         OdinSystemSerializer.deserialize(json)
 
-    private fun parseProblemOrNull(body: String): ProblemDetails? =
+    protected fun parseProblemOrNull(body: String): ProblemDetails? =
         runCatching { deserialize<ProblemDetails>(body) }.getOrNull()
 
     /** odin-core answered, not a proxy in front of it: its version header, and a body sealed or ProblemDetails of this status. */
