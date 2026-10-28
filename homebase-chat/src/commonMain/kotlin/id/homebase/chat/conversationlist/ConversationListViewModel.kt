@@ -493,6 +493,7 @@ class ConversationListViewModel(
         get() = stickerPermissionViewModel
 
     init {
+        addCloseable(stickerPermissionViewModel)
         optionalDriveActivation?.let { activation ->
             viewModelScope.launch {
                 activation.isActivatedFlow(id.homebase.core.config.vaultLabeledDrive)

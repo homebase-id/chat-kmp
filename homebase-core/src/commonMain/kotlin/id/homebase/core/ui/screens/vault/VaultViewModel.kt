@@ -207,6 +207,7 @@ class VaultViewModel(
     }
 
     init {
+        addCloseable(vaultPermissionViewModel)
         viewModelScope.launch {
             optionalDriveActivation.isActivatedFlow(webDropLabeledDrive).collect { activated ->
                 _webDropActivated.value = activated

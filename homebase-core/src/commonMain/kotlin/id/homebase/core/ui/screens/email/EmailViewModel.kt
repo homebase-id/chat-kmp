@@ -67,6 +67,7 @@ class EmailViewModel(
         get() = emailPermissionViewModel
 
     init {
+        addCloseable(emailPermissionViewModel)
         viewModelScope.launch {
             optionalDriveActivation.isActivatedFlow(emailLabeledDrive).collect { activated ->
                 _uiState.update { it.copy(driveActivated = activated) }

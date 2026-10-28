@@ -30,6 +30,7 @@ class FeedViewModel(
     val reloadEvent: SharedFlow<Unit> = _reloadEvent.asSharedFlow()
 
     init {
+        addCloseable(feedExtendPermissionViewModel)
         loadFeed()
         observePermissionGrants()
     }

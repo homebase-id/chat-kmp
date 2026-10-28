@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -27,7 +28,10 @@ class ExtendPermissionViewModel(
     private val eventBus: EventBus,
     private val config: PermissionExtensionConfig,
     private val autoCheck: Boolean = true,
-) : ViewModel() {
+) : ViewModel(), AutoCloseable {
+
+    /** Owned by another view model, not a ViewModelStore, so it ends when that one does (its addCloseable). */
+    override fun close() = viewModelScope.cancel()
 
     private val _uiState = MutableStateFlow<ExtendPermissionUiState>(ExtendPermissionUiState.Idle)
     val uiState: StateFlow<ExtendPermissionUiState> = _uiState.asStateFlow()
