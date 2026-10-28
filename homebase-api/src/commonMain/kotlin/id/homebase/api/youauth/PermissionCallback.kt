@@ -15,7 +15,7 @@ data class PermissionCallback(val canceled: Boolean, val requester: String?) {
         get() = if (canceled) BackendEvent.PermissionsExtensionCanceled(requester) else BackendEvent.PermissionsExtensionReturned(requester)
 
     companion object {
-        const val REQUESTER_PARAM = "for"
+        internal const val REQUESTER_PARAM = "for"
 
         /** Never throws: anything can open this URL, and a malformed one counts as an untagged return. */
         fun parse(url: String): PermissionCallback {
@@ -31,9 +31,6 @@ data class PermissionCallback(val canceled: Boolean, val requester: String?) {
                 requester = params[REQUESTER_PARAM],
             )
         }
-
-        /** [url] with [requester] as [REQUESTER_PARAM], for an owner-console return to answer only that mini-app. */
-        fun returnUrlFor(url: String, requester: String): String = url.withQueryParam(REQUESTER_PARAM, requester)
     }
 }
 

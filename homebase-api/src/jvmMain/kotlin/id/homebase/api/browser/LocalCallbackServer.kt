@@ -78,14 +78,7 @@ object LocalCallbackServer {
                                 )
                             }
 
-                            /**
-                             * Owner-console "Extend Permissions" return URL. Fires the
-                             * registered callback with a `canceled` flag derived from
-                             * the `status` query param so the in-app side can route the
-                             * user appropriately (recheck on success, skip recheck and
-                             * navigate to chat tab on cancel). Serves either the success
-                             * or canceled confirmation HTML accordingly.
-                             */
+                            /** Owner-console Extend Permissions return; serves the success or canceled page. */
                             get("/permission-callback") {
                                 val callback = PermissionCallback.parse("http://localhost${call.request.uri}")
                                 Logger.d(tag = TAG) { "Permission-extend return hit ($callback)" }

@@ -326,9 +326,7 @@ struct iOSApp: App {
         }
     }
 
-    /// Handles `homebase-fchat://permission-callback?status=...` URLs returned from the
-    /// owner-console "Extend Permissions" flow. `status=canceled` routes the user back
-    /// to the chat tab without re-prompting; success triggers a permission recheck.
+    /// Hands the owner-console permission-callback URL to Kotlin.
     private func handlePermissionCallbackURL(_ url: URL) {
         guard url.host == "permission-callback" else { return }
         PermissionCallbackBridge.shared.handlePermissionCallback(url: url.absoluteString)

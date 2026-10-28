@@ -98,8 +98,7 @@ class ExtendPermissionViewModel(
         viewModelScope.launch {
             eventBus.events
                 .filterIsInstance<BackendEvent.PermissionsExtensionReturned>()
-                // Another mini-app's answer; an untagged return (an older URL) is everyone's.
-                .filter { it.requester == null || it.requester == config.requester }
+                .filter { answersMe(it.requester) }
                 .collect {
                     Logger.i(tag = TAG) { "Permissions-extension return — rechecking" }
                     recheckPermissions()
@@ -109,7 +108,7 @@ class ExtendPermissionViewModel(
         viewModelScope.launch {
             eventBus.events
                 .filterIsInstance<BackendEvent.PermissionsExtensionCanceled>()
-                .filter { it.requester == null || it.requester == config.requester }
+                .filter { answersMe(it.requester) }
                 .collect {
                     Logger.i(tag = TAG) {
                         "Permissions-extension canceled — dismissing dialog, requesting nav-away"
@@ -122,6 +121,9 @@ class ExtendPermissionViewModel(
                 }
         }
     }
+
+    // Another mini-app's answer isn't ours; an untagged return (an older URL) is everyone's.
+    private fun answersMe(requester: String?) = requester == null || requester == config.requester
 
     private suspend fun checkPermissions() {
         if (_uiState.value is ExtendPermissionUiState.Dismissed) return

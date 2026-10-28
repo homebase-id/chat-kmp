@@ -23,7 +23,7 @@ data class PermissionExtensionConfig(
     /** Which mini-app asks: the owner console's return carries it, so only this config's checker answers to it. */
     val requester: String,
 ) {
-    fun callbackUrl(): String = PermissionCallback.returnUrlFor(returnUrl(), requester)
+    fun callbackUrl(): String = returnUrl().withQueryParam(PermissionCallback.REQUESTER_PARAM, requester)
 }
 
 /**
