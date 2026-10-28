@@ -1,5 +1,10 @@
 package id.homebase.core.notifications
 
+import id.homebase.core.util.isDesktop
+import io.ktor.client.HttpClient
+import id.homebase.api.youauth.ClientRegistrationApi
+import id.homebase.api.client.NotFoundException
+import id.homebase.api.client.auth.ApiCredentials
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.isIos
@@ -207,7 +212,26 @@ class NotificationService(
      * is kept. Injected from homebase-chat via [NotificationMessageResolver].
      */
     private val messageResolver: NotificationMessageResolver? = null,
+    private val replacedSignIns: Flow<ApiCredentials>,
+    private val httpClient: HttpClient,
 ) {
+
+    private val pushHandover = object : PushHandoverSteps {
+        override val hasPush = !isDesktop()
+        override suspend fun pushToken() = getToken()
+        override suspend fun subscribeCurrent(token: String) = registerTokenSuspend(token)
+        override suspend fun unsubscribeCurrent() = api.unsubscribe()
+        override suspend fun unsubscribeReplaced(replaced: ApiCredentials) {
+            try {
+                PushNotificationApi(httpClient, credentialsFor(replaced)).unsubscribe()
+            } catch (_: NotFoundException) {
+            }
+        }
+        override suspend fun deleteReplaced(replaced: ApiCredentials) =
+            ClientRegistrationApi(httpClient, credentialsFor(replaced)).deleteThisClient()
+
+        private suspend fun credentialsFor(replaced: ApiCredentials) = CredentialsManager().apply { setActiveCredentials(replaced) }
+    }
 
     private var isListening = false
     private val richDisplayer = RichNotificationDisplayer()
@@ -248,6 +272,9 @@ class NotificationService(
             ActiveConversation.conversation.collect { id ->
                 if (id != null) clearConversationNotifications(id.toString())
             }
+        }
+        scope.launch {
+            replacedSignIns.collect { handOverPush(it, pushHandover) }
         }
         // Logout: drop per-conversation unread counts and the chime cooldown so the
         // previous identity's notification summary state doesn't carry into the next.
