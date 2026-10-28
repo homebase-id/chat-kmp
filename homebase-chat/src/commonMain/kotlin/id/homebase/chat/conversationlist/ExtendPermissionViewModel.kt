@@ -19,8 +19,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.cancellation.CancellationException
 
 class ExtendPermissionViewModel(
     private val securityContextProvider: SecurityContextProvider,
@@ -78,7 +77,7 @@ class ExtendPermissionViewModel(
      */
     private var lastMissingResult: MissingPermissionsResult? = null
 
-    private val checkLock = Mutex()
+    private var checkGeneration = 0
 
     init {
         if (autoCheck) {
@@ -116,11 +115,10 @@ class ExtendPermissionViewModel(
         }
     }
 
-    // One at a time: a slow check finishing last would replace a newer verdict.
-    private suspend fun checkPermissions() = checkLock.withLock { checkPermissionsNow() }
-
-    private suspend fun checkPermissionsNow() {
+    private suspend fun checkPermissions() {
         if (_uiState.value is ExtendPermissionUiState.Dismissed) return
+        // Latest wins: a slow check finishing last must not replace a newer verdict.
+        val generation = ++checkGeneration
         _checkFailed.value = false
         try {
             val active = credentialsManager.getActiveCredentials()
@@ -151,7 +149,9 @@ class ExtendPermissionViewModel(
             }
             val manager = PermissionExtensionManager.create(securityContextProvider, activeDomain)
 
-            when (val result = manager.getMissingPermissions(config)) {
+            val result = manager.getMissingPermissions(config)
+            if (generation != checkGeneration) return
+            when (result) {
                 // An unreachable security context is not a grant. Leaving _permissionsChecked
                 // false is the point: a wrong verdict cached here would be treated as final
                 // for the rest of the session.
@@ -177,11 +177,15 @@ class ExtendPermissionViewModel(
                 PermissionCheckResult.AllGranted -> {
                     Logger.d(tag = TAG) { "All permissions are granted" }
                     lastMissingResult = null
+                    if (_uiState.value is ExtendPermissionUiState.ShowDialog) _uiState.value = ExtendPermissionUiState.Idle
                     _permissionsGranted.value = true
                     _permissionsChecked.value = true
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            if (generation != checkGeneration) return
             Logger.e(throwable = e, tag = TAG) { "Error checking permissions: ${e.message}" }
             _checkFailed.value = true
         }

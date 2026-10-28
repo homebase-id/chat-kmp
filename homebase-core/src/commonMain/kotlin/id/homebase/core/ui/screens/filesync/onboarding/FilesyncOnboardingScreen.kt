@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync.onboarding
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -48,6 +50,10 @@ fun FilesyncOnboardingScreen(
 ) {
     // The grant is checked silently on open; the dialog only appears once the user asks to set up.
     if (setupInitiated) ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
+    // Its verdict may be stale on return (Filesync installed meanwhile), and a stale install re-registers it.
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+        if (setupInitiated) viewModel.extendPermissionViewModel.dismissDialog()
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(MR.string.filesync_label)) }) },

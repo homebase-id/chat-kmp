@@ -26,6 +26,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
@@ -136,5 +137,28 @@ class ExtendPermissionViewModelTest {
         assertFalse(vm.permissionsGranted.value)
         assertEquals(ExtendPermissionUiState.ShowDialog(config.appName), vm.uiState.value)
         assertNotNull(vm.buildExtendPermissionUrl(), "the missing drive must reach the extend URL")
+    }
+
+    @Test
+    fun aSlowStaleCheckDoesntReplaceANewerVerdict() = runBlocking<Unit> {
+        var calls = 0
+        val engine = MockEngine {
+            val first = ++calls == 1
+            if (first) delay(1.seconds)
+            respond(
+                content = contextJson(if (first) "" else grantedDrive),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val vm = viewModel(engine)
+        withTimeout(10.seconds) { while (calls == 0) delay(10) }
+
+        vm.recheckPermissions()
+        withTimeout(10.seconds) { vm.permissionsGranted.first { it } }
+        delay(2.seconds)
+
+        assertTrue(vm.permissionsGranted.value, "the older 'missing' finished last but is stale")
+        assertEquals(ExtendPermissionUiState.Idle, vm.uiState.value)
     }
 }

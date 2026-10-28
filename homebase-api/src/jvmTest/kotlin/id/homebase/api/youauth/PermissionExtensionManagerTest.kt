@@ -13,6 +13,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -134,9 +135,8 @@ class PermissionExtensionManagerTest {
     }
 
     @Test
-    fun whenItCantTellItOnlyAsksForAccess() = runTest {
-        val unknown = missing { throw IllegalStateException("offline") }
-        assertTrue(unknown.buildExtendPermissionUrl().startsWith("https://$me/owner/appupdate?"))
+    fun whenItCantTellTheCheckFails() = runTest {
+        assertFailsWith<IllegalStateException> { missing { throw IllegalStateException("offline") } }
     }
 
     @Test

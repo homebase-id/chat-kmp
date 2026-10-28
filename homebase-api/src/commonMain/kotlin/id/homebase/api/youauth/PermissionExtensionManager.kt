@@ -2,7 +2,6 @@ package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.util.compareStringUuId
-import kotlin.coroutines.cancellation.CancellationException
 
 /** Configuration for checking missing permissions. */
 data class PermissionExtensionConfig(
@@ -75,7 +74,7 @@ class PermissionExtensionManager(
         }
         val result = getMissingPermissions(config, context)
         val install = config.install
-        if (result !is PermissionCheckResult.Missing || install == null || install.installedOrUnknown()) return result
+        if (result !is PermissionCheckResult.Missing || install == null || install.isInstalled()) return result
 
         Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
         return PermissionCheckResult.Missing(
@@ -84,16 +83,6 @@ class PermissionExtensionManager(
                 installs = install.registration.name,
             )
         )
-    }
-
-    // Unknown asks for access only: that request can fail, but never creates or re-registers anything.
-    private suspend fun AppInstall.installedOrUnknown(): Boolean = try {
-        isInstalled()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Logger.w(throwable = e, tag = TAG) { "Can't tell whether ${registration.name} is installed; asking for access only" }
-        true
     }
 
     internal fun getMissingPermissions(
