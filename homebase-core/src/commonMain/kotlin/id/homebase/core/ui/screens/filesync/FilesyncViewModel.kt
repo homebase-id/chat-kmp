@@ -64,6 +64,8 @@ class FilesyncViewModel(
         },
     )
 
+    private var setupPaused = false
+
     init {
         viewModelScope.launch {
             snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
@@ -102,9 +104,7 @@ class FilesyncViewModel(
         }
 
         viewModelScope.launch {
-            extendPermissionViewModel.checkFailed.collect { failed ->
-                _uiState.update { it.copy(checkFailed = failed, setupInitiated = it.setupInitiated && !failed) }
-            }
+            extendPermissionViewModel.checkFailed.collect { failed -> _uiState.update { it.copy(checkFailed = failed) } }
         }
 
         viewModelScope.launch {
@@ -119,6 +119,18 @@ class FilesyncViewModel(
             FilesyncUiAction.SetupClicked -> {
                 _uiState.update { it.copy(setupInitiated = true) }
                 extendPermissionViewModel.recheckPermissions()
+            }
+
+            // Set up spans leaving Chat: what it found before may be stale, and installing an installed app
+            // re-registers it. So leaving drops the dialog and any check in flight, and coming back checks again.
+            FilesyncUiAction.Paused -> if (_uiState.value.setupInitiated) {
+                setupPaused = true
+                extendPermissionViewModel.dismissDialog()
+            }
+
+            FilesyncUiAction.Resumed -> if (setupPaused) {
+                setupPaused = false
+                onAction(FilesyncUiAction.SetupClicked)
             }
 
             FilesyncUiAction.RetryCheck -> extendPermissionViewModel.recheckPermissions()

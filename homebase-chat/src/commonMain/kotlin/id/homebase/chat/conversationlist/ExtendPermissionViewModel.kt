@@ -184,7 +184,10 @@ class ExtendPermissionViewModel(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (generation != checkGeneration) return
+            if (generation != checkGeneration) {
+                Logger.w(throwable = e, tag = TAG) { "Superseded permission check failed: ${e.message}" }
+                return
+            }
             Logger.e(throwable = e, tag = TAG) { "Error checking permissions: ${e.message}" }
             _checkFailed.value = true
         }

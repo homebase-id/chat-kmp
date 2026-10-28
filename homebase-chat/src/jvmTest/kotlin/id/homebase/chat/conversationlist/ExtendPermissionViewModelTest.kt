@@ -168,4 +168,29 @@ class ExtendPermissionViewModelTest {
         assertNull(withTimeoutOrNull(1.seconds) { vm.permissionsGranted.first { !it } }, "the older 'missing' finished last but is stale")
         assertEquals(ExtendPermissionUiState.Idle, vm.uiState.value)
     }
+
+    @Test
+    fun aCheckInFlightWhenTheDialogIsDismissedDoesntBringItBack() = runBlocking<Unit> {
+        val asked = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val answered = CompletableDeferred<Unit>()
+        val engine = MockEngine {
+            asked.complete(Unit)
+            release.await()
+            respond(
+                content = contextJson(""),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            ).also { answered.complete(Unit) }
+        }
+        val vm = viewModel(engine)
+        withTimeout(10.seconds) { asked.await() }
+
+        vm.dismissDialog()
+        release.complete(Unit)
+        withTimeout(10.seconds) { answered.await() }
+
+        assertNull(withTimeoutOrNull(1.seconds) { vm.uiState.first { it is ExtendPermissionUiState.ShowDialog } })
+        assertEquals(ExtendPermissionUiState.Dismissed, vm.uiState.value)
+    }
 }

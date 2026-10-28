@@ -12,6 +12,7 @@ object FilesyncProtocol {
     const val AppSlug = "filesync"
     const val DriveSlug = "filesync"
     const val DriveTypeSlug = "filesync"
+    const val CircleSlug = "filesync"
 
     const val FolderFileType = 7101
     const val FileFileType = 7102

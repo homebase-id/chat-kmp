@@ -6,10 +6,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.compose.currentStateAsState
 import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
@@ -54,11 +51,6 @@ fun ExtendPermissionDialog(
                 }
             }
             val installs = state.installs
-            if (installs != null) {
-                // A verdict from before leaving may be stale; installing an installed app re-registers it.
-                val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-                LaunchedEffect(lifecycle) { if (!lifecycle.isAtLeast(Lifecycle.State.RESUMED)) viewModel.dismissDialog() }
-            }
             val (title, body, confirm) = if (installs != null) {
                 Triple(
                     stringResource(MR.string.permissions_install_title, installs),

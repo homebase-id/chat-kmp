@@ -19,6 +19,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -50,6 +52,8 @@ fun FilesyncOnboardingScreen(
 ) {
     // The grant is checked silently on open; the dialog only appears once the user asks to set up.
     if (setupInitiated) ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onAction(FilesyncUiAction.Paused) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(FilesyncUiAction.Resumed) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(MR.string.filesync_label)) }) },

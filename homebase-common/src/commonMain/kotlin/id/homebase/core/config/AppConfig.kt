@@ -550,7 +550,7 @@ val filesyncAppRegistration = AppRegistrationParams(
     drives = listOf(filesyncDrive),
     circles = listOf(
         AppCircleDeclaration(
-            slug = "filesync",
+            slug = FilesyncProtocol.CircleSlug,
             name = "Filesync",
             description = "People who can see the files you share through Homebase Filesync",
             emoji = "📁",
