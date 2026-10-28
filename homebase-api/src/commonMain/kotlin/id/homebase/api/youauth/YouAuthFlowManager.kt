@@ -1,6 +1,8 @@
 package id.homebase.api.youauth
 
-import id.homebase.api.client.notifications.PushNotificationApi
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
@@ -111,6 +113,11 @@ class YouAuthFlowManager(
     // Registry for callback routing
     private val callbackRegistry = mutableMapOf<String, AuthCodeFlowState>()
 
+    private val _replacedSignIns = MutableSharedFlow<ApiCredentials>(extraBufferCapacity = 4)
+
+    /** The sign-in each completed sign-in-again replaced. */
+    val replacedSignIns: SharedFlow<ApiCredentials> = _replacedSignIns.asSharedFlow()
+
     // True once handleCallback() is invoked, preventing onAppResumed from cancelling a
     // finalization that is still in-flight on a slow network.
     @Volatile private var callbackReceived = false
@@ -212,7 +219,8 @@ class YouAuthFlowManager(
      *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
      *   the web seamless-login path, which redirects the top window to the authorize endpoint
      *   (unloading the app) instead of opening a popup. See issue #853.
-     * @param again Sign in again for the app's zero-knowledge key; the current token stays valid, and a failure changes nothing.
+     * @param again Sign in again for the app's zero-knowledge key. A failure changes nothing; on success the replaced
+     *   sign-in goes out on [replacedSignIns], which moves push off it and then deletes it.
      */
     suspend fun authorize(
         identity: OdinId,
@@ -377,7 +385,7 @@ class YouAuthFlowManager(
             ShareAuthBridge.setAuthenticated(true, result.identity.domainName)
             NotificationExtensionStore.publishCredentials(apiCredentials)
             Logger.i(tag = TAG) { "Authentication completed successfully for ${result.identity}" }
-            replaced?.let { retireSignIn(httpClient, it) }
+            replaced?.let { _replacedSignIns.tryEmit(it) }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error completing auth (again=${authCodeFlowState.again})" }
             if (!authCodeFlowState.again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
@@ -543,16 +551,4 @@ internal suspend fun stepOrLog(name: String, step: suspend () -> Unit) {
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = "YouAuth") { "Logout step '$name' failed — continuing" }
     }
-}
-
-/**
- * The sign-in that signing in again replaced: its push subscription first, so pushes don't arrive twice
- * once the new sign-in subscribes, then the sign-in itself. Best effort: a leftover is harmless.
- */
-internal suspend fun retireSignIn(httpClient: HttpClient, replaced: ApiCredentials) {
-    val old = CredentialsManager().apply { setActiveCredentials(replaced) }
-    runCatching { PushNotificationApi(httpClient, old).unsubscribe() }
-        .onFailure { Logger.w(throwable = it, tag = "YouAuthFlowManager") { "Couldn't unsubscribe the replaced sign-in's push" } }
-    runCatching { ClientRegistrationApi(httpClient, old).deleteThisClient() }
-        .onFailure { Logger.w(throwable = it, tag = "YouAuthFlowManager") { "Couldn't delete the replaced sign-in" } }
 }

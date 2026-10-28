@@ -963,6 +963,8 @@ val appModule = module {
             eventBus = get(),
             authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
             messageResolver = get(),
+            replacedSignIns = get<id.homebase.api.youauth.YouAuthFlowManager>().replacedSignIns,
+            httpClient = get(),
         )
     }
     single<NotificationMessageResolver> {
