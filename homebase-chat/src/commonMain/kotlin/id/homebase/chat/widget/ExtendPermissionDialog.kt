@@ -8,8 +8,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
@@ -54,20 +54,23 @@ fun ExtendPermissionDialog(
                 }
             }
             val installs = state.installs
-            val title: String
-            val body: String
-            val confirm: String
             if (installs != null) {
-                // Shown only while in front: a verdict from before leaving may be stale, and installing an installed app re-registers it.
+                // A verdict from before leaving may be stale; installing an installed app re-registers it.
                 val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
                 LaunchedEffect(lifecycle) { if (!lifecycle.isAtLeast(Lifecycle.State.RESUMED)) viewModel.dismissDialog() }
-                title = stringResource(MR.string.permissions_install_title, installs)
-                body = stringResource(MR.string.permissions_install_body, installs, state.appName)
-                confirm = stringResource(MR.string.permissions_install)
+            }
+            val (title, body, confirm) = if (installs != null) {
+                Triple(
+                    stringResource(MR.string.permissions_install_title, installs),
+                    stringResource(MR.string.permissions_install_body, installs, state.appName),
+                    stringResource(MR.string.permissions_install),
+                )
             } else {
-                title = stringResource(MR.string.permissions_missing_title)
-                body = stringResource(MR.string.permissions_missing_body, state.appName)
-                confirm = stringResource(MR.string.permissions_extend)
+                Triple(
+                    stringResource(MR.string.permissions_missing_title),
+                    stringResource(MR.string.permissions_missing_body, state.appName),
+                    stringResource(MR.string.permissions_extend),
+                )
             }
             AlertDialog(
                 onDismissRequest = {
