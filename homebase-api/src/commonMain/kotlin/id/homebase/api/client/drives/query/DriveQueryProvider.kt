@@ -1,9 +1,8 @@
 package id.homebase.api.client.drives.query
 
-import id.homebase.api.client.ProblemDetails
-import id.homebase.api.client.errorCodeEnumOrUnhandled
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.errorCodeEnumOrUnhandled
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
@@ -61,7 +60,7 @@ class DriveQueryProvider(
         )
         // The expected "no" is answered here, before throwForFailure logs every 400 as an error.
         if (response.status == 400 &&
-            runCatching { deserialize<ProblemDetails>(response.body).errorCodeEnumOrUnhandled() }.getOrNull() == OdinClientErrorCode.InvalidDrive
+            parseProblemOrNull(response.body)?.errorCodeEnumOrUnhandled() == OdinClientErrorCode.InvalidDrive
         ) return false
         throwForFailure(response)
         return true

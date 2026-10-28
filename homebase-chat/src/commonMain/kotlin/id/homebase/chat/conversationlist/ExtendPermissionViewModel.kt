@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -177,7 +178,7 @@ class ExtendPermissionViewModel(
                 PermissionCheckResult.AllGranted -> {
                     Logger.d(tag = TAG) { "All permissions are granted" }
                     lastMissingResult = null
-                    if (_uiState.value is ExtendPermissionUiState.ShowDialog) _uiState.value = ExtendPermissionUiState.Idle
+                    _uiState.update { if (it is ExtendPermissionUiState.ShowDialog) ExtendPermissionUiState.Idle else it }
                     _permissionsGranted.value = true
                     _permissionsChecked.value = true
                 }

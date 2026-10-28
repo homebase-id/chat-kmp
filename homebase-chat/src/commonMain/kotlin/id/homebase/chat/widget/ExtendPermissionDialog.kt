@@ -6,6 +6,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
@@ -51,6 +53,8 @@ fun ExtendPermissionDialog(
                 }
             }
             val installs = state.installs
+            // An install verdict may be stale on return, and installing an installed app re-registers it.
+            if (installs != null) LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.dismissDialog() }
             val title = if (installs != null) stringResource(MR.string.permissions_install_title, installs) else stringResource(MR.string.permissions_missing_title)
             val body = if (installs != null) stringResource(MR.string.permissions_install_body, installs, state.appName) else stringResource(MR.string.permissions_missing_body, state.appName)
             val confirm = stringResource(if (installs != null) MR.string.permissions_install else MR.string.permissions_extend)

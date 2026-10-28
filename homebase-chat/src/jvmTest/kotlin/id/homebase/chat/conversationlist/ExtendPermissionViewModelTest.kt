@@ -25,6 +25,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -141,22 +142,30 @@ class ExtendPermissionViewModelTest {
 
     @Test
     fun aSlowStaleCheckDoesntReplaceANewerVerdict() = runBlocking<Unit> {
+        val firstAsked = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val firstAnswered = CompletableDeferred<Unit>()
         var calls = 0
         val engine = MockEngine {
             val first = ++calls == 1
-            if (first) delay(1.seconds)
+            if (first) {
+                firstAsked.complete(Unit)
+                releaseFirst.await()
+            }
             respond(
                 content = contextJson(if (first) "" else grantedDrive),
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
-            )
+            ).also { if (first) firstAnswered.complete(Unit) }
         }
         val vm = viewModel(engine)
-        withTimeout(10.seconds) { while (calls == 0) delay(10) }
+        withTimeout(10.seconds) { firstAsked.await() }
 
         vm.recheckPermissions()
         withTimeout(10.seconds) { vm.permissionsGranted.first { it } }
-        delay(2.seconds)
+        releaseFirst.complete(Unit)
+        withTimeout(10.seconds) { firstAnswered.await() }
+        delay(200)
 
         assertTrue(vm.permissionsGranted.value, "the older 'missing' finished last but is stale")
         assertEquals(ExtendPermissionUiState.Idle, vm.uiState.value)
