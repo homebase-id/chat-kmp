@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class ExtendPermissionViewModel(
     private val securityContextProvider: SecurityContextProvider,
@@ -76,6 +78,8 @@ class ExtendPermissionViewModel(
      */
     private var lastMissingResult: MissingPermissionsResult? = null
 
+    private val checkLock = Mutex()
+
     init {
         if (autoCheck) {
             viewModelScope.launch { checkPermissions() }
@@ -112,7 +116,10 @@ class ExtendPermissionViewModel(
         }
     }
 
-    private suspend fun checkPermissions() {
+    // One at a time: a slow check finishing last would replace a newer verdict.
+    private suspend fun checkPermissions() = checkLock.withLock { checkPermissionsNow() }
+
+    private suspend fun checkPermissionsNow() {
         if (_uiState.value is ExtendPermissionUiState.Dismissed) return
         _checkFailed.value = false
         try {
@@ -163,7 +170,7 @@ class ExtendPermissionViewModel(
                     lastMissingResult = details
                     _permissionsGranted.value = false
                     _uiState.value =
-                        ExtendPermissionUiState.ShowDialog(appName = config.appName)
+                        ExtendPermissionUiState.ShowDialog(appName = config.appName, installs = details.installs)
                     _permissionsChecked.value = true
                 }
 
@@ -214,7 +221,7 @@ sealed interface ExtendPermissionUiState {
     data object Idle : ExtendPermissionUiState
 
     /** Missing permissions detected, dialog should be shown. */
-    data class ShowDialog(val appName: String) : ExtendPermissionUiState
+    data class ShowDialog(val appName: String, val installs: String? = null) : ExtendPermissionUiState
 
     /** User dismissed the dialog. */
     data object Dismissed : ExtendPermissionUiState

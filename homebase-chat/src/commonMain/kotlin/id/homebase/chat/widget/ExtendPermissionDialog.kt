@@ -14,6 +14,9 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.permissions_extend
+import id.homebase.resources.permissions_install
+import id.homebase.resources.permissions_install_body
+import id.homebase.resources.permissions_install_title
 import id.homebase.resources.permissions_missing_body
 import id.homebase.resources.permissions_missing_title
 import org.jetbrains.compose.resources.stringResource
@@ -52,16 +55,24 @@ fun ExtendPermissionDialog(
                     viewModel.dismissDialog()
                     onCancel?.invoke()
                 },
-                title = { Text(stringResource(MR.string.permissions_missing_title)) },
+                title = {
+                    Text(
+                        state.installs?.let { stringResource(MR.string.permissions_install_title, it) }
+                            ?: stringResource(MR.string.permissions_missing_title)
+                    )
+                },
                 text = {
-                    Text(stringResource(MR.string.permissions_missing_body, state.appName))
+                    Text(
+                        state.installs?.let { stringResource(MR.string.permissions_install_body, it, state.appName) }
+                            ?: stringResource(MR.string.permissions_missing_body, state.appName)
+                    )
                 },
                 confirmButton = {
                     TextButton(onClick = {
                         viewModel.buildExtendPermissionUrl()?.let { uriHandler.openUrl(it) }
                         viewModel.dismissDialog()
                     }) {
-                        Text(stringResource(MR.string.permissions_extend))
+                        Text(stringResource(if (state.installs != null) MR.string.permissions_install else MR.string.permissions_extend))
                     }
                 },
                 dismissButton = {

@@ -114,18 +114,29 @@ class PermissionExtensionManagerTest {
 
     private val registration = AppRegistrationParams("03ae1a49cdae483f9da7fedc0e8f20b9", "Owner", "owner", config.drives, emptyList())
 
-    private suspend fun extendUrl(installed: Boolean): String {
+    private suspend fun missing(isInstalled: suspend () -> Boolean): MissingPermissionsResult {
         val result = manager(jsonEngine(contextJson("", ""))).getMissingPermissions(
-            config.copy(install = AppInstall(registration) { installed }),
+            config.copy(install = AppInstall(registration, isInstalled)),
         )
         assertTrue(result is PermissionCheckResult.Missing, "expected Missing, got $result")
-        return result.details.buildExtendPermissionUrl()
+        return result.details
     }
 
     @Test
     fun theOwningAppIsInstalledBeforeAccessIsAskedFor() = runTest {
-        assertTrue(extendUrl(installed = false).startsWith("https://$me/owner/appreg?appId=03ae1a49cdae483f9da7fedc0e8f20b9&"))
-        assertTrue(extendUrl(installed = true).startsWith("https://$me/owner/appupdate?appId=${config.appId}&"))
+        val install = missing { false }
+        assertTrue(install.buildExtendPermissionUrl().startsWith("https://$me/owner/appreg?appId=03ae1a49cdae483f9da7fedc0e8f20b9&"))
+        assertEquals("Owner", install.installs)
+
+        val grant = missing { true }
+        assertTrue(grant.buildExtendPermissionUrl().startsWith("https://$me/owner/appupdate?appId=${config.appId}&"))
+        assertEquals(null, grant.installs)
+    }
+
+    @Test
+    fun whenItCantTellItOnlyAsksForAccess() = runTest {
+        val unknown = missing { throw IllegalStateException("offline") }
+        assertTrue(unknown.buildExtendPermissionUrl().startsWith("https://$me/owner/appupdate?"))
     }
 
     @Test

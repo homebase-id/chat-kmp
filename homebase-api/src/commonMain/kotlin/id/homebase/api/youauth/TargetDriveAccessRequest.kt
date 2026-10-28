@@ -16,7 +16,7 @@ import kotlinx.serialization.serializer
  * @param description Description of the drive purpose
  * @param permissions List of permission types requested
  * @param driveSlug Stable, human-readable identifier for this drive (e.g. "chat"). The server
- *   requires one on every requested drive; it matches `BuiltinDrives.DriveSlug` in odin-core.
+ *   requires one on every drive the request may create; it matches `BuiltinDrives.DriveSlug` in odin-core.
  * @param driveTypeSlug Stable, human-readable identifier for the drive's type (e.g. "chat").
  *   Matches `BuiltinDrives.DriveTypeSlug` in odin-core.
  * @param attributes Optional key-value attributes for the drive

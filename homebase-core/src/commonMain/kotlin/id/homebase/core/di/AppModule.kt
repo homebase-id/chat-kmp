@@ -1351,7 +1351,7 @@ val appModule = module {
             get(),
             get(),
             getFilesyncPermissionExtensionConfig(
-                isInstalled = { drives.getAppDrive(FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug) != null },
+                isInstalled = { drives.getAppDrives(FilesyncProtocol.AppSlug) != null },
             ),
         )
     }

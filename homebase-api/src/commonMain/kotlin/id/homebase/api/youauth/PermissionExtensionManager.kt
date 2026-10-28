@@ -2,6 +2,7 @@ package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.util.compareStringUuId
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Configuration for checking missing permissions. */
 data class PermissionExtensionConfig(
@@ -28,7 +29,7 @@ data class PermissionExtensionConfig(
  */
 class AppInstall(
     val registration: AppRegistrationParams,
-    /** Throws when it can't tell. */
+    /** Throws when it can't tell. A wrong "no" re-registers an installed app, replacing its keys. */
     val isInstalled: suspend () -> Boolean,
 )
 
@@ -41,7 +42,9 @@ class MissingPermissionsResult(
      * every invocation — call this at click time, not check time, so the URL
      * carries the live callback-server port.
      */
-    val buildExtendPermissionUrl: () -> String
+    val buildExtendPermissionUrl: () -> String,
+    /** The app the URL installs instead, when the owning app isn't installed yet. */
+    val installs: String? = null,
 )
 
 sealed interface PermissionCheckResult {
@@ -72,17 +75,30 @@ class PermissionExtensionManager(
         }
         val result = getMissingPermissions(config, context)
         val install = config.install
-        if (result !is PermissionCheckResult.Missing || install == null || install.isInstalled()) return result
+        if (result !is PermissionCheckResult.Missing || install == null || install.installedOrUnknown()) return result
 
         Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
         return PermissionCheckResult.Missing(
-            MissingPermissionsResult(result.details.missingDrives, result.details.missingPermissions) {
-                install.registration.url(hostIdentity, config.returnUrl())
-            }
+            MissingPermissionsResult(
+                missingDrives = result.details.missingDrives,
+                missingPermissions = result.details.missingPermissions,
+                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.returnUrl()) },
+                installs = install.registration.name,
+            )
         )
     }
 
-    fun getMissingPermissions(
+    // Unknown asks for access only: that request can fail, but never creates or re-registers anything.
+    private suspend fun AppInstall.installedOrUnknown(): Boolean = try {
+        isInstalled()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(throwable = e, tag = TAG) { "Can't tell whether ${registration.name} is installed; asking for access only" }
+        true
+    }
+
+    internal fun getMissingPermissions(
         config: PermissionExtensionConfig,
         context: SecurityContext
     ): PermissionCheckResult {
