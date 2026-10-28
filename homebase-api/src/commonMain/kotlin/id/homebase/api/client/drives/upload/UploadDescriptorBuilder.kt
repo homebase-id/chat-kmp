@@ -1,12 +1,8 @@
 package id.homebase.api.client.drives.upload
 
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.lockKeyHeader
-import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
-import kotlin.uuid.Uuid
 
 /**
  * Builds the shared-secret-encrypted upload descriptor (the `metadata` multipart part) shared by the
@@ -19,16 +15,11 @@ import kotlin.uuid.Uuid
  * Matches the TypeScript `buildDescriptor` helper.
  */
 internal suspend fun buildSharedSecretEncryptedUploadDescriptor(
-    keyHeader: KeyHeader?,
+    encryptedKeyHeader: EncryptedKeyHeader,
     metadata: UploadFileMetadata,
     sharedSecret: ByteArray,
     transferIv: ByteArray,
-    driveId: Uuid? = null,
 ): ByteArray {
-    val encryptedKeyHeader =
-        if (driveId != null) lockKeyHeader(keyHeader, driveId, sharedSecret, transferIv)
-        else EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
-
     val descriptor =
         UploadFileDescriptor(
             encryptedKeyHeader = encryptedKeyHeader,

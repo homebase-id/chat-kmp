@@ -154,11 +154,10 @@ class DriveUploadProvider(
 
         val transferIv = ByteArrayUtil.getRndByteArray(16)
         val sharedSecretEncryptedDescriptor = buildSharedSecretEncryptedUploadDescriptor(
-            request.keyHeader,
+            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv),
             request.metadata,
             sharedSecret,
             transferIv = transferIv,
-            driveId = request.driveId
         )
 
         val instructions =
@@ -476,16 +475,6 @@ class DriveUploadProvider(
     }
 
 
-    /**
-     * Builds an encrypted descriptor (UploadFileDescriptor encrypted with sharedSecret). Matches
-     * TypeScript buildDescriptor function.
-     *
-     * @param keyHeader The key header to encrypt
-     * @param metadata The already-encrypted file metadata
-     * @param sharedSecret The shared secret for encryption
-     * @param transferIv The transfer IV from instructions
-     * @return AES-CBC encrypted descriptor bytes
-     */
     private suspend fun buildSharedSecretEncryptedUpdateDescriptor(
         keyHeader: KeyHeader?,
         metadata: UploadFileMetadata,

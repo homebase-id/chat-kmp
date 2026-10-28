@@ -10,11 +10,7 @@ import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
-/**
- * The zero-knowledge keys this device holds: the app's key from sign-in, and the key of each
- * zero-knowledge drive the app is granted. Every read and write goes through here, so a platform can
- * keep them somewhere else.
- */
+/** The zero-knowledge keys this device holds: the app's key from sign-in, and the key of each zero-knowledge drive the app is granted. */
 object ZkKeyStore {
     private const val TAG = "ZkKeyStore"
     private const val APP_KEY = "zk_app_key"
@@ -64,11 +60,9 @@ object ZkKeyStore {
     /** Opens the drive keys [context] carries, each locked with the app's key; a grant that's gone takes its key with it. */
     suspend fun openDriveKeys(context: SecurityContext) {
         val appKey = appKey()
-        val opened = context.permissionContext.permissionGroups
-            .flatMap { it.driveGrants.orEmpty() }
+        val opened = context.driveGrants
             .mapNotNull { grant -> grant.zkAppKeyEncryptedStorageKey?.let { Uuid.parse(grant.permissionedDrive.drive.alias) to it } }
-            .toMap()
-            .mapValues { (alias, locked) -> appKey?.let { openDriveKey(alias, locked, it) } }
+            .associate { (alias, locked) -> alias to appKey?.let { openDriveKey(alias, locked, it) } }
         save(opened)
     }
 

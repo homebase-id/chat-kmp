@@ -39,7 +39,7 @@ data class DriveGrant(
 private fun DriveGrant.isFor(alias: String, type: String): Boolean =
     compareStringUuId(permissionedDrive.drive.alias, alias) && compareStringUuId(permissionedDrive.drive.type, type)
 
-private val SecurityContext.driveGrants: List<DriveGrant>
+internal val SecurityContext.driveGrants: List<DriveGrant>
     get() = permissionContext.permissionGroups.flatMap { it.driveGrants.orEmpty() }
 
 /**

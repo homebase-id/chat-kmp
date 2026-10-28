@@ -211,9 +211,7 @@ class YouAuthFlowManager(
      *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
      *   the web seamless-login path, which redirects the top window to the authorize endpoint
      *   (unloading the app) instead of opening a popup. See issue #853.
-     * @param again Sign in again while signed in, to get what only a sign-in carries (the app's
-     *   zero-knowledge key). The new token replaces the current one, which stays valid, so nothing
-     *   is cleared; a failure leaves the current session as it is.
+     * @param again Sign in again for the app's zero-knowledge key; the current token stays valid, and a failure changes nothing.
      */
     suspend fun authorize(
         identity: OdinId,

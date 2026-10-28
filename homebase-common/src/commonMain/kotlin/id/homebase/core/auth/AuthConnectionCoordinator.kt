@@ -137,12 +137,12 @@ class AuthConnectionCoordinator(
     // this lock and must never take it itself (it doesn't) to avoid re-entrant deadlock.
     private val wsLifecycleMutex = kotlinx.coroutines.sync.Mutex()
 
+    private var authToken: String? = null
+
     // Coalesces bursts of mountDrive/unmountDrive calls into a single WebSocket reconnect.
     // [OdinWebSocketClient] freezes its drive-subscription list at construction time, so we
     // have to close and reopen the socket to pick up a registry change mid-session. If a user
     // activates two add-ons back-to-back, we want one reconnect, not two.
-    private var authToken: String? = null
-
     private val refreshWsSubscription = DebouncedAction(scope, REFRESH_DEBOUNCE_MS) {
         reconnectWebSocket()
     }
