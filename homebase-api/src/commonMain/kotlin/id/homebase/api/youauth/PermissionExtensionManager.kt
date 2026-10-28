@@ -20,7 +20,11 @@ data class PermissionExtensionConfig(
      */
     val returnUrl: () -> String,
     val install: AppInstall? = null,
-)
+    /** Which mini-app asks: the owner console's return carries it, so only this config's checker answers to it. */
+    val requester: String,
+) {
+    fun callbackUrl(): String = returnUrl().withQueryParam(PermissionCallback.REQUESTER_PARAM, requester)
+}
 
 /**
  * The app that owns the requested drives. Until it is installed, the owner is sent to install it
@@ -79,7 +83,7 @@ class PermissionExtensionManager(
         Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
         return PermissionCheckResult.Missing(
             result.details.copy(
-                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.returnUrl()) },
+                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.callbackUrl()) },
                 installs = install.registration.name,
             )
         )
@@ -153,7 +157,7 @@ class PermissionExtensionManager(
                         missingDrives = missingDrives,
                         circleDrives = config.circleDrives,
                         missingPermissions = missingPermissionValues,
-                        returnUrl = config.returnUrl()
+                        returnUrl = config.callbackUrl()
                     )
                 }
             )

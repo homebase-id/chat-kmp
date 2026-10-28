@@ -39,6 +39,7 @@ class PermissionExtensionManagerTest {
         ),
         permissions = listOf(AppPermissionType.SendPushNotifications),
         returnUrl = { "https://return.example.com" },
+        requester = "test",
     )
 
     // No X-SSE header, so SecurityContextProvider treats the body as plaintext.
