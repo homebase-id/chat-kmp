@@ -108,6 +108,11 @@ class FilesyncViewModel(
         }
 
         viewModelScope.launch {
+            // Cancelled in the owner console while away: coming back must not ask again.
+            extendPermissionViewModel.navigateAwayRequest.collect { setupPaused = false }
+        }
+
+        viewModelScope.launch {
             extendPermissionViewModel.uiState
                 .filter { it is ExtendPermissionUiState.Dismissed }
                 .collect { _uiState.update { s -> s.copy(setupInitiated = false) } }
@@ -132,6 +137,8 @@ class FilesyncViewModel(
                 setupPaused = false
                 onAction(FilesyncUiAction.SetupClicked)
             }
+
+            FilesyncUiAction.SetupLeft -> setupPaused = false
 
             FilesyncUiAction.RetryCheck -> extendPermissionViewModel.recheckPermissions()
 

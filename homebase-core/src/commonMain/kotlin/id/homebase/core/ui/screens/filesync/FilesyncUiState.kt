@@ -69,6 +69,7 @@ sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
     data object Paused : FilesyncUiAction
     data object Resumed : FilesyncUiAction
+    data object SetupLeft : FilesyncUiAction
     data object RetryCheck : FilesyncUiAction
     data object Refresh : FilesyncUiAction
     data object NavigateUp : FilesyncUiAction
