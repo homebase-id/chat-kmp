@@ -73,17 +73,23 @@ class FollowProvider(
         return toCursoredList(deserialize<FollowPageResponse>(response.body))
     }
 
-    suspend fun isFollowing(odinId: OdinId): Boolean {
+    /** Whether this identity follows [odinId]. */
+    suspend fun isFollowing(odinId: OdinId): Boolean = hasFollow("$BASE/identity-i-follow", odinId)
+
+    /** Whether [odinId] follows this identity. */
+    suspend fun isFollowedBy(odinId: OdinId): Boolean = hasFollow("$BASE/follower", odinId)
+
+    // Both answer the follow definition, or 204 with no body when there is none. A 404 is a server without the
+    // v2 follower routes, so it throws rather than reading as "no".
+    private suspend fun hasFollow(path: String, odinId: OdinId): Boolean {
         val creds = requireCreds()
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/identity-i-follow"),
+            url = apiUrl(creds.domain, path),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = "odinId=${odinId.domainName}",
         )
-        if (response.status == 404) return false
         throwForFailure(response)
-        // The server returns the follow definition when following, an empty/absent body otherwise.
         val def = runCatching { deserialize<FollowDefinition>(response.body) }.getOrNull()
         return def != null && def.odinId != null
     }

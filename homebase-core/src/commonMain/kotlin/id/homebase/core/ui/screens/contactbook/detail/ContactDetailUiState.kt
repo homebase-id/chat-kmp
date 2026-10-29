@@ -96,6 +96,8 @@ data class ContactDetailUiState(
     val isSelf: Boolean = false,
     /** Whether we follow this identity's feed; null until known, or when it could not be read. */
     val isFollowing: Boolean? = null,
+    /** Whether this identity follows us; null until known, or when it could not be read. */
+    val isFollowedBy: Boolean? = null,
     /** Display name of the identity that introduced this contact, when the connection
      *  originated from an introduction. Null otherwise. */
     val introducedByName: String? = null,

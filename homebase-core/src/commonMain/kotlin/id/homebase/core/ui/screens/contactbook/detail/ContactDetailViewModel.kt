@@ -519,7 +519,8 @@ class ContactDetailViewModel(
         }
     }
 
-    // Unknown (null) hides the button: an identity we cannot ask about is not offered Follow
+    // Both directions, read separately: unknown (null) hides that part, so an identity we cannot ask about is
+    // not offered Follow, and a failed read never shows as "doesn't follow you".
     private fun loadFollowing() {
         val id = odinId ?: return
         viewModelScope.launch {
@@ -527,6 +528,12 @@ class ContactDetailViewModel(
                 .onFailure { Logger.w(throwable = it, tag = "ContactDetail") { "isFollowing $id failed: ${it.message}" } }
                 .getOrNull()
             _uiState.update { it.copy(isFollowing = following) }
+        }
+        viewModelScope.launch {
+            val followedBy = runCatching { followProvider.isFollowedBy(OdinId(id)) }
+                .onFailure { Logger.w(throwable = it, tag = "ContactDetail") { "isFollowedBy $id failed: ${it.message}" } }
+                .getOrNull()
+            _uiState.update { it.copy(isFollowedBy = followedBy) }
         }
     }
 
