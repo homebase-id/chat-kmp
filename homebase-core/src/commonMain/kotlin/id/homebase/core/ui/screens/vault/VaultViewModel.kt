@@ -38,11 +38,11 @@ import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.files.toUploadPath
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.readBytes
-import id.homebase.core.files.materializeForUpload
-import id.homebase.core.files.toUploadPath
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -527,21 +527,15 @@ class VaultViewModel(
             payloadDescriptors = placeholderDescriptors,
         )
 
+        files.forEachIndexed { index, file ->
+            if (fileContentTypes[index] != "application/pdf") previewPicked(pendingId, placeholderDescriptors[index].key, file)
+        }
         vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
 
         viewModelScope.launch {
             var fileData: List<Pair<String, String>> = emptyList()
             try {
                 fileData = files.mapIndexed { index, file -> file.uploadCopy() to fileContentTypes[index] }
-                fileData.forEachIndexed { index, (path, contentType) ->
-                    if (contentType != "application/pdf") {
-                        localAttachmentStore.put(
-                            pendingId,
-                            "vlt_pg_${index.toString().padStart(2, '0')}",
-                            LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
-                        )
-                    }
-                }
 
                 if (firstContentType == "application/pdf") {
                     try {
@@ -581,14 +575,10 @@ class VaultViewModel(
                     _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(firstName)))
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
-                fileData.forEach { (path, _) ->
-                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
-                }
+                deleteCopies(fileData, files)
                 throw e
             } catch (e: Exception) {
-                fileData.forEach { (path, _) ->
-                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
-                }
+                deleteCopies(fileData, files)
                 vaultStream.updateOptimisticEntry(
                     pendingItem.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
                 )
@@ -664,6 +654,8 @@ class VaultViewModel(
             PayloadDescriptor(key = key, contentType = contentType)
         }
 
+        action.newFiles.forEachIndexed { i, file -> previewPicked(action.file.uniqueId, placeholders[i].key, file) }
+
         val optimisticEntry = action.file.copy(
             payloadDescriptors = action.file.payloadDescriptors + placeholders,
         )
@@ -671,32 +663,33 @@ class VaultViewModel(
 
         viewModelScope.launch {
             val uploadData = action.newFiles.mapIndexed { index, file -> file.uploadCopy() to contentTypes[index] }
-            uploadData.forEachIndexed { i, (path, _) ->
-                localAttachmentStore.put(
-                    action.file.uniqueId,
-                    placeholders[i].key,
-                    LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
-                )
-            }
             val success = vaultUploaderService.appendPages(
                 file = action.file,
                 newFiles = uploadData,
                 scope = viewModelScope,
             )
             if (!success) {
-                uploadData.forEach { (path, _) ->
-                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
-                }
+                deleteCopies(uploadData, action.newFiles)
                 vaultStream.updateOptimisticEntry(action.file)
                 _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
             }
         }
     }
 
-    // The picker's read grant doesn't last (Android content://, iOS security scope) and the browser has no paths:
-    // a copy the app owns is what the preview and the upload read.
+    // The picker's grant doesn't last and the browser has no paths; the upload reads a copy the app owns.
     private suspend fun PlatformFile.uploadCopy(): String =
         materializeForUpload(fileOperationsProvider).toUploadPath(fileOperationsProvider)
+
+    // On native toString() is the picked path, readable while the picker's grant is live; on web nothing previews.
+    private fun previewPicked(entryId: Uuid, payloadKey: String, file: PlatformFile) =
+        localAttachmentStore.put(entryId, payloadKey, LocalAttachmentContext.Image(localFilePath = file.toString(), aspectRatio = null))
+
+    // A file already in the app's cache is uploaded as it is, not copied: it isn't ours to delete here.
+    private fun deleteCopies(uploads: List<Pair<String, String>>, picked: List<PlatformFile>) {
+        uploads.forEachIndexed { i, (path, _) ->
+            if (path != picked[i].toString()) runCatching { fileOperationsProvider.deleteTempFile(path) }
+        }
+    }
 
     // region Add-pictures editor (reuses image-editor-ui's crop/draw seam)
 

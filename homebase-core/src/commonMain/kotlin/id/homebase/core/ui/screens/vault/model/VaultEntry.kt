@@ -43,7 +43,6 @@ data class VaultEntry(
     val notes: String? = null,
     val pdfPageCount: Int? = null,
 ) {
-
     val pageCount: Int get() = pdfPageCount ?: payloadDescriptors.size.coerceAtLeast(1)
     val hasMultiplePages: Boolean get() = pageCount > 1
 
