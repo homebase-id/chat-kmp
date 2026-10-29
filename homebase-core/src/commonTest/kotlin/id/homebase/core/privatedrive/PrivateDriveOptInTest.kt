@@ -23,6 +23,15 @@ class PrivateDriveOptInTest {
     }
 
     @Test
+    fun emailAsksTheConsoleForAPrivateDrive() {
+        assertEquals(
+            "https://frodo.dotyou.cloud/owner/login?redeal=drive-private&drive=92bbcad8-3558-417b-9376-9976c086a674&model=private" +
+                "&returnUrl=http%3A%2F%2Flocalhost%2Fpermission-callback%3Ffor%3Demail",
+            makePrivateUrl("frodo.dotyou.cloud", EmailPrivateDrive, "http://localhost/permission-callback?for=email"),
+        )
+    }
+
+    @Test
     fun vaultKeepsItsOwnReason() {
         assertEquals(
             "https://frodo.dotyou.cloud/owner/login?redeal=vault-private&returnUrl=http%3A%2F%2Flocalhost%2Fpermission-callback%3Ffor%3Dvault",

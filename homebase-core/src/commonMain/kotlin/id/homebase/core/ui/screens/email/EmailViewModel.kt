@@ -7,6 +7,8 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.mail.MailProvider
 import id.homebase.api.client.mail.MailboxStatusResult
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.core.privatedrive.EmailPrivateDrive
+import id.homebase.core.privatedrive.PrivateDriveOptIn
 import id.homebase.core.config.emailLabeledDrive
 import id.homebase.core.email.EmailPreferences
 import id.homebase.core.email.Thunderbird
@@ -45,6 +47,7 @@ class EmailViewModel(
     private val mailProvider: MailProvider,
     private val emailStream: EmailStream,
     private val credentialsManager: CredentialsManager,
+    private val privateDriveOptIn: PrivateDriveOptIn,
 ) : ViewModel() {
 
     companion object {
@@ -56,7 +59,7 @@ class EmailViewModel(
     private var lastHealthCheck: TimeSource.Monotonic.ValueTimeMark? = null
     private var healthJob: Job? = null
 
-    private val _uiState = MutableStateFlow(EmailUiState())
+    private val _uiState = MutableStateFlow(EmailUiState(privateDrive = privateDriveOptIn.currentState(EmailPrivateDrive)))
     val uiState: StateFlow<EmailUiState> = _uiState.asStateFlow()
 
     private val _events = MutableSharedFlow<EmailUiEvent>(extraBufferCapacity = 4)
@@ -68,6 +71,9 @@ class EmailViewModel(
 
     init {
         addCloseable(emailPermissionViewModel)
+        viewModelScope.launch {
+            privateDriveOptIn.state(EmailPrivateDrive).collect { privateDrive -> _uiState.update { it.copy(privateDrive = privateDrive) } }
+        }
         viewModelScope.launch {
             optionalDriveActivation.isActivatedFlow(emailLabeledDrive).collect { activated ->
                 _uiState.update { it.copy(driveActivated = activated) }
@@ -182,7 +188,22 @@ class EmailViewModel(
                     _events.tryEmit(EmailUiEvent.MailClientUnavailable(client.displayName))
                 }
             }
+
+            EmailUiAction.MakePrivate ->
+                privateDriveOptIn.makePrivateUrl(EmailPrivateDrive, emailPermissionViewModel.callbackUrl())
+                    ?.let { _events.tryEmit(EmailUiEvent.OpenOwnerConsole(it)) }
+
+            EmailUiAction.SignInAgain -> viewModelScope.launch {
+                privateDriveOptIn.signInAgain(
+                    open = { _events.tryEmit(EmailUiEvent.OpenSignIn(it)) },
+                    failed = { _events.tryEmit(EmailUiEvent.SignInAgainFailed) },
+                )
+            }
         }
+    }
+
+    fun onSignInCallback(url: String) {
+        viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
     }
 
     /**

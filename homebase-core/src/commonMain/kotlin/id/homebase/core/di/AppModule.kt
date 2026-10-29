@@ -1446,6 +1446,7 @@ val appModule = module {
             mailProvider = get(),
             emailStream = get(),
             credentialsManager = get(),
+            privateDriveOptIn = get(),
         )
     }
     singleOf(::EmailStream)

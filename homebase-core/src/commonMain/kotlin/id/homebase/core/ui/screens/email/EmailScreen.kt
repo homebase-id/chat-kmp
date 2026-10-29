@@ -38,6 +38,13 @@ import id.homebase.core.ui.screens.email.setup.EmailSetupContent
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.resources.MR
+import org.jetbrains.compose.resources.getString
+import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.email_sign_in_again_title
+import id.homebase.resources.email_sign_in_again_body
+import id.homebase.resources.email_make_private
+import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
 import id.homebase.resources.email_checking
 import id.homebase.resources.email_home_subtitle
 import id.homebase.resources.email_label
@@ -75,6 +82,17 @@ fun EmailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
     val uriHandler = getUriHandler()
+    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is EmailUiEvent.OpenSignIn -> signIn.open(event.url)
+                is EmailUiEvent.OpenOwnerConsole -> uriHandler.openUrl(event.url)
+                EmailUiEvent.SignInAgainFailed -> snackbarHostState.showSnackbar(getString(MR.string.sign_in_again_failed))
+                else -> Unit
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -82,12 +100,24 @@ fun EmailScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
+        if (uiState.driveActivated == true) {
+            PrivateDriveBanners(
+                state = uiState.privateDrive,
+                makePrivateText = MR.string.email_make_private,
+                signInTitle = MR.string.email_sign_in_again_title,
+                signInBody = MR.string.email_sign_in_again_body,
+                signIn = signIn,
+                onMakePrivate = { viewModel.onAction(EmailUiAction.MakePrivate) },
+                onSignInAgain = { viewModel.onAction(EmailUiAction.SignInAgain) },
+            )
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val body = when {
                 uiState.isResolving || uiState.driveActivated == null -> EmailBody.Busy
                 uiState.statusError != null -> EmailBody.StatusUnavailable
@@ -154,6 +184,7 @@ fun EmailScreen(
                     )
                 }
             }
+        }
         }
     }
 }

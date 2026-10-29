@@ -9,6 +9,7 @@ import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
+import id.homebase.core.config.emailLabeledDrive
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.filesync.FilesyncProtocol
@@ -32,6 +33,11 @@ val VaultPrivateDrive = PrivateDrive(vaultLabeledDrive.drive.alias, listOf("rede
 val FilesyncPrivateDrive = PrivateDrive(
     FilesyncProtocol.DriveAlias,
     listOf("redeal" to "drive-private", "drive" to FilesyncProtocol.DriveAlias.toString(), "model" to "selectiveShare"),
+)
+
+val EmailPrivateDrive = PrivateDrive(
+    emailLabeledDrive.drive.alias,
+    listOf("redeal" to "drive-private", "drive" to emailLabeledDrive.drive.alias.toString(), "model" to "private"),
 )
 
 /** [needsSignIn]: the drive is private and this device signed in before it could get the key. [offerMakePrivate]: developer menu only, while it isn't private. */

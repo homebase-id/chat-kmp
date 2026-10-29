@@ -15,6 +15,7 @@ object ZkKeyStore {
     private const val TAG = "ZkKeyStore"
     private const val APP_KEY = "zk_app_key"
     private const val DRIVE_KEYS = "zk_drive_keys"
+    private const val WRITE_ONLY_KEYS = "zk_drive_write_only_keys"
 
     interface Storage {
         fun get(key: String): String?
@@ -43,6 +44,10 @@ object ZkKeyStore {
 
     fun isZeroKnowledge(alias: Uuid): Boolean = alias in loadedDrives()
 
+    /** The write-only private key (PKCS8) of the zero-knowledge drive [alias], which opens its sealed key headers. */
+    fun writeOnlyPrivateKey(alias: Uuid): ByteArray? =
+        storage.get(WRITE_ONLY_KEYS)?.let { Json.decodeFromString<Map<String, String>>(it) }?.get(alias.toString())?.let(Base64::decode)
+
     /** The key of the zero-knowledge drive [alias], or null when it isn't one or this device can't open it. */
     fun driveKey(alias: Uuid): ByteArray? = loadedDrives()[alias]
 
@@ -69,11 +74,19 @@ object ZkKeyStore {
                 alias to grant.zkAppKeyEncryptedStorageKey?.let { locked -> appKey?.let { openDriveKey(alias, locked, it) } }
             }
         save(opened)
+        val writeOnly = context.driveGrants.mapNotNull { grant ->
+            val alias = Uuid.parse(grant.permissionedDrive.drive.alias)
+            val locked = grant.zkStorageKeyEncryptedWriteOnlyPrivateKey ?: return@mapNotNull null
+            val driveKey = opened[alias] ?: return@mapNotNull null
+            openDriveKey(alias, locked, driveKey)?.let { alias.toString() to Base64.encode(it) }
+        }.toMap()
+        if (writeOnly.isEmpty()) storage.remove(WRITE_ONLY_KEYS) else storage.put(WRITE_ONLY_KEYS, Json.encodeToString(writeOnly))
     }
 
     fun clear() {
         storage.remove(APP_KEY)
         storage.remove(DRIVE_KEYS)
+        storage.remove(WRITE_ONLY_KEYS)
         publish(emptyMap())
     }
 

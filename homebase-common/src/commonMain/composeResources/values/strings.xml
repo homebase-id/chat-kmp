@@ -3071,6 +3071,9 @@
     <string name="vault_chat_image_name">Chat image, %1$s</string>
     <string name="email_locked_title">Mail setup is locked</string>
     <string name="email_locked_unlock">Unlock</string>
+    <string name="email_make_private">Click to change your Email drive to true zero knowledge encryption</string>
+    <string name="email_sign_in_again_title">Sign in again to open your email keys</string>
+    <string name="email_sign_in_again_body">Your Email drive is now private, and this device needs one more sign-in to get its key. Nothing on this device is deleted.</string>
     <string name="call_beta_label">Beta</string>
     <string name="call_report_problem">Report a problem</string>
     <string name="call_report_unavailable">No log found for this call</string>
