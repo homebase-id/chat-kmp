@@ -2308,6 +2308,7 @@
     <string name="feed_timeline_title">Feed</string>
     <string name="feed_timeline_following_action">Following</string>
     <string name="feed_timeline_empty_title">Your feed is empty</string>
+    <string name="feed_timeline_find_people">Find people to follow</string>
     <string name="feed_timeline_empty_body">Posts from people you follow will show up here. Share something to get started.</string>
     <string name="feed_timeline_error_title">Couldn't load your feed</string>
     <string name="feed_timeline_error_retry">Retry</string>
@@ -2368,6 +2369,16 @@
     <string name="feed_following_error">Couldn't load your follows.</string>
     <string name="feed_following_retry">Retry</string>
     <string name="feed_following_follows_you">Follows you</string>
+    <string name="feed_following_tab_suggested">Suggested</string>
+    <string name="feed_following_follow_back">Follow back</string>
+    <string name="feed_following_follow_all">Follow all</string>
+    <string name="feed_following_suggested_hint">Your connections you don't follow yet</string>
+    <string name="feed_following_empty_suggested">You follow all your connections.</string>
+    <string name="feed_following_add">Follow someone</string>
+    <string name="feed_following_address_label">Homebase address</string>
+    <string name="feed_following_address_placeholder">frodo.dotyou.cloud</string>
+    <string name="feed_following_invalid_address">That isn't a Homebase address.</string>
+    <string name="feed_following_cancel">Cancel</string>
 
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>

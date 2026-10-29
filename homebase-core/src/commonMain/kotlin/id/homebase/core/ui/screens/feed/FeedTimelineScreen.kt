@@ -83,6 +83,7 @@ import id.homebase.resources.feed_timeline_empty_title
 import id.homebase.resources.feed_timeline_error_body
 import id.homebase.resources.feed_timeline_error_retry
 import id.homebase.resources.feed_timeline_error_title
+import id.homebase.resources.feed_timeline_find_people
 import id.homebase.resources.feed_timeline_following_action
 import id.homebase.resources.feed_timeline_title
 import kotlinx.coroutines.launch
@@ -225,6 +226,9 @@ fun FeedTimelineScreen(
                         title = stringResource(MR.string.feed_timeline_empty_title),
                         body = stringResource(MR.string.feed_timeline_empty_body),
                         modifier = contentModifier,
+                        // The Following screen opens on Suggested when you follow no one yet
+                        actionLabel = stringResource(MR.string.feed_timeline_find_people),
+                        onAction = onNavigateToFollowing,
                     )
 
                     FeedBody.Posts -> FeedTimelineList(

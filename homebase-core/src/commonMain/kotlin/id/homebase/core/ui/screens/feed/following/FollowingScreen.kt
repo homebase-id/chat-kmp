@@ -1,6 +1,27 @@
 package id.homebase.core.ui.screens.feed.following
 
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import org.jetbrains.compose.resources.StringResource
+import id.homebase.resources.feed_following_tab_suggested
+import id.homebase.resources.feed_following_follow_back
+import id.homebase.resources.feed_following_follow_all
+import id.homebase.resources.feed_following_suggested_hint
+import id.homebase.resources.feed_following_empty_suggested
+import id.homebase.resources.feed_following_add
+import id.homebase.resources.feed_following_address_label
+import id.homebase.resources.feed_following_address_placeholder
+import id.homebase.resources.feed_following_invalid_address
+import id.homebase.resources.feed_following_cancel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,14 +84,20 @@ fun FollowingScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val displayNames by viewModel.displayNames.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val invalidAddress = stringResource(MR.string.feed_following_invalid_address)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is FollowingEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
+                FollowingEvent.InvalidAddress -> snackbarHostState.showSnackbar(invalidAddress)
                 is FollowingEvent.NavigateToIdentity -> onIdentityClick(event.odinId)
             }
         }
+    }
+
+    if (uiState.isFollowByAddressOpen) {
+        FollowByAddressDialog(onFollow = viewModel::followByAddress, onDismiss = viewModel::closeFollowByAddress)
     }
 
     Scaffold(
@@ -82,6 +109,14 @@ fun FollowingScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.feed_following_back),
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = viewModel::openFollowByAddress) {
+                        Icon(
+                            imageVector = Icons.Filled.PersonAdd,
+                            contentDescription = stringResource(MR.string.feed_following_add),
                         )
                     }
                 },
@@ -101,6 +136,11 @@ fun FollowingScreen(
                     onClick = { viewModel.selectTab(FollowTab.Followers) },
                     text = { Text(stringResource(MR.string.feed_following_tab_followers)) },
                 )
+                Tab(
+                    selected = uiState.selectedTab == FollowTab.Suggested,
+                    onClick = { viewModel.selectTab(FollowTab.Suggested) },
+                    text = { Text(stringResource(MR.string.feed_following_tab_suggested)) },
+                )
             }
 
             // Lower-cased once per list change, so each row's "follows you" check is a set lookup
@@ -109,6 +149,7 @@ fun FollowingScreen(
             val identities = when (uiState.selectedTab) {
                 FollowTab.Following -> uiState.following
                 FollowTab.Followers -> uiState.followers
+                FollowTab.Suggested -> uiState.suggested
             }
 
             when {
@@ -117,6 +158,11 @@ fun FollowingScreen(
                 uiState.errorMessage != null && identities.isEmpty() -> ErrorState(onRetry = viewModel::load)
                 identities.isEmpty() -> EmptyState(tab = uiState.selectedTab)
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    if (uiState.selectedTab == FollowTab.Suggested) {
+                        item(key = "suggested-header") {
+                            SuggestedHeader(onFollowAll = { viewModel.followAll(identities) })
+                        }
+                    }
                     items(items = identities, key = { it }) { odinId ->
                         val isFollowed = remember(odinId, uiState.following) {
                             uiState.following.any { it.equals(odinId, ignoreCase = true) }
@@ -130,6 +176,12 @@ fun FollowingScreen(
                             // Only on the Following tab: everyone on the Followers tab follows you
                             followsYou = uiState.selectedTab == FollowTab.Following &&
                                 odinId.lowercase() in followerSet,
+                            // They follow you and you don't follow them: say it as following back
+                            followLabel = if (odinId.lowercase() in followerSet) {
+                                MR.string.feed_following_follow_back
+                            } else {
+                                MR.string.feed_following_follow
+                            },
                             onRowClick = { viewModel.onIdentityClick(odinId) },
                             onFollow = { viewModel.follow(odinId) },
                             onUnfollow = { viewModel.unfollow(odinId) },
@@ -139,6 +191,52 @@ fun FollowingScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SuggestedHeader(onFollowAll: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(MR.string.feed_following_suggested_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onFollowAll) {
+            Text(stringResource(MR.string.feed_following_follow_all))
+        }
+    }
+}
+
+@Composable
+private fun FollowByAddressDialog(onFollow: (String) -> Unit, onDismiss: () -> Unit) {
+    var address by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.feed_following_add)) },
+        text = {
+            OutlinedTextField(
+                value = address,
+                onValueChange = { address = it },
+                singleLine = true,
+                label = { Text(stringResource(MR.string.feed_following_address_label)) },
+                placeholder = { Text(stringResource(MR.string.feed_following_address_placeholder)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (address.isNotBlank()) onFollow(address) }),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onFollow(address) }, enabled = address.isNotBlank()) {
+                Text(stringResource(MR.string.feed_following_follow))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.feed_following_cancel)) }
+        },
+    )
 }
 
 @Composable
@@ -171,6 +269,7 @@ private fun EmptyState(tab: FollowTab) {
     val message = when (tab) {
         FollowTab.Following -> stringResource(MR.string.feed_following_empty_following)
         FollowTab.Followers -> stringResource(MR.string.feed_following_empty_followers)
+        FollowTab.Suggested -> stringResource(MR.string.feed_following_empty_suggested)
     }
     Box(
         modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -190,6 +289,7 @@ private fun IdentityRow(
     displayName: String,
     isFollowed: Boolean,
     followsYou: Boolean,
+    followLabel: StringResource,
     onRowClick: () -> Unit,
     onFollow: () -> Unit,
     onUnfollow: () -> Unit,
@@ -242,7 +342,7 @@ private fun IdentityRow(
             }
         } else {
             Button(onClick = onFollow) {
-                Text(stringResource(MR.string.feed_following_follow))
+                Text(stringResource(followLabel))
             }
         }
     }

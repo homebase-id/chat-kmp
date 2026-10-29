@@ -3,11 +3,13 @@ package id.homebase.core.ui.screens.feed.following
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.drives.query.CursoredResult
 import id.homebase.api.client.follow.FollowNotificationType
 import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.client.follow.FollowRequest
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -25,12 +27,14 @@ import kotlinx.coroutines.launch
 
 sealed interface FollowingEvent {
     data class ShowSnackbar(val message: String) : FollowingEvent
+    data object InvalidAddress : FollowingEvent
     data class NavigateToIdentity(val odinId: String) : FollowingEvent
 }
 
 class FollowingViewModel(
     private val followProvider: FollowProvider,
     private val contactService: ContactService,
+    private val connectionService: ConnectionService,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FollowingUiState())
@@ -56,6 +60,15 @@ class FollowingViewModel(
         // Idempotent — hydrate contact/connection streams so follow-list names resolve.
         contactService.start()
         load()
+        // Suggestions come from the connection list, which updates as it loads and as people connect
+        viewModelScope.launch {
+            connectionService.connections.collect { state ->
+                val connected = state.map
+                    .filterValues { it.status == ConnectionStatus.Connected }
+                    .keys.map { it.domainName }
+                _uiState.update { it.copy(connections = connected) }
+            }
+        }
     }
 
     fun selectTab(tab: FollowTab) {
@@ -87,6 +100,9 @@ class FollowingViewModel(
                         followers = followers,
                         isLoading = false,
                         errorMessage = null,
+                        // Someone who follows no one yet starts on the people they could follow
+                        selectedTab = if (following.isEmpty() && it.selectedTab == FollowTab.Following)
+                            FollowTab.Suggested else it.selectedTab,
                     )
                 }
             } catch (t: Throwable) {
@@ -111,8 +127,8 @@ class FollowingViewModel(
 
     // A re-follow is idempotent server-side, so the optimistic add is safe even if the row was already present.
     fun follow(odinId: String) {
-        val previous = _uiState.value.following
-        if (previous.none { it.equals(odinId, ignoreCase = true) }) {
+        val wasFollowed = _uiState.value.following.any { it.equals(odinId, ignoreCase = true) }
+        if (!wasFollowed) {
             _uiState.update { it.copy(following = it.following + odinId) }
         }
         viewModelScope.launch {
@@ -127,10 +143,35 @@ class FollowingViewModel(
                 )
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "follow $odinId failed: ${t.message}" }
-                _uiState.update { it.copy(following = previous) }
+                // Undo only this one: "Follow all" runs several at once
+                if (!wasFollowed) {
+                    _uiState.update {
+                        it.copy(following = it.following.filterNot { id -> id.equals(odinId, ignoreCase = true) })
+                    }
+                }
                 _events.tryEmit(FollowingEvent.ShowSnackbar(t.message ?: odinId))
             }
         }
+    }
+
+    fun followAll(odinIds: List<String>) {
+        odinIds.forEach(::follow)
+    }
+
+    fun openFollowByAddress() = _uiState.update { it.copy(isFollowByAddressOpen = true) }
+
+    fun closeFollowByAddress() = _uiState.update { it.copy(isFollowByAddressOpen = false) }
+
+    // A Homebase address such as frodo.dotyou.cloud; a pasted https:// or trailing path is trimmed off.
+    fun followByAddress(input: String) {
+        val domain = input.trim().removePrefix("https://").removePrefix("http://").substringBefore('/').lowercase()
+        if (!OdinId.isValid(domain)) {
+            _events.tryEmit(FollowingEvent.InvalidAddress)
+            return
+        }
+        closeFollowByAddress()
+        _uiState.update { it.copy(selectedTab = FollowTab.Following) }
+        follow(domain)
     }
 
     fun unfollow(odinId: String) {
