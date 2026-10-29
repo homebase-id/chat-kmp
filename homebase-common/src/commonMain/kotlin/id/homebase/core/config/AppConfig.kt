@@ -9,6 +9,7 @@ import id.homebase.api.youauth.AppInstall
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.AppRegistrationParams
 import id.homebase.api.youauth.DrivePermission
+import id.homebase.api.youauth.DriveSharingModel
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import id.homebase.core.filesync.FilesyncProtocol
@@ -322,6 +323,7 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
         driveSlug = VAULT_DRIVE_SLUG,
         driveTypeSlug = VAULT_DRIVE_TYPE_SLUG,
+        sharingModel = DriveSharingModel.Private,
     )
 )
 
@@ -542,6 +544,7 @@ private val filesyncDrive = TargetDriveAccessRequest(
     permissions = listOf(DrivePermission.Read, DrivePermission.Write),
     driveSlug = FilesyncProtocol.DriveSlug,
     driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
+    sharingModel = DriveSharingModel.SelectiveShare,
 )
 
 // Not synced: the browser lists folders over the network, so the drive is never mounted.
