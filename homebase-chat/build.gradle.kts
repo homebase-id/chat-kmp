@@ -32,7 +32,7 @@ kotlin {
         // generated for this module's namespace. Matches homebase-common /
         // homebase-api / image-editor-ui.
         androidResources.enable = true
-        withHostTest {}
+        withHostTest { isIncludeAndroidResources = true }
     }
 
     jvm()
@@ -126,6 +126,8 @@ kotlin {
         getByName("androidHostTest").dependencies {
             implementation(libs.junit)
             implementation(libs.robolectric)
+            implementation(libs.androidx.ui.test.junit4)
+            implementation(libs.androidx.ui.test.manifest)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
@@ -272,5 +274,8 @@ tasks.named("jvmJar") {
 // commonTest's Compose UI tests are Skiko-backed and don't run on the mocked Android host classpath,
 // so the Android host run is limited to the Android-only tests until those move to jvmTest/.
 tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
-    filter { includeTestsMatching("org.webrtc.*") }
+    filter {
+        includeTestsMatching("org.webrtc.*")
+        includeTestsMatching("id.homebase.chat.widget.ComposerSelectionToolbarTest")
+    }
 }
