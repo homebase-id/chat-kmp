@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed.following
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import id.homebase.resources.feed_following_empty_followers
 import id.homebase.resources.feed_following_empty_following
 import id.homebase.resources.feed_following_error
 import id.homebase.resources.feed_following_follow
+import id.homebase.resources.feed_following_follows_you
 import id.homebase.resources.feed_following_retry
 import id.homebase.resources.feed_following_tab_followers
 import id.homebase.resources.feed_following_tab_following
@@ -101,6 +103,9 @@ fun FollowingScreen(
                 )
             }
 
+            // Lower-cased once per list change, so each row's "follows you" check is a set lookup
+            val followerSet = remember(uiState.followers) { uiState.followers.mapTo(HashSet()) { it.lowercase() } }
+
             val identities = when (uiState.selectedTab) {
                 FollowTab.Following -> uiState.following
                 FollowTab.Followers -> uiState.followers
@@ -122,6 +127,9 @@ fun FollowingScreen(
                             odinId = odinId,
                             displayName = displayName,
                             isFollowed = isFollowed,
+                            // Only on the Following tab: everyone on the Followers tab follows you
+                            followsYou = uiState.selectedTab == FollowTab.Following &&
+                                odinId.lowercase() in followerSet,
                             onRowClick = { viewModel.onIdentityClick(odinId) },
                             onFollow = { viewModel.follow(odinId) },
                             onUnfollow = { viewModel.unfollow(odinId) },
@@ -181,6 +189,7 @@ private fun IdentityRow(
     odinId: String,
     displayName: String,
     isFollowed: Boolean,
+    followsYou: Boolean,
     onRowClick: () -> Unit,
     onFollow: () -> Unit,
     onUnfollow: () -> Unit,
@@ -189,9 +198,11 @@ private fun IdentityRow(
     // remember keyed on the domain string rather than rebuilding every recompose.
     val odin = remember(odinId) { OdinId(odinId) }
 
+    // The whole row opens the contact (a dialog on desktop and web), not just the avatar
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onRowClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -215,6 +226,13 @@ private fun IdentityRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (followsYou) {
+                Text(
+                    text = stringResource(MR.string.feed_following_follows_you),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
