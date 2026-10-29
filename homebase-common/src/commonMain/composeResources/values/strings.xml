@@ -1747,6 +1747,8 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_profile_card">Profile card</string>
     <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
+    <string name="dev_menu_advanced_feed">Enable Advanced Feed</string>
+    <string name="dev_menu_advanced_feed_desc">Who you follow along the top of the feed, follow filters in Contacts, and People you may know. Needs a server with the v2 follower routes.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_force_logout">Force Logout (local only)</string>
@@ -2021,6 +2023,13 @@
     <string name="contactbook_new_empty">Nothing waiting on you.</string>
     <string name="contactbook_circles_filter_empty">Nobody is in your circles yet.</string>
     <string name="contactbook_filter_blocked">Blocked</string>
+    <string name="contactbook_filter_following">Following</string>
+    <string name="contactbook_filter_followers">Followers</string>
+    <string name="contactbook_filter_mutual">Mutual</string>
+    <string name="contactbook_follow_filter_empty">No contacts here yet.</string>
+    <string name="contactbook_follow_badge_mutual">You follow each other</string>
+    <string name="contactbook_follow_badge_follows_you">Follows you</string>
+    <string name="contactbook_follow_badge_following">Following</string>
     <string name="contactbook_blocked_filter_empty">You haven't blocked anyone.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
@@ -2379,6 +2388,12 @@
     <string name="feed_following_address_placeholder">frodo.dotyou.cloud</string>
     <string name="feed_following_invalid_address">That isn't a Homebase address.</string>
     <string name="feed_following_cancel">Cancel</string>
+    <string name="feed_following_pymk_title">People you may know</string>
+    <string name="feed_following_row_add">Follow people</string>
+    <string name="feed_following_pymk_basis">From what %1$d of your %2$d connections share</string>
+    <string name="feed_following_pymk_refresh">Refresh</string>
+    <string name="feed_following_pymk_via_connections">Connected to %1$s</string>
+    <string name="feed_following_pymk_via_follows">Followed by %1$s</string>
 
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>

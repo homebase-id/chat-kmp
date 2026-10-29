@@ -26,6 +26,8 @@ import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Column
+import id.homebase.core.ui.screens.feed.following.FollowingAvatarRow
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.TextButton
@@ -101,6 +103,8 @@ fun FeedTimelineScreen(
     onNavigateToDetail: (Uuid) -> Unit,
     onNavigateToFollowing: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
+    // Developer flag: who you follow, along the top of the feed
+    advancedFeed: Boolean = false,
     onFullScreenMediaChanged: (Boolean) -> Unit = {},
     scrollToTop: Boolean = false,
     onScrollToTopHandled: () -> Unit = {},
@@ -188,10 +192,8 @@ fun FeedTimelineScreen(
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { innerPadding ->
-            val contentModifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
+            // The insets are taken once, here, so the following row and the body share them
+            val contentModifier = Modifier.fillMaxSize()
 
             val body = when {
                 // Gated on an empty list: a refresh that fails over a populated feed reports on the snackbar.
@@ -201,6 +203,19 @@ fun FeedTimelineScreen(
                 else -> FeedBody.Posts
             }
             val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .consumeWindowInsets(innerPadding)
+                    .padding(innerPadding),
+            ) {
+            if (advancedFeed) {
+                FollowingAvatarRow(
+                    onIdentityClick = { onAuthorClick(OdinId(it)) },
+                    onFindPeople = onNavigateToFollowing,
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
             AnimatedContent(
                 targetState = body,
                 transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
@@ -262,6 +277,8 @@ fun FeedTimelineScreen(
                         modifier = contentModifier,
                     )
                 }
+            }
+            }
             }
         }
 

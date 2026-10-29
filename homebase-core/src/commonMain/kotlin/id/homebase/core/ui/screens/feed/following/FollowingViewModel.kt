@@ -4,15 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.connections.ConnectionStatus
-import id.homebase.api.client.drives.query.CursoredResult
-import id.homebase.api.client.follow.FollowNotificationType
 import id.homebase.api.client.follow.FollowProvider
-import id.homebase.api.client.follow.FollowRequest
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import id.homebase.core.settings.DeveloperPreferences
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -32,9 +28,11 @@ sealed interface FollowingEvent {
 }
 
 class FollowingViewModel(
+    private val followGraph: FollowGraph,
     private val followProvider: FollowProvider,
     private val contactService: ContactService,
     private val connectionService: ConnectionService,
+    private val developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FollowingUiState())
@@ -50,16 +48,32 @@ class FollowingViewModel(
 
     companion object {
         private const val TAG = "FollowingViewModel"
-        private const val PAGE_SIZE = 100
-
-        // Bounds a runaway cursor; well past any real follow list.
-        private const val MAX_PAGES = 20
     }
+
+    // Opening on Suggested when you follow no one is decided once, on the first load
+    private var openedOnSuggestions = false
 
     init {
         // Idempotent — hydrate contact/connection streams so follow-list names resolve.
         contactService.start()
-        load()
+        // Fresh each time the screen opens; the rest of the app reads the same lists
+        followGraph.ensureLoaded(force = true)
+        viewModelScope.launch {
+            followGraph.state.collect { graph ->
+                _uiState.update {
+                    val openOnSuggested = !openedOnSuggestions && graph.isLoaded && graph.following.isEmpty() &&
+                        it.selectedTab == FollowTab.Following
+                    if (graph.isLoaded) openedOnSuggestions = true
+                    it.copy(
+                        following = graph.following,
+                        followers = graph.followers,
+                        isLoading = graph.isLoading,
+                        errorMessage = graph.errorMessage,
+                        selectedTab = if (openOnSuggested) FollowTab.Suggested else it.selectedTab,
+                    )
+                }
+            }
+        }
         // Suggestions come from the connection list, which updates as it loads and as people connect
         viewModelScope.launch {
             connectionService.connections.collect { state ->
@@ -67,6 +81,12 @@ class FollowingViewModel(
                     .filterValues { it.status == ConnectionStatus.Connected }
                     .keys.map { it.domainName }
                 _uiState.update { it.copy(connections = connected) }
+            }
+        }
+        viewModelScope.launch {
+            developerPreferences.advancedFeedEnabled.collect { enabled ->
+                _uiState.update { it.copy(advancedFeed = enabled) }
+                if (enabled && _uiState.value.peopleYouMayKnowBasis == null) loadPeopleYouMayKnow(refresh = false)
             }
         }
     }
@@ -79,76 +99,36 @@ class FollowingViewModel(
         _events.tryEmit(FollowingEvent.NavigateToIdentity(odinId))
     }
 
-    // Fanned out with async so a failure of either cancels the other and surfaces one error rather than a
-    // half-populated screen.
-    fun load() {
+    fun load() = followGraph.ensureLoaded(force = true)
+
+    // The server asks every connection, so it is slow the first time and cached for an hour after
+    fun loadPeopleYouMayKnow(refresh: Boolean) {
+        if (_uiState.value.peopleYouMayKnowLoading) return
+        _uiState.update { it.copy(peopleYouMayKnowLoading = true) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val (following, followers) = coroutineScope {
-                    val followingDeferred = async {
-                        fetchAll { cursor -> followProvider.fetchFollowing(cursor = cursor, count = PAGE_SIZE) }
-                    }
-                    val followersDeferred = async {
-                        fetchAll { cursor -> followProvider.fetchFollowers(cursor = cursor, count = PAGE_SIZE) }
-                    }
-                    followingDeferred.await() to followersDeferred.await()
-                }
+                val result = followProvider.fetchSuggestions(refresh = refresh)
                 _uiState.update {
                     it.copy(
-                        following = following,
-                        followers = followers,
-                        isLoading = false,
-                        errorMessage = null,
-                        // Someone who follows no one yet starts on the people they could follow
-                        selectedTab = if (following.isEmpty() && it.selectedTab == FollowTab.Following)
-                            FollowTab.Suggested else it.selectedTab,
+                        peopleYouMayKnow = result.results,
+                        peopleYouMayKnowBasis = result.answered to result.asked,
+                        peopleYouMayKnowLoading = false,
                     )
                 }
             } catch (t: Throwable) {
-                Logger.e(throwable = t, tag = TAG) { "load failed: ${t.message}" }
-                _uiState.update { it.copy(isLoading = false, errorMessage = t.message) }
+                // Quietly absent: the section is extra, and an older server has no suggestions route
+                Logger.w(throwable = t, tag = TAG) { "suggestions failed: ${t.message}" }
+                _uiState.update { it.copy(peopleYouMayKnowLoading = false) }
             }
         }
     }
 
-    // Every page, so the lists are complete: the server pages by cursor and ends with a short or empty page.
-    private suspend fun fetchAll(page: suspend (cursor: String?) -> CursoredResult<List<String>>): List<String> {
-        val all = mutableListOf<String>()
-        var cursor: String? = null
-        repeat(MAX_PAGES) {
-            val result = page(cursor)
-            all += result.results
-            if (result.results.size < PAGE_SIZE || result.cursorState.isBlank()) return all
-            cursor = result.cursorState
-        }
-        return all
-    }
-
-    // A re-follow is idempotent server-side, so the optimistic add is safe even if the row was already present.
     fun follow(odinId: String) {
-        val wasFollowed = _uiState.value.following.any { it.equals(odinId, ignoreCase = true) }
-        if (!wasFollowed) {
-            _uiState.update { it.copy(following = it.following + odinId) }
-        }
         viewModelScope.launch {
             try {
-                followProvider.follow(
-                    FollowRequest(
-                        odinId = OdinId(odinId),
-                        notificationType = FollowNotificationType.AllNotifications,
-                        // Their existing posts show in the feed straight away, not only new ones
-                        synchronizeFeedHistoryNow = true,
-                    ),
-                )
+                followGraph.follow(odinId)
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "follow $odinId failed: ${t.message}" }
-                // Undo only this one: "Follow all" runs several at once
-                if (!wasFollowed) {
-                    _uiState.update {
-                        it.copy(following = it.following.filterNot { id -> id.equals(odinId, ignoreCase = true) })
-                    }
-                }
                 _events.tryEmit(FollowingEvent.ShowSnackbar(t.message ?: odinId))
             }
         }
@@ -175,16 +155,11 @@ class FollowingViewModel(
     }
 
     fun unfollow(odinId: String) {
-        val previous = _uiState.value.following
-        _uiState.update {
-            it.copy(following = it.following.filterNot { id -> id.equals(odinId, ignoreCase = true) })
-        }
         viewModelScope.launch {
             try {
-                followProvider.unfollow(OdinId(odinId))
+                followGraph.unfollow(odinId)
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "unfollow $odinId failed: ${t.message}" }
-                _uiState.update { it.copy(following = previous) }
                 _events.tryEmit(FollowingEvent.ShowSnackbar(t.message ?: odinId))
             }
         }

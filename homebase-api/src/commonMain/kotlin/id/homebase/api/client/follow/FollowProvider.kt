@@ -94,6 +94,22 @@ class FollowProvider(
         return def != null && def.odinId != null
     }
 
+    /**
+     * People you may know: your server asks your connections for what they share of their own connections and
+     * follows (odin-core #1626). [refresh] skips the server's hour-long cache.
+     */
+    suspend fun fetchSuggestions(count: Int = 50, refresh: Boolean = false): FollowerSuggestions {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "$BASE/suggestions"),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = "count=$count&refresh=$refresh",
+        )
+        throwForFailure(response)
+        return deserialize<FollowerSuggestions>(response.body)
+    }
+
     suspend fun syncFeedHistory(odinId: OdinId) {
         val creds = requireCreds()
         val response = encryptedPostJson(
@@ -145,4 +161,23 @@ data class FollowDefinition(
     val odinId: String? = null,
     val notificationType: FollowNotificationType? = null,
     val channels: List<TargetDrive>? = null,
+)
+
+@Serializable
+data class FollowerSuggestion(
+    val odinId: String,
+    /** Your connections that list them as a connection. */
+    val viaConnections: List<String> = emptyList(),
+    /** Your connections that follow them. */
+    val viaFollows: List<String> = emptyList(),
+    val score: Int = 0,
+)
+
+// How many of your connections were asked, and how many answered (the rest refused, timed out or were offline)
+@Serializable
+data class FollowerSuggestions(
+    val results: List<FollowerSuggestion> = emptyList(),
+    val asked: Int = 0,
+    val answered: Int = 0,
+    val computedAt: Long = 0,
 )

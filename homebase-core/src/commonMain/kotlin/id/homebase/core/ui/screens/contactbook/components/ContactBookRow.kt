@@ -36,6 +36,8 @@ fun ContactBookRow(
     /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
     trailing: (@Composable () -> Unit)? = null,
     morphAvatar: Boolean = false,
+    /** A line under the subtitle saying how you follow each other (the Advanced Feed developer flag). */
+    followBadge: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val disabled = disabledReason != null
@@ -70,6 +72,14 @@ fun ContactBookRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (followBadge != null) {
+                Text(
+                    text = followBadge,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
                 )
             }
         }

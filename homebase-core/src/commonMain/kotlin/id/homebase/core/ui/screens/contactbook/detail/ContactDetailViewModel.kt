@@ -22,9 +22,8 @@ import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
-import id.homebase.api.client.follow.FollowNotificationType
 import id.homebase.api.client.follow.FollowProvider
-import id.homebase.api.client.follow.FollowRequest
+import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.Md5
@@ -114,6 +113,7 @@ class ContactDetailViewModel(
     private val overrideStore: ContactOverrideStore,
     private val publicIdentityRepository: PublicIdentityRepository,
     private val followProvider: FollowProvider,
+    private val followGraph: FollowGraph,
 ) : ViewModel() {
 
     /**
@@ -544,17 +544,8 @@ class ContactDetailViewModel(
         _uiState.update { it.copy(isFollowing = !was) }
         viewModelScope.launch {
             try {
-                if (was) {
-                    followProvider.unfollow(OdinId(id))
-                } else {
-                    followProvider.follow(
-                        FollowRequest(
-                            odinId = OdinId(id),
-                            notificationType = FollowNotificationType.AllNotifications,
-                            synchronizeFeedHistoryNow = true,
-                        )
-                    )
-                }
+                // Through the shared lists, so the feed row and Contacts' filters follow along
+                if (was) followGraph.unfollow(id) else followGraph.follow(id)
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = "ContactDetail") { "follow toggle $id failed: ${t.message}" }
                 _uiState.update { it.copy(isFollowing = was) }

@@ -1,6 +1,13 @@
 package id.homebase.core.ui.screens.feed.following
 
 import androidx.compose.foundation.clickable
+import id.homebase.api.client.follow.FollowerSuggestion
+import androidx.compose.foundation.layout.size
+import id.homebase.resources.feed_following_pymk_title
+import id.homebase.resources.feed_following_pymk_basis
+import id.homebase.resources.feed_following_pymk_refresh
+import id.homebase.resources.feed_following_pymk_via_connections
+import id.homebase.resources.feed_following_pymk_via_follows
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -152,13 +159,17 @@ fun FollowingScreen(
                 FollowTab.Suggested -> uiState.suggested
             }
 
+            // People you may know shows under your own suggestions, and keeps the tab from reading as empty
+            val showPeopleYouMayKnow = uiState.selectedTab == FollowTab.Suggested && uiState.advancedFeed &&
+                (uiState.peopleYouMayKnowLoading || uiState.peopleYouMayKnowNotFollowed.isNotEmpty())
+
             when {
                 uiState.isLoading && identities.isEmpty() -> LoadingState()
                 // A failed load is not an empty list: say so, rather than "You're not following anyone yet."
                 uiState.errorMessage != null && identities.isEmpty() -> ErrorState(onRetry = viewModel::load)
-                identities.isEmpty() -> EmptyState(tab = uiState.selectedTab)
+                identities.isEmpty() && !showPeopleYouMayKnow -> EmptyState(tab = uiState.selectedTab)
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    if (uiState.selectedTab == FollowTab.Suggested) {
+                    if (uiState.selectedTab == FollowTab.Suggested && identities.isNotEmpty()) {
                         item(key = "suggested-header") {
                             SuggestedHeader(onFollowAll = { viewModel.followAll(identities) })
                         }
@@ -187,9 +198,111 @@ fun FollowingScreen(
                             onUnfollow = { viewModel.unfollow(odinId) },
                         )
                     }
+                    if (showPeopleYouMayKnow) {
+                        item(key = "pymk-header") {
+                            PeopleYouMayKnowHeader(
+                                basis = uiState.peopleYouMayKnowBasis,
+                                isLoading = uiState.peopleYouMayKnowLoading,
+                                onRefresh = { viewModel.loadPeopleYouMayKnow(refresh = true) },
+                            )
+                        }
+                        items(items = uiState.peopleYouMayKnowNotFollowed, key = { "pymk-" + it.odinId }) { suggestion ->
+                            val odin = remember(suggestion.odinId) { OdinId(suggestion.odinId) }
+                            val displayName = displayNames[odin]?.takeIf { it.isNotBlank() } ?: suggestion.odinId
+                            PeopleYouMayKnowRow(
+                                suggestion = suggestion,
+                                displayName = displayName,
+                                nameOf = { domain ->
+                                    displayNames[OdinId(domain)]?.takeIf { it.isNotBlank() } ?: domain
+                                },
+                                onRowClick = { viewModel.onIdentityClick(suggestion.odinId) },
+                                onFollow = { viewModel.follow(suggestion.odinId) },
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PeopleYouMayKnowHeader(basis: Pair<Int, Int>?, isLoading: Boolean, onRefresh: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(MR.string.feed_following_pymk_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            basis?.let { (answered, asked) ->
+                Text(
+                    text = stringResource(MR.string.feed_following_pymk_basis, answered, asked),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+            TextButton(onClick = onRefresh) { Text(stringResource(MR.string.feed_following_pymk_refresh)) }
+        }
+    }
+}
+
+// "Connected to Sam and Merry" / "Followed by Sam": who led here, by name where the contact book knows them
+@Composable
+private fun PeopleYouMayKnowRow(
+    suggestion: FollowerSuggestion,
+    displayName: String,
+    nameOf: (String) -> String,
+    onRowClick: () -> Unit,
+    onFollow: () -> Unit,
+) {
+    val odin = remember(suggestion.odinId) { OdinId(suggestion.odinId) }
+    val via = when {
+        suggestion.viaConnections.isNotEmpty() ->
+            stringResource(MR.string.feed_following_pymk_via_connections, viaNames(suggestion.viaConnections, nameOf))
+        else -> stringResource(MR.string.feed_following_pymk_via_follows, viaNames(suggestion.viaFollows, nameOf))
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onRowClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        IdentityAvatar(
+            odinId = odin,
+            displayName = displayName,
+            options = AvatarOptions(size = 44.dp, onClick = onRowClick),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = via,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Button(onClick = onFollow) { Text(stringResource(MR.string.feed_following_follow)) }
+    }
+}
+
+// Two names, then "and N more"
+private fun viaNames(domains: List<String>, nameOf: (String) -> String): String {
+    val names = domains.take(2).map(nameOf)
+    val more = domains.size - names.size
+    return when {
+        more > 0 -> names.joinToString(", ") + " +$more"
+        names.size == 2 -> names[0] + " & " + names[1]
+        else -> names.firstOrNull().orEmpty()
     }
 }
 
