@@ -323,7 +323,6 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
         driveSlug = VAULT_DRIVE_SLUG,
         driveTypeSlug = VAULT_DRIVE_TYPE_SLUG,
-        sharingModel = DriveSharingModel.Private,
     )
 )
 

@@ -4,7 +4,6 @@ import id.homebase.api.youauth.TargetDriveAccessRequest
 import io.ktor.http.Url
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class FilesyncAppRegistrationTest {
 
@@ -34,11 +33,5 @@ class FilesyncAppRegistrationTest {
             """[{"a":"cfceb937-b868-496b-91cb-3402f18320f8","t":"5da48122-e946-487a-8b9d-589642f3c91d","p":3,"ts":"filesync"}]""",
             TargetDriveAccessRequest.encodeList(filesyncTargetDriveAccessRequest),
         )
-    }
-
-    @Test
-    fun vaultAsksForAPrivateDrive() {
-        val drive = TargetDriveAccessRequest.encodeList(vaultTargetDriveAccessRequest)
-        assertTrue(drive.endsWith(""","sm":"private"}]"""), drive)
     }
 }
