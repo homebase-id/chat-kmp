@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.feed.following
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.query.CursoredResult
 import id.homebase.api.client.follow.FollowNotificationType
 import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.client.follow.FollowRequest
@@ -46,6 +47,9 @@ class FollowingViewModel(
     companion object {
         private const val TAG = "FollowingViewModel"
         private const val PAGE_SIZE = 100
+
+        // Bounds a runaway cursor; well past any real follow list.
+        private const val MAX_PAGES = 20
     }
 
     init {
@@ -70,10 +74,10 @@ class FollowingViewModel(
             try {
                 val (following, followers) = coroutineScope {
                     val followingDeferred = async {
-                        followProvider.fetchFollowing(max = PAGE_SIZE).results
+                        fetchAll { cursor -> followProvider.fetchFollowing(cursor = cursor, count = PAGE_SIZE) }
                     }
                     val followersDeferred = async {
-                        followProvider.fetchFollowers(max = PAGE_SIZE).results
+                        fetchAll { cursor -> followProvider.fetchFollowers(cursor = cursor, count = PAGE_SIZE) }
                     }
                     followingDeferred.await() to followersDeferred.await()
                 }
@@ -92,6 +96,19 @@ class FollowingViewModel(
         }
     }
 
+    // Every page, so the lists are complete: the server pages by cursor and ends with a short or empty page.
+    private suspend fun fetchAll(page: suspend (cursor: String?) -> CursoredResult<List<String>>): List<String> {
+        val all = mutableListOf<String>()
+        var cursor: String? = null
+        repeat(MAX_PAGES) {
+            val result = page(cursor)
+            all += result.results
+            if (result.results.size < PAGE_SIZE || result.cursorState.isBlank()) return all
+            cursor = result.cursorState
+        }
+        return all
+    }
+
     // A re-follow is idempotent server-side, so the optimistic add is safe even if the row was already present.
     fun follow(odinId: String) {
         val previous = _uiState.value.following
@@ -104,6 +121,8 @@ class FollowingViewModel(
                     FollowRequest(
                         odinId = OdinId(odinId),
                         notificationType = FollowNotificationType.AllNotifications,
+                        // Their existing posts show in the feed straight away, not only new ones
+                        synchronizeFeedHistoryNow = true,
                     ),
                 )
             } catch (t: Throwable) {

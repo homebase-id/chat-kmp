@@ -71,12 +71,8 @@ class FollowProviderTest {
     fun fetchFollowing_parsesCursoredListFromIdentitiesIFollow() = runTest {
         var capturedPath: String? = null
 
-        val body = OdinSystemSerializer.serialize(
-            FollowPageResponse(
-                results = listOf("sam.dotyou.cloud", "merry.dotyou.cloud"),
-                cursorState = "next-cursor-abc",
-            )
-        )
+        // As the server writes its CursoredResult: the next cursor is `cursor`
+        val body = """{"results":["sam.dotyou.cloud","merry.dotyou.cloud"],"cursor":"next-cursor-abc"}"""
         val engine = MockEngine { request ->
             capturedPath = request.url.encodedPath
             respond(
@@ -87,9 +83,9 @@ class FollowProviderTest {
         }
         val provider = FollowProvider(HttpClient(engine), creds())
 
-        val page = provider.fetchFollowing(cursor = null, max = 100)
+        val page = provider.fetchFollowing(cursor = null, count = 100)
 
-        assertEquals("/api/v2/followers/IdentitiesIFollow", capturedPath)
+        assertEquals("/api/v2/followers/identities-i-follow", capturedPath)
         assertEquals(listOf("sam.dotyou.cloud", "merry.dotyou.cloud"), page.results)
         assertEquals("next-cursor-abc", page.cursorState)
         assertTrue(page.results.size == 2)

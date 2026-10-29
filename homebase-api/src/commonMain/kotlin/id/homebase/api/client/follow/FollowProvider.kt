@@ -3,6 +3,7 @@ package id.homebase.api.client.follow
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.OdinIdRequest
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.query.CursoredResult
 import id.homebase.api.common.OdinId
@@ -10,7 +11,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
 
-// Ports the dotyoucore-js FollowManager over /api/v2/followers/*.
+// Who this identity follows and who follows it, over /api/v2/followers/* (odin-core #1626).
 class FollowProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
@@ -21,7 +22,7 @@ class FollowProvider(
         private const val BASE = "/followers"
     }
 
-    /** The server treats "already followed" as success. Call [syncFeedHistory] after to backfill their posts. */
+    /** The server treats "already followed" as success. [FollowRequest.synchronizeFeedHistoryNow] backfills their posts. */
     suspend fun follow(request: FollowRequest) {
         val creds = requireCreds()
         val response = encryptedPostJson(
@@ -40,17 +41,17 @@ class FollowProvider(
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "$BASE/unfollow"),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(UnfollowRequest(odinId)),
+            jsonBody = OdinSystemSerializer.serialize(OdinIdRequest(odinId)),
             secret = creds.secret,
         )
         throwForFailure(response)
     }
 
-    suspend fun fetchFollowing(cursor: String? = null, max: Int? = null): CursoredResult<List<String>> {
+    suspend fun fetchFollowing(cursor: String? = null, count: Int? = null): CursoredResult<List<String>> {
         val creds = requireCreds()
-        val queryString = buildQuery(cursor, max)
+        val queryString = buildQuery(cursor, count)
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/IdentitiesIFollow"),
+            url = apiUrl(creds.domain, "$BASE/identities-i-follow"),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = queryString,
@@ -59,11 +60,11 @@ class FollowProvider(
         return toCursoredList(deserialize<FollowPageResponse>(response.body))
     }
 
-    suspend fun fetchFollowers(cursor: String? = null, max: Int? = null): CursoredResult<List<String>> {
+    suspend fun fetchFollowers(cursor: String? = null, count: Int? = null): CursoredResult<List<String>> {
         val creds = requireCreds()
-        val queryString = buildQuery(cursor, max)
+        val queryString = buildQuery(cursor, count)
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/followingme"),
+            url = apiUrl(creds.domain, "$BASE/following-me"),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = queryString,
@@ -75,7 +76,7 @@ class FollowProvider(
     suspend fun isFollowing(odinId: OdinId): Boolean {
         val creds = requireCreds()
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/IdentityIFollow"),
+            url = apiUrl(creds.domain, "$BASE/identity-i-follow"),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = "odinId=${odinId.domainName}",
@@ -92,22 +93,22 @@ class FollowProvider(
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "$BASE/sync-feed-history"),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(SyncFeedHistoryRequest(odinId)),
+            jsonBody = OdinSystemSerializer.serialize(OdinIdRequest(odinId)),
             secret = creds.secret,
         )
         throwForFailure(response)
     }
 
-    private fun buildQuery(cursor: String?, max: Int?): String? = buildString {
+    private fun buildQuery(cursor: String?, count: Int?): String? = buildString {
         cursor?.let { append("cursor=$it") }
-        max?.let {
+        count?.let {
             if (isNotEmpty()) append("&")
-            append("max=$it")
+            append("count=$it")
         }
     }.ifBlank { null }
 
     private fun toCursoredList(page: FollowPageResponse): CursoredResult<List<String>> =
-        CursoredResult(results = page.results, cursorState = page.cursorState.orEmpty())
+        CursoredResult(results = page.results, cursorState = page.cursor.orEmpty())
 }
 
 @Serializable
@@ -117,24 +118,20 @@ enum class FollowNotificationType {
 }
 
 // When [notificationType] is SelectedChannels, [channels] lists the channel drives; otherwise it follows all
-// channels and may be null.
+// channels and may be null. [synchronizeFeedHistoryNow] pulls their existing posts into the feed right away.
 @Serializable
 data class FollowRequest(
     val odinId: OdinId,
     val notificationType: FollowNotificationType,
     val channels: List<TargetDrive>? = null,
+    val synchronizeFeedHistoryNow: Boolean = false,
 )
 
-@Serializable
-data class UnfollowRequest(val odinId: OdinId)
-
-@Serializable
-data class SyncFeedHistoryRequest(val odinId: OdinId)
-
+// The server's CursoredResult: the next page's cursor is `cursor`.
 @Serializable
 data class FollowPageResponse(
     val results: List<String> = emptyList(),
-    val cursorState: String? = null,
+    val cursor: String? = null,
 )
 
 @Serializable

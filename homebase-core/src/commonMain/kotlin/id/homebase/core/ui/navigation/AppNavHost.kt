@@ -152,6 +152,7 @@ import org.koin.compose.getKoin
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
+import id.homebase.core.ui.screens.feed.following.FollowingScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
@@ -1096,6 +1097,9 @@ fun AppNavHost(
                                             onNavigateToDetail = {
                                                 navController.navigate(Route.PostDetail(it.toString()))
                                             },
+                                            onNavigateToFollowing = {
+                                                navController.navigate(Route.Following)
+                                            },
                                             onAuthorClick = {
                                                 navController.navigateToIdentity(it.domainName)
                                             },
@@ -1127,9 +1131,15 @@ fun AppNavHost(
                                 }
                             }
 
-                            // ponytail: Route.Following is unregistered — the v2 API has no followers
-                            // controller, so the screen could only show its 404 empty state. The screen,
-                            // VM and provider are kept; re-add this destination once the routes ship.
+                            composable<Route.Following> {
+                                if (isAuthenticated) {
+                                    FollowingScreen(
+                                        viewModel = koinViewModel(),
+                                        onBack = { navController.popBackStack() },
+                                        onIdentityClick = { navController.navigateToIdentity(it) },
+                                    )
+                                }
+                            }
 
                             tab<Route.ContactBook>(tabRoot) {
                                 if (isAuthenticated) {

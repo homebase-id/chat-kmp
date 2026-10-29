@@ -2361,6 +2361,8 @@
     <string name="feed_following_unfollow">Unfollow</string>
     <string name="feed_following_empty_following">You're not following anyone yet.</string>
     <string name="feed_following_empty_followers">No one is following you yet.</string>
+    <string name="feed_following_error">Couldn't load your follows.</string>
+    <string name="feed_following_retry">Retry</string>
 
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>

@@ -41,7 +41,9 @@ import id.homebase.resources.MR
 import id.homebase.resources.feed_following_back
 import id.homebase.resources.feed_following_empty_followers
 import id.homebase.resources.feed_following_empty_following
+import id.homebase.resources.feed_following_error
 import id.homebase.resources.feed_following_follow
+import id.homebase.resources.feed_following_retry
 import id.homebase.resources.feed_following_tab_followers
 import id.homebase.resources.feed_following_tab_following
 import id.homebase.resources.feed_following_title
@@ -106,6 +108,8 @@ fun FollowingScreen(
 
             when {
                 uiState.isLoading && identities.isEmpty() -> LoadingState()
+                // A failed load is not an empty list: say so, rather than "You're not following anyone yet."
+                uiState.errorMessage != null && identities.isEmpty() -> ErrorState(onRetry = viewModel::load)
                 identities.isEmpty() -> EmptyState(tab = uiState.selectedTab)
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(items = identities, key = { it }) { odinId ->
@@ -133,6 +137,24 @@ fun FollowingScreen(
 private fun LoadingState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun ErrorState(onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(MR.string.feed_following_error),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
+            Text(stringResource(MR.string.feed_following_retry))
+        }
     }
 }
 
