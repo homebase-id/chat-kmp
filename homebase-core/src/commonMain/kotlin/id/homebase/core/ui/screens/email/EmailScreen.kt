@@ -38,6 +38,15 @@ import id.homebase.core.ui.screens.email.setup.EmailSetupContent
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.resources.MR
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import org.jetbrains.compose.resources.getString
+import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.email_sign_in_again_title
+import id.homebase.resources.email_sign_in_again_body
+import id.homebase.resources.email_make_private
+import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
 import id.homebase.resources.email_checking
 import id.homebase.resources.email_home_subtitle
 import id.homebase.resources.email_label
@@ -75,6 +84,19 @@ fun EmailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
     val uriHandler = getUriHandler()
+    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is EmailUiEvent.OpenSignIn -> signIn.open(event.url)
+                is EmailUiEvent.OpenOwnerConsole -> uriHandler.openUrl(event.url)
+                // Not inline: showSnackbar suspends until dismissed, holding the next sign-in back past its click.
+                EmailUiEvent.SignInAgainFailed -> scope.launch { snackbarHostState.showSnackbar(getString(MR.string.sign_in_again_failed)) }
+                EmailUiEvent.Activated, EmailUiEvent.CloseOnboarding, is EmailUiEvent.MailClientUnavailable -> Unit
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -82,76 +104,89 @@ fun EmailScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            val body = when {
-                uiState.isResolving || uiState.driveActivated == null -> EmailBody.Busy
-                uiState.statusError != null -> EmailBody.StatusUnavailable
-                uiState.serverHasNoEmail -> EmailBody.NoServer
-                uiState.driveActivated == false -> EmailBody.Onboarding
-                setupStep == EmailSetupStep.Complete -> EmailBody.Home
-                else -> EmailBody.Setup
+            if (uiState.driveActivated == true) {
+                PrivateDriveBanners(
+                    state = uiState.privateDrive,
+                    makePrivateText = MR.string.email_make_private,
+                    signInTitle = MR.string.email_sign_in_again_title,
+                    signInBody = MR.string.email_sign_in_again_body,
+                    signIn = signIn,
+                    onMakePrivate = { viewModel.onAction(EmailUiAction.MakePrivate) },
+                    onSignInAgain = { viewModel.onAction(EmailUiAction.SignInAgain) },
+                )
             }
-            Crossfade(body, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) { shown ->
-                when (shown) {
-                    EmailBody.Busy -> EmailBusy()
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                val body = when {
+                    uiState.isResolving || uiState.driveActivated == null -> EmailBody.Busy
+                    uiState.statusError != null -> EmailBody.StatusUnavailable
+                    uiState.serverHasNoEmail -> EmailBody.NoServer
+                    uiState.driveActivated == false -> EmailBody.Onboarding
+                    setupStep == EmailSetupStep.Complete -> EmailBody.Home
+                    else -> EmailBody.Setup
+                }
+                Crossfade(body, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) { shown ->
+                    when (shown) {
+                        EmailBody.Busy -> EmailBusy()
 
-                    EmailBody.StatusUnavailable -> EmailStatusUnavailable(
-                        onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
-                    )
+                        EmailBody.StatusUnavailable -> EmailStatusUnavailable(
+                            onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                        )
 
-                    EmailBody.NoServer -> EmailNoServerContent(
-                        onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
-                        onClose = onNavigateBack,
-                    )
+                        EmailBody.NoServer -> EmailNoServerContent(
+                            onRetry = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                            onClose = onNavigateBack,
+                        )
 
-                    EmailBody.Onboarding -> EmailOnboardingContent(
-                        onAction = viewModel::onAction,
-                    )
+                        EmailBody.Onboarding -> EmailOnboardingContent(
+                            onAction = viewModel::onAction,
+                        )
 
-                    EmailBody.Home -> {
-                        // On entry: a domain's DNS changes outside the app. The ViewModel
-                        // reuses a recent answer.
-                        LaunchedEffect(Unit) { viewModel.onAction(EmailUiAction.HomeShown) }
-                        EmailHomeContent(
+                        EmailBody.Home -> {
+                            // On entry: a domain's DNS changes outside the app. The ViewModel
+                            // reuses a recent answer.
+                            LaunchedEffect(Unit) { viewModel.onAction(EmailUiAction.HomeShown) }
+                            EmailHomeContent(
+                                status = uiState.serverStatus,
+                                mailbox = uiState.mailboxStatus,
+                                onOpenSecrets = onNavigateToSecrets,
+                                onOpenThunderbirdSetup = onNavigateToThunderbirdSetup,
+                                onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                                onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
+                                isRefreshing = uiState.isCheckingServer,
+                                health = uiState.health,
+                                isCheckingHealth = uiState.isCheckingHealth,
+                                healthUnavailable = uiState.healthError != null,
+                                onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
+                                onCopy = copyToClipboard,
+                                onOpenOwnerConsole = {
+                                    viewModel.ownerEmailSettingsUrl()?.let { uriHandler.openUrl(it) }
+                                },
+                                onOpenOwnerDnsSettings = {
+                                    viewModel.ownerDnsSettingsUrl()?.let { uriHandler.openUrl(it) }
+                                },
+                            )
+                        }
+
+                        EmailBody.Setup -> EmailSetupContent(
+                            currentStep = setupStep,
                             status = uiState.serverStatus,
-                            mailbox = uiState.mailboxStatus,
-                            onOpenSecrets = onNavigateToSecrets,
-                            onOpenThunderbirdSetup = onNavigateToThunderbirdSetup,
-                            onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
-                            onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
-                            isRefreshing = uiState.isCheckingServer,
-                            health = uiState.health,
-                            isCheckingHealth = uiState.isCheckingHealth,
-                            healthUnavailable = uiState.healthError != null,
-                            onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
-                            onCopy = copyToClipboard,
-                            onOpenOwnerConsole = {
-                                viewModel.ownerEmailSettingsUrl()?.let { uriHandler.openUrl(it) }
-                            },
-                            onOpenOwnerDnsSettings = {
-                                viewModel.ownerDnsSettingsUrl()?.let { uriHandler.openUrl(it) }
+                            uiState = setupState,
+                            onAction = setupViewModel::onAction,
+                            onRun = { mode ->
+                                setupViewModel.runSetup(
+                                    mode = mode,
+                                    currentStep = viewModel::currentSetupStep,
+                                    refresh = { viewModel.refreshStatusNow() },
+                                )
                             },
                         )
                     }
-
-                    EmailBody.Setup -> EmailSetupContent(
-                        currentStep = setupStep,
-                        status = uiState.serverStatus,
-                        uiState = setupState,
-                        onAction = setupViewModel::onAction,
-                        onRun = { mode ->
-                            setupViewModel.runSetup(
-                                mode = mode,
-                                currentStep = viewModel::currentSetupStep,
-                                refresh = { viewModel.refreshStatusNow() },
-                            )
-                        },
-                    )
                 }
             }
         }

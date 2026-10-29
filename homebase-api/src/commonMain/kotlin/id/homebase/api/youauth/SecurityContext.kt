@@ -34,6 +34,8 @@ data class DriveGrant(
     val hasStorageKey: Boolean = false,
     /** On a zero-knowledge drive only: its key, `zkLock`ed with the app's zero-knowledge key. */
     val zkAppKeyEncryptedStorageKey: String? = null,
+    /** With [zkAppKeyEncryptedStorageKey]: the drive's write-only private key (PKCS8), `zkLock`ed with the drive key; opens sealed key headers. */
+    val zkStorageKeyEncryptedWriteOnlyPrivateKey: String? = null,
     /** Set on a zero-knowledge drive even before the app has a copy of its key. */
     val isZeroKnowledge: Boolean = false,
 )

@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.crypto.EncryptionType
+import id.homebase.api.crypto.ZkSeal
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.serialization.UuidSerializer
@@ -76,11 +77,21 @@ data class ServerFile(
     }
 }
 
-/** Opens a key header as the server returns it: locked with the shared secret, or on a zero-knowledge drive with its key. */
+/**
+ * Opens a key header as the server returns it: locked with the shared secret, or on a zero-knowledge drive with
+ * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write).
+ */
 suspend fun EncryptedKeyHeader.open(driveId: Uuid, sharedSecret: SecureByteArray): KeyHeader = when (type) {
     EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
     EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
-    EncryptionType.Sealed -> throw FileDecryptionException.Sealed()
+    EncryptionType.Sealed -> openSealed(driveId)
+}
+
+// The sealed value is the file's IV then its AES key, as odin-js openClientLockedKeyHeader reads it.
+private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
+    val writeOnlyKey = ZkKeyStore.writeOnlyPrivateKey(driveId) ?: throw FileDecryptionException.Sealed()
+    val opened = ZkSeal.open(encryptedAesKey, writeOnlyKey)
+    return KeyHeader(opened.copyOf(16), SecureByteArray(opened.copyOfRange(16, opened.size)))
 }
 
 /**

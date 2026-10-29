@@ -68,6 +68,9 @@ class MailProvider(
      *
      * [clientEntropyBase64] is optional additional entropy (the shake screen); the server mixes it
      * into its own generator rather than substituting it, and generation is never blocked on it.
+     *
+     * Generating the OpenPGP key pair here on the client instead would be a little more secure: the
+     * private key would never reach the server, which only needs the public certificate for Stalwart.
      */
     suspend fun generateKey(
         primaryEmailAddress: String,
