@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.runtime.Immutable
+import id.homebase.core.privatedrive.PrivateDriveState
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
@@ -47,6 +48,7 @@ data class FilesyncUiState(
     val folderTags: List<FilesyncTag> = emptyList(),
     val visible: List<FilesyncNode> = emptyList(),
     val totals: FilesyncTotals = FilesyncTotals(),
+    val privateDrive: PrivateDriveState = PrivateDriveState(),
 ) {
     val selected: FilesyncNode? by lazy(LazyThreadSafetyMode.NONE) { selectedId?.let { id -> visible.firstOrNull { it.nodeId == id } } }
 
@@ -91,9 +93,11 @@ sealed interface FilesyncUiAction {
     data class FilterTag(val name: String) : FilesyncUiAction
     data class Select(val nodeId: Uuid?) : FilesyncUiAction
     data class MoveSelection(val by: Int) : FilesyncUiAction
+    data object MakePrivate : FilesyncUiAction
+    data object SignInAgain : FilesyncUiAction
 }
 
-enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, StorageFull, FolderFailed, RestoreFailed, DeleteFailed }
+enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, StorageFull, FolderFailed, RestoreFailed, DeleteFailed, SignInAgainFailed }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
 enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon }
@@ -103,6 +107,8 @@ sealed interface FilesyncUiEvent {
     data class SaveFile(val path: String, val name: String) : FilesyncUiEvent
     data class ShareFile(val path: String) : FilesyncUiEvent
     data object OpenWebDrop : FilesyncUiEvent
+    data class OpenSignIn(val url: String) : FilesyncUiEvent
+    data class OpenOwnerConsole(val url: String) : FilesyncUiEvent
     data class Error(val error: FilesyncError) : FilesyncUiEvent
     data class Notice(val notice: FilesyncNotice) : FilesyncUiEvent
 }

@@ -122,6 +122,8 @@ class ExtendPermissionViewModel(
         }
     }
 
+    fun callbackUrl(): String = config.callbackUrl()
+
     // Another mini-app's answer isn't ours; an untagged return (an older URL) is everyone's.
     private fun answersMe(requester: String?) = requester == null || requester == config.requester
 
