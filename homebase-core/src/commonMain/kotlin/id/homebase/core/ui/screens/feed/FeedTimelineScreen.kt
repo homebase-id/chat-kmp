@@ -44,6 +44,14 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
+import androidx.compose.material.icons.filled.Close
+import id.homebase.core.feed.services.authorOdinId
+import id.homebase.resources.feed_timeline_filter_empty
+import id.homebase.resources.feed_timeline_filter_clear
+import id.homebase.resources.feed_timeline_filter_showing
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -129,6 +137,20 @@ fun FeedTimelineScreen(
     // state remembered inside it would come back scrolled to the top.
     val listState = rememberLazyListState()
 
+    // Developer flag: tapping someone in the following row shows only their posts. Filters what the feed has
+    // loaded; scrolling on loads more pages as usual.
+    var authorFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(advancedFeed) { if (!advancedFeed) authorFilter = null }
+    LaunchedEffect(authorFilter) { listState.scrollToItem(0) }
+    val shownState = remember(uiState, authorFilter) {
+        authorFilter?.let { f ->
+            uiState.copy(posts = uiState.posts.filter { it.authorOdinId?.domainName.equals(f, ignoreCase = true) })
+        } ?: uiState
+    }
+    val filterName = remember(authorFilter, displayNames) {
+        authorFilter?.let { f -> displayNames[OdinId(f)]?.takeIf { it.isNotBlank() } ?: f }
+    }
+
     // onDispose resets it: a notification tap can navigate away with the viewer still open, which would leave
     // the bottom bar hidden on the destination screen.
     DisposableEffect(overlay != null) {
@@ -199,7 +221,7 @@ fun FeedTimelineScreen(
                 // Gated on an empty list: a refresh that fails over a populated feed reports on the snackbar.
                 uiState.errorMessage != null && uiState.posts.isEmpty() -> FeedBody.Error
                 uiState.isLoading && uiState.posts.isEmpty() -> FeedBody.Loading
-                uiState.posts.isEmpty() -> FeedBody.Empty
+                shownState.posts.isEmpty() -> FeedBody.Empty
                 else -> FeedBody.Posts
             }
             val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
@@ -211,9 +233,28 @@ fun FeedTimelineScreen(
             ) {
             if (advancedFeed) {
                 FollowingAvatarRow(
-                    onIdentityClick = { onAuthorClick(OdinId(it)) },
+                    selected = authorFilter,
+                    // Tapping the one already shown goes back to everyone
+                    onSelect = { d -> authorFilter = if (authorFilter.equals(d, ignoreCase = true)) null else d },
+                    onViewContact = { onAuthorClick(OdinId(it)) },
+                    onUnfollowed = { d -> if (authorFilter.equals(d, ignoreCase = true)) authorFilter = null },
                     onFindPeople = onNavigateToFollowing,
                 )
+                filterName?.let { name ->
+                    InputChip(
+                        selected = true,
+                        onClick = { authorFilter = null },
+                        label = { Text(stringResource(MR.string.feed_timeline_filter_showing, name)) },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(MR.string.feed_timeline_filter_clear),
+                                modifier = Modifier.size(InputChipDefaults.IconSize),
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
             }
             Box(modifier = Modifier.weight(1f)) {
             AnimatedContent(
@@ -235,19 +276,30 @@ fun FeedTimelineScreen(
                         modifier = contentModifier,
                     )
 
-                    FeedBody.Empty -> FeedMessageState(
-                        icon = Icons.Outlined.DynamicFeed,
-                        iconContentDescription = null,
-                        title = stringResource(MR.string.feed_timeline_empty_title),
-                        body = stringResource(MR.string.feed_timeline_empty_body),
-                        modifier = contentModifier,
-                        // The Following screen opens on Suggested when you follow no one yet
-                        actionLabel = stringResource(MR.string.feed_timeline_find_people),
-                        onAction = onNavigateToFollowing,
-                    )
+                    FeedBody.Empty -> if (filterName != null) {
+                        FeedMessageState(
+                            icon = Icons.Outlined.DynamicFeed,
+                            iconContentDescription = null,
+                            title = stringResource(MR.string.feed_timeline_filter_empty, filterName),
+                            modifier = contentModifier,
+                            actionLabel = stringResource(MR.string.feed_timeline_filter_clear),
+                            onAction = { authorFilter = null },
+                        )
+                    } else {
+                        FeedMessageState(
+                            icon = Icons.Outlined.DynamicFeed,
+                            iconContentDescription = null,
+                            title = stringResource(MR.string.feed_timeline_empty_title),
+                            body = stringResource(MR.string.feed_timeline_empty_body),
+                            modifier = contentModifier,
+                            // The Following screen opens on Suggested when you follow no one yet
+                            actionLabel = stringResource(MR.string.feed_timeline_find_people),
+                            onAction = onNavigateToFollowing,
+                        )
+                    }
 
                     FeedBody.Posts -> FeedTimelineList(
-                        uiState = uiState,
+                        uiState = shownState,
                         listState = listState,
                         onRefresh = viewModel::refresh,
                         onLoadMore = viewModel::loadMore,

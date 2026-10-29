@@ -2318,6 +2318,9 @@
     <string name="feed_timeline_following_action">Following</string>
     <string name="feed_timeline_empty_title">Your feed is empty</string>
     <string name="feed_timeline_find_people">Find people to follow</string>
+    <string name="feed_timeline_filter_showing">Showing %1$s</string>
+    <string name="feed_timeline_filter_clear">Show all posts</string>
+    <string name="feed_timeline_filter_empty">No posts from %1$s in your feed yet</string>
     <string name="feed_timeline_empty_body">Posts from people you follow will show up here. Share something to get started.</string>
     <string name="feed_timeline_error_title">Couldn't load your feed</string>
     <string name="feed_timeline_error_retry">Retry</string>
@@ -2390,6 +2393,9 @@
     <string name="feed_following_cancel">Cancel</string>
     <string name="feed_following_pymk_title">People you may know</string>
     <string name="feed_following_row_add">Follow people</string>
+    <string name="feed_following_row_show_posts">Show only their posts</string>
+    <string name="feed_following_row_show_all">Show all posts</string>
+    <string name="feed_following_row_view_contact">View contact</string>
     <string name="feed_following_pymk_basis">From what %1$d of your %2$d connections share</string>
     <string name="feed_following_pymk_refresh">Refresh</string>
     <string name="feed_following_pymk_via_connections">Connected to %1$s</string>
