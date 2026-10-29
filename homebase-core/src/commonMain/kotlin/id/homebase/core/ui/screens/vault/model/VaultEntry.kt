@@ -37,14 +37,12 @@ data class VaultEntry(
     val isEncrypted: Boolean,
     val versionTag: Uuid?,
     val uploadStatus: VaultUploadStatus? = null,
-    val pendingFileUri: String? = null,
+    val isPending: Boolean = false,
     val groupId: Uuid? = null,
     val payloadDescriptors: List<PayloadDescriptor> = emptyList(),
     val notes: String? = null,
     val pdfPageCount: Int? = null,
 ) {
-    val isPending: Boolean get() = pendingFileUri != null
-
     val pageCount: Int get() = pdfPageCount ?: payloadDescriptors.size.coerceAtLeast(1)
     val hasMultiplePages: Boolean get() = pageCount > 1
 
