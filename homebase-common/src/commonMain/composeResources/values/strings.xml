@@ -2217,6 +2217,7 @@
     <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
 
     <string name="contactbook_error_save">Couldn't save the contact.</string>
+    <string name="contactbook_error_follow">Couldn't update the follow.</string>
     <string name="contactbook_error_forbidden">Couldn't save — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_connection_forbidden">Couldn't update this connection — this app doesn't have permission to manage your connections. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_delete">Couldn't delete the contact.</string>

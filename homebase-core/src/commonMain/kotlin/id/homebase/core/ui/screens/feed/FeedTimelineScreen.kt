@@ -25,7 +25,10 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.LoadingIndicator
@@ -168,11 +171,15 @@ fun FeedTimelineScreen(
                 TopAppBar(
                     title = { Text(stringResource(MR.string.feed_timeline_title)) },
                     actions = {
-                        IconButton(onClick = onNavigateToFollowing) {
+                        // Labelled: the Group icon alone reads as groups or contacts, not who you follow
+                        TextButton(onClick = onNavigateToFollowing) {
                             Icon(
                                 imageVector = Icons.Outlined.Group,
-                                contentDescription = stringResource(MR.string.feed_timeline_following_action),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
                             )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(MR.string.feed_timeline_following_action))
                         }
                     },
                     scrollBehavior = scrollBehavior,

@@ -22,6 +22,9 @@ import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
+import id.homebase.api.client.follow.FollowNotificationType
+import id.homebase.api.client.follow.FollowProvider
+import id.homebase.api.client.follow.FollowRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.Md5
@@ -110,6 +113,7 @@ class ContactDetailViewModel(
     private val emergencyContacts: EmergencyContactService,
     private val overrideStore: ContactOverrideStore,
     private val publicIdentityRepository: PublicIdentityRepository,
+    private val followProvider: FollowProvider,
 ) : ViewModel() {
 
     /**
@@ -198,6 +202,7 @@ class ContactDetailViewModel(
         viewModelScope.launch { contactRepository.ensureLoaded() }
         // Idempotent — makes pending-request state available even on a deep-link into detail.
         viewModelScope.launch { connectionRequestService.start() }
+        loadFollowing()
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
             val selfDomain = runCatching { credentialsManager.getActiveDomain()?.domainName }.getOrNull()
@@ -514,9 +519,47 @@ class ContactDetailViewModel(
         }
     }
 
+    // Unknown (null) hides the button: an identity we cannot ask about is not offered Follow
+    private fun loadFollowing() {
+        val id = odinId ?: return
+        viewModelScope.launch {
+            val following = runCatching { followProvider.isFollowing(OdinId(id)) }
+                .onFailure { Logger.w(throwable = it, tag = "ContactDetail") { "isFollowing $id failed: ${it.message}" } }
+                .getOrNull()
+            _uiState.update { it.copy(isFollowing = following) }
+        }
+    }
+
+    // Optimistic, rolled back on failure. A new follow pulls their existing posts into the feed.
+    private fun handleFollowToggled() {
+        val id = odinId ?: return
+        val was = _uiState.value.isFollowing ?: return
+        _uiState.update { it.copy(isFollowing = !was) }
+        viewModelScope.launch {
+            try {
+                if (was) {
+                    followProvider.unfollow(OdinId(id))
+                } else {
+                    followProvider.follow(
+                        FollowRequest(
+                            odinId = OdinId(id),
+                            notificationType = FollowNotificationType.AllNotifications,
+                            synchronizeFeedHistoryNow = true,
+                        )
+                    )
+                }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = "ContactDetail") { "follow toggle $id failed: ${t.message}" }
+                _uiState.update { it.copy(isFollowing = was) }
+                _events.tryEmit(ContactDetailEvent.FollowFailed)
+            }
+        }
+    }
+
     fun onAction(action: ContactDetailAction) {
         when (action) {
             ContactDetailAction.MessageClicked -> handleMessage()
+            ContactDetailAction.FollowToggled -> handleFollowToggled()
             ContactDetailAction.SyncClicked -> handleSync()
             ContactDetailAction.RebuildConversationClicked -> handleRebuildConversation()
             ContactDetailAction.EditClicked -> _uiState.update { it.copy(editOpen = true) }

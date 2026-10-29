@@ -40,6 +40,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Healing
 import androidx.compose.material.icons.outlined.PersonAddAlt1
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.WavingHand
@@ -114,6 +116,9 @@ import id.homebase.resources.contactbook_detail_block_message
 import id.homebase.resources.contactbook_detail_block_title
 import id.homebase.resources.contactbook_detail_blocked
 import id.homebase.resources.contactbook_detail_connect
+import id.homebase.resources.contactbook_error_follow
+import id.homebase.resources.feed_following_follow
+import id.homebase.resources.feed_following_unfollow
 import id.homebase.resources.contactbook_detail_delete
 import id.homebase.resources.contactbook_detail_delete_message
 import id.homebase.resources.contactbook_detail_delete_message_blocked
@@ -182,6 +187,7 @@ fun ContactDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val errSave = stringResource(MR.string.contactbook_error_save)
+    val errFollow = stringResource(MR.string.contactbook_error_follow)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errAdditionsFailed = stringResource(MR.string.chat_contact_card_partial_additions)
@@ -213,6 +219,7 @@ fun ContactDetailScreen(
                 ContactDetailEvent.ReviewCompleted -> Unit
                 ContactDetailEvent.DeletedAndBack -> onDeleted()
                 ContactDetailEvent.Error -> snackbarHostState.showSnackbar(errSave)
+                ContactDetailEvent.FollowFailed -> snackbarHostState.showSnackbar(errFollow)
                 ContactDetailEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
                 ContactDetailEvent.DeleteError -> snackbarHostState.showSnackbar(errDelete)
                 ContactDetailEvent.DeleteForbidden ->
@@ -888,6 +895,28 @@ private fun DetailHeader(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(MR.string.contactbook_detail_cancel_request))
                 }
+            }
+        }
+
+        // Following is independent of connecting: anyone with a Homebase identity can be followed.
+        val isFollowing = uiState.isFollowing
+        if (!uiState.isLoading && uiState.hasOdinId && !uiState.isSelf && !blocked && isFollowing != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { onAction(ContactDetailAction.FollowToggled) },
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            ) {
+                Icon(
+                    if (isFollowing) Icons.Outlined.Check else Icons.Outlined.DynamicFeed,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    stringResource(
+                        if (isFollowing) MR.string.feed_following_unfollow else MR.string.feed_following_follow
+                    )
+                )
             }
         }
     }
