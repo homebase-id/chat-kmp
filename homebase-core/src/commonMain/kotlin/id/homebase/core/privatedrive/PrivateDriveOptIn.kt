@@ -31,7 +31,7 @@ val VaultPrivateDrive = PrivateDrive(vaultLabeledDrive.drive.alias, listOf("rede
 
 val FilesyncPrivateDrive = PrivateDrive(
     FilesyncProtocol.DriveAlias,
-    listOf("redeal" to "drive-private", "drive" to FilesyncProtocol.DriveAlias.toString()),
+    listOf("redeal" to "drive-private", "drive" to FilesyncProtocol.DriveAlias.toString(), "model" to "selectiveShare"),
 )
 
 /** [needsSignIn]: the drive is private and this device signed in before it could get the key. [offerMakePrivate]: developer menu only, while it isn't private. */

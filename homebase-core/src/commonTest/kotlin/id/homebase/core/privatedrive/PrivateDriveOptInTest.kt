@@ -15,7 +15,7 @@ class PrivateDriveOptInTest {
     @Test
     fun filesyncAsksTheConsoleToConvertItsDriveById() {
         assertEquals(
-            "https://frodo.dotyou.cloud/owner/login?redeal=drive-private&drive=cfceb937-b868-496b-91cb-3402f18320f8" +
+            "https://frodo.dotyou.cloud/owner/login?redeal=drive-private&drive=cfceb937-b868-496b-91cb-3402f18320f8&model=selectiveShare" +
                 "&returnUrl=http%3A%2F%2Flocalhost%3A52870%2Fpermission-callback%3Ffor%3Dfilesync",
             makePrivateUrl("frodo.dotyou.cloud", FilesyncPrivateDrive, back),
         )
