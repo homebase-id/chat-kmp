@@ -1,10 +1,8 @@
 @file:OptIn(ExperimentalUuidApi::class)
 
-package id.homebase.core.ui.screens.privatedrive
+package id.homebase.core.privatedrive
 
 import id.homebase.core.filesync.FilesyncProtocol
-import id.homebase.core.ui.screens.filesync.FilesyncMakePrivate
-import id.homebase.core.ui.screens.vault.VaultMakePrivate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.ExperimentalUuidApi
@@ -19,7 +17,7 @@ class PrivateDriveOptInTest {
         assertEquals(
             "https://frodo.dotyou.cloud/owner/login?redeal=drive-private&drive=cfceb937-b868-496b-91cb-3402f18320f8" +
                 "&returnUrl=http%3A%2F%2Flocalhost%3A52870%2Fpermission-callback%3Ffor%3Dfilesync",
-            makePrivateUrl("frodo.dotyou.cloud", FilesyncMakePrivate, back),
+            makePrivateUrl("frodo.dotyou.cloud", FilesyncPrivateDrive, back),
         )
         assertEquals(Uuid.parse("cfceb937-b868-496b-91cb-3402f18320f8"), FilesyncProtocol.DriveAlias)
     }
@@ -28,7 +26,7 @@ class PrivateDriveOptInTest {
     fun vaultKeepsItsOwnReason() {
         assertEquals(
             "https://frodo.dotyou.cloud/owner/login?redeal=vault-private&returnUrl=http%3A%2F%2Flocalhost%2Fpermission-callback%3Ffor%3Dvault",
-            makePrivateUrl("frodo.dotyou.cloud", VaultMakePrivate, "http://localhost/permission-callback?for=vault"),
+            makePrivateUrl("frodo.dotyou.cloud", VaultPrivateDrive, "http://localhost/permission-callback?for=vault"),
         )
     }
 

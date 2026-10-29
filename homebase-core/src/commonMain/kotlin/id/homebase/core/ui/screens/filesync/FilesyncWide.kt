@@ -336,7 +336,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                         Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp),
                     )
                 }
-                FilesyncPrivateDriveBanners(scope)
+                FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
                 if (scope.currentRemoved) DeletedFolderBanner(scope)
                 TableHeader(uiState.sort, columns) { scope.onAction(FilesyncUiAction.SortBy(it)) }
                 Box(modifier = Modifier.weight(1f)) {

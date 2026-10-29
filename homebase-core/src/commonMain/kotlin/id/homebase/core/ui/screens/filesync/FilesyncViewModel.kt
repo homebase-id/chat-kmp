@@ -9,7 +9,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
-import id.homebase.core.ui.screens.privatedrive.PrivateDriveOptIn
+import id.homebase.core.privatedrive.FilesyncPrivateDrive
+import id.homebase.core.privatedrive.PrivateDriveOptIn
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,9 +33,6 @@ import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "FilesyncViewModel"
 private val FOLDER_REFRESH_DEBOUNCE = 500.milliseconds
-
-/** The owner console's reason for converting a drive by id; Vault predates it with its own. */
-internal val FilesyncMakePrivate = listOf("redeal" to "drive-private", "drive" to FilesyncProtocol.DriveAlias.toString())
 
 @OptIn(FlowPreview::class)
 class FilesyncViewModel(
@@ -48,7 +47,7 @@ class FilesyncViewModel(
     private val _uiState = MutableStateFlow(
         FilesyncUiState(
             path = listOf(FilesyncCrumb(FilesyncProtocol.RootNodeId, null)),
-            privateDrive = privateDriveOptIn.currentState(FilesyncProtocol.DriveAlias),
+            privateDrive = privateDriveOptIn.currentState(FilesyncPrivateDrive),
         )
     )
     val uiState: StateFlow<FilesyncUiState> = _uiState.asStateFlow()
@@ -115,11 +114,10 @@ class FilesyncViewModel(
         }
 
         viewModelScope.launch {
-            privateDriveOptIn.state(FilesyncProtocol.DriveAlias).collect { privateDrive ->
-                val keyArrived = _uiState.value.privateDrive.needsSignIn && !privateDrive.needsSignIn
-                _uiState.update { it.copy(privateDrive = privateDrive) }
+            privateDriveOptIn.state(FilesyncPrivateDrive).collect { privateDrive ->
+                val old = _uiState.getAndUpdate { it.copy(privateDrive = privateDrive) }
                 // The server hid the drive's files from this device until it held the key.
-                if (keyArrived && _uiState.value.installed == true) loadCurrentFolder()
+                if (old.privateDrive.needsSignIn && !privateDrive.needsSignIn && old.installed == true) loadCurrentFolder()
             }
         }
 
@@ -215,19 +213,15 @@ class FilesyncViewModel(
             }
 
             FilesyncUiAction.MakePrivate -> {
-                val url = privateDriveOptIn.makePrivateUrl(FilesyncMakePrivate, extendPermissionViewModel.callbackUrl())
+                val url = privateDriveOptIn.makePrivateUrl(FilesyncPrivateDrive, extendPermissionViewModel.callbackUrl())
                 if (url != null) _events.trySend(FilesyncUiEvent.OpenOwnerConsole(url))
             }
 
             FilesyncUiAction.SignInAgain -> viewModelScope.launch {
-                try {
-                    privateDriveOptIn.signInAgainUrl()?.let { _events.send(FilesyncUiEvent.OpenSignIn(it)) }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.e(e, TAG) { "couldn't start signing in again" }
-                    _events.send(FilesyncUiEvent.Error(FilesyncError.SignInAgainFailed))
-                }
+                privateDriveOptIn.signInAgain(
+                    open = { _events.send(FilesyncUiEvent.OpenSignIn(it)) },
+                    failed = { _events.send(FilesyncUiEvent.Error(FilesyncError.SignInAgainFailed)) },
+                )
             }
         }
     }

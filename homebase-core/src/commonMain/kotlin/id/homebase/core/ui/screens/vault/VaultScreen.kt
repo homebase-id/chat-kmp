@@ -399,9 +399,9 @@ fun VaultScreen(
                         Column(contentModifier) {
                             PrivateDriveBanners(
                                 state = uiState.privateDrive,
-                                makePrivateText = stringResource(MR.string.vault_make_private),
-                                signInTitle = stringResource(MR.string.vault_sign_in_again_title),
-                                signInBody = stringResource(MR.string.vault_sign_in_again_body),
+                                makePrivateText = MR.string.vault_make_private,
+                                signInTitle = MR.string.vault_sign_in_again_title,
+                                signInBody = MR.string.vault_sign_in_again_body,
                                 signIn = signIn,
                                 onMakePrivate = { viewModel.onAction(VaultUiAction.MakePrivate) },
                                 onSignInAgain = { viewModel.onAction(VaultUiAction.SignInAgain) },

@@ -78,6 +78,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.fileDropTarget
 import id.homebase.core.ui.screens.filesync.components.FilesyncDownloadButtons
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
 import id.homebase.core.ui.screens.privatedrive.SignInAgainLauncher
 import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
@@ -317,7 +318,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                 onSort = { scope.onAction(FilesyncUiAction.SortBy(it)) },
                 onClearTag = { name -> scope.onAction(FilesyncUiAction.FilterTag(name)) },
             )
-            FilesyncPrivateDriveBanners(scope)
+            FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
             if (scope.currentRemoved) DeletedFolderBanner(scope)
             PullToRefreshBox(
                 isRefreshing = uiState.isLoading && uiState.nodes.isNotEmpty(),
@@ -388,16 +389,17 @@ internal fun BrowserListBody(scope: FilesyncBrowserScope, content: @Composable (
     )
 }
 
+// Takes the parts, not the scope: the scope is rebuilt on every upload tick and keystroke.
 @Composable
-internal fun FilesyncPrivateDriveBanners(scope: FilesyncBrowserScope) {
+internal fun FilesyncPrivateDriveBanners(state: PrivateDriveState, signIn: SignInAgainLauncher, actions: FilesyncBrowserActions) {
     PrivateDriveBanners(
-        state = scope.uiState.privateDrive,
-        makePrivateText = stringResource(MR.string.filesync_make_private),
-        signInTitle = stringResource(MR.string.filesync_sign_in_again_title),
-        signInBody = stringResource(MR.string.filesync_sign_in_again_body),
-        signIn = scope.signIn,
-        onMakePrivate = { scope.onAction(FilesyncUiAction.MakePrivate) },
-        onSignInAgain = { scope.onAction(FilesyncUiAction.SignInAgain) },
+        state = state,
+        makePrivateText = MR.string.filesync_make_private,
+        signInTitle = MR.string.filesync_sign_in_again_title,
+        signInBody = MR.string.filesync_sign_in_again_body,
+        signIn = signIn,
+        onMakePrivate = { actions.onAction(FilesyncUiAction.MakePrivate) },
+        onSignInAgain = { actions.onAction(FilesyncUiAction.SignInAgain) },
     )
 }
 

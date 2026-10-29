@@ -148,7 +148,7 @@ import id.homebase.core.ui.screens.vault.VaultUploaderFileSaver
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.core.ui.screens.vault.VaultViewModel
-import id.homebase.core.ui.screens.privatedrive.PrivateDriveOptIn
+import id.homebase.core.privatedrive.PrivateDriveOptIn
 import id.homebase.core.ui.screens.webdrop.WebDropService
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.WebDropStream

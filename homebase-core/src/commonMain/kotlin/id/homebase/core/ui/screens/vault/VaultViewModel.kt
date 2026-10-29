@@ -2,9 +2,9 @@
 
 package id.homebase.core.ui.screens.vault
 
-import id.homebase.core.config.getVaultPermissionExtensionConfig
-import id.homebase.core.ui.screens.privatedrive.PrivateDriveOptIn
-import id.homebase.core.ui.screens.privatedrive.PrivateDriveState
+import id.homebase.core.privatedrive.PrivateDriveOptIn
+import id.homebase.core.privatedrive.PrivateDriveState
+import id.homebase.core.privatedrive.VaultPrivateDrive
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -60,8 +60,6 @@ import kotlinx.coroutines.withContext
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-internal val VaultMakePrivate = listOf("redeal" to "vault-private")
-
 private const val TAG = "VaultViewModel"
 
 class VaultViewModel(
@@ -105,7 +103,7 @@ class VaultViewModel(
             Triple(s, e, l)
         },
         combine(_overlayState, _pendingEditor) { o, p -> o to p },
-        combine(_syncingState, privateDriveOptIn.state(vaultLabeledDrive.drive.alias)) { s, p -> s to p },
+        combine(_syncingState, privateDriveOptIn.state(VaultPrivateDrive)) { s, p -> s to p },
         _checkingPermissions,
         combine(_preparingShareKeys, _webDropActivated) { p, w -> p to w },
     ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), (syncing, privateDrive), checkingPermissions, (preparing, webDrop) ->
@@ -131,7 +129,7 @@ class VaultViewModel(
             checkingPermissions = _checkingPermissions.value,
             preparingShareKeys = _preparingShareKeys.value,
             webDropActivated = _webDropActivated.value,
-            privateDrive = privateDriveOptIn.currentState(vaultLabeledDrive.drive.alias),
+            privateDrive = privateDriveOptIn.currentState(VaultPrivateDrive),
         ),
     )
 
@@ -280,18 +278,9 @@ class VaultViewModel(
         }
     }
 
-    private suspend fun signInAgain() {
-        try {
-            privateDriveOptIn.signInAgainUrl()?.let { _events.tryEmit(VaultUiEvent.OpenSignIn(it)) }
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Couldn't start signing in again" }
-            _events.tryEmit(VaultUiEvent.Error(VaultError.SignInAgainFailed))
-        }
-    }
-
     private fun makePrivate() {
-        val back = getVaultPermissionExtensionConfig().callbackUrl()
-        privateDriveOptIn.makePrivateUrl(VaultMakePrivate, back)?.let { _events.tryEmit(VaultUiEvent.OpenOwnerConsole(it)) }
+        privateDriveOptIn.makePrivateUrl(VaultPrivateDrive, vaultPermissionViewModel.callbackUrl())
+            ?.let { _events.tryEmit(VaultUiEvent.OpenOwnerConsole(it)) }
     }
 
     fun onSignInCallback(url: String) {
@@ -326,7 +315,12 @@ class VaultViewModel(
         }
 
         when (action) {
-            VaultUiAction.SignInAgain -> viewModelScope.launch { signInAgain() }
+            VaultUiAction.SignInAgain -> viewModelScope.launch {
+                privateDriveOptIn.signInAgain(
+                    open = { _events.tryEmit(VaultUiEvent.OpenSignIn(it)) },
+                    failed = { _events.tryEmit(VaultUiEvent.Error(VaultError.SignInAgainFailed)) },
+                )
+            }
             VaultUiAction.MakePrivate -> makePrivate()
 
             VaultUiAction.SetupClicked -> {

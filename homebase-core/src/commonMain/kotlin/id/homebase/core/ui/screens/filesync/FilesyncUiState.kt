@@ -1,7 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.runtime.Immutable
-import id.homebase.core.ui.screens.privatedrive.PrivateDriveState
+import id.homebase.core.privatedrive.PrivateDriveState
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 

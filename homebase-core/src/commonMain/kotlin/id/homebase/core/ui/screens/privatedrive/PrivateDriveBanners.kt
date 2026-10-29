@@ -23,10 +23,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.core.auth.BrowserLauncher
+import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.resources.MR
 import id.homebase.resources.sign_in_again_button
 import id.homebase.resources.sign_in_again_continue
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** Opens the sign-in browser; [blockedUrl] is set when the browser blocked the window, so a fresh click can open it. */
@@ -59,20 +61,20 @@ fun rememberSignInAgainLauncher(onCallback: (String) -> Unit): SignInAgainLaunch
 @Composable
 fun PrivateDriveBanners(
     state: PrivateDriveState,
-    makePrivateText: String,
-    signInTitle: String,
-    signInBody: String,
+    makePrivateText: StringResource,
+    signInTitle: StringResource,
+    signInBody: StringResource,
     signIn: SignInAgainLauncher,
     onMakePrivate: () -> Unit,
     onSignInAgain: () -> Unit,
 ) {
     if (state.offerMakePrivate) {
-        MakePrivateBanner(text = makePrivateText, onClick = onMakePrivate)
+        MakePrivateBanner(text = stringResource(makePrivateText), onClick = onMakePrivate)
     }
     if (state.needsSignIn) {
         SignInAgainBanner(
-            title = signInTitle,
-            body = signInBody,
+            title = stringResource(signInTitle),
+            body = stringResource(signInBody),
             blocked = signIn.blockedUrl != null,
             onSignIn = { signIn.blockedUrl?.let(signIn::open) ?: onSignInAgain() },
         )

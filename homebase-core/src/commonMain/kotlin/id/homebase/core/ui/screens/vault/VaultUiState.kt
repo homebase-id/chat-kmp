@@ -1,7 +1,7 @@
 package id.homebase.core.ui.screens.vault
 
 import id.homebase.chat.conversationlist.AttachmentPendingFile
-import id.homebase.core.ui.screens.privatedrive.PrivateDriveState
+import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import io.github.vinceglb.filekit.PlatformFile
