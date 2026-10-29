@@ -61,7 +61,8 @@ object ZkKeyStore {
     suspend fun openDriveKeys(context: SecurityContext) {
         val appKey = appKey()
         val opened = context.driveGrants
-            .filter { it.zkAppKeyEncryptedStorageKey != null || it.isZeroKnowledge }
+            // A write-only grant gets no copy however often the device signs in: it isn't locked, it deposits.
+            .filter { it.zkAppKeyEncryptedStorageKey != null || (it.isZeroKnowledge && DrivePermission.Read in it.permissionedDrive.permission) }
             .associate { grant ->
                 val alias = Uuid.parse(grant.permissionedDrive.drive.alias)
                 // A zero-knowledge drive the app has no copy for yet stays locked until a sign-in brings one.
