@@ -135,6 +135,26 @@ jobs:
             output/homebase-chat-ppbz3tcfg0pp2.appinstaller > output/homebase-chat.appinstaller
           grep -qF '/homebase-chat.appinstaller"' output/homebase-chat.appinstaller
 
+      # Copies without the version, so a link to releases/latest/download/<name> always finds the
+      # newest (the owner console's Get the apps page links them). The Windows installer's name
+      # has none. Mirrors filesync's release.yml.
+      - name: Fixed names
+        working-directory: ./desktopApp/output
+        shell: bash
+        run: |
+          copy_one() {
+            local fixed=$1; shift
+            if [[ $# -ne 1 || ! -f "$1" ]]; then echo "::error::not exactly one file for $fixed: $*"; exit 1; fi
+            cp "$1" "$fixed"
+          }
+          for arch in aarch64 amd64; do
+            copy_one "homebase-chat-mac-$arch.zip" homebase-chat-*-mac-"$arch".zip
+          done
+          for arch in amd64 arm64; do
+            copy_one "homebase-chat_$arch.deb" homebase-homebase-chat_*_"$arch".deb
+          done
+          test -f homebase-chat.exe
+
       - name: Create release in production repo
         uses: actions/github-script@v7
         with:
