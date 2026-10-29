@@ -11,8 +11,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.file.AppCacheDirs
-import id.homebase.api.file.scratchDir
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
@@ -42,6 +40,9 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.readBytes
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.files.toUploadPath
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -507,17 +508,6 @@ class VaultViewModel(
             )
         }
 
-        files.forEachIndexed { index, file ->
-            val payloadKey = "vlt_pg_${index.toString().padStart(2, '0')}"
-            if (fileContentTypes[index] != "application/pdf") {
-                localAttachmentStore.put(
-                    pendingId,
-                    payloadKey,
-                    LocalAttachmentContext.Image(localFilePath = file.pathCompat, aspectRatio = null),
-                )
-            }
-        }
-
         val pendingItem = VaultEntry(
             fileId = pendingId,
             uniqueId = pendingId,
@@ -532,7 +522,7 @@ class VaultViewModel(
             isEncrypted = false,
             versionTag = null,
             uploadStatus = VaultUploadStatus.Preparing,
-            pendingFileUri = files.first().pathCompat,
+            isPending = true,
             groupId = action.sectionId,
             payloadDescriptors = placeholderDescriptors,
         )
@@ -542,11 +532,15 @@ class VaultViewModel(
         viewModelScope.launch {
             var fileData: List<Pair<String, String>> = emptyList()
             try {
-                fileData = files.mapIndexed { index, file ->
-                    val ext = file.name.substringAfterLast('.', "tmp")
-                    val tempPath = "${fileOperationsProvider.scratchDir(AppCacheDirs.PICKER_COPIES)}/vault_upload_${Uuid.random()}.$ext"
-                    file.copyToPath(tempPath)
-                    tempPath to fileContentTypes[index]
+                fileData = files.mapIndexed { index, file -> file.uploadCopy() to fileContentTypes[index] }
+                fileData.forEachIndexed { index, (path, contentType) ->
+                    if (contentType != "application/pdf") {
+                        localAttachmentStore.put(
+                            pendingId,
+                            "vlt_pg_${index.toString().padStart(2, '0')}",
+                            LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
+                        )
+                    }
                 }
 
                 if (firstContentType == "application/pdf") {
@@ -660,25 +654,14 @@ class VaultViewModel(
     }
 
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
-        val fileData = action.newFiles.map { file ->
-            val ct = file.contentType()
-            file.pathCompat to ct
-        }
+        val contentTypes = action.newFiles.map { it.contentType() }
 
         val existingMax = action.file.payloadDescriptors
             .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
             .maxOrNull() ?: -1
-        val placeholders = fileData.mapIndexed { i, (_, contentType) ->
+        val placeholders = contentTypes.mapIndexed { i, contentType ->
             val key = "vlt_pg_${(existingMax + 1 + i).toString().padStart(2, '0')}"
             PayloadDescriptor(key = key, contentType = contentType)
-        }
-
-        fileData.forEachIndexed { i, (path, _) ->
-            localAttachmentStore.put(
-                action.file.uniqueId,
-                placeholders[i].key,
-                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
-            )
         }
 
         val optimisticEntry = action.file.copy(
@@ -687,17 +670,13 @@ class VaultViewModel(
         vaultStream.updateOptimisticEntry(optimisticEntry)
 
         viewModelScope.launch {
-            // Copy each picked file into the sandbox NOW for the upload read. By upload
-            // time the iOS document picker's security scope is gone, so reading the raw
-            // "File Provider Storage" path there throws ("Unable to read file"). The raw
-            // paths above are fine for the instant optimistic preview because the picker
-            // scope is still live at pick time. Mirrors handleAddFiles (and chat's
-            // materializeForUpload fix).
-            val uploadData = action.newFiles.mapIndexed { index, file ->
-                val ext = file.name.substringAfterLast('.', "tmp")
-                val tempPath = "${fileOperationsProvider.scratchDir(AppCacheDirs.PICKER_COPIES)}/vault_upload_${Uuid.random()}.$ext"
-                file.copyToPath(tempPath)
-                tempPath to fileData[index].second
+            val uploadData = action.newFiles.mapIndexed { index, file -> file.uploadCopy() to contentTypes[index] }
+            uploadData.forEachIndexed { i, (path, _) ->
+                localAttachmentStore.put(
+                    action.file.uniqueId,
+                    placeholders[i].key,
+                    LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
+                )
             }
             val success = vaultUploaderService.appendPages(
                 file = action.file,
@@ -713,6 +692,11 @@ class VaultViewModel(
             }
         }
     }
+
+    // The picker's read grant doesn't last (Android content://, iOS security scope) and the browser has no paths:
+    // a copy the app owns is what the preview and the upload read.
+    private suspend fun PlatformFile.uploadCopy(): String =
+        materializeForUpload(fileOperationsProvider).toUploadPath(fileOperationsProvider)
 
     // region Add-pictures editor (reuses image-editor-ui's crop/draw seam)
 
@@ -756,7 +740,7 @@ class VaultViewModel(
             ?: return
         launchEditor(
             tool = action.tool,
-            readSource = { fileOperationsProvider.readFileBytes(attachment.file.pathCompat) },
+            readSource = { attachment.file.readBytes() },
         ) { editedBytes ->
             val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
             val replaced = AttachmentPendingFile.FileImage(

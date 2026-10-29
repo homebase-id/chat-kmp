@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.files.materializeForUpload
-import id.homebase.core.ui.screens.vault.pathCompat
+import id.homebase.core.files.toUploadPath
 import id.homebase.core.ui.screens.webdrop.WebDropError
 import id.homebase.core.ui.screens.webdrop.WebDropUiAction
 import id.homebase.core.ui.screens.webdrop.WebDropUiState
@@ -142,7 +142,7 @@ fun WebDropComposeSheet(
                                     file
                                 }
                             PickedDropFile(
-                                path = snapshot.pathCompat,
+                                path = snapshot.toUploadPath(fileOps),
                                 name = file.name,
                                 contentType = contentType,
                                 size = runCatching { snapshot.size() }.getOrDefault(0L),
