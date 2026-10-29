@@ -49,11 +49,10 @@ junit = "4.13.2"
 kotlin = "2.4.21"
 browser = "1.10.0"
 okio = "3.18.2"
-# richeditorCompose: held at 1.0.0-rc14 although 1.2.1 is out; moving to 1.x is its own
-# change (the composer's markdown round-trip depends on it). Kept as the WYSIWYG
+# richeditorCompose: Compose 1.12+ needs richeditor >= 1.2 (upstream #799). Kept as the WYSIWYG
 # composer/editor (the only CMP library that does true inline editing on all
 # four targets, incl. wasmJs). Read-only rendering uses mikepenz below.
-richeditorCompose = "1.0.0-rc14"
+richeditorCompose = "1.2.1"
 # Read-only markdown RENDERER (mikepenz). 0.41.0-0.46.0 reference Painter.$stable, which
 # Compose 1.10 dropped and 1.12 restored, so they need CMP >= 1.12.
 markdownRenderer = "0.46.0"
@@ -216,6 +215,8 @@ runner = { group = "com.android.support.test", name = "runner", version.ref = "r
 espresso-core = { group = "com.android.support.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 appcompat-v7 = { group = "com.android.support", name = "appcompat-v7", version.ref = "appcompatV7" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "uiToolingPreview" }
+androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4", version.ref = "uiToolingPreview" }
+androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest", version.ref = "uiToolingPreview" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "uiToolingPreview" }
 multiplatform-settings = { group = "com.russhwolf", name = "multiplatform-settings", version.ref = "multiplatformSettings" }
 multiplatform-settings-test = { group = "com.russhwolf", name = "multiplatform-settings-test", version.ref = "multiplatformSettings" }
