@@ -85,6 +85,7 @@ import id.homebase.resources.filesync_save_failed
 import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_too_large
 import id.homebase.resources.filesync_upload_failed
+import id.homebase.resources.sign_in_again_failed
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -106,6 +107,7 @@ internal fun FilesyncEventsEffect(
     events: Flow<FilesyncUiEvent>,
     snackbarHostState: SnackbarHostState,
     onOpenWebDrop: () -> Unit = {},
+    onOpenSignIn: (String) -> Unit = {},
     onSaveHandedOff: (String) -> Unit,
 ) {
     val fileSystemHandler = getUriHandler()
@@ -135,6 +137,8 @@ internal fun FilesyncEventsEffect(
                     onError = { show(MR.string.filesync_share_failed) },
                 )
                 FilesyncUiEvent.OpenWebDrop -> onOpenWebDrop()
+                is FilesyncUiEvent.OpenSignIn -> onOpenSignIn(event.url)
+                is FilesyncUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
                 is FilesyncUiEvent.Error -> show(
                     when (event.error) {
                         FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
@@ -145,6 +149,7 @@ internal fun FilesyncEventsEffect(
                         FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
                         FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
                         FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
+                        FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
                     }
                 )
                 is FilesyncUiEvent.Notice -> show(

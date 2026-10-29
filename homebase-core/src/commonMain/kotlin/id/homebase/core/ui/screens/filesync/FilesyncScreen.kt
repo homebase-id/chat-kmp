@@ -78,6 +78,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.fileDropTarget
 import id.homebase.core.ui.screens.filesync.components.FilesyncDownloadButtons
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
+import id.homebase.core.ui.screens.privatedrive.SignInAgainLauncher
+import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
@@ -93,6 +96,9 @@ import id.homebase.resources.filesync_folder_deleted
 import id.homebase.resources.filesync_folder_empty
 import id.homebase.resources.filesync_folders
 import id.homebase.resources.filesync_label
+import id.homebase.resources.filesync_make_private
+import id.homebase.resources.filesync_sign_in_again_body
+import id.homebase.resources.filesync_sign_in_again_title
 import id.homebase.resources.filesync_load_failed
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_new_folder
@@ -138,6 +144,7 @@ internal class FilesyncBrowserScope(
     val onFilesDropped: (List<PlatformFile>) -> Unit,
     val onNewFolder: () -> Unit,
     val places: FilesyncPlaces,
+    val signIn: SignInAgainLauncher,
 ) {
     val onAction get() = actions.onAction
     val currentRemoved get() = uiState.path.last().removedMs != null
@@ -155,7 +162,8 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     val uploads by viewModel.uploads.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
+    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop, signIn::open) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
     BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
 
@@ -199,6 +207,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         onFilesDropped = onFilesChosen,
         onNewFolder = { showNewFolder = true },
         places = places,
+        signIn = signIn,
     )
     if (isExpandedLayout()) {
         FilesyncWideBrowser(scope)
@@ -308,6 +317,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                 onSort = { scope.onAction(FilesyncUiAction.SortBy(it)) },
                 onClearTag = { name -> scope.onAction(FilesyncUiAction.FilterTag(name)) },
             )
+            FilesyncPrivateDriveBanners(scope)
             if (scope.currentRemoved) DeletedFolderBanner(scope)
             PullToRefreshBox(
                 isRefreshing = uiState.isLoading && uiState.nodes.isNotEmpty(),
@@ -375,6 +385,19 @@ internal fun BrowserListBody(scope: FilesyncBrowserScope, content: @Composable (
         emptyMessage = if (uiState.nodes.isEmpty()) MR.string.filesync_folder_empty else MR.string.filesync_no_matches,
         onRetry = { scope.onAction(FilesyncUiAction.Refresh) },
         content = content,
+    )
+}
+
+@Composable
+internal fun FilesyncPrivateDriveBanners(scope: FilesyncBrowserScope) {
+    PrivateDriveBanners(
+        state = scope.uiState.privateDrive,
+        makePrivateText = stringResource(MR.string.filesync_make_private),
+        signInTitle = stringResource(MR.string.filesync_sign_in_again_title),
+        signInBody = stringResource(MR.string.filesync_sign_in_again_body),
+        signIn = scope.signIn,
+        onMakePrivate = { scope.onAction(FilesyncUiAction.MakePrivate) },
+        onSignInAgain = { scope.onAction(FilesyncUiAction.SignInAgain) },
     )
 }
 

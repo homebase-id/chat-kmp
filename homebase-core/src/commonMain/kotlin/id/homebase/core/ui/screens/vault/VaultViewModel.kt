@@ -3,6 +3,8 @@
 package id.homebase.core.ui.screens.vault
 
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveOptIn
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
@@ -12,9 +14,6 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.scratchDir
 import id.homebase.api.sync.DriveSyncManager
-import id.homebase.api.youauth.YouAuthFlowManager
-import id.homebase.api.youauth.YouAuthState
-import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContext
@@ -23,13 +22,7 @@ import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
-import id.homebase.core.config.AppConfig
-import id.homebase.core.config.appPermissions
-import id.homebase.core.config.circleDriveTargetRequest
-import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.config.vaultDefaultSections
-import io.ktor.http.formUrlEncode
-import id.homebase.core.settings.UserPreferences
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.config.webDropLabeledDrive
@@ -57,7 +50,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -67,6 +59,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+
+internal val VaultMakePrivate = listOf("redeal" to "vault-private")
 
 private const val TAG = "VaultViewModel"
 
@@ -85,8 +79,7 @@ class VaultViewModel(
     private val cropResultBus: CropResultBus,
     private val drawResultBus: DrawResultBus,
     private val webDropShareFlowState: WebDropShareFlowState,
-    private val youAuthFlowManager: YouAuthFlowManager,
-    private val userPreferences: UserPreferences,
+    private val privateDriveOptIn: PrivateDriveOptIn,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
@@ -112,16 +105,11 @@ class VaultViewModel(
             Triple(s, e, l)
         },
         combine(_overlayState, _pendingEditor) { o, p -> o to p },
-        combine(
-            _syncingState,
-            ZkKeyStore.lockedDrives,
-            ZkKeyStore.zeroKnowledgeDrives,
-            userPreferences.preferenceState.map { it.showDeveloperMenu }.distinctUntilChanged(),
-        ) { s, locked, zk, developer -> Triple(s, needsSignIn(locked), offerMakePrivate(zk, developer)) },
+        combine(_syncingState, privateDriveOptIn.state(vaultLabeledDrive.drive.alias)) { s, p -> s to p },
         _checkingPermissions,
         combine(_preparingShareKeys, _webDropActivated) { p, w -> p to w },
-    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), (syncing, needsSignIn, offerMakePrivate), checkingPermissions, (preparing, webDrop) ->
-        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop, needsSignIn, offerMakePrivate)
+    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), (syncing, privateDrive), checkingPermissions, (preparing, webDrop) ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop, privateDrive)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -143,8 +131,7 @@ class VaultViewModel(
             checkingPermissions = _checkingPermissions.value,
             preparingShareKeys = _preparingShareKeys.value,
             webDropActivated = _webDropActivated.value,
-            needsSignIn = needsSignIn(ZkKeyStore.lockedDrives.value),
-            offerMakePrivate = offerMakePrivate(ZkKeyStore.zeroKnowledgeDrives.value, userPreferences.preferenceState.value.showDeveloperMenu),
+            privateDrive = privateDriveOptIn.currentState(vaultLabeledDrive.drive.alias),
         ),
     )
 
@@ -162,8 +149,7 @@ class VaultViewModel(
         checkingPermissions: Boolean,
         preparingShareKeys: Set<String>,
         webDropActivated: Boolean,
-        needsSignIn: Boolean,
-        offerMakePrivate: Boolean,
+        privateDrive: PrivateDriveState,
     ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
@@ -185,8 +171,7 @@ class VaultViewModel(
             preparingShareKeys = preparingShareKeys,
             pendingEditor = pendingEditor,
             webDropActivated = webDropActivated,
-            needsSignIn = needsSignIn,
-            offerMakePrivate = offerMakePrivate,
+            privateDrive = privateDrive,
         )
     }
 
@@ -295,44 +280,22 @@ class VaultViewModel(
         }
     }
 
-    private fun needsSignIn(locked: Set<Uuid>) = vaultLabeledDrive.drive.alias in locked
-
-    private fun offerMakePrivate(zeroKnowledge: Set<Uuid>, developer: Boolean) =
-        developer && vaultLabeledDrive.drive.alias !in zeroKnowledge
-
-    private val signedInIdentity get() = (youAuthFlowManager.authState.value as? YouAuthState.Authenticated)?.identity
-
-    /** A new token, asked with the same permissions as at login, brings the key; the current one keeps working. */
     private suspend fun signInAgain() {
-        val identity = signedInIdentity ?: return
         try {
-            val url = youAuthFlowManager.authorize(
-                identity = identity,
-                appId = AppConfig.APP_ID,
-                appName = AppConfig.APP_NAME,
-                appSlug = AppConfig.APP_SLUG,
-                drives = targetDriveAccessRequest,
-                permissions = appPermissions,
-                circleDrives = circleDriveTargetRequest,
-                again = true,
-            )
-            _events.tryEmit(VaultUiEvent.OpenSignIn(url))
+            privateDriveOptIn.signInAgainUrl()?.let { _events.tryEmit(VaultUiEvent.OpenSignIn(it)) }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Couldn't start signing in again" }
             _events.tryEmit(VaultUiEvent.Error(VaultError.SignInAgainFailed))
         }
     }
 
-    /** The owner console asks for the password, makes Vault private, then returns to the permission callback. */
     private fun makePrivate() {
-        val identity = signedInIdentity ?: return
         val back = getVaultPermissionExtensionConfig().callbackUrl()
-        val query = listOf("redeal" to "vault-private", "returnUrl" to back).formUrlEncode()
-        _events.tryEmit(VaultUiEvent.OpenOwnerConsole("https://${identity.domainName}/owner/login?$query"))
+        privateDriveOptIn.makePrivateUrl(VaultMakePrivate, back)?.let { _events.tryEmit(VaultUiEvent.OpenOwnerConsole(it)) }
     }
 
     fun onSignInCallback(url: String) {
-        viewModelScope.launch { youAuthFlowManager.handleCallback(url) }
+        viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
     }
 
     fun onAction(action: VaultUiAction) {

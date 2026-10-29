@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.vault
 
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import io.github.vinceglb.filekit.PlatformFile
@@ -28,10 +29,7 @@ data class VaultUiState(
     val pendingEditor: VaultPendingEditor? = null,
     /** Gates the gallery's "Send as WebDrop" affordances on the WebDrop drive being activated. */
     val webDropActivated: Boolean = false,
-    /** Vault is private and this device signed in before it could get the key to open it. */
-    val needsSignIn: Boolean = false,
-    /** Developer menu only, while Vault isn't private yet. */
-    val offerMakePrivate: Boolean = false,
+    val privateDrive: PrivateDriveState = PrivateDriveState(),
 )
 
 /** Which editor screen a crop/draw request routes to. */

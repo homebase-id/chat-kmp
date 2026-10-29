@@ -2,11 +2,12 @@
 
 package id.homebase.core.ui.screens.vault
 
-import id.homebase.core.auth.BrowserLauncher
-import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
-import id.homebase.core.ui.screens.vault.components.VaultMakePrivateBanner
-import id.homebase.core.ui.screens.vault.components.VaultSignInBanner
-import id.homebase.resources.vault_error_sign_in_again
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
+import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
+import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.vault_make_private
+import id.homebase.resources.vault_sign_in_again_body
+import id.homebase.resources.vault_sign_in_again_title
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
@@ -181,16 +182,7 @@ fun VaultScreen(
 
     var pendingError by remember { mutableStateOf<VaultError?>(null) }
 
-    val launchAuthBrowser = rememberAuthBrowserLauncher()
-    var blockedSignInUrl by remember { mutableStateOf<String?>(null) }
-    val openSignIn: (String) -> Unit = { url ->
-        if (launchAuthBrowser(url)) {
-            blockedSignInUrl = null
-            BrowserLauncher.onAuthBrowserOpened(url, viewModel::onSignInCallback)
-        } else {
-            blockedSignInUrl = url
-        }
-    }
+    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
 
     pendingError?.let { error ->
         val message = resolveVaultError(error)
@@ -224,7 +216,7 @@ fun VaultScreen(
                 }
                 is VaultUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
                 is VaultUiEvent.NavigateToDrawer -> onNavigateToDrawer(event.requestId)
-                is VaultUiEvent.OpenSignIn -> openSignIn(event.url)
+                is VaultUiEvent.OpenSignIn -> signIn.open(event.url)
                 is VaultUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
@@ -405,17 +397,15 @@ fun VaultScreen(
                 ) { overlay ->
                     if (overlay == null) {
                         Column(contentModifier) {
-                            if (uiState.offerMakePrivate) {
-                                VaultMakePrivateBanner(onClick = { viewModel.onAction(VaultUiAction.MakePrivate) })
-                            }
-                            if (uiState.needsSignIn) {
-                                VaultSignInBanner(
-                                    blocked = blockedSignInUrl != null,
-                                    onSignIn = {
-                                        blockedSignInUrl?.let(openSignIn) ?: viewModel.onAction(VaultUiAction.SignInAgain)
-                                    },
-                                )
-                            }
+                            PrivateDriveBanners(
+                                state = uiState.privateDrive,
+                                makePrivateText = stringResource(MR.string.vault_make_private),
+                                signInTitle = stringResource(MR.string.vault_sign_in_again_title),
+                                signInBody = stringResource(MR.string.vault_sign_in_again_body),
+                                signIn = signIn,
+                                onMakePrivate = { viewModel.onAction(VaultUiAction.MakePrivate) },
+                                onSignInAgain = { viewModel.onAction(VaultUiAction.SignInAgain) },
+                            )
                             VaultContent(
                                 sections = uiState.sections,
                                 isLoading = uiState.isLoading,
@@ -751,7 +741,7 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     is VaultError.UpdateLabelFailed -> stringResource(MR.string.vault_error_update_label, error.fileName)
     VaultError.DownloadPageFailed -> stringResource(MR.string.vault_error_download_page)
     VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
-    VaultError.SignInAgainFailed -> stringResource(MR.string.vault_error_sign_in_again)
+    VaultError.SignInAgainFailed -> stringResource(MR.string.sign_in_again_failed)
     VaultError.EditPageFailed -> stringResource(MR.string.vault_error_edit_page)
     VaultError.OpenEditorFailed -> stringResource(MR.string.vault_error_open_editor)
     VaultError.WebDropPrepareFailed -> stringResource(MR.string.vault_error_webdrop_prepare)

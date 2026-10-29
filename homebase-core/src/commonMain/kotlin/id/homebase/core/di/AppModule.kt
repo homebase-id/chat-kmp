@@ -148,6 +148,7 @@ import id.homebase.core.ui.screens.vault.VaultUploaderFileSaver
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveOptIn
 import id.homebase.core.ui.screens.webdrop.WebDropService
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.WebDropStream
@@ -1394,6 +1395,7 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     singleOf(::DesktopViewModel)
+    factoryOf(::PrivateDriveOptIn)
     viewModel {
         FilesyncViewModel(
             repository = get(),
@@ -1401,6 +1403,7 @@ val appModule = module {
             editor = get(),
             extendPermissionViewModel = get(FilesyncPermissionQualifier),
             webDropShareFlowState = get(),
+            privateDriveOptIn = get(),
         )
     }
     viewModel { FilesyncTrashViewModel(get(), get()) }
@@ -1430,8 +1433,7 @@ val appModule = module {
             cropResultBus = get(),
             drawResultBus = get(),
             webDropShareFlowState = get(),
-            youAuthFlowManager = get(),
-            userPreferences = get(),
+            privateDriveOptIn = get(),
         )
     }
     viewModel { VaultSettingsViewModel(vaultPreferences = get()) }
