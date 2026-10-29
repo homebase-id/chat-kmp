@@ -61,8 +61,12 @@ object ZkKeyStore {
     suspend fun openDriveKeys(context: SecurityContext) {
         val appKey = appKey()
         val opened = context.driveGrants
-            .mapNotNull { grant -> grant.zkAppKeyEncryptedStorageKey?.let { Uuid.parse(grant.permissionedDrive.drive.alias) to it } }
-            .associate { (alias, locked) -> alias to appKey?.let { openDriveKey(alias, locked, it) } }
+            .filter { it.zkAppKeyEncryptedStorageKey != null || it.isZeroKnowledge }
+            .associate { grant ->
+                val alias = Uuid.parse(grant.permissionedDrive.drive.alias)
+                // A zero-knowledge drive the app has no copy for yet stays locked until a sign-in brings one.
+                alias to grant.zkAppKeyEncryptedStorageKey?.let { locked -> appKey?.let { openDriveKey(alias, locked, it) } }
+            }
         save(opened)
     }
 

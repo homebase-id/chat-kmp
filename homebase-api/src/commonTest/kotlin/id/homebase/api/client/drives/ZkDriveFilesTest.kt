@@ -81,6 +81,16 @@ class ZkDriveFilesTest {
     }
 
     @Test
+    fun aZeroKnowledgeDriveTheAppHasNoCopyForYetIsLocked() = runTest {
+        ZkKeyStore.saveAppKey(appKey)
+        val filesync = Uuid.random()
+        val noCopy = grant(filesync, null).copy(isZeroKnowledge = true)
+        ZkKeyStore.openDriveKeys(SecurityContext(CallerContext(securityLevel = "app"), PermissionContext(listOf(PermissionGroup(driveGrants = listOf(noCopy))))))
+        assertTrue(ZkKeyStore.isZeroKnowledge(filesync))
+        assertEquals(setOf(filesync), ZkKeyStore.lockedDrives.value)
+    }
+
+    @Test
     fun aKeyHeaderOnAZeroKnowledgeDriveIsLockedWithItsKeyUnderTheFilesIv() = runTest {
         unlockVault()
         val fileKey = KeyHeader.newRandom16()
