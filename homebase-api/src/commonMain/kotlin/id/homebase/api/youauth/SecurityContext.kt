@@ -34,6 +34,8 @@ data class DriveGrant(
     val hasStorageKey: Boolean = false,
     /** On a zero-knowledge drive only: its key, `zkLock`ed with the app's zero-knowledge key. */
     val zkAppKeyEncryptedStorageKey: String? = null,
+    /** Set on a zero-knowledge drive even before the app has a copy of its key. */
+    val isZeroKnowledge: Boolean = false,
 )
 
 private fun DriveGrant.isFor(alias: String, type: String): Boolean =

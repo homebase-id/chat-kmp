@@ -24,6 +24,7 @@ import kotlinx.serialization.serializer
  * @param allowSubscriptions Whether subscriptions are allowed
  * @param requireStorageKey Read counts as granted only with the drive's storage key; client-side, never sent
  * @param grantOnly Another app owns the drive: send only its address, which the owner console grants but never creates, adopts or changes
+ * @param sharingModel How the drive is created when it doesn't exist yet; an existing drive keeps its own. Null means collaborative
  */
 data class TargetDriveAccessRequest(
     val alias: String,
@@ -38,6 +39,7 @@ data class TargetDriveAccessRequest(
     val allowSubscriptions: Boolean? = null,
     val requireStorageKey: Boolean = false,
     val grantOnly: Boolean = false,
+    val sharingModel: DriveSharingModel? = null,
 ) {
     /** Convert to JsonObject for proper serialization. */
     fun toJsonObject(): JsonObject = buildJsonObject {
@@ -56,6 +58,7 @@ data class TargetDriveAccessRequest(
             attributes?.let {
                 put("at", JsonPrimitive(Json.encodeToString(serializer(), it)))
             }
+            sharingModel?.let { put("sm", JsonPrimitive(it.wire)) }
         }
     }
 
@@ -69,4 +72,11 @@ data class TargetDriveAccessRequest(
             return Json.encodeToString(serializer(), jsonArray)
         }
     }
+}
+
+/** odin-core's DriveSharingModel, as the owner console reads it from a drive request's `sm`. */
+enum class DriveSharingModel(val wire: String) {
+    Collaborative("collaborative"),
+    Private("private"),
+    SelectiveShare("selectiveShare"),
 }

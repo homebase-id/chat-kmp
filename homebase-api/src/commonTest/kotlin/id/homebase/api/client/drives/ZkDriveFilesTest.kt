@@ -8,6 +8,7 @@ import id.homebase.api.crypto.ZkLock
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.youauth.CallerContext
 import id.homebase.api.youauth.DriveGrant
+import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DriveReference
 import id.homebase.api.youauth.PermissionContext
 import id.homebase.api.youauth.PermissionGroup
@@ -78,6 +79,21 @@ class ZkDriveFilesTest {
         ZkKeyStore.saveAppKey(ByteArrayUtil.getRndByteArray(16))
         ZkKeyStore.openDriveKeys(context())
         assertEquals(setOf(vault), ZkKeyStore.lockedDrives.value, "another app key doesn't open it")
+    }
+
+    @Test
+    fun aZeroKnowledgeDriveTheAppHasNoCopyForYetIsLocked() = runTest {
+        ZkKeyStore.saveAppKey(appKey)
+        val filesync = Uuid.random()
+        val noCopy = grant(filesync, null).copy(isZeroKnowledge = true).let {
+            it.copy(permissionedDrive = it.permissionedDrive.copy(permission = listOf(DrivePermission.Read)))
+        }
+        val depositOnly = grant(Uuid.random(), null).copy(isZeroKnowledge = true).let {
+            it.copy(permissionedDrive = it.permissionedDrive.copy(permission = listOf(DrivePermission.Write)))
+        }
+        ZkKeyStore.openDriveKeys(SecurityContext(CallerContext(securityLevel = "app"), PermissionContext(listOf(PermissionGroup(driveGrants = listOf(noCopy, depositOnly))))))
+        assertTrue(ZkKeyStore.isZeroKnowledge(filesync))
+        assertEquals(setOf(filesync), ZkKeyStore.lockedDrives.value, "a write-only grant isn't locked")
     }
 
     @Test
