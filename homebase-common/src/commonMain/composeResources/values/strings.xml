@@ -3012,7 +3012,6 @@
     <string name="filesync_onboarding_dismiss">Not now</string>
     <string name="filesync_desktop_title">Get the desktop app</string>
     <string name="filesync_desktop_body">Want folders from your computer here too? Filesync for Mac, Windows and Linux keeps them in sync with your Homebase.</string>
-    <string name="filesync_desktop_download">Download Filesync</string>
     <string name="filesync_day_time">%1$s, %2$s</string>
     <string name="filesync_executable">runs</string>
     <string name="filesync_not_on_computers">not on computers</string>
@@ -3078,6 +3077,15 @@
     <string name="filesync_search">Search this folder</string>
     <string name="filesync_no_matches">Nothing here matches.</string>
     <string name="filesync_download_windows">Windows</string>
+    <string name="filesync_install_windows">Install on Windows</string>
+    <string name="filesync_install_mac">Install on Mac</string>
+    <string name="filesync_install_linux">Install on Linux</string>
+    <string name="filesync_install_computer">Install on a computer</string>
+    <string name="filesync_install_app">Install the app</string>
+    <string name="filesync_get_title">Get Filesync</string>
+    <string name="filesync_on_your_phone">On your phone</string>
+    <string name="filesync_app_store">App Store</string>
+    <string name="filesync_google_play">Google Play</string>
     <string name="filesync_download_mac_apple">Mac with Apple chip (M1 or later)</string>
     <string name="filesync_download_mac_intel">Mac with Intel chip</string>
     <string name="filesync_download_linux">Linux (Ubuntu, Debian)</string>
