@@ -5,17 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
@@ -46,14 +43,18 @@ internal fun FilesyncMoveDialog(picker: FilesyncMovePicker, onAction: (FilesyncU
         text = {
             Column {
                 Breadcrumbs(picker.path, onCrumb = { onAction(FilesyncUiAction.MovePickerToCrumb(it)) })
-                Box(modifier = Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) {
-                    when {
-                        picker.loading -> CircularProgressIndicator()
-                        picker.loadFailed -> Hint(stringResource(MR.string.filesync_load_failed))
-                        picker.folders.isEmpty() -> Hint(stringResource(MR.string.filesync_no_folders))
-                        else -> LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+                    FilesyncListBody(
+                        isEmpty = picker.folders.isEmpty(),
+                        isLoading = picker.loading,
+                        loadFailed = picker.loadFailed,
+                        failedMessage = MR.string.filesync_load_failed,
+                        emptyMessage = MR.string.filesync_no_folders,
+                        onRetry = { onAction(FilesyncUiAction.MovePickerToCrumb(picker.path.lastIndex)) },
+                    ) {
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
                             items(picker.folders, key = { it.nodeId.toString() }) { folder ->
-                                val moving = picker.isMoving(folder)
+                                val moving = picker.isMoving(folder.nodeId)
                                 ListItem(
                                     headlineContent = { NodeName(folder, ringColor = MaterialTheme.colorScheme.surfaceContainerHigh) },
                                     leadingContent = { FileTypeTile(folder, size = 32.dp) },
@@ -76,9 +77,4 @@ internal fun FilesyncMoveDialog(picker: FilesyncMovePicker, onAction: (FilesyncU
             TextButton(onClick = { onAction(FilesyncUiAction.DismissMove) }) { Text(stringResource(MR.string.cancel)) }
         },
     )
-}
-
-@Composable
-private fun Hint(text: String) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
 }

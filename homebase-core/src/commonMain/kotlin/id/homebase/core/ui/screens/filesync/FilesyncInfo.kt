@@ -227,7 +227,7 @@ internal fun FilesyncNodeMenu(
             MenuItem(MR.string.filesync_send_webdrop, onDismiss) { onAction(FilesyncUiAction.WebDropClicked(node)) }
         }
         if (node.removedMs == null) {
-            MenuItem(MR.string.filesync_move, onDismiss) { onAction(FilesyncUiAction.AskMove(listOf(node))) }
+            if (node.movable) MenuItem(MR.string.filesync_move, onDismiss) { onAction(FilesyncUiAction.AskMove(listOf(node))) }
             if (canDelete) MenuItem(MR.string.delete, onDismiss) { onAction(FilesyncUiAction.AskDelete(listOf(node))) }
         }
     }

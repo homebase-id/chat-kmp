@@ -33,7 +33,6 @@ data class FilesyncUpload(
     val failed: Boolean = false,
 )
 
-/** The Move to… picker: [nodes] to move, and the folder it shows, [path] from the top, with the [folders] in it. */
 @Immutable
 data class FilesyncMovePicker(
     val nodes: List<FilesyncNode>,
@@ -42,12 +41,13 @@ data class FilesyncMovePicker(
     val loading: Boolean = true,
     val loadFailed: Boolean = false,
 ) {
+    private val movingIds = nodes.mapTo(HashSet()) { it.nodeId }
+
     /** A folder being moved can't take itself: it isn't opened, and nothing moves below it. */
-    fun isMoving(folder: FilesyncNode): Boolean = nodes.any { it.nodeId == folder.nodeId }
+    fun isMoving(folderId: Uuid): Boolean = folderId in movingIds
 
     val canMoveHere: Boolean
-        get() = !loading && !loadFailed && path.none { crumb -> nodes.any { it.nodeId == crumb.nodeId } } &&
-            nodes.any { it.parentId != path.last().nodeId }
+        get() = !loading && !loadFailed && path.none { isMoving(it.nodeId) } && nodes.any { it.parentId != path.last().nodeId }
 }
 
 @Immutable
@@ -94,7 +94,7 @@ data class FilesyncUiState(
             FilesyncBulkAction.Share.takeIf { live && isMobile() },
             FilesyncBulkAction.Chat.takeIf { live },
             FilesyncBulkAction.WebDrop.takeIf { live },
-            FilesyncBulkAction.Move.takeIf { live },
+            FilesyncBulkAction.Move.takeIf { selected.any { it.removedMs == null && it.movable } },
             FilesyncBulkAction.Delete.takeIf { live && !inDeletedFolder },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
@@ -128,7 +128,6 @@ data class FilesyncUiState(
 
 enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Move, Delete, Restore }
 
-// Changes to the drive, which can go alongside a download.
 private val WRITES = setOf(FilesyncBulkAction.Move, FilesyncBulkAction.Delete, FilesyncBulkAction.Restore)
 
 sealed interface FilesyncUiAction {

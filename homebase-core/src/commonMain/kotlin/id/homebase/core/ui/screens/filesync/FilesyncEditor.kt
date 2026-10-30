@@ -146,7 +146,7 @@ class FilesyncEditor(
                     }
                     sent = true
                     val handle = trash.all.handles.getValue(node.nodeId)
-                    if (write(node.nodeId, handle, restoredContent(handle.content, name), node.parentId)) {
+                    if (write(node.nodeId, handle, renamedContent(handle.content, name), node.parentId)) {
                         restored += node.nodeId
                         taken += FilesyncNames.key(name)
                     } else {
@@ -188,16 +188,17 @@ class FilesyncEditor(
         }
     }
 
-    /** Moves [nodes] into [folderId] as [planMove] plans it; one changed since stays where it is. */
-    suspend fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, folderId: Uuid, folderPath: List<Uuid>): FilesyncWriteResult =
+    /** Moves [nodes] into the last folder of [folderPath] as [planMove] plans it; one changed since stays where it is. */
+    suspend fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, folderPath: List<Uuid>): FilesyncWriteResult =
         writeLock.withLock {
-            val plan = planMove(nodes, handles, folderId, folderPath, repository.takenNames(folderId))
+            val folderId = folderPath.last()
+            val plan = planMove(nodes, handles, folderPath, repository.takenNames(folderId))
             var moved = 0
             var skipped = plan.skipped
             try {
                 for ((node, name) in plan.moves) {
                     val handle = handles.getValue(node.nodeId)
-                    if (write(node.nodeId, handle, movedContent(handle.content, name), folderId)) moved++ else skipped++
+                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved++ else skipped++
                 }
             } finally {
                 if (plan.moves.isNotEmpty()) _changed.tryEmit(Unit)
@@ -357,9 +358,9 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
     )
 }
 
-internal fun movedContent(content: JsonObject, name: String) = JsonObject(content + ("name" to JsonPrimitive(name)))
 
-internal fun restoredContent(content: JsonObject, name: String) =
+// The legacy removal key goes with any write of the content (node schema, `rm`).
+internal fun renamedContent(content: JsonObject, name: String) =
     JsonObject(content - REMOVAL_KEY + ("name" to JsonPrimitive(name)))
 
 /**
@@ -468,23 +469,23 @@ internal suspend fun removeInOrder(
 internal class FilesyncMovePlan(val moves: List<Pair<FilesyncNode, String>>, val skipped: Int)
 
 /**
- * What moving [nodes] into [folderId], whose path from the top is [folderPath], writes: each live node not there
- * already, under its name or numbered "(1)", "(2)"… against [taken] and the names before it. A folder can't go into
- * itself or below itself, and a node from a newer content version is never changed; those are skipped.
+ * What moving [nodes] into the last folder of [folderPath], the path from the top, writes: each live node not there
+ * already, under its name or numbered "(1)", "(2)"… against [taken] and the names before it. Skipped: a folder going
+ * into itself or below itself, a node from a newer content version, and the folders kept at the top (node schema).
  */
 internal fun planMove(
     nodes: List<FilesyncNode>,
     handles: Map<Uuid, FilesyncHandle>,
-    folderId: Uuid,
     folderPath: List<Uuid>,
     taken: MutableSet<String>,
 ): FilesyncMovePlan {
+    val folderId = folderPath.last()
     val moves = mutableListOf<Pair<FilesyncNode, String>>()
     var skipped = 0
     for (node in nodes) {
         if (node.parentId == folderId || node.removedMs != null) continue
         val handle = handles[node.nodeId]
-        if (handle?.fileVersionTag == null || !handle.writable || node.nodeId == folderId || node.nodeId in folderPath) {
+        if (handle?.fileVersionTag == null || !handle.writable || !node.movable || node.nodeId in folderPath) {
             skipped++
             continue
         }
