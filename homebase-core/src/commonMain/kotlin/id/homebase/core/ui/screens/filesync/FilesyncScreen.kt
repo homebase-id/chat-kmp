@@ -87,6 +87,7 @@ import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
+import id.homebase.resources.delete
 import id.homebase.resources.cancel
 import id.homebase.resources.close
 import id.homebase.resources.create
@@ -109,6 +110,8 @@ import id.homebase.resources.filesync_new_folder_name
 import id.homebase.resources.filesync_no_matches
 import id.homebase.resources.filesync_recent
 import id.homebase.resources.filesync_restore
+import id.homebase.resources.filesync_remove_confirm
+import id.homebase.resources.filesync_remove_confirm_many
 import id.homebase.resources.filesync_restore_confirm
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_search
@@ -172,7 +175,14 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     val snackbarHostState = remember { SnackbarHostState() }
 
     val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
-    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop, onSendToChat, signIn::open) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
+    FilesyncEventsEffect(
+        viewModel.events,
+        snackbarHostState,
+        onOpenWebDrop,
+        onSendToChat,
+        onUndoRemove = { viewModel.onAction(FilesyncUiAction.Restore(it)) },
+        onOpenSignIn = signIn::open,
+    ) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
     BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
 
@@ -188,6 +198,19 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
                 viewModel.onAction(FilesyncUiAction.CreateFolder(name))
             },
             onDismiss = { showNewFolder = false },
+        )
+    }
+    uiState.confirmDelete?.let { nodes ->
+        FilesyncConfirmDialog(
+            text = if (nodes.size == 1) {
+                stringResource(MR.string.filesync_remove_confirm, nodes.single().name)
+            } else {
+                pluralStringResource(MR.plurals.filesync_remove_confirm_many, nodes.size, nodes.size)
+            } + roleFoldersReturn(nodes),
+            confirmLabel = stringResource(MR.string.delete),
+            destructive = true,
+            onConfirm = { viewModel.onAction(FilesyncUiAction.ConfirmDelete) },
+            onDismiss = { viewModel.onAction(FilesyncUiAction.DismissDelete) },
         )
     }
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
@@ -413,6 +436,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
                         onDismiss = { expanded = false },
                         onAction = actions.onAction,
                         onInfo = { onInfo(node) },
+                        canDelete = !actions.current().inDeletedFolder,
                     )
                 }
             }

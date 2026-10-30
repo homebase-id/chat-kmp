@@ -329,6 +329,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                         // Without a single selection Enter belongs to whichever button has focus.
                         (event.key == Key.Enter || event.key == Key.NumPadEnter) && one != null -> actions.click(one)
                         event.key == Key.Backspace -> actions.onAction(FilesyncUiAction.NavigateUp)
+                        event.key == Key.Delete && FilesyncBulkAction.Delete in uiState.bulkActions -> actions.onAction(FilesyncUiAction.Bulk(FilesyncBulkAction.Delete))
                         event.key == Key.Escape && uiState.selecting -> actions.onAction(FilesyncUiAction.ClearSelection)
                         event.key == Key.F5 -> actions.onAction(FilesyncUiAction.Refresh)
                         else -> return@onKeyEvent false
@@ -581,7 +582,7 @@ internal fun TableRow(
             Row(modifier = Modifier.width(ActionsWidth), horizontalArrangement = Arrangement.End) {
                 when {
                     progress != null -> CancelTransferButton(progress) { actions.onAction(FilesyncUiAction.CancelTransfer) }
-                    hovered || selected || moreOpen -> RowActions(node, actions.onAction, moreOpen) { moreOpen = it }
+                    hovered || selected || moreOpen -> RowActions(node, actions.onAction, moreOpen, canDelete = !actions.current().inDeletedFolder) { moreOpen = it }
                 }
             }
         }
@@ -601,6 +602,7 @@ internal fun TableRow(
                 onAction = actions.onAction,
                 onInfo = null,
                 offset = menuAt ?: DpOffset.Zero,
+                canDelete = !actions.current().inDeletedFolder,
             )
         }
     }
@@ -608,7 +610,7 @@ internal fun TableRow(
 
 // The menu's open state lives in the row, which keeps these actions shown while the pointer is over the menu.
 @Composable
-private fun RowActions(node: FilesyncNode, onAction: (FilesyncUiAction) -> Unit, expanded: Boolean, onExpanded: (Boolean) -> Unit) {
+private fun RowActions(node: FilesyncNode, onAction: (FilesyncUiAction) -> Unit, expanded: Boolean, canDelete: Boolean, onExpanded: (Boolean) -> Unit) {
     if (!node.isFolder && node.removedMs == null) {
         IconButton(onClick = { onAction(FilesyncUiAction.SaveClicked(node)) }, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_download), modifier = Modifier.size(20.dp))
@@ -618,7 +620,7 @@ private fun RowActions(node: FilesyncNode, onAction: (FilesyncUiAction) -> Unit,
         IconButton(onClick = { onExpanded(true) }, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.filesync_more), modifier = Modifier.size(20.dp))
         }
-        FilesyncNodeMenu(node = node, expanded = expanded, onDismiss = { onExpanded(false) }, onAction = onAction, onInfo = null)
+        FilesyncNodeMenu(node = node, expanded = expanded, onDismiss = { onExpanded(false) }, onAction = onAction, onInfo = null, canDelete = canDelete)
     }
 }
 

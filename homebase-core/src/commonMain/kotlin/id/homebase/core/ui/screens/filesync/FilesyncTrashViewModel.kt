@@ -79,7 +79,7 @@ class FilesyncTrashViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, selection = FilesyncSelection()) }
             try {
-                reportWrite(done, failed, _events::send, block)
+                reportWrite(FilesyncUiEvent.Notice(done), failed, _events::send, block)
             } finally {
                 _uiState.update { it.copy(busy = false) }
             }

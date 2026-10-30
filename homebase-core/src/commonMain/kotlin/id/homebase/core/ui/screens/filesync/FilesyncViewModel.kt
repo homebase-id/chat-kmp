@@ -198,6 +198,7 @@ class FilesyncViewModel(
                 FilesyncBulkAction.Share -> zipSelected(transfers::shareZip)
                 FilesyncBulkAction.Chat -> zipSelected(transfers::sendZipToChat)
                 FilesyncBulkAction.WebDrop -> zipSelected(transfers::webDropZip)
+                FilesyncBulkAction.Delete -> onAction(FilesyncUiAction.AskDelete(_uiState.value.selected.filter { it.removedMs == null }))
                 FilesyncBulkAction.Restore -> onAction(FilesyncUiAction.Restore(_uiState.value.selectedRemovedIds))
             }
 
@@ -220,7 +221,20 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.Restore -> viewModelScope.launch {
-                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeIds) }
+                reportWrite(FilesyncUiEvent.Notice(FilesyncNotice.Restored), FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeIds) }
+            }
+
+            is FilesyncUiAction.AskDelete -> if (action.nodes.isNotEmpty() && !_uiState.value.inDeletedFolder) _uiState.update { it.copy(confirmDelete = action.nodes) }
+
+            FilesyncUiAction.DismissDelete -> _uiState.update { it.copy(confirmDelete = null) }
+
+            FilesyncUiAction.ConfirmDelete -> {
+                val nodes = _uiState.getAndUpdate { it.copy(confirmDelete = null) }.confirmDelete ?: return
+                val handles = transfers.handles
+                viewModelScope.launch {
+                    val removed = FilesyncUiEvent.Removed(nodes.mapTo(mutableSetOf()) { it.nodeId })
+                    reportWrite(removed, FilesyncError.DeleteFailed, _events::send) { editor.remove(nodes, handles) }
+                }
             }
 
             FilesyncUiAction.MakePrivate -> {
