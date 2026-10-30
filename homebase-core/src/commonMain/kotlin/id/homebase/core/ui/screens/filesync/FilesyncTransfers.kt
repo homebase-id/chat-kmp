@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
-private enum class Purpose { Open, Save, Share, WebDrop }
+private enum class Purpose { Open, Save, Share, WebDrop, Chat }
 
 /** What a transfer downloads: one file as itself, or several nodes as one ZIP called [name]. */
 private sealed interface Source {
@@ -54,9 +54,13 @@ internal class FilesyncTransfers(
 
     fun webDrop(node: FilesyncNode) = one(node, Purpose.WebDrop)
 
+    fun sendToChat(node: FilesyncNode) = one(node, Purpose.Chat)
+
     fun saveZip(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Save)
 
     fun shareZip(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Share)
+
+    fun sendZipToChat(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Chat)
 
     fun cancel() {
         job?.cancel()
@@ -100,6 +104,7 @@ internal class FilesyncTransfers(
                     Purpose.Open -> send(FilesyncUiEvent.OpenFile(path))
                     Purpose.Save -> send(FilesyncUiEvent.SaveFile(path, source.name))
                     Purpose.Share -> send(FilesyncUiEvent.ShareFile(path))
+                    Purpose.Chat -> send(FilesyncUiEvent.SendToChat(path, source.name))
                     Purpose.WebDrop -> onWebDrop(
                         PickedDropFile(path, source.name, detectContentTypeFromExtensionOrHint(source.name), (source as? Source.One)?.node?.sizeBytes ?: 0)
                     )

@@ -166,13 +166,13 @@ internal fun Modifier.browserDropTarget(scope: FilesyncBrowserScope): Modifier =
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenWebDrop: () -> Unit) {
+fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenWebDrop: () -> Unit, onSendToChat: (path: String, name: String) -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uploads by viewModel.uploads.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
-    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop, signIn::open) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
+    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop, onSendToChat, signIn::open) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
     BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
 

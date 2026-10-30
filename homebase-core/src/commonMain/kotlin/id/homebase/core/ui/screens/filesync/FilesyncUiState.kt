@@ -72,6 +72,7 @@ data class FilesyncUiState(
         listOfNotNull(
             FilesyncBulkAction.Download.takeIf { live },
             FilesyncBulkAction.Share.takeIf { live && isMobile() },
+            FilesyncBulkAction.Chat.takeIf { live },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
     }
@@ -99,7 +100,7 @@ data class FilesyncUiState(
     }
 }
 
-enum class FilesyncBulkAction { Download, Share, Restore }
+enum class FilesyncBulkAction { Download, Share, Chat, Restore }
 
 sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
@@ -114,6 +115,7 @@ sealed interface FilesyncUiAction {
     data class SaveClicked(val node: FilesyncNode) : FilesyncUiAction
     data class ShareClicked(val node: FilesyncNode) : FilesyncUiAction
     data class WebDropClicked(val node: FilesyncNode) : FilesyncUiAction
+    data class SendToChatClicked(val node: FilesyncNode) : FilesyncUiAction
     data object CancelTransfer : FilesyncUiAction
     data class SaveHandedOff(val path: String) : FilesyncUiAction
     data class FilesPicked(val files: List<PlatformFile>) : FilesyncUiAction
@@ -133,6 +135,7 @@ sealed interface FilesyncUiAction {
     /** The selection's live nodes as one ZIP, saved or (on phones) shared. */
     data object DownloadSelected : FilesyncUiAction
     data object ShareSelected : FilesyncUiAction
+    data object SendSelectedToChat : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
@@ -146,6 +149,7 @@ sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent
     data class SaveFile(val path: String, val name: String) : FilesyncUiEvent
     data class ShareFile(val path: String) : FilesyncUiEvent
+    data class SendToChat(val path: String, val name: String) : FilesyncUiEvent
     data object OpenWebDrop : FilesyncUiEvent
     data class OpenSignIn(val url: String) : FilesyncUiEvent
     data class OpenOwnerConsole(val url: String) : FilesyncUiEvent

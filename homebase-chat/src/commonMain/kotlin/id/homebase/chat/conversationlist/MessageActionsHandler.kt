@@ -561,64 +561,7 @@ internal class MessageActionsHandler(
     fun handleForwardMessage(action: ConversationListUiAction.ForwardMessage) {
         scope.launch {
             try {
-                val allConversations = uiState.value.activeConversations
-                val allContacts = contactService.contacts.value
-
-                val selfConversation =
-                    allConversations.firstOrNull { it.conversation.isWithSelf }
-                val nonSelfConversations =
-                    allConversations.filter { !it.conversation.isWithSelf }
-                val recentConversations = nonSelfConversations
-                    .filter { !it.conversation.isGroupConversation }
-                    .take(5)
-                val groupConversations = nonSelfConversations
-                    .filter { it.conversation.isGroupConversation }
-                    .sortedBy { it.getDisplayName().lowercase() }
-                val sortedContacts = allContacts.sortedBy { it.name.lowercase() }
-
-                val recipientGroups = buildList {
-                    if (selfConversation != null) {
-                        add(
-                            RecipientGroupModel(
-                                recipientType = RecipientType.You,
-                                recipients = listOf(
-                                    RecipientModel.Conversation(
-                                        selfConversation
-                                    )
-                                )
-                            )
-                        )
-                    }
-                    if (recentConversations.isNotEmpty()) {
-                        add(
-                            RecipientGroupModel(
-                                recipientType = RecipientType.Recents,
-                                recipients = recentConversations.map {
-                                    RecipientModel.Conversation(
-                                        it
-                                    )
-                                }
-                            ))
-                    }
-                    if (sortedContacts.isNotEmpty()) {
-                        add(
-                            RecipientGroupModel(
-                                recipientType = RecipientType.Contacts,
-                                recipients = sortedContacts.map { RecipientModel.Contact(it) }
-                            ))
-                    }
-                    if (groupConversations.isNotEmpty()) {
-                        add(
-                            RecipientGroupModel(
-                                recipientType = RecipientType.Groups,
-                                recipients = groupConversations.map {
-                                    RecipientModel.Conversation(
-                                        it
-                                    )
-                                }
-                            ))
-                    }
-                }
+                val recipientGroups = recipientGroups(uiState.value.activeConversations, contactService.contacts.value)
 
                 messagesUiState.update {
                     it.copy(
@@ -659,19 +602,7 @@ internal class MessageActionsHandler(
         messagesUiState.update { it.copy(isSendingMessage = true) }
         scope.launch {
             try {
-                val conversationIds = action.recipients.map { recipientModel ->
-                    when (recipientModel) {
-                        is RecipientModel.Contact -> {
-                            conversationService.createConversation(
-                                recipients = listOf(recipientModel.contact.odinId),
-                                title = "",
-                                payloadBundle = null,
-                            ).conversationId
-                        }
-
-                        is RecipientModel.Conversation -> recipientModel.conversation.conversation.id
-                    }
-                }
+                val conversationIds = action.recipients.map { conversationIdFor(it) }
                 chatMessageSenderService.forwardMessage(
                     sourceMessageUniqueId = action.message.id,
                     targetConversationIds = conversationIds
@@ -689,6 +620,16 @@ internal class MessageActionsHandler(
                 messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
+    }
+
+    /** The chat [recipient] stands for; a contact's 1:1 chat is created when it has none. */
+    internal suspend fun conversationIdFor(recipient: RecipientModel): Uuid = when (recipient) {
+        is RecipientModel.Contact -> conversationService.createConversation(
+            recipients = listOf(recipient.contact.odinId),
+            title = "",
+            payloadBundle = null,
+        ).conversationId
+        is RecipientModel.Conversation -> recipient.conversation.conversation.id
     }
 
     fun handleCancelReplyToMessage() {

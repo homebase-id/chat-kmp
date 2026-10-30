@@ -78,6 +78,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.widget.SendFileSheet
 import id.homebase.chat.widget.ChatMediaViewer
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.paneTrailingEdge
@@ -354,6 +355,11 @@ fun ConversationListScreen(
 
     when (val dialog = conversationsUiState.uiDialog) {
         null -> {}
+        is ConversationListUiDialog.SendFile -> SendFileSheet(
+            dialog = dialog,
+            onPick = { viewModel.onAction(ConversationListUiAction.SendFileTo(it)) },
+            onDismiss = { viewModel.onAction(ConversationListUiAction.CancelSendFile) },
+        )
         is ConversationListUiDialog.DeleteMessage -> {
             Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
                 DialogCard(

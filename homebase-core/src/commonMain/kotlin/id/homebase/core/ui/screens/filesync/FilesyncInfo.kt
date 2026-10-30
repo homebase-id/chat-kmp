@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.RestoreFromTrash
@@ -71,6 +72,7 @@ import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_clear_selection
 import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_selected
+import id.homebase.resources.filesync_send_chat
 import id.homebase.resources.filesync_send_webdrop
 import id.homebase.resources.share
 import org.jetbrains.compose.resources.StringResource
@@ -214,6 +216,7 @@ internal fun FilesyncNodeMenu(
             MenuItem(MR.string.filesync_download, onDismiss) { onAction(FilesyncUiAction.SaveClicked(node)) }
             // Elsewhere the platform's share is a save, which Save already is.
             if (isMobile()) MenuItem(MR.string.share, onDismiss) { onAction(FilesyncUiAction.ShareClicked(node)) }
+            MenuItem(MR.string.filesync_send_chat, onDismiss) { onAction(FilesyncUiAction.SendToChatClicked(node)) }
             MenuItem(MR.string.filesync_send_webdrop, onDismiss) { onAction(FilesyncUiAction.WebDropClicked(node)) }
         }
     }
@@ -223,6 +226,7 @@ internal val FilesyncBulkAction.label: StringResource
     get() = when (this) {
         FilesyncBulkAction.Download -> MR.string.filesync_download
         FilesyncBulkAction.Share -> MR.string.share
+        FilesyncBulkAction.Chat -> MR.string.filesync_send_chat
         FilesyncBulkAction.Restore -> MR.string.filesync_restore
     }
 
@@ -230,12 +234,14 @@ internal val FilesyncBulkAction.icon: ImageVector
     get() = when (this) {
         FilesyncBulkAction.Download -> Icons.Outlined.Download
         FilesyncBulkAction.Share -> Icons.Outlined.Share
+        FilesyncBulkAction.Chat -> Icons.AutoMirrored.Outlined.Send
         FilesyncBulkAction.Restore -> Icons.Outlined.RestoreFromTrash
     }
 
 internal fun FilesyncBulkAction.action(state: FilesyncUiState): FilesyncUiAction = when (this) {
     FilesyncBulkAction.Download -> FilesyncUiAction.DownloadSelected
     FilesyncBulkAction.Share -> FilesyncUiAction.ShareSelected
+    FilesyncBulkAction.Chat -> FilesyncUiAction.SendSelectedToChat
     FilesyncBulkAction.Restore -> FilesyncUiAction.Restore(state.selectedRemovedIds)
 }
 

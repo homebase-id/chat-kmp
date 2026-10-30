@@ -135,11 +135,8 @@ class PayloadDownloadService(
         return true
     }
 
-    /**
-     * A path reserved at [destination] for [write] to fill, returned once it has; false from [write] means there was
-     * nothing to write (null back). A cancelled or failed write leaves no partial plaintext copy behind.
-     */
-    suspend fun exportWith(destination: ExportDestination, write: suspend (path: String) -> Boolean): String? {
+    // A cancelled or failed export must not leave a partial plaintext copy behind.
+    private suspend fun exportWith(destination: ExportDestination, write: suspend (path: String) -> Boolean): String? {
         val path = when (destination) {
             is ExportDestination.ShareOutbound ->
                 fileOperationsProvider.createShareOutboundPath(destination.suffix)

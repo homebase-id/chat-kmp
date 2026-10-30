@@ -189,6 +189,10 @@ sealed interface ConversationListUiAction {
     data object CancelBattleDiceRoll : ConversationListUiAction
     data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
     data class ForwardMessageSend(val message: MessageUiModel, val recipients: List<RecipientModel>) : ConversationListUiAction
+
+    data class ChooseChatForFile(val path: String, val name: String) : ConversationListUiAction
+    data class SendFileTo(val recipient: RecipientModel) : ConversationListUiAction
+    data object CancelSendFile : ConversationListUiAction
     data class ForwardMessageSelectRecipient(val recipient: RecipientModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
     data class EditMessage(val messageId: Uuid, val versionTag: Uuid, val ignoreDraft: Boolean) :
