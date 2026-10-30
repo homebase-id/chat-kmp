@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +32,7 @@ import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -95,6 +97,10 @@ import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_too_large
 import id.homebase.resources.filesync_upload_failed
 import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.filesync_archive_cancel
+import id.homebase.resources.filesync_archive_damaged
+import id.homebase.resources.filesync_archive_listing
+import id.homebase.resources.filesync_archive_progress
 import id.homebase.resources.filesync_clear_selection
 import id.homebase.resources.filesync_file_count
 import id.homebase.resources.filesync_folder_count
@@ -176,6 +182,9 @@ internal fun FilesyncEventsEffect(
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
                     }
                 )
+                is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
+                }
             }
         }
     }
@@ -493,3 +502,30 @@ internal fun totalsLabel(totals: FilesyncTotals): String = stringResource(
     pluralStringResource(MR.plurals.filesync_file_count, totals.files, totals.files),
     formatBytes(totals.bytes),
 )
+
+/** A ZIP being made: how far it has got, and a way to stop it. */
+@Composable
+internal fun FilesyncArchiveBar(transfer: FilesyncTransfer, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    val total = transfer.totalBytes
+    Row(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = if (total == null) {
+                    stringResource(MR.string.filesync_archive_listing)
+                } else {
+                    stringResource(MR.string.filesync_archive_progress, formatBytes((transfer.progress * total).toLong()), formatBytes(total))
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (total == null || total == 0L) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(progress = { transfer.progress }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        IconButton(onClick = onCancel) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_archive_cancel))
+        }
+    }
+}

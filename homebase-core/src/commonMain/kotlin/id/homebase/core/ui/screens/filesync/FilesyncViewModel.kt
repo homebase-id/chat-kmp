@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "FilesyncViewModel"
+private const val ARCHIVE_FALLBACK_NAME = "Filesync"
 private val FOLDER_REFRESH_DEBOUNCE = 500.milliseconds
 
 @OptIn(FlowPreview::class)
@@ -190,6 +191,10 @@ class FilesyncViewModel(
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
+            FilesyncUiAction.DownloadSelected -> zipSelected(share = false)
+
+            FilesyncUiAction.ShareSelected -> zipSelected(share = true)
+
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
             is FilesyncUiAction.FilesPicked -> uploadQueue.add(_uiState.value.path.last().nodeId, action.files)
@@ -228,6 +233,14 @@ class FilesyncViewModel(
 
     fun onSignInCallback(url: String) {
         viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
+    }
+
+    private fun zipSelected(share: Boolean) {
+        val state = _uiState.value
+        val nodes = state.selected.filter { it.removedMs == null }
+        if (nodes.isEmpty()) return
+        val name = FilesyncArchive.name(nodes, state.path.last().name, ARCHIVE_FALLBACK_NAME)
+        if (share) transfers.shareZip(nodes, name) else transfers.saveZip(nodes, name)
     }
 
     private fun open(node: FilesyncNode) {

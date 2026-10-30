@@ -44,7 +44,7 @@ private const val DOWNLOADS_LOCATION = "Downloads"
  * (MediaDownloadHandler), not something the browser can fetch — read the bytes back and hand them
  * to the user as a Blob object URL.
  */
-private fun triggerBrowserDownload(url: String, fileName: String): Unit = js(
+internal fun triggerBrowserDownload(url: String, fileName: String): Unit = js(
     """{
         var a = document.createElement('a');
         a.href = url;

@@ -91,7 +91,7 @@ class PayloadDownloadService(
         keyHeader: KeyHeader,
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
-    ): String? = exportTo(destination) { path ->
+    ): String? = exportWith(destination) { path ->
         driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOperationsProvider.writeStream(path, it) }
     }
 
@@ -104,7 +104,7 @@ class PayloadDownloadService(
         hash: PayloadHash,
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
-    ): String? = exportTo(destination) { path ->
+    ): String? = exportWith(destination) { path ->
         streamVerified(driveId, fileId, key, keyHeader, hash, onProgress) { fileOperationsProvider.writeStream(path, it) }
     }
 
@@ -135,8 +135,11 @@ class PayloadDownloadService(
         return true
     }
 
-    // A cancelled or failed export must not leave a partial plaintext copy behind.
-    private suspend fun exportTo(destination: ExportDestination, write: suspend (String) -> Boolean): String? {
+    /**
+     * A path reserved at [destination] for [write] to fill, returned once it has; false from [write] means there was
+     * nothing to write (null back). A cancelled or failed write leaves no partial plaintext copy behind.
+     */
+    suspend fun exportWith(destination: ExportDestination, write: suspend (path: String) -> Boolean): String? {
         val path = when (destination) {
             is ExportDestination.ShareOutbound ->
                 fileOperationsProvider.createShareOutboundPath(destination.suffix)

@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.runtime.Immutable
 import id.homebase.core.privatedrive.PrivateDriveState
+import id.homebase.core.util.isMobile
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
@@ -9,8 +10,11 @@ import kotlin.uuid.Uuid
 @Immutable
 data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removedMs: Long? = null)
 
+/** A download under way: of the node [nodeId], or of a ZIP when null, whose [totalBytes] are known once it's listed. */
 @Immutable
-data class FilesyncTransfer(val nodeId: Uuid, val progress: Float = 0f)
+data class FilesyncTransfer(val nodeId: Uuid?, val progress: Float = 0f, val totalBytes: Long? = null) {
+    val isZip: Boolean get() = nodeId == null
+}
 
 internal fun FilesyncTransfer?.progressOf(nodeId: Uuid): Float? = this?.takeIf { it.nodeId == nodeId }?.progress
 
@@ -62,6 +66,19 @@ data class FilesyncUiState(
     /** The deleted nodes among [selected], which Restore takes. */
     val selectedRemovedIds: Set<Uuid> by lazy(LazyThreadSafetyMode.NONE) { selected.removedIds() }
 
+    /** What the selection offers, in the order shown: a ZIP of its live nodes, and Restore for its deleted ones. */
+    val bulkActions: List<FilesyncBulkAction> by lazy(LazyThreadSafetyMode.NONE) {
+        val live = selected.size > selectedRemovedIds.size
+        listOfNotNull(
+            FilesyncBulkAction.Download.takeIf { live },
+            FilesyncBulkAction.Share.takeIf { live && isMobile() },
+            FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
+        )
+    }
+
+    /** One download at a time; a restore can go alongside. */
+    fun isEnabled(bulk: FilesyncBulkAction): Boolean = transfer == null || bulk == FilesyncBulkAction.Restore
+
     /** The selected node when it's the only one. */
     val selectedOne: FilesyncNode? get() = selected.singleOrNull()
 
@@ -81,6 +98,8 @@ data class FilesyncUiState(
         )
     }
 }
+
+enum class FilesyncBulkAction { Download, Share, Restore }
 
 sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
@@ -111,6 +130,9 @@ sealed interface FilesyncUiAction {
     data object ClearSelection : FilesyncUiAction
     /** Shift+arrow when [extend]. */
     data class MoveSelection(val by: Int, val extend: Boolean = false) : FilesyncUiAction
+    /** The selection's live nodes as one ZIP, saved or (on phones) shared. */
+    data object DownloadSelected : FilesyncUiAction
+    data object ShareSelected : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
@@ -129,4 +151,6 @@ sealed interface FilesyncUiEvent {
     data class OpenOwnerConsole(val url: String) : FilesyncUiEvent
     data class Error(val error: FilesyncError) : FilesyncUiEvent
     data class Notice(val notice: FilesyncNotice) : FilesyncUiEvent
+    /** [name] failed its hash check, so the ZIP holding it was thrown away. */
+    data class ArchiveDamaged(val name: String) : FilesyncUiEvent
 }

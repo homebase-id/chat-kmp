@@ -5,11 +5,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.RestoreFromTrash
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -19,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -213,30 +219,46 @@ internal fun FilesyncNodeMenu(
     }
 }
 
-/** What can be done with the whole selection; of its deleted nodes, [removed], Restore is all. */
+internal val FilesyncBulkAction.label: StringResource
+    get() = when (this) {
+        FilesyncBulkAction.Download -> MR.string.filesync_download
+        FilesyncBulkAction.Share -> MR.string.share
+        FilesyncBulkAction.Restore -> MR.string.filesync_restore
+    }
+
+internal val FilesyncBulkAction.icon: ImageVector
+    get() = when (this) {
+        FilesyncBulkAction.Download -> Icons.Outlined.Download
+        FilesyncBulkAction.Share -> Icons.Outlined.Share
+        FilesyncBulkAction.Restore -> Icons.Outlined.RestoreFromTrash
+    }
+
+internal fun FilesyncBulkAction.action(state: FilesyncUiState): FilesyncUiAction = when (this) {
+    FilesyncBulkAction.Download -> FilesyncUiAction.DownloadSelected
+    FilesyncBulkAction.Share -> FilesyncUiAction.ShareSelected
+    FilesyncBulkAction.Restore -> FilesyncUiAction.Restore(state.selectedRemovedIds)
+}
+
+/** What can be done with the whole selection. */
 @Composable
 internal fun FilesyncSelectionMenu(
-    removed: Set<Uuid>,
+    state: FilesyncUiState,
     expanded: Boolean,
     onDismiss: () -> Unit,
     onAction: (FilesyncUiAction) -> Unit,
     offset: DpOffset = DpOffset(0.dp, 0.dp),
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
-        if (removed.isNotEmpty()) MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(removed)) }
+        state.bulkActions.forEach { bulk -> MenuItem(bulk.label, onDismiss) { onAction(bulk.action(state)) } }
         MenuItem(MR.string.filesync_clear_selection, onDismiss) { onAction(FilesyncUiAction.ClearSelection) }
     }
 }
 
 /** The pane for a selection of more than one: how many, how big, and what can be done with them all. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun FilesyncSelectionContent(
-    count: Int,
-    totals: FilesyncTotals,
-    removed: Set<Uuid>,
-    onAction: (FilesyncUiAction) -> Unit,
-    modifier: Modifier = Modifier,
-) {
+internal fun FilesyncSelectionContent(state: FilesyncUiState, onAction: (FilesyncUiAction) -> Unit, modifier: Modifier = Modifier) {
+    val count = state.selected.size
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
@@ -245,18 +267,26 @@ internal fun FilesyncSelectionContent(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = totalsLabel(totals),
+                text = totalsLabel(state.selectedTotals),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (removed.isNotEmpty()) {
-                Button(onClick = { onAction(FilesyncUiAction.Restore(removed)) }, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(MR.string.filesync_restore))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            state.bulkActions.forEachIndexed { i, bulk ->
+                val content: @Composable RowScope.() -> Unit = {
+                    Icon(bulk.icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(bulk.label))
+                }
+                val enabled = state.isEnabled(bulk)
+                if (i == 0) {
+                    Button(onClick = { onAction(bulk.action(state)) }, enabled = enabled, content = content)
+                } else {
+                    OutlinedButton(onClick = { onAction(bulk.action(state)) }, enabled = enabled, content = content)
                 }
             }
-            OutlinedButton(onClick = { onAction(FilesyncUiAction.ClearSelection) }, modifier = Modifier.weight(1f)) {
+            TextButton(onClick = { onAction(FilesyncUiAction.ClearSelection) }) {
                 Text(stringResource(MR.string.filesync_clear_selection))
             }
         }

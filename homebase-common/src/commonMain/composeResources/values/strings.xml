@@ -3053,6 +3053,10 @@
     <string name="filesync_select">Select %1$s</string>
     <string name="filesync_select_all">Select all</string>
     <string name="filesync_clear_selection">Clear selection</string>
+    <string name="filesync_archive_listing">Gathering files…</string>
+    <string name="filesync_archive_progress">Zipping · %1$s of %2$s</string>
+    <string name="filesync_archive_cancel">Stop zipping</string>
+    <string name="filesync_archive_damaged">%1$s failed its integrity check, so the ZIP was thrown away.</string>
     <string name="filesync_all_files">All files</string>
     <string name="filesync_tags_here">Tags in this folder</string>
     <string name="filesync_search">Search this folder</string>
