@@ -13,6 +13,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 
@@ -63,5 +65,20 @@ class FilesyncRepositoryTest {
     fun aRowWithoutAFolderKeepsEveryFolderAsked() = runTest {
         val folders = List(2) { Uuid.random() }
         assertEquals(folders.toSet(), repository(listOf(Row(null, 2))).holding(folders, emptySet()))
+    }
+
+    @Test
+    fun aCachedFileKeepsItsNameInAFolderOfItsOwn() = runTest {
+        val repository = repository(emptyList())
+        val path = repository.writeToCache("Report: Q3?.pdf", toShareOutbound = false) { out -> out("hello".encodeToByteArray()) }
+        assertEquals("Report_ Q3_.pdf", path.substringAfterLast('/'))
+        assertEquals("hello", java.io.File(path).readText())
+
+        val long = repository.writeToCache("x".repeat(400) + ".tar.gz", toShareOutbound = true) { out -> out(ByteArray(1)) }
+        val name = long.substringAfterLast('/')
+        assertTrue(name.encodeToByteArray().size <= 255 && name.endsWith(".gz"))
+
+        repository.discard(path)
+        assertFalse(java.io.File(path).exists())
     }
 }

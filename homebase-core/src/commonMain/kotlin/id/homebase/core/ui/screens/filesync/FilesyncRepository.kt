@@ -9,14 +9,16 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
@@ -34,6 +36,9 @@ enum class FilesyncStatus(internal val archivalStatus: List<Int>) {
 /** A tombstone is proof a file went for good; a header not found is only a first "not there". */
 enum class FilesyncNotThere { Tombstone, NoHeader }
 
+/** How long the server's queries take to see a write: they leave out what changed in their last second. */
+internal val QUERY_HOLD_BACK = 1100.milliseconds
+
 /** Network only: the drive is never synced, so every listing is fetched fresh. */
 class FilesyncRepository(
     private val driveQueryProvider: DriveQueryProvider,
@@ -41,6 +46,9 @@ class FilesyncRepository(
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
 ) {
+
+    /** The live nodes of several folders at once. */
+    suspend fun listFolders(folderIds: List<Uuid>): FilesyncNodes = queryChunked(folderIds, listOf(FilesyncStatus.Live)) { copy(groupId = it) }
 
     /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
@@ -92,7 +100,7 @@ class FilesyncRepository(
      */
     suspend fun holding(folderIds: List<Uuid>, except: Set<FileVersionTag>): Set<Uuid> {
         // The server's queries leave out what changed in their last second.
-        delay(HOLD_BACK)
+        delay(QUERY_HOLD_BACK)
         val holding = mutableSetOf<Uuid>()
         for (chunk in folderIds.chunked(PAGE_SIZE)) {
             forEachPage(FileQueryParams(groupId = chunk, fileState = listOf(FileState.Active)), QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE)) { page ->
@@ -195,38 +203,61 @@ class FilesyncRepository(
         return FilesyncNodes(nodes, handles)
     }
 
-    /**
-     * A file to open goes to share_outbound, swept like every other copy handed to another app;
-     * one to save goes to upload-temp and is [discard]ed once the OS has its copy.
-     */
-    suspend fun download(name: String, payload: FilesyncPayload, toShareOutbound: Boolean, onProgress: (Float) -> Unit): String? =
-        payloadDownloadService.exportVerified(
+    /** A file's checked plaintext to [consume] as it downloads; throws when it's damaged or gone. */
+    suspend fun streamPayload(payload: FilesyncPayload, onProgress: ((Float) -> Unit)? = null, consume: suspend (Flow<ByteArray>) -> Unit) {
+        val found = payloadDownloadService.streamVerified(
             driveId = FilesyncProtocol.DriveAlias,
             fileId = payload.fileId,
             key = FilesyncProtocol.PayloadKey,
             keyHeader = payload.payloadKey,
             hash = payload.hash,
-            destination = if (toShareOutbound) {
-                ExportDestination.ShareOutbound(extensionOf(name))
-            } else {
-                ExportDestination.UploadTemp("fs_", extensionOf(name))
-            },
             onProgress = onProgress,
+            consume = consume,
         )
+        if (!found) throw IllegalStateException("payload of ${payload.fileId} is gone")
+    }
 
-    // The name comes from any desktop OS; only a plain alphanumeric extension reaches the temp path.
-    private fun extensionOf(name: String): String =
-        FilesyncNames.split(name).second
-            .takeIf { ext -> ext.length in 2..11 && ext.drop(1).all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' } }
-            .orEmpty()
+    /**
+     * What [write] makes, as a file called [name] in a folder of its own, so whatever it's handed to sees the real name:
+     * one to open or share goes to share_outbound, swept like every other copy handed to another app; any other goes
+     * to upload-temp and is [discard]ed once it has been handed on.
+     */
+    suspend fun writeToCache(name: String, toShareOutbound: Boolean, write: suspend (out: suspend (ByteArray) -> Unit) -> Unit): String {
+        val folder = if (toShareOutbound) fileOperationsProvider.createShareOutboundPath("") else fileOperationsProvider.createUploadTempPath("fs_", "")
+        val path = "$folder/${cacheFileName(name)}"
+        try {
+            // Its own producer, so the bytes reach the disk as they come.
+            fileOperationsProvider.writeStream(path, channelFlow { write { send(it) } })
+        } catch (t: Throwable) {
+            discard(path)
+            throw t
+        }
+        return path
+    }
 
+    // The name comes from any desktop OS; what no file system takes, or a name too long for any, is replaced.
+    private fun cacheFileName(name: String): String {
+        val clean = buildString { name.forEach { append(if (it in "/\\:*?\"<>|" || it < ' ') '_' else it) } }.trim().trimEnd('.')
+        return when {
+            clean.isEmpty() -> "file"
+            clean.encodeToByteArray().size <= MAX_NAME_BYTES -> clean
+            else -> {
+                val (stem, ext) = FilesyncNames.split(clean)
+                stem.truncateToCodePoints(MAX_NAME_BYTES / 4 - ext.length) + ext
+            }
+        }
+    }
+
+    fun sizeOf(path: String): Long = fileOperationsProvider.getFileSize(path)
+
+    // The empty folder [writeToCache] made for it goes with the cache sweep.
     fun discard(path: String) {
         runCatching { fileOperationsProvider.deleteTempFile(path) }
     }
 
     private companion object {
         const val PAGE_SIZE = 1000
-        val HOLD_BACK = 1100.milliseconds
+        const val MAX_NAME_BYTES = 255
         const val RECENT_LIMIT = 100
     }
 }

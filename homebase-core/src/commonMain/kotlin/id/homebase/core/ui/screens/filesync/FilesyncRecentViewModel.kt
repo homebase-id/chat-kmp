@@ -75,7 +75,7 @@ class FilesyncRecentViewModel(
             FilesyncRecentAction.CancelTransfer -> transfers.cancel()
             is FilesyncRecentAction.SaveHandedOff -> repository.discard(action.path)
             is FilesyncRecentAction.Restore -> viewModelScope.launch {
-                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
+                reportWrite(FilesyncUiEvent.Notice(FilesyncNotice.Restored), FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
             }
         }
     }

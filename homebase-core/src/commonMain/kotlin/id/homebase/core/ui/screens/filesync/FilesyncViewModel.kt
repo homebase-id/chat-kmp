@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "FilesyncViewModel"
+private const val ARCHIVE_FALLBACK_NAME = "Filesync"
 private val FOLDER_REFRESH_DEBOUNCE = 500.milliseconds
 
 @OptIn(FlowPreview::class)
@@ -174,21 +175,34 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.FilterTag -> arrange { it.copy(tagFilter = action.name.takeIf { name -> name != it.tagFilter }) }
 
-            is FilesyncUiAction.Select -> _uiState.update { it.copy(selectedId = action.nodeId) }
+            is FilesyncUiAction.Select -> _uiState.update { it.copy(selection = it.selection.select(action.nodeId, action.mode, it.visibleIds)) }
 
-            is FilesyncUiAction.MoveSelection -> _uiState.update { state ->
-                val index = state.visible.indexOfFirst { it.nodeId == state.selectedId }
-                val next = if (index < 0) 0 else (index + action.by).coerceIn(0, state.visible.lastIndex)
-                state.copy(selectedId = state.visible.getOrNull(next)?.nodeId)
-            }
+            FilesyncUiAction.SelectAll -> _uiState.update { it.copy(selection = it.selection.all(it.visibleIds)) }
+
+            FilesyncUiAction.ClearSelection -> _uiState.update { it.copy(selection = FilesyncSelection()) }
+
+            is FilesyncUiAction.MoveSelection -> _uiState.update { it.copy(selection = it.selection.move(action.by, action.extend, it.visibleIds)) }
 
             is FilesyncUiAction.SaveClicked -> transfers.save(action.node)
 
-            is FilesyncUiAction.ShareClicked -> transfers.share(action.node)
+            is FilesyncUiAction.AskShare -> if (action.nodes.isNotEmpty()) _uiState.update { it.copy(shareChooser = action.nodes) }
 
-            is FilesyncUiAction.WebDropClicked -> transfers.webDrop(action.node)
+            FilesyncUiAction.DismissShare -> _uiState.update { it.copy(shareChooser = null) }
+
+            is FilesyncUiAction.ShareTo -> {
+                val nodes = _uiState.getAndUpdate { it.copy(shareChooser = null) }.shareChooser ?: return
+                transfers.send(nodes, zipName(nodes), action.target)
+            }
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
+
+            is FilesyncUiAction.Bulk -> when (action.bulk) {
+                FilesyncBulkAction.Download -> _uiState.value.liveSelected.takeIf { it.isNotEmpty() }?.let { transfers.saveZip(it, zipName(it)) }
+                FilesyncBulkAction.Share -> onAction(FilesyncUiAction.AskShare(_uiState.value.liveSelected))
+                FilesyncBulkAction.Move -> onAction(FilesyncUiAction.AskMove(_uiState.value.liveSelected.filter { it.movable }))
+                FilesyncBulkAction.Delete -> onAction(FilesyncUiAction.AskDelete(_uiState.value.liveSelected))
+                FilesyncBulkAction.Restore -> onAction(FilesyncUiAction.Restore(_uiState.value.selectedRemovedIds))
+            }
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
@@ -209,7 +223,48 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.Restore -> viewModelScope.launch {
-                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
+                reportWrite(FilesyncUiEvent.Notice(FilesyncNotice.Restored), FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeIds) }
+            }
+
+            is FilesyncUiAction.AskDelete -> if (action.nodes.isNotEmpty() && !_uiState.value.inDeletedFolder) _uiState.update { it.copy(confirmDelete = action.nodes) }
+
+            FilesyncUiAction.DismissDelete -> _uiState.update { it.copy(confirmDelete = null) }
+
+            FilesyncUiAction.ConfirmDelete -> {
+                val nodes = _uiState.getAndUpdate { it.copy(confirmDelete = null) }.confirmDelete ?: return
+                val handles = transfers.handles
+                viewModelScope.launch {
+                    val removed = FilesyncUiEvent.Removed(nodes.mapTo(mutableSetOf()) { it.nodeId })
+                    reportWrite(removed, FilesyncError.DeleteFailed, _events::send) { editor.remove(nodes, handles) }
+                }
+            }
+
+            is FilesyncUiAction.AskMove -> if (action.nodes.isNotEmpty()) {
+                // Starts where the browser is, unless that is a deleted folder, where nothing may go.
+                val path = _uiState.value.path.takeWhile { it.removedMs == null }
+                showMoveFolder(FilesyncMovePicker(action.nodes, path))
+            }
+
+            is FilesyncUiAction.MovePickerOpen -> _uiState.value.movePicker?.let { picker ->
+                if (!picker.isMoving(action.folder.nodeId)) showMoveFolder(picker.copy(path = picker.path + FilesyncCrumb(action.folder.nodeId, action.folder.name)))
+            }
+
+            is FilesyncUiAction.MovePickerToCrumb -> _uiState.value.movePicker?.let { picker ->
+                showMoveFolder(picker.copy(path = picker.path.take(action.index + 1)))
+            }
+
+            FilesyncUiAction.DismissMove -> closeMovePicker()
+
+            FilesyncUiAction.ConfirmMove -> {
+                val picker = _uiState.value.movePicker?.takeIf { it.canMoveHere } ?: return
+                closeMovePicker()
+                val handles = transfers.handles
+                viewModelScope.launch {
+                    val target = picker.path.last()
+                    reportWrite(FilesyncUiEvent.Moved(target.name), FilesyncError.MoveFailed, _events::send) {
+                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId })
+                    }
+                }
             }
 
             FilesyncUiAction.MakePrivate -> {
@@ -230,6 +285,33 @@ class FilesyncViewModel(
         viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
     }
 
+    private fun zipName(nodes: List<FilesyncNode>) = FilesyncArchive.name(nodes, _uiState.value.path.last().name, ARCHIVE_FALLBACK_NAME)
+
+    private var moveListJob: Job? = null
+
+    private fun closeMovePicker() {
+        moveListJob?.cancel()
+        _uiState.update { it.copy(movePicker = null) }
+    }
+
+    private fun showMoveFolder(picker: FilesyncMovePicker) {
+        _uiState.update { it.copy(movePicker = picker.copy(folders = emptyList(), loading = true, loadFailed = false)) }
+        moveListJob?.cancel()
+        moveListJob = viewModelScope.launch {
+            val shown = try {
+                val listed = repository.listFolder(picker.path.last().nodeId)
+                val folders = listed.nodes.values.filter { it.takesMoves(listed.handles[it.nodeId]?.writable == true) }
+                picker.copy(folders = folders.sortedBy { it.nameKey }, loading = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "listing a folder to move into failed" }
+                picker.copy(loading = false, loadFailed = true)
+            }
+            _uiState.update { state -> if (state.movePicker?.path == picker.path) state.copy(movePicker = shown) else state }
+        }
+    }
+
     private fun open(node: FilesyncNode) {
         when {
             node.isFolder -> openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, node.removedMs))
@@ -240,7 +322,7 @@ class FilesyncViewModel(
 
     private fun openPath(path: List<FilesyncCrumb>) {
         search.clearText()
-        arrange { it.copy(path = path, query = "", tagFilter = null, selectedId = null).withNodes(emptyList()) }
+        arrange { it.copy(path = path, query = "", tagFilter = null, selection = FilesyncSelection()).withNodes(emptyList()) }
         loadCurrentFolder()
     }
 

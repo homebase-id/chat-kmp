@@ -1,7 +1,8 @@
 package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,9 +30,11 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.PhoneIphone
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.UploadFile
@@ -77,7 +80,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.fileDropTarget
 import id.homebase.core.ui.screens.filesync.components.FilesyncDownloadButtons
+import id.homebase.core.ui.screens.filesync.components.FilesyncInstallHere
+import id.homebase.core.ui.screens.filesync.components.FilesyncPhoneAppButtons
+import id.homebase.core.ui.screens.filesync.components.filesyncInstallHere
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.getUriHandler
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
 import id.homebase.core.ui.screens.privatedrive.SignInAgainLauncher
@@ -85,11 +92,14 @@ import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_get_title
+import id.homebase.resources.filesync_install_computer
+import id.homebase.resources.filesync_install_app
+import id.homebase.resources.delete
 import id.homebase.resources.cancel
 import id.homebase.resources.close
 import id.homebase.resources.create
 import id.homebase.resources.filesync_check_failed
-import id.homebase.resources.filesync_desktop_download
 import id.homebase.resources.filesync_desktop_title
 import id.homebase.resources.filesync_dismiss
 import id.homebase.resources.filesync_files
@@ -107,9 +117,12 @@ import id.homebase.resources.filesync_new_folder_name
 import id.homebase.resources.filesync_no_matches
 import id.homebase.resources.filesync_recent
 import id.homebase.resources.filesync_restore
+import id.homebase.resources.filesync_remove_confirm
+import id.homebase.resources.filesync_remove_confirm_many
 import id.homebase.resources.filesync_restore_confirm
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_search
+import id.homebase.resources.filesync_select_all
 import id.homebase.resources.filesync_show_deleted
 import id.homebase.resources.filesync_sort_ascending
 import id.homebase.resources.filesync_sort_descending
@@ -129,9 +142,26 @@ import org.jetbrains.compose.resources.stringResource
 
 // Remembered once per screen so rows that get it can skip recomposing.
 @Stable
-internal class FilesyncBrowserActions(val onAction: (FilesyncUiAction) -> Unit, private val onAskRestore: (FilesyncNode) -> Unit) {
+internal class FilesyncBrowserActions(
+    val onAction: (FilesyncUiAction) -> Unit,
+    private val onAskRestore: (FilesyncNode) -> Unit,
+    // Read when a menu opens, so rows needn't take the whole selection and redraw with every change to it.
+    val current: () -> FilesyncUiState = { FilesyncUiState() },
+) {
     fun click(node: FilesyncNode) {
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
+    }
+
+    private var lastNameOpenAt = Long.MIN_VALUE / 2
+
+    /**
+     * A click on a name, which opens like a link. The second press of a double-click lands on whatever the first one
+     * opened, so presses within [doubleClickMs] of an open are ignored.
+     */
+    fun clickName(node: FilesyncNode, atMs: Long, doubleClickMs: Long) {
+        if (atMs - lastNameOpenAt < doubleClickMs) return
+        lastNameOpenAt = atMs
+        click(node)
     }
 }
 
@@ -158,13 +188,20 @@ internal fun Modifier.browserDropTarget(scope: FilesyncBrowserScope): Modifier =
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenWebDrop: () -> Unit) {
+fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenWebDrop: () -> Unit, onSendToChat: (path: String, name: String) -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uploads by viewModel.uploads.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
-    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop, signIn::open) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
+    FilesyncEventsEffect(
+        viewModel.events,
+        snackbarHostState,
+        onOpenWebDrop,
+        onSendToChat,
+        onUndoRemove = { viewModel.onAction(FilesyncUiAction.Restore(it)) },
+        onOpenSignIn = signIn::open,
+    ) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
     BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
 
@@ -182,6 +219,21 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
             onDismiss = { showNewFolder = false },
         )
     }
+    uiState.confirmDelete?.let { nodes ->
+        FilesyncConfirmDialog(
+            text = if (nodes.size == 1) {
+                stringResource(MR.string.filesync_remove_confirm, nodes.single().name)
+            } else {
+                pluralStringResource(MR.plurals.filesync_remove_confirm_many, nodes.size, nodes.size)
+            } + roleFoldersReturn(nodes),
+            confirmLabel = stringResource(MR.string.delete),
+            destructive = true,
+            onConfirm = { viewModel.onAction(FilesyncUiAction.ConfirmDelete) },
+            onDismiss = { viewModel.onAction(FilesyncUiAction.DismissDelete) },
+        )
+    }
+    uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
+    uiState.shareChooser?.let { FilesyncShareSheet(it, viewModel::onAction) }
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(
@@ -189,7 +241,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
             confirmLabel = stringResource(MR.string.filesync_restore),
             onConfirm = {
                 askRestore = null
-                viewModel.onAction(FilesyncUiAction.Restore(node.nodeId))
+                viewModel.onAction(FilesyncUiAction.Restore(setOf(node.nodeId)))
             },
             onDismiss = { askRestore = null },
         )
@@ -197,7 +249,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
 
     val currentFolder = uiState.path.last().nodeId
 
-    val actions = remember(viewModel) { FilesyncBrowserActions(viewModel::onAction) { askRestore = it } }
+    val actions = remember(viewModel) { FilesyncBrowserActions(viewModel::onAction, { askRestore = it }, { viewModel.uiState.value }) }
     val scope = FilesyncBrowserScope(
         uiState = uiState,
         uploads = uploads.filter { it.parentId == currentFolder },
@@ -229,6 +281,9 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
         scope.search.clearText()
     }
     BackHandler(enabled = searching, onBack = closeSearch)
+    val selecting = uiState.selecting
+    // After the search's, so Back clears a selection made in the results before it closes the search.
+    BackHandler(enabled = selecting) { scope.onAction(FilesyncUiAction.ClearSelection) }
     LaunchedEffect(searching) { if (searching) searchFocus.requestFocus() }
     var infoFor by remember { mutableStateOf<FilesyncNode?>(null) }
     infoFor?.let { node ->
@@ -247,53 +302,78 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    if (searching) {
-                        MinimalSearchTextField(
-                            modifier = Modifier.focusRequester(searchFocus),
-                            textFieldState = scope.search,
-                            showBackButton = true,
-                            placeHolderText = stringResource(MR.string.filesync_search),
-                            onBackButtonClick = closeSearch,
-                        )
-                    } else {
-                        Text(
-                            text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_label),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    if (uiState.path.size > 1 && !searching) {
-                        IconButton(onClick = { scope.onAction(FilesyncUiAction.NavigateUp) }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
+            if (selecting) {
+                FilesyncSelectionTopBar(uiState.selected.size, onClear = { scope.onAction(FilesyncUiAction.ClearSelection) }) {
+                    // Material's three: the first action, select all, and the rest behind More.
+                    val first = uiState.bulkActions.firstOrNull()
+                    if (first != null) {
+                        IconButton(onClick = { scope.onAction(FilesyncUiAction.Bulk(first)) }, enabled = uiState.isEnabled(first)) {
+                            Icon(first.icon, contentDescription = stringResource(first.label))
                         }
                     }
-                },
-                actions = {
-                    if (!searching) {
-                        IconButton(onClick = { searching = true }) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(MR.string.filesync_search))
+                    IconButton(onClick = { scope.onAction(FilesyncUiAction.SelectAll) }) {
+                        Icon(Icons.Default.SelectAll, contentDescription = stringResource(MR.string.filesync_select_all))
+                    }
+                    val rest = uiState.bulkActions.drop(1)
+                    if (rest.isNotEmpty()) {
+                        var more by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { more = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.filesync_more))
+                            }
+                            FilesyncSelectionMenu(rest, expanded = more, onDismiss = { more = false }, onAction = scope.onAction, withClear = false)
                         }
-                        if (!scope.currentRemoved) {
-                            IconButton(onClick = scope.onNewFolder) {
-                                Icon(Icons.Outlined.CreateNewFolder, contentDescription = stringResource(MR.string.filesync_new_folder))
+                    }
+                }
+            } else {
+                TopAppBar(
+                    title = {
+                        if (searching) {
+                            MinimalSearchTextField(
+                                modifier = Modifier.focusRequester(searchFocus),
+                                textFieldState = scope.search,
+                                showBackButton = true,
+                                placeHolderText = stringResource(MR.string.filesync_search),
+                                onBackButtonClick = closeSearch,
+                            )
+                        } else {
+                            Text(
+                                text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_label),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        if (uiState.path.size > 1 && !searching) {
+                            IconButton(onClick = { scope.onAction(FilesyncUiAction.NavigateUp) }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
                             }
                         }
-                        OverflowMenu(
-                            showDeleted = uiState.showDeleted,
-                            onToggleShowDeleted = { scope.onAction(FilesyncUiAction.ToggleShowDeleted) },
-                            places = scope.places,
-                        )
-                    }
-                },
-            )
+                    },
+                    actions = {
+                        if (!searching) {
+                            IconButton(onClick = { searching = true }) {
+                                Icon(Icons.Default.Search, contentDescription = stringResource(MR.string.filesync_search))
+                            }
+                            if (!scope.currentRemoved) {
+                                IconButton(onClick = scope.onNewFolder) {
+                                    Icon(Icons.Outlined.CreateNewFolder, contentDescription = stringResource(MR.string.filesync_new_folder))
+                                }
+                            }
+                            OverflowMenu(
+                                showDeleted = uiState.showDeleted,
+                                onToggleShowDeleted = { scope.onAction(FilesyncUiAction.ToggleShowDeleted) },
+                                places = scope.places,
+                            )
+                        }
+                    },
+                )
+            }
         },
         floatingActionButton = {
             // Whatever lands in a deleted folder is out of sight on every device.
-            if (!scope.currentRemoved) {
+            if (!scope.currentRemoved && !selecting) {
                 ExtendedFloatingActionButton(
                     onClick = scope.onUpload,
                     icon = { Icon(Icons.Outlined.UploadFile, contentDescription = null) },
@@ -320,6 +400,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
             )
             FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
             if (scope.currentRemoved) DeletedFolderBanner(scope)
+            uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
             PullToRefreshBox(
                 isRefreshing = uiState.isLoading && uiState.nodes.isNotEmpty(),
                 onRefresh = { scope.onAction(FilesyncUiAction.Refresh) },
@@ -337,9 +418,10 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                         val folders = uiState.visible.subList(0, uiState.totals.folders)
                         val files = uiState.visible.subList(uiState.totals.folders, uiState.visible.size)
                         if (folders.isNotEmpty()) item(key = "folders") { SectionHeader(MR.string.filesync_folders) }
-                        items(folders, key = { it.nodeId.toString() }) { CompactRow(it, uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        val checked: (FilesyncNode) -> Boolean? = { node -> if (selecting) node.nodeId in uiState.selection.ids else null }
+                        items(folders, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
                         if (files.isNotEmpty()) item(key = "files") { SectionHeader(MR.string.filesync_files) }
-                        items(files, key = { it.nodeId.toString() }) { CompactRow(it, uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        items(files, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
                     }
                 }
             }
@@ -347,14 +429,21 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
     }
 }
 
+/** [checked] is null unless rows are being picked: a long press starts it, and then a tap picks. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CompactRow(node: FilesyncNode, progress: Float?, actions: FilesyncBrowserActions, onInfo: (FilesyncNode) -> Unit) {
+private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, actions: FilesyncBrowserActions, onInfo: (FilesyncNode) -> Unit) {
+    val toggle = { actions.onAction(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Toggle)) }
     FilesyncNodeRow(
         node = node,
         details = nodeDetails(node),
-        modifier = Modifier.clickable { actions.click(node) },
+        modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.click(node) }),
+        selected = checked == true,
+        checked = checked,
         trailing = {
-            if (progress != null) {
+            if (checked != null) {
+                // Picking rows: nothing beside them to tap by mistake.
+            } else if (progress != null) {
                 CancelTransferButton(progress) { actions.onAction(FilesyncUiAction.CancelTransfer) }
             } else {
                 var expanded by remember { mutableStateOf(false) }
@@ -368,6 +457,7 @@ private fun CompactRow(node: FilesyncNode, progress: Float?, actions: FilesyncBr
                         onDismiss = { expanded = false },
                         onAction = actions.onAction,
                         onInfo = { onInfo(node) },
+                        canDelete = !actions.current().inDeletedFolder,
                     )
                 }
             }
@@ -408,7 +498,7 @@ internal fun DeletedFolderBanner(scope: FilesyncBrowserScope) {
     ListItem(
         headlineContent = { Text(stringResource(MR.string.filesync_folder_deleted)) },
         trailingContent = {
-            TextButton(onClick = { scope.onAction(FilesyncUiAction.Restore(scope.uiState.path.last().nodeId)) }) {
+            TextButton(onClick = { scope.onAction(FilesyncUiAction.Restore(setOf(scope.uiState.path.last().nodeId))) }) {
                 Text(stringResource(MR.string.filesync_restore))
             }
         },
@@ -557,6 +647,8 @@ internal fun OverflowMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
+    val installHere = remember { filesyncInstallHere() }
+    val uriHandler = getUriHandler()
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.filesync_more))
@@ -589,21 +681,38 @@ internal fun OverflowMenu(
                     },
                 )
             }
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.filesync_desktop_download)) },
-                leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = null) },
-                onClick = {
-                    expanded = false
-                    showDownloads = true
-                },
-            )
+            when (val here = installHere) {
+                // The phone app is Filesync's phone browser already.
+                FilesyncInstallHere.InApp -> Unit
+                is FilesyncInstallHere.Phone -> DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.filesync_install_app)) },
+                    leadingIcon = { Icon(Icons.Outlined.PhoneIphone, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        uriHandler.openUrl(here.app.url)
+                    },
+                )
+                is FilesyncInstallHere.Computer -> DropdownMenuItem(
+                    text = { Text(stringResource(here.os?.installLabel ?: MR.string.filesync_install_computer)) },
+                    leadingIcon = { Icon(Icons.Outlined.Computer, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        showDownloads = true
+                    },
+                )
+            }
         }
     }
     if (showDownloads) {
         AlertDialog(
             onDismissRequest = { showDownloads = false },
-            title = { Text(stringResource(MR.string.filesync_desktop_title)) },
-            text = { FilesyncDownloadButtons(modifier = Modifier.verticalScroll(rememberScrollState())) },
+            title = { Text(stringResource(MR.string.filesync_get_title)) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    FilesyncDownloadButtons()
+                    FilesyncPhoneAppButtons()
+                }
+            },
             confirmButton = { TextButton(onClick = { showDownloads = false }) { Text(stringResource(MR.string.close)) } },
         )
     }

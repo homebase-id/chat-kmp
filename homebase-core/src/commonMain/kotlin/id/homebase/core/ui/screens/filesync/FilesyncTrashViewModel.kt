@@ -22,7 +22,7 @@ data class FilesyncTrashUiState(
     val loadFailed: Boolean = false,
     val items: List<FilesyncTrashItem> = emptyList(),
     val folderNames: Map<Uuid, String> = emptyMap(),
-    val selected: Set<Uuid> = emptySet(),
+    val selection: FilesyncSelection = FilesyncSelection(),
     val busy: Boolean = false,
 )
 
@@ -59,9 +59,9 @@ class FilesyncTrashViewModel(
         when (action) {
             FilesyncTrashAction.Refresh -> load()
             is FilesyncTrashAction.ToggleSelected -> _uiState.update {
-                it.copy(selected = if (action.nodeId in it.selected) it.selected - action.nodeId else it.selected + action.nodeId)
+                it.copy(selection = it.selection.select(action.nodeId, FilesyncSelectMode.Toggle, it.items.map { item -> item.node.nodeId }))
             }
-            FilesyncTrashAction.ClearSelection -> _uiState.update { it.copy(selected = emptySet()) }
+            FilesyncTrashAction.ClearSelection -> _uiState.update { it.copy(selection = FilesyncSelection()) }
             is FilesyncTrashAction.Restore -> write(FilesyncNotice.Restored, FilesyncError.RestoreFailed) {
                 editor.restore(action.nodeIds)
             }
@@ -77,9 +77,9 @@ class FilesyncTrashViewModel(
     private fun write(done: FilesyncNotice, failed: FilesyncError, block: suspend () -> FilesyncWriteResult) {
         if (_uiState.value.busy) return
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, selected = emptySet()) }
+            _uiState.update { it.copy(busy = true, selection = FilesyncSelection()) }
             try {
-                reportWrite(done, failed, _events::send, block)
+                reportWrite(FilesyncUiEvent.Notice(done), failed, _events::send, block)
             } finally {
                 _uiState.update { it.copy(busy = false) }
             }
@@ -100,7 +100,7 @@ class FilesyncTrashViewModel(
                         isLoading = false,
                         items = items,
                         folderNames = names,
-                        selected = state.selected intersect items.mapTo(mutableSetOf()) { it.node.nodeId },
+                        selection = state.selection.keptIn(items.map { it.node.nodeId }),
                     )
                 }
             } catch (e: CancellationException) {

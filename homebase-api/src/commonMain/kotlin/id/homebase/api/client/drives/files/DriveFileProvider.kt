@@ -20,6 +20,7 @@ import id.homebase.api.video.VideoPrefetchDriveAccess
 import io.ktor.client.HttpClient
 import io.ktor.client.request.options
 import io.ktor.http.Headers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
@@ -342,6 +343,16 @@ public class DriveFileProvider(
         onProgress: ((Float) -> Unit)? = null,
     ): Boolean = driveCache.streamPayloadDecryptedToPath(
         driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+
+    /** The decrypted payload to [consume] as it streams in, at any size; false when it 404s. */
+    suspend fun streamPayloadDecrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
 
     /** [VideoPrefetchDriveAccess] variant — the cached layer supplies its own file ops. */
     override suspend fun streamPayloadDecryptedToPath(

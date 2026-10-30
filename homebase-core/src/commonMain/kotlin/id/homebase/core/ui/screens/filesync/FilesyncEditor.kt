@@ -8,6 +8,7 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.FileVersionTag
+import id.homebase.api.client.drives.files.PerFileBatchResult
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
@@ -16,6 +17,7 @@ import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -28,6 +30,8 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 private const val TAG = "FilesyncEditor"
@@ -54,9 +58,12 @@ class FilesyncEditor(
     // One write at a time: a restore picks names against the folder as it is, so two at once could pick the same one.
     private val writeLock = Mutex()
     private val notFound = FilesyncNotFoundTwice()
+    private var lastRemove: TimeMark? = null
 
     /** Brings each of [nodeIds] back with the items its delete took along, and the removed folders above it first. */
     suspend fun restore(nodeIds: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
+        // An Undo right after a delete: the queries below would miss it.
+        lastRemove?.let { delay(QUERY_HOLD_BACK - it.elapsedNow()) }
         val trash = FilesyncTrash(repository.listDeleted())
         val tops = nodeIds.mapNotNull { id -> trash.all.nodes[id]?.takeIf { it.removed } }
         // One already live was restored by an earlier tap or another device: nothing to do, nothing to report.
@@ -139,7 +146,7 @@ class FilesyncEditor(
                     }
                     sent = true
                     val handle = trash.all.handles.getValue(node.nodeId)
-                    if (write(node.nodeId, handle, restoredContent(handle.content, name), node.parentId)) {
+                    if (write(node.nodeId, handle, renamedContent(handle.content, name), node.parentId)) {
                         restored += node.nodeId
                         taken += FilesyncNames.key(name)
                     } else {
@@ -163,6 +170,41 @@ class FilesyncEditor(
         }
         FilesyncWriteResult(restored.size, skipped, recovered = (intoRecovered intersect restored).size, tryAgainSoon = tryAgainSoon)
     }
+
+    /** Moves [nodes] to Recently deleted, as [removeInOrder] does; one changed since stays. */
+    suspend fun remove(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>): FilesyncWriteResult = writeLock.withLock {
+        var sent = false
+        try {
+            removeInOrder(nodes, handles, repository::listFolders) { files ->
+                sent = true
+                driveFileProvider.updateArchivalStatus(FilesyncProtocol.DriveAlias, ArchivalStatus.Removed, files)
+            }
+        } finally {
+            // A failed request may still have removed some of its files.
+            if (sent) {
+                lastRemove = TimeSource.Monotonic.markNow()
+                _changed.tryEmit(Unit)
+            }
+        }
+    }
+
+    /** Moves [nodes] into the last folder of [folderPath] as [planMove] plans it; one changed since stays where it is. */
+    suspend fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, folderPath: List<Uuid>): FilesyncWriteResult =
+        writeLock.withLock {
+            val folderId = folderPath.last()
+            val plan = planMove(nodes, handles, folderPath, repository.takenNames(folderId))
+            var moved = 0
+            var skipped = plan.skipped
+            try {
+                for ((node, name) in plan.moves) {
+                    val handle = handles.getValue(node.nodeId)
+                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved++ else skipped++
+                }
+            } finally {
+                if (plan.moves.isNotEmpty()) _changed.tryEmit(Unit)
+            }
+            FilesyncWriteResult(moved, skipped)
+        }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */
     internal suspend fun deleteForGood(items: Set<Uuid>, seen: Map<Uuid, FilesyncHandle>): FilesyncWriteResult = writeLock.withLock {
@@ -316,7 +358,9 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
     )
 }
 
-internal fun restoredContent(content: JsonObject, name: String) =
+
+// The legacy removal key goes with any write of the content (node schema, `rm`).
+internal fun renamedContent(content: JsonObject, name: String) =
     JsonObject(content - REMOVAL_KEY + ("name" to JsonPrimitive(name)))
 
 /**
@@ -350,7 +394,7 @@ internal class FilesyncNotFoundTwice(private val clock: Clock = Clock.System) {
 
 /** Runs [write] and turns its outcome into the messages the user sees; true when everything was written. */
 internal suspend fun reportWrite(
-    done: FilesyncNotice,
+    done: FilesyncUiEvent,
     failed: FilesyncError,
     send: suspend (FilesyncUiEvent) -> Unit,
     write: suspend () -> FilesyncWriteResult,
@@ -370,6 +414,84 @@ internal suspend fun reportWrite(
     // Nothing lists those until a computer syncs, so saying where comes first; a retry won't plan them, so it's said now.
     if (result.recovered > 0) send(FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered))
     if (result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
-    if (result.recovered == 0 && !result.tryAgainSoon) send(FilesyncUiEvent.Notice(if (result.skipped > 0) FilesyncNotice.ChangedElsewhere else done))
+    if (result.recovered == 0 && !result.tryAgainSoon) send(if (result.skipped > 0) FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere) else done)
     return result.skipped == 0
+}
+
+/**
+ * Removes [nodes] (node schema, "Recently deleted"): each folder by itself before what is in it, then what is live
+ * below it a level at a time, so whatever goes with a folder is removed no earlier than the folder. Each file is sent
+ * at its version, up to a batch a request; one changed or gone since is left as it is, and what is in a folder that
+ * stays is left too.
+ */
+internal suspend fun removeInOrder(
+    nodes: List<FilesyncNode>,
+    handles: Map<Uuid, FilesyncHandle>,
+    list: suspend (folderIds: List<Uuid>) -> FilesyncNodes,
+    mark: suspend (List<FileVersionTag>) -> PerFileBatchResult,
+): FilesyncWriteResult {
+    var removed = 0
+    var skipped = 0
+    val seen = mutableSetOf<Uuid>()
+    var level = nodes.filter { it.removedMs == null }.map { it to handles[it.nodeId] }
+    while (level.isNotEmpty()) {
+        val sending = mutableListOf<Pair<FileVersionTag, FilesyncNode>>()
+        for ((node, handle) in level) {
+            if (!seen.add(node.nodeId)) continue
+            // A node from a newer content version is never changed: nothing here could bring it back.
+            val version = handle?.fileVersionTag?.takeIf { handle.writable }
+            if (version == null) skipped++ else sending += version to node
+        }
+        val folders = mutableListOf<Uuid>()
+        for (chunk in sending.chunked(DriveFileHttpProvider.FILE_BATCH)) {
+            val byFile = chunk.associate { (file, node) -> file.fileId to node }
+            val refused = mutableSetOf<OdinClientErrorCode>()
+            for (answer in mark(chunk.map { it.first }).results) {
+                val node = byFile.getValue(answer.fileId)
+                when (val code = answer.errorCode) {
+                    null -> {
+                        removed++
+                        if (node.isFolder) folders += node.nodeId
+                    }
+                    in ChangedElsewhere -> skipped++
+                    else -> refused += code
+                }
+            }
+            check(refused.isEmpty()) { "remove refused: $refused" }
+        }
+        if (folders.isEmpty()) break
+        val inside = list(folders)
+        level = inside.nodes.values.map { it to inside.handles[it.nodeId] }
+    }
+    return FilesyncWriteResult(removed, skipped)
+}
+
+internal class FilesyncMovePlan(val moves: List<Pair<FilesyncNode, String>>, val skipped: Int)
+
+/**
+ * What moving [nodes] into the last folder of [folderPath], the path from the top, writes: each live node not there
+ * already, under its name or numbered "(1)", "(2)"… against [taken] and the names before it. Skipped: a folder going
+ * into itself or below itself, a node from a newer content version, and the folders kept at the top (node schema).
+ */
+internal fun planMove(
+    nodes: List<FilesyncNode>,
+    handles: Map<Uuid, FilesyncHandle>,
+    folderPath: List<Uuid>,
+    taken: MutableSet<String>,
+): FilesyncMovePlan {
+    val folderId = folderPath.last()
+    val moves = mutableListOf<Pair<FilesyncNode, String>>()
+    var skipped = 0
+    for (node in nodes) {
+        if (node.parentId == folderId || node.removedMs != null) continue
+        val handle = handles[node.nodeId]
+        if (handle?.fileVersionTag == null || !handle.writable || !node.movable || node.nodeId in folderPath) {
+            skipped++
+            continue
+        }
+        val name = FilesyncNames.freeName(node.name, taken)
+        taken += FilesyncNames.key(name)
+        moves += node to name
+    }
+    return FilesyncMovePlan(moves, skipped)
 }

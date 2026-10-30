@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.RestoreFromTrash
@@ -46,7 +45,6 @@ import id.homebase.resources.filesync_folder_items
 import id.homebase.resources.filesync_from_folder
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_restore
-import id.homebase.resources.filesync_role_folder_returns
 import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_trash
 import id.homebase.resources.filesync_trash_empty
@@ -56,13 +54,6 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
-// Deleting one for good lasts only once no computer syncs it: one that does makes it again.
-@Composable
-private fun roleFoldersReturn(items: List<FilesyncTrashItem>, ids: Set<Uuid>? = null): String {
-    val names = items.mapNotNull { item -> item.node.takeIf { it.role != null && (ids == null || it.nodeId in ids) }?.name }
-    return if (names.isEmpty()) "" else "\n\n" + pluralStringResource(MR.plurals.filesync_role_folder_returns, names.size, names.size, names.joinToString(", "))
-}
-
 /** Recently deleted as a trash can: what each delete took, newest first, to restore or delete for good. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -71,7 +62,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     val snackbarHostState = remember { SnackbarHostState() }
     FilesyncEventsEffect(viewModel.events, snackbarHostState, onSaveHandedOff = {})
 
-    val selecting = uiState.selected.isNotEmpty()
+    val selecting = uiState.selection.ids.isNotEmpty()
     BackHandler(enabled = selecting) { viewModel.onAction(FilesyncTrashAction.ClearSelection) }
 
     var askDelete by remember { mutableStateOf<Set<Uuid>?>(null) }
@@ -83,7 +74,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
                 stringResource(MR.string.filesync_delete_forever_confirm, name)
             } else {
                 pluralStringResource(MR.plurals.filesync_delete_forever_confirm_many, ids.size, ids.size)
-            } + roleFoldersReturn(uiState.items, ids),
+            } + roleFoldersReturn(uiState.items.map { it.node }.filter { it.nodeId in ids }),
             confirmLabel = stringResource(MR.string.filesync_delete_forever),
             destructive = true,
             onConfirm = {
@@ -96,7 +87,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     if (askEmpty) {
         FilesyncConfirmDialog(
             title = stringResource(MR.string.filesync_empty_trash),
-            text = stringResource(MR.string.filesync_empty_trash_confirm) + roleFoldersReturn(uiState.items),
+            text = stringResource(MR.string.filesync_empty_trash_confirm) + roleFoldersReturn(uiState.items.map { it.node }),
             confirmLabel = stringResource(MR.string.filesync_empty_trash),
             destructive = true,
             onConfirm = {
@@ -108,14 +99,14 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     }
 
     val title = if (selecting) {
-        pluralStringResource(MR.plurals.filesync_selected, uiState.selected.size, uiState.selected.size)
+        pluralStringResource(MR.plurals.filesync_selected, uiState.selection.ids.size, uiState.selection.ids.size)
     } else {
         stringResource(MR.string.filesync_trash)
     }
     val actions: @Composable RowScope.() -> Unit = {
         if (selecting) {
-            RestoreButton(enabled = !uiState.busy) { viewModel.onAction(FilesyncTrashAction.Restore(uiState.selected)) }
-            IconButton(onClick = { askDelete = uiState.selected }, enabled = !uiState.busy) {
+            RestoreButton(enabled = !uiState.busy) { viewModel.onAction(FilesyncTrashAction.Restore(uiState.selection.ids)) }
+            IconButton(onClick = { askDelete = uiState.selection.ids }, enabled = !uiState.busy) {
                 Icon(
                     Icons.Outlined.DeleteForever,
                     contentDescription = stringResource(MR.string.filesync_delete_forever),
@@ -153,7 +144,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
                             TrashRow(
                                 item = item,
                                 folder = folderName(item.node.parentId, uiState.folderNames),
-                                selected = item.node.nodeId in uiState.selected,
+                                selected = item.node.nodeId in uiState.selection.ids,
                                 enabled = !uiState.busy,
                                 onToggle = { viewModel.onAction(FilesyncTrashAction.ToggleSelected(item.node.nodeId)) },
                                 onRestore = { viewModel.onAction(FilesyncTrashAction.Restore(setOf(item.node.nodeId))) },
@@ -172,21 +163,19 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
         snackbarHostState = snackbarHostState,
         title = title,
         compactTopBar = {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    if (selecting) {
-                        IconButton(onClick = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.menu_back))
-                        }
-                    } else {
+            if (selecting) {
+                FilesyncSelectionTopBar(uiState.selection.ids.size, onClear = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }, actions = actions)
+            } else {
+                TopAppBar(
+                    title = { Text(title) },
+                    navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
                         }
-                    }
-                },
-                actions = actions,
-            )
+                    },
+                    actions = actions,
+                )
+            }
         },
         actions = actions,
         content = body,

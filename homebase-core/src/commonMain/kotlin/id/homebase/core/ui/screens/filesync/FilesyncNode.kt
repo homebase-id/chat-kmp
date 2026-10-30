@@ -51,6 +51,13 @@ data class FilesyncNode(
     internal val nameKey: String = FilesyncNames.key(name)
     internal val kind: FileKind? = if (isFolder) null else fileKindOf(null, name)
     internal val role: FilesyncRoleFolder? = if (isFolder) FilesyncRoleFolder.of(nodeId) else null
+    /** Role folders stay at the top, where computers sync them in place; Recovered files is only moved out of. */
+    internal val movable: Boolean get() = role == null && nodeId != FilesyncProtocol.RecoveredFilesNodeId
+
+    /** A folder things may be moved into: not Recovered files, not a state folder, and not from a newer content version. */
+    internal fun takesMoves(writable: Boolean): Boolean =
+        isFolder && removedMs == null && writable && nodeId != FilesyncProtocol.RecoveredFilesNodeId && !notOnComputers
+
     internal val notOnComputers: Boolean = nameKey == FilesyncNames.stateFolderKey && FilesyncNames.isSyncTop(parentId)
 
     /** Set while it's in Recently deleted: nothing writes to a removed node, so its last write is its removal. */

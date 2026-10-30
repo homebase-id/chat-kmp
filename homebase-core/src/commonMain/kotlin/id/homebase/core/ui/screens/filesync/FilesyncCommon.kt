@@ -7,7 +7,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -15,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.LibraryMusic
@@ -22,17 +25,24 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -43,8 +53,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -80,12 +93,26 @@ import id.homebase.resources.filesync_restore_failed
 import id.homebase.resources.filesync_restored
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
-import id.homebase.resources.filesync_save
+import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_save_failed
 import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_too_large
 import id.homebase.resources.filesync_upload_failed
 import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.filesync_archive_cancel
+import id.homebase.resources.filesync_archive_damaged
+import id.homebase.resources.filesync_archive_listing
+import id.homebase.resources.filesync_archive_progress
+import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_move_failed
+import id.homebase.resources.filesync_moved
+import id.homebase.resources.filesync_removed
+import id.homebase.resources.filesync_role_folder_returns
+import id.homebase.resources.filesync_undo
+import id.homebase.resources.filesync_file_count
+import id.homebase.resources.filesync_folder_count
+import id.homebase.resources.filesync_selected
+import id.homebase.resources.filesync_totals
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -96,6 +123,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
@@ -107,6 +135,8 @@ internal fun FilesyncEventsEffect(
     events: Flow<FilesyncUiEvent>,
     snackbarHostState: SnackbarHostState,
     onOpenWebDrop: () -> Unit = {},
+    onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
+    onUndoRemove: (Set<Uuid>) -> Unit = {},
     onOpenSignIn: (String) -> Unit = {},
     onSaveHandedOff: (String) -> Unit,
 ) {
@@ -137,10 +167,12 @@ internal fun FilesyncEventsEffect(
                     onError = { show(MR.string.filesync_share_failed) },
                 )
                 FilesyncUiEvent.OpenWebDrop -> onOpenWebDrop()
+                is FilesyncUiEvent.SendToChat -> onSendToChat(event.path, event.name)
                 is FilesyncUiEvent.OpenSignIn -> onOpenSignIn(event.url)
                 is FilesyncUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
                 is FilesyncUiEvent.Error -> show(
                     when (event.error) {
+                        FilesyncError.MoveFailed -> MR.string.filesync_move_failed
                         FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
                         FilesyncError.Damaged -> MR.string.filesync_damaged
                         FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
@@ -161,6 +193,16 @@ internal fun FilesyncEventsEffect(
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
                     }
                 )
+                is FilesyncUiEvent.Removed -> scope.launch {
+                    val undo = snackbarHostState.showSnackbar(getString(MR.string.filesync_removed), actionLabel = getString(MR.string.filesync_undo))
+                    if (undo == SnackbarResult.ActionPerformed) onUndoRemove(event.nodeIds)
+                }
+                is FilesyncUiEvent.Moved -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_moved, event.folderName ?: getString(MR.string.filesync_label)))
+                }
+                is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
+                }
             }
         }
     }
@@ -174,16 +216,24 @@ internal fun FilesyncNodeRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     dimDeleted: Boolean = true,
+    // A checkbox in the icon's place while picking rows; null shows the icon.
+    checked: Boolean? = null,
     trailing: @Composable () -> Unit = {},
 ) {
     val dim = if (dimDeleted && node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier
     val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
     ListItem(
-        modifier = modifier,
+        modifier = if (checked == null) modifier else modifier.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
         headlineContent = { NodeName(node, ringColor = container, modifier = dim, fontWeight = if (node.isFolder) FontWeight.SemiBold else null, maxLines = 2) },
         supportingContent = { if (details.isNotEmpty()) Text(details, modifier = dim) },
-        leadingContent = { FileTypeTile(node, modifier = dim) },
+        leadingContent = {
+            if (checked == null) {
+                FileTypeTile(node, modifier = dim)
+            } else {
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) { SelectBox(ToggleableState(checked)) }
+            }
+        },
         trailingContent = trailing,
     )
 }
@@ -195,6 +245,9 @@ internal fun NodeName(
     modifier: Modifier = Modifier,
     fontWeight: FontWeight? = null,
     maxLines: Int = 1,
+    // On the name alone, not the badges or the space after it.
+    nameModifier: Modifier = Modifier,
+    textDecoration: TextDecoration? = null,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -202,7 +255,8 @@ internal fun NodeName(
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
             fontWeight = fontWeight,
-            modifier = Modifier.weight(1f, fill = false),
+            textDecoration = textDecoration,
+            modifier = Modifier.weight(1f, fill = false).then(nameModifier),
         )
         if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
         if (node.notOnComputers) NameBadge(stringResource(MR.string.filesync_not_on_computers))
@@ -336,7 +390,7 @@ internal fun SaveButton(progress: Float?, onSave: () -> Unit, onCancel: () -> Un
         CancelTransferButton(progress, onCancel)
     } else {
         IconButton(onClick = onSave) {
-            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_save))
+            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_download))
         }
     }
 }
@@ -434,4 +488,73 @@ internal object FinderTagColors {
     )
 
     fun of(c: Int): Color? = colours.getOrNull(c - 1)
+}
+
+// Deleting one lasts only while no computer syncs it: one that does makes it again.
+@Composable
+internal fun roleFoldersReturn(nodes: List<FilesyncNode>): String {
+    val names = nodes.mapNotNull { node -> node.takeIf { it.role != null }?.name }
+    return if (names.isEmpty()) "" else "\n\n" + pluralStringResource(MR.plurals.filesync_role_folder_returns, names.size, names.size, names.joinToString(", "))
+}
+
+/** A checkbox without the 48dp touch minimum, so it fits a row's icon place; with no [onClick] the row does the picking. */
+@Composable
+internal fun SelectBox(state: ToggleableState, description: String? = null, onClick: (() -> Unit)? = null) {
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        TriStateCheckbox(
+            state = state,
+            onClick = onClick,
+            modifier = if (description == null) Modifier else Modifier.semantics { contentDescription = description },
+        )
+    }
+}
+
+/** The phone's top bar while rows are picked. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun FilesyncSelectionTopBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.() -> Unit) {
+    TopAppBar(
+        title = { Text(pluralStringResource(MR.plurals.filesync_selected, count, count), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        navigationIcon = {
+            IconButton(onClick = onClear) {
+                Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_clear_selection))
+            }
+        },
+        actions = actions,
+    )
+}
+
+@Composable
+internal fun totalsLabel(totals: FilesyncTotals): String = stringResource(
+    MR.string.filesync_totals,
+    pluralStringResource(MR.plurals.filesync_folder_count, totals.folders, totals.folders),
+    pluralStringResource(MR.plurals.filesync_file_count, totals.files, totals.files),
+    formatBytes(totals.bytes),
+)
+
+/** A ZIP being made: how far it has got, and a way to stop it. */
+@Composable
+internal fun FilesyncArchiveBar(transfer: FilesyncTransfer, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    val total = transfer.totalBytes
+    Row(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = if (total == null) {
+                    stringResource(MR.string.filesync_archive_listing)
+                } else {
+                    stringResource(MR.string.filesync_archive_progress, formatBytes((transfer.progress * total).toLong()), formatBytes(total))
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (total == null || total == 0L) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(progress = { transfer.progress }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        IconButton(onClick = onCancel) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_archive_cancel))
+        }
+    }
 }

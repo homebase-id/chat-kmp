@@ -68,6 +68,18 @@
         <item quantity="one">%1$d selected</item>
         <item quantity="other">%1$d selected</item>
     </plurals>
+    <plurals name="filesync_share_title_many">
+        <item quantity="one">Share %1$d item</item>
+        <item quantity="other">Share %1$d items</item>
+    </plurals>
+    <plurals name="filesync_move_title_many">
+        <item quantity="one">Move %1$d item to</item>
+        <item quantity="other">Move %1$d items to</item>
+    </plurals>
+    <plurals name="filesync_remove_confirm_many">
+        <item quantity="one">Delete %1$d item? It goes to Recently deleted on every device, where it can be restored for 30 days.</item>
+        <item quantity="other">Delete %1$d items? They go to Recently deleted on every device, where they can be restored for 30 days.</item>
+    </plurals>
     <plurals name="filesync_delete_forever_confirm_many">
         <item quantity="one">Delete %1$d item forever? It will be gone from all your devices.</item>
         <item quantity="other">Delete %1$d items forever? They will be gone from all your devices.</item>
