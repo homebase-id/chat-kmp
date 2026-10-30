@@ -133,11 +133,8 @@ sealed interface FilesyncUiAction {
     data object ClearSelection : FilesyncUiAction
     /** Shift+arrow when [extend]. */
     data class MoveSelection(val by: Int, val extend: Boolean = false) : FilesyncUiAction
-    /** The selection's live nodes as one ZIP, saved or (on phones) shared. */
-    data object DownloadSelected : FilesyncUiAction
-    data object ShareSelected : FilesyncUiAction
-    data object SendSelectedToChat : FilesyncUiAction
-    data object WebDropSelected : FilesyncUiAction
+    /** [bulk] on the selection: its live nodes as one ZIP, or its deleted ones restored. */
+    data class Bulk(val bulk: FilesyncBulkAction) : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
