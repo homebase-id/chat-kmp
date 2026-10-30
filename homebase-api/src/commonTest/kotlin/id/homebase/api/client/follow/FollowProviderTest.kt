@@ -72,7 +72,7 @@ class FollowProviderTest {
         var capturedPath: String? = null
 
         // As the server writes its CursoredResult: the next cursor is `cursor`
-        val body = """{"results":["sam.dotyou.cloud","merry.dotyou.cloud"],"cursor":"next-cursor-abc"}"""
+        val body = """{"results":[{"odinId":"sam.dotyou.cloud","followedAt":1767225600000},{"odinId":"merry.dotyou.cloud"}],"cursor":"next-cursor-abc"}"""
         val engine = MockEngine { request ->
             capturedPath = request.url.encodedPath
             respond(

@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import kotlin.time.Clock
 import id.homebase.chat.services.requests.RequestDirection
 import id.homebase.core.ui.screens.contactbook.launchCircleToggle
 import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
@@ -524,16 +525,24 @@ class ContactDetailViewModel(
     private fun loadFollowing() {
         val id = odinId ?: return
         viewModelScope.launch {
-            val following = runCatching { followProvider.isFollowing(OdinId(id)) }
+            val following = runCatching { followProvider.getFollowing(OdinId(id)) }
                 .onFailure { Logger.w(throwable = it, tag = "ContactDetail") { "isFollowing $id failed: ${it.message}" } }
-                .getOrNull()
-            _uiState.update { it.copy(isFollowing = following) }
+            _uiState.update {
+                it.copy(
+                    isFollowing = following.map { def -> def != null }.getOrNull(),
+                    followingSince = following.getOrNull()?.followedAt,
+                )
+            }
         }
         viewModelScope.launch {
-            val followedBy = runCatching { followProvider.isFollowedBy(OdinId(id)) }
+            val followedBy = runCatching { followProvider.getFollower(OdinId(id)) }
                 .onFailure { Logger.w(throwable = it, tag = "ContactDetail") { "isFollowedBy $id failed: ${it.message}" } }
-                .getOrNull()
-            _uiState.update { it.copy(isFollowedBy = followedBy) }
+            _uiState.update {
+                it.copy(
+                    isFollowedBy = followedBy.map { def -> def != null }.getOrNull(),
+                    followedBySince = followedBy.getOrNull()?.followedAt,
+                )
+            }
         }
     }
 
@@ -541,14 +550,16 @@ class ContactDetailViewModel(
     private fun handleFollowToggled() {
         val id = odinId ?: return
         val was = _uiState.value.isFollowing ?: return
-        _uiState.update { it.copy(isFollowing = !was) }
+        val wasSince = _uiState.value.followingSince
+        // A new follow starts now; the server's own time replaces it the next time the page opens
+        _uiState.update { it.copy(isFollowing = !was, followingSince = if (was) null else Clock.System.now().toEpochMilliseconds()) }
         viewModelScope.launch {
             try {
                 // Through the shared lists, so the feed row and Contacts' filters follow along
                 if (was) followGraph.unfollow(id) else followGraph.follow(id)
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = "ContactDetail") { "follow toggle $id failed: ${t.message}" }
-                _uiState.update { it.copy(isFollowing = was) }
+                _uiState.update { it.copy(isFollowing = was, followingSince = wasSince) }
                 _events.tryEmit(ContactDetailEvent.FollowFailed)
             }
         }

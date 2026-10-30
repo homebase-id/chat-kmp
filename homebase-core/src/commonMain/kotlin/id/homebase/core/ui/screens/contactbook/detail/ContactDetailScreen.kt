@@ -2,6 +2,9 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.core.util.formatMediumDate
+import id.homebase.resources.contactbook_detail_following_since
+import id.homebase.resources.contactbook_detail_followed_by_since
 import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -934,6 +937,18 @@ private fun DetailHeader(
                 Text(
                     text = stringResource(status),
                     style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // Since when, each direction on its own line; a server too old to say leaves it out
+            for ((since, line) in listOf(
+                uiState.followingSince.takeIf { isFollowing == true } to MR.string.contactbook_detail_following_since,
+                uiState.followedBySince.takeIf { followedBy == true } to MR.string.contactbook_detail_followed_by_since,
+            )) {
+                if (since == null) continue
+                Text(
+                    text = stringResource(line, formatMediumDate(Instant.fromEpochMilliseconds(since))),
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

@@ -2229,6 +2229,8 @@
     <string name="contactbook_detail_follows_you">Follows you</string>
     <string name="contactbook_detail_you_follow">You follow them</string>
     <string name="contactbook_detail_follow_mutual">You follow each other</string>
+    <string name="contactbook_detail_following_since">You've followed them since %1$s</string>
+    <string name="contactbook_detail_followed_by_since">They've followed you since %1$s</string>
     <string name="contactbook_error_forbidden">Couldn't save — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_connection_forbidden">Couldn't update this connection — this app doesn't have permission to manage your connections. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_delete">Couldn't delete the contact.</string>

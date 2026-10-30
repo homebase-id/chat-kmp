@@ -74,14 +74,20 @@ class FollowProvider(
     }
 
     /** Whether this identity follows [odinId]. */
-    suspend fun isFollowing(odinId: OdinId): Boolean = hasFollow("$BASE/identity-i-follow", odinId)
+    suspend fun isFollowing(odinId: OdinId): Boolean = getFollowing(odinId) != null
 
     /** Whether [odinId] follows this identity. */
-    suspend fun isFollowedBy(odinId: OdinId): Boolean = hasFollow("$BASE/follower", odinId)
+    suspend fun isFollowedBy(odinId: OdinId): Boolean = getFollower(odinId) != null
+
+    /** How this identity follows [odinId], including since when; null when it doesn't. */
+    suspend fun getFollowing(odinId: OdinId): FollowDefinition? = fetchFollow("$BASE/identity-i-follow", odinId)
+
+    /** How [odinId] follows this identity, including since when; null when it doesn't. */
+    suspend fun getFollower(odinId: OdinId): FollowDefinition? = fetchFollow("$BASE/follower", odinId)
 
     // Both answer the follow definition, or 204 with no body when there is none. A 404 is a server without the
     // v2 follower routes, so it throws rather than reading as "no".
-    private suspend fun hasFollow(path: String, odinId: OdinId): Boolean {
+    private suspend fun fetchFollow(path: String, odinId: OdinId): FollowDefinition? {
         val creds = requireCreds()
         val response = encryptedGet(
             url = apiUrl(creds.domain, path),
@@ -91,7 +97,7 @@ class FollowProvider(
         )
         throwForFailure(response)
         val def = runCatching { deserialize<FollowDefinition>(response.body) }.getOrNull()
-        return def != null && def.odinId != null
+        return def?.takeIf { it.odinId != null }
     }
 
     /**
@@ -130,7 +136,7 @@ class FollowProvider(
     }.ifBlank { null }
 
     private fun toCursoredList(page: FollowPageResponse): CursoredResult<List<String>> =
-        CursoredResult(results = page.results, cursorState = page.cursor.orEmpty())
+        CursoredResult(results = page.results.map { it.odinId }, cursorState = page.cursor.orEmpty())
 }
 
 @Serializable
@@ -152,8 +158,15 @@ data class FollowRequest(
 // The server's CursoredResult: the next page's cursor is `cursor`.
 @Serializable
 data class FollowPageResponse(
-    val results: List<String> = emptyList(),
+    val results: List<FollowEntry> = emptyList(),
     val cursor: String? = null,
+)
+
+/** One identity in a follow list, and when that follow was made or last changed (Unix ms). */
+@Serializable
+data class FollowEntry(
+    val odinId: String,
+    val followedAt: Long? = null,
 )
 
 @Serializable
@@ -161,6 +174,8 @@ data class FollowDefinition(
     val odinId: String? = null,
     val notificationType: FollowNotificationType? = null,
     val channels: List<TargetDrive>? = null,
+    /** When the follow was made or last changed (Unix ms). */
+    val followedAt: Long? = null,
 )
 
 @Serializable

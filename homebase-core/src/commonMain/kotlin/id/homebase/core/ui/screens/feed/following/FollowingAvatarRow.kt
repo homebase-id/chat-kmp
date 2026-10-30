@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,6 +39,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -138,12 +145,15 @@ fun FollowingAvatarRow(
             }
             items(items = graph.following, key = { it }) { domain ->
                 val odin = remember(domain) { OdinId(domain) }
-                val name = names[domain.lowercase()]?.takeIf { it.isNotBlank() } ?: domain.substringBefore('.')
+                val fullName = names[domain.lowercase()]?.takeIf { it.isNotBlank() }
+                val name = fullName ?: domain.substringBefore('.')
+                // A first name fits under an avatar where most full names don't
+                val label = fullName?.trim()?.substringBefore(' ') ?: name
                 val isSelected = selected.equals(domain, ignoreCase = true)
                 var menuOpen by remember { mutableStateOf(false) }
                 Box {
                     RowItem(
-                        label = name,
+                        label = label,
                         onClick = { onSelect(domain) },
                         onLongClick = { menuOpen = true },
                     ) {
@@ -251,12 +261,37 @@ private fun RowItem(
     ) {
         avatar()
         Spacer(modifier = Modifier.height(6.dp))
+        // Still too long: start-aligned and faded at the end rather than cut with "…"
+        var overflowing by remember(label) { mutableStateOf(false) }
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+            textAlign = if (overflowing) TextAlign.Start else TextAlign.Center,
+            onTextLayout = { if (it.hasVisualOverflow) overflowing = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (overflowing) Modifier.fadeEnd() else Modifier),
         )
     }
 }
+
+private val FadeWidth = 14.dp
+
+// Fades the last [FadeWidth] to transparent; offscreen so the mask erases only this text
+private fun Modifier.fadeEnd(): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val fade = FadeWidth.toPx()
+        drawRect(
+            brush = Brush.horizontalGradient(
+                0f to Color.Black,
+                ((size.width - fade) / size.width).coerceIn(0f, 1f) to Color.Black,
+                1f to Color.Transparent,
+            ),
+            blendMode = BlendMode.DstIn,
+        )
+    }

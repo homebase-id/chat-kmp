@@ -98,6 +98,9 @@ data class ContactDetailUiState(
     val isFollowing: Boolean? = null,
     /** Whether this identity follows us; null until known, or when it could not be read. */
     val isFollowedBy: Boolean? = null,
+    /** When we followed them / they followed us (Unix ms); null when not following, or the server doesn't say. */
+    val followingSince: Long? = null,
+    val followedBySince: Long? = null,
     /** Display name of the identity that introduced this contact, when the connection
      *  originated from an introduction. Null otherwise. */
     val introducedByName: String? = null,
