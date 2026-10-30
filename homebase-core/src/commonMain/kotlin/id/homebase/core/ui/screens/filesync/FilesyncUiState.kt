@@ -88,13 +88,16 @@ data class FilesyncUiState(
     /** The deleted nodes among [selected], which Restore takes. */
     val selectedRemovedIds: Set<Uuid> by lazy(LazyThreadSafetyMode.NONE) { selected.removedIds() }
 
+    /** The selection's nodes that aren't in Recently deleted. */
+    val liveSelected: List<FilesyncNode> by lazy(LazyThreadSafetyMode.NONE) { selected.filter { it.removedMs == null } }
+
     /** What the selection offers, in the order shown: a ZIP of its live nodes, and Restore for its deleted ones. */
     val bulkActions: List<FilesyncBulkAction> by lazy(LazyThreadSafetyMode.NONE) {
-        val live = selected.size > selectedRemovedIds.size
+        val live = liveSelected.isNotEmpty()
         listOfNotNull(
             FilesyncBulkAction.Download.takeIf { live },
             FilesyncBulkAction.Share.takeIf { live },
-            FilesyncBulkAction.Move.takeIf { selected.any { it.removedMs == null && it.movable } },
+            FilesyncBulkAction.Move.takeIf { liveSelected.any { it.movable } },
             FilesyncBulkAction.Delete.takeIf { live && !inDeletedFolder },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )

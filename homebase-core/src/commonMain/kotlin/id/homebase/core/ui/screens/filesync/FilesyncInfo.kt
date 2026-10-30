@@ -216,7 +216,6 @@ internal fun FilesyncNodeMenu(
             MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(setOf(node.nodeId))) }
         } else if (!node.isFolder) {
             MenuItem(MR.string.filesync_download, onDismiss) { onAction(FilesyncUiAction.SaveClicked(node)) }
-            // Elsewhere the platform's share is a save, which Save already is.
         }
         if (node.removedMs == null) {
             MenuItem(MR.string.filesync_share, onDismiss) { onAction(FilesyncUiAction.AskShare(listOf(node))) }

@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
-private enum class Purpose { Open, Save, Share, WebDrop, Chat }
+private enum class Purpose { Open, Save, OtherApp, WebDrop, Chat }
 
 /** What a transfer downloads: one file as itself, or several nodes as one ZIP called [name]. */
 private sealed interface Source {
@@ -50,19 +50,18 @@ internal class FilesyncTransfers(
 
     fun save(node: FilesyncNode) = one(node, Purpose.Save)
 
-    fun share(node: FilesyncNode) = one(node, Purpose.Share)
-
-    fun webDrop(node: FilesyncNode) = one(node, Purpose.WebDrop)
-
-    fun sendToChat(node: FilesyncNode) = one(node, Purpose.Chat)
-
     fun saveZip(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Save)
 
-    fun shareZip(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Share)
-
-    fun sendZipToChat(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Chat)
-
-    fun webDropZip(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.WebDrop)
+    /** [nodes] to [target]: one file as itself, anything more, or a folder, as one ZIP called [zipName]. */
+    fun send(nodes: List<FilesyncNode>, zipName: String, target: FilesyncShareTarget) {
+        val purpose = when (target) {
+            FilesyncShareTarget.Chat -> Purpose.Chat
+            FilesyncShareTarget.WebDrop -> Purpose.WebDrop
+            FilesyncShareTarget.OtherApp -> Purpose.OtherApp
+        }
+        val file = nodes.singleOrNull()?.takeIf { !it.isFolder }
+        if (file != null) one(file, purpose) else start(Source.Zip(nodes, zipName), purpose)
+    }
 
     fun cancel() {
         job?.cancel()
@@ -101,11 +100,11 @@ internal class FilesyncTransfers(
                     return@launch
                 }
                 // share_outbound is swept whenever the app comes back to the front, which a drop's composer outlives.
-                val path = repository.writeToCache(source.name, toShareOutbound = purpose == Purpose.Open || purpose == Purpose.Share, write)
+                val path = repository.writeToCache(source.name, toShareOutbound = purpose == Purpose.Open || purpose == Purpose.OtherApp, write)
                 when (purpose) {
                     Purpose.Open -> send(FilesyncUiEvent.OpenFile(path))
                     Purpose.Save -> send(FilesyncUiEvent.SaveFile(path, source.name))
-                    Purpose.Share -> send(FilesyncUiEvent.ShareFile(path))
+                    Purpose.OtherApp -> send(FilesyncUiEvent.ShareFile(path))
                     Purpose.Chat -> send(FilesyncUiEvent.SendToChat(path, source.name))
                     Purpose.WebDrop -> onWebDrop(PickedDropFile(path, source.name, detectContentTypeFromExtensionOrHint(source.name), repository.sizeOf(path)))
                 }

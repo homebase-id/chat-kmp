@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.widget.AdaptiveSheet
@@ -59,11 +60,9 @@ internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onAction: (FilesyncUi
                 ListItem(
                     headlineContent = { Text(stringResource(target.label)) },
                     leadingContent = { Icon(target.icon, contentDescription = null) },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                    modifier = Modifier.clickable {
-                        dismiss()
-                        onAction(FilesyncUiAction.ShareTo(target))
-                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    // Routed once it has animated out: the chooser's state goes with ShareTo.
+                    modifier = Modifier.clickable { dismiss { onAction(FilesyncUiAction.ShareTo(target)) } },
                 )
             }
         }
