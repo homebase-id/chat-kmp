@@ -62,8 +62,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.feed_following_row_add
 import id.homebase.resources.feed_following_row_next
 import id.homebase.resources.feed_following_row_previous
-import id.homebase.resources.feed_following_row_show_all
-import id.homebase.resources.feed_following_row_show_posts
+import id.homebase.resources.feed_following_row_deselect
+import id.homebase.resources.feed_following_row_select
 import id.homebase.resources.feed_following_row_view_contact
 import id.homebase.resources.feed_following_unfollow
 import org.jetbrains.compose.resources.stringResource
@@ -81,14 +81,14 @@ private val WheelStep = 48.dp
 private const val PageFraction = 0.8f
 
 /**
- * Who you follow, along the top of the feed: the people your feed is made of. A tap shows only that person's
- * posts ([selected] is ringed); a long press offers their contact and Unfollow. The first item opens the
+ * Who you follow, along the top of the feed: the people your feed is made of. A tap toggles a person in or out
+ * of the feed's filter ([selected], lower-cased, are ringed); a long press offers their contact and Unfollow. The first item opens the
  * Following screen to find more. Shown behind the Advanced Feed developer flag.
  */
 @Composable
 fun FollowingAvatarRow(
-    selected: String?,
-    onSelect: (String) -> Unit,
+    selected: Set<String>,
+    onToggle: (String) -> Unit,
     onViewContact: (String) -> Unit,
     onUnfollowed: (String) -> Unit,
     onFindPeople: () -> Unit,
@@ -149,12 +149,12 @@ fun FollowingAvatarRow(
                 val name = fullName ?: domain.substringBefore('.')
                 // A first name fits under an avatar where most full names don't
                 val label = fullName?.trim()?.substringBefore(' ') ?: name
-                val isSelected = selected.equals(domain, ignoreCase = true)
+                val isSelected = domain.lowercase() in selected
                 var menuOpen by remember { mutableStateOf(false) }
                 Box {
                     RowItem(
                         label = label,
-                        onClick = { onSelect(domain) },
+                        onClick = { onToggle(domain) },
                         onLongClick = { menuOpen = true },
                     ) {
                         // The avatar takes no clicks of its own, so the item's tap and long press both reach it
@@ -173,14 +173,14 @@ fun FollowingAvatarRow(
                             text = {
                                 Text(
                                     stringResource(
-                                        if (isSelected) MR.string.feed_following_row_show_all
-                                        else MR.string.feed_following_row_show_posts
+                                        if (isSelected) MR.string.feed_following_row_deselect
+                                        else MR.string.feed_following_row_select
                                     )
                                 )
                             },
                             onClick = {
                                 menuOpen = false
-                                onSelect(domain)
+                                onToggle(domain)
                             },
                         )
                         DropdownMenuItem(
