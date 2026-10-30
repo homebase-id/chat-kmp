@@ -34,6 +34,23 @@ data class FilesyncUpload(
 )
 
 @Immutable
+data class FilesyncMovePicker(
+    val nodes: List<FilesyncNode>,
+    val path: List<FilesyncCrumb>,
+    val folders: List<FilesyncNode> = emptyList(),
+    val loading: Boolean = true,
+    val loadFailed: Boolean = false,
+) {
+    private val movingIds = nodes.mapTo(HashSet()) { it.nodeId }
+
+    /** A folder being moved can't take itself: it isn't opened, and nothing moves below it. */
+    fun isMoving(folderId: Uuid): Boolean = folderId in movingIds
+
+    val canMoveHere: Boolean
+        get() = !loading && !loadFailed && path.none { isMoving(it.nodeId) } && nodes.any { it.parentId != path.last().nodeId }
+}
+
+@Immutable
 data class FilesyncUiState(
     val installed: Boolean? = null,
     val checkFailed: Boolean = false,
@@ -55,6 +72,7 @@ data class FilesyncUiState(
     val privateDrive: PrivateDriveState = PrivateDriveState(),
     /** Asked about before they go to Recently deleted. */
     val confirmDelete: List<FilesyncNode>? = null,
+    val movePicker: FilesyncMovePicker? = null,
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
 
@@ -76,6 +94,7 @@ data class FilesyncUiState(
             FilesyncBulkAction.Share.takeIf { live && isMobile() },
             FilesyncBulkAction.Chat.takeIf { live },
             FilesyncBulkAction.WebDrop.takeIf { live },
+            FilesyncBulkAction.Move.takeIf { selected.any { it.removedMs == null && it.movable } },
             FilesyncBulkAction.Delete.takeIf { live && !inDeletedFolder },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
@@ -83,9 +102,9 @@ data class FilesyncUiState(
 
     val inDeletedFolder: Boolean get() = path.lastOrNull()?.removedMs != null
 
-    /** One download at a time; a delete or restore can go alongside. */
+    /** One download at a time; a move, delete or restore can go alongside. */
     fun isEnabled(bulk: FilesyncBulkAction): Boolean =
-        transfer == null || bulk == FilesyncBulkAction.Delete || bulk == FilesyncBulkAction.Restore
+        transfer == null || bulk in WRITES
 
     /** The selected node when it's the only one. */
     val selectedOne: FilesyncNode? get() = selected.singleOrNull()
@@ -107,7 +126,9 @@ data class FilesyncUiState(
     }
 }
 
-enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Delete, Restore }
+enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Move, Delete, Restore }
+
+private val WRITES = setOf(FilesyncBulkAction.Move, FilesyncBulkAction.Delete, FilesyncBulkAction.Restore)
 
 sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
@@ -144,11 +165,16 @@ sealed interface FilesyncUiAction {
     data class AskDelete(val nodes: List<FilesyncNode>) : FilesyncUiAction
     data object ConfirmDelete : FilesyncUiAction
     data object DismissDelete : FilesyncUiAction
+    data class AskMove(val nodes: List<FilesyncNode>) : FilesyncUiAction
+    data class MovePickerOpen(val folder: FilesyncNode) : FilesyncUiAction
+    data class MovePickerToCrumb(val index: Int) : FilesyncUiAction
+    data object ConfirmMove : FilesyncUiAction
+    data object DismissMove : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
 
-enum class FilesyncError { DownloadFailed, Damaged, UploadFailed, TooLarge, StorageFull, FolderFailed, RestoreFailed, DeleteFailed, SignInAgainFailed }
+enum class FilesyncError { MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, StorageFull, FolderFailed, RestoreFailed, DeleteFailed, SignInAgainFailed }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
 enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon }
@@ -167,4 +193,5 @@ sealed interface FilesyncUiEvent {
     data class ArchiveDamaged(val name: String) : FilesyncUiEvent
     /** Gone to Recently deleted, and back with Undo. */
     data class Removed(val nodeIds: Set<Uuid>) : FilesyncUiEvent
+    data class Moved(val folderName: String?) : FilesyncUiEvent
 }

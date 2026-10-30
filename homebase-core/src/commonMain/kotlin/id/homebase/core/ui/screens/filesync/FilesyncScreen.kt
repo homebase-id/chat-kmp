@@ -213,6 +213,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
             onDismiss = { viewModel.onAction(FilesyncUiAction.DismissDelete) },
         )
     }
+    uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(

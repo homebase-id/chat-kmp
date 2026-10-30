@@ -71,7 +71,7 @@ class FilesyncEditorTest {
     @Test
     fun aRestoreIsALiveHeaderWithEveryKeyButRmUnderTheSameKey() = runTest {
         val target = Uuid.random()
-        val request = liveNodeUpdate(nodeId, handle, restoredContent(removedContent, "a (restored).txt"), target)
+        val request = liveNodeUpdate(nodeId, handle, renamedContent(removedContent, "a (restored).txt"), target)
 
         val appData = request.metadata.appData
         assertEquals(ArchivalStatus.None, appData.archivalStatus)
