@@ -53,6 +53,8 @@ data class FilesyncUiState(
     val visible: List<FilesyncNode> = emptyList(),
     val totals: FilesyncTotals = FilesyncTotals(),
     val privateDrive: PrivateDriveState = PrivateDriveState(),
+    /** Asked about before they go to Recently deleted. */
+    val confirmDelete: List<FilesyncNode>? = null,
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
 
@@ -74,12 +76,14 @@ data class FilesyncUiState(
             FilesyncBulkAction.Share.takeIf { live && isMobile() },
             FilesyncBulkAction.Chat.takeIf { live },
             FilesyncBulkAction.WebDrop.takeIf { live },
+            FilesyncBulkAction.Delete.takeIf { live },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
     }
 
-    /** One download at a time; a restore can go alongside. */
-    fun isEnabled(bulk: FilesyncBulkAction): Boolean = transfer == null || bulk == FilesyncBulkAction.Restore
+    /** One download at a time; a delete or restore can go alongside. */
+    fun isEnabled(bulk: FilesyncBulkAction): Boolean =
+        transfer == null || bulk == FilesyncBulkAction.Delete || bulk == FilesyncBulkAction.Restore
 
     /** The selected node when it's the only one. */
     val selectedOne: FilesyncNode? get() = selected.singleOrNull()
@@ -101,7 +105,7 @@ data class FilesyncUiState(
     }
 }
 
-enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Restore }
+enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Delete, Restore }
 
 sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
@@ -135,6 +139,9 @@ sealed interface FilesyncUiAction {
     data class MoveSelection(val by: Int, val extend: Boolean = false) : FilesyncUiAction
     /** [bulk] on the selection: its live nodes as one ZIP, or its deleted ones restored. */
     data class Bulk(val bulk: FilesyncBulkAction) : FilesyncUiAction
+    data class AskDelete(val nodes: List<FilesyncNode>) : FilesyncUiAction
+    data object ConfirmDelete : FilesyncUiAction
+    data object DismissDelete : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
@@ -156,4 +163,6 @@ sealed interface FilesyncUiEvent {
     data class Notice(val notice: FilesyncNotice) : FilesyncUiEvent
     /** [name] failed its hash check, so the ZIP holding it was thrown away. */
     data class ArchiveDamaged(val name: String) : FilesyncUiEvent
+    /** Gone to Recently deleted, and back with Undo. */
+    data class Removed(val nodeIds: Set<Uuid>) : FilesyncUiEvent
 }

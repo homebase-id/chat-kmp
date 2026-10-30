@@ -8,6 +8,7 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.FileVersionTag
+import id.homebase.api.client.drives.files.PerFileBatchResult
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
@@ -162,6 +163,20 @@ class FilesyncEditor(
             if (sent) _changed.tryEmit(Unit)
         }
         FilesyncWriteResult(restored.size, skipped, recovered = (intoRecovered intersect restored).size, tryAgainSoon = tryAgainSoon)
+    }
+
+    /** Moves [nodes] to Recently deleted, as [removeInOrder] does; one changed since stays. */
+    suspend fun remove(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>): FilesyncWriteResult = writeLock.withLock {
+        var sent = false
+        try {
+            removeInOrder(nodes, handles, repository::listFolders) { files ->
+                sent = true
+                driveFileProvider.updateArchivalStatus(FilesyncProtocol.DriveAlias, ArchivalStatus.Removed, files)
+            }
+        } finally {
+            // A failed request may still have removed some of its files.
+            if (sent) _changed.tryEmit(Unit)
+        }
     }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */
@@ -372,4 +387,51 @@ internal suspend fun reportWrite(
     if (result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
     if (result.recovered == 0 && !result.tryAgainSoon) send(FilesyncUiEvent.Notice(if (result.skipped > 0) FilesyncNotice.ChangedElsewhere else done))
     return result.skipped == 0
+}
+
+/**
+ * Removes [nodes] (node schema, "Recently deleted"): each folder by itself before what is in it, then what is live
+ * below it a level at a time, so whatever goes with a folder is removed no earlier than the folder. Each file is sent
+ * at its version, up to a batch a request; one changed or gone since is left as it is, and what is in a folder that
+ * stays is left too.
+ */
+internal suspend fun removeInOrder(
+    nodes: List<FilesyncNode>,
+    handles: Map<Uuid, FilesyncHandle>,
+    list: suspend (folderIds: List<Uuid>) -> FilesyncNodes,
+    mark: suspend (List<FileVersionTag>) -> PerFileBatchResult,
+): FilesyncWriteResult {
+    var removed = 0
+    var skipped = 0
+    val seen = mutableSetOf<Uuid>()
+    var level = nodes.filter { it.removedMs == null }.map { it to handles[it.nodeId] }
+    while (level.isNotEmpty()) {
+        val sending = mutableListOf<Pair<FileVersionTag, FilesyncNode>>()
+        for ((node, handle) in level) {
+            if (!seen.add(node.nodeId)) continue
+            val version = handle?.fileVersionTag
+            if (version == null) skipped++ else sending += version to node
+        }
+        val folders = mutableListOf<Uuid>()
+        for (chunk in sending.chunked(DriveFileHttpProvider.FILE_BATCH)) {
+            val byFile = chunk.associate { (file, node) -> file.fileId to node }
+            val refused = mutableSetOf<OdinClientErrorCode>()
+            for (answer in mark(chunk.map { it.first }).results) {
+                val node = byFile.getValue(answer.fileId)
+                when (val code = answer.errorCode) {
+                    null -> {
+                        removed++
+                        if (node.isFolder) folders += node.nodeId
+                    }
+                    in ChangedElsewhere -> skipped++
+                    else -> refused += code
+                }
+            }
+            check(refused.isEmpty()) { "remove refused: $refused" }
+        }
+        if (folders.isEmpty()) break
+        val inside = list(folders)
+        level = inside.nodes.values.map { it to inside.handles[it.nodeId] }
+    }
+    return FilesyncWriteResult(removed, skipped)
 }

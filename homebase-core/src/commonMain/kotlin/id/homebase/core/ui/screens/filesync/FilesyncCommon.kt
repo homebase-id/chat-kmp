@@ -37,6 +37,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -102,6 +103,9 @@ import id.homebase.resources.filesync_archive_damaged
 import id.homebase.resources.filesync_archive_listing
 import id.homebase.resources.filesync_archive_progress
 import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_removed
+import id.homebase.resources.filesync_role_folder_returns
+import id.homebase.resources.filesync_undo
 import id.homebase.resources.filesync_file_count
 import id.homebase.resources.filesync_folder_count
 import id.homebase.resources.filesync_selected
@@ -129,6 +133,7 @@ internal fun FilesyncEventsEffect(
     snackbarHostState: SnackbarHostState,
     onOpenWebDrop: () -> Unit = {},
     onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
+    onUndoRemove: (Set<Uuid>) -> Unit = {},
     onOpenSignIn: (String) -> Unit = {},
     onSaveHandedOff: (String) -> Unit,
 ) {
@@ -184,6 +189,10 @@ internal fun FilesyncEventsEffect(
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
                     }
                 )
+                is FilesyncUiEvent.Removed -> scope.launch {
+                    val undo = snackbarHostState.showSnackbar(getString(MR.string.filesync_removed), actionLabel = getString(MR.string.filesync_undo))
+                    if (undo == SnackbarResult.ActionPerformed) onUndoRemove(event.nodeIds)
+                }
                 is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
                 }
@@ -468,6 +477,13 @@ internal object FinderTagColors {
     )
 
     fun of(c: Int): Color? = colours.getOrNull(c - 1)
+}
+
+// Deleting one lasts only while no computer syncs it: one that does makes it again.
+@Composable
+internal fun roleFoldersReturn(nodes: List<FilesyncNode>): String {
+    val names = nodes.mapNotNull { node -> node.takeIf { it.role != null }?.name }
+    return if (names.isEmpty()) "" else "\n\n" + pluralStringResource(MR.plurals.filesync_role_folder_returns, names.size, names.size, names.joinToString(", "))
 }
 
 /** A checkbox without the 48dp touch minimum, so it fits a row's icon place; with no [onClick] the row does the picking. */

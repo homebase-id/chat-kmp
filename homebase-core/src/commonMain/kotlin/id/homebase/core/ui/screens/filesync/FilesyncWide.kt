@@ -329,6 +329,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                         // Without a single selection Enter belongs to whichever button has focus.
                         (event.key == Key.Enter || event.key == Key.NumPadEnter) && one != null -> actions.click(one)
                         event.key == Key.Backspace -> actions.onAction(FilesyncUiAction.NavigateUp)
+                        event.key == Key.Delete && FilesyncBulkAction.Delete in uiState.bulkActions -> actions.onAction(FilesyncUiAction.Bulk(FilesyncBulkAction.Delete))
                         event.key == Key.Escape && uiState.selecting -> actions.onAction(FilesyncUiAction.ClearSelection)
                         event.key == Key.F5 -> actions.onAction(FilesyncUiAction.Refresh)
                         else -> return@onKeyEvent false
