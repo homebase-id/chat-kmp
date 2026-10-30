@@ -111,9 +111,9 @@ class FilesyncArchiveTest {
             .copy(selection = FilesyncSelection(nodes.map { it.nodeId }.toSet()))
             .bulkActions
 
-        assertEquals(listOf(FilesyncBulkAction.Download), offered(live))
+        assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Chat), offered(live))
         assertEquals(listOf(FilesyncBulkAction.Restore), offered(gone))
-        assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Restore), offered(live, gone))
+        assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Chat, FilesyncBulkAction.Restore), offered(live, gone))
         assertTrue(FilesyncUiState().bulkActions.isEmpty())
     }
 

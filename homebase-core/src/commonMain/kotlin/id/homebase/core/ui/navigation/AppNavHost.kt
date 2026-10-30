@@ -1313,6 +1313,15 @@ fun AppNavHost(
                                             backStackEntry.savedStateHandle[SHOW_ARCHIVED_KEY] = false
                                         }
                                     }
+                                    val sendFilePath by backStackEntry.savedStateHandle
+                                        .getStateFlow<String?>(SEND_FILE_PATH_KEY, null)
+                                        .collectAsStateWithLifecycle()
+                                    LaunchedEffect(sendFilePath) {
+                                        val path = sendFilePath ?: return@LaunchedEffect
+                                        val name = backStackEntry.savedStateHandle.get<String>(SEND_FILE_NAME_KEY).orEmpty()
+                                        conversationListViewModel.onAction(ConversationListUiAction.ChooseChatForFile(path, name))
+                                        backStackEntry.savedStateHandle[SEND_FILE_PATH_KEY] = null
+                                    }
                                     var pendingContactCard by rememberSaveable(
                                         stateSaver = ContactCardDescriptorSaver,
                                     ) { mutableStateOf<ContactCardDescriptor?>(null) }
@@ -2235,6 +2244,9 @@ fun AppNavHost(
                                                 viewModel = filesyncViewModel,
                                                 places = filesyncPlaces,
                                                 onOpenWebDrop = openWebDrop,
+                                                onSendToChat = { path, name ->
+                                                    if (navController.sendFileOnChatList(path, name)) openChats()
+                                                },
                                             )
                                         }
                                     }
@@ -2505,6 +2517,17 @@ private fun NavHostController.selectConversationOnChatList(
     entry.savedStateHandle["pendingFromShareIntent"] = fromShareIntent
     return true
 }
+
+/** A file another app made for a chat, which ChatList asks the user where to send; the name goes first. */
+private fun NavHostController.sendFileOnChatList(path: String, name: String): Boolean {
+    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull() ?: return false
+    entry.savedStateHandle[SEND_FILE_NAME_KEY] = name
+    entry.savedStateHandle[SEND_FILE_PATH_KEY] = path
+    return true
+}
+
+private const val SEND_FILE_PATH_KEY = "sendFilePath"
+private const val SEND_FILE_NAME_KEY = "sendFileName"
 
 private const val OWNS_WINDOW_KEY = "ownsWindow"
 

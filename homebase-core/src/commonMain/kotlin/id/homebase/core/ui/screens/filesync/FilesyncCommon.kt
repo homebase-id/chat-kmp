@@ -128,6 +128,7 @@ internal fun FilesyncEventsEffect(
     events: Flow<FilesyncUiEvent>,
     snackbarHostState: SnackbarHostState,
     onOpenWebDrop: () -> Unit = {},
+    onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
     onOpenSignIn: (String) -> Unit = {},
     onSaveHandedOff: (String) -> Unit,
 ) {
@@ -158,6 +159,7 @@ internal fun FilesyncEventsEffect(
                     onError = { show(MR.string.filesync_share_failed) },
                 )
                 FilesyncUiEvent.OpenWebDrop -> onOpenWebDrop()
+                is FilesyncUiEvent.SendToChat -> onSendToChat(event.path, event.name)
                 is FilesyncUiEvent.OpenSignIn -> onOpenSignIn(event.url)
                 is FilesyncUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
                 is FilesyncUiEvent.Error -> show(

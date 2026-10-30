@@ -189,11 +189,15 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.WebDropClicked -> transfers.webDrop(action.node)
 
+            is FilesyncUiAction.SendToChatClicked -> transfers.sendToChat(action.node)
+
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
-            FilesyncUiAction.DownloadSelected -> zipSelected(share = false)
+            FilesyncUiAction.DownloadSelected -> zipSelected(transfers::saveZip)
 
-            FilesyncUiAction.ShareSelected -> zipSelected(share = true)
+            FilesyncUiAction.ShareSelected -> zipSelected(transfers::shareZip)
+
+            FilesyncUiAction.SendSelectedToChat -> zipSelected(transfers::sendZipToChat)
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
@@ -235,12 +239,11 @@ class FilesyncViewModel(
         viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
     }
 
-    private fun zipSelected(share: Boolean) {
+    private fun zipSelected(start: (List<FilesyncNode>, String) -> Unit) {
         val state = _uiState.value
         val nodes = state.selected.filter { it.removedMs == null }
         if (nodes.isEmpty()) return
-        val name = FilesyncArchive.name(nodes, state.path.last().name, ARCHIVE_FALLBACK_NAME)
-        if (share) transfers.shareZip(nodes, name) else transfers.saveZip(nodes, name)
+        start(nodes, FilesyncArchive.name(nodes, state.path.last().name, ARCHIVE_FALLBACK_NAME))
     }
 
     private fun open(node: FilesyncNode) {

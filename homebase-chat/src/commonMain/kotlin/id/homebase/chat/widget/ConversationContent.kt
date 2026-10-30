@@ -129,6 +129,7 @@ import id.homebase.chat.event.EventRsvp
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.MessageListContentModel
+import id.homebase.chat.conversationlist.matching
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.PendingOutgoingMessage
@@ -1812,36 +1813,10 @@ fun ConversationContentSheets(
 
         is MessageListUiSheet.ForwardMessage -> {
             val sheetState = rememberModalBottomSheetState()
-            val isSearching = sheet.searchTextState.text.isNotEmpty()
             val scope = rememberCoroutineScope()
 
             val filteredRecipients = remember(sheet.searchTextState.text) {
-                if (isSearching) {
-                    val query = sheet.searchTextState.text.toString()
-                    sheet.recipients.mapNotNull { group ->
-                        val matchingRecipients = group.recipients.filter { recipient ->
-                            when (recipient) {
-                                is RecipientModel.Contact -> recipient.contact.name.contains(
-                                    query,
-                                    ignoreCase = true
-                                )
-                                        || recipient.contact.odinId.domainName.contains(
-                                    query,
-                                    ignoreCase = true
-                                )
-
-                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName(
-                                    youLabel = youLabel
-                                )
-                                    .contains(query, ignoreCase = true)
-                            }
-                        }
-                        if (matchingRecipients.isEmpty()) null
-                        else group.copy(recipients = matchingRecipients)
-                    }
-                } else {
-                    sheet.recipients
-                }
+                sheet.recipients.matching(sheet.searchTextState.text.toString(), youLabel)
             }
 
             ModalBottomSheet(

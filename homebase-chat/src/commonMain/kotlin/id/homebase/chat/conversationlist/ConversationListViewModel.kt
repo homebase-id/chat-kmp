@@ -67,6 +67,7 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.resources.chat_error_send_file
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_load_conversations
 import id.homebase.resources.chat_error_load_messages
@@ -91,6 +92,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -114,6 +116,7 @@ import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.time.Clock
 import kotlin.time.measureTimedValue
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -198,6 +201,8 @@ class ConversationListViewModel(
         // How long the composer must sit idle before its draft is persisted (#1122).
         // Long enough that composing-then-sending normally writes nothing at all.
         private const val DRAFT_IDLE_MS = 2_000L
+
+        private val NEW_CHAT_WAIT = 10.seconds
     }
 
     private val enricher = ConversationEnricher()
@@ -1161,6 +1166,27 @@ class ConversationListViewModel(
         }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
     }
 
+    private fun sendFileTo(recipient: RecipientModel) {
+        val file = _uiState.value.uiDialog as? ConversationListUiDialog.SendFile ?: return
+        dialogClosed()
+        viewModelScope.launch {
+            val conversationId = try {
+                messageActionsHandler.conversationIdFor(recipient)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = "ConversationListViewModel") { "no chat to send ${file.name} to" }
+                fileOperationsProvider.deleteTempFile(file.path)
+                sendEvent(ShowErrorMessage(MR.string.chat_error_send_file, e.message ?: ""))
+                return@launch
+            }
+            selectConversation(conversationId)
+            // A contact's chat created just now joins the list a moment later, and attaching needs it there.
+            withTimeoutOrNull(NEW_CHAT_WAIT) { _uiState.first { state -> state.activeConversations.any { it.conversation.id == conversationId } } }
+            onAction(ConversationListUiAction.AttachPlatformFile(conversationId, listOf(platformFileFromPath(file.path))))
+        }
+    }
+
     fun dialogClosed() {
         _uiState.update { it.copy(uiDialog = null) }
     }
@@ -1521,6 +1547,15 @@ class ConversationListViewModel(
             is ConversationListUiAction.ForwardMessageSelectRecipient -> messageActionsHandler.handleForwardMessageSelectRecipient(action)
 
             is ConversationListUiAction.ForwardMessageSend -> messageActionsHandler.handleForwardMessageSend(action)
+            is ConversationListUiAction.ChooseChatForFile -> _uiState.update {
+                val recipients = recipientGroups(it.activeConversations, contactService.contacts.value)
+                it.copy(uiDialog = ConversationListUiDialog.SendFile(action.path, action.name, recipients))
+            }
+            is ConversationListUiAction.SendFileTo -> sendFileTo(action.recipient)
+            ConversationListUiAction.CancelSendFile -> {
+                (_uiState.value.uiDialog as? ConversationListUiDialog.SendFile)?.let { fileOperationsProvider.deleteTempFile(it.path) }
+                dialogClosed()
+            }
 
             is ConversationListUiAction.CancelReplyToMessage -> messageActionsHandler.handleCancelReplyToMessage()
 
