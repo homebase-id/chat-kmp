@@ -86,4 +86,15 @@ class FilesyncRemoveTest {
         refuse = { OdinClientErrorCode.UnknownId }
         assertFailsWith<IllegalStateException> { remove(node("x.txt")) }
     }
+
+    @Test
+    fun aNodeFromANewerContentVersionStaysWithWhatIsInIt() = runTest {
+        val newer = node("Newer", folder = true)
+        handles[newer.nodeId] = handles.getValue(newer.nodeId).let { FilesyncHandle(it.fileId, it.versionTag, it.fileType, key, it.content, null, version = 2) }
+        children[newer.nodeId] = listOf(node("a.txt", parent = newer.nodeId))
+        val result = remove(newer, node("x.txt"))
+
+        assertEquals(listOf(listOf("x.txt")), sent)
+        assertEquals(1, result.skipped)
+    }
 }

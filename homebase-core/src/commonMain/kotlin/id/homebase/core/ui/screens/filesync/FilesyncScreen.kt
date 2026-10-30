@@ -436,6 +436,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
                         onDismiss = { expanded = false },
                         onAction = actions.onAction,
                         onInfo = { onInfo(node) },
+                        canDelete = !actions.current().inDeletedFolder,
                     )
                 }
             }

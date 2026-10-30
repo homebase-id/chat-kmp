@@ -36,6 +36,9 @@ enum class FilesyncStatus(internal val archivalStatus: List<Int>) {
 /** A tombstone is proof a file went for good; a header not found is only a first "not there". */
 enum class FilesyncNotThere { Tombstone, NoHeader }
 
+/** How long the server's queries take to see a write: they leave out what changed in their last second. */
+internal val QUERY_HOLD_BACK = 1100.milliseconds
+
 /** Network only: the drive is never synced, so every listing is fetched fresh. */
 class FilesyncRepository(
     private val driveQueryProvider: DriveQueryProvider,
@@ -97,7 +100,7 @@ class FilesyncRepository(
      */
     suspend fun holding(folderIds: List<Uuid>, except: Set<FileVersionTag>): Set<Uuid> {
         // The server's queries leave out what changed in their last second.
-        delay(HOLD_BACK)
+        delay(QUERY_HOLD_BACK)
         val holding = mutableSetOf<Uuid>()
         for (chunk in folderIds.chunked(PAGE_SIZE)) {
             forEachPage(FileQueryParams(groupId = chunk, fileState = listOf(FileState.Active)), QueryBatchResultOptionsRequest(maxRecords = PAGE_SIZE)) { page ->
@@ -255,7 +258,6 @@ class FilesyncRepository(
     private companion object {
         const val PAGE_SIZE = 1000
         const val MAX_NAME_BYTES = 255
-        val HOLD_BACK = 1100.milliseconds
         const val RECENT_LIMIT = 100
     }
 }

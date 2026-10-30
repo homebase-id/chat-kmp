@@ -221,10 +221,10 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.Restore -> viewModelScope.launch {
-                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeIds) }
+                reportWrite(FilesyncUiEvent.Notice(FilesyncNotice.Restored), FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeIds) }
             }
 
-            is FilesyncUiAction.AskDelete -> if (action.nodes.isNotEmpty()) _uiState.update { it.copy(confirmDelete = action.nodes) }
+            is FilesyncUiAction.AskDelete -> if (action.nodes.isNotEmpty() && !_uiState.value.inDeletedFolder) _uiState.update { it.copy(confirmDelete = action.nodes) }
 
             FilesyncUiAction.DismissDelete -> _uiState.update { it.copy(confirmDelete = null) }
 
@@ -232,19 +232,8 @@ class FilesyncViewModel(
                 val nodes = _uiState.getAndUpdate { it.copy(confirmDelete = null) }.confirmDelete ?: return
                 val handles = transfers.handles
                 viewModelScope.launch {
-                    val result = try {
-                        editor.remove(nodes, handles)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Logger.e(e, TAG) { "removing ${nodes.size} nodes failed" }
-                        _events.send(FilesyncUiEvent.Error(FilesyncError.DeleteFailed))
-                        return@launch
-                    }
-                    _events.send(
-                        if (result.skipped > 0) FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere)
-                        else FilesyncUiEvent.Removed(nodes.mapTo(mutableSetOf()) { it.nodeId })
-                    )
+                    val removed = FilesyncUiEvent.Removed(nodes.mapTo(mutableSetOf()) { it.nodeId })
+                    reportWrite(removed, FilesyncError.DeleteFailed, _events::send) { editor.remove(nodes, handles) }
                 }
             }
 

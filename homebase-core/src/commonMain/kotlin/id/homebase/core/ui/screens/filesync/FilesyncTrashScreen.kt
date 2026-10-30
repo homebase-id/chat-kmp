@@ -54,7 +54,6 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
-
 /** Recently deleted as a trash can: what each delete took, newest first, to restore or delete for good. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable

@@ -76,10 +76,12 @@ data class FilesyncUiState(
             FilesyncBulkAction.Share.takeIf { live && isMobile() },
             FilesyncBulkAction.Chat.takeIf { live },
             FilesyncBulkAction.WebDrop.takeIf { live },
-            FilesyncBulkAction.Delete.takeIf { live },
+            FilesyncBulkAction.Delete.takeIf { live && !inDeletedFolder },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
     }
+
+    val inDeletedFolder: Boolean get() = path.lastOrNull()?.removedMs != null
 
     /** One download at a time; a delete or restore can go alongside. */
     fun isEnabled(bulk: FilesyncBulkAction): Boolean =

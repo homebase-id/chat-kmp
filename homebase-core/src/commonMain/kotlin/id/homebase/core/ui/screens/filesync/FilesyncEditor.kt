@@ -17,6 +17,7 @@ import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -29,6 +30,8 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 private const val TAG = "FilesyncEditor"
@@ -55,9 +58,12 @@ class FilesyncEditor(
     // One write at a time: a restore picks names against the folder as it is, so two at once could pick the same one.
     private val writeLock = Mutex()
     private val notFound = FilesyncNotFoundTwice()
+    private var lastRemove: TimeMark? = null
 
     /** Brings each of [nodeIds] back with the items its delete took along, and the removed folders above it first. */
     suspend fun restore(nodeIds: Set<Uuid>): FilesyncWriteResult = writeLock.withLock {
+        // An Undo right after a delete: the queries below would miss it.
+        lastRemove?.let { delay(QUERY_HOLD_BACK - it.elapsedNow()) }
         val trash = FilesyncTrash(repository.listDeleted())
         val tops = nodeIds.mapNotNull { id -> trash.all.nodes[id]?.takeIf { it.removed } }
         // One already live was restored by an earlier tap or another device: nothing to do, nothing to report.
@@ -175,7 +181,10 @@ class FilesyncEditor(
             }
         } finally {
             // A failed request may still have removed some of its files.
-            if (sent) _changed.tryEmit(Unit)
+            if (sent) {
+                lastRemove = TimeSource.Monotonic.markNow()
+                _changed.tryEmit(Unit)
+            }
         }
     }
 
@@ -365,7 +374,7 @@ internal class FilesyncNotFoundTwice(private val clock: Clock = Clock.System) {
 
 /** Runs [write] and turns its outcome into the messages the user sees; true when everything was written. */
 internal suspend fun reportWrite(
-    done: FilesyncNotice,
+    done: FilesyncUiEvent,
     failed: FilesyncError,
     send: suspend (FilesyncUiEvent) -> Unit,
     write: suspend () -> FilesyncWriteResult,
@@ -385,7 +394,7 @@ internal suspend fun reportWrite(
     // Nothing lists those until a computer syncs, so saying where comes first; a retry won't plan them, so it's said now.
     if (result.recovered > 0) send(FilesyncUiEvent.Notice(FilesyncNotice.RestoredToRecovered))
     if (result.tryAgainSoon) send(FilesyncUiEvent.Notice(FilesyncNotice.TryAgainSoon))
-    if (result.recovered == 0 && !result.tryAgainSoon) send(FilesyncUiEvent.Notice(if (result.skipped > 0) FilesyncNotice.ChangedElsewhere else done))
+    if (result.recovered == 0 && !result.tryAgainSoon) send(if (result.skipped > 0) FilesyncUiEvent.Notice(FilesyncNotice.ChangedElsewhere) else done)
     return result.skipped == 0
 }
 
@@ -409,7 +418,8 @@ internal suspend fun removeInOrder(
         val sending = mutableListOf<Pair<FileVersionTag, FilesyncNode>>()
         for ((node, handle) in level) {
             if (!seen.add(node.nodeId)) continue
-            val version = handle?.fileVersionTag
+            // A node from a newer content version is never changed: nothing here could bring it back.
+            val version = handle?.fileVersionTag?.takeIf { handle.writable }
             if (version == null) skipped++ else sending += version to node
         }
         val folders = mutableListOf<Uuid>()

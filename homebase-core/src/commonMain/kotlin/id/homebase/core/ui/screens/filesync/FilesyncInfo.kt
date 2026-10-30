@@ -209,6 +209,8 @@ internal fun FilesyncNodeMenu(
     // Phones open on a tap and show Info here; wide layouts select on a click, so the pane is the info and Open goes here.
     onInfo: (() -> Unit)?,
     offset: DpOffset = DpOffset(0.dp, 0.dp),
+    // Inside a deleted folder an Undo would bring the folder back too.
+    canDelete: Boolean = true,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
         if (onInfo == null && node.removedMs == null) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
@@ -222,7 +224,7 @@ internal fun FilesyncNodeMenu(
             MenuItem(MR.string.filesync_send_chat, onDismiss) { onAction(FilesyncUiAction.SendToChatClicked(node)) }
             MenuItem(MR.string.filesync_send_webdrop, onDismiss) { onAction(FilesyncUiAction.WebDropClicked(node)) }
         }
-        if (node.removedMs == null) MenuItem(MR.string.delete, onDismiss) { onAction(FilesyncUiAction.AskDelete(listOf(node))) }
+        if (node.removedMs == null && canDelete) MenuItem(MR.string.delete, onDismiss) { onAction(FilesyncUiAction.AskDelete(listOf(node))) }
     }
 }
 
