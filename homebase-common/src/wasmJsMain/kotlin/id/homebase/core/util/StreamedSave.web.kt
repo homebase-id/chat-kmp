@@ -7,43 +7,58 @@ import kotlin.js.Promise
 actual suspend fun openBrowserSave(suggestedName: String, mimeType: String): StreamedSave? {
     val saver = openSaver(suggestedName, mimeType).await<JsAny?>() ?: return null
     return object : StreamedSave {
+        // Each crossing into JS copies and awaits, so small writes (a ZIP's headers) are gathered first.
+        private val pending = ArrayList<ByteArray>()
+        private var pendingSize = 0
+
         override suspend fun write(bytes: ByteArray) {
-            saverWrite(saver, bytes.toJsUint8Array()).await<JsAny?>()
+            pending += bytes
+            pendingSize += bytes.size
+            if (pendingSize >= FLUSH_AT) flush()
         }
 
         override suspend fun close() {
-            saverClose(saver).await<JsAny?>()
+            flush()
+            // A saver that wrote to a picked file is done; the others hand back what to download.
+            saverClose(saver).await<JsAny?>()?.let { triggerBrowserDownload(objectUrl(it), suggestedName) }
         }
 
         override suspend fun abort() {
+            pending.clear()
             saverAbort(saver).await<JsAny?>()
+        }
+
+        private suspend fun flush() {
+            if (pending.isEmpty()) return
+            val joined = if (pending.size == 1) pending[0] else ByteArray(pendingSize).also { all ->
+                var at = 0
+                for (part in pending) {
+                    part.copyInto(all, at)
+                    at += part.size
+                }
+            }
+            pending.clear()
+            pendingSize = 0
+            saverWrite(saver, joined.toJsUint8Array()).await<JsAny?>()
         }
     }
 }
 
+private const val FLUSH_AT = 1 shl 20
+
+private fun objectUrl(blob: JsAny): String = js("URL.createObjectURL(blob)")
 private fun saverWrite(saver: JsAny, bytes: JsAny): Promise<JsAny?> = js("saver.write(bytes)")
 private fun saverClose(saver: JsAny): Promise<JsAny?> = js("saver.close()")
 private fun saverAbort(saver: JsAny): Promise<JsAny?> = js("saver.abort()")
 
 /*
  * Each saver awaits its writes, so a slow disk holds the download back instead of filling memory. The private storage
- * keeps one folder of finished files; each is downloaded from a blob URL that reads it from disk, and one is removed
- * once it's an hour old, by when its download has long read it.
+ * keeps one folder of finished files, each downloaded from a blob that reads it from disk; one is removed once it's
+ * an hour old, by when its download has long read it. Close resolves with that blob, or null when the picked file
+ * already holds everything.
  */
 private fun openSaver(name: String, mime: String): Promise<JsAny?> = js(
     """(async function () {
-        function download(blob) {
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            // Revoking in the same task cancels the download in Safari and Firefox.
-            setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
-        }
         if (typeof window.showSaveFilePicker === 'function') {
             var picked;
             try {
@@ -55,7 +70,7 @@ private fun openSaver(name: String, mime: String): Promise<JsAny?> = js(
             var out = await picked.createWritable();
             return {
                 write: function (b) { return out.write(b); },
-                close: function () { return out.close(); },
+                close: async function () { await out.close(); return null; },
                 abort: function () { return out.abort(); },
             };
         }
@@ -79,10 +94,7 @@ private fun openSaver(name: String, mime: String): Promise<JsAny?> = js(
                 var stored = await handle.createWritable();
                 return {
                     write: function (b) { return stored.write(b); },
-                    close: async function () {
-                        await stored.close();
-                        download(await handle.getFile());
-                    },
+                    close: async function () { await stored.close(); return await handle.getFile(); },
                     abort: async function () {
                         try { await stored.abort(); } catch (e) {}
                         try { await dir.removeEntry(fileName); } catch (e) {}
@@ -91,10 +103,17 @@ private fun openSaver(name: String, mime: String): Promise<JsAny?> = js(
             }
             try { await dir.removeEntry(fileName); } catch (e) {}
         }
+        // Folded into a Blob every 64 MiB, which a browser may keep on disk rather than in the page's memory.
         var parts = [];
+        var size = 0;
         return {
-            write: function (b) { parts.push(b); return Promise.resolve(); },
-            close: function () { download(new Blob(parts, { type: mime })); parts = []; return Promise.resolve(); },
+            write: function (b) {
+                parts.push(b);
+                size += b.length;
+                if (size >= 67108864) { parts = [new Blob(parts)]; size = 0; }
+                return Promise.resolve();
+            },
+            close: function () { var blob = new Blob(parts, { type: mime }); parts = []; return Promise.resolve(blob); },
             abort: function () { parts = []; return Promise.resolve(); },
         };
     })()"""

@@ -349,7 +349,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 }
                 FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
                 if (scope.currentRemoved) DeletedFolderBanner(scope)
-                uiState.archive?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelArchive) }) }
+                uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
                 TableHeader(uiState.sort, uiState.selected.size, uiState.visible.size, columns, scope.onAction)
                 Box(modifier = Modifier.weight(1f)) {
                     BrowserListBody(scope) {

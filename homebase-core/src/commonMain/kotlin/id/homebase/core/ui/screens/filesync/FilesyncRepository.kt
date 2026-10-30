@@ -44,6 +44,9 @@ class FilesyncRepository(
     private val driveFileProvider: DriveFileProvider,
 ) {
 
+    /** The live nodes of several folders at once. */
+    suspend fun listFolders(folderIds: List<Uuid>): FilesyncNodes = queryChunked(folderIds, listOf(FilesyncStatus.Live)) { copy(groupId = it) }
+
     /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
         queryAll(folderParams(folderId, includeRemoved)).first
@@ -197,25 +200,6 @@ class FilesyncRepository(
         return FilesyncNodes(nodes, handles)
     }
 
-    /**
-     * A file to open goes to share_outbound, swept like every other copy handed to another app;
-     * one to save goes to upload-temp and is [discard]ed once the OS has its copy.
-     */
-    suspend fun download(name: String, payload: FilesyncPayload, toShareOutbound: Boolean, onProgress: (Float) -> Unit): String? =
-        payloadDownloadService.exportVerified(
-            driveId = FilesyncProtocol.DriveAlias,
-            fileId = payload.fileId,
-            key = FilesyncProtocol.PayloadKey,
-            keyHeader = payload.payloadKey,
-            hash = payload.hash,
-            destination = if (toShareOutbound) {
-                ExportDestination.ShareOutbound(extensionOf(name))
-            } else {
-                ExportDestination.UploadTemp("fs_", extensionOf(name))
-            },
-            onProgress = onProgress,
-        )
-
     /** A file's checked plaintext to [consume] as it downloads; throws when it's damaged or gone. */
     suspend fun streamPayload(payload: FilesyncPayload, onProgress: ((Float) -> Unit)? = null, consume: suspend (Flow<ByteArray>) -> Unit) {
         val found = payloadDownloadService.streamVerified(
@@ -231,22 +215,18 @@ class FilesyncRepository(
     }
 
     /**
-     * What [write] makes, streamed into a new file named like [download]'s and returned; nothing is left behind when it
-     * fails. [write] runs in a producer of its own, so its bytes reach the disk as they come.
+     * What [write] makes, as a file with [name]'s extension: one to open or share goes to share_outbound, swept like
+     * every other copy handed to another app; one to save goes to upload-temp and is [discard]ed once the OS has it.
      */
-    suspend fun writeToCache(suffix: String, toShareOutbound: Boolean, write: suspend (out: suspend (ByteArray) -> Unit) -> Unit): String {
-        val path = if (toShareOutbound) {
-            fileOperationsProvider.createShareOutboundPath(suffix)
-        } else {
-            fileOperationsProvider.createUploadTempPath("fs_", suffix)
-        }
-        try {
+    suspend fun writeToCache(name: String, toShareOutbound: Boolean, write: suspend (out: suspend (ByteArray) -> Unit) -> Unit): String {
+        val suffix = extensionOf(name)
+        val destination = if (toShareOutbound) ExportDestination.ShareOutbound(suffix) else ExportDestination.UploadTemp("fs_", suffix)
+        val path = payloadDownloadService.exportWith(destination) { path ->
+            // Its own producer, so the bytes reach the disk as they come.
             fileOperationsProvider.writeStream(path, channelFlow { write { send(it) } })
-        } catch (t: Throwable) {
-            discard(path)
-            throw t
+            true
         }
-        return path
+        return checkNotNull(path)
     }
 
     // The name comes from any desktop OS; only a plain alphanumeric extension reaches the temp path.

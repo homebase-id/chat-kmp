@@ -505,15 +505,15 @@ internal fun totalsLabel(totals: FilesyncTotals): String = stringResource(
 
 /** A ZIP being made: how far it has got, and a way to stop it. */
 @Composable
-internal fun FilesyncArchiveBar(progress: FilesyncArchiveProgress, onCancel: () -> Unit, modifier: Modifier = Modifier) {
-    val total = progress.totalBytes
+internal fun FilesyncArchiveBar(transfer: FilesyncTransfer, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    val total = transfer.totalBytes
     Row(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = if (total == null) {
                     stringResource(MR.string.filesync_archive_listing)
                 } else {
-                    stringResource(MR.string.filesync_archive_progress, formatBytes(progress.doneBytes), formatBytes(total))
+                    stringResource(MR.string.filesync_archive_progress, formatBytes((transfer.progress * total).toLong()), formatBytes(total))
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -521,7 +521,7 @@ internal fun FilesyncArchiveBar(progress: FilesyncArchiveProgress, onCancel: () 
             if (total == null || total == 0L) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else {
-                LinearProgressIndicator(progress = { (progress.doneBytes.toFloat() / total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { transfer.progress }, modifier = Modifier.fillMaxWidth())
             }
         }
         IconButton(onClick = onCancel) {

@@ -263,7 +263,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                     uiState.bulkActions.forEach { bulk ->
                         IconButton(
                             onClick = { scope.onAction(bulk.action(uiState)) },
-                            enabled = uiState.archive == null || bulk == FilesyncBulkAction.Restore,
+                            enabled = uiState.isEnabled(bulk),
                         ) {
                             Icon(bulk.icon, contentDescription = stringResource(bulk.label))
                         }
@@ -347,7 +347,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
             )
             FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
             if (scope.currentRemoved) DeletedFolderBanner(scope)
-            uiState.archive?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelArchive) }) }
+            uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
             PullToRefreshBox(
                 isRefreshing = uiState.isLoading && uiState.nodes.isNotEmpty(),
                 onRefresh = { scope.onAction(FilesyncUiAction.Refresh) },

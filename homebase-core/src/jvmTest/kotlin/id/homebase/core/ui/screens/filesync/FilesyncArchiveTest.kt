@@ -41,8 +41,8 @@ class FilesyncArchiveTest {
         this to FilesyncHandle(Uuid.random(), Uuid.random(), FilesyncProtocol.FolderFileType, key, JsonObject(emptyMap()), null)
 
     private val archive = FilesyncArchive(
-        list = { id ->
-            val children = folders[id].orEmpty()
+        list = { ids ->
+            val children = ids.flatMap { folders[it].orEmpty() }
             FilesyncNodes(children.associate { it.first.nodeId to it.first }, children.associate { it.first.nodeId to it.second })
         },
         stream = { payload, consume ->
@@ -60,7 +60,7 @@ class FilesyncArchiveTest {
     }
 
     @Test
-    fun aSelectionZipsWithWhatsInItsFoldersAndLeavesDeletedNodesOut() = runTest {
+    fun aSelectionZipsWithWhatsInItsFoldersALevelAtATimeAndLeavesDeletedNodesOut() = runTest {
         val photos = folder("Photos")
         val trip = folder("Trip", photos.nodeId)
         photos.holds(file("b.jpg", ByteArray(10) { 2 }, photos.nodeId), trip.withHandle(), file("gone.jpg", ByteArray(3), photos.nodeId, removed = true))
@@ -70,7 +70,7 @@ class FilesyncArchiveTest {
 
         ZipFile(zipOf(listOf(photos.withHandle(), notes, run))).use { zip ->
             assertEquals(
-                listOf("Photos/", "Photos/b.jpg", "Photos/Trip/", "Photos/Trip/a.jpg", "notes.txt", "run.sh"),
+                listOf("Photos/", "notes.txt", "run.sh", "Photos/b.jpg", "Photos/Trip/", "Photos/Trip/a.jpg"),
                 zip.entries().toList().map { it.name },
             )
             assertContentEquals(ByteArray(20_000) { 1 }, zip.getInputStream(zip.getEntry("Photos/Trip/a.jpg")).readBytes())

@@ -279,8 +279,7 @@ internal fun FilesyncSelectionContent(state: FilesyncUiState, onAction: (Filesyn
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(bulk.label))
                 }
-                // A ZIP is under way, and only one at a time.
-                val enabled = state.archive == null || bulk == FilesyncBulkAction.Restore
+                val enabled = state.isEnabled(bulk)
                 if (i == 0) {
                     Button(onClick = { onAction(bulk.action(state)) }, enabled = enabled, content = content)
                 } else {

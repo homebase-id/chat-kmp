@@ -10,8 +10,11 @@ import kotlin.uuid.Uuid
 @Immutable
 data class FilesyncCrumb(val nodeId: Uuid, val name: String?, val removedMs: Long? = null)
 
+/** A download under way: of the node [nodeId], or of a ZIP when null, whose [totalBytes] are known once it's listed. */
 @Immutable
-data class FilesyncTransfer(val nodeId: Uuid, val progress: Float = 0f)
+data class FilesyncTransfer(val nodeId: Uuid?, val progress: Float = 0f, val totalBytes: Long? = null) {
+    val isZip: Boolean get() = nodeId == null
+}
 
 internal fun FilesyncTransfer?.progressOf(nodeId: Uuid): Float? = this?.takeIf { it.nodeId == nodeId }?.progress
 
@@ -50,7 +53,6 @@ data class FilesyncUiState(
     val visible: List<FilesyncNode> = emptyList(),
     val totals: FilesyncTotals = FilesyncTotals(),
     val privateDrive: PrivateDriveState = PrivateDriveState(),
-    val archive: FilesyncArchiveProgress? = null,
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
 
@@ -73,6 +75,9 @@ data class FilesyncUiState(
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
     }
+
+    /** One download at a time; a restore can go alongside. */
+    fun isEnabled(bulk: FilesyncBulkAction): Boolean = transfer == null || bulk == FilesyncBulkAction.Restore
 
     /** The selected node when it's the only one. */
     val selectedOne: FilesyncNode? get() = selected.singleOrNull()
@@ -128,7 +133,6 @@ sealed interface FilesyncUiAction {
     /** The selection's live nodes as one ZIP, saved or (on phones) shared. */
     data object DownloadSelected : FilesyncUiAction
     data object ShareSelected : FilesyncUiAction
-    data object CancelArchive : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
