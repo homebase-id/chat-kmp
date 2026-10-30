@@ -23,18 +23,20 @@ data class FollowingUiState(
     val peopleYouMayKnowLoading: Boolean = false,
     /** "Based on N of your M connections"; null until loaded. */
     val peopleYouMayKnowBasis: Pair<Int, Int>? = null,
+    /** Lower-cased: followed from this screen, so their rows stay put showing "Following" until it closes. */
+    val followedHere: Set<String> = emptySet(),
 ) {
     /** Connections not followed yet, in connection order. */
     val suggested: List<String>
         get() {
-            val followed = following.mapTo(HashSet()) { it.lowercase() }
+            val followed = following.mapTo(HashSet()) { it.lowercase() } - followedHere
             return connections.filter { it.lowercase() !in followed }
         }
 
     /** People you may know, less anyone followed since they were computed. */
     val peopleYouMayKnowNotFollowed: List<FollowerSuggestion>
         get() {
-            val followed = following.mapTo(HashSet()) { it.lowercase() }
+            val followed = following.mapTo(HashSet()) { it.lowercase() } - followedHere
             return peopleYouMayKnow.filter { it.odinId.lowercase() !in followed }
         }
 }

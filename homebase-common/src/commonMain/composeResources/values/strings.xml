@@ -2025,7 +2025,6 @@
     <string name="contactbook_filter_blocked">Blocked</string>
     <string name="contactbook_filter_following">Following</string>
     <string name="contactbook_filter_followers">Followers</string>
-    <string name="contactbook_filter_mutual">Mutual</string>
     <string name="contactbook_follow_filter_empty">No contacts here yet.</string>
     <string name="contactbook_follow_badge_mutual">You follow each other</string>
     <string name="contactbook_follow_badge_follows_you">Follows you</string>
@@ -2393,6 +2392,8 @@
     <string name="feed_following_cancel">Cancel</string>
     <string name="feed_following_pymk_title">People you may know</string>
     <string name="feed_following_row_add">Follow people</string>
+    <string name="feed_following_row_previous">Previous</string>
+    <string name="feed_following_row_next">Next</string>
     <string name="feed_following_row_show_posts">Show only their posts</string>
     <string name="feed_following_row_show_all">Show all posts</string>
     <string name="feed_following_row_view_contact">View contact</string>
@@ -2400,6 +2401,13 @@
     <string name="feed_following_pymk_refresh">Refresh</string>
     <string name="feed_following_pymk_via_connections">Connected to %1$s</string>
     <string name="feed_following_pymk_via_follows">Followed by %1$s</string>
+    <string name="feed_following_pymk_via_title_connections">Connected to them (%1$d)</string>
+    <string name="feed_following_pymk_via_title_follows">Following them (%1$d)</string>
+    <string name="feed_following_followed">Following %1$s</string>
+    <string name="feed_following_followed_many">Following %1$d people</string>
+    <string name="feed_following_following">Following</string>
+    <string name="feed_following_undo">Undo</string>
+    <string name="feed_following_close">Close</string>
 
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>

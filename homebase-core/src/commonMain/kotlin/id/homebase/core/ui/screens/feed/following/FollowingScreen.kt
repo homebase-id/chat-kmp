@@ -58,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +79,18 @@ import id.homebase.resources.feed_following_tab_followers
 import id.homebase.resources.feed_following_tab_following
 import id.homebase.resources.feed_following_title
 import id.homebase.resources.feed_following_unfollow
+import id.homebase.resources.feed_following_followed
+import id.homebase.resources.feed_following_followed_many
+import id.homebase.resources.feed_following_following
+import id.homebase.resources.feed_following_undo
+import id.homebase.resources.feed_following_close
+import id.homebase.resources.feed_following_pymk_via_title_connections
+import id.homebase.resources.feed_following_pymk_via_title_follows
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.foundation.layout.heightIn
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -92,15 +105,41 @@ fun FollowingScreen(
     val displayNames by viewModel.displayNames.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val invalidAddress = stringResource(MR.string.feed_following_invalid_address)
+    // Read inside the collector, which outlives any one composition of the name map
+    val currentNames by rememberUpdatedState(displayNames)
+    var viaShown by remember { mutableStateOf<FollowerSuggestion?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is FollowingEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
+                is FollowingEvent.Followed -> {
+                    val name = currentNames[OdinId(event.odinId)]?.takeIf { it.isNotBlank() } ?: event.odinId
+                    val result = snackbarHostState.showSnackbar(
+                        message = getString(MR.string.feed_following_followed, name),
+                        actionLabel = getString(MR.string.feed_following_undo),
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) viewModel.unfollow(event.odinId)
+                }
+                is FollowingEvent.FollowedMany ->
+                    snackbarHostState.showSnackbar(getString(MR.string.feed_following_followed_many, event.count))
                 FollowingEvent.InvalidAddress -> snackbarHostState.showSnackbar(invalidAddress)
                 is FollowingEvent.NavigateToIdentity -> onIdentityClick(event.odinId)
             }
         }
+    }
+
+    viaShown?.let { suggestion ->
+        ViaDialog(
+            suggestion = suggestion,
+            nameOf = { domain -> displayNames[OdinId(domain)]?.takeIf { it.isNotBlank() } ?: domain },
+            onIdentityClick = {
+                viaShown = null
+                viewModel.onIdentityClick(it)
+            },
+            onDismiss = { viaShown = null },
+        )
     }
 
     if (uiState.isFollowByAddressOpen) {
@@ -184,6 +223,8 @@ fun FollowingScreen(
                             odinId = odinId,
                             displayName = displayName,
                             isFollowed = isFollowed,
+                            followedHere = uiState.selectedTab != FollowTab.Following &&
+                                odinId.lowercase() in uiState.followedHere,
                             // Only on the Following tab: everyone on the Followers tab follows you
                             followsYou = uiState.selectedTab == FollowTab.Following &&
                                 odinId.lowercase() in followerSet,
@@ -215,8 +256,11 @@ fun FollowingScreen(
                                 nameOf = { domain ->
                                     displayNames[OdinId(domain)]?.takeIf { it.isNotBlank() } ?: domain
                                 },
+                                isFollowed = uiState.following.any { it.equals(suggestion.odinId, ignoreCase = true) },
                                 onRowClick = { viewModel.onIdentityClick(suggestion.odinId) },
                                 onFollow = { viewModel.follow(suggestion.odinId) },
+                                onUnfollow = { viewModel.unfollow(suggestion.odinId) },
+                                onShowVia = { viaShown = suggestion },
                             )
                         }
                     }
@@ -259,10 +303,15 @@ private fun PeopleYouMayKnowRow(
     suggestion: FollowerSuggestion,
     displayName: String,
     nameOf: (String) -> String,
+    isFollowed: Boolean,
     onRowClick: () -> Unit,
     onFollow: () -> Unit,
+    onUnfollow: () -> Unit,
+    onShowVia: () -> Unit,
 ) {
     val odin = remember(suggestion.odinId) { OdinId(suggestion.odinId) }
+    // "+N" hides names, so the line opens the whole list
+    val hasMore = suggestion.viaConnections.size + suggestion.viaFollows.size > 2
     val via = when {
         suggestion.viaConnections.isNotEmpty() ->
             stringResource(MR.string.feed_following_pymk_via_connections, viaNames(suggestion.viaConnections, nameOf))
@@ -286,13 +335,70 @@ private fun PeopleYouMayKnowRow(
             Text(
                 text = via,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (hasMore) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = if (hasMore) Modifier.clickable(onClick = onShowVia) else Modifier,
             )
         }
-        Button(onClick = onFollow) { Text(stringResource(MR.string.feed_following_follow)) }
+        if (isFollowed) FollowingButton(onClick = onUnfollow)
+        else Button(onClick = onFollow) { Text(stringResource(MR.string.feed_following_follow)) }
     }
+}
+
+// Followed from this screen: says so where the Follow button was; tapping it again unfollows
+@Composable
+private fun FollowingButton(onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick) {
+        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+        Text(stringResource(MR.string.feed_following_following), modifier = Modifier.padding(start = 6.dp))
+    }
+}
+
+// Everyone behind a suggestion, by name where the contact book knows them; a name opens that contact
+@Composable
+private fun ViaDialog(
+    suggestion: FollowerSuggestion,
+    nameOf: (String) -> String,
+    onIdentityClick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(nameOf(suggestion.odinId), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                for ((title, domains) in listOf(
+                    MR.string.feed_following_pymk_via_title_connections to suggestion.viaConnections,
+                    MR.string.feed_following_pymk_via_title_follows to suggestion.viaFollows,
+                )) {
+                    if (domains.isEmpty()) continue
+                    item(key = "title-$title") {
+                        Text(
+                            stringResource(title, domains.size),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
+                    }
+                    items(items = domains, key = { "$title-$it" }) { domain ->
+                        Text(
+                            nameOf(domain),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onIdentityClick(domain) }
+                                .padding(vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.feed_following_close)) }
+        },
+    )
 }
 
 // Two names, then "and N more"
@@ -401,6 +507,7 @@ private fun IdentityRow(
     odinId: String,
     displayName: String,
     isFollowed: Boolean,
+    followedHere: Boolean,
     followsYou: Boolean,
     followLabel: StringResource,
     onRowClick: () -> Unit,
@@ -449,7 +556,9 @@ private fun IdentityRow(
                 )
             }
         }
-        if (isFollowed) {
+        if (isFollowed && followedHere) {
+            FollowingButton(onClick = onUnfollow)
+        } else if (isFollowed) {
             OutlinedButton(onClick = onUnfollow) {
                 Text(stringResource(MR.string.feed_following_unfollow))
             }

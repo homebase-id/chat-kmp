@@ -137,15 +137,13 @@ fun FeedTimelineScreen(
     // state remembered inside it would come back scrolled to the top.
     val listState = rememberLazyListState()
 
-    // Developer flag: tapping someone in the following row shows only their posts. Filters what the feed has
-    // loaded; scrolling on loads more pages as usual.
+    // Developer flag: tapping someone in the following row shows only their posts. The service queries the local
+    // index by sender, so paging walks back through everything synced from them.
     var authorFilter by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(advancedFeed) { if (!advancedFeed) authorFilter = null }
-    LaunchedEffect(authorFilter) { listState.scrollToItem(0) }
-    val shownState = remember(uiState, authorFilter) {
-        authorFilter?.let { f ->
-            uiState.copy(posts = uiState.posts.filter { it.authorOdinId?.domainName.equals(f, ignoreCase = true) })
-        } ?: uiState
+    LaunchedEffect(authorFilter) {
+        viewModel.setAuthorFilter(setOfNotNull(authorFilter))
+        listState.scrollToItem(0)
     }
     val filterName = remember(authorFilter, displayNames) {
         authorFilter?.let { f -> displayNames[OdinId(f)]?.takeIf { it.isNotBlank() } ?: f }
@@ -221,7 +219,7 @@ fun FeedTimelineScreen(
                 // Gated on an empty list: a refresh that fails over a populated feed reports on the snackbar.
                 uiState.errorMessage != null && uiState.posts.isEmpty() -> FeedBody.Error
                 uiState.isLoading && uiState.posts.isEmpty() -> FeedBody.Loading
-                shownState.posts.isEmpty() -> FeedBody.Empty
+                uiState.posts.isEmpty() -> FeedBody.Empty
                 else -> FeedBody.Posts
             }
             val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
@@ -299,7 +297,7 @@ fun FeedTimelineScreen(
                     }
 
                     FeedBody.Posts -> FeedTimelineList(
-                        uiState = shownState,
+                        uiState = uiState,
                         listState = listState,
                         onRefresh = viewModel::refresh,
                         onLoadMore = viewModel::loadMore,

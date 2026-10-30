@@ -18,11 +18,16 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 sealed interface FollowingEvent {
     data class ShowSnackbar(val message: String) : FollowingEvent
+    /** The follow went through; offers Undo. */
+    data class Followed(val odinId: String) : FollowingEvent
+    data class FollowedMany(val count: Int) : FollowingEvent
     data object InvalidAddress : FollowingEvent
     data class NavigateToIdentity(val odinId: String) : FollowingEvent
 }
@@ -125,17 +130,30 @@ class FollowingViewModel(
 
     fun follow(odinId: String) {
         viewModelScope.launch {
-            try {
-                followGraph.follow(odinId)
-            } catch (t: Throwable) {
-                Logger.e(throwable = t, tag = TAG) { "follow $odinId failed: ${t.message}" }
-                _events.tryEmit(FollowingEvent.ShowSnackbar(t.message ?: odinId))
-            }
+            if (followQuietly(odinId)) _events.tryEmit(FollowingEvent.Followed(odinId))
         }
     }
 
+    // One confirmation for the lot rather than a snackbar per person
     fun followAll(odinIds: List<String>) {
-        odinIds.forEach(::follow)
+        viewModelScope.launch {
+            val done = odinIds.map { async { followQuietly(it) } }.awaitAll().count { it }
+            if (done > 0) _events.tryEmit(FollowingEvent.FollowedMany(done))
+        }
+    }
+
+    // True once the server has it; a failure is reported here and the row goes back to Follow
+    private suspend fun followQuietly(odinId: String): Boolean {
+        _uiState.update { it.copy(followedHere = it.followedHere + odinId.lowercase()) }
+        return try {
+            followGraph.follow(odinId)
+            true
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) { "follow $odinId failed: ${t.message}" }
+            _uiState.update { it.copy(followedHere = it.followedHere - odinId.lowercase()) }
+            _events.tryEmit(FollowingEvent.ShowSnackbar(t.message ?: odinId))
+            false
+        }
     }
 
     fun openFollowByAddress() = _uiState.update { it.copy(isFollowByAddressOpen = true) }

@@ -31,7 +31,6 @@ import androidx.compose.runtime.LaunchedEffect
 import id.homebase.resources.contactbook_follow_filter_empty
 import id.homebase.resources.contactbook_filter_following
 import id.homebase.resources.contactbook_filter_followers
-import id.homebase.resources.contactbook_filter_mutual
 import id.homebase.resources.contactbook_follow_badge_mutual
 import id.homebase.resources.contactbook_follow_badge_follows_you
 import id.homebase.resources.contactbook_follow_badge_following
@@ -98,10 +97,6 @@ fun ContactBookContent(
             filter == ContactFilter.BLOCKED -> uiState.blockedContacts
             filter == ContactFilter.FOLLOWING -> uiState.knownContacts.filter { it.odinId?.let(follows::isFollowing) == true }
             filter == ContactFilter.FOLLOWERS -> uiState.knownContacts.filter { it.odinId?.let(follows::followsYou) == true }
-            filter == ContactFilter.MUTUAL -> uiState.knownContacts.filter {
-                val id = it.odinId
-                id != null && follows.isFollowing(id) && follows.followsYou(id)
-            }
             else -> uiState.knownContacts
         }
 
@@ -293,16 +288,11 @@ private fun FilterRow(
                 onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.FOLLOWERS)) },
                 label = { Text(stringResource(MR.string.contactbook_filter_followers)) },
             )
-            FilterChip(
-                selected = filter == ContactFilter.MUTUAL,
-                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.MUTUAL)) },
-                label = { Text(stringResource(MR.string.contactbook_filter_mutual)) },
-            )
         }
     }
 }
 
-private val FollowFilters = setOf(ContactFilter.FOLLOWING, ContactFilter.FOLLOWERS, ContactFilter.MUTUAL)
+private val FollowFilters = setOf(ContactFilter.FOLLOWING, ContactFilter.FOLLOWERS)
 
 @Composable
 private fun followBadgeText(following: Boolean, followsYou: Boolean): String? = when {

@@ -12,14 +12,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -33,6 +38,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,8 +50,11 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
 import id.homebase.resources.feed_following_row_add
+import id.homebase.resources.feed_following_row_next
+import id.homebase.resources.feed_following_row_previous
 import id.homebase.resources.feed_following_row_show_all
 import id.homebase.resources.feed_following_row_show_posts
 import id.homebase.resources.feed_following_row_view_contact
@@ -54,6 +65,13 @@ import org.koin.compose.koinInject
 
 private val AvatarSize = 52.dp
 private val ItemWidth = 68.dp
+private val ArrowSize = 32.dp
+
+// Per wheel notch; a trackpad sends fractions of one
+private val WheelStep = 48.dp
+
+// How much of the visible row an arrow click moves, leaving a little of the last page in view
+private const val PageFraction = 0.8f
 
 /**
  * Who you follow, along the top of the feed: the people your feed is made of. A tap shows only that person's
@@ -79,10 +97,31 @@ fun FollowingAvatarRow(
 
     val names = remember(contacts) { contacts.associate { it.odinId.domainName.lowercase() to it.name } }
 
+    val rowState = rememberLazyListState()
+    // A mouse can't drag a row, and its wheel only scrolls vertically: the arrows and the wheel stand in
+    val pointerNav = remember { isDesktopOrWeb() }
+
     Column(modifier = modifier) {
+        Box {
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            state = rowState,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.pointerInput(rowState) {
+                val step = WheelStep.toPx()
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.type != PointerEventType.Scroll) continue
+                        val delta = event.changes.first().scrollDelta
+                        // Only a purely vertical wheel: a sideways trackpad swipe already scrolls the row
+                        if (delta.x == 0f && delta.y != 0f) {
+                            rowState.dispatchRawDelta(delta.y * step)
+                            event.changes.forEach { it.consume() }
+                        }
+                    }
+                }
+            },
         ) {
             item(key = "find-people") {
                 RowItem(label = stringResource(MR.string.feed_following_row_add), onClick = onFindPeople) {
@@ -157,7 +196,41 @@ fun FollowingAvatarRow(
                 }
             }
         }
+        if (pointerNav) {
+            val page = { sign: Float ->
+                scope.launch { rowState.animateScrollBy(sign * rowState.layoutInfo.viewportSize.width * PageFraction) }
+            }
+            if (rowState.canScrollBackward) {
+                RowArrow(
+                    icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    description = stringResource(MR.string.feed_following_row_previous),
+                    onClick = { page(-1f) },
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
+                )
+            }
+            if (rowState.canScrollForward) {
+                RowArrow(
+                    icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    description = stringResource(MR.string.feed_following_row_next),
+                    onClick = { page(1f) },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp),
+                )
+            }
+        }
+        }
         HorizontalDivider()
+    }
+}
+
+@Composable
+private fun RowArrow(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FilledTonalIconButton(onClick = onClick, modifier = modifier.size(ArrowSize)) {
+        Icon(icon, contentDescription = description)
     }
 }
 
@@ -177,7 +250,7 @@ private fun RowItem(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         avatar()
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
