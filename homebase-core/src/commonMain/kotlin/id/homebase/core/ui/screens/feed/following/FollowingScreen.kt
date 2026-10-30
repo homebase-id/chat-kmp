@@ -199,7 +199,7 @@ fun FollowingScreen(
             }
 
             // People you may know shows under your own suggestions, and keeps the tab from reading as empty
-            val showPeopleYouMayKnow = uiState.selectedTab == FollowTab.Suggested && uiState.advancedFeed &&
+            val showPeopleYouMayKnow = uiState.selectedTab == FollowTab.Suggested &&
                 (uiState.peopleYouMayKnowLoading || uiState.peopleYouMayKnowNotFollowed.isNotEmpty())
 
             when {

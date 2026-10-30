@@ -1747,8 +1747,6 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_profile_card">Profile card</string>
     <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
-    <string name="dev_menu_advanced_feed">Enable Advanced Feed</string>
-    <string name="dev_menu_advanced_feed_desc">Who you follow along the top of the feed, follow filters in Contacts, and People you may know. Needs a server with the v2 follower routes.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_force_logout">Force Logout (local only)</string>
@@ -2319,9 +2317,6 @@
     <string name="feed_timeline_following_action">Following</string>
     <string name="feed_timeline_empty_title">Your feed is empty</string>
     <string name="feed_timeline_find_people">Find people to follow</string>
-    <string name="feed_timeline_filter_remove">Remove %1$s</string>
-    <string name="feed_timeline_filter_clear">Show all posts</string>
-    <string name="feed_timeline_filter_empty">No posts from %1$s in your feed yet</string>
     <string name="feed_timeline_empty_body">Posts from people you follow will show up here. Share something to get started.</string>
     <string name="feed_timeline_error_title">Couldn't load your feed</string>
     <string name="feed_timeline_error_retry">Retry</string>
@@ -2393,12 +2388,6 @@
     <string name="feed_following_invalid_address">That isn't a Homebase address.</string>
     <string name="feed_following_cancel">Cancel</string>
     <string name="feed_following_pymk_title">People you may know</string>
-    <string name="feed_following_row_add">Follow people</string>
-    <string name="feed_following_row_previous">Previous</string>
-    <string name="feed_following_row_next">Next</string>
-    <string name="feed_following_row_select">Show their posts</string>
-    <string name="feed_following_row_deselect">Stop showing their posts</string>
-    <string name="feed_following_row_view_contact">View contact</string>
     <string name="feed_following_pymk_basis">From what %1$d of your %2$d connections share</string>
     <string name="feed_following_pymk_refresh">Refresh</string>
     <string name="feed_following_pymk_via_connections">Connected to %1$s</string>

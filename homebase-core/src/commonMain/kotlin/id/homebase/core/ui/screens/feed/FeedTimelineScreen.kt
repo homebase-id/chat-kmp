@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,8 +26,6 @@ import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Column
-import id.homebase.core.ui.screens.feed.following.FollowingAvatarRow
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.TextButton
@@ -45,14 +42,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.material3.InputChip
-import androidx.compose.material3.InputChipDefaults
-import androidx.compose.material.icons.filled.Close
 import id.homebase.core.feed.services.authorOdinId
-import id.homebase.resources.feed_timeline_filter_empty
-import id.homebase.resources.feed_timeline_filter_clear
-import id.homebase.resources.feed_timeline_filter_remove
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,7 +53,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -113,8 +102,6 @@ fun FeedTimelineScreen(
     onNavigateToDetail: (Uuid) -> Unit,
     onNavigateToFollowing: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
-    // Developer flag: who you follow, along the top of the feed
-    advancedFeed: Boolean = false,
     onFullScreenMediaChanged: (Boolean) -> Unit = {},
     scrollToTop: Boolean = false,
     onScrollToTopHandled: () -> Unit = {},
@@ -138,19 +125,6 @@ fun FeedTimelineScreen(
     // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps the list out of the composition, so a
     // state remembered inside it would come back scrolled to the top.
     val listState = rememberLazyListState()
-
-    // Developer flag: tapping people in the following row toggles them in and out; the feed then shows only
-    // their posts. The service queries the local index by sender, so paging walks back through everything synced
-    // from them. Lower-cased domains, in the order they were picked.
-    var authorFilter by rememberSaveable { mutableStateOf(emptyList<String>()) }
-    LaunchedEffect(advancedFeed) { if (!advancedFeed) authorFilter = emptyList() }
-    LaunchedEffect(authorFilter) {
-        viewModel.setAuthorFilter(authorFilter.toSet())
-        listState.scrollToItem(0)
-    }
-    val filterNames = remember(authorFilter, displayNames) {
-        authorFilter.associateWith { f -> displayNames[OdinId(f)]?.takeIf { it.isNotBlank() } ?: f }
-    }
 
     // onDispose resets it: a notification tap can navigate away with the viewer still open, which would leave
     // the bottom bar hidden on the destination screen.
@@ -215,8 +189,10 @@ fun FeedTimelineScreen(
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { innerPadding ->
-            // The insets are taken once, here, so the following row and the body share them
-            val contentModifier = Modifier.fillMaxSize()
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
 
             val body = when {
                 // Gated on an empty list: a refresh that fails over a populated feed reports on the snackbar.
@@ -226,47 +202,6 @@ fun FeedTimelineScreen(
                 else -> FeedBody.Posts
             }
             val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .consumeWindowInsets(innerPadding)
-                    .padding(innerPadding),
-            ) {
-            if (advancedFeed) {
-                FollowingAvatarRow(
-                    selected = authorFilter.toSet(),
-                    onToggle = { d ->
-                        val key = d.lowercase()
-                        authorFilter = if (key in authorFilter) authorFilter - key else authorFilter + key
-                    },
-                    onViewContact = { onAuthorClick(OdinId(it)) },
-                    onUnfollowed = { d -> authorFilter = authorFilter - d.lowercase() },
-                    onFindPeople = onNavigateToFollowing,
-                )
-                // One chip per person shown; its x takes them back out
-                if (filterNames.isNotEmpty()) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    ) {
-                        for ((domain, name) in filterNames) {
-                            InputChip(
-                                selected = true,
-                                onClick = { authorFilter = authorFilter - domain },
-                                label = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                trailingIcon = {
-                                    Icon(
-                                        Icons.Filled.Close,
-                                        contentDescription = stringResource(MR.string.feed_timeline_filter_remove, name),
-                                        modifier = Modifier.size(InputChipDefaults.IconSize),
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-            Box(modifier = Modifier.weight(1f)) {
             AnimatedContent(
                 targetState = body,
                 transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
@@ -286,27 +221,16 @@ fun FeedTimelineScreen(
                         modifier = contentModifier,
                     )
 
-                    FeedBody.Empty -> if (filterNames.isNotEmpty()) {
-                        FeedMessageState(
-                            icon = Icons.Outlined.DynamicFeed,
-                            iconContentDescription = null,
-                            title = stringResource(MR.string.feed_timeline_filter_empty, filterNames.values.joinToString(", ")),
-                            modifier = contentModifier,
-                            actionLabel = stringResource(MR.string.feed_timeline_filter_clear),
-                            onAction = { authorFilter = emptyList() },
-                        )
-                    } else {
-                        FeedMessageState(
-                            icon = Icons.Outlined.DynamicFeed,
-                            iconContentDescription = null,
-                            title = stringResource(MR.string.feed_timeline_empty_title),
-                            body = stringResource(MR.string.feed_timeline_empty_body),
-                            modifier = contentModifier,
-                            // The Following screen opens on Suggested when you follow no one yet
-                            actionLabel = stringResource(MR.string.feed_timeline_find_people),
-                            onAction = onNavigateToFollowing,
-                        )
-                    }
+                    FeedBody.Empty -> FeedMessageState(
+                        icon = Icons.Outlined.DynamicFeed,
+                        iconContentDescription = null,
+                        title = stringResource(MR.string.feed_timeline_empty_title),
+                        body = stringResource(MR.string.feed_timeline_empty_body),
+                        modifier = contentModifier,
+                        // The Following screen opens on Suggested when you follow no one yet
+                        actionLabel = stringResource(MR.string.feed_timeline_find_people),
+                        onAction = onNavigateToFollowing,
+                    )
 
                     FeedBody.Posts -> FeedTimelineList(
                         uiState = uiState,
@@ -339,8 +263,6 @@ fun FeedTimelineScreen(
                         modifier = contentModifier,
                     )
                 }
-            }
-            }
             }
         }
 

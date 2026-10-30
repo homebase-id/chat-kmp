@@ -23,7 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import org.koin.compose.koinInject
-import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.ui.screens.feed.following.FollowGraph
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -70,16 +69,14 @@ fun ContactBookContent(
     showNew: Boolean = false,
     listState: LazyListState,
 ) {
-    // Developer flag: follow filters and badges, from the same lists the Following screen uses
-    val advancedFeed by koinInject<DeveloperPreferences>().advancedFeedEnabled.collectAsStateWithLifecycle()
+    // Follow filters and badges, from the same lists the Following screen uses
     val followGraph = koinInject<FollowGraph>()
     val follows by followGraph.state.collectAsStateWithLifecycle()
-    LaunchedEffect(advancedFeed) { if (advancedFeed) followGraph.ensureLoaded() }
-    // A follow filter left selected after the flag is turned off reads as All
-    val filter = if (!advancedFeed && uiState.filter in FollowFilters) ContactFilter.ALL else uiState.filter
+    LaunchedEffect(Unit) { followGraph.ensureLoaded() }
+    val filter = uiState.filter
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (!showNew) FilterRow(filter, advancedFeed, onAction)
+        if (!showNew) FilterRow(filter, onAction)
 
         // Incoming requests are the actionable set (outgoing has nothing to do here but Cancel,
         // already reachable from the resolved identity itself). They live with the unreviewed
@@ -125,7 +122,7 @@ fun ContactBookContent(
 
                     showNew -> CenterText(stringResource(MR.string.contactbook_new_empty))
 
-                    filter in FollowFilters ->
+                    filter == ContactFilter.FOLLOWING || filter == ContactFilter.FOLLOWERS ->
                         CenterText(stringResource(MR.string.contactbook_follow_filter_empty))
 
                     filter == ContactFilter.CIRCLES ->
@@ -196,10 +193,8 @@ fun ContactBookContent(
                                     // Check shows whenever the identity is connected, in every
                                     // filter (a New contact is still a connection).
                                     connected = domain in uiState.connectedOdinIds,
-                                    followBadge = if (advancedFeed && domain != null) {
-                                        followBadgeText(follows.isFollowing(domain), follows.followsYou(domain))
-                                    } else {
-                                        null
+                                    followBadge = domain?.let {
+                                        followBadgeText(follows.isFollowing(it), follows.followsYou(it))
                                     },
                                     trailing = when {
                                         direction != null -> {
@@ -252,7 +247,6 @@ private fun CenterText(text: String) {
 @Composable
 private fun FilterRow(
     filter: ContactFilter,
-    showFollowFilters: Boolean,
     onAction: (ContactBookUiAction) -> Unit,
 ) {
     Row(
@@ -277,22 +271,18 @@ private fun FilterRow(
             onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.BLOCKED)) },
             label = { Text(stringResource(MR.string.contactbook_filter_blocked)) },
         )
-        if (showFollowFilters) {
-            FilterChip(
-                selected = filter == ContactFilter.FOLLOWING,
-                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.FOLLOWING)) },
-                label = { Text(stringResource(MR.string.contactbook_filter_following)) },
-            )
-            FilterChip(
-                selected = filter == ContactFilter.FOLLOWERS,
-                onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.FOLLOWERS)) },
-                label = { Text(stringResource(MR.string.contactbook_filter_followers)) },
-            )
-        }
+        FilterChip(
+            selected = filter == ContactFilter.FOLLOWING,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.FOLLOWING)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_following)) },
+        )
+        FilterChip(
+            selected = filter == ContactFilter.FOLLOWERS,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.FOLLOWERS)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_followers)) },
+        )
     }
 }
-
-private val FollowFilters = setOf(ContactFilter.FOLLOWING, ContactFilter.FOLLOWERS)
 
 @Composable
 private fun followBadgeText(following: Boolean, followsYou: Boolean): String? = when {

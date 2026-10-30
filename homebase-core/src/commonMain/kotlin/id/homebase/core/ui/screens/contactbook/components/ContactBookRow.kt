@@ -36,7 +36,7 @@ fun ContactBookRow(
     /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
     trailing: (@Composable () -> Unit)? = null,
     morphAvatar: Boolean = false,
-    /** A line under the subtitle saying how you follow each other (the Advanced Feed developer flag). */
+    /** A line under the subtitle saying how you follow each other. */
     followBadge: String? = null,
     modifier: Modifier = Modifier,
 ) {
