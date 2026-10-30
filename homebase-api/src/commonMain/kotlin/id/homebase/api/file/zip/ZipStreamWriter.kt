@@ -1,8 +1,10 @@
 package id.homebase.api.file.zip
 
+import id.homebase.api.crypto.Crc32c
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import okio.Buffer
 import kotlin.time.Instant
 
 /**
@@ -11,7 +13,10 @@ import kotlin.time.Instant
  * video, and deflate isn't available on every platform. A file's CRC and sizes follow its bytes in a data descriptor,
  * and ZIP64 records are written where a size, an offset or the entry count outgrows the classic fields.
  *
- * Names are UTF-8 and pass through [zipPath]. Modified times are written both as local DOS time and as UTC.
+ * An entry is named by its path segments, which may come from any OS; none can make it land outside the folder the
+ * archive is unpacked into. Names are UTF-8, and modified times are written both as local DOS time and as UTC.
+ *
+ * A failure part way through an entry leaves it recorded, so whatever [out] received must be thrown away whole.
  */
 class ZipStreamWriter(
     private val out: suspend (ByteArray) -> Unit,
@@ -22,53 +27,55 @@ class ZipStreamWriter(
     private class Entry(
         val name: ByteArray,
         val folder: Boolean,
-        val executable: Boolean,
+        val mode: Int,
         val dosTime: Int,
         val dosDate: Int,
         val unixSeconds: Int,
         val offset: Long,
         val zip64Local: Boolean,
-        var crc: Long = 0,
+        var crc: UInt = 0u,
         var size: Long = 0,
-    )
+    ) {
+        val flags get() = if (folder) FLAG_UTF8 else FLAG_UTF8 or FLAG_DESCRIPTOR
+    }
 
     private val entries = mutableListOf<Entry>()
     private var written = 0L
     private var finished = false
 
-    suspend fun addFolder(path: String, modifiedMs: Long) {
-        add(entry(path.trimEnd('/') + "/", folder = true, executable = false, modifiedMs, zip64Local = false))
+    suspend fun addFolder(path: List<String>, modifiedMs: Long) {
+        start(zipPath(path) + "/", folder = true, MODE_FOLDER, modifiedMs, zip64Local = false)
     }
 
     /**
      * Streams [data] in as the file at [path]. [expectedSize] decides whether its local header is ZIP64; a file that
      * reaches 4 GiB without having said so up front can't be described any more, so it fails the archive.
      */
-    suspend fun addFile(path: String, modifiedMs: Long, executable: Boolean, expectedSize: Long, data: Flow<ByteArray>) {
-        val entry = entry(path, folder = false, executable, modifiedMs, zip64Local = expectedSize >= zip64From)
-        add(entry)
-        val crc = Crc32()
+    suspend fun addFile(path: List<String>, modifiedMs: Long, executable: Boolean, expectedSize: Long, data: Flow<ByteArray>) {
+        val name = zipPath(path)
+        val entry = start(name, folder = false, if (executable) MODE_EXECUTABLE else MODE_FILE, modifiedMs, expectedSize >= zip64From)
+        var crc = 0u
         var size = 0L
         data.collect { chunk ->
-            crc.update(chunk)
+            crc = Crc32c.calculateCrc32c(crc, chunk)
             size += chunk.size
-            if (!entry.zip64Local && size >= zip64From) throw ZipTooLargeException(path)
+            if (!entry.zip64Local && size >= zip64From) throw ZipTooLargeException(name)
             write(chunk)
         }
-        entry.crc = crc.value
+        entry.crc = crc
         entry.size = size
         write(
-            LittleEndian().apply {
-                int(DESCRIPTOR_SIG)
-                int(entry.crc)
+            Buffer().apply {
+                writeIntLe(DESCRIPTOR_SIG)
+                writeIntLe(crc.toInt())
                 if (entry.zip64Local) {
-                    long(size)
-                    long(size)
+                    writeLongLe(size)
+                    writeLongLe(size)
                 } else {
-                    int(size)
-                    int(size)
+                    writeIntLe(size.toInt())
+                    writeIntLe(size.toInt())
                 }
-            }.bytes()
+            }.readByteArray()
         )
     }
 
@@ -77,175 +84,132 @@ class ZipStreamWriter(
         check(!finished) { "finished already" }
         finished = true
         val directoryStart = written
-        for (entry in entries) write(centralHeader(entry))
+        val directory = Buffer()
+        for (entry in entries) {
+            directory.centralHeader(entry)
+            if (directory.size >= FLUSH_AT) write(directory.readByteArray())
+        }
+        write(directory.readByteArray())
         val directorySize = written - directoryStart
         val count = entries.size.toLong()
         val zip64 = count >= MAX_16 || directorySize >= zip64From || directoryStart >= zip64From
-        if (zip64) {
-            val recordAt = written
-            write(
-                LittleEndian().apply {
-                    int(ZIP64_END_SIG)
-                    long(44)
-                    short(VERSION_MADE_BY)
-                    short(VERSION_ZIP64)
-                    int(0)
-                    int(0)
-                    long(count)
-                    long(count)
-                    long(directorySize)
-                    long(directoryStart)
-                    int(ZIP64_LOCATOR_SIG)
-                    int(0)
-                    long(recordAt)
-                    int(1)
-                }.bytes()
-            )
-        }
         write(
-            LittleEndian().apply {
-                int(END_SIG)
-                short(0)
-                short(0)
-                short(if (zip64) MAX_16 else count)
-                short(if (zip64) MAX_16 else count)
-                int(if (zip64) MAX_32 else directorySize)
-                int(if (zip64) MAX_32 else directoryStart)
-                short(0)
-            }.bytes()
+            Buffer().apply {
+                if (zip64) {
+                    writeIntLe(ZIP64_END_SIG)
+                    writeLongLe(44)
+                    writeShortLe(VERSION_MADE_BY)
+                    writeShortLe(VERSION_ZIP64)
+                    writeIntLe(0)
+                    writeIntLe(0)
+                    writeLongLe(count)
+                    writeLongLe(count)
+                    writeLongLe(directorySize)
+                    writeLongLe(directoryStart)
+                    writeIntLe(ZIP64_LOCATOR_SIG)
+                    writeIntLe(0)
+                    writeLongLe(written)
+                    writeIntLe(1)
+                }
+                writeIntLe(END_SIG)
+                writeShortLe(0)
+                writeShortLe(0)
+                writeShortLe(if (zip64) MAX_16.toInt() else count.toInt())
+                writeShortLe(if (zip64) MAX_16.toInt() else count.toInt())
+                writeIntLe(if (zip64) MAX_32.toInt() else directorySize.toInt())
+                writeIntLe(if (zip64) MAX_32.toInt() else directoryStart.toInt())
+                writeShortLe(0)
+            }.readByteArray()
         )
     }
 
-    private fun entry(path: String, folder: Boolean, executable: Boolean, modifiedMs: Long, zip64Local: Boolean): Entry {
+    /** Records an entry and writes its local header. */
+    private suspend fun start(name: String, folder: Boolean, mode: Int, modifiedMs: Long, zip64Local: Boolean): Entry {
         check(!finished) { "finished already" }
         val time = Instant.fromEpochMilliseconds(modifiedMs).toLocalDateTime(timeZone)
-        val dos = if (time.year < 1980) {
-            0 to ((1 shl 5) or 1)
-        } else {
-            val year = minOf(time.year, 2107)
-            ((time.hour shl 11) or (time.minute shl 5) or (time.second / 2)) to
-                (((year - 1980) shl 9) or (time.month.ordinal + 1 shl 5) or time.day)
-        }
-        return Entry(
-            name = path.encodeToByteArray(),
+        val early = time.year < 1980
+        val year = minOf(time.year, 2107)
+        val entry = Entry(
+            name = name.encodeToByteArray(),
             folder = folder,
-            executable = executable,
-            dosTime = dos.first,
-            dosDate = dos.second,
+            mode = mode,
+            dosTime = if (early) 0 else (time.hour shl 11) or (time.minute shl 5) or (time.second / 2),
+            dosDate = if (early) (1 shl 5) or 1 else ((year - 1980) shl 9) or (time.month.ordinal + 1 shl 5) or time.day,
             unixSeconds = (modifiedMs / 1000).coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt(),
             offset = written,
             zip64Local = zip64Local,
         )
-    }
-
-    private suspend fun add(entry: Entry) {
         entries += entry
         write(
-            LittleEndian().apply {
-                int(LOCAL_SIG)
-                short(if (entry.zip64Local) VERSION_ZIP64 else VERSION_PLAIN)
-                short(if (entry.folder) FLAG_UTF8 else FLAG_UTF8 or FLAG_DESCRIPTOR)
-                short(0)
-                short(entry.dosTime)
-                short(entry.dosDate)
-                int(0)
-                int(if (entry.zip64Local) MAX_32 else 0)
-                int(if (entry.zip64Local) MAX_32 else 0)
-                short(entry.name.size)
-                short((if (entry.zip64Local) 20 else 0) + TIME_EXTRA_SIZE)
-                bytes(entry.name)
-                if (entry.zip64Local) {
-                    short(ZIP64_EXTRA)
-                    short(16)
-                    long(0)
-                    long(0)
+            Buffer().apply {
+                writeIntLe(LOCAL_SIG)
+                writeShortLe(if (zip64Local) VERSION_ZIP64 else VERSION_PLAIN)
+                writeShortLe(entry.flags)
+                writeShortLe(0)
+                writeShortLe(entry.dosTime)
+                writeShortLe(entry.dosDate)
+                writeIntLe(0)
+                writeIntLe(if (zip64Local) MAX_32.toInt() else 0)
+                writeIntLe(if (zip64Local) MAX_32.toInt() else 0)
+                writeShortLe(entry.name.size)
+                writeShortLe((if (zip64Local) 20 else 0) + TIME_EXTRA_SIZE)
+                write(entry.name)
+                if (zip64Local) {
+                    writeShortLe(ZIP64_EXTRA)
+                    writeShortLe(16)
+                    writeLongLe(0)
+                    writeLongLe(0)
                 }
                 timeExtra(entry)
-            }.bytes()
+            }.readByteArray()
         )
+        return entry
     }
 
-    private fun centralHeader(entry: Entry): ByteArray {
+    private fun Buffer.centralHeader(entry: Entry) {
         val bigSize = entry.zip64Local || entry.size >= zip64From
         val bigOffset = entry.offset >= zip64From
         val zip64Size = (if (bigSize) 16 else 0) + (if (bigOffset) 8 else 0)
-        val mode = when {
-            entry.folder -> MODE_FOLDER
-            entry.executable -> MODE_EXECUTABLE
-            else -> MODE_FILE
-        }
-        return LittleEndian().apply {
-            int(CENTRAL_SIG)
-            short(VERSION_MADE_BY)
-            short(if (zip64Size > 0) VERSION_ZIP64 else VERSION_PLAIN)
-            short(if (entry.folder) FLAG_UTF8 else FLAG_UTF8 or FLAG_DESCRIPTOR)
-            short(0)
-            short(entry.dosTime)
-            short(entry.dosDate)
-            int(entry.crc)
-            int(if (bigSize) MAX_32 else entry.size)
-            int(if (bigSize) MAX_32 else entry.size)
-            short(entry.name.size)
-            short((if (zip64Size > 0) 4 + zip64Size else 0) + TIME_EXTRA_SIZE)
-            short(0)
-            short(0)
-            short(0)
-            int((mode.toLong() shl 16) or (if (entry.folder) DOS_FOLDER else 0).toLong())
-            int(if (bigOffset) MAX_32 else entry.offset)
-            bytes(entry.name)
-            if (zip64Size > 0) {
-                short(ZIP64_EXTRA)
-                short(zip64Size.toLong())
-                if (bigSize) {
-                    long(entry.size)
-                    long(entry.size)
-                }
-                if (bigOffset) long(entry.offset)
+        writeIntLe(CENTRAL_SIG)
+        writeShortLe(VERSION_MADE_BY)
+        writeShortLe(if (zip64Size > 0) VERSION_ZIP64 else VERSION_PLAIN)
+        writeShortLe(entry.flags)
+        writeShortLe(0)
+        writeShortLe(entry.dosTime)
+        writeShortLe(entry.dosDate)
+        writeIntLe(entry.crc.toInt())
+        writeIntLe(if (bigSize) MAX_32.toInt() else entry.size.toInt())
+        writeIntLe(if (bigSize) MAX_32.toInt() else entry.size.toInt())
+        writeShortLe(entry.name.size)
+        writeShortLe((if (zip64Size > 0) 4 + zip64Size else 0) + TIME_EXTRA_SIZE)
+        writeShortLe(0)
+        writeShortLe(0)
+        writeShortLe(0)
+        writeIntLe((entry.mode shl 16) or (if (entry.folder) DOS_FOLDER else 0))
+        writeIntLe(if (bigOffset) MAX_32.toInt() else entry.offset.toInt())
+        write(entry.name)
+        if (zip64Size > 0) {
+            writeShortLe(ZIP64_EXTRA)
+            writeShortLe(zip64Size)
+            if (bigSize) {
+                writeLongLe(entry.size)
+                writeLongLe(entry.size)
             }
-            timeExtra(entry)
-        }.bytes()
+            if (bigOffset) writeLongLe(entry.offset)
+        }
+        timeExtra(entry)
     }
 
-    private fun LittleEndian.timeExtra(entry: Entry) {
-        short(TIME_EXTRA)
-        short(5)
-        byte(1)
-        int(entry.unixSeconds.toLong() and MAX_32)
+    private fun Buffer.timeExtra(entry: Entry) {
+        writeShortLe(TIME_EXTRA)
+        writeShortLe(5)
+        writeByte(1)
+        writeIntLe(entry.unixSeconds)
     }
 
     private suspend fun write(bytes: ByteArray) {
         out(bytes)
         written += bytes.size
-    }
-
-    private class LittleEndian {
-        private val buffer = ArrayList<Byte>(64)
-
-        fun byte(value: Int) {
-            buffer += value.toByte()
-        }
-
-        fun short(value: Int) = short(value.toLong())
-
-        fun short(value: Long) {
-            repeat(2) { buffer += (value ushr (8 * it)).toByte() }
-        }
-
-        fun int(value: Int) = int(value.toLong())
-
-        fun int(value: Long) {
-            repeat(4) { buffer += (value ushr (8 * it)).toByte() }
-        }
-
-        fun long(value: Long) {
-            repeat(8) { buffer += (value ushr (8 * it)).toByte() }
-        }
-
-        fun bytes(value: ByteArray) {
-            value.forEach { buffer += it }
-        }
-
-        fun bytes(): ByteArray = buffer.toByteArray()
     }
 
     private companion object {
@@ -270,16 +234,13 @@ class ZipStreamWriter(
         const val DOS_FOLDER = 0x10
         const val MAX_16 = 0xFFFFL
         const val MAX_32 = 0xFFFFFFFFL
+        const val FLUSH_AT = 64 * 1024L
     }
 }
 
 class ZipTooLargeException(path: String) : Exception("$path outgrew the size it was added with")
 
-/**
- * A ZIP entry name from path segments that came from any OS: a separator, a control character, or a "." or ".."
- * segment can't make an entry land outside the folder it's unpacked into.
- */
-fun zipPath(segments: List<String>): String = segments.joinToString("/") { segment ->
+internal fun zipPath(segments: List<String>): String = segments.joinToString("/") { segment ->
     val clean = buildString { segment.forEach { append(if (it == '/' || it == '\\' || it < ' ' || it == '\u007F') '_' else it) } }
     if (clean.isEmpty() || clean == "." || clean == "..") "_" else clean
 }

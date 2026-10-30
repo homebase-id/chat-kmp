@@ -9,7 +9,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.onDownload
@@ -65,16 +64,6 @@ public class DriveFileHttpProvider(
     }
 
     // ==================== GET METHODS ====================
-    suspend fun streamPayloadDecryptedToPath(
-        driveId: Uuid,
-        fileId: Uuid,
-        key: String,
-        keyHeader: KeyHeader,
-        outputPath: String,
-        fileOps: FileOperationsProvider,
-        onProgress: ((Float) -> Unit)? = null,
-    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOps.writeStream(outputPath, it) }
-
     /** Hands the decrypted payload to [consume] as it arrives; false when it 404s. */
     suspend fun streamPayloadDecrypted(
         driveId: Uuid,
@@ -103,7 +92,7 @@ public class DriveFileHttpProvider(
             timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
         }.execute { response ->
             if (response.status.value == 404) {
-                Logger.w(tag = TAG) { "streamPayloadDecryptedToPath 404 file=$fileId key=$key" }
+                Logger.w(tag = TAG) { "streamPayloadDecrypted 404 file=$fileId key=$key" }
                 return@execute false
             }
 
@@ -153,7 +142,7 @@ public class DriveFileHttpProvider(
     /**
      * Full (non-range) reads are size-guarded at [PayloadSizePolicy.RENDER_LIMIT_BYTES]
      * (#845): a payload the app can't render has no business in RAM or the LRU —
-     * export flows must use [streamPayloadDecryptedToPath]. Range reads
+     * export flows must use [streamPayloadDecrypted]. Range reads
      * (`options.chunkStart != null`) are exempt by shape: they're the HLS playback
      * path and are bounded by their requested chunkLength.
      */

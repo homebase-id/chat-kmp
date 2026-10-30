@@ -26,9 +26,9 @@ class ZipStreamWriterJvmTest {
             val modified = 1_709_634_031_000L
             val body = ByteArray(200_000) { (it * 7).toByte() }
             write(file) {
-                addFolder("Docs", modified)
-                addFile("Docs/report.pdf", modified, executable = false, expectedSize = body.size.toLong(), flowOf(body))
-                addFile("Résumé.txt", modified, executable = false, expectedSize = 2, flowOf("ok".encodeToByteArray()))
+                addFolder(listOf("Docs"), modified)
+                addFile(listOf("Docs", "report.pdf"), modified, executable = false, expectedSize = body.size.toLong(), flowOf(body))
+                addFile(listOf("Résumé.txt"), modified, executable = false, expectedSize = 2, flowOf("ok".encodeToByteArray()))
             }
             ZipFile(file).use { zip ->
                 assertEquals(listOf("Docs/", "Docs/report.pdf", "Résumé.txt"), zip.entries().toList().map { it.name })
@@ -47,9 +47,9 @@ class ZipStreamWriterJvmTest {
         try {
             val big = ByteArray(5_000) { it.toByte() }
             write(file, zip64From = 1_000) {
-                addFile("a", 0, executable = false, expectedSize = 600, flowOf(ByteArray(600) { 1 }))
-                addFile("big", 0, executable = false, expectedSize = big.size.toLong(), flowOf(big))
-                addFile("c", 0, executable = false, expectedSize = 3, flowOf(byteArrayOf(1, 2, 3)))
+                addFile(listOf("a"), 0, executable = false, expectedSize = 600, flowOf(ByteArray(600) { 1 }))
+                addFile(listOf("big"), 0, executable = false, expectedSize = big.size.toLong(), flowOf(big))
+                addFile(listOf("c"), 0, executable = false, expectedSize = 3, flowOf(byteArrayOf(1, 2, 3)))
             }
             ZipFile(file).use { zip ->
                 assertContentEquals(big, zip.getInputStream(zip.getEntry("big")).readBytes())

@@ -1,5 +1,6 @@
 package id.homebase.api.file.zip
 
+import id.homebase.api.crypto.Crc32c
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOf
@@ -25,25 +26,14 @@ class ZipStreamWriterTest {
     private fun chunks(vararg parts: ByteArray): Flow<ByteArray> = parts.asList().asFlow()
 
     @Test
-    fun crc32MatchesTheStandardCheckValue() {
-        assertEquals(0xCBF43926L, Crc32().apply { update("123456789".encodeToByteArray()) }.value)
-        assertEquals(0L, Crc32().value)
-        val split = Crc32().apply {
-            update("1234".encodeToByteArray())
-            update("56789".encodeToByteArray())
-        }
-        assertEquals(0xCBF43926L, split.value)
-    }
-
-    @Test
     fun filesAndFoldersReadBackWithTheirNamesBytesModesAndTimes() = runTest {
         val photo = ByteArray(70_000) { (it % 251).toByte() }
         val zip = archive {
-            addFolder("Photos", modified)
-            addFile("Photos/a.jpg", modified, executable = false, expectedSize = photo.size.toLong(), chunks(photo.copyOfRange(0, 1000), photo.copyOfRange(1000, photo.size)))
-            addFile("empty.txt", modified, executable = false, expectedSize = 0, flowOf())
-            addFile("Résumé 日本.txt", modified, executable = false, expectedSize = 3, chunks("abc".encodeToByteArray()))
-            addFile("run.sh", modified, executable = true, expectedSize = 2, chunks("hi".encodeToByteArray()))
+            addFolder(listOf("Photos"), modified)
+            addFile(listOf("Photos", "a.jpg"), modified, executable = false, expectedSize = photo.size.toLong(), chunks(photo.copyOfRange(0, 1000), photo.copyOfRange(1000, photo.size)))
+            addFile(listOf("empty.txt"), modified, executable = false, expectedSize = 0, flowOf())
+            addFile(listOf("Résumé 日本.txt"), modified, executable = false, expectedSize = 3, chunks("abc".encodeToByteArray()))
+            addFile(listOf("run.sh"), modified, executable = true, expectedSize = 2, chunks("hi".encodeToByteArray()))
         }
 
         val entries = ZipReader(zip).entries
@@ -60,7 +50,7 @@ class ZipStreamWriterTest {
 
     @Test
     fun aTimeBefore1980IsWrittenAsTheEarliestDosDate() = runTest {
-        val entry = ZipReader(archive { addFolder("old", 0) }).entries.single()
+        val entry = ZipReader(archive { addFolder(listOf("old"), 0) }).entries.single()
         assertEquals(0, entry.dosTime)
         assertEquals((1 shl 5) or 1, entry.dosDate)
         assertEquals(0L, entry.unixSeconds)
@@ -70,9 +60,9 @@ class ZipStreamWriterTest {
     fun largeSizesAndOffsetsGetZip64Records() = runTest {
         val big = ByteArray(250) { it.toByte() }
         val zip = archive(zip64From = 100) {
-            addFile("small-1", modified, executable = false, expectedSize = 60, chunks(ByteArray(60) { 1 }))
-            addFile("big", modified, executable = false, expectedSize = 250, chunks(big))
-            addFile("small-2", modified, executable = false, expectedSize = 5, chunks(ByteArray(5) { 2 }))
+            addFile(listOf("small-1"), modified, executable = false, expectedSize = 60, chunks(ByteArray(60) { 1 }))
+            addFile(listOf("big"), modified, executable = false, expectedSize = 250, chunks(big))
+            addFile(listOf("small-2"), modified, executable = false, expectedSize = 5, chunks(ByteArray(5) { 2 }))
         }
 
         val reader = ZipReader(zip)
@@ -85,7 +75,7 @@ class ZipStreamWriterTest {
     @Test
     fun aFileThatOutgrowsItsDeclaredSizeFailsTheArchive() = runTest {
         assertFailsWith<ZipTooLargeException> {
-            archive(zip64From = 100) { addFile("liar", modified, executable = false, expectedSize = 10, chunks(ByteArray(150))) }
+            archive(zip64From = 100) { addFile(listOf("liar"), modified, executable = false, expectedSize = 10, chunks(ByteArray(150))) }
         }
     }
 
@@ -94,7 +84,7 @@ class ZipStreamWriterTest {
         val parts = List(5) { ByteArray(64 * 1024) }
         val out = mutableListOf<ByteArray>()
         val writer = ZipStreamWriter({ out += it }, TimeZone.UTC)
-        writer.addFile("video.mp4", modified, executable = false, expectedSize = 5 * 64 * 1024L, parts.asFlow())
+        writer.addFile(listOf("video.mp4"), modified, executable = false, expectedSize = 5 * 64 * 1024L, parts.asFlow())
 
         // The local header, each part as it was handed in, then the data descriptor.
         assertEquals(parts.size + 2, out.size)
@@ -181,7 +171,7 @@ private class ZipReader(private val zip: ByteArray) {
             val zip64Local = localExtra > 0 && u16(local + 30 + localName) == 0x0001
             val start = local + 30 + localName + localExtra
             val data = zip.copyOfRange(start, start + size.toInt())
-            check(Crc32().apply { update(data) }.value == crc) { "$name: CRC" }
+            check(Crc32c.calculateCrc32c(0u, data).toLong() == crc) { "$name: CRC" }
             Entry(name, data, mode, flags and (1 shl 11) != 0, unixSeconds, u16(local + 10), u16(local + 12), zip64Local)
         }
     }
