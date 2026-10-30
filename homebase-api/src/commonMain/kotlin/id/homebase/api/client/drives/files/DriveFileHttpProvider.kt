@@ -73,6 +73,16 @@ public class DriveFileHttpProvider(
         outputPath: String,
         fileOps: FileOperationsProvider,
         onProgress: ((Float) -> Unit)? = null,
+    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOps.writeStream(outputPath, it) }
+
+    /** Hands the decrypted payload to [consume] as it arrives; false when it 404s. */
+    suspend fun streamPayloadDecrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -132,7 +142,7 @@ public class DriveFileHttpProvider(
                     keyHeader.iv
                 )
 
-            fileOps.writeStream(outputPath, decryptedFlow)
+            consume(decryptedFlow)
             onProgress?.invoke(1f)
 
             true

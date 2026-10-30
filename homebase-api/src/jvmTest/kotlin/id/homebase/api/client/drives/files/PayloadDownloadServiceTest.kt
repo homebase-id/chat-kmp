@@ -284,6 +284,47 @@ class PayloadDownloadServiceTest {
     }
 
     @Test
+    fun `streamVerified hands the plaintext on as it streams, then checks it`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(150_000)
+        val received = java.io.ByteArrayOutputStream()
+
+        val found = service.streamVerified(driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, plaintext, keyHeader)) { data ->
+            data.collect { received.write(it) }
+        }
+
+        assertTrue(found)
+        assertContentEquals(plaintext, received.toByteArray())
+    }
+
+    @Test
+    fun `streamVerified fails a damaged payload only after handing every byte on`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(10_000)
+        val otherContent = plaintext.copyOf().also { it[0] = (it[0] + 1).toByte() }
+        var received = 0
+
+        assertFailsWith<PayloadDamagedException> {
+            service.streamVerified(driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Sha256, otherContent, keyHeader)) { data ->
+                data.collect { received += it.size }
+            }
+        }
+        assertEquals(plaintext.size, received)
+    }
+
+    @Test
+    fun `streamVerified on 404 is false and consumes nothing`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(1_000)
+        nextStatus = HttpStatusCode.NotFound
+        var consumed = false
+
+        val found = service.streamVerified(driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, plaintext, keyHeader)) {
+            consumed = true
+        }
+
+        assertEquals(false, found)
+        assertEquals(false, consumed)
+    }
+
+    @Test
     fun `an export that fails mid-stream leaves no partial file behind`() = runTest {
         // Not a multiple of the AES block size, so the final chunk always fails to decrypt.
         nextBody = ByteArray(200_001).also { Random.nextBytes(it) }
