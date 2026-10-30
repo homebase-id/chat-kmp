@@ -192,6 +192,7 @@ import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.ReportingUrlProvider
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
+import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
@@ -340,6 +341,7 @@ val appModule = module {
     singleOf(::MomentGroupService)
 
     // Native Feed services. FollowProvider is registered in ApiModule.
+    single { FollowGraph(followProvider = get(), eventBus = get(), scope = get()) }
     singleOf(::FeedTimelineService)
     singleOf(::ChannelDefinitionService)
     singleOf(::ChannelPostQueryService)

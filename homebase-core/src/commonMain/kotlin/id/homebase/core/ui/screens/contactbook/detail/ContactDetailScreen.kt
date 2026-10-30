@@ -2,6 +2,9 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import id.homebase.core.util.formatMediumDate
+import id.homebase.resources.contactbook_detail_following_since
+import id.homebase.resources.contactbook_detail_followed_by_since
 import id.homebase.chat.services.requests.RequestDirection
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -19,6 +22,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import id.homebase.resources.contactbook_detail_you_follow
+import id.homebase.resources.contactbook_detail_follows_you
+import id.homebase.resources.contactbook_detail_follow_mutual
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +48,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Healing
 import androidx.compose.material.icons.outlined.PersonAddAlt1
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.WavingHand
@@ -114,6 +124,9 @@ import id.homebase.resources.contactbook_detail_block_message
 import id.homebase.resources.contactbook_detail_block_title
 import id.homebase.resources.contactbook_detail_blocked
 import id.homebase.resources.contactbook_detail_connect
+import id.homebase.resources.contactbook_error_follow
+import id.homebase.resources.feed_following_follow
+import id.homebase.resources.feed_following_unfollow
 import id.homebase.resources.contactbook_detail_delete
 import id.homebase.resources.contactbook_detail_delete_message
 import id.homebase.resources.contactbook_detail_delete_message_blocked
@@ -182,6 +195,7 @@ fun ContactDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val errSave = stringResource(MR.string.contactbook_error_save)
+    val errFollow = stringResource(MR.string.contactbook_error_follow)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errAdditionsFailed = stringResource(MR.string.chat_contact_card_partial_additions)
@@ -213,6 +227,7 @@ fun ContactDetailScreen(
                 ContactDetailEvent.ReviewCompleted -> Unit
                 ContactDetailEvent.DeletedAndBack -> onDeleted()
                 ContactDetailEvent.Error -> snackbarHostState.showSnackbar(errSave)
+                ContactDetailEvent.FollowFailed -> snackbarHostState.showSnackbar(errFollow)
                 ContactDetailEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
                 ContactDetailEvent.DeleteError -> snackbarHostState.showSnackbar(errDelete)
                 ContactDetailEvent.DeleteForbidden ->
@@ -718,6 +733,7 @@ private fun ManagementMenu(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DetailHeader(
     uiState: ContactDetailUiState,
@@ -852,45 +868,100 @@ private fun DetailHeader(
             }
         }
 
-        when {
-            // Until the collector lands the status is unknown; a default would offer Connect to a connection,
-            // and the status line above would read Not connected.
-            uiState.isLoading -> {}
-            connected -> {
+        // Until the collector lands the status is unknown; a default would offer Connect to a connection,
+        // and the status line above would read Not connected.
+        if (!uiState.isLoading) {
+            // Following is independent of connecting, and of blocking: anyone with a Homebase identity can be
+            // followed, and a blocked contact still shows how you follow each other.
+            val canFollow = uiState.hasOdinId && !uiState.isSelf
+            val isFollowing = uiState.isFollowing.takeIf { canFollow }
+            val followedBy = uiState.isFollowedBy.takeIf { canFollow }
+            val hasPrimary = connected || canConnect || requestOutgoing
+
+            if (hasPrimary || isFollowing != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                FilledTonalButton(
-                    onClick = { onAction(ContactDetailAction.MessageClicked) },
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                // Side by side; wraps on a narrow screen rather than squeezing the labels
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(Icons.AutoMirrored.Outlined.Message, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(MR.string.contactbook_detail_message))
+                    when {
+                        connected -> FilledTonalButton(
+                            onClick = { onAction(ContactDetailAction.MessageClicked) },
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                        ) {
+                            Icon(Icons.AutoMirrored.Outlined.Message, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(MR.string.contactbook_detail_message))
+                        }
+                        canConnect -> FilledTonalButton(
+                            onClick = onConnect,
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                        ) {
+                            Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(MR.string.contactbook_detail_connect))
+                        }
+                        requestOutgoing -> OutlinedButton(
+                            onClick = { onAction(ContactDetailAction.CancelRequestClicked) },
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                        ) {
+                            Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(MR.string.contactbook_detail_cancel_request))
+                        }
+                    }
+                    if (isFollowing != null) {
+                        OutlinedButton(
+                            onClick = { onAction(ContactDetailAction.FollowToggled) },
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                        ) {
+                            Icon(
+                                if (isFollowing) Icons.Outlined.Check else Icons.Outlined.DynamicFeed,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                stringResource(
+                                    if (isFollowing) MR.string.feed_following_unfollow else MR.string.feed_following_follow
+                                )
+                            )
+                        }
+                    }
                 }
             }
-            canConnect -> {
-                Spacer(modifier = Modifier.height(12.dp))
-                FilledTonalButton(
-                    onClick = onConnect,
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                ) {
-                    Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(MR.string.contactbook_detail_connect))
-                }
+
+            followStatusText(isFollowing, followedBy)?.let { status ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = stringResource(status),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            requestOutgoing -> {
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = { onAction(ContactDetailAction.CancelRequestClicked) },
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                ) {
-                    Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(MR.string.contactbook_detail_cancel_request))
-                }
+            // Since when, each direction on its own line; a server too old to say leaves it out
+            for ((since, line) in listOf(
+                uiState.followingSince.takeIf { isFollowing == true } to MR.string.contactbook_detail_following_since,
+                uiState.followedBySince.takeIf { followedBy == true } to MR.string.contactbook_detail_followed_by_since,
+            )) {
+                if (since == null) continue
+                Text(
+                    text = stringResource(line, formatMediumDate(Instant.fromEpochMilliseconds(since))),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
+}
+
+// Both directions in one line. Null when neither is known, or neither holds and the button already says Follow.
+private fun followStatusText(isFollowing: Boolean?, followedBy: Boolean?): StringResource? = when {
+    isFollowing == true && followedBy == true -> MR.string.contactbook_detail_follow_mutual
+    followedBy == true -> MR.string.contactbook_detail_follows_you
+    isFollowing == true -> MR.string.contactbook_detail_you_follow
+    else -> null
 }
 
 @Composable

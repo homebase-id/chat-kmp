@@ -3,6 +3,7 @@ package id.homebase.api.client.follow
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.OdinIdRequest
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.query.CursoredResult
 import id.homebase.api.common.OdinId
@@ -10,7 +11,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
 
-// Ports the dotyoucore-js FollowManager over /api/v2/followers/*.
+// Who this identity follows and who follows it, over /api/v2/followers/* (odin-core #1626).
 class FollowProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
@@ -21,7 +22,7 @@ class FollowProvider(
         private const val BASE = "/followers"
     }
 
-    /** The server treats "already followed" as success. Call [syncFeedHistory] after to backfill their posts. */
+    /** The server treats "already followed" as success. [FollowRequest.synchronizeFeedHistoryNow] backfills their posts. */
     suspend fun follow(request: FollowRequest) {
         val creds = requireCreds()
         val response = encryptedPostJson(
@@ -40,17 +41,17 @@ class FollowProvider(
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "$BASE/unfollow"),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(UnfollowRequest(odinId)),
+            jsonBody = OdinSystemSerializer.serialize(OdinIdRequest(odinId)),
             secret = creds.secret,
         )
         throwForFailure(response)
     }
 
-    suspend fun fetchFollowing(cursor: String? = null, max: Int? = null): CursoredResult<List<String>> {
+    suspend fun fetchFollowing(cursor: String? = null, count: Int? = null): CursoredResult<List<String>> {
         val creds = requireCreds()
-        val queryString = buildQuery(cursor, max)
+        val queryString = buildQuery(cursor, count)
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/IdentitiesIFollow"),
+            url = apiUrl(creds.domain, "$BASE/identities-i-follow"),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = queryString,
@@ -59,11 +60,11 @@ class FollowProvider(
         return toCursoredList(deserialize<FollowPageResponse>(response.body))
     }
 
-    suspend fun fetchFollowers(cursor: String? = null, max: Int? = null): CursoredResult<List<String>> {
+    suspend fun fetchFollowers(cursor: String? = null, count: Int? = null): CursoredResult<List<String>> {
         val creds = requireCreds()
-        val queryString = buildQuery(cursor, max)
+        val queryString = buildQuery(cursor, count)
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/followingme"),
+            url = apiUrl(creds.domain, "$BASE/following-me"),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = queryString,
@@ -72,19 +73,47 @@ class FollowProvider(
         return toCursoredList(deserialize<FollowPageResponse>(response.body))
     }
 
-    suspend fun isFollowing(odinId: OdinId): Boolean {
+    /** Whether this identity follows [odinId]. */
+    suspend fun isFollowing(odinId: OdinId): Boolean = getFollowing(odinId) != null
+
+    /** Whether [odinId] follows this identity. */
+    suspend fun isFollowedBy(odinId: OdinId): Boolean = getFollower(odinId) != null
+
+    /** How this identity follows [odinId], including since when; null when it doesn't. */
+    suspend fun getFollowing(odinId: OdinId): FollowDefinition? = fetchFollow("$BASE/identity-i-follow", odinId)
+
+    /** How [odinId] follows this identity, including since when; null when it doesn't. */
+    suspend fun getFollower(odinId: OdinId): FollowDefinition? = fetchFollow("$BASE/follower", odinId)
+
+    // Both answer the follow definition, or 204 with no body when there is none. A 404 is a server without the
+    // v2 follower routes, so it throws rather than reading as "no".
+    private suspend fun fetchFollow(path: String, odinId: OdinId): FollowDefinition? {
         val creds = requireCreds()
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/IdentityIFollow"),
+            url = apiUrl(creds.domain, path),
             token = creds.accessToken,
             secret = creds.secret,
             queryString = "odinId=${odinId.domainName}",
         )
-        if (response.status == 404) return false
         throwForFailure(response)
-        // The server returns the follow definition when following, an empty/absent body otherwise.
         val def = runCatching { deserialize<FollowDefinition>(response.body) }.getOrNull()
-        return def != null && def.odinId != null
+        return def?.takeIf { it.odinId != null }
+    }
+
+    /**
+     * People you may know: your server asks your connections for what they share of their own connections and
+     * follows (odin-core #1626). [refresh] skips the server's hour-long cache.
+     */
+    suspend fun fetchSuggestions(count: Int = 50, refresh: Boolean = false): FollowerSuggestions {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "$BASE/suggestions"),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = "count=$count&refresh=$refresh",
+        )
+        throwForFailure(response)
+        return deserialize<FollowerSuggestions>(response.body)
     }
 
     suspend fun syncFeedHistory(odinId: OdinId) {
@@ -92,22 +121,22 @@ class FollowProvider(
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, "$BASE/sync-feed-history"),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(SyncFeedHistoryRequest(odinId)),
+            jsonBody = OdinSystemSerializer.serialize(OdinIdRequest(odinId)),
             secret = creds.secret,
         )
         throwForFailure(response)
     }
 
-    private fun buildQuery(cursor: String?, max: Int?): String? = buildString {
+    private fun buildQuery(cursor: String?, count: Int?): String? = buildString {
         cursor?.let { append("cursor=$it") }
-        max?.let {
+        count?.let {
             if (isNotEmpty()) append("&")
-            append("max=$it")
+            append("count=$it")
         }
     }.ifBlank { null }
 
     private fun toCursoredList(page: FollowPageResponse): CursoredResult<List<String>> =
-        CursoredResult(results = page.results, cursorState = page.cursorState.orEmpty())
+        CursoredResult(results = page.results.map { it.odinId }, cursorState = page.cursor.orEmpty())
 }
 
 @Serializable
@@ -117,24 +146,27 @@ enum class FollowNotificationType {
 }
 
 // When [notificationType] is SelectedChannels, [channels] lists the channel drives; otherwise it follows all
-// channels and may be null.
+// channels and may be null. [synchronizeFeedHistoryNow] pulls their existing posts into the feed right away.
 @Serializable
 data class FollowRequest(
     val odinId: OdinId,
     val notificationType: FollowNotificationType,
     val channels: List<TargetDrive>? = null,
+    val synchronizeFeedHistoryNow: Boolean = false,
 )
 
-@Serializable
-data class UnfollowRequest(val odinId: OdinId)
-
-@Serializable
-data class SyncFeedHistoryRequest(val odinId: OdinId)
-
+// The server's CursoredResult: the next page's cursor is `cursor`.
 @Serializable
 data class FollowPageResponse(
-    val results: List<String> = emptyList(),
-    val cursorState: String? = null,
+    val results: List<FollowEntry> = emptyList(),
+    val cursor: String? = null,
+)
+
+/** One identity in a follow list, and when that follow was made or last changed (Unix ms). */
+@Serializable
+data class FollowEntry(
+    val odinId: String,
+    val followedAt: Long? = null,
 )
 
 @Serializable
@@ -142,4 +174,25 @@ data class FollowDefinition(
     val odinId: String? = null,
     val notificationType: FollowNotificationType? = null,
     val channels: List<TargetDrive>? = null,
+    /** When the follow was made or last changed (Unix ms). */
+    val followedAt: Long? = null,
+)
+
+@Serializable
+data class FollowerSuggestion(
+    val odinId: String,
+    /** Your connections that list them as a connection. */
+    val viaConnections: List<String> = emptyList(),
+    /** Your connections that follow them. */
+    val viaFollows: List<String> = emptyList(),
+    val score: Int = 0,
+)
+
+// How many of your connections were asked, and how many answered (the rest refused, timed out or were offline)
+@Serializable
+data class FollowerSuggestions(
+    val results: List<FollowerSuggestion> = emptyList(),
+    val asked: Int = 0,
+    val answered: Int = 0,
+    val computedAt: Long = 0,
 )

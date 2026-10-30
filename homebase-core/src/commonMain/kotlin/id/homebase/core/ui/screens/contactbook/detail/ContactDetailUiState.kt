@@ -94,6 +94,13 @@ data class ContactDetailUiState(
     val requestDirection: RequestDirection? = null,
     /** True when this contact is the logged-in identity's own (self) contact. */
     val isSelf: Boolean = false,
+    /** Whether we follow this identity's feed; null until known, or when it could not be read. */
+    val isFollowing: Boolean? = null,
+    /** Whether this identity follows us; null until known, or when it could not be read. */
+    val isFollowedBy: Boolean? = null,
+    /** When we followed them / they followed us (Unix ms); null when not following, or the server doesn't say. */
+    val followingSince: Long? = null,
+    val followedBySince: Long? = null,
     /** Display name of the identity that introduced this contact, when the connection
      *  originated from an introduction. Null otherwise. */
     val introducedByName: String? = null,
@@ -203,6 +210,7 @@ sealed interface ContactDetailAction {
     /** Tapped a circle chip — opens the circle-detail dialog for [circleId]. */
     data class CircleClicked(val circleId: String) : ContactDetailAction
     data object CircleDetailDismiss : ContactDetailAction
+    data object FollowToggled : ContactDetailAction
     data class CircleEnabledChanged(val circleId: String, val enabled: Boolean) : ContactDetailAction
     /** Tapped another contact's row inside the circle-detail dialog. */
     data class CircleMemberClicked(val entry: ContactBookEntry) : ContactDetailAction
@@ -244,6 +252,7 @@ sealed interface ContactDetailEvent {
     data object SyncStarted : ContactDetailEvent
     data object ConversationRebuilt : ContactDetailEvent
     data object ConversationRebuildNotNeeded : ContactDetailEvent
+    data object FollowFailed : ContactDetailEvent
     data object ConversationRebuildQueued : ContactDetailEvent
     data object ConversationRebuildFailed : ContactDetailEvent
     /** Connection-request action confirmations. */

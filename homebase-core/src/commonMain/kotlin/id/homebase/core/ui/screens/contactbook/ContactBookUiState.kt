@@ -36,7 +36,8 @@ enum class ContactTab {
 }
 
 /** Pills within [ContactTab.KNOWN]. */
-enum class ContactFilter { ALL, CIRCLES, BLOCKED }
+// FOLLOWING and FOLLOWERS are offered only behind the Advanced Feed developer flag
+enum class ContactFilter { ALL, CIRCLES, BLOCKED, FOLLOWING, FOLLOWERS }
 
 /**
  * A pending connection request projected onto a [ContactBookEntry] for the "Connection requests"

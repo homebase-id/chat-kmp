@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook.detail
 
+import kotlin.time.Clock
 import id.homebase.chat.services.requests.RequestDirection
 import id.homebase.core.ui.screens.contactbook.launchCircleToggle
 import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
@@ -22,6 +23,8 @@ import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
+import id.homebase.api.client.follow.FollowProvider
+import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.Md5
@@ -110,6 +113,8 @@ class ContactDetailViewModel(
     private val emergencyContacts: EmergencyContactService,
     private val overrideStore: ContactOverrideStore,
     private val publicIdentityRepository: PublicIdentityRepository,
+    private val followProvider: FollowProvider,
+    private val followGraph: FollowGraph,
 ) : ViewModel() {
 
     /**
@@ -198,6 +203,7 @@ class ContactDetailViewModel(
         viewModelScope.launch { contactRepository.ensureLoaded() }
         // Idempotent — makes pending-request state available even on a deep-link into detail.
         viewModelScope.launch { connectionRequestService.start() }
+        loadFollowing()
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
             val selfDomain = runCatching { credentialsManager.getActiveDomain()?.domainName }.getOrNull()
@@ -514,9 +520,55 @@ class ContactDetailViewModel(
         }
     }
 
+    // Both directions, read separately: unknown (null) hides that part, so an identity we cannot ask about is
+    // not offered Follow, and a failed read never shows as "doesn't follow you".
+    private fun loadFollowing() {
+        val id = odinId ?: return
+        viewModelScope.launch {
+            val following = runCatching { followProvider.getFollowing(OdinId(id)) }
+                .onFailure { Logger.w(throwable = it, tag = "ContactDetail") { "isFollowing $id failed: ${it.message}" } }
+            _uiState.update {
+                it.copy(
+                    isFollowing = following.map { def -> def != null }.getOrNull(),
+                    followingSince = following.getOrNull()?.followedAt,
+                )
+            }
+        }
+        viewModelScope.launch {
+            val followedBy = runCatching { followProvider.getFollower(OdinId(id)) }
+                .onFailure { Logger.w(throwable = it, tag = "ContactDetail") { "isFollowedBy $id failed: ${it.message}" } }
+            _uiState.update {
+                it.copy(
+                    isFollowedBy = followedBy.map { def -> def != null }.getOrNull(),
+                    followedBySince = followedBy.getOrNull()?.followedAt,
+                )
+            }
+        }
+    }
+
+    // Optimistic, rolled back on failure. A new follow pulls their existing posts into the feed.
+    private fun handleFollowToggled() {
+        val id = odinId ?: return
+        val was = _uiState.value.isFollowing ?: return
+        val wasSince = _uiState.value.followingSince
+        // A new follow starts now; the server's own time replaces it the next time the page opens
+        _uiState.update { it.copy(isFollowing = !was, followingSince = if (was) null else Clock.System.now().toEpochMilliseconds()) }
+        viewModelScope.launch {
+            try {
+                // Through the shared lists, so the feed row and Contacts' filters follow along
+                if (was) followGraph.unfollow(id) else followGraph.follow(id)
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = "ContactDetail") { "follow toggle $id failed: ${t.message}" }
+                _uiState.update { it.copy(isFollowing = was, followingSince = wasSince) }
+                _events.tryEmit(ContactDetailEvent.FollowFailed)
+            }
+        }
+    }
+
     fun onAction(action: ContactDetailAction) {
         when (action) {
             ContactDetailAction.MessageClicked -> handleMessage()
+            ContactDetailAction.FollowToggled -> handleFollowToggled()
             ContactDetailAction.SyncClicked -> handleSync()
             ContactDetailAction.RebuildConversationClicked -> handleRebuildConversation()
             ContactDetailAction.EditClicked -> _uiState.update { it.copy(editOpen = true) }
