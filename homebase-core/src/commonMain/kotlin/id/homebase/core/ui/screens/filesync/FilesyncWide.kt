@@ -302,7 +302,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             if (selected.size == 1) {
                 FilesyncInfoContent(selected.single(), crumbNames(uiState.path), scope.onAction)
             } else if (selected.isNotEmpty()) {
-                FilesyncSelectionContent(selected.size, uiState.selectedTotals, uiState.selectedRemovedIds, scope.onAction)
+                FilesyncSelectionContent(uiState, scope.onAction)
             } else {
                 Text(
                     text = stringResource(MR.string.filesync_info_hint),
@@ -349,6 +349,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 }
                 FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
                 if (scope.currentRemoved) DeletedFolderBanner(scope)
+                uiState.archive?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelArchive) }) }
                 TableHeader(uiState.sort, uiState.selected.size, uiState.visible.size, columns, scope.onAction)
                 Box(modifier = Modifier.weight(1f)) {
                     BrowserListBody(scope) {
@@ -586,7 +587,7 @@ internal fun TableRow(
         }
         if (inGroup) {
             FilesyncSelectionMenu(
-                removed = actions.current().selectedRemovedIds,
+                state = actions.current(),
                 expanded = menuAt != null,
                 onDismiss = { menuAt = null },
                 onAction = actions.onAction,

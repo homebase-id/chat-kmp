@@ -17,6 +17,8 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
@@ -213,6 +215,39 @@ class FilesyncRepository(
             },
             onProgress = onProgress,
         )
+
+    /** A file's checked plaintext to [consume] as it downloads; throws when it's damaged or gone. */
+    suspend fun streamPayload(payload: FilesyncPayload, onProgress: ((Float) -> Unit)? = null, consume: suspend (Flow<ByteArray>) -> Unit) {
+        val found = payloadDownloadService.streamVerified(
+            driveId = FilesyncProtocol.DriveAlias,
+            fileId = payload.fileId,
+            key = FilesyncProtocol.PayloadKey,
+            keyHeader = payload.payloadKey,
+            hash = payload.hash,
+            onProgress = onProgress,
+            consume = consume,
+        )
+        if (!found) throw IllegalStateException("payload of ${payload.fileId} is gone")
+    }
+
+    /**
+     * What [write] makes, streamed into a new file named like [download]'s and returned; nothing is left behind when it
+     * fails. [write] runs in a producer of its own, so its bytes reach the disk as they come.
+     */
+    suspend fun writeToCache(suffix: String, toShareOutbound: Boolean, write: suspend (out: suspend (ByteArray) -> Unit) -> Unit): String {
+        val path = if (toShareOutbound) {
+            fileOperationsProvider.createShareOutboundPath(suffix)
+        } else {
+            fileOperationsProvider.createUploadTempPath("fs_", suffix)
+        }
+        try {
+            fileOperationsProvider.writeStream(path, channelFlow { write { send(it) } })
+        } catch (t: Throwable) {
+            discard(path)
+            throw t
+        }
+        return path
+    }
 
     // The name comes from any desktop OS; only a plain alphanumeric extension reaches the temp path.
     private fun extensionOf(name: String): String =

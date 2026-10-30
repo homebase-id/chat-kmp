@@ -5,10 +5,13 @@ import id.homebase.api.client.drives.files.PayloadDamagedException
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.core.util.isWeb
+import id.homebase.core.util.openBrowserSave
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 private enum class Purpose { Open, Save, Share, WebDrop }
@@ -46,7 +49,23 @@ internal class FilesyncTransfers(
         if (job?.isActive == true) return
         job = scope.launch {
             onTransfer { FilesyncTransfer(node.nodeId) }
+            // The web has no disk of its own: a download goes straight to the browser's save as it arrives.
+            val browser = if (purpose == Purpose.Save && isWeb()) {
+                openBrowserSave(node.name, detectContentTypeFromExtensionOrHint(node.name)) ?: run {
+                    onTransfer { null }
+                    return@launch
+                }
+            } else {
+                null
+            }
             try {
+                if (browser != null) {
+                    repository.streamPayload(payload, onProgress = { progress -> onTransfer { it?.copy(progress = progress) } }) { data ->
+                        data.collect { browser.write(it) }
+                    }
+                    browser.close()
+                    return@launch
+                }
                 // share_outbound is swept whenever the app comes back to the front, which a drop's composer outlives.
                 val path = repository.download(node.name, payload, toShareOutbound = purpose == Purpose.Open || purpose == Purpose.Share) { progress ->
                     onTransfer { it?.copy(progress = progress) }
@@ -61,11 +80,14 @@ internal class FilesyncTransfers(
                     )
                 }
             } catch (e: CancellationException) {
+                browser?.let { withContext(NonCancellable) { runCatching { it.abort() } } }
                 throw e
             } catch (e: PayloadDamagedException) {
+                browser?.let { runCatching { it.abort() } }
                 Logger.e(e, TAG) { "file ${node.nodeId} failed its hash check" }
                 send(FilesyncUiEvent.Error(FilesyncError.Damaged))
             } catch (e: Exception) {
+                browser?.let { runCatching { it.abort() } }
                 Logger.e(e, TAG) { "download of ${node.nodeId} failed" }
                 send(FilesyncUiEvent.Error(FilesyncError.DownloadFailed))
             } finally {

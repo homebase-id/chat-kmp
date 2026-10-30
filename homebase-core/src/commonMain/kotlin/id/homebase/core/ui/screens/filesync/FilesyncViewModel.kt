@@ -12,9 +12,12 @@ import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.privatedrive.FilesyncPrivateDrive
 import id.homebase.core.privatedrive.PrivateDriveOptIn
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
+import id.homebase.core.util.isWeb
+import id.homebase.core.util.openBrowserSave
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -29,9 +32,13 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
 
 private const val TAG = "FilesyncViewModel"
+private const val ZIP_MIME_TYPE = "application/zip"
+private const val ARCHIVE_FALLBACK_NAME = "Filesync"
+private const val PROGRESS_STEP_BYTES = 1L shl 20
 private val FOLDER_REFRESH_DEBOUNCE = 500.milliseconds
 
 @OptIn(FlowPreview::class)
@@ -74,6 +81,9 @@ class FilesyncViewModel(
     )
 
     private var setupPaused = false
+
+    private var archiveJob: Job? = null
+    private val archive = FilesyncArchive(list = { repository.listFolder(it) }, stream = { payload, consume -> repository.streamPayload(payload, consume = consume) })
 
     init {
         addCloseable(extendPermissionViewModel)
@@ -190,6 +200,12 @@ class FilesyncViewModel(
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
+            FilesyncUiAction.DownloadSelected -> zipSelected(share = false)
+
+            FilesyncUiAction.ShareSelected -> zipSelected(share = true)
+
+            FilesyncUiAction.CancelArchive -> archiveJob?.cancel()
+
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
             is FilesyncUiAction.FilesPicked -> uploadQueue.add(_uiState.value.path.last().nodeId, action.files)
@@ -228,6 +244,50 @@ class FilesyncViewModel(
 
     fun onSignInCallback(url: String) {
         viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
+    }
+
+    private fun zipSelected(share: Boolean) {
+        if (archiveJob?.isActive == true) return
+        val state = _uiState.value
+        val nodes = state.selected.filter { it.removedMs == null }
+        if (nodes.isEmpty()) return
+        val name = FilesyncArchive.name(nodes, state.path.last().name, ARCHIVE_FALLBACK_NAME)
+        val handles = transfers.handles
+        archiveJob = viewModelScope.launch {
+            _uiState.update { it.copy(archive = FilesyncArchiveProgress()) }
+            // A browser shows its save picker only close to the click, so it's asked before the folders are listed.
+            val browser = if (!share && isWeb()) openBrowserSave(name, ZIP_MIME_TYPE) else null
+            try {
+                if (!share && isWeb() && browser == null) return@launch
+                val entries = archive.plan(nodes, handles)
+                val total = FilesyncArchive.totalBytes(entries)
+                _uiState.update { it.copy(archive = FilesyncArchiveProgress(totalBytes = total)) }
+                var shown = 0L
+                val onBytes: (Long) -> Unit = { done ->
+                    // Per chunk otherwise: thousands of redraws for every GB.
+                    if (done - shown >= PROGRESS_STEP_BYTES) {
+                        shown = done
+                        _uiState.update { it.copy(archive = it.archive?.copy(doneBytes = done)) }
+                    }
+                }
+                if (browser != null) {
+                    archive.write(entries, browser::write, onBytes)
+                    browser.close()
+                } else {
+                    val path = repository.writeToCache(".zip", toShareOutbound = share) { out -> archive.write(entries, out, onBytes) }
+                    _events.send(if (share) FilesyncUiEvent.ShareFile(path) else FilesyncUiEvent.SaveFile(path, name))
+                }
+            } catch (e: CancellationException) {
+                browser?.let { withContext(NonCancellable) { runCatching { it.abort() } } }
+                throw e
+            } catch (e: Exception) {
+                browser?.let { runCatching { it.abort() } }
+                Logger.e(e, TAG) { "zipping ${nodes.size} nodes failed" }
+                _events.send(if (e is FilesyncArchiveDamaged) FilesyncUiEvent.ArchiveDamaged(e.name) else FilesyncUiEvent.Error(FilesyncError.DownloadFailed))
+            } finally {
+                _uiState.update { it.copy(archive = null) }
+            }
+        }
     }
 
     private fun open(node: FilesyncNode) {
