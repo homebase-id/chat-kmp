@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.RestoreFromTrash
@@ -71,7 +70,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     val snackbarHostState = remember { SnackbarHostState() }
     FilesyncEventsEffect(viewModel.events, snackbarHostState, onSaveHandedOff = {})
 
-    val selecting = uiState.selected.isNotEmpty()
+    val selecting = uiState.selection.ids.isNotEmpty()
     BackHandler(enabled = selecting) { viewModel.onAction(FilesyncTrashAction.ClearSelection) }
 
     var askDelete by remember { mutableStateOf<Set<Uuid>?>(null) }
@@ -108,14 +107,14 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
     }
 
     val title = if (selecting) {
-        pluralStringResource(MR.plurals.filesync_selected, uiState.selected.size, uiState.selected.size)
+        pluralStringResource(MR.plurals.filesync_selected, uiState.selection.ids.size, uiState.selection.ids.size)
     } else {
         stringResource(MR.string.filesync_trash)
     }
     val actions: @Composable RowScope.() -> Unit = {
         if (selecting) {
-            RestoreButton(enabled = !uiState.busy) { viewModel.onAction(FilesyncTrashAction.Restore(uiState.selected)) }
-            IconButton(onClick = { askDelete = uiState.selected }, enabled = !uiState.busy) {
+            RestoreButton(enabled = !uiState.busy) { viewModel.onAction(FilesyncTrashAction.Restore(uiState.selection.ids)) }
+            IconButton(onClick = { askDelete = uiState.selection.ids }, enabled = !uiState.busy) {
                 Icon(
                     Icons.Outlined.DeleteForever,
                     contentDescription = stringResource(MR.string.filesync_delete_forever),
@@ -153,7 +152,7 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
                             TrashRow(
                                 item = item,
                                 folder = folderName(item.node.parentId, uiState.folderNames),
-                                selected = item.node.nodeId in uiState.selected,
+                                selected = item.node.nodeId in uiState.selection.ids,
                                 enabled = !uiState.busy,
                                 onToggle = { viewModel.onAction(FilesyncTrashAction.ToggleSelected(item.node.nodeId)) },
                                 onRestore = { viewModel.onAction(FilesyncTrashAction.Restore(setOf(item.node.nodeId))) },
@@ -172,21 +171,19 @@ fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlace
         snackbarHostState = snackbarHostState,
         title = title,
         compactTopBar = {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    if (selecting) {
-                        IconButton(onClick = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.menu_back))
-                        }
-                    } else {
+            if (selecting) {
+                FilesyncSelectionTopBar(uiState.selection.ids.size, onClear = { viewModel.onAction(FilesyncTrashAction.ClearSelection) }, actions = actions)
+            } else {
+                TopAppBar(
+                    title = { Text(title) },
+                    navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
                         }
-                    }
-                },
-                actions = actions,
-            )
+                    },
+                    actions = actions,
+                )
+            }
         },
         actions = actions,
         content = body,

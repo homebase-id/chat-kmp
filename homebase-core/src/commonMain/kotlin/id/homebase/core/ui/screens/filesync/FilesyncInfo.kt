@@ -62,11 +62,15 @@ import id.homebase.resources.filesync_kind_video
 import id.homebase.resources.filesync_kind_word
 import id.homebase.resources.filesync_open
 import id.homebase.resources.filesync_restore
-import id.homebase.resources.save
+import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_download
+import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_send_webdrop
 import id.homebase.resources.share
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 internal val FilesyncSortKey.label: StringResource
     get() = when (this) {
@@ -125,7 +129,7 @@ internal fun FilesyncInfoContent(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (node.removedMs != null) {
-                Button(onClick = { onAction(FilesyncUiAction.Restore(node.nodeId)) }, modifier = Modifier.weight(1f)) {
+                Button(onClick = { onAction(FilesyncUiAction.Restore(setOf(node.nodeId))) }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(MR.string.filesync_restore))
                 }
             } else {
@@ -134,7 +138,7 @@ internal fun FilesyncInfoContent(
                 }
                 if (!node.isFolder) {
                     OutlinedButton(onClick = { onAction(FilesyncUiAction.SaveClicked(node)) }, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(MR.string.save))
+                        Text(stringResource(MR.string.filesync_download))
                     }
                 }
             }
@@ -199,15 +203,67 @@ internal fun FilesyncNodeMenu(
         if (onInfo == null && node.removedMs == null) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
         onInfo?.let { MenuItem(MR.string.info, onDismiss, it) }
         if (node.removedMs != null) {
-            MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(node.nodeId)) }
+            MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(setOf(node.nodeId))) }
         } else if (!node.isFolder) {
-            MenuItem(MR.string.save, onDismiss) { onAction(FilesyncUiAction.SaveClicked(node)) }
+            MenuItem(MR.string.filesync_download, onDismiss) { onAction(FilesyncUiAction.SaveClicked(node)) }
             // Elsewhere the platform's share is a save, which Save already is.
             if (isMobile()) MenuItem(MR.string.share, onDismiss) { onAction(FilesyncUiAction.ShareClicked(node)) }
             MenuItem(MR.string.filesync_send_webdrop, onDismiss) { onAction(FilesyncUiAction.WebDropClicked(node)) }
         }
     }
 }
+
+/** What can be done with the whole selection; of its deleted nodes, [removed], Restore is all. */
+@Composable
+internal fun FilesyncSelectionMenu(
+    removed: Set<Uuid>,
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onAction: (FilesyncUiAction) -> Unit,
+    offset: DpOffset = DpOffset(0.dp, 0.dp),
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
+        if (removed.isNotEmpty()) MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(removed)) }
+        MenuItem(MR.string.filesync_clear_selection, onDismiss) { onAction(FilesyncUiAction.ClearSelection) }
+    }
+}
+
+/** The pane for a selection of more than one: how many, how big, and what can be done with them all. */
+@Composable
+internal fun FilesyncSelectionContent(
+    count: Int,
+    totals: FilesyncTotals,
+    removed: Set<Uuid>,
+    onAction: (FilesyncUiAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = pluralStringResource(MR.plurals.filesync_selected, count, count),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = totalsLabel(totals),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (removed.isNotEmpty()) {
+                Button(onClick = { onAction(FilesyncUiAction.Restore(removed)) }, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(MR.string.filesync_restore))
+                }
+            }
+            OutlinedButton(onClick = { onAction(FilesyncUiAction.ClearSelection) }, modifier = Modifier.weight(1f)) {
+                Text(stringResource(MR.string.filesync_clear_selection))
+            }
+        }
+    }
+}
+
+internal fun List<FilesyncNode>.removedIds(): Set<Uuid> = mapNotNullTo(mutableSetOf()) { node -> node.nodeId.takeIf { node.removedMs != null } }
 
 @Composable
 private fun MenuItem(label: StringResource, onDismiss: () -> Unit, action: () -> Unit) {
