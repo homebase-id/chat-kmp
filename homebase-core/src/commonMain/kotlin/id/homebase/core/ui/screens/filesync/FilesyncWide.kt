@@ -42,6 +42,8 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Button
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,6 +56,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,15 +76,22 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,7 +112,10 @@ import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_new_folder
 import id.homebase.resources.filesync_recent
 import id.homebase.resources.filesync_refresh
-import id.homebase.resources.filesync_save
+import id.homebase.resources.filesync_download
+import id.homebase.resources.filesync_select
+import id.homebase.resources.filesync_select_all
+import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_search
 import id.homebase.resources.filesync_selected_size
 import id.homebase.resources.filesync_tags_here
@@ -238,7 +251,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
     LaunchedEffect(uiState.sort, uiState.query, uiState.tagFilter) { listState.requestScrollToItem(0) }
     var keyMoves by remember { mutableIntStateOf(0) }
     LaunchedEffect(keyMoves) {
-        if (keyMoves > 0) listState.bringIntoView(uiState.visible.indexOfFirst { it.nodeId == uiState.selectedId })
+        if (keyMoves > 0) listState.bringIntoView(uiState.visibleIds.indexOf(uiState.selection.focus))
     }
     val actions = scope.actions
     FilesyncShell(
@@ -291,8 +304,10 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         // double-click would move the row out from under the second.
         pane = {
             val selected = uiState.selected
-            if (selected != null) {
-                FilesyncInfoContent(selected, crumbNames(uiState.path), scope.onAction)
+            if (selected.size == 1) {
+                FilesyncInfoContent(selected.single(), crumbNames(uiState.path), scope.onAction)
+            } else if (selected.isNotEmpty()) {
+                FilesyncSelectionContent(selected, scope.onAction)
             } else {
                 Text(
                     text = stringResource(MR.string.filesync_info_hint),
@@ -309,16 +324,17 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 // After the focused child, so Enter on a focused button presses it.
                 .onKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-                    val selected = uiState.selected
+                    val one = uiState.selectedOne
                     when {
                         event.key == Key.DirectionDown || event.key == Key.DirectionUp -> {
-                            actions.onAction(FilesyncUiAction.MoveSelection(if (event.key == Key.DirectionDown) 1 else -1))
+                            actions.onAction(FilesyncUiAction.MoveSelection(if (event.key == Key.DirectionDown) 1 else -1, extend = event.isShiftPressed))
                             keyMoves++
                         }
-                        // Without a selection Enter belongs to whichever button has focus.
-                        (event.key == Key.Enter || event.key == Key.NumPadEnter) && selected != null -> actions.click(selected)
+                        event.key == Key.A && (event.isCtrlPressed || event.isMetaPressed) -> actions.onAction(FilesyncUiAction.SelectAll)
+                        // Without a single selection Enter belongs to whichever button has focus.
+                        (event.key == Key.Enter || event.key == Key.NumPadEnter) && one != null -> actions.click(one)
                         event.key == Key.Backspace -> actions.onAction(FilesyncUiAction.NavigateUp)
-                        event.key == Key.Escape && selected != null -> actions.onAction(FilesyncUiAction.Select(null))
+                        event.key == Key.Escape && uiState.selection.ids.isNotEmpty() -> actions.onAction(FilesyncUiAction.ClearSelection)
                         event.key == Key.F5 -> actions.onAction(FilesyncUiAction.Refresh)
                         else -> return@onKeyEvent false
                     }
@@ -338,20 +354,26 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 }
                 FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
                 if (scope.currentRemoved) DeletedFolderBanner(scope)
-                TableHeader(uiState.sort, columns) { scope.onAction(FilesyncUiAction.SortBy(it)) }
+                TableHeader(uiState, columns, scope.onAction)
                 Box(modifier = Modifier.weight(1f)) {
                     BrowserListBody(scope) {
                         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            val selecting = uiState.selection.ids.isNotEmpty()
+                            val group = uiState.selected.takeIf { it.size > 1 }.orEmpty()
                             items(uiState.visible, key = { it.nodeId.toString() }) { node ->
+                                val selected = node.nodeId in uiState.selection.ids
                                 TableRow(
                                     node = node,
-                                    selected = node.nodeId == uiState.selectedId,
+                                    selected = selected,
                                     progress = uiState.transfer.progressOf(node.nodeId),
                                     columns = columns,
                                     actions = actions,
-                                    onSelect = {
+                                    selecting = selecting,
+                                    // Only the selected rows get it, so a change to the selection redraws only them.
+                                    group = if (selected) group else emptyList(),
+                                    onSelect = { mode ->
                                         keysFocus.requestFocus()
-                                        actions.onAction(FilesyncUiAction.Select(node.nodeId))
+                                        actions.onAction(FilesyncUiAction.Select(node.nodeId, mode))
                                     },
                                 )
                             }
@@ -404,12 +426,28 @@ private fun ColumnScope.TagFilters(uiState: FilesyncUiState, onAction: (Filesync
 }
 
 @Composable
-private fun TableHeader(sort: FilesyncSort, columns: TableColumns, onSort: (FilesyncSortKey) -> Unit) {
+private fun TableHeader(uiState: FilesyncUiState, columns: TableColumns, onAction: (FilesyncUiAction) -> Unit) {
+    val sort = uiState.sort
+    val onSort: (FilesyncSortKey) -> Unit = { onAction(FilesyncUiAction.SortBy(it)) }
     Row(
         modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Spacer(Modifier.width(42.dp))
+        Box(modifier = Modifier.width(42.dp)) {
+            if (uiState.visible.isNotEmpty()) {
+                val count = uiState.selection.ids.size
+                val all = count == uiState.visible.size
+                SelectBox(
+                    state = when {
+                        all -> ToggleableState.On
+                        count > 0 -> ToggleableState.Indeterminate
+                        else -> ToggleableState.Off
+                    },
+                    description = stringResource(MR.string.filesync_select_all),
+                    onClick = { onAction(if (all) FilesyncUiAction.ClearSelection else FilesyncUiAction.SelectAll) },
+                )
+            }
+        }
         HeaderCell(FilesyncSortKey.Name, sort, onSort, Modifier.weight(1f))
         if (columns.modified) HeaderCell(FilesyncSortKey.Modified, sort, onSort, Modifier.width(ModifiedWidth))
         HeaderCell(FilesyncSortKey.Size, sort, onSort, Modifier.width(SizeWidth), Arrangement.End)
@@ -453,7 +491,9 @@ internal fun TableRow(
     progress: Float?,
     columns: TableColumns,
     actions: FilesyncBrowserActions,
-    onSelect: () -> Unit,
+    onSelect: (FilesyncSelectMode) -> Unit,
+    selecting: Boolean = false,
+    group: List<FilesyncNode> = emptyList(),
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -463,6 +503,7 @@ internal fun TableRow(
     // The pointer loop below outlives recompositions; it must act on the node as it is now.
     val current by rememberUpdatedState(node)
     val select by rememberUpdatedState(onSelect)
+    val isSelected by rememberUpdatedState(selected)
     val colors = MaterialTheme.colorScheme
     val background = when {
         selected -> colors.secondaryContainer
@@ -481,8 +522,9 @@ internal fun TableRow(
                 .combinedClickable(
                     interactionSource = interaction,
                     indication = null,
-                    onLongClick = onSelect,
-                    onClick = { actions.click(node) },
+                    onLongClick = { onSelect(FilesyncSelectMode.Toggle) },
+                    // Once something is selected, a tap picks rows the way it does on a phone.
+                    onClick = { if (selecting) onSelect(FilesyncSelectMode.Toggle) else actions.click(node) },
                 )
                 // A mouse selects on press and opens on a double-click, the way desktop file managers do; a finger opens
                 // on a tap and selects on a long press, and never on press, or every scroll would select its row.
@@ -497,16 +539,28 @@ internal fun TableRow(
                             // Pressed on the row's own Save or More button.
                             if (change.isConsumed || change.type != PointerType.Mouse) continue
                             event.changes.forEach { it.consume() }
+                            val keys = event.keyboardModifiers
+                            val add = keys.isCtrlPressed || keys.isMetaPressed
                             if (event.buttons.isSecondaryPressed) {
-                                select()
+                                // A right-click inside the selection is for all of it.
+                                if (!isSelected) select(FilesyncSelectMode.Only)
                                 val start = if (rtl) size.width - change.position.x else change.position.x
                                 menuAt = DpOffset(start.toDp(), change.position.y.toDp() - RowHeight)
+                            } else if (add || keys.isShiftPressed) {
+                                lastPress = null
+                                select(
+                                    when {
+                                        add && keys.isShiftPressed -> FilesyncSelectMode.AddRange
+                                        add -> FilesyncSelectMode.Toggle
+                                        else -> FilesyncSelectMode.Range
+                                    }
+                                )
                             } else if (lastPress?.let { change.uptimeMillis - it < viewConfiguration.doubleTapTimeoutMillis } == true) {
                                 lastPress = null
                                 actions.click(current)
                             } else {
                                 lastPress = change.uptimeMillis
-                                select()
+                                select(FilesyncSelectMode.Only)
                             }
                         }
                     }
@@ -515,7 +569,18 @@ internal fun TableRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val textColor = if (node.removedMs != null) colors.onSurfaceVariant else colors.onSurface
-            FileTypeTile(node, size = 30.dp)
+            // The checkbox takes the icon's place, as in OneDrive: on hover, and on every row once anything is selected.
+            if (hovered || selecting) {
+                Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+                    SelectBox(
+                        state = ToggleableState(selected),
+                        description = stringResource(MR.string.filesync_select, node.name),
+                        onClick = { onSelect(FilesyncSelectMode.Toggle) },
+                    )
+                }
+            } else {
+                FileTypeTile(node, size = 30.dp)
+            }
             Spacer(Modifier.width(12.dp))
             NodeName(
                 node = node,
@@ -533,14 +598,24 @@ internal fun TableRow(
                 }
             }
         }
-        FilesyncNodeMenu(
-            node = node,
-            expanded = menuAt != null,
-            onDismiss = { menuAt = null },
-            onAction = actions.onAction,
-            onInfo = null,
-            offset = menuAt ?: DpOffset.Zero,
-        )
+        if (selected && group.size > 1) {
+            FilesyncSelectionMenu(
+                nodes = group,
+                expanded = menuAt != null,
+                onDismiss = { menuAt = null },
+                onAction = actions.onAction,
+                offset = menuAt ?: DpOffset.Zero,
+            )
+        } else {
+            FilesyncNodeMenu(
+                node = node,
+                expanded = menuAt != null,
+                onDismiss = { menuAt = null },
+                onAction = actions.onAction,
+                onInfo = null,
+                offset = menuAt ?: DpOffset.Zero,
+            )
+        }
     }
 }
 
@@ -549,7 +624,7 @@ internal fun TableRow(
 private fun RowActions(node: FilesyncNode, onAction: (FilesyncUiAction) -> Unit, expanded: Boolean, onExpanded: (Boolean) -> Unit) {
     if (!node.isFolder && node.removedMs == null) {
         IconButton(onClick = { onAction(FilesyncUiAction.SaveClicked(node)) }, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_save), modifier = Modifier.size(20.dp))
+            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_download), modifier = Modifier.size(20.dp))
         }
     }
     Box {
@@ -591,9 +666,12 @@ private fun Footer(uiState: FilesyncUiState) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
-        uiState.selected?.sizeBytes?.let {
+        val selected = uiState.selected
+        if (selected.isNotEmpty()) {
+            val count = pluralStringResource(MR.plurals.filesync_selected, selected.size, selected.size)
+            val bytes = selected.totals().bytes
             Text(
-                text = stringResource(MR.string.filesync_selected_size, formatBytes(it)),
+                text = if (bytes > 0) stringResource(MR.string.filesync_selected_size, count, formatBytes(bytes)) else count,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -602,3 +680,11 @@ private fun Footer(uiState: FilesyncUiState) {
 }
 
 private const val DASH = "—"
+
+// Without the 48dp touch minimum, so it fits the icon's place in a 44dp row.
+@Composable
+private fun SelectBox(state: ToggleableState, description: String, onClick: () -> Unit) {
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        TriStateCheckbox(state = state, onClick = onClick, modifier = Modifier.semantics { contentDescription = description })
+    }
+}

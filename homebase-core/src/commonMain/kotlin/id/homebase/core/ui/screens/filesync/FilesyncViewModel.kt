@@ -174,13 +174,13 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.FilterTag -> arrange { it.copy(tagFilter = action.name.takeIf { name -> name != it.tagFilter }) }
 
-            is FilesyncUiAction.Select -> _uiState.update { it.copy(selectedId = action.nodeId) }
+            is FilesyncUiAction.Select -> _uiState.update { it.copy(selection = it.selection.select(action.nodeId, action.mode, it.visibleIds)) }
 
-            is FilesyncUiAction.MoveSelection -> _uiState.update { state ->
-                val index = state.visible.indexOfFirst { it.nodeId == state.selectedId }
-                val next = if (index < 0) 0 else (index + action.by).coerceIn(0, state.visible.lastIndex)
-                state.copy(selectedId = state.visible.getOrNull(next)?.nodeId)
-            }
+            FilesyncUiAction.SelectAll -> _uiState.update { it.copy(selection = it.selection.all(it.visibleIds)) }
+
+            FilesyncUiAction.ClearSelection -> _uiState.update { it.copy(selection = FilesyncSelection()) }
+
+            is FilesyncUiAction.MoveSelection -> _uiState.update { it.copy(selection = it.selection.move(action.by, action.extend, it.visibleIds)) }
 
             is FilesyncUiAction.SaveClicked -> transfers.save(action.node)
 
@@ -209,7 +209,7 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.Restore -> viewModelScope.launch {
-                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(setOf(action.nodeId)) }
+                reportWrite(FilesyncNotice.Restored, FilesyncError.RestoreFailed, _events::send) { editor.restore(action.nodeIds) }
             }
 
             FilesyncUiAction.MakePrivate -> {
@@ -240,7 +240,7 @@ class FilesyncViewModel(
 
     private fun openPath(path: List<FilesyncCrumb>) {
         search.clearText()
-        arrange { it.copy(path = path, query = "", tagFilter = null, selectedId = null).withNodes(emptyList()) }
+        arrange { it.copy(path = path, query = "", tagFilter = null, selection = FilesyncSelection()).withNodes(emptyList()) }
         loadCurrentFolder()
     }
 

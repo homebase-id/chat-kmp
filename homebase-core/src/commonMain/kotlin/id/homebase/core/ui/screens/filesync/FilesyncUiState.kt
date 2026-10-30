@@ -43,14 +43,20 @@ data class FilesyncUiState(
     val sort: FilesyncSort = FilesyncSort(),
     val query: String = "",
     val tagFilter: String? = null,
-    val selectedId: Uuid? = null,
+    val selection: FilesyncSelection = FilesyncSelection(),
     // Derived by withNodes() and arrange(); kept here so a recomposition or a keystroke doesn't redo them.
     val folderTags: List<FilesyncTag> = emptyList(),
     val visible: List<FilesyncNode> = emptyList(),
     val totals: FilesyncTotals = FilesyncTotals(),
     val privateDrive: PrivateDriveState = PrivateDriveState(),
 ) {
-    val selected: FilesyncNode? by lazy(LazyThreadSafetyMode.NONE) { selectedId?.let { id -> visible.firstOrNull { it.nodeId == id } } }
+    /** The selected nodes in the order shown. */
+    val selected: List<FilesyncNode> by lazy(LazyThreadSafetyMode.NONE) { visible.filter { it.nodeId in selection.ids } }
+
+    /** The selected node when it's the only one. */
+    val selectedOne: FilesyncNode? get() = selected.singleOrNull()
+
+    val visibleIds: List<Uuid> by lazy(LazyThreadSafetyMode.NONE) { visible.map { it.nodeId } }
 
     fun withNodes(nodes: List<FilesyncNode>): FilesyncUiState = copy(nodes = nodes, folderTags = nodes.distinctTags())
 
@@ -62,7 +68,7 @@ data class FilesyncUiState(
             visible = visible,
             totals = visible.totals(),
             tagFilter = tagFilter,
-            selectedId = selectedId?.takeIf { id -> visible.any { it.nodeId == id } },
+            selection = selection.keptIn(visible.map { it.nodeId }),
         )
     }
 }
@@ -87,12 +93,15 @@ sealed interface FilesyncUiAction {
     data class RetryUpload(val id: Uuid) : FilesyncUiAction
     data class DismissUpload(val id: Uuid) : FilesyncUiAction
     data object ToggleShowDeleted : FilesyncUiAction
-    data class Restore(val nodeId: Uuid) : FilesyncUiAction
+    data class Restore(val nodeIds: Set<Uuid>) : FilesyncUiAction
     data class SortBy(val key: FilesyncSortKey) : FilesyncUiAction
     /** The tag already filtered on clears the filter. */
     data class FilterTag(val name: String) : FilesyncUiAction
-    data class Select(val nodeId: Uuid?) : FilesyncUiAction
-    data class MoveSelection(val by: Int) : FilesyncUiAction
+    data class Select(val nodeId: Uuid, val mode: FilesyncSelectMode = FilesyncSelectMode.Only) : FilesyncUiAction
+    data object SelectAll : FilesyncUiAction
+    data object ClearSelection : FilesyncUiAction
+    /** Shift+arrow when [extend]. */
+    data class MoveSelection(val by: Int, val extend: Boolean = false) : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }

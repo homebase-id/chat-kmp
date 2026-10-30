@@ -11,6 +11,9 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performMultiModalInput
+import androidx.compose.ui.test.rightClick
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
@@ -23,18 +26,26 @@ class FilesyncTableRowTest {
     private val node = FilesyncNode(Uuid.random(), Uuid.random(), isFolder = false, name = "report.pdf", modifiedMs = 1, sizeBytes = 5)
     private val folder = FilesyncNode(Uuid.random(), Uuid.random(), isFolder = true, name = "Photos", modifiedMs = null, sizeBytes = null)
 
-    private fun recorded(node: FilesyncNode = this.node, block: ComposeUiTest.() -> Unit): List<FilesyncUiAction> {
+    private fun recorded(
+        node: FilesyncNode = this.node,
+        selected: Boolean = false,
+        selecting: Boolean = false,
+        group: List<FilesyncNode> = emptyList(),
+        block: ComposeUiTest.() -> Unit,
+    ): List<FilesyncUiAction> {
         val actions = mutableListOf<FilesyncUiAction>()
         runComposeUiTest {
             setContent {
                 MaterialTheme {
                     TableRow(
                         node = node,
-                        selected = false,
+                        selected = selected,
                         progress = null,
                         columns = TableColumns(modified = true, kind = true),
                         actions = FilesyncBrowserActions(onAction = { actions += it }, onAskRestore = {}),
-                        onSelect = { actions += FilesyncUiAction.Select(node.nodeId) },
+                        onSelect = { mode -> actions += FilesyncUiAction.Select(node.nodeId, mode) },
+                        selecting = selecting,
+                        group = group,
                     )
                 }
             }
@@ -68,7 +79,7 @@ class FilesyncTableRowTest {
         val actions = recorded {
             onRoot().performMouseInput { moveTo(center) }
             waitForIdle()
-            onNodeWithContentDescription("Save to device").performMouseInput { click() }
+            onNodeWithContentDescription("Download").performMouseInput { click() }
         }
         assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.SaveClicked(node)), actions)
     }
@@ -77,5 +88,55 @@ class FilesyncTableRowTest {
     fun aTapOpensWithoutSelecting() {
         val actions = recorded { onNodeWithText(node.name).performTouchInput { click() } }
         assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.NodeClicked(node)), actions)
+    }
+
+    @Test
+    fun aCtrlClickAddsTheRowWithoutOpeningIt() {
+        val actions = recorded {
+            onNodeWithText(node.name).performMultiModalInput {
+                key { keyDown(Key.CtrlLeft) }
+                mouse { click() }
+                key { keyUp(Key.CtrlLeft) }
+            }
+        }
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Toggle)), actions)
+    }
+
+    @Test
+    fun aShiftClickSelectsARange() {
+        val actions = recorded {
+            onNodeWithText(node.name).performMultiModalInput {
+                key { keyDown(Key.ShiftLeft) }
+                mouse { click() }
+                key { keyUp(Key.ShiftLeft) }
+            }
+        }
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Range)), actions)
+    }
+
+    @Test
+    fun theCheckboxOnHoverAddsTheRow() {
+        val actions = recorded {
+            onRoot().performMouseInput { moveTo(center) }
+            waitForIdle()
+            onNodeWithContentDescription("Select ${node.name}").performMouseInput { click() }
+        }
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Toggle)), actions)
+    }
+
+    @Test
+    fun onceRowsArePickedATapPicksInsteadOfOpening() {
+        val actions = recorded(selecting = true) { onNodeWithText(node.name).performTouchInput { click() } }
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Toggle)), actions)
+    }
+
+    @Test
+    fun aRightClickInsideTheSelectionKeepsItAndOffersItsMenu() {
+        val actions = recorded(selected = true, selecting = true, group = listOf(node, folder)) {
+            onNodeWithText(node.name).performMouseInput { rightClick() }
+            waitForIdle()
+            onNodeWithText("Clear selection").assertExists()
+        }
+        assertEquals(emptyList(), actions)
     }
 }

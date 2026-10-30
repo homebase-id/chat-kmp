@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -80,7 +81,7 @@ import id.homebase.resources.filesync_restore_failed
 import id.homebase.resources.filesync_restored
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
-import id.homebase.resources.filesync_save
+import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_save_failed
 import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_too_large
@@ -174,6 +175,8 @@ internal fun FilesyncNodeRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     dimDeleted: Boolean = true,
+    // A checkbox in the icon's place while picking rows; null shows the icon.
+    checked: Boolean? = null,
     trailing: @Composable () -> Unit = {},
 ) {
     val dim = if (dimDeleted && node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier
@@ -183,7 +186,13 @@ internal fun FilesyncNodeRow(
         colors = ListItemDefaults.colors(containerColor = container),
         headlineContent = { NodeName(node, ringColor = container, modifier = dim, fontWeight = if (node.isFolder) FontWeight.SemiBold else null, maxLines = 2) },
         supportingContent = { if (details.isNotEmpty()) Text(details, modifier = dim) },
-        leadingContent = { FileTypeTile(node, modifier = dim) },
+        leadingContent = {
+            if (checked == null) {
+                FileTypeTile(node, modifier = dim)
+            } else {
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) { Checkbox(checked = checked, onCheckedChange = null) }
+            }
+        },
         trailingContent = trailing,
     )
 }
@@ -336,7 +345,7 @@ internal fun SaveButton(progress: Float?, onSave: () -> Unit, onCancel: () -> Un
         CancelTransferButton(progress, onCancel)
     } else {
         IconButton(onClick = onSave) {
-            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_save))
+            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_download))
         }
     }
 }

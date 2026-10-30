@@ -3049,7 +3049,10 @@
     <string name="filesync_folders">Folders</string>
     <string name="filesync_files">Files</string>
     <string name="filesync_totals">%1$s, %2$s · %3$s</string>
-    <string name="filesync_selected_size">1 selected · %1$s</string>
+    <string name="filesync_selected_size">%1$s · %2$s</string>
+    <string name="filesync_select">Select %1$s</string>
+    <string name="filesync_select_all">Select all</string>
+    <string name="filesync_clear_selection">Clear selection</string>
     <string name="filesync_all_files">All files</string>
     <string name="filesync_tags_here">Tags in this folder</string>
     <string name="filesync_search">Search this folder</string>
@@ -3064,7 +3067,7 @@
     <string name="filesync_load_failed">Couldn't load this folder.</string>
     <string name="filesync_retry">Try again</string>
     <string name="filesync_more">More options</string>
-    <string name="filesync_save">Save to device</string>
+    <string name="filesync_download">Download</string>
     <string name="filesync_cancel_download">Cancel download</string>
     <string name="filesync_download_failed">Couldn't download the file.</string>
     <string name="filesync_damaged">This file is damaged, so it wasn't opened.</string>
