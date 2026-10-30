@@ -2518,9 +2518,13 @@ private fun NavHostController.selectConversationOnChatList(
     return true
 }
 
-/** A file another app made for a chat, which ChatList asks the user where to send; the name goes first. */
+// The name goes first: ChatList reads it when the path arrives.
 private fun NavHostController.sendFileOnChatList(path: String, name: String): Boolean {
-    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull() ?: return false
+    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
+    if (entry == null) {
+        Logger.w(tag = "AppNavHost") { "ChatList missing from stack — dropping file $name for a chat" }
+        return false
+    }
     entry.savedStateHandle[SEND_FILE_NAME_KEY] = name
     entry.savedStateHandle[SEND_FILE_PATH_KEY] = path
     return true

@@ -68,6 +68,7 @@ import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.chat_error_send_file
+import id.homebase.resources.chat_error_send_file_editor_open
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_load_conversations
 import id.homebase.resources.chat_error_load_messages
@@ -106,6 +107,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -1170,21 +1172,32 @@ class ConversationListViewModel(
         val file = _uiState.value.uiDialog as? ConversationListUiDialog.SendFile ?: return
         dialogClosed()
         viewModelScope.launch {
-            val conversationId = try {
-                messageActionsHandler.conversationIdFor(recipient)
+            try {
+                val conversationId = messageActionsHandler.conversationIdFor(recipient)
+                // The composer's editor outlives a switch of chat, and adding to it would send the file to its chat.
+                val editor = _messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                if (editor != null && editor.conversationId != conversationId) {
+                    discardSentFile(file.path)
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_send_file_editor_open, editor.conversationTitle))
+                    return@launch
+                }
+                selectConversation(conversationId)
+                // A contact's chat created just now joins the list a moment later, and attaching needs it there.
+                withTimeoutOrNull(NEW_CHAT_WAIT) { _uiState.first { state -> state.activeConversations.any { it.conversation.id == conversationId } } }
+                    ?: error("chat $conversationId never listed")
+                attachmentHandler.handleAttachPlatformFile(ConversationListUiAction.AttachPlatformFile(conversationId, listOf(platformFileFromPath(file.path))))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.w(throwable = e, tag = "ConversationListViewModel") { "no chat to send ${file.name} to" }
-                fileOperationsProvider.deleteTempFile(file.path)
+                Logger.w(throwable = e, tag = "ConversationListViewModel") { "couldn't send ${file.name} to a chat" }
+                discardSentFile(file.path)
                 sendEvent(ShowErrorMessage(MR.string.chat_error_send_file, e.message ?: ""))
-                return@launch
             }
-            selectConversation(conversationId)
-            // A contact's chat created just now joins the list a moment later, and attaching needs it there.
-            withTimeoutOrNull(NEW_CHAT_WAIT) { _uiState.first { state -> state.activeConversations.any { it.conversation.id == conversationId } } }
-            onAction(ConversationListUiAction.AttachPlatformFile(conversationId, listOf(platformFileFromPath(file.path))))
         }
+    }
+
+    private fun discardSentFile(path: String) {
+        fileOperationsProvider.deleteTempFile(path)
     }
 
     fun dialogClosed() {
@@ -1547,13 +1560,16 @@ class ConversationListViewModel(
             is ConversationListUiAction.ForwardMessageSelectRecipient -> messageActionsHandler.handleForwardMessageSelectRecipient(action)
 
             is ConversationListUiAction.ForwardMessageSend -> messageActionsHandler.handleForwardMessageSend(action)
-            is ConversationListUiAction.ChooseChatForFile -> _uiState.update {
-                val recipients = recipientGroups(it.activeConversations, contactService.contacts.value)
-                it.copy(uiDialog = ConversationListUiDialog.SendFile(action.path, action.name, recipients))
+            is ConversationListUiAction.ChooseChatForFile -> {
+                val earlier = _uiState.getAndUpdate {
+                    val recipients = recipientGroups(it.activeConversations, contactService.contacts.value)
+                    it.copy(uiDialog = ConversationListUiDialog.SendFile(action.path, action.name, recipients))
+                }.uiDialog
+                (earlier as? ConversationListUiDialog.SendFile)?.let { discardSentFile(it.path) }
             }
             is ConversationListUiAction.SendFileTo -> sendFileTo(action.recipient)
             ConversationListUiAction.CancelSendFile -> {
-                (_uiState.value.uiDialog as? ConversationListUiDialog.SendFile)?.let { fileOperationsProvider.deleteTempFile(it.path) }
+                (_uiState.value.uiDialog as? ConversationListUiDialog.SendFile)?.let { discardSentFile(it.path) }
                 dialogClosed()
             }
 

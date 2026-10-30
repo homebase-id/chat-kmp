@@ -100,6 +100,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -1828,25 +1829,12 @@ fun ConversationContentSheets(
                         .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = stringResource(MR.string.chat_message_forward_to),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    StyledSearchTextField(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .fillMaxWidth(),
-                        textFieldState = sheet.searchTextState,
-                        showSearchIcon = false,
-                        placeHolderText = stringResource(MR.string.search),
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    RecipientsSelectorList(
-                        modifier = Modifier.weight(1f),
+                    RecipientPicker(
+                        title = stringResource(MR.string.chat_message_forward_to),
+                        search = sheet.searchTextState,
                         recipientGroups = filteredRecipients,
                         selectedRecipients = sheet.selectedRecipients,
+                        listModifier = Modifier.weight(1f),
                         onRecipientSelected = {
                             onUiAction(ConversationListUiAction.ForwardMessageSelectRecipient(it))
                             scope.launch {
@@ -2055,6 +2043,39 @@ private fun ConnectIdentityRow(
             Text(stringResource(MR.string.connect))
         }
     }
+}
+
+/** A "send to" sheet's body: its title, a search, and the recipients it leaves. */
+@Composable
+fun RecipientPicker(
+    title: String,
+    search: TextFieldState,
+    recipientGroups: List<RecipientGroupModel>,
+    selectedRecipients: List<RecipientModel>,
+    listModifier: Modifier,
+    onRecipientSelected: (RecipientModel) -> Unit,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(horizontal = 24.dp),
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    StyledSearchTextField(
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        textFieldState = search,
+        showSearchIcon = false,
+        placeHolderText = stringResource(MR.string.search),
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    RecipientsSelectorList(
+        modifier = listModifier,
+        recipientGroups = recipientGroups,
+        selectedRecipients = selectedRecipients,
+        onRecipientSelected = onRecipientSelected,
+    )
 }
 
 @Composable

@@ -2684,6 +2684,7 @@
     <string name="chat_error_send_forward">Failed to send forward message: %1$s</string>
     <string name="chat_error_send_file">Couldn't open that chat for the file: %1$s</string>
     <string name="chat_send_file_to">Send %1$s to</string>
+    <string name="chat_error_send_file_editor_open">Send or close the message you're writing to %1$s first.</string>
     <string name="chat_error_attachment_unavailable">That attachment is no longer available — please pick it again.</string>
     <string name="chat_error_send_files">Failed to send file(s): %1$s</string>
     <string name="chat_error_shared_content_unreadable">Couldn't read the shared content — please try sharing again.</string>

@@ -4,7 +4,6 @@ import id.homebase.api.client.connections.IntroductionPreflightResult
 import kotlin.uuid.Uuid
 
 sealed interface ConversationListUiDialog {
-    /** A file another screen handed over at [path], waiting for the chat it goes to. */
     data class SendFile(val path: String, val name: String, val recipients: List<RecipientGroupModel>) : ConversationListUiDialog
 
     data class DeleteMessage(val messageId: Uuid, val allowDeleteForEveryone: Boolean) :

@@ -3,7 +3,6 @@ package id.homebase.chat.conversationlist
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 
-/** What a "send to" picker offers: your own chat, five recent chats, every contact, then the groups. */
 internal fun recipientGroups(conversations: List<EnrichedConversationUiModel>, contacts: List<ContactUiModel>): List<RecipientGroupModel> {
     val self = conversations.firstOrNull { it.conversation.isWithSelf }
     val others = conversations.filter { !it.conversation.isWithSelf }

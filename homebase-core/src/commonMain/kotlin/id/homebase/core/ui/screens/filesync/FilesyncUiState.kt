@@ -149,7 +149,6 @@ sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent
     data class SaveFile(val path: String, val name: String) : FilesyncUiEvent
     data class ShareFile(val path: String) : FilesyncUiEvent
-    /** A file made for a chat, which ChatList asks where to send. */
     data class SendToChat(val path: String, val name: String) : FilesyncUiEvent
     data object OpenWebDrop : FilesyncUiEvent
     data class OpenSignIn(val url: String) : FilesyncUiEvent

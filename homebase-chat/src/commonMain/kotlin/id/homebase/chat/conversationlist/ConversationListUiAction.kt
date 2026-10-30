@@ -190,9 +190,7 @@ sealed interface ConversationListUiAction {
     data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
     data class ForwardMessageSend(val message: MessageUiModel, val recipients: List<RecipientModel>) : ConversationListUiAction
 
-    /** Asks which chat the file at [path] goes to; another screen made it for that. */
     data class ChooseChatForFile(val path: String, val name: String) : ConversationListUiAction
-    /** Opens [recipient]'s chat with the waiting file attached, ready for a caption. */
     data class SendFileTo(val recipient: RecipientModel) : ConversationListUiAction
     data object CancelSendFile : ConversationListUiAction
     data class ForwardMessageSelectRecipient(val recipient: RecipientModel) : ConversationListUiAction
