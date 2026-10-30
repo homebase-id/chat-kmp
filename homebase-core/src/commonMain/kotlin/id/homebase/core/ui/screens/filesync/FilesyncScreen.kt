@@ -151,6 +151,18 @@ internal class FilesyncBrowserActions(
     fun click(node: FilesyncNode) {
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
     }
+
+    private var lastNameOpenAt = Long.MIN_VALUE / 2
+
+    /**
+     * A click on a name, which opens like a link. The second press of a double-click lands on whatever the first one
+     * opened, so presses within [doubleClickMs] of an open are ignored.
+     */
+    fun clickName(node: FilesyncNode, atMs: Long, doubleClickMs: Long) {
+        if (atMs - lastNameOpenAt < doubleClickMs) return
+        lastNameOpenAt = atMs
+        click(node)
+    }
 }
 
 internal class FilesyncBrowserScope(

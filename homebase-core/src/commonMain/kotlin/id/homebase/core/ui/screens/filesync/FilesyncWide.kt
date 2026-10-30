@@ -82,13 +82,16 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
@@ -570,11 +573,33 @@ internal fun TableRow(
                 FileTypeTile(node, size = 30.dp)
             }
             Spacer(Modifier.width(12.dp))
+            val nameInteraction = remember { MutableInteractionSource() }
+            val nameHovered by nameInteraction.collectIsHoveredAsState()
             NodeName(
                 node = node,
                 ringColor = if (background == Color.Transparent) colors.surface else background,
                 fontWeight = if (node.isFolder) FontWeight.SemiBold else FontWeight.Medium,
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
+                textDecoration = if (nameHovered) TextDecoration.Underline else null,
+                // The name opens like a link, as in OneDrive and Dropbox; Ctrl/Cmd or Shift on it still picks the row.
+                // A child of the row, so it sees the press first and the row's handler skips what it consumed.
+                nameModifier = Modifier
+                    .hoverable(nameInteraction)
+                    .pointerHoverIcon(PointerIcon.Hand)
+                    .pointerInput(node.nodeId) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type != PointerEventType.Press) continue
+                                val change = event.changes.first()
+                                val keys = event.keyboardModifiers
+                                if (change.type != PointerType.Mouse || event.buttons.isSecondaryPressed) continue
+                                if (keys.isCtrlPressed || keys.isMetaPressed || keys.isShiftPressed) continue
+                                change.consume()
+                                actions.clickName(current, change.uptimeMillis, viewConfiguration.doubleTapTimeoutMillis)
+                            }
+                        }
+                    },
             )
             if (columns.modified) Cell(node.modifiedMs?.let { formatDayTime(it) } ?: DASH, Modifier.width(ModifiedWidth), textColor)
             Cell(node.sizeBytes?.let { formatBytes(it) } ?: DASH, Modifier.width(SizeWidth), textColor, TextAlign.End)

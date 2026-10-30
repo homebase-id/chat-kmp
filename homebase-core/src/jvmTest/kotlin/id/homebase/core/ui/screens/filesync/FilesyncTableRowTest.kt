@@ -56,9 +56,34 @@ class FilesyncTableRowTest {
     }
 
     @Test
-    fun aMouseClickSelectsAndDoesNotOpen() {
-        val actions = recorded { onNodeWithText(node.name).performMouseInput { click() } }
+    fun aMouseClickBesideTheNameSelectsAndDoesNotOpen() {
+        val actions = recorded { onRoot().performMouseInput { click(Offset(width * 0.6f, centerY)) } }
         assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.Select(node.nodeId)), actions)
+    }
+
+    @Test
+    fun aMouseClickOnTheNameOpensLikeALink() {
+        // The row merges its text, so the name itself is found in the unmerged tree.
+        val actions = recorded { onNodeWithText(node.name, useUnmergedTree = true).performMouseInput { click() } }
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.NodeClicked(node)), actions)
+    }
+
+    @Test
+    fun aDoubleClickOnTheNameOpensOnce() {
+        val actions = recorded { onNodeWithText(node.name, useUnmergedTree = true).performMouseInput { doubleClick() } }
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.NodeClicked(node)), actions)
+    }
+
+    @Test
+    fun aCtrlClickOnTheNameStillPicksTheRow() {
+        val actions = recorded {
+            onNodeWithText(node.name, useUnmergedTree = true).performMultiModalInput {
+                key { keyDown(Key.CtrlLeft) }
+                mouse { click() }
+                key { keyUp(Key.CtrlLeft) }
+            }
+        }
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Toggle)), actions)
     }
 
     @Test
