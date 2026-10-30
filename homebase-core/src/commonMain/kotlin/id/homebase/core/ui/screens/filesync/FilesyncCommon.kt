@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -15,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.LibraryMusic
@@ -22,8 +24,11 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -34,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -44,6 +50,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,6 +95,11 @@ import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_too_large
 import id.homebase.resources.filesync_upload_failed
 import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_file_count
+import id.homebase.resources.filesync_folder_count
+import id.homebase.resources.filesync_selected
+import id.homebase.resources.filesync_totals
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -97,6 +110,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
@@ -182,7 +196,7 @@ internal fun FilesyncNodeRow(
     val dim = if (dimDeleted && node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier
     val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
     ListItem(
-        modifier = modifier,
+        modifier = if (checked == null) modifier else modifier.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
         headlineContent = { NodeName(node, ringColor = container, modifier = dim, fontWeight = if (node.isFolder) FontWeight.SemiBold else null, maxLines = 2) },
         supportingContent = { if (details.isNotEmpty()) Text(details, modifier = dim) },
@@ -190,7 +204,7 @@ internal fun FilesyncNodeRow(
             if (checked == null) {
                 FileTypeTile(node, modifier = dim)
             } else {
-                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) { Checkbox(checked = checked, onCheckedChange = null) }
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) { SelectBox(ToggleableState(checked)) }
             }
         },
         trailingContent = trailing,
@@ -444,3 +458,38 @@ internal object FinderTagColors {
 
     fun of(c: Int): Color? = colours.getOrNull(c - 1)
 }
+
+/** A checkbox without the 48dp touch minimum, so it fits a row's icon place; with no [onClick] the row does the picking. */
+@Composable
+internal fun SelectBox(state: ToggleableState, description: String? = null, onClick: (() -> Unit)? = null) {
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        TriStateCheckbox(
+            state = state,
+            onClick = onClick,
+            modifier = if (description == null) Modifier else Modifier.semantics { contentDescription = description },
+        )
+    }
+}
+
+/** The phone's top bar while rows are picked. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun FilesyncSelectionTopBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.() -> Unit) {
+    TopAppBar(
+        title = { Text(pluralStringResource(MR.plurals.filesync_selected, count, count)) },
+        navigationIcon = {
+            IconButton(onClick = onClear) {
+                Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_clear_selection))
+            }
+        },
+        actions = actions,
+    )
+}
+
+@Composable
+internal fun totalsLabel(totals: FilesyncTotals): String = stringResource(
+    MR.string.filesync_totals,
+    pluralStringResource(MR.plurals.filesync_folder_count, totals.folders, totals.folders),
+    pluralStringResource(MR.plurals.filesync_file_count, totals.files, totals.files),
+    formatBytes(totals.bytes),
+)

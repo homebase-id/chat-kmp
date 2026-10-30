@@ -50,8 +50,17 @@ data class FilesyncUiState(
     val totals: FilesyncTotals = FilesyncTotals(),
     val privateDrive: PrivateDriveState = PrivateDriveState(),
 ) {
+    val selecting: Boolean get() = selection.ids.isNotEmpty()
+
     /** The selected nodes in the order shown. */
-    val selected: List<FilesyncNode> by lazy(LazyThreadSafetyMode.NONE) { visible.filter { it.nodeId in selection.ids } }
+    val selected: List<FilesyncNode> by lazy(LazyThreadSafetyMode.NONE) {
+        if (selecting) visible.filter { it.nodeId in selection.ids } else emptyList()
+    }
+
+    val selectedTotals: FilesyncTotals by lazy(LazyThreadSafetyMode.NONE) { selected.totals() }
+
+    /** The deleted nodes among [selected], which Restore takes. */
+    val selectedRemovedIds: Set<Uuid> by lazy(LazyThreadSafetyMode.NONE) { selected.removedIds() }
 
     /** The selected node when it's the only one. */
     val selectedOne: FilesyncNode? get() = selected.singleOrNull()

@@ -64,10 +64,7 @@ import id.homebase.resources.filesync_open
 import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_clear_selection
 import id.homebase.resources.filesync_download
-import id.homebase.resources.filesync_file_count
-import id.homebase.resources.filesync_folder_count
 import id.homebase.resources.filesync_selected
-import id.homebase.resources.filesync_totals
 import id.homebase.resources.filesync_send_webdrop
 import id.homebase.resources.share
 import org.jetbrains.compose.resources.StringResource
@@ -216,17 +213,16 @@ internal fun FilesyncNodeMenu(
     }
 }
 
-/** What can be done with every node in [nodes] at once; a deleted one can only be restored. */
+/** What can be done with the whole selection; of its deleted nodes, [removed], Restore is all. */
 @Composable
 internal fun FilesyncSelectionMenu(
-    nodes: List<FilesyncNode>,
+    removed: Set<Uuid>,
     expanded: Boolean,
     onDismiss: () -> Unit,
     onAction: (FilesyncUiAction) -> Unit,
     offset: DpOffset = DpOffset(0.dp, 0.dp),
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
-        val removed = nodes.removedIds()
         if (removed.isNotEmpty()) MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(removed)) }
         MenuItem(MR.string.filesync_clear_selection, onDismiss) { onAction(FilesyncUiAction.ClearSelection) }
     }
@@ -234,28 +230,27 @@ internal fun FilesyncSelectionMenu(
 
 /** The pane for a selection of more than one: how many, how big, and what can be done with them all. */
 @Composable
-internal fun FilesyncSelectionContent(nodes: List<FilesyncNode>, onAction: (FilesyncUiAction) -> Unit, modifier: Modifier = Modifier) {
-    val totals = nodes.totals()
+internal fun FilesyncSelectionContent(
+    count: Int,
+    totals: FilesyncTotals,
+    removed: Set<Uuid>,
+    onAction: (FilesyncUiAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                text = pluralStringResource(MR.plurals.filesync_selected, nodes.size, nodes.size),
+                text = pluralStringResource(MR.plurals.filesync_selected, count, count),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = stringResource(
-                    MR.string.filesync_totals,
-                    pluralStringResource(MR.plurals.filesync_folder_count, totals.folders, totals.folders),
-                    pluralStringResource(MR.plurals.filesync_file_count, totals.files, totals.files),
-                    formatBytes(totals.bytes),
-                ),
+                text = totalsLabel(totals),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val removed = nodes.removedIds()
             if (removed.isNotEmpty()) {
                 Button(onClick = { onAction(FilesyncUiAction.Restore(removed)) }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(MR.string.filesync_restore))

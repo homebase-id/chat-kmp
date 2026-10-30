@@ -77,4 +77,17 @@ class FilesyncSelectionTest {
         val selection = FilesyncSelection(setOf(a, c, e), a, e).keptIn(listOf(b, c, d))
         assertEquals(FilesyncSelection(setOf(c), null, null), selection)
     }
+
+    @Test
+    fun selectAllThenShiftArrowExtendsFromTheTop() {
+        assertEquals(setOf(a, b), FilesyncSelection().all(order).move(1, extend = true, order).ids)
+    }
+
+    @Test
+    fun theModifierKeysPickTheMode() {
+        assertEquals(FilesyncSelectMode.Only, FilesyncSelectMode.of(add = false, range = false))
+        assertEquals(FilesyncSelectMode.Toggle, FilesyncSelectMode.of(add = true, range = false))
+        assertEquals(FilesyncSelectMode.Range, FilesyncSelectMode.of(add = false, range = true))
+        assertEquals(FilesyncSelectMode.AddRange, FilesyncSelectMode.of(add = true, range = true))
+    }
 }

@@ -2,7 +2,6 @@ package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -95,7 +94,6 @@ import id.homebase.resources.filesync_check_failed
 import id.homebase.resources.filesync_desktop_download
 import id.homebase.resources.filesync_desktop_title
 import id.homebase.resources.filesync_dismiss
-import id.homebase.resources.filesync_clear_selection
 import id.homebase.resources.filesync_files
 import id.homebase.resources.filesync_folder_deleted
 import id.homebase.resources.filesync_folder_empty
@@ -115,7 +113,6 @@ import id.homebase.resources.filesync_restore_confirm
 import id.homebase.resources.filesync_retry
 import id.homebase.resources.filesync_search
 import id.homebase.resources.filesync_select_all
-import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_show_deleted
 import id.homebase.resources.filesync_sort_ascending
 import id.homebase.resources.filesync_sort_descending
@@ -135,7 +132,12 @@ import org.jetbrains.compose.resources.stringResource
 
 // Remembered once per screen so rows that get it can skip recomposing.
 @Stable
-internal class FilesyncBrowserActions(val onAction: (FilesyncUiAction) -> Unit, private val onAskRestore: (FilesyncNode) -> Unit) {
+internal class FilesyncBrowserActions(
+    val onAction: (FilesyncUiAction) -> Unit,
+    private val onAskRestore: (FilesyncNode) -> Unit,
+    // Read when a menu opens, so rows needn't take the whole selection and redraw with every change to it.
+    val current: () -> FilesyncUiState = { FilesyncUiState() },
+) {
     fun click(node: FilesyncNode) {
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
     }
@@ -203,7 +205,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
 
     val currentFolder = uiState.path.last().nodeId
 
-    val actions = remember(viewModel) { FilesyncBrowserActions(viewModel::onAction) { askRestore = it } }
+    val actions = remember(viewModel) { FilesyncBrowserActions(viewModel::onAction, { askRestore = it }, { viewModel.uiState.value }) }
     val scope = FilesyncBrowserScope(
         uiState = uiState,
         uploads = uploads.filter { it.parentId == currentFolder },
@@ -235,7 +237,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
         scope.search.clearText()
     }
     BackHandler(enabled = searching, onBack = closeSearch)
-    val selecting = uiState.selection.ids.isNotEmpty()
+    val selecting = uiState.selecting
     // After the search's, so Back clears a selection made in the results before it closes the search.
     BackHandler(enabled = selecting) { scope.onAction(FilesyncUiAction.ClearSelection) }
     LaunchedEffect(searching) { if (searching) searchFocus.requestFocus() }
@@ -257,7 +259,13 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
     Scaffold(
         topBar = {
             if (selecting) {
-                SelectionTopBar(uiState.selected, scope.onAction)
+                FilesyncSelectionTopBar(uiState.selected.size, onClear = { scope.onAction(FilesyncUiAction.ClearSelection) }) {
+                    val removed = uiState.selectedRemovedIds
+                    if (removed.isNotEmpty()) RestoreButton { scope.onAction(FilesyncUiAction.Restore(removed)) }
+                    IconButton(onClick = { scope.onAction(FilesyncUiAction.SelectAll) }) {
+                        Icon(Icons.Default.SelectAll, contentDescription = stringResource(MR.string.filesync_select_all))
+                    }
+                }
             } else {
                 TopAppBar(
                     title = {
@@ -391,26 +399,6 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
                         onInfo = { onInfo(node) },
                     )
                 }
-            }
-        },
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SelectionTopBar(selected: List<FilesyncNode>, onAction: (FilesyncUiAction) -> Unit) {
-    TopAppBar(
-        title = { Text(pluralStringResource(MR.plurals.filesync_selected, selected.size, selected.size)) },
-        navigationIcon = {
-            IconButton(onClick = { onAction(FilesyncUiAction.ClearSelection) }) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_clear_selection))
-            }
-        },
-        actions = {
-            val removed = selected.removedIds()
-            if (removed.isNotEmpty()) RestoreButton { onAction(FilesyncUiAction.Restore(removed)) }
-            IconButton(onClick = { onAction(FilesyncUiAction.SelectAll) }) {
-                Icon(Icons.Default.SelectAll, contentDescription = stringResource(MR.string.filesync_select_all))
             }
         },
     )

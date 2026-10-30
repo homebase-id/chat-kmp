@@ -30,7 +30,7 @@ class FilesyncTableRowTest {
         node: FilesyncNode = this.node,
         selected: Boolean = false,
         selecting: Boolean = false,
-        group: List<FilesyncNode> = emptyList(),
+        inGroup: Boolean = false,
         block: ComposeUiTest.() -> Unit,
     ): List<FilesyncUiAction> {
         val actions = mutableListOf<FilesyncUiAction>()
@@ -45,7 +45,7 @@ class FilesyncTableRowTest {
                         actions = FilesyncBrowserActions(onAction = { actions += it }, onAskRestore = {}),
                         onSelect = { mode -> actions += FilesyncUiAction.Select(node.nodeId, mode) },
                         selecting = selecting,
-                        group = group,
+                        inGroup = inGroup,
                     )
                 }
             }
@@ -132,7 +132,7 @@ class FilesyncTableRowTest {
 
     @Test
     fun aRightClickInsideTheSelectionKeepsItAndOffersItsMenu() {
-        val actions = recorded(selected = true, selecting = true, group = listOf(node, folder)) {
+        val actions = recorded(selected = true, selecting = true, inGroup = true) {
             onNodeWithText(node.name).performMouseInput { rightClick() }
             waitForIdle()
             onNodeWithText("Clear selection").assertExists()
