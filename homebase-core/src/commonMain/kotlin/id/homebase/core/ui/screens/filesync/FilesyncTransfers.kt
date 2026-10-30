@@ -62,6 +62,8 @@ internal class FilesyncTransfers(
 
     fun sendZipToChat(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Chat)
 
+    fun webDropZip(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.WebDrop)
+
     fun cancel() {
         job?.cancel()
     }
@@ -105,9 +107,7 @@ internal class FilesyncTransfers(
                     Purpose.Save -> send(FilesyncUiEvent.SaveFile(path, source.name))
                     Purpose.Share -> send(FilesyncUiEvent.ShareFile(path))
                     Purpose.Chat -> send(FilesyncUiEvent.SendToChat(path, source.name))
-                    Purpose.WebDrop -> onWebDrop(
-                        PickedDropFile(path, source.name, detectContentTypeFromExtensionOrHint(source.name), (source as? Source.One)?.node?.sizeBytes ?: 0)
-                    )
+                    Purpose.WebDrop -> onWebDrop(PickedDropFile(path, source.name, detectContentTypeFromExtensionOrHint(source.name), repository.sizeOf(path)))
                 }
             } catch (e: CancellationException) {
                 browser?.let { withContext(NonCancellable) { runCatching { it.abort() } } }

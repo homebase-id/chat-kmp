@@ -587,7 +587,7 @@ internal fun TableRow(
         }
         if (inGroup) {
             FilesyncSelectionMenu(
-                state = actions.current(),
+                bulkActions = actions.current().bulkActions,
                 expanded = menuAt != null,
                 onDismiss = { menuAt = null },
                 onAction = actions.onAction,

@@ -487,7 +487,7 @@ internal fun SelectBox(state: ToggleableState, description: String? = null, onCl
 @Composable
 internal fun FilesyncSelectionTopBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.() -> Unit) {
     TopAppBar(
-        title = { Text(pluralStringResource(MR.plurals.filesync_selected, count, count)) },
+        title = { Text(pluralStringResource(MR.plurals.filesync_selected, count, count), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = {
             IconButton(onClick = onClear) {
                 Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_clear_selection))

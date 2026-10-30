@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -227,6 +228,7 @@ internal val FilesyncBulkAction.label: StringResource
         FilesyncBulkAction.Download -> MR.string.filesync_download
         FilesyncBulkAction.Share -> MR.string.share
         FilesyncBulkAction.Chat -> MR.string.filesync_send_chat
+        FilesyncBulkAction.WebDrop -> MR.string.filesync_send_webdrop
         FilesyncBulkAction.Restore -> MR.string.filesync_restore
     }
 
@@ -235,28 +237,23 @@ internal val FilesyncBulkAction.icon: ImageVector
         FilesyncBulkAction.Download -> Icons.Outlined.Download
         FilesyncBulkAction.Share -> Icons.Outlined.Share
         FilesyncBulkAction.Chat -> Icons.AutoMirrored.Outlined.Send
+        FilesyncBulkAction.WebDrop -> Icons.Outlined.Redeem
         FilesyncBulkAction.Restore -> Icons.Outlined.RestoreFromTrash
     }
 
-internal fun FilesyncBulkAction.action(state: FilesyncUiState): FilesyncUiAction = when (this) {
-    FilesyncBulkAction.Download -> FilesyncUiAction.DownloadSelected
-    FilesyncBulkAction.Share -> FilesyncUiAction.ShareSelected
-    FilesyncBulkAction.Chat -> FilesyncUiAction.SendSelectedToChat
-    FilesyncBulkAction.Restore -> FilesyncUiAction.Restore(state.selectedRemovedIds)
-}
-
-/** What can be done with the whole selection. */
+/** What can be done with the whole selection: [bulkActions], and on a wide layout clearing it. */
 @Composable
 internal fun FilesyncSelectionMenu(
-    state: FilesyncUiState,
+    bulkActions: List<FilesyncBulkAction>,
     expanded: Boolean,
     onDismiss: () -> Unit,
     onAction: (FilesyncUiAction) -> Unit,
     offset: DpOffset = DpOffset(0.dp, 0.dp),
+    withClear: Boolean = true,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
-        state.bulkActions.forEach { bulk -> MenuItem(bulk.label, onDismiss) { onAction(bulk.action(state)) } }
-        MenuItem(MR.string.filesync_clear_selection, onDismiss) { onAction(FilesyncUiAction.ClearSelection) }
+        bulkActions.forEach { bulk -> MenuItem(bulk.label, onDismiss) { onAction(FilesyncUiAction.Bulk(bulk)) } }
+        if (withClear) MenuItem(MR.string.filesync_clear_selection, onDismiss) { onAction(FilesyncUiAction.ClearSelection) }
     }
 }
 
@@ -287,9 +284,9 @@ internal fun FilesyncSelectionContent(state: FilesyncUiState, onAction: (Filesyn
                 }
                 val enabled = state.isEnabled(bulk)
                 if (i == 0) {
-                    Button(onClick = { onAction(bulk.action(state)) }, enabled = enabled, content = content)
+                    Button(onClick = { onAction(FilesyncUiAction.Bulk(bulk)) }, enabled = enabled, content = content)
                 } else {
-                    OutlinedButton(onClick = { onAction(bulk.action(state)) }, enabled = enabled, content = content)
+                    OutlinedButton(onClick = { onAction(FilesyncUiAction.Bulk(bulk)) }, enabled = enabled, content = content)
                 }
             }
             TextButton(onClick = { onAction(FilesyncUiAction.ClearSelection) }) {

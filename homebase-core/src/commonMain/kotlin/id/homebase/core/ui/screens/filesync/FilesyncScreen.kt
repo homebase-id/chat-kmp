@@ -260,16 +260,25 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
         topBar = {
             if (selecting) {
                 FilesyncSelectionTopBar(uiState.selected.size, onClear = { scope.onAction(FilesyncUiAction.ClearSelection) }) {
-                    uiState.bulkActions.forEach { bulk ->
-                        IconButton(
-                            onClick = { scope.onAction(bulk.action(uiState)) },
-                            enabled = uiState.isEnabled(bulk),
-                        ) {
-                            Icon(bulk.icon, contentDescription = stringResource(bulk.label))
+                    // Material's three: the first action, select all, and the rest behind More.
+                    val first = uiState.bulkActions.firstOrNull()
+                    if (first != null) {
+                        IconButton(onClick = { scope.onAction(FilesyncUiAction.Bulk(first)) }, enabled = uiState.isEnabled(first)) {
+                            Icon(first.icon, contentDescription = stringResource(first.label))
                         }
                     }
                     IconButton(onClick = { scope.onAction(FilesyncUiAction.SelectAll) }) {
                         Icon(Icons.Default.SelectAll, contentDescription = stringResource(MR.string.filesync_select_all))
+                    }
+                    val rest = uiState.bulkActions.drop(1)
+                    if (rest.isNotEmpty()) {
+                        var more by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { more = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.filesync_more))
+                            }
+                            FilesyncSelectionMenu(rest, expanded = more, onDismiss = { more = false }, onAction = scope.onAction, withClear = false)
+                        }
                     }
                 }
             } else {

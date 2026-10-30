@@ -193,11 +193,13 @@ class FilesyncViewModel(
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
-            FilesyncUiAction.DownloadSelected -> zipSelected(transfers::saveZip)
-
-            FilesyncUiAction.ShareSelected -> zipSelected(transfers::shareZip)
-
-            FilesyncUiAction.SendSelectedToChat -> zipSelected(transfers::sendZipToChat)
+            is FilesyncUiAction.Bulk -> when (action.bulk) {
+                FilesyncBulkAction.Download -> zipSelected(transfers::saveZip)
+                FilesyncBulkAction.Share -> zipSelected(transfers::shareZip)
+                FilesyncBulkAction.Chat -> zipSelected(transfers::sendZipToChat)
+                FilesyncBulkAction.WebDrop -> zipSelected(transfers::webDropZip)
+                FilesyncBulkAction.Restore -> onAction(FilesyncUiAction.Restore(_uiState.value.selectedRemovedIds))
+            }
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 

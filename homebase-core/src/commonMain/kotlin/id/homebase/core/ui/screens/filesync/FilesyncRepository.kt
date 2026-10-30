@@ -245,6 +245,8 @@ class FilesyncRepository(
         }
     }
 
+    fun sizeOf(path: String): Long = fileOperationsProvider.getFileSize(path)
+
     // The empty folder [writeToCache] made for it goes with the cache sweep.
     fun discard(path: String) {
         runCatching { fileOperationsProvider.deleteTempFile(path) }

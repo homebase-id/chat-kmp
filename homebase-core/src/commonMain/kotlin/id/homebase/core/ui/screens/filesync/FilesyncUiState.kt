@@ -73,6 +73,7 @@ data class FilesyncUiState(
             FilesyncBulkAction.Download.takeIf { live },
             FilesyncBulkAction.Share.takeIf { live && isMobile() },
             FilesyncBulkAction.Chat.takeIf { live },
+            FilesyncBulkAction.WebDrop.takeIf { live },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
     }
@@ -100,7 +101,7 @@ data class FilesyncUiState(
     }
 }
 
-enum class FilesyncBulkAction { Download, Share, Chat, Restore }
+enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Restore }
 
 sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
@@ -132,10 +133,8 @@ sealed interface FilesyncUiAction {
     data object ClearSelection : FilesyncUiAction
     /** Shift+arrow when [extend]. */
     data class MoveSelection(val by: Int, val extend: Boolean = false) : FilesyncUiAction
-    /** The selection's live nodes as one ZIP, saved or (on phones) shared. */
-    data object DownloadSelected : FilesyncUiAction
-    data object ShareSelected : FilesyncUiAction
-    data object SendSelectedToChat : FilesyncUiAction
+    /** [bulk] on the selection: its live nodes as one ZIP, or its deleted ones restored. */
+    data class Bulk(val bulk: FilesyncBulkAction) : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
