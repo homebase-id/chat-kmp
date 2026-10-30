@@ -199,6 +199,8 @@ class FilesyncViewModel(
 
             FilesyncUiAction.SendSelectedToChat -> zipSelected(transfers::sendZipToChat)
 
+            FilesyncUiAction.WebDropSelected -> zipSelected(transfers::webDropZip)
+
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
             is FilesyncUiAction.FilesPicked -> uploadQueue.add(_uiState.value.path.last().nodeId, action.files)

@@ -73,6 +73,7 @@ data class FilesyncUiState(
             FilesyncBulkAction.Download.takeIf { live },
             FilesyncBulkAction.Share.takeIf { live && isMobile() },
             FilesyncBulkAction.Chat.takeIf { live },
+            FilesyncBulkAction.WebDrop.takeIf { live },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
         )
     }
@@ -100,7 +101,7 @@ data class FilesyncUiState(
     }
 }
 
-enum class FilesyncBulkAction { Download, Share, Chat, Restore }
+enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Restore }
 
 sealed interface FilesyncUiAction {
     data object SetupClicked : FilesyncUiAction
@@ -136,6 +137,7 @@ sealed interface FilesyncUiAction {
     data object DownloadSelected : FilesyncUiAction
     data object ShareSelected : FilesyncUiAction
     data object SendSelectedToChat : FilesyncUiAction
+    data object WebDropSelected : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
 }
