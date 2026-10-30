@@ -31,9 +31,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.PhoneIphone
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.UploadFile
@@ -79,7 +80,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.fileDropTarget
 import id.homebase.core.ui.screens.filesync.components.FilesyncDownloadButtons
+import id.homebase.core.ui.screens.filesync.components.FilesyncInstallHere
+import id.homebase.core.ui.screens.filesync.components.FilesyncPhoneAppButtons
+import id.homebase.core.ui.screens.filesync.components.filesyncInstallHere
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.getUriHandler
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
 import id.homebase.core.ui.screens.privatedrive.SignInAgainLauncher
@@ -87,12 +92,14 @@ import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_get_title
+import id.homebase.resources.filesync_install_computer
+import id.homebase.resources.filesync_install_app
 import id.homebase.resources.delete
 import id.homebase.resources.cancel
 import id.homebase.resources.close
 import id.homebase.resources.create
 import id.homebase.resources.filesync_check_failed
-import id.homebase.resources.filesync_desktop_download
 import id.homebase.resources.filesync_desktop_title
 import id.homebase.resources.filesync_dismiss
 import id.homebase.resources.filesync_files
@@ -143,6 +150,18 @@ internal class FilesyncBrowserActions(
 ) {
     fun click(node: FilesyncNode) {
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
+    }
+
+    private var lastNameOpenAt = Long.MIN_VALUE / 2
+
+    /**
+     * A click on a name, which opens like a link. The second press of a double-click lands on whatever the first one
+     * opened, so presses within [doubleClickMs] of an open are ignored.
+     */
+    fun clickName(node: FilesyncNode, atMs: Long, doubleClickMs: Long) {
+        if (atMs - lastNameOpenAt < doubleClickMs) return
+        lastNameOpenAt = atMs
+        click(node)
     }
 }
 
@@ -214,6 +233,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         )
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
+    uiState.shareChooser?.let { FilesyncShareSheet(it, viewModel::onAction) }
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(
@@ -627,6 +647,8 @@ internal fun OverflowMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
+    val installHere = remember { filesyncInstallHere() }
+    val uriHandler = getUriHandler()
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.filesync_more))
@@ -659,21 +681,38 @@ internal fun OverflowMenu(
                     },
                 )
             }
-            DropdownMenuItem(
-                text = { Text(stringResource(MR.string.filesync_desktop_download)) },
-                leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = null) },
-                onClick = {
-                    expanded = false
-                    showDownloads = true
-                },
-            )
+            when (val here = installHere) {
+                // The phone app is Filesync's phone browser already.
+                FilesyncInstallHere.InApp -> Unit
+                is FilesyncInstallHere.Phone -> DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.filesync_install_app)) },
+                    leadingIcon = { Icon(Icons.Outlined.PhoneIphone, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        uriHandler.openUrl(here.app.url)
+                    },
+                )
+                is FilesyncInstallHere.Computer -> DropdownMenuItem(
+                    text = { Text(stringResource(here.os?.installLabel ?: MR.string.filesync_install_computer)) },
+                    leadingIcon = { Icon(Icons.Outlined.Computer, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        showDownloads = true
+                    },
+                )
+            }
         }
     }
     if (showDownloads) {
         AlertDialog(
             onDismissRequest = { showDownloads = false },
-            title = { Text(stringResource(MR.string.filesync_desktop_title)) },
-            text = { FilesyncDownloadButtons(modifier = Modifier.verticalScroll(rememberScrollState())) },
+            title = { Text(stringResource(MR.string.filesync_get_title)) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    FilesyncDownloadButtons()
+                    FilesyncPhoneAppButtons()
+                }
+            },
             confirmButton = { TextButton(onClick = { showDownloads = false }) { Text(stringResource(MR.string.close)) } },
         )
     }

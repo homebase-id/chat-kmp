@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -244,6 +245,9 @@ internal fun NodeName(
     modifier: Modifier = Modifier,
     fontWeight: FontWeight? = null,
     maxLines: Int = 1,
+    // On the name alone, not the badges or the space after it.
+    nameModifier: Modifier = Modifier,
+    textDecoration: TextDecoration? = null,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -251,7 +255,8 @@ internal fun NodeName(
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
             fontWeight = fontWeight,
-            modifier = Modifier.weight(1f, fill = false),
+            textDecoration = textDecoration,
+            modifier = Modifier.weight(1f, fill = false).then(nameModifier),
         )
         if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
         if (node.notOnComputers) NameBadge(stringResource(MR.string.filesync_not_on_computers))

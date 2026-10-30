@@ -185,21 +185,22 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.SaveClicked -> transfers.save(action.node)
 
-            is FilesyncUiAction.ShareClicked -> transfers.share(action.node)
+            is FilesyncUiAction.AskShare -> if (action.nodes.isNotEmpty()) _uiState.update { it.copy(shareChooser = action.nodes) }
 
-            is FilesyncUiAction.WebDropClicked -> transfers.webDrop(action.node)
+            FilesyncUiAction.DismissShare -> _uiState.update { it.copy(shareChooser = null) }
 
-            is FilesyncUiAction.SendToChatClicked -> transfers.sendToChat(action.node)
+            is FilesyncUiAction.ShareTo -> {
+                val nodes = _uiState.getAndUpdate { it.copy(shareChooser = null) }.shareChooser ?: return
+                transfers.send(nodes, zipName(nodes), action.target)
+            }
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
             is FilesyncUiAction.Bulk -> when (action.bulk) {
-                FilesyncBulkAction.Download -> zipSelected(transfers::saveZip)
-                FilesyncBulkAction.Share -> zipSelected(transfers::shareZip)
-                FilesyncBulkAction.Chat -> zipSelected(transfers::sendZipToChat)
-                FilesyncBulkAction.WebDrop -> zipSelected(transfers::webDropZip)
-                FilesyncBulkAction.Move -> onAction(FilesyncUiAction.AskMove(_uiState.value.selected.filter { it.removedMs == null && it.movable }))
-                FilesyncBulkAction.Delete -> onAction(FilesyncUiAction.AskDelete(_uiState.value.selected.filter { it.removedMs == null }))
+                FilesyncBulkAction.Download -> _uiState.value.liveSelected.takeIf { it.isNotEmpty() }?.let { transfers.saveZip(it, zipName(it)) }
+                FilesyncBulkAction.Share -> onAction(FilesyncUiAction.AskShare(_uiState.value.liveSelected))
+                FilesyncBulkAction.Move -> onAction(FilesyncUiAction.AskMove(_uiState.value.liveSelected.filter { it.movable }))
+                FilesyncBulkAction.Delete -> onAction(FilesyncUiAction.AskDelete(_uiState.value.liveSelected))
                 FilesyncBulkAction.Restore -> onAction(FilesyncUiAction.Restore(_uiState.value.selectedRemovedIds))
             }
 
@@ -284,12 +285,7 @@ class FilesyncViewModel(
         viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
     }
 
-    private fun zipSelected(start: (List<FilesyncNode>, String) -> Unit) {
-        val state = _uiState.value
-        val nodes = state.selected.filter { it.removedMs == null }
-        if (nodes.isEmpty()) return
-        start(nodes, FilesyncArchive.name(nodes, state.path.last().name, ARCHIVE_FALLBACK_NAME))
-    }
+    private fun zipName(nodes: List<FilesyncNode>) = FilesyncArchive.name(nodes, _uiState.value.path.last().name, ARCHIVE_FALLBACK_NAME)
 
     private var moveListJob: Job? = null
 
