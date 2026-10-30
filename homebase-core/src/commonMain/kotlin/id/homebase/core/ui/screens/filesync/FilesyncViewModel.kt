@@ -198,6 +198,7 @@ class FilesyncViewModel(
                 FilesyncBulkAction.Share -> zipSelected(transfers::shareZip)
                 FilesyncBulkAction.Chat -> zipSelected(transfers::sendZipToChat)
                 FilesyncBulkAction.WebDrop -> zipSelected(transfers::webDropZip)
+                FilesyncBulkAction.Move -> onAction(FilesyncUiAction.AskMove(_uiState.value.selected.filter { it.removedMs == null }))
                 FilesyncBulkAction.Delete -> onAction(FilesyncUiAction.AskDelete(_uiState.value.selected.filter { it.removedMs == null }))
                 FilesyncBulkAction.Restore -> onAction(FilesyncUiAction.Restore(_uiState.value.selectedRemovedIds))
             }
@@ -237,6 +238,38 @@ class FilesyncViewModel(
                 }
             }
 
+            is FilesyncUiAction.AskMove -> if (action.nodes.isNotEmpty()) {
+                // Starts where the browser is, unless that is a deleted folder, where nothing may go.
+                val path = _uiState.value.path.takeWhile { it.removedMs == null }
+                showMoveFolder(FilesyncMovePicker(action.nodes, path))
+            }
+
+            is FilesyncUiAction.MovePickerOpen -> _uiState.value.movePicker?.let { picker ->
+                if (!picker.isMoving(action.folder)) showMoveFolder(picker.copy(path = picker.path + FilesyncCrumb(action.folder.nodeId, action.folder.name)))
+            }
+
+            is FilesyncUiAction.MovePickerToCrumb -> _uiState.value.movePicker?.let { picker ->
+                showMoveFolder(picker.copy(path = picker.path.take(action.index + 1)))
+            }
+
+            FilesyncUiAction.DismissMove -> {
+                moveListJob?.cancel()
+                _uiState.update { it.copy(movePicker = null) }
+            }
+
+            FilesyncUiAction.ConfirmMove -> {
+                val picker = _uiState.value.movePicker?.takeIf { it.canMoveHere } ?: return
+                moveListJob?.cancel()
+                _uiState.update { it.copy(movePicker = null) }
+                val handles = transfers.handles
+                viewModelScope.launch {
+                    val target = picker.path.last()
+                    reportWrite(FilesyncUiEvent.Moved(target.name), FilesyncError.MoveFailed, _events::send) {
+                        editor.move(picker.nodes, handles, target.nodeId, picker.path.map { it.nodeId })
+                    }
+                }
+            }
+
             FilesyncUiAction.MakePrivate -> {
                 val url = privateDriveOptIn.makePrivateUrl(FilesyncPrivateDrive, extendPermissionViewModel.callbackUrl())
                 if (url != null) _events.trySend(FilesyncUiEvent.OpenOwnerConsole(url))
@@ -260,6 +293,25 @@ class FilesyncViewModel(
         val nodes = state.selected.filter { it.removedMs == null }
         if (nodes.isEmpty()) return
         start(nodes, FilesyncArchive.name(nodes, state.path.last().name, ARCHIVE_FALLBACK_NAME))
+    }
+
+    private var moveListJob: Job? = null
+
+    private fun showMoveFolder(picker: FilesyncMovePicker) {
+        _uiState.update { it.copy(movePicker = picker.copy(folders = emptyList(), loading = true, loadFailed = false)) }
+        moveListJob?.cancel()
+        moveListJob = viewModelScope.launch {
+            val shown = try {
+                val listed = repository.listFolder(picker.path.last().nodeId).nodes.values
+                picker.copy(folders = listed.filter { it.isFolder }.sortedBy { it.nameKey }, loading = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "listing a folder to move into failed" }
+                picker.copy(loading = false, loadFailed = true)
+            }
+            _uiState.update { state -> if (state.movePicker?.path == picker.path) state.copy(movePicker = shown) else state }
+        }
     }
 
     private fun open(node: FilesyncNode) {

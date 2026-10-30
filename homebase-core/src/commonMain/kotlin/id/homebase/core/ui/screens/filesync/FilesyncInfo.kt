@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Delete
@@ -75,6 +76,7 @@ import id.homebase.resources.filesync_clear_selection
 import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_selected
 import id.homebase.resources.delete
+import id.homebase.resources.filesync_move
 import id.homebase.resources.filesync_send_chat
 import id.homebase.resources.filesync_send_webdrop
 import id.homebase.resources.share
@@ -224,7 +226,10 @@ internal fun FilesyncNodeMenu(
             MenuItem(MR.string.filesync_send_chat, onDismiss) { onAction(FilesyncUiAction.SendToChatClicked(node)) }
             MenuItem(MR.string.filesync_send_webdrop, onDismiss) { onAction(FilesyncUiAction.WebDropClicked(node)) }
         }
-        if (node.removedMs == null && canDelete) MenuItem(MR.string.delete, onDismiss) { onAction(FilesyncUiAction.AskDelete(listOf(node))) }
+        if (node.removedMs == null) {
+            MenuItem(MR.string.filesync_move, onDismiss) { onAction(FilesyncUiAction.AskMove(listOf(node))) }
+            if (canDelete) MenuItem(MR.string.delete, onDismiss) { onAction(FilesyncUiAction.AskDelete(listOf(node))) }
+        }
     }
 }
 
@@ -234,6 +239,7 @@ internal val FilesyncBulkAction.label: StringResource
         FilesyncBulkAction.Share -> MR.string.share
         FilesyncBulkAction.Chat -> MR.string.filesync_send_chat
         FilesyncBulkAction.WebDrop -> MR.string.filesync_send_webdrop
+        FilesyncBulkAction.Move -> MR.string.filesync_move
         FilesyncBulkAction.Delete -> MR.string.delete
         FilesyncBulkAction.Restore -> MR.string.filesync_restore
     }
@@ -244,6 +250,7 @@ internal val FilesyncBulkAction.icon: ImageVector
         FilesyncBulkAction.Share -> Icons.Outlined.Share
         FilesyncBulkAction.Chat -> Icons.AutoMirrored.Outlined.Send
         FilesyncBulkAction.WebDrop -> Icons.Outlined.Redeem
+        FilesyncBulkAction.Move -> Icons.AutoMirrored.Outlined.DriveFileMove
         FilesyncBulkAction.Delete -> Icons.Outlined.Delete
         FilesyncBulkAction.Restore -> Icons.Outlined.RestoreFromTrash
     }

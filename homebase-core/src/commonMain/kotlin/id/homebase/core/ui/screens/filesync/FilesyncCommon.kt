@@ -103,6 +103,8 @@ import id.homebase.resources.filesync_archive_damaged
 import id.homebase.resources.filesync_archive_listing
 import id.homebase.resources.filesync_archive_progress
 import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_move_failed
+import id.homebase.resources.filesync_moved
 import id.homebase.resources.filesync_removed
 import id.homebase.resources.filesync_role_folder_returns
 import id.homebase.resources.filesync_undo
@@ -169,6 +171,7 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
                 is FilesyncUiEvent.Error -> show(
                     when (event.error) {
+                        FilesyncError.MoveFailed -> MR.string.filesync_move_failed
                         FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
                         FilesyncError.Damaged -> MR.string.filesync_damaged
                         FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
@@ -192,6 +195,9 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.Removed -> scope.launch {
                     val undo = snackbarHostState.showSnackbar(getString(MR.string.filesync_removed), actionLabel = getString(MR.string.filesync_undo))
                     if (undo == SnackbarResult.ActionPerformed) onUndoRemove(event.nodeIds)
+                }
+                is FilesyncUiEvent.Moved -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_moved, event.folderName ?: getString(MR.string.filesync_label)))
                 }
                 is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))

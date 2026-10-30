@@ -3060,6 +3060,12 @@
     <string name="filesync_remove_confirm">Delete %1$s? It goes to Recently deleted on every device, where it can be restored for 30 days.</string>
     <string name="filesync_removed">Moved to Recently deleted</string>
     <string name="filesync_undo">Undo</string>
+    <string name="filesync_move">Move to…</string>
+    <string name="filesync_move_title">Move %1$s to</string>
+    <string name="filesync_move_here">Move here</string>
+    <string name="filesync_moved">Moved to %1$s</string>
+    <string name="filesync_move_failed">Couldn't move it.</string>
+    <string name="filesync_no_folders">No folders here.</string>
     <string name="filesync_archive_listing">Gathering files…</string>
     <string name="filesync_archive_progress">Zipping · %1$s of %2$s</string>
     <string name="filesync_archive_cancel">Stop zipping</string>
