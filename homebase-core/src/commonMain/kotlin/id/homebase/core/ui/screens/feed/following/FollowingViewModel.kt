@@ -8,7 +8,6 @@ import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.core.settings.DeveloperPreferences
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -37,7 +36,6 @@ class FollowingViewModel(
     private val followProvider: FollowProvider,
     private val contactService: ContactService,
     private val connectionService: ConnectionService,
-    private val developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FollowingUiState())
@@ -88,12 +86,7 @@ class FollowingViewModel(
                 _uiState.update { it.copy(connections = connected) }
             }
         }
-        viewModelScope.launch {
-            developerPreferences.advancedFeedEnabled.collect { enabled ->
-                _uiState.update { it.copy(advancedFeed = enabled) }
-                if (enabled && _uiState.value.peopleYouMayKnowBasis == null) loadPeopleYouMayKnow(refresh = false)
-            }
-        }
+        loadPeopleYouMayKnow(refresh = false)
     }
 
     fun selectTab(tab: FollowTab) {

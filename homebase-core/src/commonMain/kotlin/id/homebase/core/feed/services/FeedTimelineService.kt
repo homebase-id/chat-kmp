@@ -69,10 +69,6 @@ class FeedTimelineService(
     // cold-loading, which would throw those pages away.
     private var pagedPastFirstPage = false
 
-    // Lower-cased domains whose posts alone are shown; empty = everyone. Applied in the local query, so paging
-    // walks back through everything synced from them rather than hiding posts from pages already loaded.
-    private var senders: Set<String> = emptySet()
-
     private val _timeline = MutableStateFlow<List<FeedPostItem>>(emptyList())
     val timeline: StateFlow<List<FeedPostItem>> = _timeline.asStateFlow()
 
@@ -152,10 +148,10 @@ class FeedTimelineService(
             val active = credentialsManager.getActiveCredentials() ?: return
             val identityId = active.getIdentityId()
 
-            val (gen, only) = synchronized(lock) { ++generation to senders }
+            val gen = synchronized(lock) { ++generation }
 
             // Query outside the lock, then apply the rebuild atomically so the collector never sees a half-cleared map.
-            val pages = sourceDrives.associateWith { queryPage(identityId, it, cursor = null, only) }
+            val pages = sourceDrives.associateWith { queryPage(identityId, it, cursor = null) }
 
             val size = synchronized(lock) {
                 if (generation != gen) return@synchronized null
@@ -187,11 +183,11 @@ class FeedTimelineService(
         try {
             val active = credentialsManager.getActiveCredentials() ?: return
             val identityId = active.getIdentityId()
-            val (gen, only) = synchronized(lock) { generation to senders }
+            val gen = synchronized(lock) { generation }
 
             var cursor: QueryBatchCursor? = null
             repeat(TopUpPageCap) {
-                val page = queryPage(identityId, driveId, cursor, only)
+                val page = queryPage(identityId, driveId, cursor)
                 if (page.records.isEmpty()) return
                 val (stale, overlaps) = synchronized(lock) {
                     val overlap = page.records.any { feedIdOf(it)?.let(byId::containsKey) == true }
@@ -209,7 +205,7 @@ class FeedTimelineService(
         }
     }
 
-    private suspend fun queryPage(identityId: Uuid, drive: Uuid, cursor: QueryBatchCursor?, only: Set<String>) =
+    private suspend fun queryPage(identityId: Uuid, drive: Uuid, cursor: QueryBatchCursor?) =
         QueryBatch(identityId).queryBatchAsync(
             dbm = databaseManager,
             driveId = drive,
@@ -219,7 +215,6 @@ class FeedTimelineService(
             sortField = QueryBatchSortField.UserDate,
             fileSystemType = 0,
             filetypesAnyOf = listOf(FeedProtocol.PostFileType),
-            senderIdAnyOf = only.takeIf { it.isNotEmpty() }?.toList(),
         )
 
     /** Caller must hold [lock]. Keeps the newer-published copy. */
@@ -235,18 +230,6 @@ class FeedTimelineService(
     }
 
     suspend fun refresh() = coldLoad()
-
-    /** Shows only posts sent by [domains] (empty = everyone), rebuilding from the head. A repeat is a no-op. */
-    suspend fun setSenderFilter(domains: Set<String>) {
-        val only = domains.mapTo(HashSet()) { it.lowercase() }
-        val changed = synchronized(lock) {
-            if (only == senders) false else {
-                senders = only
-                true
-            }
-        }
-        if (changed) coldLoad()
-    }
 
     // A followed identity's post lands on the feed drive as a reference with NO uniqueId, only a globalTransitId.
     // Keying on uniqueId alone dropped every one, so live pushes for followed posts never applied incrementally.
@@ -267,8 +250,6 @@ class FeedTimelineService(
                     if (byId.remove(id) != null) dirty = true
                     continue
                 }
-                // A live push from someone outside the filter would otherwise join a filtered feed
-                if (senders.isNotEmpty() && file.fileMetadata.senderOdinId?.domainName !in senders) continue
                 val item = file.toFeedPostItem() ?: continue
                 byId[id] = item
                 dirty = true
@@ -297,13 +278,13 @@ class FeedTimelineService(
                 null
             } else {
                 loadingMore = true
-                Triple(generation, nextPage.toMap(), senders)
+                generation to nextPage.toMap()
             }
         } ?: return
-        val (gen, pending, only) = claim
+        val (gen, pending) = claim
 
         try {
-            val pages = pending.mapValues { (drive, cursor) -> queryPage(identityId, drive, cursor, only) }
+            val pages = pending.mapValues { (drive, cursor) -> queryPage(identityId, drive, cursor) }
 
             val applied = synchronized(lock) {
                 if (generation != gen) return@synchronized false
@@ -333,7 +314,6 @@ class FeedTimelineService(
             byId.clear()
             rewindPaging()
             pagedPastFirstPage = false
-            senders = emptySet()
             // Discard any page fetch still in flight for the identity being logged out.
             generation++
         }

@@ -26,19 +26,8 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         _profileCardEnabled.value = value
     }
 
-    // The feed's following row, follow filters in Contacts, and People you may know (needs odin-core #1626)
-    private val _advancedFeedEnabled = MutableStateFlow(readBoolean(ADVANCED_FEED_KEY, default = false))
-    val advancedFeedEnabled: StateFlow<Boolean> = _advancedFeedEnabled.asStateFlow()
-
-    suspend fun setAdvancedFeedEnabled(value: Boolean) {
-        if (_advancedFeedEnabled.value == value) return
-        keyValue.upsertValue(ADVANCED_FEED_KEY, encode(value))
-        _advancedFeedEnabled.value = value
-    }
-
     fun reload() {
         _profileCardEnabled.value = readBoolean(PROFILE_CARD_KEY, default = false)
-        _advancedFeedEnabled.value = readBoolean(ADVANCED_FEED_KEY, default = false)
     }
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
@@ -56,6 +45,5 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         // 0a09xx — developer flags. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx,
         // 0a04xx and 0a07xx are taken, and DiceRollPreferences writes 0a0801-0a0803.
         val PROFILE_CARD_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0901")
-        val ADVANCED_FEED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0902")
     }
 }

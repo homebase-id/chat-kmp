@@ -17,8 +17,6 @@ data class FollowingUiState(
     val errorMessage: String? = null,
     val selectedTab: FollowTab = FollowTab.Following,
     val isFollowByAddressOpen: Boolean = false,
-    /** Developer flag: People you may know, on the Suggested tab. */
-    val advancedFeed: Boolean = false,
     val peopleYouMayKnow: List<FollowerSuggestion> = emptyList(),
     val peopleYouMayKnowLoading: Boolean = false,
     /** "Based on N of your M connections"; null until loaded. */

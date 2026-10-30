@@ -1087,9 +1087,7 @@ fun AppNavHost(
                                     // Read on each Feed entry so the Settings toggle takes effect on return.
                                     val useNativeFeed = koinInject<UserPreferences>().useNativeFeed
                                     if (useNativeFeed) {
-                                        val advancedFeed by koinInject<DeveloperPreferences>().advancedFeedEnabled
-                                        .collectAsStateWithLifecycle()
-                                    val scrollFeedToTop by entry.savedStateHandle
+                                        val scrollFeedToTop by entry.savedStateHandle
                                             .getStateFlow(SCROLL_TO_TOP_KEY, false)
                                             .collectAsStateWithLifecycle()
                                         // ponytail: post composer disabled for now — the feed is read-only
@@ -1102,7 +1100,6 @@ fun AppNavHost(
                                             onNavigateToFollowing = {
                                                 navController.navigate(Route.Following)
                                             },
-                                            advancedFeed = advancedFeed,
                                             onAuthorClick = {
                                                 navController.navigateToIdentity(it.domainName)
                                             },

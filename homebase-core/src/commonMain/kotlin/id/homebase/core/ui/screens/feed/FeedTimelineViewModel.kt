@@ -206,17 +206,6 @@ class FeedTimelineViewModel(
         }
     }
 
-    /** Shows only posts from [domains] (empty = everyone); the service rebuilds the feed from its local index. */
-    fun setAuthorFilter(domains: Set<String>) {
-        viewModelScope.launch {
-            try {
-                timelineService.setSenderFilter(domains)
-            } catch (t: Throwable) {
-                Logger.e(throwable = t, tag = TAG) { "setAuthorFilter failed: ${t.message}" }
-            }
-        }
-    }
-
     // isRefreshing is held true until refresh() returns and cleared in finally, so neither a failure nor an
     // early timeline re-emit can strand the indicator.
     fun refresh() {

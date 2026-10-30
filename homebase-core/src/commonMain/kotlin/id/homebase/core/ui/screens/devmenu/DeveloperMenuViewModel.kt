@@ -66,20 +66,11 @@ class DeveloperMenuViewModel(
                 _uiState.update { it.copy(profileCardEnabled = enabled) }
             }
         }
-        viewModelScope.launch {
-            developerPreferences.advancedFeedEnabled.collect { enabled ->
-                _uiState.update { it.copy(advancedFeedEnabled = enabled) }
-            }
-        }
     }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
         if (action is DeveloperMenuUiAction.SetProfileCardEnabled) {
             viewModelScope.launch { developerPreferences.setProfileCardEnabled(action.enabled) }
-            return
-        }
-        if (action is DeveloperMenuUiAction.SetAdvancedFeedEnabled) {
-            viewModelScope.launch { developerPreferences.setAdvancedFeedEnabled(action.enabled) }
             return
         }
         when (action) {
@@ -346,7 +337,6 @@ class DeveloperMenuViewModel(
 @Immutable
 data class DeveloperMenuUiState(
     val profileCardEnabled: Boolean = false,
-    val advancedFeedEnabled: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,
     val networkDiagnostics: NetworkDiagnostics? = null,
@@ -362,7 +352,6 @@ sealed interface DeveloperMenuUiEvent {
 sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
     data class SetProfileCardEnabled(val enabled: Boolean) : DeveloperMenuUiAction
-    data class SetAdvancedFeedEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction
