@@ -91,7 +91,9 @@ class PayloadDownloadService(
         keyHeader: KeyHeader,
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
-    ): String? = export(driveId, fileId, key, keyHeader, destination, onProgress, fileOperationsProvider)
+    ): String? = exportTo(destination) { path ->
+        driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOperationsProvider.writeStream(path, it) }
+    }
 
     /** [exportToTemp] that checks the plaintext against [hash] as it streams; [keyHeader] is the payload's key. */
     suspend fun exportVerified(
@@ -102,34 +104,39 @@ class PayloadDownloadService(
         hash: PayloadHash,
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
-    ): String? {
-        val algorithm = hash.knownAlgorithm ?: throw PayloadDamagedException("unknown algorithm ${hash.algorithm}")
-        val expected = hash.plaintextContentHash(keyHeader)
-            ?: throw PayloadDamagedException("unreadable ${hash.algorithm} hash")
-        val hasher = algorithm.newHasher()
-        val hashingFileOps = object : FileOperationsProvider by fileOperationsProvider {
-            override suspend fun writeStream(path: String, data: Flow<ByteArray>) =
-                fileOperationsProvider.writeStream(path, data.hashedBy(hasher))
-        }
-        // Per network chunk otherwise: thousands of UI updates for a large file.
-        val path = export(driveId, fileId, key, keyHeader, destination, onProgress?.let(::wholePercentFractions), hashingFileOps)
-            ?: return null
-        if (!hasher.digest().contentEquals(expected)) {
-            runCatching { fileOperationsProvider.deleteTempFile(path) }
-            throw PayloadDamagedException("${hash.algorithm} mismatch")
-        }
-        return path
+    ): String? = exportTo(destination) { path ->
+        streamVerified(driveId, fileId, key, keyHeader, hash, onProgress) { fileOperationsProvider.writeStream(path, it) }
     }
 
-    private suspend fun export(
+    /**
+     * The decrypted payload to [consume] as it streams in, checked against [hash] on the way. A mismatch only shows
+     * once every byte was handed on, so whatever [consume] wrote must be thrown away on [PayloadDamagedException].
+     * False when the payload 404s.
+     */
+    suspend fun streamVerified(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
         keyHeader: KeyHeader,
-        destination: ExportDestination,
-        onProgress: ((Float) -> Unit)?,
-        fileOps: FileOperationsProvider,
-    ): String? {
+        hash: PayloadHash,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean {
+        val algorithm = hash.knownAlgorithm ?: throw PayloadDamagedException("unknown algorithm ${hash.algorithm}")
+        val expected = hash.plaintextContentHash(keyHeader)
+            ?: throw PayloadDamagedException("unreadable ${hash.algorithm} hash")
+        val hasher = algorithm.newHasher()
+        // Per network chunk otherwise: thousands of UI updates for a large file.
+        val found = driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress?.let(::wholePercentFractions)) {
+            consume(it.hashedBy(hasher))
+        }
+        if (!found) return false
+        if (!hasher.digest().contentEquals(expected)) throw PayloadDamagedException("${hash.algorithm} mismatch")
+        return true
+    }
+
+    // A cancelled or failed export must not leave a partial plaintext copy behind.
+    private suspend fun exportTo(destination: ExportDestination, write: suspend (String) -> Boolean): String? {
         val path = when (destination) {
             is ExportDestination.ShareOutbound ->
                 fileOperationsProvider.createShareOutboundPath(destination.suffix)
@@ -139,17 +146,8 @@ class PayloadDownloadService(
                 AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.EXPORT) +
                     "/" + destination.prefix + randomToken() + destination.suffix
         }
-        // A cancelled or failed export must not leave a partial plaintext copy behind.
         val ok = try {
-            driveFileProvider.streamPayloadDecryptedToPath(
-                driveId = driveId,
-                fileId = fileId,
-                key = key,
-                keyHeader = keyHeader,
-                outputPath = path,
-                fileOps = fileOps,
-                onProgress = onProgress,
-            )
+            write(path)
         } catch (t: Throwable) {
             runCatching { fileOperationsProvider.deleteTempFile(path) }
             throw t

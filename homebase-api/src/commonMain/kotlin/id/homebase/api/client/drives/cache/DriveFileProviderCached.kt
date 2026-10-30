@@ -29,6 +29,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import io.ktor.client.HttpClient
@@ -295,14 +296,23 @@ class DriveFileProviderCached(
             outputPath: String,
             fileOps: FileOperationsProvider = fileOperationsProvider,
             onProgress: ((Float) -> Unit)? = null,
+    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOps.writeStream(outputPath, it) }
+
+    /** The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. */
+    suspend fun streamPayloadDecrypted(
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            keyHeader: KeyHeader,
+            onProgress: ((Float) -> Unit)? = null,
+            consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
         if (fileId in ephemeralFiles) {
-            return delegate.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+            return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
         }
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
         val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
-                ?: return delegate.streamPayloadDecryptedToPath(
-                        driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+                ?: return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
 
         return snapshot.use { snap ->
             val encryptedFlow = channelFlow<ByteArray> {
@@ -323,8 +333,7 @@ class DriveFileProviderCached(
                 }
             }
 
-            val decryptedFlow = AesCbc.streamDecryptWithCbc(encryptedFlow, keyHeader.aesKey, keyHeader.iv)
-            fileOps.writeStream(outputPath, decryptedFlow)
+            consume(AesCbc.streamDecryptWithCbc(encryptedFlow, keyHeader.aesKey, keyHeader.iv))
             // Cache hit is local-disk speed — progress jumps straight to done.
             onProgress?.invoke(1f)
             true
