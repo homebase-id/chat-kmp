@@ -185,19 +185,34 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.SaveClicked -> transfers.save(action.node)
 
-            is FilesyncUiAction.ShareClicked -> transfers.share(action.node)
+            is FilesyncUiAction.AskShare -> if (action.nodes.isNotEmpty()) _uiState.update { it.copy(shareChooser = action.nodes) }
 
-            is FilesyncUiAction.WebDropClicked -> transfers.webDrop(action.node)
+            FilesyncUiAction.DismissShare -> _uiState.update { it.copy(shareChooser = null) }
 
-            is FilesyncUiAction.SendToChatClicked -> transfers.sendToChat(action.node)
+            is FilesyncUiAction.ShareTo -> {
+                val nodes = _uiState.getAndUpdate { it.copy(shareChooser = null) }.shareChooser ?: return
+                val one = nodes.singleOrNull()?.takeIf { !it.isFolder }
+                if (one != null) {
+                    when (action.target) {
+                        FilesyncShareTarget.Chat -> transfers.sendToChat(one)
+                        FilesyncShareTarget.WebDrop -> transfers.webDrop(one)
+                        FilesyncShareTarget.OtherApp -> transfers.share(one)
+                    }
+                } else {
+                    val name = FilesyncArchive.name(nodes, _uiState.value.path.last().name, ARCHIVE_FALLBACK_NAME)
+                    when (action.target) {
+                        FilesyncShareTarget.Chat -> transfers.sendZipToChat(nodes, name)
+                        FilesyncShareTarget.WebDrop -> transfers.webDropZip(nodes, name)
+                        FilesyncShareTarget.OtherApp -> transfers.shareZip(nodes, name)
+                    }
+                }
+            }
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
             is FilesyncUiAction.Bulk -> when (action.bulk) {
                 FilesyncBulkAction.Download -> zipSelected(transfers::saveZip)
-                FilesyncBulkAction.Share -> zipSelected(transfers::shareZip)
-                FilesyncBulkAction.Chat -> zipSelected(transfers::sendZipToChat)
-                FilesyncBulkAction.WebDrop -> zipSelected(transfers::webDropZip)
+                FilesyncBulkAction.Share -> onAction(FilesyncUiAction.AskShare(_uiState.value.selected.filter { it.removedMs == null }))
                 FilesyncBulkAction.Move -> onAction(FilesyncUiAction.AskMove(_uiState.value.selected.filter { it.removedMs == null && it.movable }))
                 FilesyncBulkAction.Delete -> onAction(FilesyncUiAction.AskDelete(_uiState.value.selected.filter { it.removedMs == null }))
                 FilesyncBulkAction.Restore -> onAction(FilesyncUiAction.Restore(_uiState.value.selectedRemovedIds))

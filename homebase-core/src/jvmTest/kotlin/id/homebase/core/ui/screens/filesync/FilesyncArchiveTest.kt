@@ -111,10 +111,11 @@ class FilesyncArchiveTest {
             .copy(selection = FilesyncSelection(nodes.map { it.nodeId }.toSet()))
             .bulkActions
 
-        assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Chat, FilesyncBulkAction.WebDrop, FilesyncBulkAction.Move, FilesyncBulkAction.Delete), offered(live))
+        assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Share, FilesyncBulkAction.Move, FilesyncBulkAction.Delete), offered(live))
         assertEquals(listOf(FilesyncBulkAction.Restore), offered(gone))
-        assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Chat, FilesyncBulkAction.WebDrop, FilesyncBulkAction.Move, FilesyncBulkAction.Delete, FilesyncBulkAction.Restore), offered(live, gone))
+        assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Share, FilesyncBulkAction.Move, FilesyncBulkAction.Delete, FilesyncBulkAction.Restore), offered(live, gone))
         assertTrue(FilesyncUiState().bulkActions.isEmpty())
+        assertEquals(listOf(FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop), FilesyncShareTarget.offered, "no other apps to hand to off a phone")
     }
 
     private companion object {

@@ -73,6 +73,8 @@ data class FilesyncUiState(
     /** Asked about before they go to Recently deleted. */
     val confirmDelete: List<FilesyncNode>? = null,
     val movePicker: FilesyncMovePicker? = null,
+    /** What Share asks a target for. */
+    val shareChooser: List<FilesyncNode>? = null,
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
 
@@ -91,9 +93,7 @@ data class FilesyncUiState(
         val live = selected.size > selectedRemovedIds.size
         listOfNotNull(
             FilesyncBulkAction.Download.takeIf { live },
-            FilesyncBulkAction.Share.takeIf { live && isMobile() },
-            FilesyncBulkAction.Chat.takeIf { live },
-            FilesyncBulkAction.WebDrop.takeIf { live },
+            FilesyncBulkAction.Share.takeIf { live },
             FilesyncBulkAction.Move.takeIf { selected.any { it.removedMs == null && it.movable } },
             FilesyncBulkAction.Delete.takeIf { live && !inDeletedFolder },
             FilesyncBulkAction.Restore.takeIf { selectedRemovedIds.isNotEmpty() },
@@ -126,7 +126,15 @@ data class FilesyncUiState(
     }
 }
 
-enum class FilesyncBulkAction { Download, Share, Chat, WebDrop, Move, Delete, Restore }
+enum class FilesyncBulkAction { Download, Share, Move, Delete, Restore }
+
+/** Where Share sends: one file as itself, anything more as one ZIP. Another app only on phones, where there are any. */
+enum class FilesyncShareTarget { Chat, WebDrop, OtherApp;
+
+    companion object {
+        val offered: List<FilesyncShareTarget> get() = if (isMobile()) entries else listOf(Chat, WebDrop)
+    }
+}
 
 private val WRITES = setOf(FilesyncBulkAction.Move, FilesyncBulkAction.Delete, FilesyncBulkAction.Restore)
 
@@ -141,9 +149,9 @@ sealed interface FilesyncUiAction {
     data class NavigateToCrumb(val index: Int) : FilesyncUiAction
     data class NodeClicked(val node: FilesyncNode) : FilesyncUiAction
     data class SaveClicked(val node: FilesyncNode) : FilesyncUiAction
-    data class ShareClicked(val node: FilesyncNode) : FilesyncUiAction
-    data class WebDropClicked(val node: FilesyncNode) : FilesyncUiAction
-    data class SendToChatClicked(val node: FilesyncNode) : FilesyncUiAction
+    data class AskShare(val nodes: List<FilesyncNode>) : FilesyncUiAction
+    data class ShareTo(val target: FilesyncShareTarget) : FilesyncUiAction
+    data object DismissShare : FilesyncUiAction
     data object CancelTransfer : FilesyncUiAction
     data class SaveHandedOff(val path: String) : FilesyncUiAction
     data class FilesPicked(val files: List<PlatformFile>) : FilesyncUiAction

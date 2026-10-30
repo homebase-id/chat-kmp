@@ -3061,6 +3061,9 @@
     <string name="filesync_removed">Moved to Recently deleted</string>
     <string name="filesync_undo">Undo</string>
     <string name="filesync_move">Move to…</string>
+    <string name="filesync_share">Share…</string>
+    <string name="filesync_share_title">Share %1$s</string>
+    <string name="filesync_share_other">Other apps</string>
     <string name="filesync_move_title">Move %1$s to</string>
     <string name="filesync_move_here">Move here</string>
     <string name="filesync_moved">Moved to %1$s</string>

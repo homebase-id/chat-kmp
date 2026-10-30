@@ -12,11 +12,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -39,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.common.util.formatBytes
 import id.homebase.core.util.FileKind
-import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_folder
@@ -77,9 +74,7 @@ import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_selected
 import id.homebase.resources.delete
 import id.homebase.resources.filesync_move
-import id.homebase.resources.filesync_send_chat
-import id.homebase.resources.filesync_send_webdrop
-import id.homebase.resources.share
+import id.homebase.resources.filesync_share
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -222,11 +217,9 @@ internal fun FilesyncNodeMenu(
         } else if (!node.isFolder) {
             MenuItem(MR.string.filesync_download, onDismiss) { onAction(FilesyncUiAction.SaveClicked(node)) }
             // Elsewhere the platform's share is a save, which Save already is.
-            if (isMobile()) MenuItem(MR.string.share, onDismiss) { onAction(FilesyncUiAction.ShareClicked(node)) }
-            MenuItem(MR.string.filesync_send_chat, onDismiss) { onAction(FilesyncUiAction.SendToChatClicked(node)) }
-            MenuItem(MR.string.filesync_send_webdrop, onDismiss) { onAction(FilesyncUiAction.WebDropClicked(node)) }
         }
         if (node.removedMs == null) {
+            MenuItem(MR.string.filesync_share, onDismiss) { onAction(FilesyncUiAction.AskShare(listOf(node))) }
             if (node.movable) MenuItem(MR.string.filesync_move, onDismiss) { onAction(FilesyncUiAction.AskMove(listOf(node))) }
             if (canDelete) MenuItem(MR.string.delete, onDismiss) { onAction(FilesyncUiAction.AskDelete(listOf(node))) }
         }
@@ -236,9 +229,7 @@ internal fun FilesyncNodeMenu(
 internal val FilesyncBulkAction.label: StringResource
     get() = when (this) {
         FilesyncBulkAction.Download -> MR.string.filesync_download
-        FilesyncBulkAction.Share -> MR.string.share
-        FilesyncBulkAction.Chat -> MR.string.filesync_send_chat
-        FilesyncBulkAction.WebDrop -> MR.string.filesync_send_webdrop
+        FilesyncBulkAction.Share -> MR.string.filesync_share
         FilesyncBulkAction.Move -> MR.string.filesync_move
         FilesyncBulkAction.Delete -> MR.string.delete
         FilesyncBulkAction.Restore -> MR.string.filesync_restore
@@ -248,8 +239,6 @@ internal val FilesyncBulkAction.icon: ImageVector
     get() = when (this) {
         FilesyncBulkAction.Download -> Icons.Outlined.Download
         FilesyncBulkAction.Share -> Icons.Outlined.Share
-        FilesyncBulkAction.Chat -> Icons.AutoMirrored.Outlined.Send
-        FilesyncBulkAction.WebDrop -> Icons.Outlined.Redeem
         FilesyncBulkAction.Move -> Icons.AutoMirrored.Outlined.DriveFileMove
         FilesyncBulkAction.Delete -> Icons.Outlined.Delete
         FilesyncBulkAction.Restore -> Icons.Outlined.RestoreFromTrash

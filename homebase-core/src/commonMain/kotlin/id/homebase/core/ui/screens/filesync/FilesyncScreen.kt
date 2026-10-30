@@ -214,6 +214,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         )
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
+    uiState.shareChooser?.let { FilesyncShareSheet(it, viewModel::onAction) }
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(

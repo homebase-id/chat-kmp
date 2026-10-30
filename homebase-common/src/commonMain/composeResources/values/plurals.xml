@@ -68,6 +68,10 @@
         <item quantity="one">%1$d selected</item>
         <item quantity="other">%1$d selected</item>
     </plurals>
+    <plurals name="filesync_share_title_many">
+        <item quantity="one">Share %1$d item</item>
+        <item quantity="other">Share %1$d items</item>
+    </plurals>
     <plurals name="filesync_move_title_many">
         <item quantity="one">Move %1$d item to</item>
         <item quantity="other">Move %1$d items to</item>
