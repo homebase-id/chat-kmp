@@ -3006,6 +3006,9 @@
     <string name="filesync_not_on_computers">not on computers</string>
     <string name="filesync_open">Open</string>
     <string name="filesync_open_in_app">Open in another app</string>
+    <string name="filesync_preview">Preview</string>
+    <string name="filesync_preview_failed">This file can't be shown here.</string>
+    <string name="filesync_preview_truncated">Showing the first %1$s.</string>
     <string name="filesync_send_webdrop">Send with WebDrop</string>
     <string name="filesync_share_failed">Couldn't share the file.</string>
     <string name="filesync_info_hint">Select a file or folder to see its details.</string>

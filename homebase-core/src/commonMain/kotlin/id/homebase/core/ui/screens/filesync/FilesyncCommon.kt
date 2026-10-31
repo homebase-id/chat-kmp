@@ -44,6 +44,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,7 +133,7 @@ import org.jetbrains.compose.resources.stringResource
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
 private const val DELETED_ALPHA = 0.38f
 
-/** Hands finished downloads to the OS and shows every message a Filesync screen can get. */
+/** Hands finished downloads to the OS or a preview, and shows every message a Filesync screen can get. */
 @Composable
 internal fun FilesyncEventsEffect(
     events: Flow<FilesyncUiEvent>,
@@ -145,9 +149,20 @@ internal fun FilesyncEventsEffect(
     fun show(message: StringResource) {
         scope.launch { snackbarHostState.showSnackbar(getString(message)) }
     }
+    var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
+    preview?.let { file ->
+        FilesyncPreview(file) {
+            preview = null
+            onSaveHandedOff(file.path)
+        }
+    }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
+                is FilesyncUiEvent.PreviewFile -> {
+                    preview?.let { onSaveHandedOff(it.path) }
+                    preview = event.file
+                }
                 is FilesyncUiEvent.OpenFile -> fileSystemHandler.openFile(
                     Path(event.path),
                     showChooser = false,

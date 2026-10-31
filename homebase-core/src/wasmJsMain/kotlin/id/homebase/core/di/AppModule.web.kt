@@ -5,6 +5,7 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.WebFileOperationsProvider
+import id.homebase.api.file.systemFileSystem
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
@@ -66,6 +67,8 @@ actual fun platformModule(): Module = module {
         // app's own origin and fail; adding the Factory does not fix that either.)
         // No diskCache guard as on other targets: Coil has no disk cache on wasmJs.
         ImageLoader.Builder(PlatformContext.INSTANCE)
+                // The app's files live in memory on the web; without this a local path never loads.
+                .fileSystem(systemFileSystem)
                 .components {
                     add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get(), get()))

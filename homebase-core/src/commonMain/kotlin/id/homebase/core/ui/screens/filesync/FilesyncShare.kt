@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -27,6 +28,7 @@ import id.homebase.resources.filesync_send_webdrop
 import id.homebase.resources.filesync_share_other
 import id.homebase.resources.filesync_folder_items
 import id.homebase.resources.filesync_open_in_app
+import id.homebase.resources.filesync_preview
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -34,6 +36,7 @@ import org.jetbrains.compose.resources.stringResource
 private val FilesyncShareTarget.label: StringResource
     get() = when (this) {
         FilesyncShareTarget.Download -> MR.string.filesync_download
+        FilesyncShareTarget.Preview -> MR.string.filesync_preview
         FilesyncShareTarget.Open -> MR.string.filesync_open_in_app
         FilesyncShareTarget.Chat -> MR.string.filesync_send_chat
         FilesyncShareTarget.WebDrop -> MR.string.filesync_send_webdrop
@@ -43,6 +46,7 @@ private val FilesyncShareTarget.label: StringResource
 private val FilesyncShareTarget.icon: ImageVector
     get() = when (this) {
         FilesyncShareTarget.Download -> Icons.Outlined.Download
+        FilesyncShareTarget.Preview -> Icons.Outlined.Visibility
         FilesyncShareTarget.Open -> Icons.AutoMirrored.Outlined.OpenInNew
         FilesyncShareTarget.Chat -> Icons.AutoMirrored.Outlined.Send
         FilesyncShareTarget.WebDrop -> Icons.Outlined.Redeem
