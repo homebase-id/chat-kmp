@@ -7,6 +7,9 @@ on:
   # this is restricted to main, so a layer can reach merge never having compiled.
   pull_request:
 
+env:
+  APP_BUILD_TIME: ci
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
