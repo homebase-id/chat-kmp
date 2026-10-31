@@ -115,7 +115,11 @@ class FilesyncArchiveTest {
         assertEquals(listOf(FilesyncBulkAction.Restore), offered(gone))
         assertEquals(listOf(FilesyncBulkAction.Download, FilesyncBulkAction.Share, FilesyncBulkAction.Move, FilesyncBulkAction.Delete, FilesyncBulkAction.Restore), offered(live, gone))
         assertTrue(FilesyncUiState().bulkActions.isEmpty())
-        assertEquals(listOf(FilesyncShareTarget.Download, FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop), FilesyncShareTarget.offered, "no other apps to hand to off a phone")
+        val (doc, _) = file("a.pdf", ByteArray(1))
+        val desktop = listOf(FilesyncShareTarget.Download, FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop)
+        assertEquals(listOf(FilesyncShareTarget.Download, FilesyncShareTarget.Open, FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop), FilesyncShareTarget.offered(listOf(doc)), "no other apps to hand to off a phone")
+        assertEquals(desktop, FilesyncShareTarget.offered(listOf(live)), "a folder opens as itself, not in another app")
+        assertEquals(desktop, FilesyncShareTarget.offered(listOf(doc, doc)), "a ZIP isn't opened in another app")
     }
 
     private companion object {

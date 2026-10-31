@@ -120,6 +120,10 @@ import id.homebase.resources.filesync_tags_here
 import id.homebase.resources.filesync_totals
 import id.homebase.resources.filesync_trash
 import id.homebase.resources.filesync_upload
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -587,16 +591,30 @@ internal fun TableRow(
                     .hoverable(nameInteraction)
                     .pointerHoverIcon(PointerIcon.Hand)
                     .pointerInput(node.nodeId) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.type != PointerEventType.Press) continue
-                                val change = event.changes.first()
-                                val keys = event.keyboardModifiers
-                                if (change.type != PointerType.Mouse || event.buttons.isSecondaryPressed) continue
-                                if (keys.isCtrlPressed || keys.isMetaPressed || keys.isShiftPressed) continue
-                                change.consume()
-                                actions.clickName(current, change.uptimeMillis, viewConfiguration.doubleTapTimeoutMillis)
+                        coroutineScope {
+                            var pending: Job? = null
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.type != PointerEventType.Press) continue
+                                    val change = event.changes.first()
+                                    val keys = event.keyboardModifiers
+                                    if (change.type != PointerType.Mouse || event.buttons.isSecondaryPressed) continue
+                                    if (keys.isCtrlPressed || keys.isMetaPressed || keys.isShiftPressed) continue
+                                    change.consume()
+                                    // Whatever a double-click opens would catch its second press, so it opens on that press.
+                                    val waiting = pending?.takeIf { it.isActive }
+                                    pending = if (waiting != null) {
+                                        waiting.cancel()
+                                        actions.click(current)
+                                        null
+                                    } else {
+                                        this@coroutineScope.launch {
+                                            delay(viewConfiguration.doubleTapTimeoutMillis)
+                                            actions.click(current)
+                                        }
+                                    }
+                                }
                             }
                         }
                     },

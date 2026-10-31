@@ -96,6 +96,9 @@ internal data class FilesyncNodeContent(
     val size: Long? = null,
 )
 
+/** The one file [this] is, which goes out as itself; anything else goes out as a ZIP. */
+internal val List<FilesyncNode>.singleFile: FilesyncNode? get() = singleOrNull()?.takeIf { !it.isFolder }
+
 // filesync wrote it to removed nodes before 2026-10-15; it means nothing now, and a write leaves it out.
 internal const val REMOVAL_KEY = "rm"
 

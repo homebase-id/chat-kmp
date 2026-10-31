@@ -3005,6 +3005,7 @@
     <string name="filesync_executable">runs</string>
     <string name="filesync_not_on_computers">not on computers</string>
     <string name="filesync_open">Open</string>
+    <string name="filesync_open_in_app">Open in another app</string>
     <string name="filesync_send_webdrop">Send with WebDrop</string>
     <string name="filesync_share_failed">Couldn't share the file.</string>
     <string name="filesync_info_hint">Select a file or folder to see its details.</string>
@@ -3050,7 +3051,6 @@
     <string name="filesync_undo">Undo</string>
     <string name="filesync_move">Move to…</string>
     <string name="filesync_share">Share…</string>
-    <string name="filesync_share_title">Share %1$s</string>
     <string name="filesync_share_other">Other apps</string>
     <string name="filesync_move_title">Move %1$s to</string>
     <string name="filesync_move_here">Move here</string>

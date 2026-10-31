@@ -84,7 +84,6 @@ import id.homebase.core.ui.screens.filesync.components.FilesyncInstallHere
 import id.homebase.core.ui.screens.filesync.components.FilesyncPhoneAppButtons
 import id.homebase.core.ui.screens.filesync.components.filesyncInstallHere
 import id.homebase.core.util.isExpandedLayout
-import id.homebase.core.util.isWeb
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
@@ -151,22 +150,6 @@ internal class FilesyncBrowserActions(
 ) {
     fun click(node: FilesyncNode) {
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
-    }
-
-    fun tap(node: FilesyncNode) {
-        if (node.removedMs == null && !node.isFolder) onAction(FilesyncUiAction.AskShare(listOf(node))) else click(node)
-    }
-
-    private var lastNameOpenAt = Long.MIN_VALUE / 2
-
-    /**
-     * A click on a name, which opens like a link. The second press of a double-click lands on whatever the first one
-     * opened, so presses within [doubleClickMs] of an open are ignored.
-     */
-    fun clickName(node: FilesyncNode, atMs: Long, doubleClickMs: Long) {
-        if (atMs - lastNameOpenAt < doubleClickMs) return
-        lastNameOpenAt = atMs
-        click(node)
     }
 }
 
@@ -238,7 +221,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         )
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
-    uiState.shareChooser?.let { FilesyncShareSheet(it, viewModel::onAction) }
+    uiState.shareChooser?.let { FilesyncShareSheet(it, onShare = { target -> viewModel.onAction(FilesyncUiAction.ShareTo(target)) }, onDismiss = { viewModel.onAction(FilesyncUiAction.DismissShare) }) }
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(
@@ -442,7 +425,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
     FilesyncNodeRow(
         node = node,
         details = nodeDetails(node),
-        modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.tap(node) }),
+        modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.click(node) }),
         selected = checked == true,
         checked = checked,
         trailing = {
@@ -462,8 +445,6 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
                         onDismiss = { expanded = false },
                         onAction = actions.onAction,
                         onInfo = { onInfo(node) },
-                        // A tap opens a folder; on the web Open is the Download beside it.
-                        offerOpen = !node.isFolder && !isWeb(),
                         canDelete = !actions.current().inDeletedFolder,
                     )
                 }

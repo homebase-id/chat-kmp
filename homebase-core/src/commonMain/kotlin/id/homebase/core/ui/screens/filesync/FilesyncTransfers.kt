@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDamagedException
 import id.homebase.api.client.drives.files.wholePercentFractions
+import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.util.StreamedSave
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
@@ -16,8 +17,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
-private enum class Purpose { Open, Save, OtherApp, WebDrop, Chat }
-
 /** What a transfer downloads: one file as itself, or several nodes as one ZIP called [name]. */
 private sealed interface Source {
     val name: String
@@ -30,50 +29,37 @@ private sealed interface Source {
 }
 
 /**
- * One download at a time for a screen: its progress goes to [onTransfer], the finished file out as an event,
- * or to [onWebDrop] when it's for a drop. [handles] are the listed nodes'.
+ * One download at a time for a screen: its progress goes to [onTransfer], the finished file out as an event, or into
+ * a WebDrop draft. [handles] are the listed nodes'.
  */
 internal class FilesyncTransfers(
     private val scope: CoroutineScope,
     private val repository: FilesyncRepository,
     private val onTransfer: ((FilesyncTransfer?) -> FilesyncTransfer?) -> Unit,
     private val send: suspend (FilesyncUiEvent) -> Unit,
-    private val onWebDrop: suspend (PickedDropFile) -> Unit = {},
+    private val webDropShareFlowState: WebDropShareFlowState,
 ) {
     private var job: Job? = null
     private val archive = FilesyncArchive(repository::listFolders) { payload, consume -> repository.streamPayload(payload, consume = consume) }
 
     var handles: Map<Uuid, FilesyncHandle> = emptyMap()
 
-    // The web can't hand a file to another app, so opening it means downloading it.
-    fun open(node: FilesyncNode) = one(node, if (isWeb()) Purpose.Save else Purpose.Open)
-
-    fun save(node: FilesyncNode) = one(node, Purpose.Save)
-
-    fun saveZip(nodes: List<FilesyncNode>, name: String) = start(Source.Zip(nodes, name), Purpose.Save)
-
     /** [nodes] to [target]: one file as itself, anything more, or a folder, as one ZIP called [zipName]. */
     fun send(nodes: List<FilesyncNode>, zipName: String, target: FilesyncShareTarget) {
-        val purpose = when (target) {
-            FilesyncShareTarget.Download -> Purpose.Save
-            FilesyncShareTarget.Chat -> Purpose.Chat
-            FilesyncShareTarget.WebDrop -> Purpose.WebDrop
-            FilesyncShareTarget.OtherApp -> Purpose.OtherApp
-        }
-        val file = nodes.singleOrNull()?.takeIf { !it.isFolder }
-        if (file != null) one(file, purpose) else start(Source.Zip(nodes, zipName), purpose)
+        val file = nodes.singleFile
+        if (file != null) one(file, target) else start(Source.Zip(nodes, zipName), target)
     }
 
     fun cancel() {
         job?.cancel()
     }
 
-    private fun one(node: FilesyncNode, purpose: Purpose) {
+    private fun one(node: FilesyncNode, target: FilesyncShareTarget) {
         val payload = handles[node.nodeId]?.payload ?: return
-        start(Source.One(node, payload), purpose)
+        start(Source.One(node, payload), target)
     }
 
-    private fun start(source: Source, purpose: Purpose) {
+    private fun start(source: Source, target: FilesyncShareTarget) {
         // Not isActive: a cancelled transfer is still putting things away.
         if (job?.isCompleted == false) return
         job = scope.launch {
@@ -82,7 +68,7 @@ internal class FilesyncTransfers(
             var browser: StreamedSave? = null
             try {
                 // A browser shows its save picker only close to the click, so it's asked before anything is listed.
-                if (purpose == Purpose.Save && isWeb()) {
+                if (target == FilesyncShareTarget.Download && isWeb()) {
                     browser = openBrowserSave(source.name, detectContentTypeFromExtensionOrHint(source.name)) ?: return@launch
                 }
                 val write: suspend (out: suspend (ByteArray) -> Unit) -> Unit = when (source) {
@@ -101,13 +87,17 @@ internal class FilesyncTransfers(
                     return@launch
                 }
                 // share_outbound is swept whenever the app comes back to the front, which a drop's composer outlives.
-                val path = repository.writeToCache(source.name, toShareOutbound = purpose == Purpose.Open || purpose == Purpose.OtherApp, write)
-                when (purpose) {
-                    Purpose.Open -> send(FilesyncUiEvent.OpenFile(path))
-                    Purpose.Save -> send(FilesyncUiEvent.SaveFile(path, source.name))
-                    Purpose.OtherApp -> send(FilesyncUiEvent.ShareFile(path))
-                    Purpose.Chat -> send(FilesyncUiEvent.SendToChat(path, source.name))
-                    Purpose.WebDrop -> onWebDrop(PickedDropFile(path, source.name, detectContentTypeFromExtensionOrHint(source.name), repository.sizeOf(path)))
+                val path = repository.writeToCache(source.name, toShareOutbound = target == FilesyncShareTarget.Open || target == FilesyncShareTarget.OtherApp, write)
+                when (target) {
+                    FilesyncShareTarget.Open -> send(FilesyncUiEvent.OpenFile(path))
+                    FilesyncShareTarget.Download -> send(FilesyncUiEvent.SaveFile(path, source.name))
+                    FilesyncShareTarget.OtherApp -> send(FilesyncUiEvent.ShareFile(path))
+                    FilesyncShareTarget.Chat -> send(FilesyncUiEvent.SendToChat(path, source.name))
+                    FilesyncShareTarget.WebDrop -> {
+                        // Seeded before navigating: WebDropViewModel takes the draft when it's created.
+                        webDropShareFlowState.setDraft(listOf(PickedDropFile(path, source.name, detectContentTypeFromExtensionOrHint(source.name), repository.sizeOf(path))))
+                        send(FilesyncUiEvent.OpenWebDrop)
+                    }
                 }
             } catch (e: CancellationException) {
                 browser?.let { withContext(NonCancellable) { runCatching { it.abort() } } }

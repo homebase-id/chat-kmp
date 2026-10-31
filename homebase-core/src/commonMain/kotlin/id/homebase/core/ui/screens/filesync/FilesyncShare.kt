@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Redeem
@@ -24,8 +25,8 @@ import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_send_chat
 import id.homebase.resources.filesync_send_webdrop
 import id.homebase.resources.filesync_share_other
-import id.homebase.resources.filesync_share_title
-import id.homebase.resources.filesync_share_title_many
+import id.homebase.resources.filesync_folder_items
+import id.homebase.resources.filesync_open_in_app
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -33,6 +34,7 @@ import org.jetbrains.compose.resources.stringResource
 private val FilesyncShareTarget.label: StringResource
     get() = when (this) {
         FilesyncShareTarget.Download -> MR.string.filesync_download
+        FilesyncShareTarget.Open -> MR.string.filesync_open_in_app
         FilesyncShareTarget.Chat -> MR.string.filesync_send_chat
         FilesyncShareTarget.WebDrop -> MR.string.filesync_send_webdrop
         FilesyncShareTarget.OtherApp -> MR.string.filesync_share_other
@@ -41,32 +43,33 @@ private val FilesyncShareTarget.label: StringResource
 private val FilesyncShareTarget.icon: ImageVector
     get() = when (this) {
         FilesyncShareTarget.Download -> Icons.Outlined.Download
+        FilesyncShareTarget.Open -> Icons.AutoMirrored.Outlined.OpenInNew
         FilesyncShareTarget.Chat -> Icons.AutoMirrored.Outlined.Send
         FilesyncShareTarget.WebDrop -> Icons.Outlined.Redeem
         FilesyncShareTarget.OtherApp -> Icons.Outlined.Share
     }
 
-/** Share's one question, where to: a sheet on phones, a small dialog on wide layouts. */
+/** What to do with [nodes], asked when a file is opened or shared: a sheet on phones, a small dialog on wide layouts. */
 @Composable
-internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onAction: (FilesyncUiAction) -> Unit) {
-    AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.DismissShare) }, maxWidth = 360.dp) {
+internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onShare: (FilesyncShareTarget) -> Unit, onDismiss: () -> Unit) {
+    AdaptiveSheet(onDismiss = onDismiss, maxWidth = 360.dp) {
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
             Text(
                 text = if (nodes.size == 1) {
-                    stringResource(MR.string.filesync_share_title, nodes.single().name)
+                    nodes.single().name
                 } else {
-                    pluralStringResource(MR.plurals.filesync_share_title_many, nodes.size, nodes.size)
+                    pluralStringResource(MR.plurals.filesync_folder_items, nodes.size, nodes.size)
                 },
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
             )
-            FilesyncShareTarget.offered.forEach { target ->
+            FilesyncShareTarget.offered(nodes).forEach { target ->
                 ListItem(
                     headlineContent = { Text(stringResource(target.label)) },
                     leadingContent = { Icon(target.icon, contentDescription = null) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     // Routed once it has animated out: the chooser's state goes with ShareTo.
-                    modifier = Modifier.clickable { dismiss { onAction(FilesyncUiAction.ShareTo(target)) } },
+                    modifier = Modifier.clickable { dismiss { onShare(target) } },
                 )
             }
         }

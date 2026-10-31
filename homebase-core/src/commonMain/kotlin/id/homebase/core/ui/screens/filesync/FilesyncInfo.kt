@@ -141,12 +141,16 @@ internal fun FilesyncInfoContent(
                     Text(stringResource(MR.string.filesync_restore))
                 }
             } else {
-                Button(onClick = { onAction(FilesyncUiAction.NodeClicked(node)) }, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(MR.string.filesync_open))
-                }
-                if (!node.isFolder) {
-                    OutlinedButton(onClick = { onAction(FilesyncUiAction.SaveClicked(node)) }, modifier = Modifier.weight(1f)) {
+                if (node.isFolder) {
+                    Button(onClick = { onAction(FilesyncUiAction.NodeClicked(node)) }, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(MR.string.filesync_open))
+                    }
+                } else {
+                    Button(onClick = { onAction(FilesyncUiAction.SaveClicked(node)) }, modifier = Modifier.weight(1f)) {
                         Text(stringResource(MR.string.filesync_download))
+                    }
+                    OutlinedButton(onClick = { onAction(FilesyncUiAction.AskShare(listOf(node))) }, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(MR.string.filesync_share))
                     }
                 }
             }
@@ -203,15 +207,14 @@ internal fun FilesyncNodeMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onAction: (FilesyncUiAction) -> Unit,
-    // Phones show Info here; wide layouts select on a click, so the pane is the info.
+    // Phones show Info here; wide layouts select on a click, so the pane is the info and a folder's Open goes here.
     onInfo: (() -> Unit)?,
-    offerOpen: Boolean = true,
     offset: DpOffset = DpOffset(0.dp, 0.dp),
     // Inside a deleted folder an Undo would bring the folder back too.
     canDelete: Boolean = true,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
-        if (offerOpen && node.removedMs == null) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
+        if (onInfo == null && node.isFolder && node.removedMs == null) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
         onInfo?.let { MenuItem(MR.string.info, onDismiss, it) }
         if (node.removedMs != null) {
             MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(setOf(node.nodeId))) }

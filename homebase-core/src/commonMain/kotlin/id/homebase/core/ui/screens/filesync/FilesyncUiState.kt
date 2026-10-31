@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import androidx.compose.runtime.Immutable
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.util.isMobile
+import id.homebase.core.util.isWeb
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
@@ -131,11 +132,18 @@ data class FilesyncUiState(
 
 enum class FilesyncBulkAction { Download, Share, Move, Delete, Restore }
 
-/** Where Share sends. Another app only on phones, where there are any. */
-enum class FilesyncShareTarget { Download, Chat, WebDrop, OtherApp;
+/** What the file dialog offers: where a file, or a ZIP of several, goes. */
+enum class FilesyncShareTarget { Download, Open, Chat, WebDrop, OtherApp;
 
     companion object {
-        val offered: List<FilesyncShareTarget> get() = if (isMobile()) entries else entries - OtherApp
+        // A browser can't hand a file to an app; other apps to share with are only on phones.
+        fun offered(nodes: List<FilesyncNode>): List<FilesyncShareTarget> = entries.filter { target ->
+            when (target) {
+                Open -> !isWeb() && nodes.singleFile != null
+                OtherApp -> isMobile()
+                else -> true
+            }
+        }
     }
 }
 
