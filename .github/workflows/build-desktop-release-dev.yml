@@ -24,7 +24,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
@@ -180,7 +179,7 @@ jobs:
           
           
       # Each release is ~1.6 GB and nothing else prunes them. Safe to delete:
-      # deltas come from the local .conveyor/cache, not from published releases,
+      # deltas are not built from published releases,
       # and installed apps resolve updates through releases/latest/download.
       - name: Prune old releases in bleeding repo
         uses: actions/github-script@v7
