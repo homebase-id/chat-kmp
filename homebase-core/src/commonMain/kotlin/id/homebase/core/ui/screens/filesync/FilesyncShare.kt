@@ -46,7 +46,7 @@ private val FilesyncShareTarget.icon: ImageVector
         FilesyncShareTarget.OtherApp -> Icons.Outlined.Share
     }
 
-/** Share's one question, where to, and where a tap on a phone's file lands: a sheet on phones, a small dialog on wide layouts. */
+/** Share's one question, where to: a sheet on phones, a small dialog on wide layouts. */
 @Composable
 internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onAction: (FilesyncUiAction) -> Unit) {
     AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.DismissShare) }, maxWidth = 360.dp) {

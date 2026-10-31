@@ -37,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.common.util.formatBytes
 import id.homebase.core.util.FileKind
-import id.homebase.core.util.isWeb
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_folder
@@ -204,15 +203,15 @@ internal fun FilesyncNodeMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onAction: (FilesyncUiAction) -> Unit,
-    // Set on phones, where a file's tap asks where it goes; wide layouts select on a click and show the info in the pane.
+    // Phones show Info here; wide layouts select on a click, so the pane is the info.
     onInfo: (() -> Unit)?,
+    offerOpen: Boolean = true,
     offset: DpOffset = DpOffset(0.dp, 0.dp),
     // Inside a deleted folder an Undo would bring the folder back too.
     canDelete: Boolean = true,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, offset = offset) {
-        // The web opens a file by downloading it, which the tap already offers.
-        if (node.removedMs == null && (onInfo == null || !node.isFolder && !isWeb())) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
+        if (offerOpen && node.removedMs == null) MenuItem(MR.string.filesync_open, onDismiss) { onAction(FilesyncUiAction.NodeClicked(node)) }
         onInfo?.let { MenuItem(MR.string.info, onDismiss, it) }
         if (node.removedMs != null) {
             MenuItem(MR.string.filesync_restore, onDismiss) { onAction(FilesyncUiAction.Restore(setOf(node.nodeId))) }

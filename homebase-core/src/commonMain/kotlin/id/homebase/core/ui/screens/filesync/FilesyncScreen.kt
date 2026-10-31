@@ -84,6 +84,7 @@ import id.homebase.core.ui.screens.filesync.components.FilesyncInstallHere
 import id.homebase.core.ui.screens.filesync.components.FilesyncPhoneAppButtons
 import id.homebase.core.ui.screens.filesync.components.filesyncInstallHere
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.isWeb
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
@@ -152,7 +153,6 @@ internal class FilesyncBrowserActions(
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
     }
 
-    /** A phone's tap: a live file asks where it goes, anything else is a [click]. */
     fun tap(node: FilesyncNode) {
         if (node.removedMs == null && !node.isFolder) onAction(FilesyncUiAction.AskShare(listOf(node))) else click(node)
     }
@@ -462,6 +462,8 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
                         onDismiss = { expanded = false },
                         onAction = actions.onAction,
                         onInfo = { onInfo(node) },
+                        // A tap opens a folder; on the web Open is the Download beside it.
+                        offerOpen = !node.isFolder && !isWeb(),
                         canDelete = !actions.current().inDeletedFolder,
                     )
                 }
