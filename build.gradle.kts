@@ -16,11 +16,6 @@ plugins {
 }
 
 subprojects {
-    // CI only: a 16 GB dev Mac can't spare extra test JVMs beside the Kotlin daemon.
-    if (System.getenv("CI") != null) {
-        tasks.withType<Test>().configureEach { maxParallelForks = 2 }
-    }
-
     configurations.all {
         resolutionStrategy {
             // Force encrypted sqlite-jdbc version everywhere
