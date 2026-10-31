@@ -87,7 +87,9 @@ internal class FilesyncTransfers(
                     return@launch
                 }
                 // share_outbound is swept whenever the app comes back to the front, which a drop's composer outlives.
-                val path = repository.writeToCache(source.name, toShareOutbound = target == FilesyncShareTarget.Open || target == FilesyncShareTarget.OtherApp, write)
+                // Viewers read a path as a URI, which a # or % in the name breaks; a preview's copy needs no name.
+                val cacheName = if (target == FilesyncShareTarget.Preview) "preview" + FilesyncNames.split(source.name).second else source.name
+                val path = repository.writeToCache(cacheName, toShareOutbound = target == FilesyncShareTarget.Open || target == FilesyncShareTarget.OtherApp, write)
                 when (target) {
                     FilesyncShareTarget.Open -> send(FilesyncUiEvent.OpenFile(path))
                     FilesyncShareTarget.Preview -> send(FilesyncUiEvent.PreviewFile(FilesyncPreviewFile(path, source.name)))

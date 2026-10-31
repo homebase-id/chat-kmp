@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -38,8 +39,6 @@ import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.pdf.PdfPageViewer
 import id.homebase.core.pdf.pdfPageViewerAvailable
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
-import id.homebase.core.util.trimToUtf8Boundary
-import id.homebase.core.pdf.pdfPageViewerAvailable
 import id.homebase.core.util.trimToUtf8Boundary
 import id.homebase.resources.MR
 import id.homebase.resources.close
@@ -78,7 +77,9 @@ private const val TEXT_PREVIEW_BYTES = 256L shl 10
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun FilesyncPreview(file: FilesyncPreviewFile, onClose: () -> Unit) {
+internal fun FilesyncPreview(file: FilesyncPreviewFile, onClose: () -> Unit, onGone: (path: String) -> Unit) {
+    // First in, so last out: the copy goes once the viewer below has let go of it, which Windows insists on.
+    DisposableEffect(file.path) { onDispose { onGone(file.path) } }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),

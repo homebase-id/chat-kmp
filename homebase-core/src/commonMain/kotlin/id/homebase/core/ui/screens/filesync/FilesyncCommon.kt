@@ -150,19 +150,11 @@ internal fun FilesyncEventsEffect(
         scope.launch { snackbarHostState.showSnackbar(getString(message)) }
     }
     var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
-    preview?.let { file ->
-        FilesyncPreview(file) {
-            preview = null
-            onHandedOff(file.path)
-        }
-    }
+    preview?.let { file -> FilesyncPreview(file, onClose = { preview = null }, onGone = onHandedOff) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
-                is FilesyncUiEvent.PreviewFile -> {
-                    preview?.let { onHandedOff(it.path) }
-                    preview = event.file
-                }
+                is FilesyncUiEvent.PreviewFile -> preview = event.file
                 is FilesyncUiEvent.OpenFile -> fileSystemHandler.openFile(
                     Path(event.path),
                     showChooser = false,

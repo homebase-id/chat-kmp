@@ -6,11 +6,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class FilesyncPreviewTest {
@@ -26,20 +28,27 @@ class FilesyncPreviewTest {
     }
 
     @Test
-    fun aTextFileShowsItsTextAndCloses() = runComposeUiTest {
+    fun aTextFileShowsItsTextAndItsCopyGoesWhenItCloses() = runComposeUiTest {
         val file = File.createTempFile("preview", ".txt").apply { deleteOnExit(); writeText("hello from filesync") }
-        var closed = false
-        setContent { MaterialTheme { FilesyncPreview(FilesyncPreviewFile(file.path, "notes.txt")) { closed = true } } }
+        var open by mutableStateOf(true)
+        var gone: String? = null
+        setContent {
+            MaterialTheme {
+                if (open) FilesyncPreview(FilesyncPreviewFile(file.path, "notes.txt"), onClose = { open = false }, onGone = { gone = it })
+            }
+        }
         onNodeWithText("hello from filesync").assertExists()
         onNodeWithText("notes.txt").assertExists()
+        assertNull(gone)
         onNodeWithContentDescription("Close").performClick()
-        assertTrue(closed)
+        waitForIdle()
+        assertEquals(file.path, gone)
     }
 
     @Test
     fun aLongTextFileShowsItsStartAndSaysSo() = runComposeUiTest {
         val file = File.createTempFile("preview", ".txt").apply { deleteOnExit(); writeText((1..40_000).joinToString("\n") { "line $it" }) }
-        setContent { MaterialTheme { FilesyncPreview(FilesyncPreviewFile(file.path, "big.txt")) {} } }
+        setContent { MaterialTheme { FilesyncPreview(FilesyncPreviewFile(file.path, "big.txt"), onClose = {}, onGone = {}) } }
         onNodeWithText("Showing the first", substring = true).assertExists()
         onNodeWithText("line 1").assertExists()
     }
