@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import id.homebase.core.util.boundedFirstVisibleItemIndex
+import id.homebase.core.util.isWeb
 import id.homebase.resources.MR
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_pdf_page_content_description
@@ -38,6 +39,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
+
+/** False where [PdfPageViewer] can only say PDFs aren't supported: the web has no renderer yet. */
+val pdfPageViewerAvailable: Boolean get() = !isWeb()
 
 @Composable
 expect fun PdfPageViewer(

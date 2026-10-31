@@ -142,7 +142,7 @@ internal fun FilesyncEventsEffect(
     onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
     onUndoRemove: (Set<Uuid>) -> Unit = {},
     onOpenSignIn: (String) -> Unit = {},
-    onSaveHandedOff: (String) -> Unit,
+    onHandedOff: (String) -> Unit,
 ) {
     val fileSystemHandler = getUriHandler()
     val scope = rememberCoroutineScope()
@@ -153,14 +153,14 @@ internal fun FilesyncEventsEffect(
     preview?.let { file ->
         FilesyncPreview(file) {
             preview = null
-            onSaveHandedOff(file.path)
+            onHandedOff(file.path)
         }
     }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
                 is FilesyncUiEvent.PreviewFile -> {
-                    preview?.let { onSaveHandedOff(it.path) }
+                    preview?.let { onHandedOff(it.path) }
                     preview = event.file
                 }
                 is FilesyncUiEvent.OpenFile -> fileSystemHandler.openFile(
@@ -171,9 +171,9 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.SaveFile -> fileSystemHandler.saveFile(
                     Path(event.path),
                     event.name,
-                    onSuccess = { onSaveHandedOff(event.path) },
+                    onSuccess = { onHandedOff(event.path) },
                     onError = {
-                        onSaveHandedOff(event.path)
+                        onHandedOff(event.path)
                         show(MR.string.filesync_save_failed)
                     },
                 )

@@ -29,7 +29,7 @@ class FilesyncPreviewTest {
     fun aTextFileShowsItsTextAndCloses() = runComposeUiTest {
         val file = File.createTempFile("preview", ".txt").apply { deleteOnExit(); writeText("hello from filesync") }
         var closed = false
-        setContent { MaterialTheme { FilesyncPreview(FilesyncPreviewFile(file.path, "notes.txt", FilesyncPreviewKind.Text)) { closed = true } } }
+        setContent { MaterialTheme { FilesyncPreview(FilesyncPreviewFile(file.path, "notes.txt")) { closed = true } } }
         onNodeWithText("hello from filesync").assertExists()
         onNodeWithText("notes.txt").assertExists()
         onNodeWithContentDescription("Close").performClick()
@@ -39,7 +39,7 @@ class FilesyncPreviewTest {
     @Test
     fun aLongTextFileShowsItsStartAndSaysSo() = runComposeUiTest {
         val file = File.createTempFile("preview", ".txt").apply { deleteOnExit(); writeText((1..40_000).joinToString("\n") { "line $it" }) }
-        setContent { MaterialTheme { FilesyncPreview(FilesyncPreviewFile(file.path, "big.txt", FilesyncPreviewKind.Text)) {} } }
+        setContent { MaterialTheme { FilesyncPreview(FilesyncPreviewFile(file.path, "big.txt")) {} } }
         onNodeWithText("Showing the first", substring = true).assertExists()
         onNodeWithText("line 1").assertExists()
     }

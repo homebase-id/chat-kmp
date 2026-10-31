@@ -36,30 +36,34 @@ import id.homebase.common.util.formatBytes
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.pdf.PdfPageViewer
+import id.homebase.core.pdf.pdfPageViewerAvailable
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
-import id.homebase.core.util.isWeb
+import id.homebase.core.util.trimToUtf8Boundary
+import id.homebase.core.pdf.pdfPageViewerAvailable
+import id.homebase.core.util.trimToUtf8Boundary
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.filesync_preview_failed
 import id.homebase.resources.filesync_preview_truncated
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import okio.Path.Companion.toPath
 import okio.buffer
 import okio.use
 import org.jetbrains.compose.resources.stringResource
 
-enum class FilesyncPreviewKind { Image, Video, Pdf, Text }
+internal enum class FilesyncPreviewKind { Image, Video, Pdf, Text }
 
 /** A downloaded file shown in the app: [path] is its copy in the cache, thrown away when the preview closes. */
-data class FilesyncPreviewFile(val path: String, val name: String, val kind: FilesyncPreviewKind)
+data class FilesyncPreviewFile(val path: String, val name: String)
 
-/** What a quick look shows [name] as, or null when every platform can't: the web has no PDF renderer. */
+/** What a quick look shows [name] as, or null when it can't. */
 internal fun filesyncPreviewKind(name: String): FilesyncPreviewKind? {
     val type = detectContentTypeFromExtensionOrHint(name)
     return when {
         type in PREVIEW_IMAGES -> FilesyncPreviewKind.Image
         type in PREVIEW_VIDEOS -> FilesyncPreviewKind.Video
-        type == "application/pdf" -> FilesyncPreviewKind.Pdf.takeUnless { isWeb() }
+        type == "application/pdf" -> FilesyncPreviewKind.Pdf.takeIf { pdfPageViewerAvailable }
         type.startsWith("text/") || type == "application/json" -> FilesyncPreviewKind.Text
         else -> null
     }
@@ -90,18 +94,18 @@ internal fun FilesyncPreview(file: FilesyncPreviewFile, onClose: () -> Unit) {
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                var failed by remember { mutableStateOf(false) }
-                when {
-                    failed -> Text(stringResource(MR.string.filesync_preview_failed), modifier = Modifier.padding(24.dp))
-                    file.kind == FilesyncPreviewKind.Image -> ZoomableSubSamplingImage(
+                var failed by remember(file.path) { mutableStateOf(false) }
+                when (if (failed) null else filesyncPreviewKind(file.name)) {
+                    null -> Text(stringResource(MR.string.filesync_preview_failed), modifier = Modifier.padding(24.dp))
+                    FilesyncPreviewKind.Image -> ZoomableSubSamplingImage(
                         source = remember(file.path) { SubSamplingImageSource.LocalFile(file.path) },
                         contentDescription = file.name,
                         modifier = Modifier.fillMaxSize(),
                         onError = { failed = true },
                     )
-                    file.kind == FilesyncPreviewKind.Video -> LocalVideoPlayerSurface(file.path, Modifier.fillMaxSize())
-                    file.kind == FilesyncPreviewKind.Pdf -> PdfPageViewer(file.path, modifier = Modifier.fillMaxSize())
-                    else -> TextPreview(file.path) { failed = true }
+                    FilesyncPreviewKind.Video -> LocalVideoPlayerSurface(file.path, Modifier.fillMaxSize())
+                    FilesyncPreviewKind.Pdf -> PdfPageViewer(file.path, modifier = Modifier.fillMaxSize())
+                    FilesyncPreviewKind.Text -> TextPreview(file.path) { failed = true }
                 }
             }
         }
@@ -117,9 +121,12 @@ private fun TextPreview(path: String, onFailed: () -> Unit) {
             withContext(ioDispatcher) {
                 systemFileSystem.source(path.toPath()).buffer().use { source ->
                     val more = source.request(TEXT_PREVIEW_BYTES + 1)
-                    TextPage(source.readUtf8(minOf(TEXT_PREVIEW_BYTES, source.buffer.size)).lines(), truncated = more)
+                    val bytes = source.readByteArray(minOf(TEXT_PREVIEW_BYTES, source.buffer.size))
+                    TextPage((if (more) bytes.trimToUtf8Boundary() else bytes).decodeToString().lines(), truncated = more)
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             onFailed()
             null

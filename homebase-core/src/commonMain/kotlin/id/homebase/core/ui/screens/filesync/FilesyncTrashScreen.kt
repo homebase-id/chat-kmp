@@ -60,7 +60,7 @@ import kotlin.uuid.Uuid
 fun FilesyncTrashScreen(viewModel: FilesyncTrashViewModel, places: FilesyncPlaces, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    FilesyncEventsEffect(viewModel.events, snackbarHostState, onSaveHandedOff = {})
+    FilesyncEventsEffect(viewModel.events, snackbarHostState, onHandedOff = {})
 
     val selecting = uiState.selection.ids.isNotEmpty()
     BackHandler(enabled = selecting) { viewModel.onAction(FilesyncTrashAction.ClearSelection) }
