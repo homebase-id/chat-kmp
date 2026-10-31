@@ -152,6 +152,11 @@ internal class FilesyncBrowserActions(
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
     }
 
+    /** A phone's tap: a live file asks where it goes, anything else is a [click]. */
+    fun tap(node: FilesyncNode) {
+        if (node.removedMs == null && !node.isFolder) onAction(FilesyncUiAction.AskShare(listOf(node))) else click(node)
+    }
+
     private var lastNameOpenAt = Long.MIN_VALUE / 2
 
     /**
@@ -437,7 +442,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
     FilesyncNodeRow(
         node = node,
         details = nodeDetails(node),
-        modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.click(node) }),
+        modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.tap(node) }),
         selected = checked == true,
         checked = checked,
         trailing = {

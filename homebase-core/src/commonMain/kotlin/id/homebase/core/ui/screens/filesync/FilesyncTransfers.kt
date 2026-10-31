@@ -55,6 +55,7 @@ internal class FilesyncTransfers(
     /** [nodes] to [target]: one file as itself, anything more, or a folder, as one ZIP called [zipName]. */
     fun send(nodes: List<FilesyncNode>, zipName: String, target: FilesyncShareTarget) {
         val purpose = when (target) {
+            FilesyncShareTarget.Download -> Purpose.Save
             FilesyncShareTarget.Chat -> Purpose.Chat
             FilesyncShareTarget.WebDrop -> Purpose.WebDrop
             FilesyncShareTarget.OtherApp -> Purpose.OtherApp

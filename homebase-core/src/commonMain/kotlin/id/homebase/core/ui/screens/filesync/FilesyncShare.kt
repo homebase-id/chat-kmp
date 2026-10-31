@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Icon
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_send_chat
 import id.homebase.resources.filesync_send_webdrop
 import id.homebase.resources.filesync_share_other
@@ -30,6 +32,7 @@ import org.jetbrains.compose.resources.stringResource
 
 private val FilesyncShareTarget.label: StringResource
     get() = when (this) {
+        FilesyncShareTarget.Download -> MR.string.filesync_download
         FilesyncShareTarget.Chat -> MR.string.filesync_send_chat
         FilesyncShareTarget.WebDrop -> MR.string.filesync_send_webdrop
         FilesyncShareTarget.OtherApp -> MR.string.filesync_share_other
@@ -37,12 +40,13 @@ private val FilesyncShareTarget.label: StringResource
 
 private val FilesyncShareTarget.icon: ImageVector
     get() = when (this) {
+        FilesyncShareTarget.Download -> Icons.Outlined.Download
         FilesyncShareTarget.Chat -> Icons.AutoMirrored.Outlined.Send
         FilesyncShareTarget.WebDrop -> Icons.Outlined.Redeem
         FilesyncShareTarget.OtherApp -> Icons.Outlined.Share
     }
 
-/** Share's one question, where to: a sheet on phones, a small dialog on wide layouts. */
+/** Share's one question, where to, and where a tap on a phone's file lands: a sheet on phones, a small dialog on wide layouts. */
 @Composable
 internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onAction: (FilesyncUiAction) -> Unit) {
     AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.DismissShare) }, maxWidth = 360.dp) {
