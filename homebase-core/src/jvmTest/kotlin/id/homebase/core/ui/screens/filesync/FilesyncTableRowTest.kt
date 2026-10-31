@@ -116,6 +116,17 @@ class FilesyncTableRowTest {
     }
 
     @Test
+    fun aPhonesTapAsksWhereALiveFileGoesAndOpensAFolderOrAsksToRestore() {
+        val actions = mutableListOf<FilesyncUiAction>()
+        val restoring = mutableListOf<FilesyncNode>()
+        val browser = FilesyncBrowserActions(onAction = { actions += it }, onAskRestore = { restoring += it })
+        val deleted = node.copy(removed = true, updatedMs = 1)
+        listOf(node, folder, deleted).forEach(browser::tap)
+        assertEquals(listOf(FilesyncUiAction.AskShare(listOf(node)), FilesyncUiAction.NodeClicked(folder)), actions)
+        assertEquals(listOf(deleted), restoring)
+    }
+
+    @Test
     fun aCtrlClickAddsTheRowWithoutOpeningIt() {
         val actions = recorded {
             onNodeWithText(node.name).performMultiModalInput {

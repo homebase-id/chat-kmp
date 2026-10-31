@@ -131,11 +131,11 @@ data class FilesyncUiState(
 
 enum class FilesyncBulkAction { Download, Share, Move, Delete, Restore }
 
-/** Where Share sends: one file as itself, anything more as one ZIP. Another app only on phones, where there are any. */
-enum class FilesyncShareTarget { Chat, WebDrop, OtherApp;
+/** Where Share sends. Another app only on phones, where there are any. */
+enum class FilesyncShareTarget { Download, Chat, WebDrop, OtherApp;
 
     companion object {
-        val offered: List<FilesyncShareTarget> get() = if (isMobile()) entries else listOf(Chat, WebDrop)
+        val offered: List<FilesyncShareTarget> get() = if (isMobile()) entries else entries - OtherApp
     }
 }
 

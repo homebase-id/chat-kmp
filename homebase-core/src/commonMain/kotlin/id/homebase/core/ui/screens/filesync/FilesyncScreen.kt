@@ -84,6 +84,7 @@ import id.homebase.core.ui.screens.filesync.components.FilesyncInstallHere
 import id.homebase.core.ui.screens.filesync.components.FilesyncPhoneAppButtons
 import id.homebase.core.ui.screens.filesync.components.filesyncInstallHere
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.isWeb
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
@@ -150,6 +151,10 @@ internal class FilesyncBrowserActions(
 ) {
     fun click(node: FilesyncNode) {
         if (node.removedMs != null && !node.isFolder) onAskRestore(node) else onAction(FilesyncUiAction.NodeClicked(node))
+    }
+
+    fun tap(node: FilesyncNode) {
+        if (node.removedMs == null && !node.isFolder) onAction(FilesyncUiAction.AskShare(listOf(node))) else click(node)
     }
 
     private var lastNameOpenAt = Long.MIN_VALUE / 2
@@ -437,7 +442,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
     FilesyncNodeRow(
         node = node,
         details = nodeDetails(node),
-        modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.click(node) }),
+        modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.tap(node) }),
         selected = checked == true,
         checked = checked,
         trailing = {
@@ -457,6 +462,8 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
                         onDismiss = { expanded = false },
                         onAction = actions.onAction,
                         onInfo = { onInfo(node) },
+                        // A tap opens a folder; on the web Open is the Download beside it.
+                        offerOpen = !node.isFolder && !isWeb(),
                         canDelete = !actions.current().inDeletedFolder,
                     )
                 }
