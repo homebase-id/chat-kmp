@@ -16,11 +16,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,14 +33,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import id.homebase.core.util.boundedFirstVisibleItemIndex
+import id.homebase.core.util.isWeb
 import id.homebase.resources.MR
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_pdf_page_content_description
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
+
+/** False where [PdfPageViewer] can only say PDFs aren't supported: the web has no renderer yet. */
+val pdfPageViewerAvailable: Boolean get() = !isWeb()
 
 @Composable
 expect fun PdfPageViewer(
@@ -166,6 +174,47 @@ private fun BitmapPdfPage(
                 contentScale = ContentScale.Fit,
             )
         } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(32.dp),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+/** Pages drawn as bitmaps by [PdfRenderer], which needs no host but the composition. */
+@Composable
+internal fun RenderedPdfPageViewer(
+    filePath: String,
+    onTap: (() -> Unit)?,
+    modifier: Modifier,
+) {
+    var renderer by remember { mutableStateOf<PdfRenderer?>(null) }
+
+    LaunchedEffect(filePath) {
+        renderer?.close()
+        renderer = null
+        val r = PdfRenderer()
+        try {
+            withContext(Dispatchers.Default) { r.open(filePath) }
+            renderer = r
+        } catch (e: CancellationException) {
+            r.close()
+            throw e
+        } catch (_: Exception) {
+            r.close()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { renderer?.close() }
+    }
+
+    val r = renderer
+    if (r != null) {
+        BitmapPdfPageViewer(renderer = r, onTap = onTap, modifier = modifier)
+    } else {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(
                 modifier = Modifier.size(32.dp),
                 color = MaterialTheme.colorScheme.primary,

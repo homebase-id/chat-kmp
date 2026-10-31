@@ -117,7 +117,13 @@ class FilesyncArchiveTest {
         assertTrue(FilesyncUiState().bulkActions.isEmpty())
         val (doc, _) = file("a.pdf", ByteArray(1))
         val desktop = listOf(FilesyncShareTarget.Download, FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop)
-        assertEquals(listOf(FilesyncShareTarget.Download, FilesyncShareTarget.Open, FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop), FilesyncShareTarget.offered(listOf(doc)), "no other apps to hand to off a phone")
+        assertEquals(
+            listOf(FilesyncShareTarget.Download, FilesyncShareTarget.Preview, FilesyncShareTarget.Open, FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop),
+            FilesyncShareTarget.offered(listOf(doc)),
+            "no other apps to hand to off a phone",
+        )
+        val (zip, _) = file("a.zip", ByteArray(1))
+        assertEquals(listOf(FilesyncShareTarget.Download, FilesyncShareTarget.Open, FilesyncShareTarget.Chat, FilesyncShareTarget.WebDrop), FilesyncShareTarget.offered(listOf(zip)), "nothing here shows a ZIP")
         assertEquals(desktop, FilesyncShareTarget.offered(listOf(live)), "a folder opens as itself, not in another app")
         assertEquals(desktop, FilesyncShareTarget.offered(listOf(doc, doc)), "a ZIP isn't opened in another app")
     }

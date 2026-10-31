@@ -46,6 +46,8 @@ actual fun PdfPageViewer(
     modifier: Modifier,
 ) {
     val context = LocalContext.current
+    // A Dialog's context isn't the Activity, and the Activity's fragments can't live in the Dialog's window.
+    if (context !is FragmentActivity) return RenderedPdfPageViewer(filePath, onTap, modifier)
     val uri = remember(filePath) { Uri.fromFile(File(filePath)) }
     val fragmentTag = remember(filePath) { "pdf_viewer_${filePath.hashCode()}_${filePath.length}" }
 

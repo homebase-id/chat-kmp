@@ -133,12 +133,13 @@ data class FilesyncUiState(
 enum class FilesyncBulkAction { Download, Share, Move, Delete, Restore }
 
 /** What the file dialog offers: where a file, or a ZIP of several, goes. */
-enum class FilesyncShareTarget { Download, Open, Chat, WebDrop, OtherApp;
+enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherApp;
 
     companion object {
         // A browser can't hand a file to an app; other apps to share with are only on phones.
         fun offered(nodes: List<FilesyncNode>): List<FilesyncShareTarget> = entries.filter { target ->
             when (target) {
+                Preview -> nodes.singleFile?.let { filesyncPreviewKind(it.name) } != null
                 Open -> !isWeb() && nodes.singleFile != null
                 OtherApp -> isMobile()
                 else -> true
@@ -200,6 +201,7 @@ enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, Chang
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent
+    data class PreviewFile(val file: FilesyncPreviewFile) : FilesyncUiEvent
     data class SaveFile(val path: String, val name: String) : FilesyncUiEvent
     data class ShareFile(val path: String) : FilesyncUiEvent
     data class SendToChat(val path: String, val name: String) : FilesyncUiEvent
