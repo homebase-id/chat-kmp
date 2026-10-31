@@ -31,6 +31,8 @@ jobs:
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
 
       - name: Set up Chrome
         # Required by Karma to run wasmJs tests headless.
@@ -108,6 +110,8 @@ jobs:
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
 
       - name: Cache Kotlin/Native
         if: matrix.os == 'macos-latest'
