@@ -23,7 +23,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3

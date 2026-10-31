@@ -24,7 +24,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
@@ -43,13 +42,6 @@ jobs:
           wget https://downloads.hydraulic.dev/conveyor/conveyor-22.3-linux-amd64.tar.gz
           mkdir -p .conveyor/install
           tar xzvf conveyor-22.3-linux-amd64.tar.gz -C .conveyor/install
-
-      - name: Cache Conveyor data
-        uses: actions/cache@v5
-        with:
-          key: conveyor-data-${{ github.run_id }}
-          path: .conveyor/cache
-          restore-keys: conveyor-data
 
       - name: Read version info
         id: version
@@ -187,7 +179,7 @@ jobs:
           
           
       # Each release is ~1.6 GB and nothing else prunes them. Safe to delete:
-      # deltas come from the local .conveyor/cache, not from published releases,
+      # deltas are not built from published releases,
       # and installed apps resolve updates through releases/latest/download.
       - name: Prune old releases in bleeding repo
         uses: actions/github-script@v7
