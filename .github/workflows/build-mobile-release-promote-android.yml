@@ -31,7 +31,7 @@ jobs:
           cache: gradle
 
       - name: Set up Gradle cache
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Create Google Play Service Account JSON
         run: |
