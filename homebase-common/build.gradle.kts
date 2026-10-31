@@ -19,7 +19,11 @@ compose.resources {
 }
 
 buildConfig {
-    buildConfigField("APP_BUILD_TIME", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+    // Checks pin this: a new value each build makes every module above this one miss the build cache.
+    buildConfigField(
+        "APP_BUILD_TIME",
+        System.getenv("APP_BUILD_TIME") ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+    )
     useKotlinOutput { internalVisibility = false }
 }
 
