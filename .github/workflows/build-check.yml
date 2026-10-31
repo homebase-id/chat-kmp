@@ -7,6 +7,10 @@ on:
   # this is restricted to main, so a layer can reach merge never having compiled.
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: Run unittests
@@ -25,15 +29,8 @@ jobs:
           java-version: "21"
           distribution: "temurin"
 
-      - name: Gradle Cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Set up Chrome
         # Required by Karma to run wasmJs tests headless.
@@ -109,15 +106,8 @@ jobs:
           java-version: "21"
           distribution: "temurin"
 
-      - name: Gradle Cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Cache Kotlin/Native
         if: matrix.os == 'macos-latest'
