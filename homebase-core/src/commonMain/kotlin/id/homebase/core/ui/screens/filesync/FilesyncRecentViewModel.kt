@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -29,12 +31,15 @@ data class FilesyncRecentUiState(
     val deleted: List<FilesyncNode> = emptyList(),
     val folderNames: Map<Uuid, String> = emptyMap(),
     val transfer: FilesyncTransfer? = null,
+    val shareChooser: List<FilesyncNode>? = null,
 )
 
 sealed interface FilesyncRecentAction {
     data class SelectTab(val tab: FilesyncRecentTab) : FilesyncRecentAction
     data object Refresh : FilesyncRecentAction
-    data class Open(val node: FilesyncNode) : FilesyncRecentAction
+    data class AskShare(val node: FilesyncNode) : FilesyncRecentAction
+    data class ShareTo(val target: FilesyncShareTarget) : FilesyncRecentAction
+    data object DismissShare : FilesyncRecentAction
     data class Save(val node: FilesyncNode) : FilesyncRecentAction
     data object CancelTransfer : FilesyncRecentAction
     data class SaveHandedOff(val path: String) : FilesyncRecentAction
@@ -45,6 +50,7 @@ sealed interface FilesyncRecentAction {
 class FilesyncRecentViewModel(
     private val repository: FilesyncRepository,
     private val editor: FilesyncEditor,
+    private val webDropShareFlowState: WebDropShareFlowState,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FilesyncRecentUiState())
@@ -59,6 +65,7 @@ class FilesyncRecentViewModel(
         repository,
         onTransfer = { change -> _uiState.update { it.copy(transfer = change(it.transfer)) } },
         send = _events::send,
+        webDropShareFlowState = webDropShareFlowState,
     )
 
     init {
@@ -70,8 +77,13 @@ class FilesyncRecentViewModel(
         when (action) {
             is FilesyncRecentAction.SelectTab -> _uiState.update { it.copy(tab = action.tab) }
             FilesyncRecentAction.Refresh -> load()
-            is FilesyncRecentAction.Open -> transfers.open(action.node)
-            is FilesyncRecentAction.Save -> transfers.save(action.node)
+            is FilesyncRecentAction.AskShare -> _uiState.update { it.copy(shareChooser = listOf(action.node)) }
+            is FilesyncRecentAction.ShareTo -> {
+                val nodes = _uiState.getAndUpdate { it.copy(shareChooser = null) }.shareChooser ?: return
+                transfers.send(nodes, nodes.first().name, action.target)
+            }
+            FilesyncRecentAction.DismissShare -> _uiState.update { it.copy(shareChooser = null) }
+            is FilesyncRecentAction.Save -> transfers.send(listOf(action.node), action.node.name, FilesyncShareTarget.Download)
             FilesyncRecentAction.CancelTransfer -> transfers.cancel()
             is FilesyncRecentAction.SaveHandedOff -> repository.discard(action.path)
             is FilesyncRecentAction.Restore -> viewModelScope.launch {

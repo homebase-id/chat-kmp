@@ -1409,7 +1409,7 @@ val appModule = module {
         )
     }
     viewModel { FilesyncTrashViewModel(get(), get()) }
-    viewModel { FilesyncRecentViewModel(get(), get()) }
+    viewModel { FilesyncRecentViewModel(get(), get(), get()) }
     viewModel {
         WebDropViewModel(
             webDropService = get(),

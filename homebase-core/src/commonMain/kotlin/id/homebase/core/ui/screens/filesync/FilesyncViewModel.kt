@@ -67,11 +67,7 @@ class FilesyncViewModel(
         repository,
         onTransfer = { change -> _uiState.update { it.copy(transfer = change(it.transfer)) } },
         send = _events::send,
-        onWebDrop = { file ->
-            // Seeded before navigating: WebDropViewModel takes the draft when it's created.
-            webDropShareFlowState.setDraft(listOf(file))
-            _events.send(FilesyncUiEvent.OpenWebDrop)
-        },
+        webDropShareFlowState = webDropShareFlowState,
     )
 
     private var setupPaused = false
@@ -183,7 +179,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.MoveSelection -> _uiState.update { it.copy(selection = it.selection.move(action.by, action.extend, it.visibleIds)) }
 
-            is FilesyncUiAction.SaveClicked -> transfers.save(action.node)
+            is FilesyncUiAction.SaveClicked -> transfers.send(listOf(action.node), action.node.name, FilesyncShareTarget.Download)
 
             is FilesyncUiAction.AskShare -> if (action.nodes.isNotEmpty()) _uiState.update { it.copy(shareChooser = action.nodes) }
 
@@ -197,7 +193,7 @@ class FilesyncViewModel(
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
 
             is FilesyncUiAction.Bulk -> when (action.bulk) {
-                FilesyncBulkAction.Download -> _uiState.value.liveSelected.takeIf { it.isNotEmpty() }?.let { transfers.saveZip(it, zipName(it)) }
+                FilesyncBulkAction.Download -> _uiState.value.liveSelected.takeIf { it.isNotEmpty() }?.let { transfers.send(it, zipName(it), FilesyncShareTarget.Download) }
                 FilesyncBulkAction.Share -> onAction(FilesyncUiAction.AskShare(_uiState.value.liveSelected))
                 FilesyncBulkAction.Move -> onAction(FilesyncUiAction.AskMove(_uiState.value.liveSelected.filter { it.movable }))
                 FilesyncBulkAction.Delete -> onAction(FilesyncUiAction.AskDelete(_uiState.value.liveSelected))
@@ -316,7 +312,7 @@ class FilesyncViewModel(
         when {
             node.isFolder -> openPath(_uiState.value.path + FilesyncCrumb(node.nodeId, node.name, node.removedMs))
             // A deleted file is restored, not opened; the screen asks first.
-            node.removedMs == null -> transfers.open(node)
+            node.removedMs == null -> onAction(FilesyncUiAction.AskShare(listOf(node)))
         }
     }
 

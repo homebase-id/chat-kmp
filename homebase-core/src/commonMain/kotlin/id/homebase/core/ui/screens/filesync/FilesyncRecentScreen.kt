@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +25,7 @@ import id.homebase.common.util.formatBytes
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.core.util.formatMomentDate
 import id.homebase.core.util.formatTime
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_from_folder
 import id.homebase.resources.filesync_in_folder
@@ -42,10 +43,19 @@ import kotlin.time.Instant
 /** What arrived lately next to what was deleted lately: a timeline of single files, by day. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, places: FilesyncPlaces, onBack: () -> Unit) {
+fun FilesyncRecentScreen(viewModel: FilesyncRecentViewModel, places: FilesyncPlaces, onBack: () -> Unit, onOpenWebDrop: () -> Unit, onSendToChat: (path: String, name: String) -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    FilesyncEventsEffect(viewModel.events, snackbarHostState) { viewModel.onAction(FilesyncRecentAction.SaveHandedOff(it)) }
+    FilesyncEventsEffect(viewModel.events, snackbarHostState, onOpenWebDrop = onOpenWebDrop, onSendToChat = onSendToChat) {
+        viewModel.onAction(FilesyncRecentAction.SaveHandedOff(it))
+    }
+    uiState.shareChooser?.let { nodes ->
+        FilesyncShareSheet(
+            nodes = nodes,
+            onShare = { viewModel.onAction(FilesyncRecentAction.ShareTo(it)) },
+            onDismiss = { viewModel.onAction(FilesyncRecentAction.DismissShare) },
+        )
+    }
 
     val title = stringResource(MR.string.filesync_recent)
     val body: @Composable () -> Unit = {
@@ -106,6 +116,8 @@ private fun RecentList(
     onAction: (FilesyncRecentAction) -> Unit,
 ) {
     val timeOf = { node: FilesyncNode -> node.removedMs ?: node.addedMs }
+    // Waiting out a double-click would hold up every tap on a phone.
+    val mouse = isExpandedLayout()
     val days = remember(files) {
         val zone = TimeZone.currentSystemDefault()
         files.groupBy { Instant.fromEpochMilliseconds(timeOf(it)).toLocalDateTime(zone).date }.values.toList()
@@ -121,6 +133,7 @@ private fun RecentList(
                 )
             }
             items(day, key = { it.nodeId.toString() }) { node ->
+                val ask = { onAction(FilesyncRecentAction.AskShare(node)) }
                 val folder = folderName(node.parentId, uiState.folderNames)
                 val ms = timeOf(node)
                 val time = remember(ms) { formatTime(Instant.fromEpochMilliseconds(ms)) }
@@ -139,7 +152,11 @@ private fun RecentList(
                             node.sizeBytes?.let { formatBytes(it) },
                             time,
                         ).joinToString(" · "),
-                        modifier = Modifier.clickable { onAction(FilesyncRecentAction.Open(node)) },
+                        // A double-click asks on its second press, which would otherwise close the dialog the first one opened.
+                        modifier = Modifier.combinedClickable(
+                            onDoubleClick = if (mouse) ask else null,
+                            onClick = ask,
+                        ),
                         trailing = {
                             SaveButton(
                                 progress = uiState.transfer.progressOf(node.nodeId),

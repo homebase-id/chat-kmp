@@ -64,7 +64,11 @@ class FilesyncTableRowTest {
     @Test
     fun aMouseClickOnTheNameOpensLikeALink() {
         // The row merges its text, so the name itself is found in the unmerged tree.
-        val actions = recorded { onNodeWithText(node.name, useUnmergedTree = true).performMouseInput { click() } }
+        val actions = recorded {
+            onNodeWithText(node.name, useUnmergedTree = true).performMouseInput { click() }
+            // It waits out a double-click first.
+            mainClock.advanceTimeBy(1_000)
+        }
         assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.NodeClicked(node)), actions)
     }
 
@@ -116,13 +120,13 @@ class FilesyncTableRowTest {
     }
 
     @Test
-    fun aPhonesTapAsksWhereALiveFileGoesAndOpensAFolderOrAsksToRestore() {
+    fun aClickOpensALiveNodeAndAsksToRestoreADeletedFile() {
         val actions = mutableListOf<FilesyncUiAction>()
         val restoring = mutableListOf<FilesyncNode>()
         val browser = FilesyncBrowserActions(onAction = { actions += it }, onAskRestore = { restoring += it })
         val deleted = node.copy(removed = true, updatedMs = 1)
-        listOf(node, folder, deleted).forEach(browser::tap)
-        assertEquals(listOf(FilesyncUiAction.AskShare(listOf(node)), FilesyncUiAction.NodeClicked(folder)), actions)
+        listOf(node, folder, deleted).forEach(browser::click)
+        assertEquals(listOf<FilesyncUiAction>(FilesyncUiAction.NodeClicked(node), FilesyncUiAction.NodeClicked(folder)), actions)
         assertEquals(listOf(deleted), restoring)
     }
 

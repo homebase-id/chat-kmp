@@ -2258,7 +2258,13 @@ fun AppNavHost(
 
                             scoped<Route.FilesyncRecent> {
                                 if (isAuthenticated) {
-                                    FilesyncRecentScreen(viewModel = koinViewModel(), places = filesyncPlaces, onBack = { navController.popBackStack() })
+                                    FilesyncRecentScreen(
+                                        viewModel = koinViewModel(),
+                                        places = filesyncPlaces,
+                                        onBack = { navController.popBackStack() },
+                                        onOpenWebDrop = openWebDrop,
+                                        onSendToChat = { path, name -> if (navController.sendFileOnChatList(path, name)) openChats() },
+                                    )
                                 }
                             }
 
