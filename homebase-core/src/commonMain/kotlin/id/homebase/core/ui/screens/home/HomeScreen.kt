@@ -20,7 +20,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.LocationOn
@@ -49,6 +48,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
+import id.homebase.core.ui.assets.Filesync
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -205,7 +205,7 @@ fun HomeUi(
             Spacer(modifier = Modifier.height(12.dp))
 
             FeatureCard(
-                icon = Icons.Outlined.Folder,
+                icon = HomebaseIcons.Filesync,
                 label = stringResource(MR.string.filesync_label),
                 subtitle = stringResource(MR.string.filesync_home_subtitle),
                 onClick = onNavigateToFilesync,

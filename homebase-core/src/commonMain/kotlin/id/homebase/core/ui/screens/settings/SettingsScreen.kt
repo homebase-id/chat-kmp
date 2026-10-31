@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
@@ -126,6 +125,8 @@ import id.homebase.resources.settings_email_desc
 import id.homebase.resources.email_settings_section
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.ui.assets.Filesync
+import id.homebase.core.ui.assets.HomebaseIcons
 
 @Composable
 fun SettingsScreen(
@@ -314,7 +315,7 @@ fun SettingsUi(
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("filesyncIconToggle"),
-                    icon = Icons.Outlined.Folder,
+                    icon = HomebaseIcons.Filesync,
                     title = stringResource(MR.string.filesync_label),
                     supportingText = stringResource(MR.string.settings_filesync_icon_desc),
                     action = SettingsRowAction.Toggle(
