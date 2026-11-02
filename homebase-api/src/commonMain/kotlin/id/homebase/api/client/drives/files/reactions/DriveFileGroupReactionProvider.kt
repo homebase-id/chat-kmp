@@ -33,17 +33,6 @@ data class DeleteGroupReactionRequest(
 )
 
 @Serializable
-data class GetGroupReactionsRequest(
-    val cursor: String? = null,
-    val maxRecords: Int? = null
-)
-
-@Serializable
-data class GetGroupReactionsByIdentityRequest(
-    val identity: OdinId
-)
-
-@Serializable
 data class GroupReactionItem(
     val reactionContent: String,
     val odinId: OdinId,
@@ -58,8 +47,14 @@ data class GetGroupReactionsResponse(
 )
 
 @Serializable
+data class GroupReactionCount(
+    val reactionContent: String,
+    val count: Int
+)
+
+@Serializable
 data class GetGroupReactionCountsResponse(
-    val reactions: Map<String, Int>,
+    val reactions: List<GroupReactionCount>,
     val total: Int
 )
 
@@ -218,13 +213,10 @@ class DriveFileGroupReactionProvider(
         val creds = requireCreds()
         val endpoint = "/drives/$driveId/files/$fileId/group-reactions/summary"
 
-        val response = encryptedPostJson(
+        val response = encryptedGet(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(
-                GetGroupReactionsRequest()
-            ),
-            secret = creds.secret
+            secret = creds.secret,
         )
 
         throwForFailure(response)
@@ -245,13 +237,11 @@ class DriveFileGroupReactionProvider(
         val creds = requireCreds()
         val endpoint = "/drives/$driveId/files/$fileId/group-reactions/by-identity"
 
-        val response = encryptedPostJson(
+        val response = encryptedGet(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(
-                GetGroupReactionsByIdentityRequest(identity)
-            ),
-            secret = creds.secret
+            secret = creds.secret,
+            queryString = "identity=${identity.domainName}",
         )
 
         throwForFailure(response)
