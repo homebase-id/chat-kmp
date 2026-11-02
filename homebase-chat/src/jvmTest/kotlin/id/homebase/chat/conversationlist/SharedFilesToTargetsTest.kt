@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -70,5 +71,56 @@ class SharedFilesToTargetsTest {
 
         assertEquals(listOf(second), sent)
         assertTrue(state.value.pendingOutgoing.isEmpty())
+    }
+
+    @Test
+    fun filesAreDeletedOnlyAfterBothSendsFinish() = runTest {
+        val events = mutableListOf<String>()
+        val gate = CompletableDeferred<Unit>()
+
+        val job = async {
+            try {
+                state.sendSharedFilesToTargets(
+                    targets = listOf(first, second),
+                    visibleConversationId = second,
+                    text = "",
+                    attachmentCount = 1,
+                    sentAt = Instant.fromEpochMilliseconds(0),
+                ) { _, conversationId ->
+                    if (conversationId == second) gate.await()
+                    events += "sent"
+                }
+            } finally {
+                events += "cleanup"
+            }
+        }
+        runCurrent()
+        assertEquals(listOf("sent"), events)
+
+        gate.complete(Unit)
+        state.update { it.copy(hasNewerMessages = true) }
+        job.await()
+
+        assertEquals(listOf("sent", "sent", "cleanup"), events)
+    }
+
+    @Test
+    fun theVisiblePlaceholderStaysUntilTheRealMessageLands() = runTest {
+        val job = async {
+            state.sendSharedFilesToTargets(
+                targets = listOf(first),
+                visibleConversationId = first,
+                text = "",
+                attachmentCount = 1,
+                sentAt = Instant.fromEpochMilliseconds(0),
+            ) { _, _ -> }
+        }
+        runCurrent()
+        assertEquals(1, pendingFor(first).size)
+
+        state.update { it.copy(hasNewerMessages = true) }
+        job.await()
+
+        assertTrue(pendingFor(first).isEmpty())
     }
 }

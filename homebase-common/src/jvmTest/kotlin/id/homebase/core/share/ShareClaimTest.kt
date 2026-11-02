@@ -56,4 +56,33 @@ class ShareClaimTest {
         assertNull(processor.claimPendingContent { false })
         assertNotNull(processor.claimPendingContent())
     }
+
+    private fun exists(share: SharedContentDescriptor) = File(processor.resolveFilePath(share.fileNames.single())).exists()
+
+    @Test
+    fun sweepRemovesAbandonedSharesButKeepsTheClaimedOne() = runBlocking<Unit> {
+        val abandoned = stage("a", "report.pdf")
+        val inFlight = stage("b", "report.pdf")
+        val claimed = processor.claimPendingContent()!!
+        val replaced = stage("c", "report.pdf")
+
+        processor.sweepOrphanedShares()
+
+        assertTrue(!exists(abandoned))
+        assertTrue(!exists(replaced))
+        assertTrue(exists(inFlight))
+        processor.cleanup(claimed)
+        assertTrue(!exists(inFlight))
+    }
+
+    @Test
+    fun sweepCanKeepThePendingShare() = runBlocking<Unit> {
+        stage("a", "report.pdf")
+        val pending = stage("b", "report.pdf")
+
+        processor.sweepOrphanedShares(keepPending = true)
+
+        assertTrue(exists(pending))
+        assertTrue(processor.readPendingContent() != null)
+    }
 }

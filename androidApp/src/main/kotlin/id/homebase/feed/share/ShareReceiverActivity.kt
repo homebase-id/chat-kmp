@@ -962,7 +962,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         attachments: List<AttachmentInput>,
     ): SharedContentDescriptor {
         val shareId = Uuid.random()
-        val names = attachments.mapIndexed { index, attachment ->
+        val names = try { attachments.mapIndexed { index, attachment ->
             val originalName = (attachment.displayName ?: attachment.filePath).substringAfterLast('/')
             val name = "$shareId/$index/$originalName"
             val target = java.io.File(shareContentProcessor.resolveFilePath(name))
@@ -971,6 +971,9 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 java.io.File(source).copyTo(target, overwrite = true)
             }
             name
+        } } catch (e: Exception) {
+            shareContentProcessor.discardShare(shareId.toString())
+            throw e
         }
         val mimes = attachments.map { it.contentType }
         val type = when {
@@ -1040,6 +1043,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 }
 
                 withContext(Dispatchers.IO) {
+                    shareContentProcessor.sweepOrphanedShares()
                     shareContentProcessor.writeContent(stageSharedFiles(conversationIds, caption, attachments))
                     cleanupTempFiles()
                 }
