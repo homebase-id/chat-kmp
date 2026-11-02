@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import id.homebase.resources.storage_full_upload_failed
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -57,10 +59,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import id.homebase.core.image.decodeBitmap
@@ -143,7 +148,18 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
-internal const val DELETED_ALPHA = 0.38f
+private const val DELETED_ALPHA = 0.38f
+
+// Keeps a white page from out-shining the row's title in dark theme.
+private const val PAGE_DARK_DIM = 0.32f
+
+internal val FilesyncRowInset = 8.dp
+internal val FilesyncTileSize = 40.dp
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun animatedRowColor(target: Color): Color =
+    animateColorAsState(target, MaterialTheme.motionScheme.defaultEffectsSpec()).value
 
 /** Hands finished downloads to the OS or a preview, and shows every message a Filesync screen can get. */
 @Composable
@@ -239,18 +255,19 @@ internal fun FilesyncNodeRow(
     checked: Boolean? = null,
     trailing: @Composable () -> Unit = {},
 ) {
-    val dim = if (dimDeleted && node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier
-    val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+    val deleted = dimDeleted && node.removedMs != null
+    val container = animatedRowColor(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+    val rounded = Modifier.padding(horizontal = FilesyncRowInset).clip(MaterialTheme.shapes.medium).then(modifier)
     ListItem(
-        modifier = if (checked == null) modifier else modifier.semantics { toggleableState = ToggleableState(checked) },
+        modifier = if (checked == null) rounded else rounded.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
-        headlineContent = { NodeName(node, ringColor = container, modifier = dim, fontWeight = if (node.isFolder) FontWeight.SemiBold else null, maxLines = 2) },
-        supportingContent = { if (details.isNotEmpty()) Text(details, modifier = dim) },
+        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2) },
+        supportingContent = { if (details.isNotEmpty()) Text(details) },
         leadingContent = {
             if (checked == null) {
-                FileTypeTile(node, modifier = dim)
+                FileTypeTile(node, deleted = deleted)
             } else {
-                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) { SelectBox(ToggleableState(checked)) }
+                Box(modifier = Modifier.size(FilesyncTileSize), contentAlignment = Alignment.Center) { SelectBox(ToggleableState(checked)) }
             }
         },
         trailingContent = trailing,
@@ -262,7 +279,7 @@ internal fun NodeName(
     node: FilesyncNode,
     ringColor: Color,
     modifier: Modifier = Modifier,
-    fontWeight: FontWeight? = null,
+    deleted: Boolean = false,
     maxLines: Int = 1,
     // On the name alone, not the badges or the space after it.
     nameModifier: Modifier = Modifier,
@@ -273,8 +290,11 @@ internal fun NodeName(
             text = node.name,
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
-            fontWeight = fontWeight,
-            textDecoration = textDecoration,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (node.isFolder) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (deleted) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+            // Colour alone would leave a deleted row readable as live; the strike survives any theme.
+            textDecoration = if (deleted) TextDecoration.LineThrough + (textDecoration ?: TextDecoration.None) else textDecoration,
             modifier = Modifier.weight(1f, fill = false).then(nameModifier),
         )
         if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
@@ -285,7 +305,7 @@ internal fun NodeName(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, size: Dp = FilesyncTileSize, deleted: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val kind = node.kind
     val (container, content) = when {
@@ -293,7 +313,7 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
         kind == FileKind.Image || kind == FileKind.Video || kind == FileKind.Audio -> colors.secondaryContainer to colors.onSecondaryContainer
         else -> colors.surfaceVariant to colors.onSurfaceVariant
     }
-    val shape = RoundedCornerShape(size * 0.3f)
+    val shape = MaterialTheme.shapes.medium
     val preview by produceState<TilePreview>(if (node.preview == null) TilePreview.None else TilePreview.Decoding, node.preview) {
         val bitmap = node.preview?.let { withContext(Dispatchers.Default) { it.decodeBitmap() } }
         value = if (bitmap == null) TilePreview.None else TilePreview.Ready(bitmap)
@@ -303,24 +323,31 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
     )
     Box(
-        modifier = modifier.size(size).clip(shape).background(container),
+        modifier = modifier
+            .then(if (deleted) Modifier.alpha(DELETED_ALPHA) else Modifier)
+            .size(size)
+            .clip(shape)
+            .background(container)
+            .border(1.dp, colors.outlineVariant, shape),
         contentAlignment = Alignment.Center,
     ) {
         when (val state = preview) {
-            is TilePreview.Ready -> Image(
-                bitmap = state.bitmap,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                // A page reads from its top.
-                alignment = if (kind == FileKind.Pdf) Alignment.TopCenter else Alignment.Center,
-                filterQuality = FilterQuality.High,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag(FILE_TILE_PREVIEW_TAG)
-                    .graphicsLayer { alpha = fade.value }
-                    // A white page would otherwise lose the tile's edge on a light surface.
-                    .border(1.dp, colors.outlineVariant, shape),
-            )
+            is TilePreview.Ready -> {
+                val page = kind == FileKind.Pdf
+                val ratio = state.bitmap.width.toFloat() / state.bitmap.height
+                Image(
+                    bitmap = state.bitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High,
+                    colorFilter = if (page && colors.surface.luminance() < 0.5f) ColorFilter.tint(colors.scrim.copy(alpha = PAGE_DARK_DIM), BlendMode.SrcAtop) else null,
+                    modifier = Modifier
+                        // A whole sheet on the tile, margins showing: cropped to the edges a page reads as a list icon.
+                        .then(if (page) Modifier.padding(size * 0.12f).aspectRatio(ratio, matchHeightConstraintsFirst = ratio < 1f).clip(MaterialTheme.shapes.extraSmall) else Modifier.fillMaxSize())
+                        .testTag(FILE_TILE_PREVIEW_TAG)
+                        .graphicsLayer { alpha = fade.value },
+                )
+            }
             // Blank, not the type icon: a row scrolled back in would flash the icon on every decode.
             TilePreview.Decoding -> Unit
             TilePreview.None -> Icon(
