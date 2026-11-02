@@ -2286,19 +2286,25 @@ private fun CommentsPanelContent(
                 }
             }
             item(key = "divider") {
-                HorizontalDivider(modifier = Modifier.padding(top = 16.dp))
+                HorizontalDivider(modifier = if (docked) Modifier.padding(top = 16.dp) else Modifier)
             }
             item(key = "comments-header") {
                 CommentsHeader(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, top = 24.dp, end = 16.dp, bottom = 8.dp),
+                        .padding(
+                            start = 16.dp,
+                            top = if (docked) 24.dp else 8.dp,
+                            end = 16.dp,
+                            bottom = 8.dp,
+                        ),
                 )
             }
             if (uiState.comments.isEmpty()) {
                 item(key = "comments-empty") {
                     CommentsEmpty(
                         invite = commentsEnabled,
+                        docked = docked,
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(if (docked) Modifier.fillParentMaxHeight(0.5f) else Modifier)
@@ -2322,16 +2328,20 @@ private fun CommentsPanelContent(
             }
         }
         if (commentsEnabled) {
-            AddCommentRow(
-                draft = uiState.commentDraft,
-                isPosting = uiState.isPostingComment,
-                onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
-                onSend = { onAction(MomentDetailUiAction.PostComment) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .imePadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            )
+            val composer: @Composable () -> Unit = {
+                AddCommentRow(
+                    draft = uiState.commentDraft,
+                    isPosting = uiState.isPostingComment,
+                    docked = docked,
+                    onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
+                    onSend = { onAction(MomentDetailUiAction.PostComment) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .imePadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+            if (docked) composer() else Surface(tonalElevation = 3.dp) { composer() }
         }
     }
 }
@@ -3274,8 +3284,18 @@ private fun CommentsHeader(modifier: Modifier = Modifier) {
 @Composable
 private fun CommentsEmpty(
     invite: Boolean,
+    docked: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    if (!docked) {
+        Text(
+            text = stringResource(MR.string.moments_detail_no_comments),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier,
+        )
+        return
+    }
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -3312,39 +3332,53 @@ private fun CommentsEmpty(
 private fun AddCommentRow(
     draft: String,
     isPosting: Boolean,
+    docked: Boolean,
     onDraftChanged: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val canSend = draft.isNotBlank() && !isPosting
     val enterSendsMessage = rememberEnterSendsMessage()
+    val hint: @Composable () -> Unit = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) }
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextField(
-            value = draft,
-            onValueChange = onDraftChanged,
-            placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
-            shape = CircleShape,
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-            ),
-            modifier = Modifier
-                .weight(1f)
-                .composerKeyHandler(
-                    enterSendsMessage = enterSendsMessage,
-                    onSend = { if (canSend) onSend() },
+        val fieldModifier = Modifier
+            .weight(1f)
+            .composerKeyHandler(
+                enterSendsMessage = enterSendsMessage,
+                onSend = { if (canSend) onSend() },
+            )
+        if (docked) {
+            TextField(
+                value = draft,
+                onValueChange = onDraftChanged,
+                placeholder = hint,
+                shape = CircleShape,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
                 ),
-            singleLine = true,
-            // Disabling would drop focus and take the keyboard down after every send.
-            readOnly = isPosting,
-        )
-        FilledTonalIconButton(onClick = onSend, enabled = canSend) {
+                modifier = fieldModifier,
+                singleLine = true,
+                // Disabling would drop focus and take the keyboard down after every send.
+                readOnly = isPosting,
+            )
+        } else {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChanged,
+                placeholder = hint,
+                modifier = fieldModifier,
+                singleLine = true,
+                readOnly = isPosting,
+            )
+        }
+        val sendContent: @Composable () -> Unit = {
             if (isPosting) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
@@ -3356,6 +3390,11 @@ private fun AddCommentRow(
                     contentDescription = stringResource(MR.string.moments_detail_send_comment),
                 )
             }
+        }
+        if (docked) {
+            FilledTonalIconButton(onClick = onSend, enabled = canSend, content = { sendContent() })
+        } else {
+            IconButton(onClick = onSend, enabled = canSend, content = { sendContent() })
         }
     }
 }

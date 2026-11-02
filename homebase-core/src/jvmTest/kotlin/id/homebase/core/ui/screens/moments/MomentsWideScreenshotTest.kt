@@ -6,10 +6,12 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
@@ -18,7 +20,10 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -29,6 +34,10 @@ import coil3.request.ErrorResult
 import coil3.request.SuccessResult
 import com.russhwolf.settings.PreferencesSettings
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.VideoPrefetchDriveAccess
+import id.homebase.api.video.VideoPreloadService
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
@@ -166,6 +175,8 @@ class MomentsWideScreenshotTest {
                     single { AvatarResolver(MutableStateFlow(emptyList())) }
                     single { LocalAttachmentContextStore(EventBus(), CoroutineScope(Dispatchers.Unconfined)) }
                     single { unwiredImageLoader() }
+                    single { VideoPreloader(unreachable<VideoPrefetchDriveAccess>(), unreachable<FileOperationsProvider>()) }
+                    single { VideoPreloadService(get()) }
                 },
             )
          }
@@ -179,7 +190,15 @@ class MomentsWideScreenshotTest {
         viewMode: MomentsViewMode,
         dark: Boolean,
         onDetail: (Uuid) -> Unit = {},
+    ) = showLive(mutableStateOf(items), viewMode, dark, onDetail)
+
+    private fun ComposeUiTest.showLive(
+        source: MutableState<List<MomentFeedItem>>,
+        viewMode: MomentsViewMode,
+        dark: Boolean,
+        onDetail: (Uuid) -> Unit = {},
     ) = setContent {
+        val items = source.value
         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
             Surface {
                 val mode = remember { mutableStateOf(viewMode) }
@@ -206,7 +225,7 @@ class MomentsWideScreenshotTest {
                                     snackbarHostState = remember { SnackbarHostState() },
                                     sharedTransitionScope = this@SharedTransitionLayout,
                                     animatedVisibilityScope = this@AnimatedContent,
-                                    isActivePage = true,
+                                    isActivePage = false,
                                     commentsDocked = true,
                                 )
                             }
@@ -216,6 +235,12 @@ class MomentsWideScreenshotTest {
             }
         }
     }
+
+    // The preloader swallows these failures, so the video tile mounts without a drive.
+    private inline fun <reified T : Any> unreachable(): T = java.lang.reflect.Proxy.newProxyInstance(
+        T::class.java.classLoader,
+        arrayOf(T::class.java),
+    ) { _, _, _ -> throw UnsupportedOperationException("no drive in this test") } as T
 
     // Only held by the zoom image; the base image comes through the fixture Coil loader.
     private fun unwiredImageLoader(): HomebaseImageLoader {
@@ -291,5 +316,33 @@ class MomentsWideScreenshotTest {
         waitForIdle()
         assertEquals(moments[1].id, shown.last())
         save("pane-selected-second-light")
+    }
+
+    @Test
+    fun clickingASingleVideoCardSelectsItInThePane() = runDesktopComposeUiTest(1135, 800) {
+        val video = moments.first { it.payloads.singleOrNull()?.contentType == "video/mp4" }
+        val items = listOf(moments.first { it.payloads.singleOrNull()?.contentType == "image/jpeg" }, video)
+        val shown = mutableListOf<Uuid>()
+        show(items, MomentsViewMode.Timeline, dark = false, onDetail = { if (shown.lastOrNull() != it) shown += it })
+        waitForIdle()
+        assertEquals(items.first().id, shown.last())
+        val cards = SemanticsMatcher("feed card") { it.config.getOrNull(SemanticsActions.OnClick)?.label != null }
+        onAllNodes(cards)[1].performTouchInput { click() }
+        // A double-tap handler delays the single tap until the window closes.
+        mainClock.advanceTimeBy(600)
+        waitForIdle()
+        assertEquals(video.id, shown.last())
+    }
+
+    @Test
+    fun theDefaultSelectionStaysWhenANewerMomentArrives() = runDesktopComposeUiTest(1135, 800) {
+        val source = mutableStateOf(moments)
+        val shown = mutableListOf<Uuid>()
+        showLive(source, MomentsViewMode.Timeline, dark = false, onDetail = { shown += it })
+        waitForIdle()
+        assertEquals(moments.first().id, shown.last())
+        source.value = listOf(moment(99)) + moments
+        waitForIdle()
+        assertEquals(moments.first().id, shown.last())
     }
 }

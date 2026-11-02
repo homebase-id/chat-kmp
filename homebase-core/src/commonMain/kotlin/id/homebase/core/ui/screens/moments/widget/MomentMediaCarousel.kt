@@ -96,6 +96,7 @@ fun MomentMediaCarousel(
     // the host can pass it to the tap-into-detail navigation — opening the
     // detail at the page the user was looking at, not always page 0.
     onVisiblePayloadChanged: (String) -> Unit = {},
+    onVideoTap: ((PayloadDescriptor) -> Unit)? = null,
     // Force the whole video frame to show (fit) instead of crop-to-fill —
     // set while the host card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
@@ -193,10 +194,14 @@ fun MomentMediaCarousel(
                     isUploading = isUploading,
                     isPlaying = playingPayloadKey == payload.key,
                     onPlayTap = {
-                        playingPayloadKey = if (playingPayloadKey == payload.key) {
-                            null
+                        if (onVideoTap != null) {
+                            onVideoTap(payload)
                         } else {
-                            payload.key
+                            playingPayloadKey = if (playingPayloadKey == payload.key) {
+                                null
+                            } else {
+                                payload.key
+                            }
                         }
                     },
                     onDoubleTap = onDoubleTap,

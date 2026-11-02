@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -272,6 +273,13 @@ internal fun MomentsAdaptiveContent(
         val showPane = viewMode != MomentsViewMode.Reels &&
             momentIds.isNotEmpty() &&
             MomentsLayoutSpec.showsDetailPane(availableWidth)
+        val wide = availableWidth >= MomentsLayoutSpec.FeedMaxWidth
+        // Pins the default so a newly synced moment cannot swap the pane mid-draft.
+        LaunchedEffect(showPane, effectiveSelectedId) {
+            if (showPane && effectiveSelectedId != null && selectedMomentId != effectiveSelectedId) {
+                selectedMomentId = effectiveSelectedId
+            }
+        }
         val feed: @Composable (Modifier) -> Unit = { feedModifier ->
             CompactMomentsLayout(
                 moments = uiState.moments,
@@ -296,10 +304,10 @@ internal fun MomentsAdaptiveContent(
                 onAddReaction = onAddReaction,
                 onDeleteFailedMoment = onDeleteFailedMoment,
                 onDismissUpload = onDismissUpload,
-                listState = listState,
+                listState = if (wide) listState else null,
                 selectedMomentId = if (showPane) effectiveSelectedId else null,
                 commentsSheetOnTap = !showPane,
-                wide = availableWidth >= MomentsLayoutSpec.FeedMaxWidth,
+                wide = wide,
                 createInTopBar = showPane,
                 columnInset = if (showPane || viewMode == MomentsViewMode.Reels) {
                     0.dp
@@ -371,6 +379,8 @@ private fun MomentDetailPaneHost(momentId: Uuid) {
         MomentDetailPane(
             viewModel = detailVm,
             onNavigateBack = null,
+            // The pane is the only player in this layout; desktop keeps playback manual.
+            isActivePage = !isDesktopOrWeb(),
             commentsDocked = true,
         )
     }
@@ -397,7 +407,7 @@ private fun CompactMomentsLayout(
     onAddReaction: (Uuid, String) -> Unit,
     onDeleteFailedMoment: (Uuid) -> Unit,
     onDismissUpload: (Uuid) -> Unit,
-    listState: LazyListState,
+    listState: LazyListState?,
     selectedMomentId: Uuid?,
     commentsSheetOnTap: Boolean,
     wide: Boolean,
@@ -424,7 +434,7 @@ private fun CompactMomentsLayout(
         },
         floatingActionButton = {
             // The empty state carries its own add button.
-            if (!createInTopBar && (moments.isNotEmpty() || isLoading)) {
+            if (!createInTopBar && (!wide || moments.isNotEmpty() || isLoading)) {
                 FloatingActionButton(
                     onClick = onCreateMoment,
                     // Lifted off the bottom edge a touch so it doesn't sit on top
@@ -447,7 +457,7 @@ private fun CompactMomentsLayout(
             if (isLoading) {
                 Box(modifier = contentModifier, contentAlignment = Alignment.Center) { LoadingIndicator() }
             } else {
-                EmptyMomentsState(onCreateMoment = onCreateMoment, modifier = contentModifier)
+                EmptyMomentsState(wide = wide, onCreateMoment = onCreateMoment, modifier = contentModifier)
             }
         } else {
             val motion = MaterialTheme.motionScheme
@@ -471,7 +481,7 @@ private fun CompactMomentsLayout(
                         selectedMomentId = selectedMomentId,
                         commentsSheetOnTap = commentsSheetOnTap,
                         capMediaHeight = wide,
-                        listState = listState,
+                        hoistedListState = listState,
                         onDeleteFailedMoment = onDeleteFailedMoment,
                         onDismissUpload = onDismissUpload,
                         modifier = columnModifier,
@@ -483,6 +493,7 @@ private fun CompactMomentsLayout(
                         onOpenMoment = onOpenMoment,
                         pendingLocalPreviews = pendingLocalPreviews,
                         selectedMomentId = selectedMomentId,
+                        wide = wide,
                         modifier = columnModifier,
                     ) }
                     MomentsViewMode.Reels -> MomentsReelsView(
@@ -522,9 +533,10 @@ private fun MomentsFeedList(
     capMediaHeight: Boolean = false,
     onDeleteFailedMoment: (Uuid) -> Unit = {},
     onDismissUpload: (Uuid) -> Unit = {},
-    listState: LazyListState = rememberLazyListState(),
+    hoistedListState: LazyListState? = null,
     modifier: Modifier = Modifier,
 ) {
+    val listState = hoistedListState ?: rememberLazyListState()
     var playingMomentId by remember { mutableStateOf<Uuid?>(null) }
     // Which moment (if any) has its comments bottom sheet open. Null = closed.
     // Only set on the compact timeline (see [commentsSheetOnTap]); the modal
@@ -573,7 +585,11 @@ private fun MomentsFeedList(
     // Disabled on desktop: on a pointer-driven window the feed shouldn't start
     // playing videos on its own as the user scrolls — playback stays manual
     // (tap a card's play button, which sets playingMomentId via onToggleVideoPlay).
-    val feedAutoplayEnabled = !isDesktopOrWeb()
+    //
+    // With the docked pane (!commentsSheetOnTap) the pane is the only player, so the
+    // feed never plays: no second surface for the selected moment, no doubled audio.
+    val feedPlays = commentsSheetOnTap
+    val feedAutoplayEnabled = feedPlays && !isDesktopOrWeb()
     LaunchedEffect(listState, videoMomentIds, feedAutoplayEnabled) {
         if (!feedAutoplayEnabled) return@LaunchedEffect
         snapshotFlow {
@@ -599,7 +615,10 @@ private fun MomentsFeedList(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        contentPadding = PaddingValues(top = 8.dp, bottom = MomentsLayoutSpec.FeedBottomPadding),
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = if (capMediaHeight) MomentsLayoutSpec.FeedBottomPadding else 8.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(moments, key = { it.id.toString() }) { moment ->
@@ -633,7 +652,7 @@ private fun MomentsFeedList(
                 // Pause the feed's own players while the comments band is up
                 // (the band owns playback) so we never mount two surfaces for
                 // the same moment.
-                isVideoPlaying = isActive && commentsMomentId == null,
+                isVideoPlaying = feedPlays && isActive && commentsMomentId == null,
                 onToggleVideoPlay = {
                     playingMomentId = if (isActive) null else moment.id
                 },
@@ -641,7 +660,7 @@ private fun MomentsFeedList(
                 // the active one, the carousel auto-plays whichever video
                 // page is currently visible (and pauses when the user swipes
                 // to a non-video page or away from this card).
-                autoplayActive = isActive,
+                autoplayActive = feedPlays && isActive,
                 isMuted = isMuted,
                 onToggleMute = videoSession::toggleMuted,
                 modifier = Modifier.animateItem(),
@@ -954,6 +973,8 @@ private fun MomentPostCard(
     val cardInset = selectionInset.coerceAtLeast(0.dp)
     val avatarOdinId = moment.originalAuthor ?: moment.senderOdinId ?: selfOdinId
     val hasMedia = moment.payloads.isNotEmpty() || pendingLocalPreviewModel != null
+    val showOverlays = hasMedia || !capMediaHeight
+    val overlayPadding = if (capMediaHeight) 12.dp else 8.dp
     // Narrowing the card, not letterboxing it, keeps the overlays on the photo.
     val maxCardWidth = if (capMediaHeight) {
         val single = moment.payloads.singleOrNull()
@@ -1029,12 +1050,14 @@ private fun MomentPostCard(
                 )
             }
             .padding(horizontal = CardHorizontalInset)
-            .clip(MaterialTheme.shapes.extraLarge)
+            .clip(if (capMediaHeight) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.large)
             .background(selectionTint)
             .border(MomentsLayoutSpec.SelectionRingWidth, selectionRing, MaterialTheme.shapes.extraLarge)
             // The selected card's media pulls in from the edge so the tint frames it.
             .padding(cardInset)
-            .clip(RoundedCornerShape(CardCornerRadius - cardInset))
+            .then(
+                if (capMediaHeight) Modifier.clip(RoundedCornerShape(CardCornerRadius - cardInset)) else Modifier,
+            )
             // Talkback / accessibility services need a click action because
             // the raw pointerInput above isn't visible to them.
             .semantics {
@@ -1082,11 +1105,25 @@ private fun MomentPostCard(
             } else {
                 // Description-only / corrupt-payload moment — still render a tile so
                 // the user sees something tappable.
-                MomentTextTile(
-                    moment = moment,
-                    avatarOdinId = avatarOdinId,
-                    isSelected = isSelected,
-                )
+                if (capMediaHeight) {
+                    MomentTextTile(
+                        moment = moment,
+                        avatarOdinId = avatarOdinId,
+                        isSelected = isSelected,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            text = moment.description.ifBlank { "—" },
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
             }
         } else {
             // Wrap the gallery so the upload-progress overlay can size to the
@@ -1094,6 +1131,9 @@ private fun MomentPostCard(
             // chips below stay readable through the scrim because they sit
             // outside this Box on the outer card.
             Box {
+                val onMediaTap: (PayloadDescriptor) -> Unit = { tapped ->
+                    if (commentsSheetOnTap) onOpenComments(tapped.key) else onCardClick(tapped.key)
+                }
                 val singleVideoPayload = moment.payloads.singleOrNull()?.takeIf { it.isVideo() }
                 if (singleVideoPayload != null) {
                     // Tap-to-play tile. Inner detectTapGestures consumes single
@@ -1113,7 +1153,11 @@ private fun MomentPostCard(
                         previewThumbnail = moment.previewThumbnail,
                         isUploading = uploadStatus != null,
                         isPlaying = isVideoPlaying,
-                        onPlayTap = onToggleVideoPlay,
+                        onPlayTap = if (commentsSheetOnTap) {
+                            onToggleVideoPlay
+                        } else {
+                            { onCardClick(singleVideoPayload.key) }
+                        },
                         onDoubleTap = { toggleWithFeedback(HeartEmoji) },
                         isMuted = isMuted,
                         onToggleMute = onToggleMute,
@@ -1144,15 +1188,13 @@ private fun MomentPostCard(
                         // they replace double/triple-tap-react (taps elsewhere on
                         // the card still react). Video tiles keep their own play
                         // tap and double-tap-heart via the onDoubleTap callback.
-                        onMediaClick = { tapped ->
-                            if (commentsSheetOnTap) onOpenComments(tapped.key)
-                            else onCardClick(tapped.key)
-                        },
+                        onMediaClick = onMediaTap,
                         isUploading = uploadStatus != null,
                         isMuted = isMuted,
                         onToggleMute = onToggleMute,
                         onDoubleTap = { toggleWithFeedback(HeartEmoji) },
                         autoplayActive = autoplayActive,
+                        onVideoTap = if (commentsSheetOnTap) null else onMediaTap,
                         onVisiblePayloadChanged = { visiblePayloadKey = it },
                     )
                 }
@@ -1173,12 +1215,12 @@ private fun MomentPostCard(
         // MomentComposeViewModel.deriveMomentInstant). The video duration chip
         // moved to bottom-right (see MomentInlineVideoTile) so this corner is
         // clear.
-        if (hasMedia) {
+        if (showOverlays) {
             MomentDatePill(
                 timestamp = Instant.fromEpochMilliseconds(moment.userDateMs),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(12.dp),
+                    .padding(overlayPadding),
             )
         }
 
@@ -1189,12 +1231,12 @@ private fun MomentPostCard(
         // local copy stamps self). Fall back to senderOdinId, then to the active
         // user (a null author only happens on legacy posts, which are the user's
         // own), so the badge always renders with the correct face.
-        if (hasMedia && avatarOdinId != null) {
+        if (showOverlays && avatarOdinId != null) {
             SenderAvatarBadge(
                 odinId = avatarOdinId,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(12.dp),
+                    .padding(overlayPadding),
             )
         }
 
@@ -1361,9 +1403,33 @@ private fun MomentFeedItem.isPrivate(self: OdinId?): Boolean {
 
 @Composable
 private fun EmptyMomentsState(
+    wide: Boolean,
     onCreateMoment: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (!wide) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(horizontal = 32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(96.dp),
+                )
+                Text(
+                    text = stringResource(MR.string.moments_welcome),
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 24.dp),
+                )
+            }
+        }
+        return
+    }
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

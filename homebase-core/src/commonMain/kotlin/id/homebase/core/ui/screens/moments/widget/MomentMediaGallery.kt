@@ -52,6 +52,8 @@ fun MomentMediaGallery(
     autoplayActive: Boolean = false,
     // No-op on the single-payload path.
     onVisiblePayloadChanged: (String) -> Unit = {},
+    // Carousel only: replaces the video pages' own play/pause toggle (the host owns playback).
+    onVideoTap: ((PayloadDescriptor) -> Unit)? = null,
     // Set while the host card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
     // Null = no floor; the feed passes FeedMinMediaAspect to clamp very tall portraits.
@@ -102,6 +104,7 @@ fun MomentMediaGallery(
                 animatedVisibilityScope = animatedVisibilityScope,
                 autoplayActive = autoplayActive,
                 onVisiblePayloadChanged = onVisiblePayloadChanged,
+                onVideoTap = onVideoTap,
                 fitToContent = fitToContent,
                 remoteOdinId = remoteOdinId,
                 globalTransitId = globalTransitId,

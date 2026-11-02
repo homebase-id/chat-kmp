@@ -94,8 +94,11 @@ fun MomentsAlbumGrid(
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
     selectedMomentId: Uuid? = null,
+    wide: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val cellSpacing = if (wide) MomentsLayoutSpec.AlbumCellSpacing else 2.dp
+    val gridHorizontalPadding = if (wide) MomentsLayoutSpec.AlbumHorizontalPadding else 4.dp
     // Group + sort once per (moments, zoom) pair. Sorting newest-first inside
     // each group mirrors the feed's overall ordering so the per-day strip
     // reads top-left → bottom-right newest → oldest.
@@ -107,7 +110,7 @@ fun MomentsAlbumGrid(
             onChange = onZoomChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = MomentsLayoutSpec.AlbumHorizontalPadding, vertical = 6.dp),
+                .padding(horizontal = if (wide) MomentsLayoutSpec.AlbumHorizontalPadding else 12.dp, vertical = 6.dp),
         )
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val columnCount = MomentsLayoutSpec.albumColumnCount(
@@ -115,13 +118,14 @@ fun MomentsAlbumGrid(
                 maxWidth - MomentsLayoutSpec.AlbumHorizontalPadding * 2,
             )
             LazyVerticalGrid(
-                columns = remember(columnCount) { WholePixelColumns(columnCount) },
-                verticalArrangement = Arrangement.spacedBy(MomentsLayoutSpec.AlbumCellSpacing),
-                horizontalArrangement = Arrangement.spacedBy(MomentsLayoutSpec.AlbumCellSpacing),
-                contentPadding = PaddingValues(
-                    horizontal = MomentsLayoutSpec.AlbumHorizontalPadding,
-                    vertical = 4.dp,
-                ),
+                columns = if (wide) {
+                    remember(columnCount) { WholePixelColumns(columnCount) }
+                } else {
+                    GridCells.Fixed(MomentsLayoutSpec.phoneAlbumColumns(zoom))
+                },
+                verticalArrangement = Arrangement.spacedBy(cellSpacing),
+                horizontalArrangement = Arrangement.spacedBy(cellSpacing),
+                contentPadding = PaddingValues(horizontal = gridHorizontalPadding, vertical = 4.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 grouped.forEach { group ->
@@ -132,6 +136,7 @@ fun MomentsAlbumGrid(
                     ) {
                         AlbumDateHeader(
                             label = group.label(),
+                            wide = wide,
                             onClick = { onZoomChange(zoom.cycleOut()) },
                         )
                     }
@@ -144,6 +149,7 @@ fun MomentsAlbumGrid(
                             moment = moment,
                             pendingLocalPreviewModel = pendingLocalPreviews[moment.id],
                             isSelected = moment.id == selectedMomentId,
+                            wide = wide,
                             onClick = { onOpenMoment(moment.id.toString(), null) },
                         )
                     }
@@ -191,18 +197,21 @@ private fun AlbumZoomButtonGroup(
 @Composable
 private fun AlbumDateHeader(
     label: String,
+    wide: Boolean,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .then(
+                if (wide) Modifier.padding(vertical = 12.dp) else Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            ),
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.ExtraBold,
+            style = if (wide) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleSmall,
+            fontWeight = if (wide) FontWeight.ExtraBold else FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
@@ -214,11 +223,12 @@ private fun AlbumMomentCell(
     moment: MomentFeedItem,
     pendingLocalPreviewModel: Any?,
     isSelected: Boolean,
+    wide: Boolean,
     onClick: () -> Unit,
 ) {
     val motion = MaterialTheme.motionScheme
     val cornerRadius by animateDpAsState(
-        targetValue = if (isSelected) 24.dp else 12.dp,
+        targetValue = if (isSelected) 24.dp else if (wide) 12.dp else 0.dp,
         animationSpec = motion.defaultSpatialSpec(),
     )
     val ringColor by animateColorAsState(

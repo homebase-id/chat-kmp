@@ -38,12 +38,14 @@ internal object MomentsLayoutSpec {
     fun resolveSelection(current: Uuid?, newestFirstIds: List<Uuid>): Uuid? =
         if (current != null && current in newestFirstIds) current else newestFirstIds.firstOrNull()
 
+    fun phoneAlbumColumns(zoom: MomentsAlbumZoom): Int = when (zoom) {
+        MomentsAlbumZoom.Day -> 3
+        MomentsAlbumZoom.Month -> 5
+        MomentsAlbumZoom.Year -> 8
+    }
+
     fun albumColumnCount(zoom: MomentsAlbumZoom, gridWidth: Dp): Int {
-        val phoneColumns = when (zoom) {
-            MomentsAlbumZoom.Day -> 3
-            MomentsAlbumZoom.Month -> 5
-            MomentsAlbumZoom.Year -> 8
-        }
+        val phoneColumns = phoneAlbumColumns(zoom)
         val fitted = (gridWidth + AlbumCellSpacing) / (albumMinCellWidth(zoom) + AlbumCellSpacing)
         return maxOf(phoneColumns, fitted.toInt())
     }
