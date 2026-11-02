@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.profile.PhotoRemovalConfirmDialog
+import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.resources.profile_card_content_save_failed
 import id.homebase.resources.profile_card_read_only
@@ -240,6 +241,7 @@ fun ProfileCardEditorScreen(
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
     val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openEditor = false) }
     LaunchedEffect(viewModel) {
         if (cardsEnabled) viewModel.startHost()
         viewModel.onContentEditorShown()
@@ -290,6 +292,7 @@ fun ProfileCardEditorScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is ProfileCardEvent.OpenLink -> uriHandler.openUrl(event.url)
+                ProfileCardEvent.OpenContentEditor -> Unit
                 ProfileCardEvent.DesignSaved -> onBack()
                 ProfileCardEvent.DesignSaveFailed -> launch { snackbarHostState.showSnackbar(errSave) }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
@@ -390,6 +393,8 @@ fun ProfileCardEditorScreen(
             onContentEdit = viewModel::onContentEdited,
             onContentDelete = viewModel::onContentDeleted,
             onContentAdd = viewModel::onContentAdded,
+            onNewCircle = newCircle.takeIf { uiState.circleCardsSupported },
+            onCirclesChanged = viewModel::onCirclesChanged,
         ) { layoutWidth ->
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
@@ -494,6 +499,8 @@ internal fun ProfileCardEditorContent(
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
     onContentDelete: (Uuid) -> Unit = {},
     onContentAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
+    onNewCircle: (() -> Unit)? = null,
+    onCirclesChanged: (() -> Unit)? = null,
     preview: @Composable BoxScope.(layoutWidth: Dp) -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
@@ -543,6 +550,7 @@ internal fun ProfileCardEditorContent(
                     onContentDelete = onContentDelete,
                     onRetry = onRetryLoad,
                     onContentAdd = onContentAdd,
+                    onCirclesChanged = onCirclesChanged,
                     mode = mode,
                     photo = photo,
                     onChangePhoto = onChangePhoto,
@@ -597,6 +605,7 @@ internal fun ProfileCardEditorContent(
                         cards = uiState.cards.map { it.audience },
                         selected = uiState.selectedAudience,
                         onSelect = onSelectCard,
+                        onNewCircle = onNewCircle,
                         modifier = Modifier.padding(bottom = metrics.gap),
                     )
                 }
@@ -856,6 +865,7 @@ private fun EditorPanel(
     onContentDelete: (Uuid) -> Unit,
     onRetry: () -> Unit,
     onContentAdd: (String, Map<String, String>) -> Unit,
+    onCirclesChanged: (() -> Unit)?,
     mode: EditorMode,
     photo: CardPhotoUi,
     onChangePhoto: () -> Unit,
@@ -904,6 +914,7 @@ private fun EditorPanel(
                     onEdit = onContentEdit,
                     onDelete = onContentDelete,
                     onAdd = onContentAdd,
+                    onCirclesChanged = onCirclesChanged,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
                     onImport = onImport,

@@ -3156,4 +3156,18 @@
     <string name="call_report_problem">Report a problem</string>
     <string name="call_report_unavailable">No log found for this call</string>
     <string name="vault_make_private">Click to change your Vault Drive to true zero knowledge encryption</string>
+    <string name="circle_new">New circle</string>
+    <string name="circle_create_title">New circle</string>
+    <string name="circle_create_name">Name</string>
+    <string name="circle_create_emoji">Emoji (optional)</string>
+    <string name="circle_create_description">Description (optional)</string>
+    <string name="circle_create_action">Create</string>
+    <string name="circle_create_failed">Couldn't create the circle. Try again.</string>
+    <string name="circle_create_needs_permission">Chat needs more access to create circles. Approve it and try again.</string>
+    <string name="circle_create_empty_action">Create a circle</string>
+    <string name="circle_delete">Delete circle</string>
+    <string name="circle_delete_title">Delete %1$s?</string>
+    <string name="circle_delete_body">This removes the circle and its card.</string>
+    <string name="circle_delete_body_members">%1$d people are in this circle. Deleting it removes them from it, and removes the circle and its card.</string>
+    <string name="circle_delete_failed">Couldn't delete the circle. Try again.</string>
 </resources>

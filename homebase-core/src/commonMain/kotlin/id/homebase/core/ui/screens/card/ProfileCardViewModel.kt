@@ -20,7 +20,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
-import id.homebase.core.ui.screens.contactbook.isOwnedByContactsApp
+import id.homebase.core.ui.screens.contactbook.isPresentedByThisApp
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.keepingCircles
@@ -150,6 +150,7 @@ sealed interface ProfileCardEvent {
     data object DesignSaveFailed : ProfileCardEvent
     data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
+    data object OpenContentEditor : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
@@ -261,7 +262,7 @@ class DefaultProfileCardSource(
 
 internal fun contactsCircles(circles: List<CircleWithMembers>): List<CardCircle> =
     circles
-        .filter { it.circle.isOwnedByContactsApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
+        .filter { it.circle.isPresentedByThisApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
         .map { CardCircle(it.circle.id, it.circle.name) }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }
@@ -640,6 +641,20 @@ class ProfileCardViewModel(
     }
 
     fun onPhotoChanged() = load(force = true)
+
+    fun onCirclesChanged() = load(force = true)
+
+    /** Reloads so the new circle's card exists, then lands on it; every circle gets a card, borrowing the public design until saved. */
+    fun onCircleCreated(id: String, openEditor: Boolean) {
+        viewModelScope.launch {
+            load(force = true)
+            loadJob?.join()
+            val card = _uiState.value.cards.firstOrNull { (it.audience as? CardAudience.Circle)?.let { c -> compareStringUuId(c.id, id) } == true }
+                ?: return@launch
+            selectAudience(card.audience)
+            if (openEditor) _events.tryEmit(ProfileCardEvent.OpenContentEditor)
+        }
+    }
 
     fun onImportRequested(from: CardAudience) {
         val state = _uiState.value

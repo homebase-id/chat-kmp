@@ -2,6 +2,12 @@
 
 package id.homebase.core.ui.screens.profile
 
+import id.homebase.resources.circle_new
+import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -174,8 +180,18 @@ internal fun AudiencePicker(
     onChange: (ProfileAudience) -> Unit,
     modifier: Modifier = Modifier,
     otherCircles: List<CardCircle> = emptyList(),
+    /** Called once the server holds a circle made from the picker, which is already picked. */
+    onCircleCreated: (() -> Unit)? = null,
 ) {
     val motion = MaterialTheme.motionScheme
+    val currentAudience by rememberUpdatedState(audience)
+    val newCircle = onCircleCreated?.let { created ->
+        rememberNewCircleAction { id ->
+            val picked = currentAudience as? ProfileAudience.Circles ?: ProfileAudience.Circles(emptySet())
+            onChange(picked.copy(ids = picked.ids + id))
+            created()
+        }
+    }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ChoiceCaption(stringResource(MR.string.profile_edit_audience_title))
         ConnectedChoices(count = AudienceKind.entries.size) { index, shapes, sizing ->
@@ -213,17 +229,18 @@ internal fun AudiencePicker(
         }
         val selection = audience as? ProfileAudience.Circles
         AnimatedVisibility(
-            visible = selection != null && (circles.isNotEmpty() || otherCircles.isNotEmpty()),
+            visible = selection != null && (circles.isNotEmpty() || otherCircles.isNotEmpty() || newCircle != null),
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
             exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
             val picked = selection ?: ProfileAudience.Circles(emptySet())
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (circles.isNotEmpty()) {
+                if (circles.isNotEmpty() || newCircle != null) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        newCircle?.let { NewCircleChip(onClick = it) }
                         circles.forEach { circle ->
                             CircleChip(
                                 name = circle.name,
@@ -261,6 +278,16 @@ internal fun AudiencePicker(
         }
         AudienceHint(audience = audience, noCircles = circles.isEmpty())
     }
+}
+
+@Composable
+private fun NewCircleChip(onClick: () -> Unit) {
+    AssistChip(
+        onClick = onClick,
+        label = { Text(stringResource(MR.string.circle_new)) },
+        leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
+        modifier = Modifier.heightIn(min = 48.dp),
+    )
 }
 
 @Composable

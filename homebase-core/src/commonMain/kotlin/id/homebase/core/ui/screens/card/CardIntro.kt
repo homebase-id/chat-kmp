@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.card
 
+import id.homebase.resources.circle_new
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -89,6 +91,7 @@ internal fun CardIntro(
     onRetry: () -> Unit,
     onCapture: suspend () -> Unit,
     onTilePainted: (CardAudience) -> Unit,
+    onNewCircle: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onClose)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -167,6 +170,9 @@ internal fun CardIntro(
                                     onPainted = { onTilePainted(card.audience) },
                                 )
                             }
+                            if (onNewCircle != null && uiState.circleCardsSupported) {
+                                item(key = "new-circle") { NewCircleTile(onClick = onNewCircle) }
+                            }
                         }
                     }
                 }
@@ -218,6 +224,45 @@ private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Uni
             )
         }
         CardStill(card = card, still = still, modifier = cardModifier)
+    }
+}
+
+@Composable
+private fun NewCircleTile(onClick: () -> Unit) {
+    val title = stringResource(MR.string.circle_new)
+    val shape = RoundedCornerShape(INTRO_TILE_CORNER)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .clip(shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = title }
+            .padding(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(
+                Icons.Outlined.Add,
+                contentDescription = null,
+                modifier = Modifier.size(with(LocalDensity.current) { TILE_ICON_SIZE.toDp() }),
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(CARD_THUMB_ASPECT)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+        ) {
+            Icon(Icons.Outlined.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

@@ -74,6 +74,7 @@ class ContactBookViewModel(
     private val conversationService: ConversationService,
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
+    private val userCircles: UserCircleService,
     private val overrideStore: ContactOverrideStore,
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
@@ -419,6 +420,11 @@ class ContactBookViewModel(
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
+            is ContactBookUiAction.CircleCreated ->
+                connectionService.circles.value.circles
+                    .firstOrNull { it.circle.id.equals(action.circleId, ignoreCase = true) }
+                    ?.let(::handleCircleClicked)
+            is ContactBookUiAction.CircleDeleteConfirmed -> handleCircleDelete(action.circleId)
             is ContactBookUiAction.CircleEnabledChanged -> handleCircleEnabledChanged(action.circleId, action.enabled)
             is ContactBookUiAction.CircleAddMemberClicked -> _events.tryEmit(
                 ContactBookUiEvent.OpenCircleMemberAdd(action.circleId, action.circleName)
@@ -617,6 +623,7 @@ class ContactBookViewModel(
             manageable = manageable,
             disabled = circle.circle.disabled,
             toggleBlockedReason = circle.circle.toggleBlockedReason(),
+            deletable = circle.circle.isUserMadeCircle(),
             members = members,
             pendingMembers = pending,
             isLoading = false,
@@ -639,6 +646,26 @@ class ContactBookViewModel(
         if (_circleMembers.value?.togglingEnabled == true) return
         viewModelScope.launchCircleToggle(connectionService, circleIdRaw, enabled) { f ->
             _circleMembers.update { if (it?.circleId == circleIdRaw) f(it) else it }
+        }
+    }
+
+    private fun handleCircleDelete(circleIdRaw: String) {
+        val open = _circleMembers.value ?: return
+        if (open.circleId != circleIdRaw || !open.deletable || open.deleting) return
+        val hasMembers = open.members.isNotEmpty() || open.pendingMembers.isNotEmpty()
+        _circleMembers.update { it?.copy(deleting = true, deleteError = null) }
+        viewModelScope.launch {
+            try {
+                userCircles.delete(circleIdRaw, removeMembers = hasMembers)
+                _circleMembers.update { if (it?.circleId == circleIdRaw) null else it }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "deleteCircle failed for $circleIdRaw" }
+                _circleMembers.update {
+                    if (it?.circleId == circleIdRaw) it.copy(deleting = false, deleteError = ContactBookError.CircleDeleteFailed) else it
+                }
+            }
         }
     }
 

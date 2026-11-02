@@ -2,6 +2,10 @@
 
 package id.homebase.core.ui.screens.card
 
+import id.homebase.resources.circle_new
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -136,6 +140,7 @@ internal fun CardContentEditor(
     onRemovePhoto: () -> Unit,
     onImport: (CardAudience) -> Unit,
     modifier: Modifier = Modifier,
+    onCirclesChanged: (() -> Unit)? = null,
 ) {
     var editingId by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<String?>(null) }
@@ -238,6 +243,7 @@ internal fun CardContentEditor(
                 pendingId = item.id
                 onDelete(id)
             },
+            onCirclesChanged = onCirclesChanged,
             onDismiss = { editingId = null },
         )
     }
@@ -578,6 +584,7 @@ internal fun CardSwitcher(
     selected: CardAudience,
     onSelect: (CardAudience) -> Unit,
     modifier: Modifier = Modifier,
+    onNewCircle: (() -> Unit)? = null,
 ) {
     val label = stringResource(MR.string.profile_card_switcher)
     Row(
@@ -595,6 +602,13 @@ internal fun CardSwitcher(
                 onClick = { onSelect(card) },
                 label = { Text(audienceLabel(card), maxLines = 1) },
                 leadingIcon = { Icon(audienceIcon(card), contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
+            )
+        }
+        if (onNewCircle != null) {
+            AssistChip(
+                onClick = onNewCircle,
+                label = { Text(stringResource(MR.string.circle_new), maxLines = 1) },
+                leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
             )
         }
     }

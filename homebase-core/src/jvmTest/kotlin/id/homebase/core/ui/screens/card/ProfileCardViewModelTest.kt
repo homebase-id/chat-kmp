@@ -1362,6 +1362,40 @@ class ProfileCardViewModelTest {
     )
 
     @Test
+    fun aCircleMadeInThisAppGetsACardAndIsSelectedOnceCreated() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, source, _) = circleVm(store)
+        val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
+        val events = mutableListOf<ProfileCardEvent>()
+        backgroundScope.launch { vm.events.collect { events += it } }
+
+        source.circleList = source.circleList + made
+        vm.onCircleCreated(made.id, openEditor = true)
+        advanceUntilIdle()
+
+        val audience = CardAudience.Circle(made.id, "Climbing")
+        assertTrue(vm.uiState.value.cards.any { it.audience == audience })
+        assertEquals(audience, vm.uiState.value.selectedAudience)
+        assertTrue(ProfileCardEvent.OpenContentEditor in events)
+        assertTrue(store.writes.isEmpty())
+    }
+
+    @Test
+    fun creatingFromTheSwitcherSelectsTheNewCardWithoutOpeningTheEditor() = runTest(dispatcher) {
+        val (vm, source, _) = circleVm(FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)))
+        val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
+        val events = mutableListOf<ProfileCardEvent>()
+        backgroundScope.launch { vm.events.collect { events += it } }
+
+        source.circleList = source.circleList + made
+        vm.onCircleCreated(made.id, openEditor = false)
+        advanceUntilIdle()
+
+        assertEquals(CardAudience.Circle(made.id, "Climbing"), vm.uiState.value.selectedAudience)
+        assertTrue(events.none { it == ProfileCardEvent.OpenContentEditor })
+    }
+
+    @Test
     fun theRealContactsCircleFilterLeavesExactlyPublicFamilyFriendsAndWork() = runTest(dispatcher) {
         val other = "11111111-2222-4333-8444-555555555555"
         val all = listOf(

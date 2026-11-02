@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -52,6 +53,10 @@ import id.homebase.resources.circle_drives_section_title
 import id.homebase.resources.circle_member_pending
 import id.homebase.resources.circle_member_remove_cd
 import id.homebase.resources.circle_member_remove_confirm_body
+import id.homebase.resources.circle_delete
+import id.homebase.resources.circle_delete_body
+import id.homebase.resources.circle_delete_body_members
+import id.homebase.resources.circle_delete_title
 import id.homebase.resources.circle_member_remove_confirm_title
 import id.homebase.resources.circle_member_status_member
 import id.homebase.resources.circle_member_status_pending
@@ -86,7 +91,9 @@ fun CircleMembersSheet(
     /** By lowercased domain; members missing from it are not connections. */
     connectionStatuses: Map<String, ConnectionStatus>,
     onEnabledChange: (Boolean) -> Unit = {},
+    onDeleteCircle: (() -> Unit)? = null,
 ) {
+    var confirmDelete by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
     var confirmDisable by remember { mutableStateOf(false) }
 
@@ -118,6 +125,9 @@ fun CircleMembersSheet(
                     blockedReason = state.toggleBlockedReason,
                     onDisableClick = { confirmDisable = true },
                     onEnableClick = { onEnabledChange(true) },
+                    onDeleteClick = if (state.deletable && onDeleteCircle != null && !state.deleting) {
+                        { confirmDelete = true }
+                    } else null,
                 )
             }
             state.viewerStatus?.let { status ->
@@ -137,6 +147,14 @@ fun CircleMembersSheet(
                     text = stringResource(MR.string.contactbook_circle_disabled),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            state.deleteError?.let { error ->
+                Text(
+                    text = stringResource(error.messageRes()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
@@ -251,6 +269,29 @@ fun CircleMembersSheet(
         )
     }
 
+    if (confirmDelete) {
+        val memberCount = state.members.size + state.pendingMembers.size
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(MR.string.circle_delete_title, state.circleName)) },
+            text = {
+                Text(
+                    if (memberCount > 0) stringResource(MR.string.circle_delete_body_members, memberCount)
+                    else stringResource(MR.string.circle_delete_body),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDeleteCircle?.invoke()
+                }) { Text(stringResource(MR.string.circle_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(MR.string.cancel)) }
+            },
+        )
+    }
+
     if (confirmDisable) {
         AlertDialog(
             onDismissRequest = { confirmDisable = false },
@@ -278,6 +319,7 @@ private fun CircleMenu(
     blockedReason: ContactBookError?,
     onDisableClick: () -> Unit,
     onEnableClick: () -> Unit,
+    onDeleteClick: (() -> Unit)?,
 ) {
     var open by remember { mutableStateOf(false) }
     // The Box is the anchor: without it the menu positions against the whole header row.
@@ -302,6 +344,15 @@ private fun CircleMenu(
                     enabled = allowed,
                     colors = MenuDefaults.itemColors(textColor = error, leadingIconColor = error),
                     onClick = { open = false; onDisableClick() },
+                )
+            }
+            if (onDeleteClick != null) {
+                val error = MaterialTheme.colorScheme.error
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.circle_delete)) },
+                    leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+                    colors = MenuDefaults.itemColors(textColor = error, leadingIconColor = error),
+                    onClick = { open = false; onDeleteClick() },
                 )
             }
             if (blockedReason != null) {

@@ -9,6 +9,8 @@ import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_partial_additions
+import id.homebase.resources.circle_delete_failed
+import id.homebase.resources.circle_delete_failed
 import id.homebase.resources.contactbook_error_circle_action
 import id.homebase.resources.contactbook_error_circle_toggle_forbidden
 import id.homebase.resources.contactbook_error_circle_toggle_not_found
@@ -83,6 +85,10 @@ data class CircleMembersUi(
     /** uniqueId of the [viewerStatus] contact — excluded from the rendered "who else is in this
      *  circle" roster so the viewer's own row (already summarized in the header) isn't repeated. */
     val viewerContactId: Uuid? = null,
+    /** True only for a circle made in this app; the only kind that can be deleted. */
+    val deletable: Boolean = false,
+    val deleting: Boolean = false,
+    val deleteError: ContactBookError? = null,
 )
 
 enum class CircleMemberStatus { Member, Pending }
@@ -217,6 +223,9 @@ sealed interface ContactBookUiAction {
     data class CircleAddMemberClicked(val circleId: String, val circleName: String) : ContactBookUiAction
     data object EnrollmentCandidatesClicked : ContactBookUiAction
     data class CircleEnabledChanged(val circleId: String, val enabled: Boolean) : ContactBookUiAction
+    /** A circle was just made: open its roster so Add member is one tap away. */
+    data class CircleCreated(val circleId: String) : ContactBookUiAction
+    data class CircleDeleteConfirmed(val circleId: String) : ContactBookUiAction
     /** Revoke [member]'s membership (real or still-pending) in the circle [circleId]. */
     data class CircleRemoveMemberClicked(
         val circleId: String,
@@ -283,6 +292,7 @@ enum class ContactBookError {
     CircleToggleForbidden,
     CircleToggleSystemCircle,
     CircleToggleNotFound,
+    CircleDeleteFailed,
 }
 
 fun ContactBookError.messageRes(): StringResource = when (this) {
@@ -297,4 +307,5 @@ fun ContactBookError.messageRes(): StringResource = when (this) {
     ContactBookError.CircleToggleForbidden -> MR.string.contactbook_error_circle_toggle_forbidden
     ContactBookError.CircleToggleSystemCircle -> MR.string.contactbook_error_circle_toggle_system
     ContactBookError.CircleToggleNotFound -> MR.string.contactbook_error_circle_toggle_not_found
+    ContactBookError.CircleDeleteFailed -> MR.string.circle_delete_failed
 }
