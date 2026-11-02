@@ -4,8 +4,10 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageHeaderParser
+import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.tinyThumbSize
+import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
@@ -31,7 +33,9 @@ internal suspend fun filesyncEmbeddedPreview(
         val raster = if (kind == FileKind.Pdf) {
             generatePdfThumbnailFromFile(sourcePath, PDF_RENDER_WIDTH)?.thumbnailBytes
         } else {
-            fileOperations.readFileBytes(sourcePath)
+            fileOperations.readFileBytes(sourcePath).let { bytes ->
+                if (ImageFormatDetector.isHeic(bytes)) convertHeicToJpeg(bytes) else bytes
+            }
         } ?: return null
         if (kind == FileKind.Image && !withinPixelBudget(raster)) return null
         val tiny = createImageThumbnail(raster, FilesyncProtocol.PayloadKey, tinyThumbSize, isTinyThumb = true)
@@ -47,8 +51,8 @@ internal suspend fun filesyncEmbeddedPreview(
     }
 }
 
-// Header-only: getNaturalSize decodes the whole image on skia. An unparseable header (HEIC) gets no preview rather than a blind decode.
+// Header-only: getNaturalSize decodes the whole image on skia. An unparseable header gets no preview rather than a blind decode.
 private fun withinPixelBudget(bytes: ByteArray): Boolean {
-    val size = ImageHeaderParser.parse(bytes.copyOf(minOf(bytes.size, 64 * 1024))) ?: return false
+    val size = ImageHeaderParser.parse(bytes) ?: return false
     return size.pixelWidth.toLong() * size.pixelHeight <= MAX_SOURCE_PIXELS
 }

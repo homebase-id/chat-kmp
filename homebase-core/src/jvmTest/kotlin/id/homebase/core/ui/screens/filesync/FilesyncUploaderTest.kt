@@ -179,6 +179,33 @@ class FilesyncUploaderTest {
     }
 
     @Test
+    fun aJpegWithMoreThan64KbOfSegmentsBeforeTheFrameHeaderStillGetsAPreview() = runTest {
+        val plain = File(realImage("plain.jpg", "jpg")).readBytes()
+        val filler = ByteArray(70_000)
+        val chunks = filler.toList().chunked(60_000).map { it.toByteArray() }
+        val app = java.io.ByteArrayOutputStream()
+        for (chunk in chunks) {
+            app.write(0xFF); app.write(0xE1)
+            app.write((chunk.size + 2) ushr 8); app.write((chunk.size + 2) and 0xFF)
+            app.write(chunk)
+        }
+        val padded = plain.copyOfRange(0, 2) + app.toByteArray() + plain.copyOfRange(2, plain.size)
+        assertTrue(padded.size > 64 * 1024 + 1000)
+        val path = File(tempDir, "padded.jpg").also { it.writeBytes(padded) }.path
+
+        assertNotNull(filesyncEmbeddedPreview(path, "padded.jpg", fileOps)?.content)
+    }
+
+    @Test
+    fun aHeicThatCannotBeConvertedGetsNoPreviewAndDoesNotThrow() = runTest {
+        val heic = byteArrayOf(0, 0, 0, 24, 'f'.code.toByte(), 't'.code.toByte(), 'y'.code.toByte(), 'p'.code.toByte(),
+            'h'.code.toByte(), 'e'.code.toByte(), 'i'.code.toByte(), 'c'.code.toByte()) + ByteArray(64)
+        val path = File(tempDir, "photo.heic").also { it.writeBytes(heic) }.path
+
+        assertNull(filesyncEmbeddedPreview(path, "photo.heic", fileOps))
+    }
+
+    @Test
     fun aPdfGetsATinyEmbeddedPreview() = runTest {
         val pdf = File(tempDir, "doc.pdf")
         pdf.writeText(
