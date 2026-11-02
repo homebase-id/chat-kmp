@@ -62,7 +62,6 @@ data class UploadFileRequest(
     val thumbnails: List<ThumbnailFile> = emptyList(),
     val transitOptions: TransitOptions? = null,
     val fileSystemType: FileSystemType? = null,
-    /** A comment on a SelectiveShare drive: [keyHeader] is the commented file's key with the comment's own IV. */
     val withCommentedFileKey: Boolean = false,
 )
 

@@ -3,6 +3,7 @@ package id.homebase.api.client.drives
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.crypto.EncryptionType
 import id.homebase.api.crypto.ZkSeal
@@ -79,15 +80,14 @@ data class ServerFile(
 
 /**
  * Opens a key header as the server returns it: locked with the shared secret, or on a zero-knowledge drive with
- * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write), or a comment's
- * IV for [commentedFileKey].
+ * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write), or [commentedFileKey].
  */
 suspend fun EncryptedKeyHeader.open(driveId: Uuid, sharedSecret: SecureByteArray, commentedFileKey: SecureByteArray? = null): KeyHeader =
     when (type) {
         EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
         EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
         EncryptionType.Sealed -> openSealed(driveId)
-        EncryptionType.FileKey -> KeyHeader(iv, SecureByteArray((commentedFileKey ?: throw FileDecryptionException.NoFileKey()).unsafeBytes.copyOf()))
+        EncryptionType.FileKey -> KeyHeader(iv, (commentedFileKey ?: throw FileDecryptionException.NoFileKey()).toByteArray().toSecureByteArray())
     }
 
 // The sealed value is the file's IV then its AES key, as odin-js openClientLockedKeyHeader reads it.
@@ -100,7 +100,7 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
 /**
  * Locks [keyHeader] for an upload to [driveId]: with the shared secret under [transferIv], which the server
  * re-locks with the drive key; or on a zero-knowledge drive with its key under the file's own IV, stored as sent;
- * or, [withCommentedFileKey], as the IV alone, the key being the commented file's.
+ * or, [withCommentedFileKey], as the IV alone.
  */
 suspend fun lockKeyHeader(
     keyHeader: KeyHeader?,

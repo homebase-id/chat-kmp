@@ -24,24 +24,21 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.widget.AddReactionChip
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionMenu
+import id.homebase.core.widget.composerKeyHandler
+import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.resources.MR
 import id.homebase.resources.action_retry
 import id.homebase.resources.filesync_comment_hint
@@ -58,7 +55,6 @@ import org.jetbrains.compose.resources.stringResource
 // Fits the header's content budget once encrypted, whatever the characters.
 private const val COMMENT_MAX_CHARS = 1000
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun FilesyncDiscussionContent(
     node: FilesyncNode,
@@ -77,7 +73,7 @@ internal fun FilesyncDiscussionContent(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { onAction(FilesyncUiAction.ShowDiscussion(node)) }) { Text(stringResource(MR.string.action_retry)) }
+                TextButton(onClick = { onAction(FilesyncUiAction.ShowDiscussion(node.nodeId)) }) { Text(stringResource(MR.string.action_retry)) }
             }
             else -> {
                 Text(stringResource(MR.string.filesync_reactions), style = MaterialTheme.typography.titleSmall)
@@ -165,18 +161,14 @@ private fun CommentRow(comment: FilesyncComment) {
 
 @Composable
 private fun CommentField(draft: TextFieldState, sending: Boolean, onSend: () -> Unit) {
-    val canSend = !sending && draft.text.isNotBlank()
+    val hasText by remember(draft) { derivedStateOf { draft.text.isNotBlank() } }
+    val canSend = !sending && hasText
     OutlinedTextField(
         state = draft,
         modifier = Modifier
             .fillMaxWidth()
             .testTag("filesyncCommentField")
-            // Enter sends on a keyboard; Shift+Enter is a new line.
-            .onPreviewKeyEvent {
-                if (it.key != Key.Enter || it.isShiftPressed) return@onPreviewKeyEvent false
-                if (it.type == KeyEventType.KeyDown && canSend) onSend()
-                true
-            },
+            .composerKeyHandler(enterSendsMessage = rememberEnterSendsMessage(), onSend = { if (canSend) onSend() }),
         enabled = !sending,
         placeholder = { Text(stringResource(MR.string.filesync_comment_hint)) },
         inputTransformation = InputTransformation.maxLength(COMMENT_MAX_CHARS),

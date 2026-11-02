@@ -85,7 +85,6 @@ class DriveQueryProvider(
         // (fileType 801), which the backend routes by the X-ODIN-FILE-SYSTEM-TYPE header, not the
         // request body — the FileQueryParams.fileSystemType field alone is ignored for routing.
         fileSystemType: FileSystemType? = null,
-        // Opens comments encrypted with the key of the file they comment on (a SelectiveShare drive's).
         commentedFileKey: SecureByteArray? = null,
     ): QueryBatchResponse {
 
@@ -197,7 +196,7 @@ class DriveQueryProvider(
     private suspend fun mapQueryBatchResponseInternal(
         internal: QueryBatchResponseInternalRaw,
         secret: SecureByteArray,
-        commentedFileKey: SecureByteArray? = null,
+        commentedFileKey: SecureByteArray?,
     ): QueryBatchResponse {
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")

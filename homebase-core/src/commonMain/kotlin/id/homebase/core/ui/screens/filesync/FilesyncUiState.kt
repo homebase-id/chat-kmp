@@ -200,8 +200,8 @@ sealed interface FilesyncUiAction {
     data object DismissMove : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
-    /** The info pane shows [node]: its reactions and comments load once. */
-    data class ShowDiscussion(val node: FilesyncNode) : FilesyncDiscussionAction
+    /** The info pane shows [nodeId]: its reactions and comments load once. */
+    data class ShowDiscussion(val nodeId: Uuid) : FilesyncDiscussionAction
     /** Adds [emoji] as one of the user's reactions, or takes it away if it is one. */
     data class ToggleReaction(val emoji: String) : FilesyncDiscussionAction
     data object SendComment : FilesyncDiscussionAction

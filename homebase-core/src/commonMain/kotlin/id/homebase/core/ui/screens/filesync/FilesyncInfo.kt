@@ -120,7 +120,7 @@ internal fun FilesyncInfoContent(
     modifier: Modifier = Modifier,
 ) {
     val discussed = !node.isFolder && node.removedMs == null
-    if (discussed) LaunchedEffect(node.nodeId) { onAction(FilesyncUiAction.ShowDiscussion(node)) }
+    if (discussed) LaunchedEffect(node.nodeId) { onAction(FilesyncUiAction.ShowDiscussion(node.nodeId)) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             FileTypeTile(node, size = 56.dp)

@@ -83,7 +83,7 @@ class FilesyncViewModel(
 
     private var discussionJob: Job? = null
     // In the order asked: a quick add-then-remove must reach the server in that order.
-    private val discussionWrites = Mutex()
+    private val reactionWrites = Mutex()
 
     init {
         addCloseable(extendPermissionViewModel)
@@ -213,7 +213,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
 
-            is FilesyncUiAction.ShowDiscussion -> showDiscussion(action.node)
+            is FilesyncUiAction.ShowDiscussion -> showDiscussion(action.nodeId)
 
             is FilesyncUiAction.ToggleReaction -> toggleReaction(action.emoji)
 
@@ -341,35 +341,34 @@ class FilesyncViewModel(
 
     private fun arrange(change: (FilesyncUiState) -> FilesyncUiState) = _uiState.update { change(it).arrange() }
 
-    private fun showDiscussion(node: FilesyncNode) {
+    private fun showDiscussion(nodeId: Uuid) {
         val shown = _uiState.value.discussion
-        if (shown?.nodeId == node.nodeId && !shown.failed) return
-        if (shown?.nodeId != node.nodeId) commentDraft.clearText()
+        if (shown?.nodeId == nodeId && !shown.failed) return
+        if (shown?.nodeId != nodeId) commentDraft.clearText()
         discussionJob?.cancel()
-        _uiState.update { it.copy(discussion = FilesyncDiscussion(node.nodeId)) }
-        val handle = transfers.handles[node.nodeId]
+        _uiState.update { it.copy(discussion = FilesyncDiscussion(nodeId)) }
+        val handle = transfers.handles[nodeId]
         discussionJob = viewModelScope.launch {
             val loaded = try {
-                discussions.load(node.nodeId, checkNotNull(handle) { "no handle for ${node.nodeId}" })
+                discussions.load(nodeId, checkNotNull(handle) { "no handle for $nodeId" })
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.e(e, TAG) { "loading the reactions and comments of ${node.nodeId} failed" }
-                FilesyncDiscussion(node.nodeId, loading = false, failed = true)
+                Logger.e(e, TAG) { "loading the reactions and comments of $nodeId failed" }
+                FilesyncDiscussion(nodeId, loading = false, failed = true)
             }
-            updateDiscussion(node.nodeId) { loaded }
+            updateDiscussion(nodeId) { loaded }
         }
     }
 
     private fun toggleReaction(emoji: String) {
-        val shown = _uiState.value.discussion?.takeIf { !it.loading && !it.failed } ?: return
+        val (shown, handle) = readyDiscussion() ?: return
         val adding = emoji !in shown.mine
         if (adding && !shown.canAddReaction) return
-        val handle = transfers.handles[shown.nodeId] ?: return
         updateDiscussion(shown.nodeId) { it.toggled(emoji) }
         viewModelScope.launch {
             try {
-                discussionWrites.withLock { if (adding) discussions.react(handle, emoji) else discussions.unreact(handle, emoji) }
+                reactionWrites.withLock { if (adding) discussions.react(handle, emoji) else discussions.unreact(handle, emoji) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -381,13 +380,12 @@ class FilesyncViewModel(
     }
 
     private fun sendComment() {
-        val shown = _uiState.value.discussion?.takeIf { !it.loading && !it.failed && !it.sending } ?: return
+        val (shown, handle) = readyDiscussion()?.takeIf { !it.first.sending } ?: return
         val body = commentDraft.text.toString().trim().takeIf { it.isNotEmpty() } ?: return
-        val handle = transfers.handles[shown.nodeId] ?: return
         updateDiscussion(shown.nodeId) { it.copy(sending = true) }
         viewModelScope.launch {
             val added = try {
-                discussionWrites.withLock { discussions.comment(handle, body) }
+                discussions.comment(handle, body)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -398,6 +396,11 @@ class FilesyncViewModel(
             if (added != null && commentDraft.text.toString().trim() == body) commentDraft.clearText()
             updateDiscussion(shown.nodeId) { it.copy(sending = false, comments = it.comments + listOfNotNull(added)) }
         }
+    }
+
+    private fun readyDiscussion(): Pair<FilesyncDiscussion, FilesyncHandle>? {
+        val shown = _uiState.value.discussion?.takeIf { it.ready } ?: return null
+        return transfers.handles[shown.nodeId]?.let { shown to it }
     }
 
     private fun updateDiscussion(nodeId: Uuid, change: (FilesyncDiscussion) -> FilesyncDiscussion) =

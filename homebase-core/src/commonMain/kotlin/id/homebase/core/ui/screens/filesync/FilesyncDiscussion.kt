@@ -11,7 +11,6 @@ import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
-import id.homebase.api.client.drives.files.reactions.GroupReactionItem
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
@@ -20,19 +19,20 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
-import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.config.filesyncLabeledDrive
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostCommentContent
+import id.homebase.core.feed.services.decodeReactionEmoji
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
-/** How many reactions one person may leave on a file; the server doesn't count them. */
+/** How many reactions one person may leave on a file. */
 const val MAX_OWN_REACTIONS = 5
 
 @Immutable
@@ -52,6 +52,8 @@ data class FilesyncDiscussion(
     val comments: List<FilesyncComment> = emptyList(),
     val sending: Boolean = false,
 ) {
+    val ready: Boolean get() = !loading && !failed
+
     val canAddReaction: Boolean get() = mine.size < MAX_OWN_REACTIONS
 
     /** [emoji] added when not [mine], else taken away. */
@@ -67,29 +69,26 @@ data class FilesyncDiscussion(
     }
 }
 
-/**
- * Reactions are the server's group reactions on the file. Comments are files on the Comment file system, grouped by
- * the file's global transit id; on this SelectiveShare drive each is encrypted with the commented file's key under an
- * IV of its own, so whoever may read the file reads its comments.
- */
+/** Reactions are the server's group reactions on the file; comments are Comment-file-system files in its group. */
 class FilesyncDiscussions(
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val driveQueryProvider: DriveQueryProvider,
     private val driveUploadProvider: DriveUploadProvider,
     private val credentialsManager: CredentialsManager,
-    private val clock: Clock = Clock.System,
 ) {
 
     suspend fun load(nodeId: Uuid, handle: FilesyncHandle): FilesyncDiscussion = coroutineScope {
         val self = credentialsManager.getActiveCredentials()?.domain
-        val reactions = async { listReactions(handle.fileId) }
+        val summary = async { reactionProvider.getReactionSummary(FilesyncProtocol.DriveAlias, handle.fileId) }
+        val mine = async { self?.let { reactionProvider.listReactionsByIdentity(FilesyncProtocol.DriveAlias, handle.fileId, it) }.orEmpty() }
         val comments = async { listComments(handle, self) }
-        val rows = reactions.await().sortedBy { it.created }.mapNotNull { row -> emojiOf(row.reactionContent)?.let { row.odinId to it } }
         FilesyncDiscussion(
             nodeId = nodeId,
             loading = false,
-            reactions = rows.groupingBy { it.second }.eachCount().map { (emoji, count) -> FilesyncReactionCount(emoji, count) },
-            mine = rows.filter { it.first == self }.map { it.second }.distinct(),
+            reactions = summary.await().reactions.mapNotNull { count ->
+                decodeReactionEmoji(count.reactionContent)?.let { FilesyncReactionCount(it, count.count) }
+            },
+            mine = mine.await().mapNotNull(::decodeReactionEmoji).distinct(),
             comments = comments.await(),
         )
     }
@@ -103,9 +102,9 @@ class FilesyncDiscussions(
     suspend fun comment(handle: FilesyncHandle, body: String): FilesyncComment {
         val globalTransitId = requireNotNull(handle.globalTransitId) { "file ${handle.fileId} has no global transit id" }
         // A copy: the upload may clear its key header, and this one's key is the file's.
-        val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), SecureByteArray(handle.keyHeader.aesKey.unsafeBytes.copyOf()))
+        val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), handle.keyHeader.aesKey.toByteArray().toSecureByteArray())
         val id = Uuid.random()
-        val createdMs = clock.now().toEpochMilliseconds()
+        val createdMs = Clock.System.now().toEpochMilliseconds()
         val metadata = UploadFileMetadata(
             allowDistribution = false,
             isEncrypted = true,
@@ -129,17 +128,6 @@ class FilesyncDiscussions(
             )
         )
         return FilesyncComment(id, credentialsManager.getActiveCredentials()?.domain, mine = true, body = body, createdMs = createdMs)
-    }
-
-    private suspend fun listReactions(fileId: Uuid): List<GroupReactionItem> {
-        val all = mutableListOf<GroupReactionItem>()
-        var cursor: Int? = null
-        do {
-            val page = reactionProvider.listReactions(FilesyncProtocol.DriveAlias, fileId, cursor, REACTION_PAGE)
-            all += page.reactions
-            cursor = page.cursor.takeIf { page.reactions.size == REACTION_PAGE && it != cursor }
-        } while (cursor != null)
-        return all
     }
 
     private suspend fun listComments(handle: FilesyncHandle, self: OdinId?): List<FilesyncComment> {
@@ -172,10 +160,7 @@ class FilesyncDiscussions(
 
     private fun reactionOf(emoji: String) = OdinSystemSerializer.serialize(ReactionContent(emoji))
 
-    private fun emojiOf(reaction: String) = runCatching { OdinSystemSerializer.deserialize<ReactionContent>(reaction).emoji }.getOrNull()
-
     private companion object {
-        const val REACTION_PAGE = 100
         const val COMMENT_LIMIT = 1000
     }
 }

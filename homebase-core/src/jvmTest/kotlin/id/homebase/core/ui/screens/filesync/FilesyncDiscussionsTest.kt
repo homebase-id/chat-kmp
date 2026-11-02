@@ -28,6 +28,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -48,13 +49,15 @@ class FilesyncDiscussionsTest {
     private val handle = FilesyncHandle(Uuid.random(), null, FilesyncProtocol.FileFileType, fileKey, JsonObject(emptyMap()), null, globalTransitId = globalTransitId)
 
     private val requests = mutableListOf<Pair<HttpRequestData, ByteArray>>()
-    private var reactionsJson = """{"reactions":[]}"""
+    private var summaryJson = """{"reactions":[],"total":0}"""
+    private var mineJson = "[]"
     private var commentsJson = "[]"
 
     private val engine = MockEngine { request ->
         requests += request to request.body.toByteArray()
         val body = when {
-            request.url.encodedPath.endsWith("/group-reactions") -> reactionsJson
+            request.url.encodedPath.endsWith("/group-reactions/summary") -> summaryJson
+            request.url.encodedPath.endsWith("/group-reactions/by-identity") -> mineJson
             request.url.encodedPath.endsWith("/query-batch") -> """{"queryTime":0,"includeMetadataHeader":true,"searchResults":$commentsJson,"hasMoreRows":false}"""
             request.method == HttpMethod.Post && request.url.encodedPath.endsWith("/files") ->
                 """{"fileId":"${Uuid.random()}","driveId":"${FilesyncProtocol.DriveAlias}","newVersionTag":"${Uuid.random()}"}"""
@@ -80,15 +83,15 @@ class FilesyncDiscussionsTest {
 
     @Test
     fun theFilesReactionsAreCountedAndTheUsersOwnAreKnown() = runTest {
-        reactionsJson = """{"reactions":[
-            ${reaction("frodo.test", "👍", 1)}, ${reaction("sam.test", "👍", 2)}, ${reaction("frodo.test", "❤️", 3)},
-            {"reactionContent":"not json","odinId":"sam.test","fileId":{"driveId":"${Uuid.random()}","fileId":"${Uuid.random()}"},"created":4}
-        ]}"""
+        summaryJson = """{"reactions":[${count("👍", 2)}, ${count("❤️", 1)}, {"reactionContent":"not json","count":1}],"total":4}"""
+        mineJson = """[${JsonPrimitive(reaction("👍"))}, ${JsonPrimitive(reaction("❤️"))}]"""
 
         val loaded = discussions.load(Uuid.random(), handle)
 
         assertEquals(listOf(FilesyncReactionCount("👍", 2), FilesyncReactionCount("❤️", 1)), loaded.reactions)
         assertEquals(listOf("👍", "❤️"), loaded.mine)
+        val mine = requests.single { it.first.url.encodedPath.endsWith("/by-identity") }.first
+        assertEquals("identity=frodo.test", CryptoHelper.decryptContentAsString(mine.url.parameters["ss"]!!, sharedSecret))
     }
 
     @Test
@@ -146,8 +149,9 @@ class FilesyncDiscussionsTest {
         assertFalse(four.toggled("5").canAddReaction)
     }
 
-    private fun reaction(odinId: String, emoji: String, created: Long) =
-        """{"reactionContent":"{\"emoji\":\"$emoji\"}","odinId":"$odinId","fileId":{"driveId":"${Uuid.random()}","fileId":"${Uuid.random()}"},"created":$created}"""
+    private fun reaction(emoji: String) = """{"emoji":"$emoji"}"""
+
+    private fun count(emoji: String, n: Int) = """{"reactionContent":${JsonPrimitive(reaction(emoji))},"count":$n}"""
 
     private suspend fun comment(author: String, body: String, createdMs: Long): String {
         val iv = ByteArrayUtil.getRndByteArray(16)
