@@ -8,10 +8,10 @@ import id.homebase.api.util.ChatMarkdownFlavour
 import id.homebase.api.util.Mention
 import id.homebase.api.util.findMentions
 import id.homebase.api.util.markdownTreeHasBlockElements
-import id.homebase.api.util.normalizeUrlScheme
-import id.homebase.core.util.URL_REGEX
 import id.homebase.api.util.normalizeChatNewlines
+import id.homebase.api.util.normalizeUrlScheme
 import id.homebase.api.util.withParagraphSoftBreaksPromoted
+import id.homebase.core.util.URL_REGEX
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
