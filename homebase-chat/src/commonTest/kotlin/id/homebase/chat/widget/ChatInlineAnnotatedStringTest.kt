@@ -8,6 +8,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
+import kotlinx.collections.immutable.persistentMapOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,12 +19,12 @@ class ChatInlineAnnotatedStringTest {
 
     private val style = TextStyle(fontSize = 16.sp, fontFamily = FontFamily.Default)
 
-    private fun build(content: String): AnnotatedString {
+    private fun build(content: String, mentions: MentionContext? = null): AnnotatedString {
         var result: AnnotatedString? = null
         // Capture inside a composition so the test works whether or not the
         // builder is @Composable. The builder applies withChatHardLineBreaks itself.
         runComposeUiTest {
-            setContent { result = buildChatInlineAnnotatedString(content, style, Color.Black) }
+            setContent { result = buildChatInlineAnnotatedString(content, style, Color.Black, mentions) }
             waitForIdle()
         }
         return result!!
@@ -111,5 +112,38 @@ class ChatInlineAnnotatedStringTest {
         val a = build("Https://example.test/a.")
         val l = links(a).single()
         assertEquals("Https://example.test/a", a.text.substring(l.start, l.end))
+    }
+
+    @Test
+    fun lowercaseUrlWithCommaKeepsFullSpan() {
+        val text = "https://x.test/a,b;c!d"
+        val l = links(build(text)).single()
+        assertEquals(text, build(text).text.substring(l.start, l.end))
+    }
+
+    @Test
+    fun lowercaseUrlWithNonAsciiPathKeepsFullSpan() {
+        val text = "see https://de.wikipedia.org/wiki/Größe ok"
+        val a = build(text)
+        val l = links(a).single()
+        assertEquals("https://de.wikipedia.org/wiki/Größe", a.text.substring(l.start, l.end))
+    }
+
+    @Test
+    fun mentionAndCapitalisedUrlInOneMessageAreBothHandled() {
+        val ctx = MentionContext(names = persistentMapOf("frodo.demo.rocks" to "Frodo"))
+        val a = build("@frodo.demo.rocks Https://x.test/ @frodo.demo.rocks", ctx)
+        assertEquals("@Frodo Https://x.test/ @Frodo", a.text)
+        assertEquals("https://x.test/", links(a).single().url)
+        val last = a.text.lastIndexOf("@Frodo")
+        assertTrue(a.spanStyles.any { it.start == 0 && it.end == 6 })
+        assertTrue(a.spanStyles.any { it.start == last && it.end == last + 6 })
+    }
+
+    @Test
+    fun backslashAfterBareUrlDoesNotDuplicateText() {
+        val text = "Https://x.test/a\\*b c"
+        val a = build(text)
+        assertEquals(1, Regex("x\\.test").findAll(a.text).count())
     }
 }

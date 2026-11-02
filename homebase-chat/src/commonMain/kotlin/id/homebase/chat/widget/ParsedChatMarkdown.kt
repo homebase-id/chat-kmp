@@ -88,15 +88,19 @@ internal fun parseChatMarkdown(content: String): ParsedChatMarkdown {
 
 private val urlExcludedTypeNames = setOf(
     "CODE_SPAN", "CODE_FENCE", "CODE_BLOCK", "INLINE_LINK", "FULL_REFERENCE_LINK",
-    "SHORT_REFERENCE_LINK", "AUTOLINK", "LINK_DEFINITION", "IMAGE", "HTML_BLOCK",
+    "SHORT_REFERENCE_LINK", "AUTOLINK", "GFM_AUTOLINK", "LINK_DEFINITION", "IMAGE", "HTML_BLOCK",
 )
 
-private fun collectUrlExclusions(node: ASTNode, out: MutableList<IntRange>) {
+private fun collectUrlExclusions(text: String, node: ASTNode, out: MutableList<IntRange>) {
     if (node.type.name in urlExcludedTypeNames) {
         out.add(node.startOffset until node.endOffset)
         return
     }
-    for (child in node.children) collectUrlExclusions(child, out)
+    if (node.children.isEmpty() && text.indexOf('\\', node.startOffset).let { it >= 0 && it < node.endOffset }) {
+        out.add(node.startOffset until node.endOffset)
+        return
+    }
+    for (child in node.children) collectUrlExclusions(text, child, out)
 }
 
 private fun String.trimUrlEnd(): String {
@@ -112,7 +116,7 @@ private fun String.trimUrlEnd(): String {
 internal fun findUrlRanges(text: String, ast: ASTNode): List<UrlRange> {
     if (!text.contains("://", ignoreCase = true) && !text.contains("www.", ignoreCase = true)) return emptyList()
     val excluded = ArrayList<IntRange>()
-    collectUrlExclusions(ast, excluded)
+    collectUrlExclusions(text, ast, excluded)
     val out = ArrayList<UrlRange>()
     for (m in URL_REGEX.findAll(text)) {
         val start = m.range.first

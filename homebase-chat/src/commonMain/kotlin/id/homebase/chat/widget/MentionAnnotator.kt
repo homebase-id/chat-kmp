@@ -10,6 +10,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.withLink
+import id.homebase.api.util.normalizeUrlScheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import com.mikepenz.markdown.model.MarkdownAnnotator
@@ -167,58 +168,74 @@ private fun chatAnnotator(
             append(image.toAnnotated(linkStyles))
             return@markdownAnnotator true
         }
-        if (urls.isNotEmpty() && child.children.isEmpty()) {
-            val s = child.startOffset
-            val e = child.endOffset
-            if (s < e && e <= content.length && content.indexOf('\\', s).let { it !in s until e }) {
-                val hits = urls.filter { it.range.first < e && it.range.last + 1 > s }
-                if (hits.isNotEmpty()) {
-                    // Leaf tokens straddle URL edges and a URL spans several leaves: the leaf holding
-                    // a URL's first char emits the whole link, later leaves emit only what follows it.
-                    var cursor = s
-                    for (u in hits) {
-                        val uStart = u.range.first
-                        val uEnd = u.range.last + 1
-                        if (uStart >= s) {
-                            if (uStart > cursor) append(content.substring(cursor, uStart))
-                            withLink(LinkAnnotation.Url(u.url, linkStyles)) { append(content.substring(uStart, uEnd)) }
-                        }
-                        cursor = maxOf(cursor, minOf(uEnd, e))
-                    }
-                    if (cursor < e) append(content.substring(cursor, e))
-                    return@markdownAnnotator true
-                }
-            }
-        }
-        if (mentions.isEmpty() || child.type != MarkdownTokenTypes.TEXT) return@markdownAnnotator false
-        if (child.parent?.type in nonProseParents) return@markdownAnnotator false
-
         val start = child.startOffset
         val end = child.endOffset
         if (start >= end || end > content.length) return@markdownAnnotator false
+        if (child.type.name == "GFM_AUTOLINK" && child.children.isEmpty()) {
+            if (generateSequence(child.parent) { it.parent }.any { it.type in linkContainerTypes }) {
+                return@markdownAnnotator false
+            }
+            val token = content.substring(start, end)
+            withLink(LinkAnnotation.Url(normalizeUrlScheme(token), linkStyles)) { append(token) }
+            return@markdownAnnotator true
+        }
+        if (child.children.isNotEmpty()) return@markdownAnnotator false
+        val isText = child.type == MarkdownTokenTypes.TEXT && child.parent?.type !in nonProseParents
+        if (urls.isEmpty() && (mentions.isEmpty() || !isText)) return@markdownAnnotator false
         // A backslash escape makes the drawn text shorter than its source span, sliding every
         // offset after it. Hand those nodes back to the default path, which unescapes properly.
         val escape = content.indexOf('\\', start)
         if (escape in start until end) return@markdownAnnotator false
 
-        var cursor = start
-        for (mention in mentions) {
-            val from = maxOf(mention.range.first, start)
-            val to = minOf(mention.range.last + 1, end)
-            if (from >= to) continue
-            if (from > cursor) append(content.substring(cursor, from))
-            pushStyle(mention.style)
-            // A mention clipped by an inline node boundary is drawn verbatim, never half-swapped.
-            val whole = from == mention.range.first && to == mention.range.last + 1
-            append(if (whole) mention.text else content.substring(from, to))
-            pop()
-            cursor = to
+        val hits = urls.filter { it.range.first < end && it.range.last + 1 > start }
+        val events = ArrayList<LeafEvent>()
+        for (u in hits) {
+            events.add(LeafEvent(maxOf(u.range.first, start), minOf(u.range.last + 1, end), u, null))
         }
-        if (cursor == start) return@markdownAnnotator false
+        if (isText) {
+            for (m in mentions) {
+                if (m.range.first >= end || m.range.last + 1 <= start) continue
+                if (hits.any { it.range.first <= m.range.last && m.range.first <= it.range.last }) continue
+                events.add(LeafEvent(maxOf(m.range.first, start), minOf(m.range.last + 1, end), null, m))
+            }
+        }
+        if (events.isEmpty()) return@markdownAnnotator false
+        events.sortBy { it.from }
 
+        var cursor = start
+        for (ev in events) {
+            if (ev.from < cursor) continue
+            if (ev.from > cursor) append(content.substring(cursor, ev.from))
+            val url = ev.url
+            val mention = ev.mention
+            if (url != null) {
+                // A URL spans several leaves: the leaf holding its first char emits the whole link.
+                if (url.range.first >= start) {
+                    withLink(LinkAnnotation.Url(url.url, linkStyles)) {
+                        append(content.substring(url.range.first, url.range.last + 1))
+                    }
+                }
+            } else if (mention != null) {
+                pushStyle(mention.style)
+                // A mention clipped by an inline node boundary is drawn verbatim, never half-swapped.
+                val whole = ev.from == mention.range.first && ev.to == mention.range.last + 1
+                append(if (whole) mention.text else content.substring(ev.from, ev.to))
+                pop()
+            }
+            cursor = ev.to
+        }
         if (cursor < end) append(content.substring(cursor, end))
         true
     }
+
+private class LeafEvent(val from: Int, val to: Int, val url: UrlRange?, val mention: ResolvedMention?)
+
+private val linkContainerTypes = setOf(
+    MarkdownElementTypes.INLINE_LINK,
+    MarkdownElementTypes.FULL_REFERENCE_LINK,
+    MarkdownElementTypes.SHORT_REFERENCE_LINK,
+    MarkdownElementTypes.AUTOLINK,
+)
 
 internal fun chatLinkStyles(style: TextStyle, color: Color): TextLinkStyles = TextLinkStyles(
     style = style.copy(
