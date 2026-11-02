@@ -9,6 +9,7 @@ fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
     CardOption.PORTRAIT_SHAPE -> portraits?.firstOrNull()?.shape
     CardOption.SOCIALS_STYLE -> socials
     CardOption.BLOCK_ORDER -> null
+    CardOption.BLOCK_STYLE -> blocks?.map { it.presentation }?.distinct()?.singleOrNull()
 }
 
 /** Orderable sections in effect; posts rides with moments. */
@@ -31,10 +32,16 @@ fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when
     CardOption.PORTRAIT_SHAPE -> copy(portraits = value?.let { listOf(CardPortrait(shape = it)) })
     CardOption.SOCIALS_STYLE -> copy(socials = value)
     CardOption.BLOCK_ORDER -> this
+    CardOption.BLOCK_STYLE -> withBlockOrder(blockOrder()).let { ordered -> ordered.copy(blocks = ordered.blocks?.map { it.copy(presentation = value) }) }
 }
 
-fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides =
-    copy(blocks = kinds?.let { completeOrder(it) }?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }?.map { CardBlock(it) })
+fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides {
+    val styles = blocks.orEmpty().associate { it.kind to it.presentation }
+    return copy(
+        blocks = kinds?.let { completeOrder(it) }?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }
+            ?.map { CardBlock(it, styles[it] ?: if (it == "posts") styles["moments"] else null) },
+    )
+}
 
 /** Applies a new order of just the [kinds] a design shows, leaving the hidden kinds where they were. */
 fun CardOverrides.withShownBlockOrder(kinds: List<String>, shown: List<String>): CardOverrides {

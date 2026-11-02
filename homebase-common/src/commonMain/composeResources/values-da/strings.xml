@@ -2056,4 +2056,10 @@
     <string name="call_report_unavailable">Ingen log fundet for dette opkald</string>
     <string name="vault_make_private">Klik for at ændre dit Vault-drev til ægte zero knowledge-kryptering</string>
     <string name="filesync_make_private">Klik for at ændre dit Filesync-drev til ægte zero knowledge-kryptering</string>
+    <string name="profile_card_option_block_style">Indholdsstil</string>
+    <string name="profile_card_tool_style">Stil</string>
+    <string name="profile_card_presentation_bare">Almindelig</string>
+    <string name="profile_card_presentation_boxed">Boks</string>
+    <string name="profile_card_presentation_row">Rækker</string>
+    <string name="profile_card_presentation_button">Knap</string>
 </resources>

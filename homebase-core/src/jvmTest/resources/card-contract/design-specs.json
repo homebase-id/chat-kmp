@@ -11,6 +11,7 @@
             "options": [
                 "ACCENT",
                 "BLOCK_ORDER",
+                "BLOCK_STYLE",
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",
@@ -31,6 +32,7 @@
         "poster": {
             "options": [
                 "BLOCK_ORDER",
+                "BLOCK_STYLE",
                 "COLOURS",
                 "DISPLAY_FONT",
                 "SOCIALS_STYLE",
@@ -49,6 +51,7 @@
             "options": [
                 "ACCENT",
                 "BLOCK_ORDER",
+                "BLOCK_STYLE",
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",
@@ -70,6 +73,7 @@
             "options": [
                 "ACCENT",
                 "BLOCK_ORDER",
+                "BLOCK_STYLE",
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",
@@ -91,6 +95,7 @@
             "options": [
                 "ACCENT",
                 "BLOCK_ORDER",
+                "BLOCK_STYLE",
                 "COLOURS",
                 "DISPLAY_FONT",
                 "PORTRAIT_SHAPE",

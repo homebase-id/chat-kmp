@@ -2589,6 +2589,12 @@
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
+    <string name="profile_card_option_block_style">Content style</string>
+    <string name="profile_card_tool_style">Style</string>
+    <string name="profile_card_presentation_bare">Plain</string>
+    <string name="profile_card_presentation_boxed">Boxed</string>
+    <string name="profile_card_presentation_row">Rows</string>
+    <string name="profile_card_presentation_button">Button</string>
     <string name="profile_card_option_move_up">Move %1$s up</string>
     <string name="profile_card_option_move_down">Move %1$s down</string>
     <string name="profile_card_option_drag">Drag to reorder %1$s</string>

@@ -10,6 +10,7 @@ enum class CardOption {
     PORTRAIT_SHAPE,
     SOCIALS_STYLE,
     BLOCK_ORDER,
+    BLOCK_STYLE,
 }
 
 /** [portraitSlots] is how many portraits the layout's preset draws; the web replaces the preset's list, so a shape override must fill every slot. */
@@ -45,6 +46,7 @@ object CardDesignSpecs {
     val FONTS = listOf("montserrat", "montserrat-alt", "newsreader", "caveat", "archivo-black", "space-mono")
     val PORTRAIT_SHAPES = listOf("circle", "square", "rounded", "ellipse")
     val SOCIALS_STYLES = listOf("glyphs", "bar", "wordmark", "handles")
+    val PRESENTATIONS = listOf("bare", "boxed", "row", "button")
     val BLOCK_KINDS = listOf("chat", "links", "moments", "posts")
     val ORDERED_KINDS = BLOCK_KINDS - "posts"
 
@@ -56,7 +58,7 @@ object CardDesignSpecs {
     private val specs = listOf(
         CardDesignSpec(
             CardDesign.POSTER,
-            setOf(CardOption.COLOURS, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER),
+            setOf(CardOption.COLOURS, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER, CardOption.BLOCK_STYLE),
             schemes = listOf(
                 CardColourScheme("midnight", "#0F1626", "#EEF2FA", "#B4BCCB", "#4A505E", "#EEF2FA"),
                 CardColourScheme("wine", "#2A0E14", "#F7E9EC", "#C9AEB4", "#5A3F45", "#F7E9EC"),
@@ -150,7 +152,8 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
         portraits = shape?.takeIf { has(CardOption.PORTRAIT_SHAPE) }?.let {
             List(spec.portraitSlots) { slot -> if (slot == 0) CardPortrait(shape = it) else CardPortrait() }
         },
-        blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.let { withBlockOrder(blockOrder()).blocks },
+        blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.let { withBlockOrder(blockOrder()).blocks }
+            ?.map { if (has(CardOption.BLOCK_STYLE)) it else it.copy(presentation = null) },
         socials = socials?.takeIf { has(CardOption.SOCIALS_STYLE) },
     )
 }

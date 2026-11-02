@@ -94,6 +94,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -167,6 +168,12 @@ import id.homebase.resources.profile_card_font_space_mono
 import id.homebase.resources.profile_card_option_accent
 import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
+import id.homebase.resources.profile_card_option_block_style
+import id.homebase.resources.profile_card_tool_style
+import id.homebase.resources.profile_card_presentation_bare
+import id.homebase.resources.profile_card_presentation_boxed
+import id.homebase.resources.profile_card_presentation_row
+import id.homebase.resources.profile_card_presentation_button
 import id.homebase.resources.profile_card_option_default
 import id.homebase.resources.profile_card_option_display_font
 import id.homebase.resources.profile_card_option_drag
@@ -282,6 +289,15 @@ private fun OptionControl(
             onSelect = { onOption(option, it) },
         ) { shape ->
             if (shape == null) DefaultGlyph() else ShapeGlyph(shape)
+        }
+        CardOption.BLOCK_STYLE -> SegmentedChoices(
+            values = listOf(null) + CardDesignSpecs.PRESENTATIONS,
+            selected = overrides.valueOf(option),
+            enabled = enabled,
+            chipHeight = chipHeight,
+            onSelect = { onOption(option, it) },
+        ) { style ->
+            SegmentLabel(stringResource(style?.let(::presentationLabel) ?: MR.string.profile_card_option_default))
         }
         CardOption.SOCIALS_STYLE -> SegmentedChoices(
             values = listOf(null) + CardDesignSpecs.SOCIALS_STYLES,
@@ -772,6 +788,7 @@ private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_option_portrait_shape
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_option_socials_style
     CardOption.BLOCK_ORDER -> MR.string.profile_card_option_block_order
+    CardOption.BLOCK_STYLE -> MR.string.profile_card_option_block_style
 }
 
 private fun toolLabel(option: CardOption): StringResource = when (option) {
@@ -782,6 +799,7 @@ private fun toolLabel(option: CardOption): StringResource = when (option) {
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_tool_portrait
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_tool_socials
     CardOption.BLOCK_ORDER -> MR.string.profile_card_tool_order
+    CardOption.BLOCK_STYLE -> MR.string.profile_card_tool_style
 }
 
 private fun optionIcon(option: CardOption): ImageVector = when (option) {
@@ -792,6 +810,7 @@ private fun optionIcon(option: CardOption): ImageVector = when (option) {
     CardOption.PORTRAIT_SHAPE -> Icons.Outlined.AccountCircle
     CardOption.SOCIALS_STYLE -> Icons.Outlined.AlternateEmail
     CardOption.BLOCK_ORDER -> Icons.Outlined.ViewAgenda
+    CardOption.BLOCK_STYLE -> Icons.Outlined.Style
 }
 
 private fun fontLabel(font: String): StringResource = when (font) {
@@ -815,6 +834,13 @@ private fun socialsLabel(style: String): StringResource = when (style) {
     "wordmark" -> MR.string.profile_card_socials_wordmark
     "handles" -> MR.string.profile_card_socials_handles
     else -> MR.string.profile_card_socials_glyphs
+}
+
+private fun presentationLabel(style: String): StringResource = when (style) {
+    "boxed" -> MR.string.profile_card_presentation_boxed
+    "row" -> MR.string.profile_card_presentation_row
+    "button" -> MR.string.profile_card_presentation_button
+    else -> MR.string.profile_card_presentation_bare
 }
 
 private fun blockLabel(kind: String): StringResource = when (kind) {

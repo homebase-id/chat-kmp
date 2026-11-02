@@ -92,6 +92,7 @@ class CardOverridesTest {
         CardOption.PORTRAIT_SHAPE -> "portraits[].shape"
         CardOption.SOCIALS_STYLE -> "socials"
         CardOption.BLOCK_ORDER -> "blocks[].kind"
+        CardOption.BLOCK_STYLE -> "blocks[].presentation"
     }
 
     private fun resolves(descriptor: SerialDescriptor, path: String): Boolean {
@@ -124,12 +125,12 @@ class CardOverridesTest {
         assertNull(poster.palette)
         assertNull(poster.portraits)
         assertEquals(CardTypeface(display = "caveat", text = "newsreader"), poster.type)
-        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), poster.blocks)
+        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts", "row")), poster.blocks)
         assertEquals("handles", poster.socials)
 
         val collage = everything.prunedFor(CardDesign.COLLAGE)
         assertEquals(CardPalette(accent = "#ABCDEF"), collage.palette)
-        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), collage.blocks)
+        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts", "row")), collage.blocks)
         assertEquals(listOf(CardPortrait(shape = "square"), CardPortrait()), collage.portraits)
 
         val dossier = everything.prunedFor(CardDesign.DOSSIER)
@@ -150,5 +151,44 @@ class CardOverridesTest {
         val shown = listOf("links", "moments")
         val reordered = stored.withShownBlockOrder(shown, listOf("moments", "links"))
         assertEquals(listOf("moments", "chat", "links"), reordered.blockOrder())
+    }
+
+    @Test
+    fun blockStyleIsSetOnEverySectionAndClearsBackToThePreset() {
+        val styled = CardOverrides.EMPTY.with(CardOption.BLOCK_STYLE, "boxed")
+        assertEquals(listOf("chat", "links", "moments", "posts").map { CardBlock(it, "boxed") }, styled.blocks)
+        assertEquals("boxed", styled.valueOf(CardOption.BLOCK_STYLE))
+
+        val cleared = styled.with(CardOption.BLOCK_STYLE, null)
+        assertNull(cleared.valueOf(CardOption.BLOCK_STYLE))
+        assertEquals(listOf("chat", "links", "moments", "posts").map(::CardBlock), cleared.blocks)
+
+        assertNull(CardOverrides.EMPTY.valueOf(CardOption.BLOCK_STYLE))
+        assertNull(everything.valueOf(CardOption.BLOCK_STYLE))
+    }
+
+    @Test
+    fun reorderingKeepsEachSectionsStyle() {
+        val styled = CardOverrides(blocks = listOf(CardBlock("chat", "button"), CardBlock("links", "row"))).withBlockOrder(listOf("links", "chat", "moments"))
+        assertEquals(
+            listOf(CardBlock("links", "row"), CardBlock("chat", "button"), CardBlock("moments"), CardBlock("posts")),
+            styled.blocks,
+        )
+        assertEquals(
+            listOf("moments", "chat", "links"),
+            styled.withShownBlockOrder(listOf("links", "moments"), listOf("moments", "links")).blockOrder(),
+        )
+    }
+
+    @Test
+    fun everyDesignKeepsTheBlockStyleAndItsOrder() {
+        val styled = CardOverrides.EMPTY.withBlockOrder(listOf("links", "chat", "moments")).with(CardOption.BLOCK_STYLE, "row")
+        for (design in CardDesign.all) {
+            assertTrue(CardOption.BLOCK_STYLE in CardDesignSpecs.of(design)!!.options, design)
+            val pruned = styled.prunedFor(design)
+            assertEquals("row", pruned.valueOf(CardOption.BLOCK_STYLE), design)
+            assertEquals(listOf("links", "chat", "moments"), pruned.blockOrder(), design)
+        }
+        assertEquals(CardOverrides.EMPTY, styled.prunedFor("hologram"))
     }
 }
