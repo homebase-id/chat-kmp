@@ -73,8 +73,8 @@ import org.jetbrains.compose.resources.stringResource
 private val INTRO_MIN_TILE_WIDTH = 150.dp
 private val INTRO_MAX_WIDTH = 960.dp
 private val INTRO_TILE_CORNER = 20.dp
-private val CAPTURE_HOST_WIDTH = 240.dp
-private val CAPTURE_LAYOUT_WIDTH = 360.dp
+internal val CAPTURE_HOST_WIDTH = 240.dp
+internal val CAPTURE_LAYOUT_WIDTH = 360.dp
 private val TILE_ICON_SIZE = 18.sp
 
 @Composable
@@ -184,7 +184,6 @@ internal fun audienceKey(audience: CardAudience): String = when (audience) {
 private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Unit, onPainted: () -> Unit) {
     val title = audienceLabel(card.audience)
     val open = stringResource(MR.string.profile_card_intro_open, title)
-    val palette = card.overrides.palette
     val shape = RoundedCornerShape(INTRO_TILE_CORNER)
     val cardModifier = Modifier
         .fillMaxWidth()
@@ -218,15 +217,21 @@ private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Uni
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (still != null) {
-            Image(bitmap = still, contentDescription = null, contentScale = ContentScale.Crop, modifier = cardModifier)
-        } else {
-            CardDesignThumbnail(
-                design = card.design,
-                groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
-                inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
-                modifier = cardModifier,
-            )
-        }
+        CardStill(card = card, still = still, modifier = cardModifier)
+    }
+}
+
+@Composable
+internal fun CardStill(card: ProfileCard, still: ImageBitmap?, modifier: Modifier) {
+    if (still != null) {
+        Image(bitmap = still, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
+    } else {
+        val palette = card.overrides.palette
+        CardDesignThumbnail(
+            design = card.design,
+            groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
+            inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
+            modifier = modifier,
+        )
     }
 }

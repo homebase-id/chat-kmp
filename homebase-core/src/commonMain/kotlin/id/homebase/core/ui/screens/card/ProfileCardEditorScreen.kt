@@ -32,6 +32,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -103,6 +104,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import id.homebase.core.util.isDesktopOrWeb
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -174,6 +177,17 @@ import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val COMPACT_HEIGHT = 760.dp
+private val COMPACT_TILE_WIDTH = 88.dp
+private val COMPACT_TILE_CORNER = 12.dp
+
+internal enum class ContentLayout { PanelOnly, Wide, CompactHeader }
+
+internal fun contentLayout(cardsEnabled: Boolean, wide: Boolean, shortWindow: Boolean): ContentLayout = when {
+    !cardsEnabled -> ContentLayout.PanelOnly
+    wide -> ContentLayout.Wide
+    shortWindow -> ContentLayout.PanelOnly
+    else -> ContentLayout.CompactHeader
+}
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val WIDE_PANEL_WIDTH = 440.dp
 // Room for every tool and the picked one's name once the window can spare it.
@@ -212,6 +226,7 @@ fun ProfileCardEditorScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
+    val tiles by viewModel.introTiles.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = getUriHandler()
     val errAvatarUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
@@ -357,6 +372,9 @@ fun ProfileCardEditorScreen(
             onSave = viewModel::onSaveDesign,
             photo = photoUi,
             showCard = cardsEnabled,
+            host = host,
+            tiles = tiles,
+            onCaptureTiles = viewModel::captureIntroTiles,
             onSelectCard = viewModel::onCardSelected,
             onRetryLoad = viewModel::onRetry,
             onChangePhoto = {
@@ -464,6 +482,9 @@ internal fun ProfileCardEditorContent(
     mode: EditorMode = EditorMode.Design,
     photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
     showCard: Boolean = true,
+    host: CardHost? = null,
+    tiles: Map<String, ImageBitmap> = emptyMap(),
+    onCaptureTiles: suspend () -> Unit = {},
     onSelectCard: (CardAudience) -> Unit = {},
     onRetryLoad: () -> Unit = {},
     onChangePhoto: () -> Unit = {},
@@ -479,6 +500,7 @@ internal fun ProfileCardEditorContent(
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val wide = maxWidth >= WIDE_LAYOUT_MIN_WIDTH
             val widePanelWidth = if (maxWidth >= ROOMY_LAYOUT_MIN_WIDTH) ROOMY_PANEL_WIDTH else WIDE_PANEL_WIDTH
+            val contentLayout = contentLayout(showCard, wide, maxHeight < COMPACT_HEIGHT)
             val metrics = when {
                 wide -> PanelMetrics.Wide
                 maxHeight < COMPACT_HEIGHT -> PanelMetrics.Compact
@@ -578,11 +600,52 @@ internal fun ProfileCardEditorContent(
                         modifier = Modifier.padding(bottom = metrics.gap),
                     )
                 }
-                if (!showCard || contentOpen) {
+                if (!showCard || (contentOpen && contentLayout == ContentLayout.PanelOnly)) {
                     panel(
                         Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
                         cardSheetShape(),
                     )
+                } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
+                    val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
+                    val capturing = host != null && !uiState.viewing && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+                    LaunchedEffect(capturing, host, uiState.contentSaves, uiState.selectedAudience, uiState.cards) {
+                        if (capturing) onCaptureTiles()
+                    }
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        // Occluded by the opaque column above it: the host only has to be attached for the snapshot.
+                        if (capturing && host != null) {
+                            CardHostView(
+                                host = host,
+                                modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
+                                layoutWidth = CAPTURE_LAYOUT_WIDTH,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceDim),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            if (selectedCard != null) {
+                                val shape = RoundedCornerShape(COMPACT_TILE_CORNER)
+                                val previewLabel = stringResource(MR.string.profile_card_preview)
+                                CardStill(
+                                    card = selectedCard,
+                                    still = tiles[audienceKey(selectedCard.audience)],
+                                    modifier = Modifier
+                                        .padding(bottom = metrics.gap)
+                                        .width(COMPACT_TILE_WIDTH)
+                                        .aspectRatio(CARD_THUMB_ASPECT)
+                                        .clip(shape)
+                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                                        .clickable(role = Role.Button) { previewOpen = true }
+                                        .semantics { contentDescription = previewLabel },
+                                )
+                            }
+                            panel(
+                                Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
+                                cardSheetShape(),
+                            )
+                        }
+                    }
                 } else if (wide) {
                     // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
                     Row(
