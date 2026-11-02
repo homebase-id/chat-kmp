@@ -108,16 +108,16 @@ class PostReactionService(
     suspend fun liveReactionSummary(post: FeedPostItem): ReactionSummary {
         val response = reactionProvider.getReactionSummary(post.driveId, post.fileId)
         return ReactionSummary(
-            reactions = response.reactions.mapValues { (raw, count) ->
-                ReactionEntry(key = raw, count = count, reactionContent = raw)
+            reactions = response.reactions.associate { (raw, count) ->
+                raw to ReactionEntry(key = raw, count = count, reactionContent = raw)
             },
         )
     }
 
     private suspend fun summaryFor(driveId: Uuid, fileId: Uuid): PostReactionSummary {
         val response = reactionProvider.getReactionSummary(driveId, fileId)
-        // Provider keys the count map by the raw reaction JSON; decode each key to its emoji glyph.
-        val byEmoji = response.reactions.entries.mapNotNull { (raw, count) ->
+        // Each count names its reaction by the raw reaction JSON; decode it to its emoji glyph.
+        val byEmoji = response.reactions.mapNotNull { (raw, count) ->
             decodeReactionEmoji(raw)?.let { it to count }
         }.toMap()
         return PostReactionSummary(byEmoji = byEmoji, total = response.total)
