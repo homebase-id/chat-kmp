@@ -30,7 +30,7 @@ class AttachmentPopoverTest {
                 val actions = attachmentActions(
                     onGalleryClick = {}, onFileClick = {}, onContactClick = {}, onLocationClick = {},
                     onEventClick = {}, onGroodleClick = {}, onDicesClick = {},
-                    onPollClick = { picked += "poll" },
+                    onPollClick = { picked += "poll" }, onEntePhotosClick = {},
                 )
                 Box(Modifier.fillMaxSize()) {
                     AttachmentPopoverButton(

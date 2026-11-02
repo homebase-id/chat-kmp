@@ -580,6 +580,39 @@ fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): Pe
     )
 }
 
+// Ente Photos' own drive (homebase-ente web/packages/homebase/constants.ts); the Ente web app creates it at sign-in.
+object EntePhotosDrive {
+    const val ALIAS = "0ada68d639fd7c0c7f35e46d80665c0c"
+    const val TYPE = "762e8336095125323b9d7c0913f3ac7c"
+    const val APP_SLUG = "ente-photos"
+    const val PHOTO_FILE_TYPE = 7210
+    const val PHOTO_PAYLOAD_KEY = "original"
+}
+
+val entePhotosTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = EntePhotosDrive.ALIAS,
+        type = EntePhotosDrive.TYPE,
+        name = "Ente Photos",
+        description = "Your Ente Photos library, to send photos from it in a chat",
+        permissions = listOf(DrivePermission.Read),
+        driveTypeSlug = EntePhotosDrive.APP_SLUG,
+        requireStorageKey = true,
+        grantOnly = true,
+    )
+)
+
+fun getEntePhotosPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = entePhotosTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+        requester = "entephotos",
+    )
+}
+
 fun getWebDropPermissionExtensionConfig(): PermissionExtensionConfig {
     return PermissionExtensionConfig(
         appId = AppConfig.APP_ID,

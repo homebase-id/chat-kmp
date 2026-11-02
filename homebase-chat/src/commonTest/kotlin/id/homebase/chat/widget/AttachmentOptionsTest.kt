@@ -16,10 +16,11 @@ class AttachmentOptionsTest {
         onGalleryClick: () -> Unit = {},
         onFileClick: () -> Unit = {},
         onContactClick: () -> Unit = {},
+        onEntePhotosClick: () -> Unit = {},
     ) = setContent {
         MaterialTheme {
             AttachmentOptions(
-                attachmentActions(onGalleryClick, onFileClick, onContactClick, {}, {}, {}, {}, {}),
+                attachmentActions(onGalleryClick, onFileClick, onContactClick, {}, {}, {}, {}, {}, onEntePhotosClick),
                 onPicked = {},
             )
         }
@@ -30,6 +31,14 @@ class AttachmentOptionsTest {
         setOptions()
         onNodeWithTag("attachment_gallery").assertExists()
         onNodeWithTag("attachment_file").assertExists()
+    }
+
+    @Test
+    fun entePhotosClickCallbackFires() = runComposeUiTest {
+        var clicked = false
+        setOptions(onEntePhotosClick = { clicked = true })
+        onNodeWithTag("attachment_ente_photos").performClick()
+        assertTrue(clicked)
     }
 
     @Test

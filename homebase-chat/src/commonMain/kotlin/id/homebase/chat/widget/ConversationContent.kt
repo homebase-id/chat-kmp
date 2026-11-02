@@ -237,6 +237,8 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import id.homebase.chat.entephotos.EntePhotosSheet
+import id.homebase.core.clipboard.platformFileFromPath
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -288,6 +290,7 @@ fun ConversationContent(
     var showGroodleComposer by remember { mutableStateOf(false) }
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
+    var showEntePhotos by remember { mutableStateOf(false) }
     val composerPopovers = usesPointerUx() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -565,6 +568,7 @@ fun ConversationContent(
         onGroodleClick = { showGroodleComposer = true },
         onDicesClick = { showDiceRollComposer = true },
         onPollClick = { showPollComposer = true },
+        onEntePhotosClick = { showEntePhotos = true },
     )
     val popoverAttachmentActions = if (composerPopovers) attachmentActions else null
 
@@ -1770,6 +1774,22 @@ fun ConversationContent(
             conversationId = conversation.conversation.id,
             onDismiss = { showPollComposer = false },
             onSent = { showPollComposer = false },
+        )
+    }
+
+    if (showEntePhotos) {
+        EntePhotosSheet(
+            onDismiss = { showEntePhotos = false },
+            onPicked = { paths ->
+                showEntePhotos = false
+                onUiAction(
+                    ConversationListUiAction.AttachPlatformFile(
+                        conversationId = conversation.conversation.id,
+                        files = paths.map(::platformFileFromPath),
+                        isImage = true,
+                    )
+                )
+            },
         )
     }
 

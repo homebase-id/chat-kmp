@@ -256,6 +256,9 @@ import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.config.getFilesyncPermissionExtensionConfig
+import id.homebase.core.config.getEntePhotosPermissionExtensionConfig
+import id.homebase.chat.entephotos.EntePhotosRepository
+import id.homebase.chat.entephotos.EntePhotosViewModel
 import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
@@ -287,6 +290,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
+val EntePhotosPermissionQualifier = named("entePhotosPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -1007,6 +1011,7 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { FilesyncRepository(get(), get(), get(), get()) }
+    single { EntePhotosRepository(get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }
@@ -1360,6 +1365,9 @@ val appModule = module {
             ),
         )
     }
+    viewModel(EntePhotosPermissionQualifier) {
+        ExtendPermissionViewModel(get(), get(), get(), getEntePhotosPermissionExtensionConfig(), autoCheck = false)
+    }
     viewModel(EmailPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1409,6 +1417,7 @@ val appModule = module {
         )
     }
     viewModel { FilesyncTrashViewModel(get(), get()) }
+    viewModel { EntePhotosViewModel(get(), get(EntePhotosPermissionQualifier)) }
     viewModel { FilesyncRecentViewModel(get(), get(), get()) }
     viewModel {
         WebDropViewModel(

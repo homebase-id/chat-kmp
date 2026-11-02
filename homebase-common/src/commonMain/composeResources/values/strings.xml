@@ -1090,6 +1090,19 @@
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
+    <string name="chat_message_attachment_ente_photos">Ente Photos</string>
+    <string name="ente_photos_title">Ente Photos</string>
+    <string name="ente_photos_send">Send (%1$d)</string>
+    <string name="ente_photos_not_installed">Ente Photos isn't on your Homebase yet. Sign in to Ente Photos with Homebase first, then your photos show up here.</string>
+    <string name="ente_photos_needs_access">Chat needs your permission to read your Ente Photos library. It only reads it, and never changes it.</string>
+    <string name="ente_photos_allow">Allow access</string>
+    <string name="ente_photos_locked">Chat has access, but this device doesn't have your library's key yet. Open your Homebase owner console once, then try again.</string>
+    <string name="ente_photos_failed">Couldn't reach your Homebase.</string>
+    <string name="ente_photos_load_failed">Couldn't load more photos.</string>
+    <string name="ente_photos_empty">No photos in Ente Photos yet.</string>
+    <string name="ente_photos_prepare_failed">Couldn't get those photos from Ente Photos.</string>
+    <string name="ente_photos_retry">Try again</string>
+    <string name="cd_ente_photo">Photo from Ente Photos</string>
     <string name="chat_message_attachment_contact">Contact</string>
     <string name="chat_message_attachment_location">Location</string>
     <string name="chat_message_needs_gallery_permission">Homebase Chat needs permission to show your photos and videos</string>

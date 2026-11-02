@@ -70,6 +70,7 @@ kotlin {
             implementation(project(":image-editor-ui"))
 
             implementation(libs.kermit)
+            implementation(libs.koin.compose.viewmodel)
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.resources)

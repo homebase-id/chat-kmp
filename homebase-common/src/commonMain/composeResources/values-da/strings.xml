@@ -954,6 +954,19 @@
 
     <string name="chat_message_attachment_gallery">Galleri</string>
     <string name="chat_message_attachment_file">Fil</string>
+    <string name="chat_message_attachment_ente_photos">Ente Photos</string>
+    <string name="ente_photos_title">Ente Photos</string>
+    <string name="ente_photos_send">Send (%1$d)</string>
+    <string name="ente_photos_not_installed">Ente Photos er ikke på din Homebase endnu. Log ind i Ente Photos med Homebase først, så kommer dine billeder frem her.</string>
+    <string name="ente_photos_needs_access">Chat skal have din tilladelse til at læse dit Ente Photos-bibliotek. Den læser det kun og ændrer det aldrig.</string>
+    <string name="ente_photos_allow">Giv adgang</string>
+    <string name="ente_photos_locked">Chat har adgang, men denne enhed har ikke dit biblioteks nøgle endnu. Åbn din Homebase-ejerkonsol én gang, og prøv så igen.</string>
+    <string name="ente_photos_failed">Kunne ikke nå din Homebase.</string>
+    <string name="ente_photos_load_failed">Kunne ikke hente flere billeder.</string>
+    <string name="ente_photos_empty">Ingen billeder i Ente Photos endnu.</string>
+    <string name="ente_photos_prepare_failed">Kunne ikke hente de billeder fra Ente Photos.</string>
+    <string name="ente_photos_retry">Prøv igen</string>
+    <string name="cd_ente_photo">Billede fra Ente Photos</string>
     <string name="chat_message_attachment_contact">Kontakt</string>
     <string name="chat_message_attachment_location">Placering</string>
     <string name="chat_message_needs_gallery_permission">Homebase Chat har brug for tilladelse til at vise dine billeder og videoer</string>

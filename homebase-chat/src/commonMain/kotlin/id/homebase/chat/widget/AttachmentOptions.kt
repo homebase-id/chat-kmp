@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.ContactPage
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
@@ -70,6 +71,7 @@ import id.homebase.core.util.noRippleClickable
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
+import id.homebase.resources.chat_message_attachment_ente_photos
 import id.homebase.resources.chat_contact_share
 import id.homebase.resources.chat_dice_share
 import id.homebase.resources.chat_event_share
@@ -353,7 +355,7 @@ fun AttachmentGallery(
 }
 
 @Composable
-private fun SelectionBadge(
+internal fun SelectionBadge(
     isSelected: Boolean,
     selectionNumber: Int,
     modifier: Modifier = Modifier,
@@ -401,8 +403,10 @@ fun attachmentActions(
     onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
     onPollClick: () -> Unit,
+    onEntePhotosClick: () -> Unit,
 ): ImmutableList<AttachmentAction> = listOfNotNull(
     AttachmentAction("attachment_gallery", Icons.Default.Image, MR.string.chat_message_attachment_gallery, onGalleryClick),
+    AttachmentAction("attachment_ente_photos", Icons.Default.PhotoLibrary, MR.string.chat_message_attachment_ente_photos, onEntePhotosClick),
     AttachmentAction("attachment_file", Icons.Default.UploadFile, MR.string.chat_message_attachment_file, onFileClick),
     AttachmentAction("attachment_contact", Icons.Default.ContactPage, MR.string.chat_contact_share, onContactClick),
     if (isMobile()) {
