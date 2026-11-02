@@ -131,6 +131,7 @@ fun FilePreviewContent(
     modifier: Modifier = Modifier,
     onTap: (() -> Unit)? = null,
     onFailed: () -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when (kind) {
@@ -143,7 +144,7 @@ fun FilePreviewContent(
             )
             FilePreviewKind.Video -> LocalVideoPlayerSurface(path, Modifier.fillMaxSize())
             FilePreviewKind.Pdf -> PdfPageViewer(path, onTap = onTap, modifier = Modifier.fillMaxSize())
-            FilePreviewKind.Text -> TextPreview(path, onTap, onFailed)
+            FilePreviewKind.Text -> TextPreview(path, onTap, onFailed, contentPadding)
         }
     }
 }
@@ -151,7 +152,7 @@ fun FilePreviewContent(
 private class TextPage(val lines: List<String>, val truncated: Boolean)
 
 @Composable
-private fun TextPreview(path: String, onTap: (() -> Unit)?, onFailed: () -> Unit) {
+private fun TextPreview(path: String, onTap: (() -> Unit)?, onFailed: () -> Unit, contentPadding: PaddingValues) {
     val page by produceState<TextPage?>(null, path) {
         value = try {
             withContext(ioDispatcher) {
@@ -172,7 +173,13 @@ private fun TextPreview(path: String, onTap: (() -> Unit)?, onFailed: () -> Unit
     val shown = page ?: return CircularProgressIndicator()
     val tap = if (onTap == null) Modifier else Modifier.pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) }
     SelectionContainer(tap) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 16.dp + contentPadding.calculateTopPadding(),
+                bottom = 16.dp + contentPadding.calculateBottomPadding(),
+            ),
+        ) {
             if (shown.truncated) {
                 item {
                     Text(
@@ -189,7 +196,7 @@ private fun TextPreview(path: String, onTap: (() -> Unit)?, onFailed: () -> Unit
 }
 
 @Composable
-private fun PreviewFailed() {
+internal fun PreviewFailed() {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
         Icon(
             Icons.Outlined.ErrorOutline,

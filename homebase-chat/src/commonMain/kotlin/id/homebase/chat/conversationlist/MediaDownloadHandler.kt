@@ -532,6 +532,11 @@ internal class MediaDownloadHandler(
                         val key = DecryptedFileKey(action.message.fileId, action.payloadKey)
                         val known = messagesUiState.value.decryptedFiles[key]
                         if (known == null || !fileOperationsProvider.sourceExists(known)) {
+                            if (known != null) {
+                                messagesUiState.update {
+                                    it.copy(decryptedFiles = it.decryptedFiles.toMutableMap().apply { remove(key) }.toPersistentMap())
+                                }
+                            }
                             dispatch(
                                 ConversationListUiAction.DecryptFile(
                                     action.message.id, action.payloadKey

@@ -7,6 +7,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -31,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.widget.preview.FilePreviewContent
 import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.PreviewFailed
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_download_file
@@ -56,11 +62,14 @@ fun ChatFilePreview(
     modifier: Modifier = Modifier,
 ) {
     var showUI by remember { mutableStateOf(true) }
+    var failed by remember(filePath) { mutableStateOf(false) }
 
     Box(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
     ) {
-        if (filePath == null) {
+        if (failed) {
+            PreviewFailed()
+        } else if (filePath == null) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else {
             FilePreviewContent(
@@ -68,6 +77,11 @@ fun ChatFilePreview(
                 name = title,
                 kind = kind,
                 onTap = { showUI = !showUI },
+                onFailed = { failed = true },
+                contentPadding = PaddingValues(
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ),
             )
         }
 
