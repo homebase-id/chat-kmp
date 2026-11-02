@@ -559,13 +559,15 @@ val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     )
 )
 
+private val filesyncPermissions = listOf(DrivePermission.Read, DrivePermission.Write, DrivePermission.React, DrivePermission.Comment)
+
 // Must match the desktop's own registration exactly (filesync app.rs, permission_request).
 private val filesyncDrive = TargetDriveAccessRequest(
     alias = filesyncLabeledDrive.drive.alias.toString(),
     type = filesyncLabeledDrive.drive.type.toString(),
     name = filesyncLabeledDrive.label,
     description = "Files synced with your computers by Homebase Filesync",
-    permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    permissions = filesyncPermissions,
     driveSlug = FilesyncProtocol.DriveSlug,
     driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
     sharingModel = DriveSharingModel.SelectiveShare,
@@ -587,7 +589,8 @@ val filesyncAppRegistration = AppRegistrationParams(
             description = "People who can see the files you share through Homebase Filesync",
             emoji = "📁",
             drives = listOf(
-                filesyncDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),
+                // The ceiling: each file's share row narrows it per member.
+                filesyncDrive.copy(driveTypeSlug = null, grantOnly = true),
             ),
         )
     ),
