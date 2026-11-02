@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import java.io.File
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -148,5 +149,21 @@ class FilePreviewTest {
         }
         onNodeWithText("This file can't be shown here.").assertExists()
         assertTrue(discarded.isEmpty())
+    }
+
+    @Test
+    fun aFetchedTextFileStartsBelowTheContentPadding() = runComposeUiTest {
+        val file = File.createTempFile("streamed", ".txt").apply { deleteOnExit(); writeText("padded text") }
+        setContent {
+            MaterialTheme {
+                StreamedFilePreview(
+                    "k", "a.txt", FilePreviewKind.Text, load = { file.path }, discard = {},
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 100.dp),
+                )
+            }
+        }
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("padded text").fetchSemanticsNodes().isNotEmpty() }
+        val top = onNodeWithText("padded text").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(top >= 100f, "text top $top")
     }
 }

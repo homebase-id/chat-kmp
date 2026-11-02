@@ -143,7 +143,7 @@ fun FilePreviewContent(
                 onError = onFailed,
             )
             FilePreviewKind.Video -> LocalVideoPlayerSurface(path, Modifier.fillMaxSize())
-            FilePreviewKind.Pdf -> PdfPageViewer(path, onTap = onTap, modifier = Modifier.fillMaxSize())
+            FilePreviewKind.Pdf -> PdfPageViewer(path, onTap = onTap, modifier = Modifier.fillMaxSize().padding(contentPadding))
             FilePreviewKind.Text -> TextPreview(path, onTap, onFailed, contentPadding)
         }
     }
@@ -262,6 +262,7 @@ fun StreamedFilePreview(
     discard: (path: String) -> Unit,
     modifier: Modifier = Modifier,
     onTap: (() -> Unit)? = null,
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
     var state by remember(key) { mutableStateOf<StreamedState>(StreamedState.Loading) }
     val copy = remember(key) { arrayOfNulls<String>(1) }
@@ -279,7 +280,7 @@ fun StreamedFilePreview(
         when (val s = state) {
             StreamedState.Loading -> CircularProgressIndicator()
             StreamedState.Failed -> PreviewFailed()
-            is StreamedState.Ready -> FilePreviewContent(s.path, name, kind, onTap = onTap, onFailed = { state = StreamedState.Failed })
+            is StreamedState.Ready -> FilePreviewContent(s.path, name, kind, onTap = onTap, onFailed = { state = StreamedState.Failed }, contentPadding = contentPadding)
         }
     }
 }
