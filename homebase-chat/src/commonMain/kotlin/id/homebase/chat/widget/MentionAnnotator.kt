@@ -5,9 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import com.mikepenz.markdown.model.MarkdownAnnotator
@@ -113,7 +115,7 @@ internal fun rememberMentionAnnotator(
             selfContent = selfContent,
             context = context,
         )
-        chatAnnotator(resolved, linkStyles)
+        chatAnnotator(resolved, parsed.urlRanges, linkStyles)
     }
 }
 
@@ -154,12 +156,39 @@ private fun resolveMentions(
     }
 }
 
-private fun chatAnnotator(mentions: List<ResolvedMention>, linkStyles: TextLinkStyles): MarkdownAnnotator =
+private fun chatAnnotator(
+    mentions: List<ResolvedMention>,
+    urls: List<UrlRange>,
+    linkStyles: TextLinkStyles,
+): MarkdownAnnotator =
     markdownAnnotator { content, child ->
         if (child.type == MarkdownElementTypes.IMAGE) {
             val image = imageLinkOf(content, child) ?: return@markdownAnnotator false
             append(image.toAnnotated(linkStyles))
             return@markdownAnnotator true
+        }
+        if (urls.isNotEmpty() && child.children.isEmpty()) {
+            val s = child.startOffset
+            val e = child.endOffset
+            if (s < e && e <= content.length && content.indexOf('\\', s).let { it !in s until e }) {
+                val hits = urls.filter { it.range.first < e && it.range.last + 1 > s }
+                if (hits.isNotEmpty()) {
+                    // Leaf tokens straddle URL edges and a URL spans several leaves: the leaf holding
+                    // a URL's first char emits the whole link, later leaves emit only what follows it.
+                    var cursor = s
+                    for (u in hits) {
+                        val uStart = u.range.first
+                        val uEnd = u.range.last + 1
+                        if (uStart >= s) {
+                            if (uStart > cursor) append(content.substring(cursor, uStart))
+                            withLink(LinkAnnotation.Url(u.url, linkStyles)) { append(content.substring(uStart, uEnd)) }
+                        }
+                        cursor = maxOf(cursor, minOf(uEnd, e))
+                    }
+                    if (cursor < e) append(content.substring(cursor, e))
+                    return@markdownAnnotator true
+                }
+            }
         }
         if (mentions.isEmpty() || child.type != MarkdownTokenTypes.TEXT) return@markdownAnnotator false
         if (child.parent?.type in nonProseParents) return@markdownAnnotator false

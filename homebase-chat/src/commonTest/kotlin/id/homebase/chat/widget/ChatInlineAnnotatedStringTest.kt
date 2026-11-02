@@ -9,6 +9,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -47,5 +48,68 @@ class ChatInlineAnnotatedStringTest {
         val a = build("a [label](https://x.test) b")
         val links = a.getLinkAnnotations(0, a.length).map { it.item }
         assertTrue(links.any { it is LinkAnnotation.Url }, "explicit link must remain a LinkAnnotation")
+    }
+
+    private class Link(val start: Int, val end: Int, val url: String)
+
+    private fun links(a: AnnotatedString): List<Link> =
+        a.getLinkAnnotations(0, a.length).map { Link(it.start, it.end, (it.item as LinkAnnotation.Url).url) }
+
+    @Test
+    fun capitalisedSchemeIsLinkedWithLowercaseUrlAndUnchangedText() {
+        val a = build("Https://example.test/")
+        assertEquals("Https://example.test/", a.text)
+        val l = links(a).single()
+        assertEquals(0, l.start)
+        assertEquals(a.length, l.end)
+        assertEquals("https://example.test/", l.url)
+    }
+
+    @Test
+    fun upperCaseSchemeWithQueryCoversWholeUrl() {
+        val text = "go HTTPS://example.test/a?b=1 now"
+        val a = build(text)
+        assertEquals(text, a.text)
+        val l = links(a).single()
+        assertEquals("HTTPS://example.test/a?b=1", a.text.substring(l.start, l.end))
+        assertEquals("https://example.test/a?b=1", l.url)
+    }
+
+    @Test
+    fun capitalisedWwwIsLinkedWithHttpsPrepended() {
+        val a = build("Www.example.test")
+        assertEquals("Www.example.test", a.text)
+        val l = links(a).single()
+        assertEquals(0, l.start)
+        assertEquals(a.length, l.end)
+        assertEquals("https://www.example.test", l.url)
+    }
+
+    @Test
+    fun lowercaseWwwGetsHttpsPrepended() {
+        val l = links(build("www.example.test")).single()
+        assertEquals("https://www.example.test", l.url)
+    }
+
+    @Test
+    fun capitalisedUrlInInlineCodeIsNotLinked() {
+        assertTrue(links(build("see `Https://x.test` ok")).isEmpty())
+    }
+
+    @Test
+    fun capitalisedUrlInCodeBlockIsNotLinked() {
+        assertTrue(links(build("```\nHttps://x.test\n```")).isEmpty())
+    }
+
+    @Test
+    fun capitalisedUrlInMarkdownLinkKeepsExactlyOneLink() {
+        assertEquals(1, links(build("[a](Https://x.test)")).size)
+    }
+
+    @Test
+    fun trailingPunctuationIsNotPartOfTheLink() {
+        val a = build("Https://example.test/a.")
+        val l = links(a).single()
+        assertEquals("Https://example.test/a", a.text.substring(l.start, l.end))
     }
 }
