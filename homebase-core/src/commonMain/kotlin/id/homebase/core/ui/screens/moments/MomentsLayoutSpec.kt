@@ -25,8 +25,6 @@ internal object MomentsLayoutSpec {
 
     fun showsDetailPane(availableWidth: Dp): Boolean = availableWidth >= DetailPaneMinWidth
 
-    fun feedColumnWidth(availableWidth: Dp): Dp = minOf(availableWidth, FeedMaxWidth)
-
     fun feedColumnInset(feedWidth: Dp): Dp = ((feedWidth - FeedMaxWidth) / 2).coerceAtLeast(0.dp)
 
     fun dockedRailWidth(detailWidth: Dp): Dp =

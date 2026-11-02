@@ -28,19 +28,7 @@ class MomentsLayoutSpecTest {
 
     @Test
     fun phonesAreUnchanged() {
-        assertEquals(411.dp, MomentsLayoutSpec.feedColumnWidth(411.dp))
         assertFalse(MomentsLayoutSpec.showsDetailPane(411.dp))
-    }
-
-    @Test
-    fun feedColumnNeverExceedsTheCapAtAnyWindow() {
-        for (w in windows) {
-            val available = w - railAndDivider
-            val column = MomentsLayoutSpec.feedColumnWidth(available)
-            assertTrue(column <= MomentsLayoutSpec.FeedMaxWidth, "column $column at $w")
-            assertTrue(column <= available)
-        }
-        assertEquals(600.dp, MomentsLayoutSpec.feedColumnWidth(835.dp))
     }
 
     @Test
