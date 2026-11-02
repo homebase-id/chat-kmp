@@ -323,7 +323,7 @@ private const val SHOW_ARCHIVED_KEY = "showArchived"
 
 // Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
 private val NavigationRailWidth = 64.dp
-private val RailIndicatorSize = 48.dp
+internal val RailIndicatorSize = 48.dp
 private val RailIconSize = 20.dp
 
 // Requesting focus (and so the IME) before the destination's slide-in settles

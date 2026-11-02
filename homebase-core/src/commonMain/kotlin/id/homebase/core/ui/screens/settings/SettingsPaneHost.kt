@@ -144,13 +144,16 @@ internal fun SettingsPaneHost(
                     when {
                         // The card pages host a native view that neither fades nor can run twice at once.
                         from.isCard() || to.isCard() -> EnterTransition.None togetherWith ExitTransition.None
+                        from == to && initialState.third != targetState.third ->
+                            tabSlideFade.transform(targetState.third != null)
                         from == to -> fadeIn(enterFade) togetherWith fadeOut(exitFade)
                         else -> tabSlideFade.transform((to?.ordinal ?: -1) > (from?.ordinal ?: -1))
                     }
                 },
             ) { (shownCategory, profile, shownAppsPage) ->
                 if (profile == null) {
-                    ProvideSettingsChrome(embedded = true) {
+                    // An app's page is a drill-down like the profile pages, so it keeps its back arrow.
+                    ProvideSettingsChrome(embedded = shownAppsPage == null) {
                         CategoryPage(
                             category = shownCategory,
                             appsPage = shownAppsPage,
@@ -209,7 +212,7 @@ private fun CategoryPage(
     appsPage: AppsPage?,
     onDismiss: () -> Unit,
     onSelectCategory: (SettingsCategory) -> Unit,
-    onSelectAppsPage: (AppsPage) -> Unit,
+    onSelectAppsPage: (AppsPage?) -> Unit,
     onProfileEdit: () -> Unit,
     onProfileAvatarEdit: () -> Unit,
     onProfileCard: (() -> Unit)?,
@@ -269,30 +272,30 @@ private fun CategoryPage(
                 ),
             )
             AppsPage.Moments -> MomentsSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenMoments = actions.onOpenMoments,
-        )
+                viewModel = koinViewModel(),
+                onBackClick = { onSelectAppsPage(null) },
+                onOpenMoments = actions.onOpenMoments,
+            )
 
             AppsPage.Vault -> VaultSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenVault = actions.onOpenVault,
-        )
+                viewModel = koinViewModel(),
+                onBackClick = { onSelectAppsPage(null) },
+                onOpenVault = actions.onOpenVault,
+            )
 
             AppsPage.Email -> EmailSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenEmail = actions.onOpenEmail,
-            mailboxMode = emailMailboxMode,
-            onChangeMode = actions.onOpenEmailModeSwitch,
-        )
+                viewModel = koinViewModel(),
+                onBackClick = { onSelectAppsPage(null) },
+                onOpenEmail = actions.onOpenEmail,
+                mailboxMode = emailMailboxMode,
+                onChangeMode = actions.onOpenEmailModeSwitch,
+            )
 
             AppsPage.Contacts -> ContactBookSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenContacts = actions.onOpenContacts,
-        )
+                viewModel = koinViewModel(),
+                onBackClick = { onSelectAppsPage(null) },
+                onOpenContacts = actions.onOpenContacts,
+            )
         }
 
         SettingsCategory.Storage -> StorageSettingsScreen(

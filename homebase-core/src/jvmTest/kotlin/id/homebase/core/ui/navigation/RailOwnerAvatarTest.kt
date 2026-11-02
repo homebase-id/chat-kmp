@@ -1,10 +1,18 @@
 package id.homebase.core.ui.navigation
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.OwnerAvatarState
@@ -42,7 +50,12 @@ class RailOwnerAvatarTest {
                 }
             }
         }
-        onNodeWithTag(RailOwnerAvatarTag).assertExists().performClick()
+        onNodeWithTag(RailOwnerAvatarTag)
+            .assertContentDescriptionEquals("Settings")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assertHeightIsAtLeast(48.dp)
+            .assertWidthIsAtLeast(48.dp)
+            .performClick()
         assertEquals(listOf<Route>(Route.Settings), navigated)
     }
 }
