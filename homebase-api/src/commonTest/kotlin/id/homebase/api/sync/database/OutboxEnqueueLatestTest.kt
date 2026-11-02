@@ -94,4 +94,13 @@ class OutboxEnqueueLatestTest {
         assertEquals("2", contentOf(db, keyB))
         assertEquals(2L, db.outbox.count())
     }
+
+    @Test
+    fun replacingAPendingRowKeepsItsOrderingDependency() = run { db, sync ->
+        val tagWrite = Uuid.random()
+        sync.enqueueLatest(req("1"), dependencyUniqueId = tagWrite, sendNow = false)
+        sync.enqueueLatest(req("2"), sendNow = false)
+        assertEquals("2", contentOf(db, keyA))
+        assertEquals(tagWrite, db.outbox.selectByDriveAndUnique(drive, keyA)!!.dependencyUniqueId)
+    }
 }

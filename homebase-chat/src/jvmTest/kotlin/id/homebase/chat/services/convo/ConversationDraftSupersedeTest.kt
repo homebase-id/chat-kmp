@@ -71,4 +71,20 @@ class ConversationDraftSupersedeTest {
         assertTrue(sent.first().content().contains(draft))
         assertFalse(sent.last().content().contains(draft), "last content sent still carries the draft")
     }
+
+    @Test
+    fun aFailedClearIsRetriedByTheNextClear() = inFixture { fixture, service, convoId ->
+        service.updateLocalDraft(convoId, draft)
+        fixture.drainOutboxInDependencyOrder()
+        fixture.failOutboxInserts()
+        service.clearLocalDraft(convoId)
+        assertEquals(0L, fixture.outboxRowCount())
+
+        fixture.allowOutboxInserts()
+        service.updateLocalDraft(convoId, null)
+
+        val sent = fixture.drainOutboxInDependencyOrder()
+        assertEquals(1, sent.size)
+        assertFalse(sent.last().content().contains(draft), "retry never reached the outbox")
+    }
 }

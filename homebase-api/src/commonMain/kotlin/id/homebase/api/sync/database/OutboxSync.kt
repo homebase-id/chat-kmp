@@ -961,7 +961,7 @@ class OutboxSync(
                 outcome = tryEnqueue(
                     driveId = request.driveId,
                     uniqueId = target,
-                    dependencyUniqueId = if (otherRow != null) otherKey else dependencyUniqueId,
+                    dependencyUniqueId = if (otherRow != null) otherKey else dependencyUniqueId ?: targetRow?.dependencyUniqueId?.takeIf { it != otherKey },
                     priority = priority,
                     uploadType = DriveOutboxUploader.UpdateLocalMetadataContent,
                     json = json,

@@ -2792,10 +2792,14 @@ class ConversationService(
         lastPersistedDraft = conversationId to null
         if (readPersistedDraft(conversationId) == null) return@withLock
         val request = optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
-            ?: return@withLock
+        if (request == null) {
+            lastPersistedDraft = null
+            return@withLock
+        }
         val result = outboxSync.enqueueLatest(request)
         if (result is EnqueueResult.Failed) {
             Logger.w(throwable = result.cause) { "clearLocalDraft: enqueue failed for convo=$conversationId" }
+            lastPersistedDraft = null
         }
     }
 
