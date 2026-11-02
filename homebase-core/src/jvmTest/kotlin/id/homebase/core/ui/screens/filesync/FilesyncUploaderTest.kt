@@ -3,7 +3,10 @@ package id.homebase.core.ui.screens.filesync
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.upload.CreateFileResult
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -31,6 +34,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -94,6 +99,51 @@ class FilesyncUploaderTest {
         assertTrue("\"payloadKey\":\"sync_data\"" in body, body.take(600))
         assertTrue("\"algorithm\":\"blake3\"" in body, body.take(600))
         assertTrue("\"storedHash\"" in body && "\"contentHash\"" in body)
+    }
+
+    private fun realImage(name: String, format: String): String {
+        val image = java.awt.image.BufferedImage(400, 300, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val g = image.createGraphics()
+        g.paint = java.awt.GradientPaint(0f, 0f, java.awt.Color.RED, 400f, 300f, java.awt.Color.BLUE)
+        g.fillRect(0, 0, 400, 300)
+        g.dispose()
+        return File(tempDir, name).also { javax.imageio.ImageIO.write(image, format, it) }.path
+    }
+
+    private val fileOps get() = OkioFileOperationsProvider(FileSystem.SYSTEM, tempDir)
+
+    @Test
+    fun anImageGetsATinyEmbeddedPreview() = runTest {
+        val preview = filesyncEmbeddedPreview(realImage("real.png", "png"), "real.png", fileOps)
+
+        assertNotNull(preview?.content)
+        assertTrue(preview!!.content!!.bytes.size <= 1024)
+    }
+
+    @Test
+    fun aFileThatIsNotAnImageOrPdfGetsNoPreview() = runTest {
+        val text = File(tempDir, "notes.txt").apply { writeText("hello") }.path
+
+        assertNull(filesyncEmbeddedPreview(text, "notes.txt", fileOps))
+    }
+
+    @Test
+    fun anUndecodableImageGetsNoPreviewAndTheUploadStillLands() = runTest {
+        assertNull(filesyncEmbeddedPreview(source, "photo.jpg", fileOps))
+        responses = mutableListOf(created)
+
+        uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
+
+        assertTrue("\"payloadKey\":\"sync_data\"" in bodies.single())
+    }
+
+    @Test
+    fun theNodeHeaderCarriesThePreview() {
+        val thumb = EmbeddedThumb(8, 6, "image/webp", Base64Bytes(byteArrayOf(1, 2)))
+
+        val metadata = filesyncMetadata(Uuid.random(), FilesyncProtocol.RootNodeId, FilesyncProtocol.FileFileType, "{}", ArchivalStatus.None, previewThumbnail = thumb)
+
+        assertEquals(thumb, metadata.appData.previewThumbnail)
     }
 
     @Test

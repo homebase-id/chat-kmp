@@ -13,6 +13,13 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import id.homebase.core.image.decodeBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -280,16 +287,24 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
         kind == FileKind.Image || kind == FileKind.Video || kind == FileKind.Audio -> colors.secondaryContainer to colors.onSecondaryContainer
         else -> colors.surfaceVariant to colors.onSurfaceVariant
     }
+    val preview by produceState<ImageBitmap?>(null, node.preview) {
+        value = node.preview?.let { withContext(Dispatchers.Default) { it.decodeBitmap() } }
+    }
     Box(
         modifier = modifier.size(size).clip(RoundedCornerShape(size * 0.3f)).background(container),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = node.role?.let(::roleFolderIcon) ?: node.kind?.let(::fileKindIcon) ?: Icons.Outlined.Folder,
-            contentDescription = null,
-            tint = content,
-            modifier = Modifier.size(size * 0.55f),
-        )
+        val bitmap = preview
+        if (bitmap != null) {
+            Image(bitmap = bitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else {
+            Icon(
+                imageVector = node.role?.let(::roleFolderIcon) ?: node.kind?.let(::fileKindIcon) ?: Icons.Outlined.Folder,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(size * 0.55f),
+            )
+        }
     }
 }
 
