@@ -962,16 +962,18 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         attachments: List<AttachmentInput>,
     ): SharedContentDescriptor {
         val shareId = Uuid.random()
-        val names = try { attachments.mapIndexed { index, attachment ->
-            val originalName = (attachment.displayName ?: attachment.filePath).substringAfterLast('/')
-            val name = "$shareId/$index/$originalName"
-            val target = java.io.File(shareContentProcessor.resolveFilePath(name))
-            target.parentFile?.mkdirs()
-            fileOperationsProvider.withResolvedFile(attachment.filePath) { source ->
-                java.io.File(source).copyTo(target, overwrite = true)
+        val names = try {
+            attachments.mapIndexed { index, attachment ->
+                val originalName = (attachment.displayName ?: attachment.filePath).substringAfterLast('/')
+                val name = "$shareId/$index/$originalName"
+                val target = java.io.File(shareContentProcessor.resolveFilePath(name))
+                target.parentFile?.mkdirs()
+                fileOperationsProvider.withResolvedFile(attachment.filePath) { source ->
+                    java.io.File(source).copyTo(target, overwrite = true)
+                }
+                name
             }
-            name
-        } } catch (e: Exception) {
+        } catch (e: Exception) {
             shareContentProcessor.discardShare(shareId.toString())
             throw e
         }
