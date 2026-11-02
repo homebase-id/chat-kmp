@@ -7,6 +7,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toAwtImage
@@ -197,10 +205,11 @@ class MomentsWideScreenshotTest {
         viewMode: MomentsViewMode,
         dark: Boolean,
         onDetail: (Uuid) -> Unit = {},
+        width: State<Dp>? = null,
     ) = setContent {
         val items = source.value
         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
-            Surface {
+            Surface(modifier = if (width != null) Modifier.width(width.value) else Modifier) {
                 val mode = remember { mutableStateOf(viewMode) }
                 MomentsAdaptiveContent(
                     uiState = MomentsFeedUiState(moments = items),
@@ -344,5 +353,21 @@ class MomentsWideScreenshotTest {
         source.value = listOf(moment(99)) + moments
         waitForIdle()
         assertEquals(moments.first().id, shown.last())
+    }
+
+    
+    fun crossingTheWideBreakpointKeepsTheScrolledFeed() = runDesktopComposeUiTest(1000, 800) {
+        val width = mutableStateOf(411.dp)
+        showLive(mutableStateOf(moments), MomentsViewMode.Timeline, dark = false, width = width)
+        waitForIdle()
+        onNode(hasScrollAction()).performScrollToIndex(6)
+        waitForIdle()
+        onAllNodes(hasText(moments[0].description)).assertCountEquals(0)
+        width.value = 900.dp
+        waitForIdle()
+        onAllNodes(hasText(moments[0].description)).assertCountEquals(0)
+        width.value = 411.dp
+        waitForIdle()
+        onAllNodes(hasText(moments[0].description)).assertCountEquals(0)
     }
 }

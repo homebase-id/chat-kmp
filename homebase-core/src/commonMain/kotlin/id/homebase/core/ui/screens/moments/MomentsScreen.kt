@@ -304,7 +304,7 @@ internal fun MomentsAdaptiveContent(
                 onAddReaction = onAddReaction,
                 onDeleteFailedMoment = onDeleteFailedMoment,
                 onDismissUpload = onDismissUpload,
-                listState = if (wide) listState else null,
+                listState = listState,
                 selectedMomentId = if (showPane) effectiveSelectedId else null,
                 commentsSheetOnTap = !showPane,
                 wide = wide,
@@ -407,7 +407,7 @@ private fun CompactMomentsLayout(
     onAddReaction: (Uuid, String) -> Unit,
     onDeleteFailedMoment: (Uuid) -> Unit,
     onDismissUpload: (Uuid) -> Unit,
-    listState: LazyListState?,
+    listState: LazyListState,
     selectedMomentId: Uuid?,
     commentsSheetOnTap: Boolean,
     wide: Boolean,
@@ -481,7 +481,7 @@ private fun CompactMomentsLayout(
                         selectedMomentId = selectedMomentId,
                         commentsSheetOnTap = commentsSheetOnTap,
                         capMediaHeight = wide,
-                        hoistedListState = listState,
+                        listState = listState,
                         onDeleteFailedMoment = onDeleteFailedMoment,
                         onDismissUpload = onDismissUpload,
                         modifier = columnModifier,
@@ -533,10 +533,9 @@ private fun MomentsFeedList(
     capMediaHeight: Boolean = false,
     onDeleteFailedMoment: (Uuid) -> Unit = {},
     onDismissUpload: (Uuid) -> Unit = {},
-    hoistedListState: LazyListState? = null,
+    listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
-    val listState = hoistedListState ?: rememberLazyListState()
     var playingMomentId by remember { mutableStateOf<Uuid?>(null) }
     // Which moment (if any) has its comments bottom sheet open. Null = closed.
     // Only set on the compact timeline (see [commentsSheetOnTap]); the modal
