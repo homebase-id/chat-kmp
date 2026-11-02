@@ -6,6 +6,7 @@ package id.homebase.core.ui.screens.settings
  */
 data class SettingsActions(
     val onBack: () -> Unit,
+    val onApps: () -> Unit,
     val onNotifications: () -> Unit,
     val onAppearance: () -> Unit,
     val onMedia: () -> Unit,
@@ -13,14 +14,18 @@ data class SettingsActions(
     val onStorage: () -> Unit,
     val onAccount: () -> Unit,
     val onHelp: () -> Unit,
+    val onProfileEdit: () -> Unit,
+    val onProfileAvatarEdit: () -> Unit,
+    /** Null while the profile card is dark-launched off, which hides its row. */
+    val onProfileCard: (() -> Unit)?,
+)
+
+data class AppsSettingsActions(
+    val onBack: () -> Unit,
     val onMomentsSettings: () -> Unit,
     val onVaultSettings: () -> Unit,
     val onEmailSettings: () -> Unit,
     val onOpenWebDrop: () -> Unit,
     val onLocation: () -> Unit,
     val onContactBookSettings: () -> Unit,
-    val onProfileEdit: () -> Unit,
-    val onProfileAvatarEdit: () -> Unit,
-    /** Null while the profile card is dark-launched off, which hides its row. */
-    val onProfileCard: (() -> Unit)?,
 )

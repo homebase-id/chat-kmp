@@ -26,9 +26,9 @@ class SettingsShotsTest {
     private val outDir: File? = System.getenv("CARD_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
 
     private val actions = SettingsActions(
-        onBack = {}, onNotifications = {}, onAppearance = {}, onMedia = {}, onKeyboard = {}, onStorage = {},
-        onAccount = {}, onHelp = {}, onMomentsSettings = {}, onVaultSettings = {}, onEmailSettings = {}, onOpenWebDrop = {},
-        onLocation = {}, onContactBookSettings = {}, onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
+        onBack = {}, onApps = {}, onNotifications = {}, onAppearance = {}, onMedia = {}, onKeyboard = {}, onStorage = {},
+        onAccount = {}, onHelp = {},
+        onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
     )
 
     private val koin = koinApplication { modules(module { single { AvatarResolver(MutableStateFlow(emptyList())) }; single<ImageLoader> { ImageLoader.Builder(PlatformContext.INSTANCE).build() } }) }

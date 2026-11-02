@@ -96,6 +96,7 @@ import id.homebase.resources.profile_card_intro_title
 import id.homebase.resources.settings_edit_profile
 import id.homebase.core.ui.screens.card.CardTapShareSettingsRow
 import id.homebase.resources.settings_account
+import id.homebase.resources.settings_apps_desc
 import id.homebase.resources.settings_account_desc
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
@@ -125,7 +126,7 @@ import id.homebase.resources.settings_email_desc
 import id.homebase.resources.email_settings_section
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.stringResource
-import id.homebase.core.ui.assets.Filesync
+import id.homebase.core.ui.assets.Apps
 import id.homebase.core.ui.assets.HomebaseIcons
 
 @Composable
@@ -300,94 +301,13 @@ fun SettingsUi(
                 }
             }
 
-            item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
             item {
                 SettingsRow(
-                    modifier = Modifier.testTag("nativeFeedToggle"),
-                    icon = Icons.Outlined.DynamicFeed,
-                    title = stringResource(MR.string.settings_native_feed),
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.useNativeFeed,
-                        onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
-                    ),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("filesyncIconToggle"),
-                    icon = HomebaseIcons.Filesync,
-                    title = stringResource(MR.string.filesync_label),
-                    supportingText = stringResource(MR.string.settings_filesync_icon_desc),
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.filesyncIconVisible,
-                        onCheckedChange = { onAction(SettingsUiAction.SetFilesyncIconVisible(it)) },
-                    ),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("callsBetaToggle"),
-                    icon = Icons.Outlined.Call,
-                    title = stringResource(MR.string.settings_calls_beta),
-                    supportingText = stringResource(MR.string.settings_calls_beta_desc),
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.callsEnabled,
-                        onCheckedChange = { onAction(SettingsUiAction.SetCallsEnabled(it)) },
-                    ),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("momentsSettingsButton"),
-                    icon = Icons.Outlined.AutoAwesome,
-                    title = stringResource(MR.string.moments_settings_section),
-                    supportingText = stringResource(MR.string.settings_moments_desc),
-                    action = SettingsRowAction.Navigate(actions.onMomentsSettings),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("vaultSettingsButton"),
-                    icon = Icons.Outlined.Lock,
-                    title = stringResource(MR.string.vault_settings_section),
-                    supportingText = stringResource(MR.string.settings_vault_desc),
-                    action = SettingsRowAction.Navigate(actions.onVaultSettings),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("emailSettingsButton"),
-                    icon = Icons.Outlined.MailOutline,
-                    title = stringResource(MR.string.email_settings_section),
-                    supportingText = stringResource(MR.string.settings_email_desc),
-                    action = SettingsRowAction.Navigate(actions.onEmailSettings),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("webDropButton"),
-                    icon = Icons.Outlined.Redeem,
-                    title = stringResource(MR.string.webdrop_label),
-                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
-                    action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("locationSettingsButton"),
-                    icon = Icons.Outlined.LocationOn,
-                    title = stringResource(MR.string.location_settings_section),
-                    supportingText = stringResource(MR.string.settings_location_desc),
-                    action = SettingsRowAction.Navigate(actions.onLocation),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("contactBookSettingsButton"),
-                    icon = Icons.Outlined.People,
-                    title = stringResource(MR.string.contactbook_settings_section),
-                    supportingText = stringResource(MR.string.settings_contactbook_desc),
-                    action = SettingsRowAction.Navigate(actions.onContactBookSettings),
+                    modifier = Modifier.testTag("appsSettingsButton"),
+                    icon = HomebaseIcons.Apps,
+                    title = stringResource(MR.string.settings_section_apps),
+                    supportingText = stringResource(MR.string.settings_apps_desc),
+                    action = SettingsRowAction.Navigate(actions.onApps),
                 )
             }
 
@@ -556,6 +476,7 @@ fun SettingsUiPreview() {
             onAction = {},
             actions = SettingsActions(
                 onBack = {},
+                onApps = {},
                 onNotifications = {},
                 onAppearance = {},
                 onMedia = {},
@@ -563,12 +484,6 @@ fun SettingsUiPreview() {
                 onStorage = {},
                 onAccount = {},
                 onHelp = {},
-                onMomentsSettings = {},
-                onVaultSettings = {},
-                onEmailSettings = {},
-                onOpenWebDrop = {},
-                onLocation = {},
-                onContactBookSettings = {},
                 onProfileEdit = {},
                 onProfileAvatarEdit = {},
                 onProfileCard = {},

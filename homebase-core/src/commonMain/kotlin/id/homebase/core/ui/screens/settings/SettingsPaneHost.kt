@@ -81,7 +81,9 @@ internal fun SettingsPaneHost(
 ) {
     // Plain remember, not rememberSaveable: the pane exists only on desktop/web, which have no
     // configuration change or process death to restore across.
-    var category by remember { mutableStateOf(SettingsPaneRequest.take() ?: SettingsCategory.General) }
+    val requested = remember { SettingsPaneRequest.take() }
+    var category by remember { mutableStateOf(requested?.category ?: SettingsCategory.General) }
+    var appsPage by remember { mutableStateOf(requested?.appsPage) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
     var editorOpenedFromCard by remember { mutableStateOf(false) }
     var editorOpensDesign by remember { mutableStateOf(false) }
@@ -126,6 +128,7 @@ internal fun SettingsPaneHost(
                 onSelect = {
                     category = it
                     profilePage = null
+                    appsPage = null
                 },
             )
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -133,7 +136,7 @@ internal fun SettingsPaneHost(
             val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
             val tabSlideFade = rememberTabSlideFade()
             AnimatedContent(
-                targetState = category to profilePage,
+                targetState = Triple(category, profilePage, appsPage),
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 transitionSpec = {
                     val from = initialState.second
@@ -145,13 +148,15 @@ internal fun SettingsPaneHost(
                         else -> tabSlideFade.transform((to?.ordinal ?: -1) > (from?.ordinal ?: -1))
                     }
                 },
-            ) { (shownCategory, profile) ->
+            ) { (shownCategory, profile, shownAppsPage) ->
                 if (profile == null) {
                     ProvideSettingsChrome(embedded = true) {
                         CategoryPage(
                             category = shownCategory,
+                            appsPage = shownAppsPage,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
+                            onSelectAppsPage = { appsPage = it },
                             onProfileEdit = { openEditor(false, false) },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
                             onProfileCard = { profilePage = ProfilePage.Card }.takeIf { cardViewModel != null },
@@ -201,8 +206,10 @@ private fun ProfilePage?.isCard() = this == ProfilePage.Card || this == ProfileP
 @Composable
 private fun CategoryPage(
     category: SettingsCategory,
+    appsPage: AppsPage?,
     onDismiss: () -> Unit,
     onSelectCategory: (SettingsCategory) -> Unit,
+    onSelectAppsPage: (AppsPage) -> Unit,
     onProfileEdit: () -> Unit,
     onProfileAvatarEdit: () -> Unit,
     onProfileCard: (() -> Unit)?,
@@ -214,6 +221,7 @@ private fun CategoryPage(
             viewModel = koinViewModel(),
             actions = SettingsActions(
                 onBack = onDismiss,
+                onApps = { onSelectCategory(SettingsCategory.Apps) },
                 onNotifications = { onSelectCategory(SettingsCategory.Notifications) },
                 onAppearance = { onSelectCategory(SettingsCategory.Appearance) },
                 onMedia = { onSelectCategory(SettingsCategory.Media) },
@@ -221,12 +229,6 @@ private fun CategoryPage(
                 onStorage = { onSelectCategory(SettingsCategory.Storage) },
                 onAccount = { onSelectCategory(SettingsCategory.Account) },
                 onHelp = { onSelectCategory(SettingsCategory.Help) },
-                onMomentsSettings = { onSelectCategory(SettingsCategory.Moments) },
-                onVaultSettings = { onSelectCategory(SettingsCategory.Vault) },
-                onEmailSettings = { onSelectCategory(SettingsCategory.Email) },
-                onOpenWebDrop = actions.onOpenWebDrop,
-                onLocation = actions.onLocation,
-                onContactBookSettings = { onSelectCategory(SettingsCategory.Contacts) },
                 onProfileEdit = onProfileEdit,
                 onProfileAvatarEdit = onProfileAvatarEdit,
                 onProfileCard = onProfileCard,
@@ -253,19 +255,32 @@ private fun CategoryPage(
             onBackClick = onDismiss,
         )
 
-        SettingsCategory.Moments -> MomentsSettingsScreen(
+        SettingsCategory.Apps -> when (appsPage) {
+            null -> AppsSettingsScreen(
+                viewModel = koinViewModel(),
+                actions = AppsSettingsActions(
+                    onBack = onDismiss,
+                    onMomentsSettings = { onSelectAppsPage(AppsPage.Moments) },
+                    onVaultSettings = { onSelectAppsPage(AppsPage.Vault) },
+                    onEmailSettings = { onSelectAppsPage(AppsPage.Email) },
+                    onOpenWebDrop = actions.onOpenWebDrop,
+                    onLocation = actions.onLocation,
+                    onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
+                ),
+            )
+            AppsPage.Moments -> MomentsSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onOpenMoments = actions.onOpenMoments,
         )
 
-        SettingsCategory.Vault -> VaultSettingsScreen(
+            AppsPage.Vault -> VaultSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onOpenVault = actions.onOpenVault,
         )
 
-        SettingsCategory.Email -> EmailSettingsScreen(
+            AppsPage.Email -> EmailSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onOpenEmail = actions.onOpenEmail,
@@ -273,11 +288,12 @@ private fun CategoryPage(
             onChangeMode = actions.onOpenEmailModeSwitch,
         )
 
-        SettingsCategory.Contacts -> ContactBookSettingsScreen(
+            AppsPage.Contacts -> ContactBookSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
             onOpenContacts = actions.onOpenContacts,
         )
+        }
 
         SettingsCategory.Storage -> StorageSettingsScreen(
             viewModel = koinViewModel(),

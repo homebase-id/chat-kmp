@@ -133,6 +133,9 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.core.avatars.OwnerAvatarStatus
+import id.homebase.core.ui.assets.Apps
 import id.homebase.core.ui.assets.Filesync
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
@@ -198,6 +201,8 @@ import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsCategory
+import id.homebase.core.ui.screens.settings.AppsSettingsActions
+import id.homebase.core.ui.screens.settings.AppsSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsPaneRequest
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
 import id.homebase.core.ui.screens.settings.SettingsPaneHost
@@ -250,7 +255,7 @@ import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_calls
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
-import id.homebase.resources.nav_home
+import id.homebase.resources.nav_apps
 import id.homebase.resources.calls_missed_badge_cd
 import id.homebase.resources.location_attention_cd
 import id.homebase.chat.services.calling.history.CallHistoryService
@@ -345,6 +350,8 @@ fun AppNavHost(
     // what keeps the resolutions above it alive across a teardown is IdentityScope (#1373).
     val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
     val isAuthenticated = authState is YouAuthState.Authenticated && identityScope?.closed == false
+    val railOwner by koinInject<OwnerSessionRepository>().user.collectAsStateWithLifecycle()
+    val railAvatarState by koinInject<OwnerAvatarStatus>().state.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
@@ -904,7 +911,14 @@ fun AppNavHost(
                     Row {
                         NavigationRail(
                             modifier = Modifier.width(NavigationRailWidth),
-                            header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
+                            header = {
+                                Spacer(modifier = Modifier.height(8.dp + topInset))
+                                RailOwnerAvatar(
+                                    session = railOwner,
+                                    state = railAvatarState,
+                                    onNavigate = { navController.navigate(it) },
+                                )
+                            },
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
                             topLevelRoutes.forEach { topLevelRoute ->
@@ -1736,6 +1750,9 @@ fun AppNavHost(
                                         viewModel = koinViewModel(),
                                         actions = SettingsActions(
                                             onBack = { navController.popBackStack() },
+                                            onApps = {
+                                                navController.navigate(Route.AppsSettings)
+                                            },
                                             onNotifications = {
                                                 navController.navigate(Route.NotificationSettings)
                                             },
@@ -1756,20 +1773,6 @@ fun AppNavHost(
                                             },
                                             onHelp = {
                                                 navController.navigate(Route.Help)
-                                            },
-                                            onMomentsSettings = {
-                                                navController.navigate(Route.MomentsSettings)
-                                            },
-                                            onVaultSettings = {
-                                                navController.navigate(Route.VaultSettings)
-                                            },
-                                            onEmailSettings = {
-                                                navController.navigate(Route.EmailSettings)
-                                            },
-                                            onOpenWebDrop = openWebDrop,
-                                            onLocation = openLocation,
-                                            onContactBookSettings = {
-                                                navController.navigate(Route.ContactBookSettings)
                                             },
                                             onProfileEdit = {
                                                 navController.navigate(Route.ProfileCardEditor())
@@ -2436,6 +2439,25 @@ fun AppNavHost(
                                 }
                             }
 
+                            composable<Route.AppsSettings> { entry ->
+                                if (isAuthenticated) {
+                                    AppsSettingsScreen(
+                                        viewModel = koinViewModel(
+                                            viewModelStoreOwner = rememberSettingsOwner(navController, entry),
+                                        ),
+                                        actions = AppsSettingsActions(
+                                            onBack = { navController.popBackStack() },
+                                            onMomentsSettings = { navController.navigate(Route.MomentsSettings) },
+                                            onVaultSettings = { navController.navigate(Route.VaultSettings) },
+                                            onEmailSettings = { navController.navigate(Route.EmailSettings) },
+                                            onOpenWebDrop = openWebDrop,
+                                            onLocation = openLocation,
+                                            onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
+                                        ),
+                                    )
+                                }
+                            }
+
                             composable<Route.AccountSettings> { entry ->
                                 if (isAuthenticated) {
                                     AccountSettingsScreen(
@@ -2640,7 +2662,7 @@ internal fun topLevelRoutesFor(
     if (locationVisible) add(TopLevelRoute.Location)
     if (contactBookVisible) add(TopLevelRoute.ContactBook)
     if (emailVisible) add(TopLevelRoute.Email)
-    add(TopLevelRoute.Home)
+    add(TopLevelRoute.Apps)
 }
 
 sealed class TopLevelRoute(
@@ -2652,7 +2674,7 @@ sealed class TopLevelRoute(
     data object Calls : TopLevelRoute(Route.Calls, MR.string.nav_calls, Icons.Outlined.Call)
     data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
-    data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
+    data object Apps : TopLevelRoute(Route.Home, MR.string.nav_apps, HomebaseIcons.Apps)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
     data object Filesync : TopLevelRoute(Route.Filesync, MR.string.filesync_label, HomebaseIcons.Filesync)
     data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Outlined.MailOutline)

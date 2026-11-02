@@ -1728,7 +1728,8 @@
     <string name="calls_contact_not_connected">Not connected</string>
     <string name="calls_kind_voice">Voice</string>
     <string name="calls_kind_video">Video</string>
-    <string name="nav_home">Home</string>
+    <string name="nav_apps">Apps</string>
+    <string name="settings_apps_desc">Feed, Filesync, calls, Moments, Vault, Email, WebDrop, Location and Contacts</string>
 
     <!-- Developer menu -->
     <string name="dev_menu_title">Developer menu</string>
