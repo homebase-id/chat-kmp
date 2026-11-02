@@ -301,7 +301,7 @@ struct iOSApp: App {
                 sourcePath: url.path, displayName: url.lastPathComponent, mimeType: mime, stagingRoot: staging)
             let ownInbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Inbox").resolvingSymlinksInPath().path + "/"
-            if staged.boolValue && url.resolvingSymlinksInPath().path.hasPrefix(ownInbox) {
+            if staged && url.resolvingSymlinksInPath().path.hasPrefix(ownInbox) {
                 try? FileManager.default.removeItem(at: url)
             }
         }
