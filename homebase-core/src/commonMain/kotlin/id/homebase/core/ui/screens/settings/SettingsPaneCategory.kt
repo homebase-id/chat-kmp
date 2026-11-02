@@ -57,7 +57,7 @@ import id.homebase.resources.settings_notifications
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-internal val SettingsSidebarWidth = 220.dp
+internal val SettingsSidebarWidth = 244.dp
 
 internal enum class SettingsCategory(
     val label: StringResource,

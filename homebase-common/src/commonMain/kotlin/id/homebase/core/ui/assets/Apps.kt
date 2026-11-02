@@ -2,6 +2,7 @@ package id.homebase.core.ui.assets
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.group
@@ -28,3 +29,28 @@ val HomebaseIcons.Apps: ImageVector
 
 @Suppress("ObjectPropertyName")
 private var _Apps: ImageVector? = null
+
+private const val OutlinedTile = "h2.8a1.8 1.8 0 0 1 1.8 1.8v2.8a1.8 1.8 0 0 1-1.8 1.8h-2.8a1.8 1.8 0 0 1-1.8-1.8v-2.8a1.8 1.8 0 0 1 1.8-1.8z"
+
+/** [Apps]'s four tiles, same positions and size, as outlines: the bar's unselected state. */
+val HomebaseIcons.AppsOutlined: ImageVector
+    get() {
+        _AppsOutlined?.let { return it }
+        return ImageVector.Builder(
+            name = "AppsOutlined",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            addPath(
+                pathData = addPathNodes(listOf("5.5 2.7", "15.7 2.7", "5.5 15", "15.7 15").joinToString("") { "M$it$OutlinedTile" }),
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 1.8f,
+                strokeLineJoin = StrokeJoin.Round,
+            )
+        }.build().also { _AppsOutlined = it }
+    }
+
+@Suppress("ObjectPropertyName")
+private var _AppsOutlined: ImageVector? = null

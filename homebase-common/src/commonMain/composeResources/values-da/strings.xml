@@ -1273,7 +1273,13 @@
     <string name="nav_feed">Feed</string>
     <string name="nav_moments">Moments</string>
     <string name="nav_apps">Apps</string>
-    <string name="settings_apps_desc">Feed, Filesync, opkald, Moments, Vault, Email, WebDrop, Lokation og Kontakter</string>
+    <string name="settings_apps_desc">Feed, Vault, Email og mere</string>
+    <string name="settings_apps_section_features">Funktioner</string>
+    <string name="settings_apps_section_pages">App-indstillinger</string>
+    <string name="owner_status_connected">Forbundet</string>
+    <string name="owner_status_connecting">Forbinder</string>
+    <string name="owner_status_syncing">Synkroniserer</string>
+    <string name="owner_status_sync_problem">Synkroniseringsproblem</string>
 
     <!-- Developer menu -->
     <string name="dev_menu_title">Udviklermenu</string>

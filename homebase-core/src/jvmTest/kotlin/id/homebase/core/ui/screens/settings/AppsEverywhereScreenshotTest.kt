@@ -19,6 +19,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
@@ -33,6 +34,7 @@ import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.avatars.OwnerAvatarState
+import id.homebase.core.ui.navigation.FloatingPaneContainer
 import id.homebase.core.ui.navigation.RailItem
 import id.homebase.core.ui.navigation.RailOwnerAvatar
 import id.homebase.core.ui.navigation.TopLevelNavIcon
@@ -94,22 +96,38 @@ class AppsEverywhereScreenshotTest {
     }
 
     @Composable
-    private fun Rail(avatar: OwnerAvatarState) {
+    private fun Rail(avatar: OwnerAvatarState, tab: TopLevelRoute? = TopLevelRoute.Apps) {
         val routes = listOf(TopLevelRoute.Chat, TopLevelRoute.Feed, TopLevelRoute.Vault, TopLevelRoute.Apps)
         Row {
             NavigationRail(
                 modifier = Modifier.width(64.dp),
                 header = {
                     Spacer(Modifier.height(8.dp))
-                    RailOwnerAvatar(session = owner, state = avatar, onNavigate = {})
+                    RailOwnerAvatar(session = owner, state = avatar, onNavigate = {}, selected = tab == null)
                 },
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 routes.forEach {
-                    RailItem(it, it == TopLevelRoute.Apps, showMomentsBadge = false, showCallsBadge = false, showEmailBadge = false, showLocationBadge = false, onClick = {})
+                    RailItem(it, it == tab, showMomentsBadge = false, showCallsBadge = false, showEmailBadge = false, showLocationBadge = false, onClick = {})
                 }
             }
             VerticalDivider()
+        }
+    }
+
+    @Composable
+    private fun BottomBar(selected: TopLevelRoute) {
+        Box(contentAlignment = Alignment.BottomCenter) {
+            ShortNavigationBar {
+                listOf(TopLevelRoute.Chat, TopLevelRoute.Feed, TopLevelRoute.Vault, TopLevelRoute.Apps).forEach { route ->
+                    ShortNavigationBarItem(
+                        icon = { TopLevelNavIcon(route, selected = route == selected, showMomentsBadge = false, showCallsBadge = false) },
+                        label = { Text(stringResource(route.labelRes)) },
+                        selected = route == selected,
+                        onClick = {},
+                    )
+                }
+            }
         }
     }
 
@@ -117,42 +135,46 @@ class AppsEverywhereScreenshotTest {
     fun phone() {
         shot("phone-settings", 412, 900) { SettingsUi(uiState = state, onAction = {}, actions = hubActions) }
         shot("phone-apps", 412, 900) { AppsSettingsUi(state, {}, appsActions) }
-        shot("phone-bottom-bar", 412, 120) {
-            Box(contentAlignment = Alignment.BottomCenter) {
-                ShortNavigationBar {
-                    listOf(TopLevelRoute.Chat, TopLevelRoute.Feed, TopLevelRoute.Apps).forEach { route ->
-                        ShortNavigationBarItem(
-                            icon = { TopLevelNavIcon(route, showMomentsBadge = false, showCallsBadge = false) },
-                            label = { Text(stringResource(route.labelRes)) },
-                            selected = route == TopLevelRoute.Apps,
-                            onClick = {},
-                        )
-                    }
-                }
-            }
-        }
+        shot("phone-bottom-bar", 412, 120) { BottomBar(TopLevelRoute.Apps) }
+        shot("phone-bottom-bar-chats", 412, 120) { BottomBar(TopLevelRoute.Chat) }
     }
 
+    // As the app shows it: the pane floats over the dimmed rail, with its own header.
     @Test
     fun wide() {
         shot("wide-pane-apps", 1100, 760) {
-            Row {
-                Rail(OwnerAvatarState(connectionStatus = AppConnectionStatus.Connected))
-                SettingsSidebar(selected = SettingsCategory.Apps, onSelect = {})
-                VerticalDivider()
-                Box(Modifier.weight(1f).fillMaxHeight()) {
-                    ProvideSettingsChrome(embedded = true) { AppsSettingsUi(state, {}, appsActions) }
+            Box(Modifier.fillMaxSize()) {
+                Row {
+                    Rail(OwnerAvatarState(connectionStatus = AppConnectionStatus.Connected), tab = null)
+                    Spacer(Modifier.weight(1f))
+                }
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f)), contentAlignment = Alignment.Center) {
+                    val pane: @Composable () -> Unit = {
+                        Column {
+                            SettingsPaneHeader(onDismiss = {})
+                            Row {
+                                SettingsSidebar(selected = SettingsCategory.Apps, onSelect = {})
+                                VerticalDivider()
+                                Box(Modifier.weight(1f).fillMaxHeight()) {
+                                    ProvideSettingsChrome(embedded = true) { AppsSettingsUi(state, {}, appsActions) }
+                                }
+                            }
+                        }
+                    }
+                    FloatingPaneContainer(onDismiss = {}, paneContent = pane, content = pane)
                 }
             }
         }
+        shot("wide-apps-page", 1100, 760) { AppsSettingsUi(state, {}, appsActions) }
         val states = listOf(
             OwnerAvatarState(connectionStatus = AppConnectionStatus.Connected),
             OwnerAvatarState(connectionStatus = AppConnectionStatus.Connected, driveIsSyncing = true),
             OwnerAvatarState(connectionStatus = AppConnectionStatus.Connected, hasDriveError = true),
             OwnerAvatarState(connectionStatus = AppConnectionStatus.Connecting),
+            OwnerAvatarState(connectionStatus = AppConnectionStatus.Disconnected),
         )
-        shot("wide-rail-states", 280, 420) {
-            Row { states.forEach { Column(Modifier.background(MaterialTheme.colorScheme.surface)) { Rail(it) } } }
+        shot("wide-rail-states", 340, 420) {
+            Row { states.forEach { Column(Modifier.background(MaterialTheme.colorScheme.surface)) { Rail(it, tab = TopLevelRoute.Apps.takeIf { _ -> it !== states[0] }) } } }
         }
     }
 }

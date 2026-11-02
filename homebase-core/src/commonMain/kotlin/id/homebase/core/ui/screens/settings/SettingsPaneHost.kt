@@ -97,30 +97,7 @@ internal fun SettingsPaneHost(
     cardViewModel?.let { StartCardHostWhenSettled(it) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = Dimens.Spacing.gutter,
-                    end = Dimens.Spacing.item,
-                    top = Dimens.Spacing.item,
-                    bottom = Dimens.Spacing.item,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(MR.string.settings),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(MR.string.close),
-                )
-            }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SettingsPaneHeader(onDismiss)
 
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
             SettingsSidebar(
@@ -202,6 +179,34 @@ internal fun SettingsPaneHost(
             }
         }
     }
+}
+
+@Composable
+internal fun SettingsPaneHeader(onDismiss: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = Dimens.Spacing.gutter,
+                end = Dimens.Spacing.item,
+                top = Dimens.Spacing.item,
+                bottom = Dimens.Spacing.item,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(MR.string.settings),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDismiss) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = stringResource(MR.string.close),
+            )
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 private fun ProfilePage?.isCard() = this == ProfilePage.Card || this == ProfilePage.CardEditor

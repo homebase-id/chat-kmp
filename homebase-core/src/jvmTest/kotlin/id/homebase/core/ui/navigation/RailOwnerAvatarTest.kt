@@ -1,6 +1,9 @@
 package id.homebase.core.ui.navigation
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -8,6 +11,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -15,6 +20,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.avatars.OwnerAvatarState
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -57,5 +63,27 @@ class RailOwnerAvatarTest {
             .assertWidthIsAtLeast(48.dp)
             .performClick()
         assertEquals(listOf<Route>(Route.Settings), navigated)
+    }
+
+    @Test
+    fun railAvatarCarriesTheSelectionAndSaysItsStatusInWords() = runComposeUiTest {
+        var selected by mutableStateOf(false)
+        setContent {
+            KoinIsolatedContext(koin) {
+                MaterialTheme {
+                    RailOwnerAvatar(
+                        session = owner,
+                        state = OwnerAvatarState(AppConnectionStatus.Connected, hasDriveError = true),
+                        onNavigate = {},
+                        selected = selected,
+                    )
+                }
+            }
+        }
+        onNodeWithTag(RailOwnerAvatarTag)
+            .assertIsNotSelected()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Sync problem"))
+        selected = true
+        onNodeWithTag(RailOwnerAvatarTag).assertIsSelected()
     }
 }

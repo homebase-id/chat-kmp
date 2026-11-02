@@ -38,7 +38,6 @@ import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -445,10 +444,7 @@ private fun HubSectionHeader(title: String) {
 private fun NotificationStatusIndicator(status: NotificationVerificationStatus) {
     Crossfade(status, animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) { shown ->
         when (shown) {
-            NotificationVerificationStatus.CHECKING -> CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp,
-            )
+            NotificationVerificationStatus.CHECKING -> Unit
 
             NotificationVerificationStatus.OK -> Icon(
                 imageVector = Icons.Outlined.CheckCircle,

@@ -1,16 +1,22 @@
 package id.homebase.core.ui.screens.settings
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.test.performClick
 import kotlin.test.Test
+import androidx.compose.ui.unit.dp
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class AppsSettingsScreenTest {
@@ -45,6 +51,18 @@ class AppsSettingsScreenTest {
         )
         val tops = AppsSettingsRowTags.map { onNodeWithTag(it).assertExists().fetchSemanticsNode().boundsInRoot.top }
         assertEquals(tops.sorted(), tops)
+    }
+
+    @Test
+    fun rowsStopAtTheContentCapOnAWideWindow() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Box(Modifier.requiredWidth(1000.dp)) { AppsSettingsUi(SettingsUiState(), {}, actions) }
+            }
+        }
+        val bounds = onNodeWithTag("contactBookSettingsButton").getUnclippedBoundsInRoot()
+        val width = bounds.right - bounds.left
+        assertTrue(width <= 640.dp, "row is $width wide")
     }
 
     @Test
