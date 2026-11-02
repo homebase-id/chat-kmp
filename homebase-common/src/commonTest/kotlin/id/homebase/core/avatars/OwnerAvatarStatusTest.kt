@@ -34,4 +34,30 @@ class OwnerAvatarStatusTest {
         events.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Success))
         assertEquals(OwnerAvatarState(AppConnectionStatus.Connected, driveIsSyncing = false, hasDriveError = false), status.state.value)
     }
+
+    @Test
+    fun cancelledSyncClearsSyncingAndStaleError() = runTest(UnconfinedTestDispatcher()) {
+        val connection = MutableStateFlow(AppConnectionStatus.Connected)
+        val events = MutableSharedFlow<BackendEvent>(extraBufferCapacity = 8)
+        val status = OwnerAvatarStatus(connection, events, backgroundScope)
+        backgroundScope.launch { status.state.collect {} }
+
+        events.emit(BackendEvent.SyncAllStarted)
+        events.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Failure))
+        events.emit(BackendEvent.SyncAllStarted)
+        events.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Cancelled))
+        assertEquals(OwnerAvatarState(AppConnectionStatus.Connected, driveIsSyncing = false, hasDriveError = false), status.state.value)
+    }
+
+    @Test
+    fun failedSyncThenIdleClearsStaleError() = runTest(UnconfinedTestDispatcher()) {
+        val connection = MutableStateFlow(AppConnectionStatus.Connected)
+        val events = MutableSharedFlow<BackendEvent>(extraBufferCapacity = 8)
+        val status = OwnerAvatarStatus(connection, events, backgroundScope)
+        backgroundScope.launch { status.state.collect {} }
+
+        events.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Failure))
+        events.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Cancelled))
+        assertEquals(false, status.state.value.hasDriveError)
+    }
 }
