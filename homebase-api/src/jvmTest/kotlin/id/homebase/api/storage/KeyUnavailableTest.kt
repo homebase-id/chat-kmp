@@ -12,7 +12,6 @@ import kotlin.test.assertIs
 
 class KeyUnavailableTest {
     private val dir: File = tempStorageDir()
-    private var now = 1_000L
 
     @AfterTest
     fun cleanup() {
@@ -35,7 +34,7 @@ class KeyUnavailableTest {
         val before = dataFile(dir).readBytes()
         val writes = store.writeCalls
         locked(store)
-        val storage = KeyStoreFileStorage(dir, store) { now }
+        val storage = KeyStoreFileStorage(dir, store)
 
         assertIs<SecureRead.Unavailable>(storage.read("k"))
         assertIs<SecureRead.Unavailable>(storage.read("odin_db_encryption_key"))
@@ -49,7 +48,7 @@ class KeyUnavailableTest {
     fun `the database key manager never regenerates a key while the store is unreachable`() {
         val store = sealedByOtherSession()
         locked(store)
-        val storage = KeyStoreFileStorage(dir, store) { now }
+        val storage = KeyStoreFileStorage(dir, store)
         var puts = 0
 
         assertFailsWith<DatabaseUnavailableException> {
@@ -63,7 +62,7 @@ class KeyUnavailableTest {
     fun `a garbled key is retried and then unavailable, not missing`() {
         val store = sealedByOtherSession()
         store.garbledReads = 100
-        val storage = KeyStoreFileStorage(dir, store) { now }
+        val storage = KeyStoreFileStorage(dir, store)
 
         assertIs<SecureRead.Unavailable>(storage.read("k"))
     }
@@ -73,30 +72,39 @@ class KeyUnavailableTest {
         val store = sealedByOtherSession()
         store.garbledReads = 1
 
-        assertEquals(SecureRead.Found("v"), KeyStoreFileStorage(dir, store) { now }.read("k"))
+        assertEquals(SecureRead.Found("v"), KeyStoreFileStorage(dir, store).read("k"))
     }
 
     @Test
-    fun `the cooldown makes one store call across many reads and retries afterwards`() {
+    fun `one denial is one store read, and a retry reaches the store again`() {
         val store = sealedByOtherSession()
         locked(store)
+        val storage = KeyStoreFileStorage(dir, store)
+
         val calls = store.readCalls
-        val storage = KeyStoreFileStorage(dir, store) { now }
+        assertIs<SecureRead.Unavailable>(storage.read("k"))
+        assertEquals(1, store.readCalls - calls)
 
-        repeat(20) { assertIs<SecureRead.Unavailable>(storage.read("k")) }
-        val duringCooldown = store.readCalls - calls
-        assertEquals(3, duringCooldown)
-
-        now += 31_000
         store.forced = null
         assertEquals(SecureRead.Found("v"), storage.read("k"))
+    }
+
+    @Test
+    fun `a first run with a denied store is unavailable, not a crash`() {
+        val store = FakeOsKeyStore(OsKeyRead.Unreachable(IllegalStateException("denied")))
+        val storage = KeyStoreFileStorage(dir, store)
+
+        assertFailsWith<DatabaseUnavailableException> {
+            DatabaseKeyManager.getOrGenerateKey(storage.read("odin_db_encryption_key")) { storage.put("odin_db_encryption_key", it) }
+        }
+        assertEquals(0, store.writeCalls)
     }
 
     @Test
     fun `reading a property that is not there never touches the store`() {
         val store = sealedByOtherSession()
         val calls = store.readCalls
-        val storage = KeyStoreFileStorage(dir, store) { now }
+        val storage = KeyStoreFileStorage(dir, store)
 
         assertEquals(SecureRead.Missing, storage.read("nope"))
         assertEquals(false, storage.contains("nope"))

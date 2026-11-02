@@ -106,7 +106,7 @@ internal class LinuxOsKeyStore(private val service: String, private val account:
     private fun defaultCollectionLocked(): Boolean {
         val error = PointerByReference()
         val collection = lib.secret_collection_for_alias_sync(null, COLLECTION_DEFAULT, 0, null, error)
-        errorMessage(error)
+        errorMessage(error)?.let { throw SecretServiceException(it) }
         if (collection == null) return false
         return try {
             lib.secret_collection_get_locked(collection)

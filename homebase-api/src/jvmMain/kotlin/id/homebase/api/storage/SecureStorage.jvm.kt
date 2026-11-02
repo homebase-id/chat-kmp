@@ -2,6 +2,7 @@ package id.homebase.api.storage
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.JvmFileSystemUtil
+import id.homebase.api.sync.database.DatabaseUnavailableException
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
@@ -37,12 +38,11 @@ actual object SecureStorage {
     actual fun clear() = storage.clear()
 }
 
-internal class OsKeyStoreUnavailableException(cause: Throwable) : Exception("OS key store is unreachable", cause)
+internal class OsKeyStoreUnavailableException(cause: Throwable) : DatabaseUnavailableException("OS key store is unreachable", cause)
 
 internal class KeyStoreFileStorage(
     storageDir: File,
     private val osKeyStore: OsKeyStore,
-    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private companion object {
         const val KEYSTORE_FILE = "secure_storage.p12"
@@ -53,7 +53,6 @@ internal class KeyStoreFileStorage(
         const val GCM_TAG_LENGTH = 128
         const val GCM_IV_LENGTH = 12
         const val READ_ATTEMPTS = 3
-        const val UNREACHABLE_COOLDOWN_MS = 30_000L
         const val TAG = "SecureStorage"
     }
 
@@ -62,8 +61,6 @@ internal class KeyStoreFileStorage(
     private val lock = Any()
 
     private var cachedKey: SecretKey? = null
-    private var unreachableUntil = 0L
-    private var unreachableCause: Throwable? = null
 
     var usingFallbackFile = false
         private set
@@ -149,32 +146,22 @@ internal class KeyStoreFileStorage(
     private fun newKey(): SecretKey = SecretKeySpec(ByteArray(32).also { SecureRandom().nextBytes(it) }, "AES")
 
     private fun osRead(): OsKeyRead {
-        if (clock() < unreachableUntil) return OsKeyRead.Unreachable(unreachableCause!!)
-        var last: OsKeyRead = OsKeyRead.Unreachable(IllegalStateException("not read"))
         repeat(READ_ATTEMPTS) {
-            last = try {
+            val result = try {
                 osKeyStore.read()
             } catch (e: Exception) {
                 OsKeyRead.Unreachable(e)
             } catch (e: LinkageError) {
                 OsKeyRead.NoStore(e)
             }
-            val result = last
-            if (result is OsKeyRead.Found) {
-                if (decodeKeyEnvelope(result.value) != null) return result
-                last = OsKeyRead.Unreachable(IllegalStateException("OS key store returned an invalid key"))
-                osKeyStore.resetSession()
-            } else if (result !is OsKeyRead.Unreachable) {
+            if (result !is OsKeyRead.Found) {
+                if (result is OsKeyRead.Unreachable) osKeyStore.resetSession()
                 return result
-            } else {
-                osKeyStore.resetSession()
             }
+            if (decodeKeyEnvelope(result.value) != null) return result
+            osKeyStore.resetSession()
         }
-        (last as? OsKeyRead.Unreachable)?.let {
-            unreachableCause = it.cause
-            unreachableUntil = clock() + UNREACHABLE_COOLDOWN_MS
-        }
-        return last
+        return OsKeyRead.Unreachable(IllegalStateException("OS key store returned an invalid key"))
     }
 
     private fun toKey(envelope: String): SecretKey = SecretKeySpec(decodeKeyEnvelope(envelope)!!, "AES")

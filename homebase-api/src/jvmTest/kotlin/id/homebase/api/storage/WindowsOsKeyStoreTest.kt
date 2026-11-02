@@ -36,10 +36,10 @@ class WindowsOsKeyStoreTest {
     }
 
     @Test
-    fun `a blob from another user or machine reads as absent`() {
+    fun `a blob that will not unprotect is unreachable, never absent`() {
         store().write("k")
         listOf(13, 0x8007000D.toInt(), 0x80090005.toInt(), 0x8009000B.toInt()).forEach { code ->
-            assertEquals(OsKeyRead.Absent, store { throw DpapiException(code) }.read(), "code $code")
+            assertIs<OsKeyRead.Unreachable>(store { throw DpapiException(code) }.read(), "code $code")
         }
     }
 
@@ -49,6 +49,5 @@ class WindowsOsKeyStoreTest {
 
         assertIs<OsKeyRead.Unreachable>(store { throw DpapiException(5) }.read())
         assertIs<OsKeyRead.Unreachable>(store { throw IllegalStateException("x") }.read())
-        assertTrue(dpapiCodeIsForeignBlob(13))
     }
 }

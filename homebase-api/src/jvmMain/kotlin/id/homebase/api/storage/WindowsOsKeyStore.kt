@@ -4,12 +4,7 @@ import java.io.File
 
 internal class DpapiException(val code: Int, cause: Throwable? = null) : Exception("DPAPI error 0x${code.toString(16)}", cause)
 
-private val FOREIGN_BLOB_CODES = setOf(13, 0x8007000D.toInt(), 0x80090005.toInt(), 0x8009000B.toInt())
-
-/** A blob sealed for another user or machine reads as gone; this is an assumption to confirm on a real Windows runner. */
-internal fun dpapiCodeIsForeignBlob(code: Int): Boolean = code in FOREIGN_BLOB_CODES
-
-/** The key, sealed with DPAPI (tied to the Windows login, unlike roaming Credential Manager entries), in a file beside the data. */
+/** The key, sealed with DPAPI (tied to the Windows login, unlike roaming Credential Manager entries), in a file beside the data. A blob that won't unprotect is unreachable, never absent: the cause can be transient (password reset, master key unavailable). */
 internal class WindowsOsKeyStore(
     storageDir: File,
     fileName: String = "secure_storage.key.dpapi",
@@ -23,7 +18,7 @@ internal class WindowsOsKeyStore(
         try {
             OsKeyRead.Found(String(unprotect(blobFile.readBytes()), Charsets.UTF_8))
         } catch (e: DpapiException) {
-            if (dpapiCodeIsForeignBlob(e.code)) OsKeyRead.Absent else OsKeyRead.Unreachable(e)
+            OsKeyRead.Unreachable(e)
         }
     }
 
