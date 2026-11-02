@@ -49,38 +49,52 @@ class OpenFileActivity : ComponentActivity(), KoinComponent {
             }
         }
         val uri = intent?.data
-        if (savedInstanceState != null) return
         lifecycleScope.launch {
-            val request = uri?.takeIf { it.scheme == "content" }?.let { stage(it) }
-            if (request == null) {
-                Toast.makeText(this@OpenFileActivity, getString(MR.string.openedfile_open_failed), Toast.LENGTH_LONG).show()
-            } else {
-                OpenedFileInbox.offer(request)
-                startActivity(
-                    Intent(this@OpenFileActivity, MainActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                )
+            var staged: String? = null
+            var handedOver = false
+            try {
+                val request = uri?.takeIf { it.scheme == "content" }?.let { stage(it) { path -> staged = path } }
+                if (request == null) {
+                    Toast.makeText(this@OpenFileActivity, getString(MR.string.openedfile_open_failed), Toast.LENGTH_LONG).show()
+                } else {
+                    OpenedFileInbox.offer(request)
+                    handedOver = true
+                    startActivity(
+                        Intent(this@OpenFileActivity, MainActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    )
+                }
+                finish()
+            } finally {
+                // A rotation cancels this scope; the recreated activity stages again from the grant, which outlives it.
+                if (!handedOver) staged?.let(::discardStaged)
             }
-            finish()
         }
     }
 
-    private suspend fun stage(uri: Uri): OpenedFileRequest? = withContext(Dispatchers.IO) {
-        val displayName = runCatching {
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
-        }.getOrNull() ?: uri.lastPathSegment
-        val root = fileOperationsProvider.getCacheDirectory().trimEnd('/') + "/" + OPENED_FILE_STAGING_DIR
-        val staged = reserveStagedPath(root, displayName)
+    private suspend fun stage(uri: Uri, onReserved: (String) -> Unit): OpenedFileRequest? = withContext(Dispatchers.IO) {
+        var staged: String? = null
         try {
-            val input = contentResolver.openInputStream(uri) ?: return@withContext null
-            input.use { source -> File(staged).outputStream().use { source.copyTo(it) } }
+            val displayName = runCatching {
+                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment
+            val root = fileOperationsProvider.getCacheDirectory().trimEnd('/') + "/" + OPENED_FILE_STAGING_DIR
+            val path = reserveStagedPath(root, displayName)
+            staged = path
+            onReserved(path)
+            val input = contentResolver.openInputStream(uri)
+            if (input == null) {
+                discardStaged(path)
+                return@withContext null
+            }
+            input.use { source -> File(path).outputStream().use { source.copyTo(it) } }
             val type = (intent?.type ?: contentResolver.getType(uri))?.takeIf { it != "application/octet-stream" }
-            OpenedFileRequest(staged, File(staged).name, type, File(staged).length())
+            OpenedFileRequest(path, File(path).name, type, File(path).length())
         } catch (e: Exception) {
             Logger.w(e, TAG) { "couldn't copy the opened document" }
-            discardStaged(staged)
+            staged?.let(::discardStaged)
             null
         }
     }

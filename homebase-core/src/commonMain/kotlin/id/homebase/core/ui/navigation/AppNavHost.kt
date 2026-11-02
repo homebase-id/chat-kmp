@@ -604,7 +604,7 @@ fun AppNavHost(
         if (authState is YouAuthState.Unauthenticated || authState is YouAuthState.Error) {
             if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class) && !currentDestination.hasRoute(
                     Route.AppLoading::class
-                )
+                ) && !currentDestination.hasRoute(Route.OpenedFile::class)
             ) {
                 navController.navigate(Route.Login) {
                     popUpTo(0) { inclusive = true }
@@ -691,8 +691,8 @@ fun AppNavHost(
     val pendingOpenedFile by OpenedFileInbox.pending.collectAsStateWithLifecycle()
     LaunchedEffect(pendingOpenedFile, isAuthenticated) {
         val request = pendingOpenedFile ?: return@LaunchedEffect
-        if (!isAuthenticated) return@LaunchedEffect
-        val stack = navController.awaitChatList()
+        // Signed out, the file waits on top of Login: it can still be opened elsewhere, and "Sign in to save" brings it back after sign-in.
+        val stack = if (isAuthenticated) navController.awaitChatList() else navController.currentBackStack.firstContaining { it.destination.hasRoute(Route.Login::class) }
         val shown = stack.any { it.destination.hasRoute(Route.OpenedFile::class) && it.toRoute<Route.OpenedFile>().path == request.path }
         if (!shown) navController.navigate(Route.OpenedFile(request.path, request.name, request.mimeType, request.sizeBytes))
     }
@@ -2285,22 +2285,20 @@ fun AppNavHost(
                             }
 
                             scoped<Route.OpenedFile> { entry ->
-                                if (isAuthenticated) {
-                                    val route = entry.toRoute<Route.OpenedFile>()
-                                    OpenedFileScreen(
-                                        viewModel = koinViewModel(
-                                            key = route.path,
-                                            parameters = { parametersOf(OpenedFileRequest(route.path, route.name, route.mimeType, route.sizeBytes)) },
-                                        ),
-                                        onBack = { navController.popBackStack() },
-                                        onSignIn = { navController.navigate(Route.Login) },
-                                        onSetUpFilesync = { navController.navigate(Route.Filesync) },
-                                        onShowInFilesync = { path ->
-                                            OpenedFileInbox.showFolder.value = path
-                                            openFilesync()
-                                        },
-                                    )
-                                }
+                                val route = entry.toRoute<Route.OpenedFile>()
+                                OpenedFileScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.path,
+                                        parameters = { parametersOf(OpenedFileRequest(route.path, route.name, route.mimeType, route.sizeBytes)) },
+                                    ),
+                                    onBack = { navController.popBackStack() },
+                                    onSignIn = { navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } } },
+                                    onSetUpFilesync = { navController.navigate(Route.Filesync) },
+                                    onShowInFilesync = { path ->
+                                        OpenedFileInbox.showFolder.value = path
+                                        openFilesync()
+                                    },
+                                )
                             }
 
                             scoped<Route.FilesyncTrash> {

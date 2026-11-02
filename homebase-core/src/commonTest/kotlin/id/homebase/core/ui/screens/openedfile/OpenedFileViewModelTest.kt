@@ -9,13 +9,14 @@ import id.homebase.core.ui.screens.filesync.FilesyncNode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
@@ -43,19 +44,27 @@ class OpenedFileViewModelTest {
         override val errors = MutableSharedFlow<FilesyncError>(extraBufferCapacity = 4)
         var ready = true
         var remembered: List<FilesyncCrumb>? = null
-        var handOff: Job = Job().apply { complete() }
+        var gate: CompletableDeferred<Unit>? = null
+        var accepted = true
+        var readyFails = false
+        var enqueueFails = false
         val enqueued = mutableListOf<Pair<Uuid, String>>()
         val discarded = mutableListOf<String>()
 
-        override suspend fun filesyncReady() = ready
+        override suspend fun filesyncReady(): Boolean {
+            if (readyFails) error("offline")
+            return ready
+        }
         override suspend fun rememberedFolder() = remembered
         override suspend fun remember(path: List<FilesyncCrumb>) { remembered = path }
         override suspend fun listFolders(parent: Uuid): List<FilesyncNode> {
             return tree[parent] ?: error("no such folder")
         }
-        override fun enqueue(folderId: Uuid, path: String): Job {
+        override suspend fun enqueue(folderId: Uuid, path: String): Boolean {
             enqueued += folderId to path
-            return handOff
+            gate?.await()
+            if (enqueueFails) error("offline")
+            return accepted
         }
         override fun discard(path: String) { discarded += path }
     }
@@ -183,7 +192,7 @@ class OpenedFileViewModelTest {
     @Test
     fun theCopyIsNotDeletedWhileTheQueueIsStillCopyingIt() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val g = gateway().apply { handOff = launch { gate.await() } }
+        val g = gateway().apply { this.gate = gate }
         val vm = vm(g)
         vm.onAction(OpenedFileAction.SaveClicked)
         vm.onAction(OpenedFileAction.PickerConfirm)
@@ -196,13 +205,56 @@ class OpenedFileViewModelTest {
     @Test
     fun theSavedEventWaitsForTheHandOff() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val g = gateway().apply { handOff = launch { gate.await() } }
+        val g = gateway().apply { this.gate = gate }
         val vm = vm(g)
         vm.onAction(OpenedFileAction.SaveClicked)
         vm.onAction(OpenedFileAction.PickerConfirm)
         assertTrue(vm.uiState.value.saving)
         gate.complete(Unit)
         assertTrue(vm.events.first() is OpenedFileEvent.Saved)
+        assertFalse(vm.uiState.value.saving)
+    }
+
+    private fun TestScope.collect(vm: OpenedFileViewModel): List<OpenedFileEvent> {
+        val seen = mutableListOf<OpenedFileEvent>()
+        backgroundScope.launch { vm.events.collect { seen += it } }
+        return seen
+    }
+
+    @Test
+    fun aFailedCheckBeforeSavingShowsAnErrorInsteadOfCrashing() = runTest {
+        val g = gateway().apply { readyFails = true }
+        val vm = vm(g)
+        val seen = collect(vm)
+        vm.onAction(OpenedFileAction.SaveClicked)
+        runCurrent()
+        assertEquals(listOf<OpenedFileEvent>(OpenedFileEvent.SaveFailed), seen)
+        assertNull(vm.uiState.value.picker)
+        assertFalse(vm.uiState.value.saving)
+    }
+
+    @Test
+    fun aGatewayThatThrowsWhileSavingShowsAnErrorAndFreesTheScreen() = runTest {
+        val g = gateway().apply { enqueueFails = true }
+        val vm = vm(g)
+        val seen = collect(vm)
+        vm.onAction(OpenedFileAction.SaveClicked)
+        vm.onAction(OpenedFileAction.PickerConfirm)
+        runCurrent()
+        assertEquals(listOf<OpenedFileEvent>(OpenedFileEvent.SaveFailed), seen)
+        assertFalse(vm.uiState.value.saving, "Back is enabled again")
+    }
+
+    @Test
+    fun savedIsNotSentWhenTheQueueCouldNotTakeTheFile() = runTest {
+        val g = gateway().apply { accepted = false }
+        val vm = vm(g)
+        val seen = collect(vm)
+        vm.onAction(OpenedFileAction.SaveClicked)
+        vm.onAction(OpenedFileAction.PickerConfirm)
+        g.errors.emit(FilesyncError.UploadFailed)
+        runCurrent()
+        assertEquals(listOf<OpenedFileEvent>(OpenedFileEvent.Error(FilesyncError.UploadFailed)), seen)
         assertFalse(vm.uiState.value.saving)
     }
 

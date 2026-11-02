@@ -7,5 +7,6 @@ import androidx.compose.ui.Modifier
 actual fun PdfPageViewer(
     filePath: String,
     onTap: (() -> Unit)?,
+    onFailed: () -> Unit,
     modifier: Modifier,
-) = RenderedPdfPageViewer(filePath, onTap, modifier)
+) = RenderedPdfPageViewer(filePath, onTap, onFailed, modifier)

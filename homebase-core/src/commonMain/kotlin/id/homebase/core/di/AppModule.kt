@@ -1421,7 +1421,7 @@ val appModule = module {
             privateDriveOptIn = get(),
         )
     }
-    single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get()) }
+    single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
     viewModel { params -> OpenedFileViewModel(params.get(), get()) }
     viewModel { FilesyncTrashViewModel(get(), get()) }
     viewModel { FilesyncRecentViewModel(get(), get(), get()) }

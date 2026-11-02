@@ -3170,4 +3170,5 @@
     <string name="openedfile_saved">Saved to %1$s</string>
     <string name="openedfile_show">Show</string>
     <string name="openedfile_open_failed">Couldn't open the file.</string>
+    <string name="openedfile_save_failed">Couldn't save the file. Check your connection and try again.</string>
 </resources>

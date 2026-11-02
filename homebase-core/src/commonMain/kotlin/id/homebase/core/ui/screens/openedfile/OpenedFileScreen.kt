@@ -68,6 +68,7 @@ import id.homebase.resources.openedfile_no_preview
 import id.homebase.resources.openedfile_open_failed
 import id.homebase.resources.openedfile_open_with
 import id.homebase.resources.openedfile_save
+import id.homebase.resources.openedfile_save_failed
 import id.homebase.resources.openedfile_save_here
 import id.homebase.resources.openedfile_save_to
 import id.homebase.resources.openedfile_saved
@@ -101,6 +102,7 @@ fun OpenedFileScreen(
                 OpenedFileEvent.OpenSignIn -> onSignIn()
                 OpenedFileEvent.OpenFilesyncSetup -> onSetUpFilesync()
                 is OpenedFileEvent.Error -> snackbar.showSnackbar(getString(event.error.message()))
+                OpenedFileEvent.SaveFailed -> snackbar.showSnackbar(getString(MR.string.openedfile_save_failed))
                 is OpenedFileEvent.Saved -> {
                     val folder = event.folderName ?: getString(MR.string.filesync_label)
                     val result = snackbar.showSnackbar(

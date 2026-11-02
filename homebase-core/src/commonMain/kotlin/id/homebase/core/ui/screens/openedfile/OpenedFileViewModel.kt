@@ -32,8 +32,8 @@ interface OpenedFileGateway {
     suspend fun remember(path: List<FilesyncCrumb>)
     suspend fun listFolders(parent: Uuid): List<FilesyncNode>
 
-    /** Queues the file; the returned job ends once the queue has its own copy. */
-    fun enqueue(folderId: Uuid, path: String): Job
+    /** Queues the file; true once the queue has its own copy, false when it couldn't take it (the queue reports why on [errors]). */
+    suspend fun enqueue(folderId: Uuid, path: String): Boolean
     fun discard(path: String)
 }
 
@@ -70,6 +70,7 @@ sealed interface OpenedFileEvent {
     /** [folderName] is null for the top of the drive. */
     data class Saved(val folderName: String?, val path: List<FilesyncCrumb>) : OpenedFileEvent
     data class Error(val error: FilesyncError) : OpenedFileEvent
+    data object SaveFailed : OpenedFileEvent
 }
 
 class OpenedFileViewModel(
@@ -123,7 +124,16 @@ class OpenedFileViewModel(
             return
         }
         viewModelScope.launch {
-            if (!gateway.filesyncReady()) {
+            val ready = try {
+                gateway.filesyncReady()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "checking Filesync before saving failed" }
+                _events.send(OpenedFileEvent.SaveFailed)
+                return@launch
+            }
+            if (!ready) {
                 _events.send(OpenedFileEvent.OpenFilesyncSetup)
             } else {
                 showFolder(gateway.rememberedFolder()?.takeIf { it.isNotEmpty() } ?: listOf(root), fallbackToRoot = true)
@@ -156,10 +166,21 @@ class OpenedFileViewModel(
         _uiState.update { it.copy(picker = null, saving = true) }
         val target = picker.path.last()
         viewModelScope.launch {
-            gateway.remember(picker.path)
-            gateway.enqueue(target.nodeId, request.path).join()
+            val queued = try {
+                gateway.remember(picker.path)
+                gateway.enqueue(target.nodeId, request.path)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "saving the opened file failed" }
+                null
+            }
             _uiState.update { it.copy(saving = false) }
-            _events.send(OpenedFileEvent.Saved(target.name, picker.path))
+            when (queued) {
+                true -> _events.send(OpenedFileEvent.Saved(target.name, picker.path))
+                null -> _events.send(OpenedFileEvent.SaveFailed)
+                false -> Unit
+            }
         }
     }
 

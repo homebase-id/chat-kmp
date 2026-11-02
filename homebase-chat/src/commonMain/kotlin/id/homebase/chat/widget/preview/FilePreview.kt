@@ -77,6 +77,7 @@ const val VIDEO_PREVIEW_LIMIT_BYTES: Long = 256L shl 20
 // One Text per line, lazily: laying out a whole file as one Text stalls the UI.
 internal const val TEXT_PREVIEW_BYTES = 256L shl 10
 internal const val TEXT_PREVIEW_MAX_LINE = 2_000
+internal const val MARKDOWN_BLOCK_MAX = 4_000
 
 // What every platform's decoder and player take; HEIC, WebM and the like fail on at least one.
 private val PREVIEW_IMAGES = setOf("image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp")
@@ -84,8 +85,8 @@ private val PREVIEW_VIDEOS = setOf("video/mp4", "video/x-m4v", "video/quicktime"
 private val PREVIEW_TEXT_APPLICATION = setOf(
     "application/json", "application/xml", "application/x-yaml", "application/javascript", "application/x-sh",
 )
-// A contact, not a document: its chip keeps adding the contact.
-private val NOT_TEXT = setOf("text/vcard", "text/x-vcard", "text/calendar")
+// A contact, not a document: its chip keeps adding the contact. RTF is markup; iOS names it text/rtf, Android application/rtf.
+private val NOT_TEXT = setOf("text/vcard", "text/x-vcard", "text/calendar", "text/rtf")
 private val MARKDOWN_TYPES = setOf("text/markdown", "text/x-markdown")
 private val MONOSPACE_TYPES = setOf("text/csv", "application/json")
 
@@ -140,18 +141,30 @@ internal fun splitLongLines(lines: List<String>, maxLength: Int = TEXT_PREVIEW_M
     return out
 }
 
-/** [text] cut into blocks at blank lines, so each is laid out on its own; a blank line inside a code fence does not cut it. */
-internal fun splitMarkdownBlocks(text: String): List<String> {
+/** [text] cut into blocks at blank lines, so each is laid out on its own; a blank line inside a code fence does not cut it, and a block over [maxLength] chars is cut too (a fence is closed and reopened across the cut). */
+internal fun splitMarkdownBlocks(text: String, maxLength: Int = MARKDOWN_BLOCK_MAX): List<String> {
     val blocks = ArrayList<String>()
     val current = StringBuilder()
-    var fenced = false
+    var fence: String? = null
     fun flush() {
         if (current.isNotBlank()) blocks += current.toString().trimEnd('\n')
         current.clear()
     }
-    for (line in text.replace("\r\n", "\n").replace('\r', '\n').split('\n')) {
-        if (line.trimStart().let { it.startsWith("```") || it.startsWith("~~~") }) fenced = !fenced
-        if (line.isBlank() && !fenced) flush() else current.append(line).append('\n')
+    for (line in splitLongLines(text.replace("\r\n", "\n").replace('\r', '\n').split('\n'), maxLength)) {
+        val trimmed = line.trimStart()
+        val marker = if (trimmed.startsWith("```")) "```" else if (trimmed.startsWith("~~~")) "~~~" else null
+        if (marker != null) fence = if (fence == null) marker else null
+        if (line.isBlank() && fence == null) {
+            flush()
+            continue
+        }
+        if (marker == null && current.isNotEmpty() && current.length + line.length + 1 > maxLength) {
+            val open = fence
+            if (open != null) current.append(open).append('\n')
+            flush()
+            if (open != null) current.append(open).append('\n')
+        }
+        current.append(line).append('\n')
     }
     flush()
     return blocks
@@ -179,7 +192,7 @@ fun FilePreviewContent(
                 onError = onFailed,
             )
             FilePreviewKind.Video -> LocalVideoPlayerSurface(path, Modifier.fillMaxSize())
-            FilePreviewKind.Pdf -> PdfPageViewer(path, onTap = onTap, modifier = Modifier.fillMaxSize().padding(contentPadding))
+            FilePreviewKind.Pdf -> PdfPageViewer(path, onTap = onTap, onFailed = onFailed, modifier = Modifier.fillMaxSize().padding(contentPadding))
             FilePreviewKind.Text -> TextPreview(path, isMonospacePreview(name, contentType), onTap, onFailed, contentPadding)
             FilePreviewKind.Markdown -> MarkdownPreview(path, onTap, onFailed, contentPadding)
         }

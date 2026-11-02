@@ -78,6 +78,31 @@ class FilePreviewTest {
     }
 
     @Test
+    fun aMarkdownFileWithNoBlankLinesIsStillCutIntoBoundedBlocks() {
+        val text = (1..10_000).joinToString("\n") { "line number $it of a long paragraph" }
+        val blocks = splitMarkdownBlocks(text)
+        assertTrue(blocks.size > 50)
+        assertTrue(blocks.all { it.length <= MARKDOWN_BLOCK_MAX })
+        assertEquals(text, blocks.joinToString("\n"))
+    }
+
+    @Test
+    fun anUnclosedFenceIsCutIntoBoundedBlocksThatEachStayFenced() {
+        val text = "```\n" + (1..10_000).joinToString("\n") { "code line $it" }
+        val blocks = splitMarkdownBlocks(text)
+        assertTrue(blocks.size > 20)
+        assertTrue(blocks.all { it.length <= MARKDOWN_BLOCK_MAX + 8 })
+        assertTrue(blocks.drop(1).all { it.startsWith("```\n") })
+        assertTrue(blocks.dropLast(1).all { it.endsWith("\n```") })
+    }
+
+    @Test
+    fun aSingleHugeLineIsCutToo() {
+        val blocks = splitMarkdownBlocks("x".repeat(200_000))
+        assertTrue(blocks.all { it.length <= MARKDOWN_BLOCK_MAX })
+    }
+
+    @Test
     fun aChatChipStillPreviewsMarkdown() {
         assertEquals(FilePreviewKind.Markdown, chatChipPreviewKind("text/markdown", "a.md", 10, web = false, pdfAvailable = true))
     }

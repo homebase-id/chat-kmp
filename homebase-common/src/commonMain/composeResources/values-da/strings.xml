@@ -2078,4 +2078,5 @@
     <string name="openedfile_saved">Gemt i %1$s</string>
     <string name="openedfile_show">Vis</string>
     <string name="openedfile_open_failed">Filen kunne ikke åbnes.</string>
+    <string name="openedfile_save_failed">Filen kunne ikke gemmes. Tjek din forbindelse, og prøv igen.</string>
 </resources>
