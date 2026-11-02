@@ -168,14 +168,19 @@ internal class KeyStoreFileStorage(
 
     /** Stores and reads back; true only when the store now holds exactly [key]. */
     private fun persistKey(key: SecretKey): Boolean =
-        try {
+        attemptOs("write the key to") {
             osKeyStore.write(encodeKeyEnvelope(key.encoded))
             (osKeyStore.read() as? OsKeyRead.Found)?.value?.let(::decodeKeyEnvelope)?.contentEquals(key.encoded) == true
+        }
+
+    private inline fun attemptOs(action: String, block: () -> Boolean): Boolean =
+        try {
+            block()
         } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "Could not write the key to the OS key store" }
+            Logger.w(tag = TAG, throwable = e) { "Could not $action the OS key store" }
             false
         } catch (e: LinkageError) {
-            Logger.w(tag = TAG, throwable = e) { "Could not write the key to the OS key store" }
+            Logger.w(tag = TAG, throwable = e) { "Could not $action the OS key store" }
             false
         }
 
@@ -295,13 +300,7 @@ internal class KeyStoreFileStorage(
 
     private fun deleteKeys() {
         cachedKey = null
-        try {
-            osKeyStore.delete()
-        } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "Could not delete the key from the OS key store" }
-        } catch (e: LinkageError) {
-            Logger.w(tag = TAG, throwable = e) { "Could not delete the key from the OS key store" }
-        }
+        attemptOs("delete the key from") { osKeyStore.delete(); true }
         deleteFileKey()
     }
 

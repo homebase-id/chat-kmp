@@ -87,6 +87,8 @@ import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.getString
 import kotlinx.io.files.Path
+import javax.swing.JOptionPane
+import kotlin.system.exitProcess
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
@@ -484,7 +486,7 @@ private fun openDatabaseOrQuit() {
             return
         } catch (e: DatabaseUnavailableException) {
             Logger.w(tag = "Main", throwable = e) { "Secure storage is unreachable; asking whether to retry" }
-            if (!askRetryKeystore()) kotlin.system.exitProcess(1)
+            if (!askRetryKeystore()) exitProcess(1)
         }
     }
 }
@@ -498,8 +500,8 @@ private fun askRetryKeystore(): Boolean {
             getString(MR.string.keystore_unavailable_quit),
         )
     }
-    val choice = javax.swing.JOptionPane.showOptionDialog(
-        null, message, title, javax.swing.JOptionPane.DEFAULT_OPTION, javax.swing.JOptionPane.ERROR_MESSAGE,
+    val choice = JOptionPane.showOptionDialog(
+        null, message, title, JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE,
         null, arrayOf(retry, quit), retry,
     )
     return choice == 0
@@ -531,7 +533,7 @@ private fun setupCrashHandler() {
             CrashRecoveryDialog.showAndBlock(reportPath?.toString())
         } catch (e: Throwable) {
             e.printStackTrace()
-            kotlin.system.exitProcess(1)
+            exitProcess(1)
         }
     }
 }
