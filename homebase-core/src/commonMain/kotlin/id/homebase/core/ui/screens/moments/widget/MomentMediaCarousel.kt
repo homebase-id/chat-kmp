@@ -81,7 +81,7 @@ fun MomentMediaCarousel(
     onToggleMute: () -> Unit,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
-    onDoubleTap: () -> Unit,
+    onDoubleTap: (() -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     modifier: Modifier = Modifier,
@@ -204,7 +204,7 @@ fun MomentMediaCarousel(
                             }
                         }
                     },
-                    onDoubleTap = onDoubleTap,
+                    onDoubleTap = onDoubleTap ?: {},
                     isMuted = isMuted,
                     onToggleMute = onToggleMute,
                     sharedTransitionScope = sharedTransitionScope,
@@ -235,6 +235,7 @@ fun MomentMediaCarousel(
                     fitBounds = fitToContent,
                     shape = RectangleShape,
                     onClick = onMediaClick?.let { handler -> { handler(payload) } },
+                    onDoubleTap = onDoubleTap,
                     onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,

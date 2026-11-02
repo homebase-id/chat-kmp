@@ -47,7 +47,7 @@ fun MomentMediaGallery(
     // Shared across all videos in the feed (one tap persists).
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
-    onDoubleTap: () -> Unit = {},
+    onDoubleTap: (() -> Unit)? = null,
     // Ignored by SingleImageLayout — single videos autoplay via the parent setting playingMomentId.
     autoplayActive: Boolean = false,
     // No-op on the single-payload path.
@@ -75,6 +75,7 @@ fun MomentMediaGallery(
                     ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                 onMediaClick = onMediaClick,
                 onMediaLongPress = onMediaLongPress,
+                onDoubleTap = onDoubleTap,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 messageId = messageId,
@@ -122,6 +123,7 @@ private fun SingleImageLayout(
     previewThumbnail: EmbeddedThumb?,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
+    onDoubleTap: (() -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
@@ -186,6 +188,7 @@ private fun SingleImageLayout(
             // Keep the nullability: wrapping a nullable handler in a non-null lambda made the item ALWAYS
             // register a pointer detector that silently consumed taps, breaking the card-level multi-tap one.
             onClick = onMediaClick?.let { handler -> { handler(payload) } },
+            onDoubleTap = onDoubleTap,
             onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,

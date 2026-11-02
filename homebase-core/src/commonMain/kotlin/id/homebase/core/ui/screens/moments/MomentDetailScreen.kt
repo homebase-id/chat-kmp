@@ -1609,6 +1609,10 @@ private fun MomentDetailContent(
     // detail screen's heart and flame buttons feed this controller so the
     // visual confirmation is identical across surfaces.
     val floatingController = rememberFloatingReactionController()
+    val onDoubleTapHeart: () -> Unit = {
+        floatingController.show(HeartEmoji, HeartEmoji in moment.ownReactions)
+        onAction(MomentDetailUiAction.ToggleReactionOnMoment(HeartEmoji))
+    }
 
     Box(modifier = modifier.background(stageColor)) {
         // Layer 1: full-screen media pager. ContentScale.Fit (via
@@ -1779,6 +1783,7 @@ private fun MomentDetailContent(
                             // gesture-free so the tap falls to the wrapping Box
                             // and the horizontal swipe drives the pager cleanly.
                             onClick = if (commentsOpen) null else onMediaTap,
+                            onDoubleTap = if (commentsOpen) null else onDoubleTapHeart,
                             // Inline pinch-zoom in the reels viewer. Disabled
                             // while the media is shrunk to the comments band —
                             // there the lightweight fit render is enough.
