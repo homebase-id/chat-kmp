@@ -531,18 +531,7 @@ internal class MediaDownloadHandler(
                         val kind = chatChipPreviewKind(contentType, name, selectedPayload.bytesWritten) ?: return@launch
                         val key = DecryptedFileKey(action.message.fileId, action.payloadKey)
                         val known = messagesUiState.value.decryptedFiles[key]
-                        if (known == null || !fileOperationsProvider.sourceExists(known)) {
-                            if (known != null) {
-                                messagesUiState.update {
-                                    it.copy(decryptedFiles = it.decryptedFiles.toMutableMap().apply { remove(key) }.toPersistentMap())
-                                }
-                            }
-                            dispatch(
-                                ConversationListUiAction.DecryptFile(
-                                    action.message.id, action.payloadKey
-                                )
-                            )
-                        }
+                        val needDecrypt = known == null || !fileOperationsProvider.sourceExists(known)
                         messagesUiState.update {
                             it.copy(
                                 fullScreenOverlay = FullScreenOverlay.FilePreviewData(
@@ -553,6 +542,18 @@ internal class MediaDownloadHandler(
                                     name = name,
                                     kind = kind,
                                     userDate = action.message.userDate,
+                                )
+                            )
+                        }
+                        if (needDecrypt) {
+                            if (known != null) {
+                                messagesUiState.update {
+                                    it.copy(decryptedFiles = it.decryptedFiles.toMutableMap().apply { remove(key) }.toPersistentMap())
+                                }
+                            }
+                            dispatch(
+                                ConversationListUiAction.DecryptFile(
+                                    action.message.id, action.payloadKey
                                 )
                             )
                         }

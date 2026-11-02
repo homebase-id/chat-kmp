@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.widget.preview.FilePreviewContent
 import id.homebase.chat.widget.preview.FilePreviewKind
@@ -68,7 +69,7 @@ fun ChatFilePreview(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
     ) {
         if (failed) {
-            PreviewFailed()
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { PreviewFailed() }
         } else if (filePath == null) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else {
@@ -98,6 +99,8 @@ fun ChatFilePreview(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = formatTimestamp(userDate),

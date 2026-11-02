@@ -232,16 +232,22 @@ fun VaultGalleryScreen(
                     } else if (previewKind != null) {
                         // Composed only on the settled page: a video fetches and decrypts its whole file.
                         if (previewKind != FilePreviewKind.Video || pagerState.settledPage == page) {
-                            StreamedFilePreview(
-                                key = descriptor.key,
-                                name = file.fileName,
-                                kind = previewKind,
-                                load = {
-                                    withContext(Dispatchers.Default) { uploaderService.downloadPayload(file, descriptor.key) }
-                                },
-                                discard = { path -> runCatching { fileOperationsProvider.deleteTempFile(path) } },
-                                onTap = onTapImage,
-                            )
+                            Box(
+                                Modifier.fillMaxSize().padding(
+                                    bottom = if (previewKind == FilePreviewKind.Video) sheetPeekHeight else 0.dp,
+                                ),
+                            ) {
+                                StreamedFilePreview(
+                                    key = descriptor.key,
+                                    name = file.fileName,
+                                    kind = previewKind,
+                                    load = {
+                                        withContext(Dispatchers.Default) { uploaderService.downloadPayload(file, descriptor.key) }
+                                    },
+                                    discard = { path -> runCatching { fileOperationsProvider.deleteTempFile(path) } },
+                                    onTap = onTapImage,
+                                )
+                            }
                         }
                     } else {
                         GalleryPageNonImage(
