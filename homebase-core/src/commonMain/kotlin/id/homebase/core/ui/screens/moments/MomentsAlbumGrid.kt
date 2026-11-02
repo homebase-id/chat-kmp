@@ -93,7 +93,7 @@ fun MomentsAlbumGrid(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         )
         LazyVerticalGrid(
-            columns = GridCells.Fixed(zoom.columnCount),
+            columns = GridCells.Adaptive(MomentsLayoutSpec.albumMinCellWidth(zoom)),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
@@ -285,13 +285,6 @@ private fun TextOnlyCell(description: String) {
         )
     }
 }
-
-private val MomentsAlbumZoom.columnCount: Int
-    get() = when (this) {
-        MomentsAlbumZoom.Day -> 3
-        MomentsAlbumZoom.Month -> 5
-        MomentsAlbumZoom.Year -> 8
-    }
 
 private fun MomentsAlbumZoom.cycleOut(): MomentsAlbumZoom = when (this) {
     MomentsAlbumZoom.Day -> MomentsAlbumZoom.Month

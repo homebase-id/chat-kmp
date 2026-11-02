@@ -2390,7 +2390,7 @@ private val MediaMaxWidth = 560.dp
 // `commentsDocked` branch in DetailContent). Fixed rather than a fraction —
 // comment text doesn't get more readable past a column width, and a fixed rail
 // keeps the media stage stable as the window resizes.
-private val CommentsRailWidth = 400.dp
+internal val CommentsRailWidth = 400.dp
 
 @Composable
 private fun PagerDots(

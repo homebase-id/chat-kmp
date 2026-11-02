@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -64,6 +66,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -210,26 +213,88 @@ fun MomentsScreen(
         uiState.viewMode
     }
 
-    CompactMomentsLayout(
-        moments = uiState.moments,
-        isLoading = uiState.isLoading,
-        uploadProgress = uiState.uploadProgress,
-        pendingLocalPreviews = uiState.pendingLocalPreviews,
-        ownerSession = uiState.ownerSession,
-        connectionStatus = uiState.connectionStatus,
-        driveIsSyncing = uiState.driveIsSyncing,
-        hasDriveError = uiState.hasDriveError,
-        viewMode = effectiveViewMode,
-        onViewModeChange = viewModel::setViewMode,
-        albumZoom = uiState.albumZoom,
-        onAlbumZoomChange = viewModel::setAlbumZoom,
-        onCreateMoment = onCreateMoment,
-        onProfileClick = onProfileClick,
-        onOpenMoment = onOpenMoment,
-        onAddReaction = viewModel::addReaction,
-        onDeleteFailedMoment = viewModel::deleteFailedMoment,
-        onDismissUpload = viewModel::dismissUpload,
-    )
+    val listState = rememberLazyListState()
+    var selectedMomentId by remember { mutableStateOf<Uuid?>(null) }
+    val momentIds = remember(uiState.moments) { uiState.moments.map { it.id } }
+    val effectiveSelectedId = remember(selectedMomentId, momentIds) {
+        MomentsLayoutSpec.resolveSelection(selectedMomentId, momentIds)
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val availableWidth = maxWidth
+        val showPane = effectiveViewMode != MomentsViewMode.Reels &&
+            MomentsLayoutSpec.showsDetailPane(availableWidth)
+        val feed: @Composable (Modifier) -> Unit = { feedModifier ->
+            CompactMomentsLayout(
+                moments = uiState.moments,
+                isLoading = uiState.isLoading,
+                uploadProgress = uiState.uploadProgress,
+                pendingLocalPreviews = uiState.pendingLocalPreviews,
+                ownerSession = uiState.ownerSession,
+                connectionStatus = uiState.connectionStatus,
+                driveIsSyncing = uiState.driveIsSyncing,
+                hasDriveError = uiState.hasDriveError,
+                viewMode = effectiveViewMode,
+                onViewModeChange = viewModel::setViewMode,
+                albumZoom = uiState.albumZoom,
+                onAlbumZoomChange = viewModel::setAlbumZoom,
+                onCreateMoment = onCreateMoment,
+                onProfileClick = onProfileClick,
+                onOpenMoment = if (showPane) {
+                    { id, _ -> selectedMomentId = Uuid.parse(id) }
+                } else {
+                    onOpenMoment
+                },
+                onAddReaction = viewModel::addReaction,
+                onDeleteFailedMoment = viewModel::deleteFailedMoment,
+                onDismissUpload = viewModel::dismissUpload,
+                listState = listState,
+                selectedMomentId = if (showPane) effectiveSelectedId else null,
+                commentsSheetOnTap = !showPane,
+                modifier = feedModifier,
+            )
+        }
+        if (showPane) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                feed(
+                    Modifier
+                        .width(MomentsLayoutSpec.feedPaneWidth(availableWidth))
+                        .fillMaxHeight(),
+                )
+                VerticalDivider()
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    val current = effectiveSelectedId
+                    if (current != null) {
+                        MomentDetailPaneHost(momentId = current)
+                    }
+                }
+            }
+        } else {
+            feed(Modifier.fillMaxSize())
+        }
+    }
+}
+
+/**
+ * Hosts the docked detail pane for the selected moment. The detail view model
+ * reads its moment id once at construction, so each selection needs a fresh
+ * instance; the disposable store clears it as soon as the selection changes,
+ * so clicking through moments does not accumulate view models.
+ */
+@Composable
+private fun MomentDetailPaneHost(momentId: Uuid) {
+    key(momentId) {
+        DisposableViewModelStoreOwner {
+            val detailVm: MomentDetailViewModel = koinViewModel(
+                key = "moment-detail-pane-$momentId",
+            ) { parametersOf(momentId, null) }
+            MomentDetailPane(
+                viewModel = detailVm,
+                onNavigateBack = null,
+                commentsDocked = true,
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -253,9 +318,14 @@ private fun CompactMomentsLayout(
     onAddReaction: (Uuid, String) -> Unit,
     onDeleteFailedMoment: (Uuid) -> Unit,
     onDismissUpload: (Uuid) -> Unit,
+    listState: LazyListState,
+    selectedMomentId: Uuid?,
+    commentsSheetOnTap: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
     Scaffold(
+        modifier = modifier,
         topBar = {
             MomentsTopAppBar(
                 ownerSession = ownerSession,
@@ -302,7 +372,7 @@ private fun CompactMomentsLayout(
                 },
             ) { mode ->
                 when (mode) {
-                    MomentsViewMode.Timeline -> MomentsFeedList(
+                    MomentsViewMode.Timeline -> FeedColumn { columnModifier -> MomentsFeedList(
                         moments = moments,
                         uploadProgress = uploadProgress,
                         pendingLocalPreviews = pendingLocalPreviews,
@@ -310,23 +380,21 @@ private fun CompactMomentsLayout(
                         onOpenMoment = onOpenMoment,
                         onAddReaction = onAddReaction,
                         openLabel = openLabel,
-                        selectedMomentId = null,
-                        // Compact timeline: a tap raises a modal comments + description
-                        // sheet for the moment (Instagram-style) rather than navigating
-                        // away to the full-screen detail view.
-                        commentsSheetOnTap = true,
+                        selectedMomentId = selectedMomentId,
+                        commentsSheetOnTap = commentsSheetOnTap,
+                        listState = listState,
                         onDeleteFailedMoment = onDeleteFailedMoment,
                         onDismissUpload = onDismissUpload,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    MomentsViewMode.Album -> MomentsAlbumGrid(
+                        modifier = columnModifier,
+                    ) }
+                    MomentsViewMode.Album -> FeedColumn { columnModifier -> MomentsAlbumGrid(
                         moments = moments,
                         zoom = albumZoom,
                         onZoomChange = onAlbumZoomChange,
                         onOpenMoment = onOpenMoment,
                         pendingLocalPreviews = pendingLocalPreviews,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                        modifier = columnModifier,
+                    ) }
                     MomentsViewMode.Reels -> MomentsReelsView(
                         moments = moments,
                         modifier = Modifier.fillMaxSize(),
@@ -337,6 +405,13 @@ private fun CompactMomentsLayout(
     }
 }
 
+
+@Composable
+private fun FeedColumn(content: @Composable (Modifier) -> Unit) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        content(Modifier.fillMaxHeight().widthIn(max = MomentsLayoutSpec.FeedMaxWidth).fillMaxWidth())
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -351,14 +426,14 @@ private fun MomentsFeedList(
     selectedMomentId: Uuid?,
     // When true (compact timeline), a single tap opens a modal comments +
     // description bottom sheet for that moment (Instagram-style) instead of
-    // invoking [onOpenMoment]. The wide-desktop layout leaves this false so a
-    // tap still selects the moment for the embedded detail pane.
+    // invoking [onOpenMoment]. The pane layout leaves this false so a tap
+    // selects the moment for the docked detail pane.
     commentsSheetOnTap: Boolean = false,
     onDeleteFailedMoment: (Uuid) -> Unit = {},
     onDismissUpload: (Uuid) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
     var playingMomentId by remember { mutableStateOf<Uuid?>(null) }
     // Which moment (if any) has its comments bottom sheet open. Null = closed.
     // Only set on the compact timeline (see [commentsSheetOnTap]); the modal
