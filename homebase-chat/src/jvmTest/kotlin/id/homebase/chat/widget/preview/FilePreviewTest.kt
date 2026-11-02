@@ -48,7 +48,6 @@ class FilePreviewTest {
     @Test
     fun wordAndOfficeFilesHaveNoPreview() {
         listOf(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" to "a.docx",
             "application/msword" to "a.doc",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" to "a.xlsx",
             "application/vnd.ms-powerpoint" to "a.ppt",

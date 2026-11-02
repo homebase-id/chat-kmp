@@ -2067,6 +2067,7 @@
     <string name="file_preview_truncated">Viser de første %1$s.</string>
     <string name="filesync_too_large_here">Filen er for stor til at hente i browseren.</string>
     <string name="chat_error_file_too_large_here">Filen er for stor til at åbne i browseren.</string>
+    <string name="file_preview_docx_simplified">Forenklet visning</string>
     <string name="file_preview_markdown_raw">Vis rå tekst</string>
     <string name="file_preview_markdown_formatted">Vis formateret</string>
     <string name="openedfile_save">Gem i Homebase</string>

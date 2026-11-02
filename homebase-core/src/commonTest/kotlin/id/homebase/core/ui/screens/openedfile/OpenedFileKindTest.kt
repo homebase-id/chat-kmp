@@ -31,7 +31,6 @@ class OpenedFileKindTest {
     @Test
     fun officeAndUnknownFilesGetTheNoPreviewCard() {
         listOf(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" to "a.docx",
             "application/msword" to "a.doc",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" to "a.xlsx",
             "application/vnd.ms-excel" to "a.xls",

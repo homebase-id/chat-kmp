@@ -121,6 +121,11 @@ kotlin {
             dependsOn(commonMain.get())
             dependencies { implementation(libs.webrtc.kmp) }
         }
+        // okio's openZip needs zlib, which wasmJs lacks.
+        val zipMain = create("zipMain") { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(zipMain)
+        jvmMain.get().dependsOn(zipMain)
+        nativeMain.get().dependsOn(zipMain)
         androidMain.get().dependsOn(webrtcKmpMain)
         appleMain.get().dependsOn(webrtcKmpMain)
         getByName("androidHostTest").dependencies {

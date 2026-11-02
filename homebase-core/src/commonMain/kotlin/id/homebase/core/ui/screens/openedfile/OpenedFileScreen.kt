@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -198,7 +199,10 @@ private fun NoPreviewCard(request: OpenedFileRequest) {
 
 @Composable
 private fun SaveFolderSheet(picker: SavePicker, onAction: (OpenedFileAction) -> Unit) {
-    ModalBottomSheet(onDismissRequest = { onAction(OpenedFileAction.PickerDismiss) }) {
+    ModalBottomSheet(
+        onDismissRequest = { onAction(OpenedFileAction.PickerDismiss) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
             Text(
                 stringResource(MR.string.openedfile_save_to),

@@ -58,6 +58,7 @@ import id.homebase.core.util.isWeb
 import id.homebase.core.util.trimToUtf8Boundary
 import id.homebase.resources.MR
 import id.homebase.resources.close
+import id.homebase.resources.file_preview_docx_simplified
 import id.homebase.resources.file_preview_failed
 import id.homebase.resources.file_preview_markdown_formatted
 import id.homebase.resources.file_preview_markdown_raw
@@ -69,7 +70,7 @@ import okio.buffer
 import okio.use
 import org.jetbrains.compose.resources.stringResource
 
-enum class FilePreviewKind { Image, Video, Pdf, Text, Markdown }
+enum class FilePreviewKind { Image, Video, Pdf, Text, Markdown, Docx }
 
 // Above this a video is not previewed: it would be decrypted whole before it plays, and the web holds it in memory about three times.
 const val VIDEO_PREVIEW_LIMIT_BYTES: Long = 256L shl 20
@@ -88,6 +89,7 @@ private val PREVIEW_TEXT_APPLICATION = setOf(
 // A contact, not a document: its chip keeps adding the contact. RTF is markup; iOS names it text/rtf, Android application/rtf.
 private val NOT_TEXT = setOf("text/vcard", "text/x-vcard", "text/calendar", "text/rtf")
 private val MARKDOWN_TYPES = setOf("text/markdown", "text/x-markdown")
+private const val DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 private val MONOSPACE_TYPES = setOf("text/csv", "application/json")
 
 private fun resolvedType(contentType: String?, name: String): String {
@@ -108,12 +110,14 @@ internal fun filePreviewKind(
     sizeBytes: Long?,
     web: Boolean,
     pdfAvailable: Boolean,
+    docxAvailable: Boolean = docxPreviewAvailable,
 ): FilePreviewKind? {
     val type = resolvedType(contentType, name)
     val kind = when {
         type in PREVIEW_IMAGES -> FilePreviewKind.Image
         type in PREVIEW_VIDEOS -> FilePreviewKind.Video
         type == "application/pdf" -> FilePreviewKind.Pdf.takeIf { pdfAvailable }
+        type == DOCX_TYPE -> FilePreviewKind.Docx.takeIf { docxAvailable }
         type in NOT_TEXT -> null
         type in MARKDOWN_TYPES -> FilePreviewKind.Markdown
         type.startsWith("text/") || type in PREVIEW_TEXT_APPLICATION -> FilePreviewKind.Text
@@ -195,6 +199,7 @@ fun FilePreviewContent(
             FilePreviewKind.Pdf -> PdfPageViewer(path, onTap = onTap, onFailed = onFailed, modifier = Modifier.fillMaxSize().padding(contentPadding))
             FilePreviewKind.Text -> TextPreview(path, isMonospacePreview(name, contentType), onTap, onFailed, contentPadding)
             FilePreviewKind.Markdown -> MarkdownPreview(path, onTap, onFailed, contentPadding)
+            FilePreviewKind.Docx -> DocxPreview(path, onTap, onFailed, contentPadding)
         }
     }
 }
@@ -222,6 +227,36 @@ private fun rememberTextPage(path: String, markdown: Boolean, onFailed: () -> Un
             null
         }
     }.value
+
+private suspend fun loadDocxPage(path: String): TextPage = withContext(ioDispatcher) {
+    val bytes = readDocxDocumentXml(path)
+    val truncated = bytes.size > DOCX_XML_LIMIT_BYTES
+    val xml = (if (truncated) bytes.copyOf(DOCX_XML_LIMIT_BYTES.toInt()).trimToUtf8Boundary() else bytes).decodeToString()
+    TextPage(splitLongLines(docxParagraphs(xml)), truncated, emptyList())
+}
+
+@Composable
+private fun DocxPreview(path: String, onTap: (() -> Unit)?, onFailed: () -> Unit, contentPadding: PaddingValues) {
+    val page = produceState<TextPage?>(null, path) {
+        value = try {
+            loadDocxPage(path)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            onFailed()
+            null
+        }
+    }.value ?: return CircularProgressIndicator()
+    Column(Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
+        Text(
+            stringResource(MR.string.file_preview_docx_simplified),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+        )
+        TextLines(page, monospace = false, onTap, PaddingValues(bottom = contentPadding.calculateBottomPadding()))
+    }
+}
 
 @Composable
 private fun TextPreview(path: String, monospace: Boolean, onTap: (() -> Unit)?, onFailed: () -> Unit, contentPadding: PaddingValues) {
