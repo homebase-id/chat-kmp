@@ -35,6 +35,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.DatabaseUnavailableException
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
@@ -72,6 +73,10 @@ import id.homebase.resources.desktop_menu_call_decline
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
+import id.homebase.resources.keystore_unavailable_message
+import id.homebase.resources.keystore_unavailable_quit
+import id.homebase.resources.keystore_unavailable_retry
+import id.homebase.resources.keystore_unavailable_title
 import id.homebase.resources.desktop_tray_call_indicator
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
@@ -80,6 +85,7 @@ import id.homebase.resources.theme
 import id.homebase.resources.update_available
 import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.getString
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -141,9 +147,7 @@ fun main() {
     // first, eager creation throws UninitializedPropertyAccessException during startKoin. The
     // recovery open only needs DatabaseDriverFactory + DatabaseKeyManager — no Koin dependency —
     // so it's safe to run here.
-    runBlocking {
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-    }
+    openDatabaseOrQuit()
     StartupLogger.checkpoint("database initialized")
 
     // Initialize Koin
@@ -472,6 +476,34 @@ internal fun isContainableNonFatal(throwable: Throwable): Boolean =
     throwable.isTransientNetworkFailure() ||
         throwable.isRecoverableServerConflict() ||
         throwable.isRecoverablePermissionFailure()
+
+private fun openDatabaseOrQuit() {
+    while (true) {
+        try {
+            runBlocking { DatabaseManager.initializeWithRecovery(DatabaseDriverFactory()) }
+            return
+        } catch (e: DatabaseUnavailableException) {
+            Logger.w(tag = "Main", throwable = e) { "Secure storage is unreachable; asking whether to retry" }
+            if (!askRetryKeystore()) kotlin.system.exitProcess(1)
+        }
+    }
+}
+
+private fun askRetryKeystore(): Boolean {
+    val (title, message, retry, quit) = runBlocking {
+        listOf(
+            getString(MR.string.keystore_unavailable_title),
+            getString(MR.string.keystore_unavailable_message),
+            getString(MR.string.keystore_unavailable_retry),
+            getString(MR.string.keystore_unavailable_quit),
+        )
+    }
+    val choice = javax.swing.JOptionPane.showOptionDialog(
+        null, message, title, javax.swing.JOptionPane.DEFAULT_OPTION, javax.swing.JOptionPane.ERROR_MESSAGE,
+        null, arrayOf(retry, quit), retry,
+    )
+    return choice == 0
+}
 
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->

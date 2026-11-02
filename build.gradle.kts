@@ -16,6 +16,10 @@ plugins {
 }
 
 subprojects {
+    tasks.withType<Test>().configureEach {
+        systemProperty("homebase.secureStorage", "file")
+    }
+
     configurations.all {
         resolutionStrategy {
             // Force encrypted sqlite-jdbc version everywhere
