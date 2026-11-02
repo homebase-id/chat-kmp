@@ -274,7 +274,7 @@ private fun OptionControl(
 ) {
     when (option) {
         CardOption.COLOURS -> SchemeRow(design, overrides.valueOf(option), enabled) { onOption(option, it) }
-        CardOption.ACCENT -> SwatchRow(overrides.valueOf(option), enabled) { onOption(option, it) }
+        CardOption.ACCENT -> SwatchRow(CardDesignSpecs.accentsFor(design, overrides.valueOf(CardOption.COLOURS)), overrides.valueOf(option), enabled) { onOption(option, it) }
         CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder().filter { it in orderable }, enabled, chipHeight) {
             onBlockOrder(overrides.withShownBlockOrder(orderable, it).blockOrder())
         }
@@ -549,8 +549,9 @@ private fun InkDot(ink: Color) {
 }
 
 @Composable
-private fun SwatchRow(selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    val values = listOf<String?>(null) + CardDesignSpecs.ACCENT_SWATCHES
+private fun SwatchRow(accents: List<String>, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
+    val saved = selected?.takeIf { s -> accents.none { it.equals(s, ignoreCase = true) } }
+    val values = listOf<String?>(null) + listOfNotNull(saved) + accents
     ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET) {
         values.forEach { hex ->
             if (hex == null) {

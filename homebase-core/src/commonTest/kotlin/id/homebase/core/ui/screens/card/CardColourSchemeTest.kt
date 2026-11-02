@@ -80,4 +80,56 @@ class CardColourSchemeTest {
         val unchecked = CardOverrides(palette = CardPalette(ground = "#123456", ink = "#FFFFFF", accent = "#F2B84B"))
         assertEquals(CardPalette(accent = "#F2B84B"), unchecked.prunedFor(CardDesign.COLLAGE).palette)
     }
+
+    @Test
+    fun everySchemeOffersItsOwnReadableAccents() {
+        val hex = Regex("^#[0-9a-fA-F]{6}$")
+        for ((design, scheme) in schemes) {
+            assertTrue(scheme.accents.size in 4..6, "$design/${scheme.id}")
+            assertEquals(scheme.accents.size, scheme.accents.map { it.uppercase() }.toSet().size, "$design/${scheme.id} duplicates")
+            for (accent in scheme.accents) {
+                assertTrue(hex.matches(accent), "$design/${scheme.id}: $accent")
+                assertTrue(contrast(accent, scheme.ground) >= 3.0, "$design/${scheme.id} accent $accent on ground")
+            }
+        }
+        assertEquals(schemes.size, schemes.map { it.second.accents }.toSet().size)
+    }
+
+    @Test
+    fun theAccentsOnOfferFollowTheActiveScheme() {
+        val spec = CardDesignSpecs.of(CardDesign.BOARD)!!
+        val plum = spec.schemes.first { it.id == "plum" }
+        assertEquals(plum.accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, plum.ground))
+        assertEquals(plum.accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, plum.ground.lowercase()))
+        assertEquals(spec.schemes.first().accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, null))
+    }
+
+    @Test
+    fun changingSchemeKeepsAnAccentTheNewSchemeOffersAndOtherwiseFallsBack() {
+        val spec = CardDesignSpecs.of(CardDesign.BOARD)!!
+        val forest = spec.schemes.first { it.id == "forest" }
+        val charcoal = spec.schemes.first { it.id == "charcoal" }
+        val shared = forest.accents.first { it in charcoal.accents }
+        val kept = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.ACCENT, shared)
+            .with(CardOption.COLOURS, charcoal.ground)
+        assertEquals(shared, kept.valueOf(CardOption.ACCENT))
+
+        val onlyForest = forest.accents.first { it !in charcoal.accents }
+        val fell = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.ACCENT, onlyForest)
+            .with(CardOption.COLOURS, charcoal.ground)
+        assertEquals(charcoal.accents.first(), fell.valueOf(CardOption.ACCENT))
+        assertEquals(charcoal.ground, fell.valueOf(CardOption.COLOURS))
+
+        val preset = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.COLOURS, charcoal.ground)
+        assertNull(preset.valueOf(CardOption.ACCENT))
+    }
+
+    @Test
+    fun aSavedAccentOutsideEverySetStillSurvivesLoadingAndPruning() {
+        val legacy = "#123ABC"
+        val board = CardDesignSpecs.of(CardDesign.BOARD)!!.schemes.first()
+        val saved = CardOverrides().with(CardOption.COLOURS, board.ground).with(CardOption.ACCENT, legacy)
+        val read = CardOverrides.fromJson(saved.toJson()).prunedFor(CardDesign.BOARD)
+        assertEquals(legacy, read.valueOf(CardOption.ACCENT))
+    }
 }

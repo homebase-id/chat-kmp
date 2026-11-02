@@ -26,10 +26,13 @@ fun CardOverrides.with(
     value: String?,
     presetOrder: List<String> = CardDesignSpecs.ORDERED_KINDS,
 ): CardOverrides = when (option) {
-    CardOption.COLOURS -> copy(
-        palette = (CardDesignSpecs.schemeByGround(value)?.applyTo(palette) ?: CardPalette(accent = palette?.accent))
-            .takeUnless { it == CardPalette() },
-    )
+    CardOption.COLOURS -> {
+        val scheme = CardDesignSpecs.schemeByGround(value)
+        val accent = palette?.accent?.let { saved ->
+            if (scheme == null || scheme.accents.any { it.equals(saved, ignoreCase = true) }) saved else scheme.accents.first()
+        }
+        copy(palette = (scheme?.applyTo(palette)?.copy(accent = accent) ?: CardPalette(accent = accent)).takeUnless { it == CardPalette() })
+    }
     CardOption.ACCENT -> copy(palette = (palette ?: CardPalette()).copy(accent = value).takeUnless { it == CardPalette() })
     CardOption.DISPLAY_FONT -> copy(type = (type ?: CardTypeface()).copy(display = value).takeUnless { it == CardTypeface() })
     CardOption.TEXT_FONT -> copy(type = (type ?: CardTypeface()).copy(text = value).takeUnless { it == CardTypeface() })

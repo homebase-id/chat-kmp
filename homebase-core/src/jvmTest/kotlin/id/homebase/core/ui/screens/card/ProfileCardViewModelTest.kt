@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import org.jetbrains.skia.Bitmap
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -101,7 +103,8 @@ class ProfileCardViewModelTest {
         var snapshots = 0
         override suspend fun snapshot(): ImageBitmap {
             snapshots++
-            return ImageBitmap(2, 2)
+            // ImageBitmap(2, 2) needs a graphics implementation that only a Compose scene registers.
+            return Bitmap().apply { allocN32Pixels(2, 2) }.asComposeImageBitmap()
         }
         override fun dispose() {
             disposed = true
