@@ -2,8 +2,6 @@ package id.homebase.core.ui.screens.openedfile
 
 import id.homebase.api.file.createStagingPathIn
 import id.homebase.api.file.systemFileSystem
-import id.homebase.chat.widget.preview.FilePreviewKind
-import id.homebase.chat.widget.preview.filePreviewKind
 import id.homebase.core.ui.screens.filesync.FilesyncCrumb
 import id.homebase.core.ui.screens.filesync.FilesyncNames
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,9 +18,6 @@ import okio.Path.Companion.toPath
 data class OpenedFileRequest(val path: String, val name: String, val mimeType: String?, val sizeBytes: Long)
 
 const val OPENED_FILE_STAGING_DIR = "open-with"
-
-fun openedFilePreviewKind(mimeType: String?, name: String, sizeBytes: Long?): FilePreviewKind? =
-    filePreviewKind(mimeType, name, sizeBytes)
 
 /** The name other apps give a file is theirs to choose: keep one path segment, no control or reserved characters, no leading dot. */
 fun sanitizeOpenedFileName(raw: String?): String {

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
 import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.filePreviewKind
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.filesync.FilesyncCrumb
 import id.homebase.core.ui.screens.filesync.FilesyncError
@@ -85,7 +86,7 @@ class OpenedFileViewModel(
     private val _uiState = MutableStateFlow(
         OpenedFileUiState(
             request = request,
-            kind = openedFilePreviewKind(request.mimeType, request.name, request.sizeBytes),
+            kind = filePreviewKind(request.mimeType, request.name, request.sizeBytes),
             tooLarge = request.sizeBytes > HomebaseProtocol.MaxPlaintextPayloadBytes,
             signedIn = gateway.signedIn.value,
         )

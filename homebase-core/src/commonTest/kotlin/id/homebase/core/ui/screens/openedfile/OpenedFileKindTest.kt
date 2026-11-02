@@ -1,13 +1,14 @@
 package id.homebase.core.ui.screens.openedfile
 
 import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.filePreviewKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class OpenedFileKindTest {
 
-    private fun kind(mime: String?, name: String) = openedFilePreviewKind(mime, name, sizeBytes = 1_000)
+    private fun kind(mime: String?, name: String) = filePreviewKind(mime, name, sizeBytes = 1_000)
 
     @Test
     fun everyTypeTheEntryPointsOfferMapsToItsRenderer() {
