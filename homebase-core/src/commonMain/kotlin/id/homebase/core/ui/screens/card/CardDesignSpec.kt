@@ -195,3 +195,11 @@ internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audi
 }
 
 internal fun ProfileCard.withTemplate(template: CardTemplate): ProfileCard = copy(design = template.design, overrides = template.overrides)
+
+/** A design switch: like [prunedFor], but an accent left on a preset ground must be one that preset offers. */
+fun CardOverrides.switchedTo(design: String): CardOverrides {
+    val pruned = prunedFor(design)
+    val accent = pruned.palette?.accent ?: return pruned
+    if (pruned.palette.ground != null || CardDesignSpecs.accentsFor(design, null).any { it.equals(accent, ignoreCase = true) }) return pruned
+    return pruned.with(CardOption.ACCENT, null)
+}

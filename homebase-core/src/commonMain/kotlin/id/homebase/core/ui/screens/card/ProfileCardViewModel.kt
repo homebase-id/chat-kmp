@@ -365,7 +365,7 @@ class ProfileCardViewModel(
             val edited = it.overrides
             it.copy(
                 previewDesign = design,
-                previewOverrides = if (edited.isEmpty() && it.previewOverrides == null) null else edited.prunedFor(design),
+                previewOverrides = if (edited.isEmpty() && it.previewOverrides == null) null else edited.switchedTo(design),
             )
         }
         designSwitchJob?.cancel()
@@ -395,7 +395,7 @@ class ProfileCardViewModel(
         }
     }
 
-    fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value, CardDesignSpecs.of(_uiState.value.design)?.presetOrder ?: CardDesignSpecs.ORDERED_KINDS) }
+    fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value, CardDesignSpecs.of(_uiState.value.design)?.presetOrder ?: CardDesignSpecs.ORDERED_KINDS, _uiState.value.design) }
 
     fun onBlockOrderChanged(kinds: List<String>?) = editOverrides { it.withBlockOrder(kinds) }
 

@@ -56,8 +56,25 @@ class CardColourSchemeTest {
         assertEquals(forest.ground, both.valueOf(CardOption.COLOURS))
 
         assertEquals(forest.applyTo(null), both.with(CardOption.ACCENT, null).palette)
-        assertEquals(CardPalette(accent = "#F2B84B"), both.with(CardOption.COLOURS, null).palette)
+        assertEquals(CardPalette(accent = "#F2B84B"), both.with(CardOption.COLOURS, null, design = CardDesign.BOARD).palette)
         assertNull(both.with(CardOption.COLOURS, null).with(CardOption.ACCENT, null).palette)
+    }
+
+    @Test
+    fun resettingToThePresetDropsAnAccentThePresetDoesNotOffer() {
+        val slate = CardDesignSpecs.of(CardDesign.LINKS)!!.schemes.first { it.id == "slate" }
+        val links = CardOverrides().with(CardOption.COLOURS, slate.ground).with(CardOption.ACCENT, "#7FD4E8")
+        assertNull(links.with(CardOption.COLOURS, null, design = CardDesign.LINKS).palette)
+    }
+
+    @Test
+    fun switchingDesignDropsAnAccentTheNewPresetDoesNotOffer() {
+        val blush = CardDesignSpecs.of(CardDesign.BOARD)!!.schemes.first()
+        val board = CardOverrides().with(CardOption.COLOURS, blush.ground).with(CardOption.ACCENT, "#9BE3B8")
+        val links = board.switchedTo(CardDesign.LINKS)
+        assertNull(links.palette)
+        val legacy = CardOverrides(palette = CardPalette(accent = "#123456"))
+        assertEquals("#123456", legacy.prunedFor(CardDesign.LINKS).palette?.accent)
     }
 
     @Test
