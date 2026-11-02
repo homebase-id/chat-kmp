@@ -180,7 +180,7 @@ internal class KeyStoreFileStorage(
             Logger.w(tag = TAG, throwable = e) { "Could not $action the OS key store" }
             false
         } catch (e: LinkageError) {
-            Logger.w(tag = TAG, throwable = e) { "Could not $action the OS key store" }
+            Logger.w(tag = TAG) { "Could not $action the OS key store: ${e.message?.lineSequence()?.first()}" }
             false
         }
 
@@ -238,7 +238,7 @@ internal class KeyStoreFileStorage(
 
     private fun resolveNoStore(noStore: OsKeyRead.NoStore, fileKey: FileKey, create: Boolean): SecretKey {
         usingFallbackFile = true
-        Logger.w(tag = TAG, throwable = noStore.cause) { "No OS key store available; keeping the key in a 0600 file" }
+        Logger.w(tag = TAG) { "No OS key store available (${noStore.cause.message?.lineSequence()?.first()}); keeping the key in a 0600 file" }
         return when (fileKey) {
             is FileKey.Valid -> fileKey.key.also { restrict(keyStoreFile) }
             is FileKey.Lost -> if (create) newKey().also(::writeFileKey) else throw SecureStorageKeyLostException("key file has no usable key")
