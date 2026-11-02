@@ -408,6 +408,8 @@
     <string name="moments_onboarding_setup">Set it up</string>
     <string name="moments_onboarding_dismiss">Not now</string>
     <string name="moments_welcome">Moments worth remembering</string>
+    <string name="moments_empty_body">Photos, videos and notes you post appear here.</string>
+    <string name="moments_empty_action">Add a moment</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Open Moments</string>
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
@@ -434,6 +436,7 @@
     <string name="moments_detail_metadata_device">Device</string>
     <string name="moments_detail_comments_section">Comments</string>
     <string name="moments_detail_no_comments">No comments yet</string>
+    <string name="moments_detail_first_comment">Be the first to say something</string>
     <string name="moments_detail_add_comment_hint">Add a comment</string>
     <string name="moments_detail_send_comment">Send comment</string>
     <string name="moments_detail_comment_you">You</string>

@@ -1,7 +1,10 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.border
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -17,13 +20,18 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
@@ -38,6 +46,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
@@ -98,16 +107,15 @@ fun MomentsAlbumGrid(
             onChange = onZoomChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = MomentsLayoutSpec.AlbumHorizontalPadding, vertical = 6.dp),
         )
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val columnCount = MomentsLayoutSpec.albumColumnCount(
+                zoom,
+                maxWidth - MomentsLayoutSpec.AlbumHorizontalPadding * 2,
+            )
             LazyVerticalGrid(
-                columns = GridCells.Fixed(
-                    MomentsLayoutSpec.albumColumnCount(
-                        zoom,
-                        maxWidth - MomentsLayoutSpec.AlbumHorizontalPadding * 2,
-                    ),
-                ),
+                columns = remember(columnCount) { WholePixelColumns(columnCount) },
                 verticalArrangement = Arrangement.spacedBy(MomentsLayoutSpec.AlbumCellSpacing),
                 horizontalArrangement = Arrangement.spacedBy(MomentsLayoutSpec.AlbumCellSpacing),
                 contentPadding = PaddingValues(
@@ -143,6 +151,11 @@ fun MomentsAlbumGrid(
             }
         }
     }
+}
+
+private class WholePixelColumns(private val count: Int) : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> =
+        List(count) { MomentsLayoutSpec.albumCellSizePx(availableSize, spacing, count) }
 }
 
 @Composable
@@ -184,12 +197,12 @@ private fun AlbumDateHeader(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .padding(vertical = 12.dp),
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
@@ -205,7 +218,7 @@ private fun AlbumMomentCell(
 ) {
     val motion = MaterialTheme.motionScheme
     val cornerRadius by animateDpAsState(
-        targetValue = if (isSelected) 16.dp else 0.dp,
+        targetValue = if (isSelected) 24.dp else 12.dp,
         animationSpec = motion.defaultSpatialSpec(),
     )
     val ringColor by animateColorAsState(
@@ -274,6 +287,25 @@ private fun AlbumMomentCell(
             }
         } else {
             TextOnlyCell(description = moment.description)
+        }
+
+        AnimatedVisibility(
+            visible = isSelected,
+            enter = scaleIn(motion.defaultSpatialSpec()),
+            exit = scaleOut(motion.fastSpatialSpec()),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(6.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .padding(3.dp),
+            )
         }
 
         // "+N" badge for multi-payload moments — Photos shows a small stack

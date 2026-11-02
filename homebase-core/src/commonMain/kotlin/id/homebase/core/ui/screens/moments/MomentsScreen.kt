@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -23,21 +24,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.ZeroCornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -48,10 +54,13 @@ import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -63,6 +72,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -87,6 +97,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -117,6 +129,7 @@ import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
 import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
 import id.homebase.core.ui.screens.moments.widget.aspectRatioFor
+import id.homebase.core.ui.screens.moments.widget.feedMediaMaxHeight
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
@@ -128,6 +141,8 @@ import id.homebase.resources.MR
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import id.homebase.resources.moments_create_action
+import id.homebase.resources.moments_empty_action
+import id.homebase.resources.moments_empty_body
 import id.homebase.resources.moments_feed_indicator_private
 import id.homebase.resources.moments_label
 import id.homebase.resources.moments_post_open
@@ -284,15 +299,18 @@ internal fun MomentsAdaptiveContent(
                 listState = listState,
                 selectedMomentId = if (showPane) effectiveSelectedId else null,
                 commentsSheetOnTap = !showPane,
+                wide = availableWidth >= MomentsLayoutSpec.FeedMaxWidth,
+                createInTopBar = showPane,
+                columnInset = if (showPane || viewMode == MomentsViewMode.Reels) {
+                    0.dp
+                } else {
+                    MomentsLayoutSpec.feedColumnInset(availableWidth)
+                },
                 modifier = feedModifier,
             )
         }
         if (showPane) {
             val motion = MaterialTheme.motionScheme
-            val paneShape = MaterialTheme.shapes.extraLarge.copy(
-                topEnd = ZeroCornerSize,
-                bottomEnd = ZeroCornerSize,
-            )
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -303,18 +321,33 @@ internal fun MomentsAdaptiveContent(
                         .width(MomentsLayoutSpec.feedPaneWidth(availableWidth))
                         .fillMaxHeight(),
                 )
-                AnimatedContent(
-                    targetState = effectiveSelectedId,
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(paneShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow),
-                    transitionSpec = {
-                        fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
-                    },
-                ) { momentId ->
-                    if (momentId != null) detailPane(momentId)
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Top + WindowInsetsSides.End + WindowInsetsSides.Bottom,
+                            ),
+                        )
+                        .padding(
+                            start = MomentsLayoutSpec.DetailPaneGutter,
+                            top = MomentsLayoutSpec.DetailPaneMargin,
+                            end = MomentsLayoutSpec.DetailPaneMargin,
+                            bottom = MomentsLayoutSpec.DetailPaneMargin,
+                        )
+                        .clip(MaterialTheme.shapes.extraLarge)
+                        .background(MaterialTheme.colorScheme.surfaceContainer),
+                ) {
+                    AnimatedContent(
+                        targetState = effectiveSelectedId,
+                        modifier = Modifier.fillMaxSize(),
+                        transitionSpec = {
+                            fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                        },
+                    ) { momentId ->
+                        if (momentId != null) detailPane(momentId)
+                    }
                 }
             }
         } else {
@@ -367,6 +400,9 @@ private fun CompactMomentsLayout(
     listState: LazyListState,
     selectedMomentId: Uuid?,
     commentsSheetOnTap: Boolean,
+    wide: Boolean,
+    createInTopBar: Boolean,
+    columnInset: Dp,
     modifier: Modifier = Modifier,
 ) {
     val openLabel = stringResource(MR.string.moments_post_open)
@@ -381,19 +417,25 @@ private fun CompactMomentsLayout(
                 viewMode = viewMode,
                 onViewModeChange = onViewModeChange,
                 onProfileClick = onProfileClick,
+                wide = wide,
+                onCreateMoment = if (createInTopBar) onCreateMoment else null,
+                modifier = Modifier.padding(horizontal = columnInset),
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onCreateMoment,
-                // Lifted off the bottom edge a touch so it doesn't sit on top
-                // of whatever's at the bottom of the content under it.
-                modifier = Modifier.padding(bottom = 16.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(MR.string.moments_create_action),
-                )
+            // The empty state carries its own add button.
+            if (!createInTopBar && (moments.isNotEmpty() || isLoading)) {
+                FloatingActionButton(
+                    onClick = onCreateMoment,
+                    // Lifted off the bottom edge a touch so it doesn't sit on top
+                    // of whatever's at the bottom of the content under it.
+                    modifier = Modifier.padding(end = columnInset, bottom = 16.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.moments_create_action),
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -405,7 +447,7 @@ private fun CompactMomentsLayout(
             if (isLoading) {
                 Box(modifier = contentModifier, contentAlignment = Alignment.Center) { LoadingIndicator() }
             } else {
-                EmptyMomentsState(modifier = contentModifier)
+                EmptyMomentsState(onCreateMoment = onCreateMoment, modifier = contentModifier)
             }
         } else {
             val motion = MaterialTheme.motionScheme
@@ -428,6 +470,7 @@ private fun CompactMomentsLayout(
                         openLabel = openLabel,
                         selectedMomentId = selectedMomentId,
                         commentsSheetOnTap = commentsSheetOnTap,
+                        capMediaHeight = wide,
                         listState = listState,
                         onDeleteFailedMoment = onDeleteFailedMoment,
                         onDismissUpload = onDismissUpload,
@@ -476,6 +519,7 @@ private fun MomentsFeedList(
     // invoking [onOpenMoment]. The pane layout leaves this false so a tap
     // selects the moment for the docked detail pane.
     commentsSheetOnTap: Boolean = false,
+    capMediaHeight: Boolean = false,
     onDeleteFailedMoment: (Uuid) -> Unit = {},
     onDismissUpload: (Uuid) -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
@@ -554,7 +598,8 @@ private fun MomentsFeedList(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        contentPadding = PaddingValues(top = 8.dp, bottom = MomentsLayoutSpec.FeedBottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(moments, key = { it.id.toString() }) { moment ->
@@ -569,6 +614,7 @@ private fun MomentsFeedList(
                 onCardClick = { payloadKey -> onOpenMoment(moment.id.toString(), payloadKey) },
                 onAddReaction = { emoji -> onAddReaction(moment.id, emoji) },
                 commentsSheetOnTap = commentsSheetOnTap,
+                capMediaHeight = capMediaHeight,
                 onOpenComments = { payloadKey ->
                     commentsPayloadKey = payloadKey
                     commentsMomentId = moment.id
@@ -865,6 +911,8 @@ private fun MomentPostCard(
     // Compact timeline only: when true a single tap opens the modal comments
     // sheet (via [onOpenComments]) instead of calling [onCardClick].
     commentsSheetOnTap: Boolean,
+    // Wide windows: keep a tall post within a screenful. Phones keep the natural height.
+    capMediaHeight: Boolean,
     // Carries the payload key of whichever carousel page was visible at tap
     // time so the comments band can open on the media the user was actually
     // looking at (not always page 0). `null` for single-payload moments.
@@ -898,6 +946,23 @@ private fun MomentPostCard(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         animationSpec = selectionMotion.defaultEffectsSpec(),
     )
+    val selectionInset by animateDpAsState(
+        targetValue = if (isSelected) MomentsLayoutSpec.SelectionInset else 0.dp,
+        animationSpec = selectionMotion.defaultSpatialSpec(),
+    )
+    // The expressive spring overshoots past zero on the way out.
+    val cardInset = selectionInset.coerceAtLeast(0.dp)
+    val avatarOdinId = moment.originalAuthor ?: moment.senderOdinId ?: selfOdinId
+    val hasMedia = moment.payloads.isNotEmpty() || pendingLocalPreviewModel != null
+    // Narrowing the card, not letterboxing it, keeps the overlays on the photo.
+    val maxCardWidth = if (capMediaHeight) {
+        val single = moment.payloads.singleOrNull()
+        val aspect = single?.let(::aspectRatioFor)
+            ?.let { if (single.isVideo()) it.coerceAtMost(MaxFeedMediaAspect) else it }
+        aspect?.let { feedMediaMaxHeight(WideMediaMaxScreenFraction) * it + CardHorizontalInset * 2 }
+    } else {
+        null
+    }
 
     // Floating-emoji feedback for double/triple-tap reactions. The same
     // controller backs the detail screen's reaction buttons, so adding a
@@ -927,6 +992,7 @@ private fun MomentPostCard(
 
     Box(
         modifier = modifier
+            .widthIn(max = maxCardWidth ?: Dp.Infinity)
             .fillMaxWidth()
             // Single multi-tap detector handles all taps:
             // 1 tap → open detail (dispatch is delayed ≈[MultiTapTimeoutMs]
@@ -962,11 +1028,13 @@ private fun MomentPostCard(
                     },
                 )
             }
-            .padding(horizontal = 16.dp)
-            .clip(MaterialTheme.shapes.large)
+            .padding(horizontal = CardHorizontalInset)
+            .clip(MaterialTheme.shapes.extraLarge)
             .background(selectionTint)
-            // Media covers the tint edge to edge, so the ring is what marks the selection.
-            .border(MomentsLayoutSpec.SelectionRingWidth, selectionRing, MaterialTheme.shapes.large)
+            .border(MomentsLayoutSpec.SelectionRingWidth, selectionRing, MaterialTheme.shapes.extraLarge)
+            // The selected card's media pulls in from the edge so the tint frames it.
+            .padding(cardInset)
+            .clip(RoundedCornerShape(CardCornerRadius - cardInset))
             // Talkback / accessibility services need a click action because
             // the raw pointerInput above isn't visible to them.
             .semantics {
@@ -1014,17 +1082,11 @@ private fun MomentPostCard(
             } else {
                 // Description-only / corrupt-payload moment — still render a tile so
                 // the user sees something tappable.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .padding(24.dp),
-                ) {
-                    Text(
-                        text = moment.description.ifBlank { "—" },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+                MomentTextTile(
+                    moment = moment,
+                    avatarOdinId = avatarOdinId,
+                    isSelected = isSelected,
+                )
             }
         } else {
             // Wrap the gallery so the upload-progress overlay can size to the
@@ -1111,12 +1173,14 @@ private fun MomentPostCard(
         // MomentComposeViewModel.deriveMomentInstant). The video duration chip
         // moved to bottom-right (see MomentInlineVideoTile) so this corner is
         // clear.
-        MomentDatePill(
-            timestamp = Instant.fromEpochMilliseconds(moment.userDateMs),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(8.dp),
-        )
+        if (hasMedia) {
+            MomentDatePill(
+                timestamp = Instant.fromEpochMilliseconds(moment.userDateMs),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(12.dp),
+            )
+        }
 
         // Top-left: author avatar — shown on every moment, including the user's
         // own. Prefer originalAuthor: it resolves to the post's author on both
@@ -1125,13 +1189,12 @@ private fun MomentPostCard(
         // local copy stamps self). Fall back to senderOdinId, then to the active
         // user (a null author only happens on legacy posts, which are the user's
         // own), so the badge always renders with the correct face.
-        val avatarOdinId = moment.originalAuthor ?: moment.senderOdinId ?: selfOdinId
-        if (avatarOdinId != null) {
+        if (hasMedia && avatarOdinId != null) {
             SenderAvatarBadge(
                 odinId = avatarOdinId,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(8.dp),
+                    .padding(12.dp),
             )
         }
 
@@ -1235,6 +1298,45 @@ private fun MomentPostCard(
     }
 }
 
+// A text moment has no photo to float the avatar and date over, so they sit in the tile's own flow.
+@Composable
+private fun MomentTextTile(
+    moment: MomentFeedItem,
+    avatarOdinId: OdinId?,
+    isSelected: Boolean,
+) {
+    val colors = MaterialTheme.colorScheme
+    val tileColor by animateColorAsState(
+        targetValue = if (isSelected) Color.Transparent else colors.surfaceContainerHigh,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(tileColor)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = moment.description.ifBlank { "—" },
+            style = MaterialTheme.typography.titleLarge,
+            color = if (isSelected) colors.onPrimaryContainer else colors.onSurface,
+            maxLines = 8,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (avatarOdinId != null) SenderAvatarBadge(odinId = avatarOdinId)
+            MomentDatePill(
+                timestamp = Instant.fromEpochMilliseconds(moment.userDateMs),
+                overMedia = false,
+            )
+        }
+    }
+}
+
 /**
  * True when this is one of the active user's own moments and no recipients
  * were recorded — either the audience picker selected nobody, or the post
@@ -1258,25 +1360,54 @@ private fun MomentFeedItem.isPrivate(self: OdinId?): Boolean {
 }
 
 @Composable
-private fun EmptyMomentsState(modifier: Modifier = Modifier) {
+private fun EmptyMomentsState(
+    onCreateMoment: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.padding(horizontal = 32.dp),
         ) {
-            Icon(
-                imageVector = Icons.Outlined.AutoAwesome,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(96.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(144.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, MaterialShapes.Cookie9Sided.toShape()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(64.dp),
+                )
+            }
             Text(
                 text = stringResource(MR.string.moments_welcome),
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 24.dp),
+                modifier = Modifier.padding(top = 32.dp),
             )
+            Text(
+                text = stringResource(MR.string.moments_empty_body),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            FilledTonalButton(
+                onClick = onCreateMoment,
+                modifier = Modifier.padding(top = 24.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                Text(text = stringResource(MR.string.moments_empty_action))
+            }
         }
     }
 }
@@ -1301,14 +1432,18 @@ private fun MomentsTopAppBar(
     viewMode: MomentsViewMode,
     onViewModeChange: (MomentsViewMode) -> Unit,
     onProfileClick: () -> Unit,
+    wide: Boolean,
+    onCreateMoment: (() -> Unit)?,
+    modifier: Modifier = Modifier,
 ) {
     TopAppBar(
+        modifier = modifier,
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Spacer(modifier = Modifier.width(20.dp))
+                if (!wide) Spacer(modifier = Modifier.width(20.dp))
                 AnimatedVisibility(
                     visible = ownerSession != null,
                     enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
@@ -1332,7 +1467,7 @@ private fun MomentsTopAppBar(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                if (!wide || ownerSession != null) Spacer(modifier = Modifier.width(16.dp))
                 Text(
                     text = stringResource(MR.string.moments_label),
                     style = MaterialTheme.typography.titleLarge,
@@ -1351,6 +1486,14 @@ private fun MomentsTopAppBar(
                 selected = viewMode,
                 onSelect = onViewModeChange,
             )
+            if (onCreateMoment != null) {
+                FilledTonalIconButton(onClick = onCreateMoment) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.moments_create_action),
+                    )
+                }
+            }
         },
     )
 }
@@ -1452,6 +1595,11 @@ private fun MomentsViewModeMenuItem(
 
 internal const val HeartEmoji = "❤️"
 internal const val FlameEmoji = "🔥"
+
+private val CardCornerRadius = 28.dp
+
+private val CardHorizontalInset = 16.dp
+private const val WideMediaMaxScreenFraction = 0.85f
 
 // Multi-tap disambiguation window. Slightly longer than Android's stock
 // double-tap timeout (~300ms) so the third tap of a triple-tap has comfortable

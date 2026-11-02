@@ -8,8 +8,14 @@ import kotlin.uuid.Uuid
 internal object MomentsLayoutSpec {
     val FeedMaxWidth = 600.dp
     val SelectionRingWidth = 3.dp
-    val AlbumCellSpacing = 2.dp
-    val AlbumHorizontalPadding = 4.dp
+    val SelectionInset = 8.dp
+    val AlbumCellSpacing = 4.dp
+    val AlbumHorizontalPadding = 16.dp
+    val FeedBottomPadding = 112.dp
+    val DetailPaneMargin = 24.dp
+    // The feed cards' own 16dp inset makes up the rest of the 24dp pane spacing.
+    val DetailPaneGutter = 8.dp
+    val DetailStageInset = 12.dp
     val DockedCommentsRailWidth = CommentsRailWidth
     val MinDetailMediaWidth = 300.dp
     const val FeedPaneWidthFraction = 0.28f
@@ -20,6 +26,11 @@ internal object MomentsLayoutSpec {
     fun showsDetailPane(availableWidth: Dp): Boolean = availableWidth >= DetailPaneMinWidth
 
     fun feedColumnWidth(availableWidth: Dp): Dp = minOf(availableWidth, FeedMaxWidth)
+
+    fun feedColumnInset(feedWidth: Dp): Dp = ((feedWidth - FeedMaxWidth) / 2).coerceAtLeast(0.dp)
+
+    fun dockedRailWidth(detailWidth: Dp): Dp =
+        minOf(DockedCommentsRailWidth, detailWidth - DetailStageInset - MinDetailMediaWidth)
 
     fun feedPaneWidth(availableWidth: Dp): Dp =
         (availableWidth * FeedPaneWidthFraction).coerceIn(FeedPaneMinWidth, FeedPaneMaxWidth)
@@ -36,6 +47,10 @@ internal object MomentsLayoutSpec {
         val fitted = (gridWidth + AlbumCellSpacing) / (albumMinCellWidth(zoom) + AlbumCellSpacing)
         return maxOf(phoneColumns, fitted.toInt())
     }
+
+    // LazyGrid hands out the remainder pixel by pixel, which makes square cells in one row differ in height.
+    fun albumCellSizePx(availablePx: Int, spacingPx: Int, columns: Int): Int =
+        (availablePx - spacingPx * (columns - 1)) / columns
 
     private fun albumMinCellWidth(zoom: MomentsAlbumZoom): Dp = when (zoom) {
         MomentsAlbumZoom.Day -> 120.dp

@@ -104,4 +104,24 @@ class MomentsLayoutSpecTest {
         assertEquals(7, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Month, grid))
         assertEquals(11, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Year, grid))
     }
+
+    @Test
+    fun albumCellsInARowShareOneWholePixelSize() {
+        assertEquals(263, MomentsLayoutSpec.albumCellSizePx(availablePx = 800, spacingPx = 5, columns = 3))
+        assertEquals(281, MomentsLayoutSpec.albumCellSizePx(availablePx = 1138, spacingPx = 4, columns = 4))
+    }
+
+    @Test
+    fun feedChromeLinesUpWithTheCappedColumn() {
+        assertEquals(0.dp, MomentsLayoutSpec.feedColumnInset(411.dp))
+        assertEquals(150.dp, MomentsLayoutSpec.feedColumnInset(900.dp))
+    }
+
+    @Test
+    fun railGivesWayToKeepTheMinimumMediaAtThePaneThreshold() {
+        val detail = 1080.dp - 380.dp - MomentsLayoutSpec.DetailPaneGutter - MomentsLayoutSpec.DetailPaneMargin
+        val rail = MomentsLayoutSpec.dockedRailWidth(detail)
+        assertEquals(MomentsLayoutSpec.MinDetailMediaWidth, detail - MomentsLayoutSpec.DetailStageInset - rail)
+        assertEquals(400.dp, MomentsLayoutSpec.dockedRailWidth(900.dp))
+    }
 }

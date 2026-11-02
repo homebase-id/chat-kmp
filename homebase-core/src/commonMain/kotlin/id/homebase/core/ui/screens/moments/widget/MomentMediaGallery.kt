@@ -210,8 +210,8 @@ internal const val MaxFeedPhotoAspect = 1.91f
 private const val FeedMediaMaxScreenFraction = 0.7f
 
 @Composable
-internal fun feedMediaMaxHeight(): Dp =
-    with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * FeedMediaMaxScreenFraction
+internal fun feedMediaMaxHeight(screenFraction: Float = FeedMediaMaxScreenFraction): Dp =
+    with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * screenFraction
 
 internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()

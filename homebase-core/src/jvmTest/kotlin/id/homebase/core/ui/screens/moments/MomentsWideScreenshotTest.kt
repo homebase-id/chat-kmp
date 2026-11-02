@@ -20,13 +20,32 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runDesktopComposeUiTest
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.asImage
+import coil3.decode.DataSource
+import coil3.intercept.Interceptor
+import coil3.request.ErrorResult
+import coil3.request.SuccessResult
 import com.russhwolf.settings.PreferencesSettings
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.contacts.AvatarResolver
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.moments.MomentsViewMode
 import id.homebase.core.moments.services.MomentFeedItem
 import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
+import java.awt.GradientPaint
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.prefs.Preferences
 import javax.imageio.ImageIO
@@ -35,7 +54,14 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.random.Random
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Image as SkiaImage
+import sun.misc.Unsafe
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -44,27 +70,88 @@ import org.koin.dsl.module
 class MomentsWideScreenshotTest {
     private val outDir = File("../build/polish-shots").apply { mkdirs() }
 
-    private fun moment(index: Int) = MomentFeedItem(
-        id = Uuid.random(),
-        fileId = Uuid.random(),
-        driveId = Uuid.random(),
-        keyHeader = KeyHeader.empty(),
-        payloads = emptyList(),
-        description = "Moment $index on the ridge at first light",
-        userDateMs = 1_790_000_000_000L - index * 3_600_000L,
-        createdMs = 1_790_000_000_000L - index * 3_600_000L,
-        previewThumbnail = null,
-        reactionPreview = null,
-        senderOdinId = null,
-        originalAuthor = null,
-        source = null,
-        recipients = emptyList(),
-        commentsEnabled = true,
-        versionTag = null,
-        ownReactions = emptyList(),
-    )
+    private enum class Fixture(val width: Int, val height: Int, val type: String?, val pages: Int = 1) {
+        Portrait(800, 1000, "image/jpeg"),
+        Text(0, 0, null),
+        Tall(720, 1280, "image/jpeg"),
+        Video(800, 1000, "video/mp4"),
+        Landscape(1280, 720, "image/jpeg"),
+        Album(1000, 1000, "image/jpeg", pages = 3),
+    }
+
+    private val scenes = HashMap<String, Bitmap>()
+
+    private fun scene(key: String, width: Int, height: Int, seed: Int): Bitmap = scenes.getOrPut(key) {
+        val awt = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        val g = awt.createGraphics()
+        val hue = seed * 0.17f % 1f
+        g.paint = GradientPaint(
+            0f, 0f, java.awt.Color.getHSBColor(hue, 0.55f, 0.95f),
+            0f, height.toFloat(), java.awt.Color.getHSBColor(hue + 0.12f, 0.8f, 0.45f),
+        )
+        g.fillRect(0, 0, width, height)
+        g.color = java.awt.Color(255, 240, 200)
+        g.fillOval(width * 3 / 5, height / 6, width / 5, width / 5)
+        val rng = Random(seed)
+        for (layer in 0..2) {
+            g.color = java.awt.Color.getHSBColor(hue + 0.5f, 0.45f, 0.42f - layer * 0.12f)
+            val base = height * (5 + layer) / 8
+            val xs = (0..8).map { width * it / 8 } + listOf(width, 0)
+            val ys = (0..8).map { base - rng.nextInt(height / 6) } + listOf(height, height)
+            g.fillPolygon(xs.toIntArray(), ys.toIntArray(), xs.size)
+        }
+        g.dispose()
+        val png = ByteArrayOutputStream().also { ImageIO.write(awt, "png", it) }.toByteArray()
+        Bitmap.makeFromImage(SkiaImage.makeFromEncoded(png))
+    }
+
+    private fun payload(fixture: Fixture, index: Int, page: Int) = PayloadDescriptor(
+        key = "m${index}p$page",
+        contentType = fixture.type,
+        iv = Base64Bytes(ByteArray(16)),
+        previewThumbnail = ThumbnailDescriptor(fixture.width, fixture.height, "image/png"),
+    ).also { scene(it.key, fixture.width, fixture.height, index + page) }
+
+    private fun moment(index: Int): MomentFeedItem {
+        val fixture = Fixture.entries[(index - 1) % Fixture.entries.size]
+        val atMs = 1_790_000_000_000L - index * 20 * 3_600_000L
+        return MomentFeedItem(
+            id = Uuid.random(),
+            fileId = Uuid.random(),
+            driveId = Uuid.random(),
+            keyHeader = KeyHeader.empty(),
+            payloads = if (fixture.type == null) emptyList() else List(fixture.pages) { payload(fixture, index, it) },
+            description = "Moment $index on the ridge at first light",
+            userDateMs = atMs,
+            createdMs = atMs,
+            previewThumbnail = null,
+            reactionPreview = null,
+            senderOdinId = null,
+            originalAuthor = OdinId("frodo.baggins.demo.rocks"),
+            source = null,
+            recipients = emptyList(),
+            commentsEnabled = true,
+            versionTag = null,
+            ownReactions = emptyList(),
+        )
+    }
 
     private val moments = (1..14).map(::moment)
+    private val talkFirst = moments.sortedBy { it.payloads.isNotEmpty() }
+    private val tallFirst = moments.sortedByDescending {
+        it.payloads.singleOrNull()?.previewThumbnail?.pixelHeight == Fixture.Tall.height
+    }
+
+    private fun fixtureImages() = Interceptor { chain ->
+        val key = (chain.request.data as? HomebaseImageData)?.payloadKey
+        val bitmap = key?.let(scenes::get) ?: return@Interceptor ErrorResult(null, chain.request, IllegalStateException("no scene"))
+        // A non-HomebaseImageData request keeps the zoom image off the tile generator.
+        SuccessResult(
+            image = bitmap.asImage(),
+            request = chain.request.newBuilder().data(key).build(),
+            dataSource = DataSource.MEMORY,
+        )
+    }
 
     @BeforeTest
     fun startDi() {
@@ -73,6 +160,12 @@ class MomentsWideScreenshotTest {
                 module {
                     single { MomentsVideoSession() }
                     single { UserPreferences(PreferencesSettings(Preferences.userRoot().node("momentsWideScreenshotTest"))) }
+                    single<ImageLoader> {
+                        ImageLoader.Builder(PlatformContext.INSTANCE).components { add(fixtureImages()) }.build()
+                    }
+                    single { AvatarResolver(MutableStateFlow(emptyList())) }
+                    single { LocalAttachmentContextStore(EventBus(), CoroutineScope(Dispatchers.Unconfined)) }
+                    single { unwiredImageLoader() }
                 },
             )
          }
@@ -124,8 +217,19 @@ class MomentsWideScreenshotTest {
         }
     }
 
+    // Only held by the zoom image; the base image comes through the fixture Coil loader.
+    private fun unwiredImageLoader(): HomebaseImageLoader {
+        val unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null) as Unsafe
+        return unsafe.allocateInstance(HomebaseImageLoader::class.java) as HomebaseImageLoader
+    }
+
     private fun ComposeUiTest.save(name: String) {
-        waitForIdle()
+        // Coil resolves off the main clock.
+        repeat(4) {
+            Thread.sleep(120)
+            mainClock.advanceTimeBy(500)
+            waitForIdle()
+        }
         val image = onAllNodes(isRoot())[0].captureToImage().toAwtImage()
         val colors = HashSet<Int>()
         for (x in 0 until image.width step 5) for (y in 0 until image.height step 5) colors += image.getRGB(x, y)
@@ -133,10 +237,16 @@ class MomentsWideScreenshotTest {
         ImageIO.write(image, "png", File(outDir, "$name.png"))
     }
 
-    private fun shot(name: String, width: Int, height: Int, mode: MomentsViewMode) {
+    private fun shot(
+        name: String,
+        width: Int,
+        height: Int,
+        mode: MomentsViewMode,
+        items: List<MomentFeedItem> = moments,
+    ) {
         for (dark in listOf(false, true)) {
             runDesktopComposeUiTest(width, height) {
-                show(moments, mode, dark)
+                show(items, mode, dark)
                 save("$name-${if (dark) "dark" else "light"}")
             }
         }
@@ -147,18 +257,26 @@ class MomentsWideScreenshotTest {
         shot("phone-timeline", 411, 800, MomentsViewMode.Timeline)
         shot("phone-album", 411, 800, MomentsViewMode.Album)
         shot("capped-timeline", 900, 800, MomentsViewMode.Timeline)
+        shot("capped-tall", 900, 800, MomentsViewMode.Timeline, tallFirst)
         shot("capped-album", 900, 800, MomentsViewMode.Album)
         shot("pane-timeline-1135", 1135, 800, MomentsViewMode.Timeline)
+        shot("pane-tall-1135", 1135, 800, MomentsViewMode.Timeline, tallFirst)
+        shot("pane-text-1135", 1135, 800, MomentsViewMode.Timeline, talkFirst)
         shot("pane-album-1135", 1135, 800, MomentsViewMode.Album)
         shot("pane-timeline-1855", 1855, 1000, MomentsViewMode.Timeline)
+        shot("pane-text-1855", 1855, 1000, MomentsViewMode.Timeline, talkFirst)
     }
 
     @Test
-    fun anEmptyFeedKeepsItsEmptyStateFullWidth() = runDesktopComposeUiTest(1135, 800) {
-        var detailShown = false
-        show(emptyList(), MomentsViewMode.Timeline, dark = false, onDetail = { detailShown = true })
-        save("pane-empty-light")
-        assertTrue(!detailShown)
+    fun anEmptyFeedKeepsItsEmptyStateFullWidth() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(1135, 800) {
+                var detailShown = false
+                show(emptyList(), MomentsViewMode.Timeline, dark, onDetail = { detailShown = true })
+                save("pane-empty-${if (dark) "dark" else "light"}")
+                assertTrue(!detailShown)
+            }
+        }
     }
 
     @Test
