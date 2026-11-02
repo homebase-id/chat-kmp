@@ -47,6 +47,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.SharedContentDescriptor
 import id.homebase.core.share.allTargetConversationIds
 import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
@@ -957,15 +958,16 @@ internal class MessageActionsHandler(
         // Only a share-intent navigation may auto-send the pending descriptor. Any other
         // open of this conversation (notification tap, ordinary navigation) must NOT consume
         // it — otherwise a descriptor left on disk from an earlier share would be re-sent the
-        // next time its target conversation is opened. A leftover descriptor is harmless: a
-        // ShareIntent navigation is always preceded by the share extension writing a *fresh*
-        // descriptor (it overwrites), so a stale one can never be the thing consumed here.
+        // next time its target conversation is opened. The claim below removes the descriptor,
+        // so a second ShareIntent navigation while a long send runs (launcher shortcut, text
+        // share to the same chat) finds nothing and cannot send it twice.
         if (trigger != ConversationLoadTrigger.ShareIntent) return
 
-        val descriptor = shareContentProcessor.readPendingContent() ?: return
-        // Only process if the target conversation matches
-        val targets = descriptor.allTargetConversationIds().mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
-        if (targets.firstOrNull() != conversationId) return
+        fun targetsOf(d: SharedContentDescriptor) =
+            d.allTargetConversationIds().mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
+        val descriptor = shareContentProcessor.claimPendingContent { targetsOf(it).firstOrNull() == conversationId }
+            ?: return
+        val targets = targetsOf(descriptor)
 
         Logger.i(tag = "ConversationListViewModel") {
             "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}, " +
@@ -1020,7 +1022,7 @@ internal class MessageActionsHandler(
                         AttachmentInput(
                             filePath = filePath,
                             contentType = mime,
-                            displayName = name,
+                            displayName = name.substringAfterLast('/'),
                         )
                     }
 
@@ -1049,7 +1051,7 @@ internal class MessageActionsHandler(
             Logger.e(tag = "ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
             sendEvent(ShowErrorMessage(MR.string.chat_error_send_shared_content, e.message ?: ""))
         } finally {
-            shareContentProcessor.cleanup()
+            shareContentProcessor.cleanup(descriptor)
         }
     }
 

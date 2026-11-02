@@ -54,6 +54,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
+import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
@@ -955,17 +956,20 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         }
     }
 
-    private fun stageSharedFiles(
+    private suspend fun stageSharedFiles(
         conversationIds: Set<Uuid>,
         caption: String,
         attachments: List<AttachmentInput>,
     ): SharedContentDescriptor {
+        val shareId = Uuid.random()
         val names = attachments.mapIndexed { index, attachment ->
-            val name = "${index}_${(attachment.displayName ?: attachment.filePath).substringAfterLast('/')}"
-            java.io.File(attachment.filePath).copyTo(
-                java.io.File(shareContentProcessor.resolveFilePath(name)),
-                overwrite = true,
-            )
+            val originalName = (attachment.displayName ?: attachment.filePath).substringAfterLast('/')
+            val name = "$shareId/$index/$originalName"
+            val target = java.io.File(shareContentProcessor.resolveFilePath(name))
+            target.parentFile?.mkdirs()
+            fileOperationsProvider.withResolvedFile(attachment.filePath) { source ->
+                java.io.File(source).copyTo(target, overwrite = true)
+            }
             name
         }
         val mimes = attachments.map { it.contentType }

@@ -1,6 +1,9 @@
 package id.homebase.core.share
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.file.safeDeleteRecursively
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
 /**
@@ -12,6 +15,21 @@ class ShareContentProcessor(
     private val cacheStorage: ShareCacheStorage,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val claimLock = Mutex()
+
+    /**
+     * Read the pending descriptor and remove it in one step, so a second trigger for the
+     * same share finds nothing. A descriptor [accept] refuses is left in place. The staged
+     * files stay until [cleanup].
+     */
+    suspend fun claimPendingContent(
+        accept: (SharedContentDescriptor) -> Boolean = { true },
+    ): SharedContentDescriptor? = claimLock.withLock {
+        val descriptor = readPendingContent() ?: return@withLock null
+        if (!accept(descriptor)) return@withLock null
+        cacheStorage.clearSharedContentDescriptor()
+        descriptor
+    }
 
     /**
      * Read the pending shared content descriptor.
@@ -35,10 +53,18 @@ class ShareContentProcessor(
     }
 
     /**
-     * Clean up after shared content has been processed.
+     * Delete the files of a claimed share. Names of the form `<shareId>/...` live in their
+     * own directory, so only that directory goes; flat names (iOS extension) clear the lot.
      */
-    fun cleanup() {
-        cacheStorage.clearSharedContent()
+    fun cleanup(descriptor: SharedContentDescriptor) {
+        if (descriptor.fileNames.isEmpty()) return
+        val shareDirs = descriptor.fileNames.mapNotNull { it.substringBefore('/', "").ifEmpty { null } }.toSet()
+        if (shareDirs.isEmpty()) {
+            cacheStorage.clearSharedContent()
+        } else {
+            val root = cacheStorage.getSharedFilesDirectory()
+            shareDirs.forEach { safeDeleteRecursively(root, it) }
+        }
     }
 
     /**

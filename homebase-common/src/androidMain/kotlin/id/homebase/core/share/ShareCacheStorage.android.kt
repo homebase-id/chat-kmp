@@ -36,6 +36,10 @@ actual class ShareCacheStorage(private val context: Context) {
         return if (file.exists()) file.readText() else null
     }
 
+    actual fun clearSharedContentDescriptor() {
+        File(cacheDir, SHARED_CONTENT_FILE).delete()
+    }
+
     actual fun clearSharedContent() {
         File(cacheDir, SHARED_CONTENT_FILE).delete()
         // Clean up any shared media files
