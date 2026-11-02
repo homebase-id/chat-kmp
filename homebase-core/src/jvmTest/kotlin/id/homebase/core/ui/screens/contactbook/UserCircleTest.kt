@@ -234,6 +234,28 @@ class UserCircleTest {
     }
 
     @Test
+    fun approvingFromTheBannerAsksAgainAndTheGrantClearsIt() = runTest(dispatcher) {
+        val access = FakeAccess(false)
+        val backend = FakeBackend().apply { failures += ForbiddenException() }
+        val vm = viewModel(backend, access)
+        vm.onNewCircleClicked()
+        access.granted.value = true
+        access.granted.value = false
+        vm.onNameChanged("Climbing")
+        vm.onCreateClicked()
+        advanceUntilIdle()
+        val asked = access.rechecks
+
+        vm.onApproveClicked()
+        assertEquals(asked + 1, access.rechecks)
+        assertEquals(CreateCircleError.NeedsPermission, vm.uiState.value.error)
+
+        access.granted.value = true
+        assertEquals(null, vm.uiState.value.error)
+        assertTrue(vm.uiState.value.open)
+    }
+
+    @Test
     fun theSheetWaitsForTheGrantWhenTheAppDoesNotHoldIt() = runTest(dispatcher) {
         val access = FakeAccess(false)
         val vm = viewModel(FakeBackend(), access)

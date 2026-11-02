@@ -129,7 +129,7 @@ private val HEADING_BADGE_SIZE = 36.dp
 private val ADD_PADDING = 12.dp
 
 @Composable
-internal fun AudienceHeading(card: CardAudience) {
+internal fun AudienceHeading(card: CardAudience, emoji: String? = null) {
     val text = when (card) {
         CardAudience.Public -> stringResource(MR.string.profile_card_content_shown_everyone)
         is CardAudience.Circle -> stringResource(MR.string.profile_card_content_shown_to, audienceLabel(card))
@@ -144,6 +144,7 @@ internal fun AudienceHeading(card: CardAudience) {
             content = onAudienceContainer(card),
             size = HEADING_BADGE_SIZE,
             iconSize = 20.dp,
+            emoji = emoji,
         )
         Spacer(Modifier.width(12.dp))
         Text(

@@ -503,7 +503,7 @@ internal fun ProfileCardEditorContent(
     onCirclesChanged: (() -> Unit)? = null,
     preview: @Composable BoxScope.(layoutWidth: Dp) -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val wide = maxWidth >= WIDE_LAYOUT_MIN_WIDTH
             val widePanelWidth = if (maxWidth >= ROOMY_LAYOUT_MIN_WIDTH) ROOMY_PANEL_WIDTH else WIDE_PANEL_WIDTH
@@ -613,6 +613,7 @@ internal fun ProfileCardEditorContent(
                     CardSwitcher(
                         cards = uiState.cards.map { it.audience },
                         selected = uiState.selectedAudience,
+                        circles = uiState.circles,
                         onSelect = onSelectCard,
                         onNewCircle = onNewCircle,
                         modifier = Modifier.padding(bottom = metrics.gap),
@@ -639,7 +640,7 @@ internal fun ProfileCardEditorContent(
                             )
                         }
                         Column(
-                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceDim),
+                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             if (selectedCard != null) {

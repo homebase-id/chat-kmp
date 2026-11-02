@@ -3,8 +3,9 @@
 package id.homebase.core.ui.screens.card
 
 import id.homebase.resources.circle_new
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.AssistChip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilledTonalIconButton
+import id.homebase.core.ui.screens.profile.icon
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -173,7 +174,7 @@ internal fun CardContentEditor(
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = SECTION_INSET).padding(bottom = 8.dp),
     ) {
-        AudienceHeading(card)
+        AudienceHeading(card, emoji = circles.emojiOf(card))
         Spacer(Modifier.height(16.dp))
         PhotoRow(card = card, photo = photo, onChange = onChangePhoto, onRemove = onRemovePhoto)
         if (importSources.isNotEmpty()) {
@@ -419,7 +420,8 @@ private fun EditorRow(
                 pending -> LoadingIndicator(modifier = Modifier.size(40.dp).padding(8.dp))
                 showCardsButton -> {
                     IconButton(onClick = { choosing = true }, enabled = enabled, modifier = Modifier.testTag("cards_button")) {
-                        Icon(Icons.Outlined.Style, contentDescription = chooseCards)
+                        // Shows who sees the item now, which is what the sheet behind it changes.
+                        Icon(item.audience.icon, contentDescription = chooseCards)
                     }
                     if (choosing) {
                         CardsSheet(item = item, circles = circles, onApply = onApply, onDismiss = { choosing = false })
@@ -582,34 +584,42 @@ internal fun CopyFromSheet(sources: List<CardImportSource>, onPick: (CardAudienc
 internal fun CardSwitcher(
     cards: List<CardAudience>,
     selected: CardAudience,
+    circles: List<CardCircle>,
     onSelect: (CardAudience) -> Unit,
     modifier: Modifier = Modifier,
     onNewCircle: (() -> Unit)? = null,
 ) {
     val label = stringResource(MR.string.profile_card_switcher)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .semantics { contentDescription = label }
-            .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        cards.forEach { card ->
-            FilterChip(
-                selected = card.isSameAs(selected),
-                onClick = { onSelect(card) },
-                label = { Text(audienceLabel(card), maxLines = 1) },
-                leadingIcon = { Icon(audienceIcon(card), contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
-            )
+    val scroll = rememberScrollState()
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fadingEdges(scroll)
+                .horizontalScroll(scroll)
+                .padding(horizontal = 16.dp)
+                .semantics { contentDescription = label }
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            cards.forEach { card ->
+                FilterChip(
+                    selected = card.isSameAs(selected),
+                    onClick = { onSelect(card) },
+                    shape = CircleShape,
+                    label = { Text(audienceLabel(card), maxLines = 1) },
+                    leadingIcon = { AudienceGlyph(audienceIcon(card), circles.emojiOf(card), FilterChipDefaults.IconSize) },
+                )
+            }
         }
+        // Outside the scroll, so the way to add a circle stays in reach however many cards there are.
         if (onNewCircle != null) {
-            AssistChip(
-                onClick = onNewCircle,
-                label = { Text(stringResource(MR.string.circle_new), maxLines = 1) },
-                leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
-            )
+            val newCircle = stringResource(MR.string.circle_new)
+            WithTooltip(newCircle, modifier = Modifier.padding(end = 12.dp)) {
+                FilledTonalIconButton(onClick = onNewCircle) {
+                    Icon(Icons.Outlined.Add, contentDescription = newCircle)
+                }
+            }
         }
     }
 }

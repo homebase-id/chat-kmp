@@ -76,7 +76,13 @@ class CreateCircleViewModel(
     init {
         addCloseable(access)
         viewModelScope.launch {
-            access.granted.filter { it }.collect { if (_uiState.value.checkingAccess) openSheet() }
+            access.granted.filter { it }.collect {
+                if (_uiState.value.checkingAccess) {
+                    openSheet()
+                } else {
+                    _uiState.update { state -> if (state.error == CreateCircleError.NeedsPermission) state.copy(error = null) else state }
+                }
+            }
         }
         viewModelScope.launch {
             access.cancelled.collect { _uiState.update { it.copy(checkingAccess = false) } }
@@ -98,6 +104,8 @@ class CreateCircleViewModel(
             access.recheck()
         }
     }
+
+    fun onApproveClicked() = access.recheck()
 
     fun onAccessFailureAcknowledged() = _uiState.update { it.copy(accessCheckFailed = false) }
 

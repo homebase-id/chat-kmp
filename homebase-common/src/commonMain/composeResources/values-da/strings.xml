@@ -2065,7 +2065,10 @@
     <string name="circle_new">Ny kreds</string>
     <string name="circle_create_title">Ny kreds</string>
     <string name="circle_create_name">Navn</string>
-    <string name="circle_create_emoji">Emoji</string>
+    <string name="circle_create_approve">Godkend</string>
+    <string name="circle_create_creating">Opretter…</string>
+    <string name="circle_create_choose_emoji">Vælg en emoji</string>
+    <string name="circle_create_remove_emoji">Fjern emoji</string>
     <string name="circle_create_description">Beskrivelse (valgfri)</string>
     <string name="circle_create_action">Opret</string>
     <string name="circle_create_access_check_failed">Kunne ikke kontrollere din adgang. Tjek din forbindelse, og prøv igen.</string>

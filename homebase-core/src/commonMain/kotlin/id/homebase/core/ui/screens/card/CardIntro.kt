@@ -78,6 +78,8 @@ private val INTRO_TILE_CORNER = 20.dp
 internal val CAPTURE_HOST_WIDTH = 240.dp
 internal val CAPTURE_LAYOUT_WIDTH = 360.dp
 private val TILE_ICON_SIZE = 18.sp
+// The back button's 4dp inset and 48dp width, so the hint lines up under the title.
+private val INTRO_TEXT_INSET = 52.dp
 
 @Composable
 @Suppress("DEPRECATION")
@@ -127,24 +129,23 @@ internal fun CardIntro(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 8.dp),
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 16.dp),
                     ) {
                         IconButton(onClick = onClose) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
                         }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(MR.string.profile_card_intro_title),
-                                style = MaterialTheme.typography.headlineMediumEmphasized,
-                                modifier = Modifier.semantics { heading() },
-                            )
-                            Text(
-                                text = stringResource(MR.string.profile_card_intro_hint),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Text(
+                            text = stringResource(MR.string.profile_card_intro_title),
+                            style = MaterialTheme.typography.headlineMediumEmphasized,
+                            modifier = Modifier.weight(1f).semantics { heading() },
+                        )
                     }
+                    Text(
+                        text = stringResource(MR.string.profile_card_intro_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = INTRO_TEXT_INSET, end = 20.dp, top = 4.dp, bottom = 4.dp),
+                    )
                     when {
                         uiState.loadFailed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CardErrorPlate(message = MR.string.profile_edit_load_failed, onRetry = onRetry)
@@ -165,6 +166,7 @@ internal fun CardIntro(
                             items(uiState.cards, key = { audienceKey(it.audience) }) { card ->
                                 IntroTile(
                                     card = card,
+                                    emoji = uiState.circles.emojiOf(card.audience),
                                     still = tiles[audienceKey(card.audience)],
                                     onClick = { onOpen(card.audience) },
                                     onPainted = { onTilePainted(card.audience) },
@@ -187,7 +189,7 @@ internal fun audienceKey(audience: CardAudience): String = when (audience) {
 }
 
 @Composable
-private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Unit, onPainted: () -> Unit) {
+private fun IntroTile(card: ProfileCard, emoji: String?, still: ImageBitmap?, onClick: () -> Unit, onPainted: () -> Unit) {
     val title = audienceLabel(card.audience)
     val open = stringResource(MR.string.profile_card_intro_open, title)
     val shape = RoundedCornerShape(INTRO_TILE_CORNER)
@@ -211,10 +213,10 @@ private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Uni
             .padding(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(
-                audienceIcon(card.audience),
-                contentDescription = null,
-                modifier = Modifier.size(with(LocalDensity.current) { TILE_ICON_SIZE.toDp() }),
+            AudienceGlyph(
+                icon = audienceIcon(card.audience),
+                emoji = emoji,
+                size = with(LocalDensity.current) { TILE_ICON_SIZE.toDp() },
             )
             Text(
                 text = title,
@@ -239,12 +241,19 @@ private fun NewCircleTile(onClick: () -> Unit) {
             .semantics(mergeDescendants = true) { contentDescription = title }
             .padding(4.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMediumEmphasized,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(
+                Icons.Outlined.Add,
+                contentDescription = null,
+                modifier = Modifier.size(with(LocalDensity.current) { TILE_ICON_SIZE.toDp() }),
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -275,6 +284,7 @@ internal fun CardStill(card: ProfileCard, still: ImageBitmap?, modifier: Modifie
             design = card.design,
             groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
             inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
+            accentOverride = palette?.accent?.let { Color(hexToArgb(it)) },
             modifier = modifier,
         )
     }

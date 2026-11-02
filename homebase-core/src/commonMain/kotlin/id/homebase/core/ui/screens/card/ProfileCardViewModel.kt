@@ -128,7 +128,10 @@ data class ProfileCardUiState(
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy && !isCircleReadOnly
 }
 
-data class CardCircle(val id: String, val name: String)
+data class CardCircle(val id: String, val name: String, val emoji: String? = null)
+
+internal fun List<CardCircle>.emojiOf(audience: CardAudience): String? =
+    (audience as? CardAudience.Circle)?.let { circle -> firstOrNull { compareStringUuId(it.id, circle.id) }?.emoji }
 
 data class ContentWrite(
     val type: String,
@@ -263,7 +266,7 @@ class DefaultProfileCardSource(
 internal fun contactsCircles(circles: List<CircleWithMembers>): List<CardCircle> =
     circles
         .filter { it.circle.isPresentedByThisApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
-        .map { CardCircle(it.circle.id, it.circle.name) }
+        .map { CardCircle(it.circle.id, it.circle.name, it.circle.emoji?.takeIf(String::isNotBlank)) }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }
 

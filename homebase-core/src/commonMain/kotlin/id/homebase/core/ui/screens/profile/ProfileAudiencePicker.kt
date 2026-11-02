@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.core.ui.screens.card.AudienceGlyph
 import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.core.ui.screens.card.CookieBadge
 import id.homebase.core.ui.screens.card.WithTooltip
@@ -244,6 +245,7 @@ internal fun AudiencePicker(
                         circles.forEach { circle ->
                             CircleChip(
                                 name = circle.name,
+                                emoji = circle.emoji,
                                 selected = circle.id in picked.ids,
                                 onToggle = { on ->
                                     onChange(picked.copy(ids = if (on) picked.ids + circle.id else picked.ids - circle.id))
@@ -310,7 +312,7 @@ private fun AudienceHint(audience: ProfileAudience, noCircles: Boolean) {
 }
 
 @Composable
-private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> Unit) {
+private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> Unit, emoji: String? = null) {
     val motion = MaterialTheme.motionScheme
     val colors = MaterialTheme.colorScheme
     WithTooltip(name) {
@@ -340,11 +342,12 @@ private fun CircleChip(name: String, selected: Boolean, onToggle: (Boolean) -> U
                         (scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()))
                 },
             ) { on ->
-                Icon(
-                    if (on) Icons.Outlined.Check else Icons.Outlined.Groups,
-                    contentDescription = null,
+                AudienceGlyph(
+                    icon = if (on) Icons.Outlined.Check else Icons.Outlined.Groups,
+                    emoji = emoji.takeUnless { on },
+                    size = ToggleButtonDefaults.IconSize,
                     tint = if (on) LocalContentColor.current else colors.secondary,
-                    modifier = Modifier.padding(end = 8.dp).size(ToggleButtonDefaults.IconSize),
+                    modifier = Modifier.padding(end = 8.dp),
                 )
             }
             Text(
@@ -378,7 +381,7 @@ internal fun AudienceBadge(
             modifier = Modifier.padding(start = 8.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(kind.icon, contentDescription = null, tint = colors.icon, modifier = Modifier.size(16.dp))
+            AudienceGlyph(icon = kind.icon, emoji = (audience as? ProfileAudience.Circles)?.soleEmoji(circles), size = 16.dp, tint = colors.icon)
             Spacer(Modifier.width(6.dp))
             Text(
                 text = audienceSummary(audience, circles),
@@ -390,6 +393,10 @@ internal fun AudienceBadge(
         }
     }
 }
+
+// More than one circle has no single emoji to stand for it.
+private fun ProfileAudience.Circles.soleEmoji(circles: List<CardCircle>): String? =
+    circles.singleOrNull { it.id in ids }?.emoji?.takeIf { otherIds.isEmpty() }
 
 private const val SUMMARY_NAMES = 2
 
