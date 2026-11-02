@@ -1,9 +1,12 @@
 package id.homebase.chat.widget.preview
 
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -22,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -34,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -41,6 +46,7 @@ import androidx.compose.ui.window.DialogProperties
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.WEB_DOWNLOAD_LIMIT_BYTES
 import id.homebase.api.file.systemFileSystem
+import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.common.util.formatBytes
 import id.homebase.core.media.subsample.SubSamplingImageSource
@@ -53,6 +59,8 @@ import id.homebase.core.util.trimToUtf8Boundary
 import id.homebase.resources.MR
 import id.homebase.resources.close
 import id.homebase.resources.file_preview_failed
+import id.homebase.resources.file_preview_markdown_formatted
+import id.homebase.resources.file_preview_markdown_raw
 import id.homebase.resources.file_preview_truncated
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -61,7 +69,7 @@ import okio.buffer
 import okio.use
 import org.jetbrains.compose.resources.stringResource
 
-enum class FilePreviewKind { Image, Video, Pdf, Text }
+enum class FilePreviewKind { Image, Video, Pdf, Text, Markdown }
 
 // Above this a video is not previewed: it would be decrypted whole before it plays, and the web holds it in memory about three times.
 const val VIDEO_PREVIEW_LIMIT_BYTES: Long = 256L shl 20
@@ -78,6 +86,16 @@ private val PREVIEW_TEXT_APPLICATION = setOf(
 )
 // A contact, not a document: its chip keeps adding the contact.
 private val NOT_TEXT = setOf("text/vcard", "text/x-vcard", "text/calendar")
+private val MARKDOWN_TYPES = setOf("text/markdown", "text/x-markdown")
+private val MONOSPACE_TYPES = setOf("text/csv", "application/json")
+
+private fun resolvedType(contentType: String?, name: String): String {
+    val declared = contentType?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() && it != "application/octet-stream" }
+    return declared ?: detectContentTypeFromExtensionOrHint(name)
+}
+
+/** CSV and JSON read better in a fixed-width face; the type wins over the extension as in [filePreviewKind]. */
+fun isMonospacePreview(name: String, contentType: String?): Boolean = resolvedType(contentType, name) in MONOSPACE_TYPES
 
 /** What a preview shows a file as, or null when it can't: [contentType] wins over [name]'s extension; [sizeBytes] null means unknown. */
 fun filePreviewKind(contentType: String?, name: String, sizeBytes: Long?): FilePreviewKind? =
@@ -90,13 +108,13 @@ internal fun filePreviewKind(
     web: Boolean,
     pdfAvailable: Boolean,
 ): FilePreviewKind? {
-    val declared = contentType?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() && it != "application/octet-stream" }
-    val type = declared ?: detectContentTypeFromExtensionOrHint(name)
+    val type = resolvedType(contentType, name)
     val kind = when {
         type in PREVIEW_IMAGES -> FilePreviewKind.Image
         type in PREVIEW_VIDEOS -> FilePreviewKind.Video
         type == "application/pdf" -> FilePreviewKind.Pdf.takeIf { pdfAvailable }
         type in NOT_TEXT -> null
+        type in MARKDOWN_TYPES -> FilePreviewKind.Markdown
         type.startsWith("text/") || type in PREVIEW_TEXT_APPLICATION -> FilePreviewKind.Text
         else -> null
     } ?: return null
@@ -122,6 +140,23 @@ internal fun splitLongLines(lines: List<String>, maxLength: Int = TEXT_PREVIEW_M
     return out
 }
 
+/** [text] cut into blocks at blank lines, so each is laid out on its own; a blank line inside a code fence does not cut it. */
+internal fun splitMarkdownBlocks(text: String): List<String> {
+    val blocks = ArrayList<String>()
+    val current = StringBuilder()
+    var fenced = false
+    fun flush() {
+        if (current.isNotBlank()) blocks += current.toString().trimEnd('\n')
+        current.clear()
+    }
+    for (line in text.replace("\r\n", "\n").replace('\r', '\n').split('\n')) {
+        if (line.trimStart().let { it.startsWith("```") || it.startsWith("~~~") }) fenced = !fenced
+        if (line.isBlank() && !fenced) flush() else current.append(line).append('\n')
+    }
+    flush()
+    return blocks
+}
+
 /** The preview itself, with no chrome around it; [path] is a local file of [kind]. */
 @Composable
 fun FilePreviewContent(
@@ -132,6 +167,7 @@ fun FilePreviewContent(
     onTap: (() -> Unit)? = null,
     onFailed: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(),
+    contentType: String? = null,
 ) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when (kind) {
@@ -144,55 +180,93 @@ fun FilePreviewContent(
             )
             FilePreviewKind.Video -> LocalVideoPlayerSurface(path, Modifier.fillMaxSize())
             FilePreviewKind.Pdf -> PdfPageViewer(path, onTap = onTap, modifier = Modifier.fillMaxSize().padding(contentPadding))
-            FilePreviewKind.Text -> TextPreview(path, onTap, onFailed, contentPadding)
+            FilePreviewKind.Text -> TextPreview(path, isMonospacePreview(name, contentType), onTap, onFailed, contentPadding)
+            FilePreviewKind.Markdown -> MarkdownPreview(path, onTap, onFailed, contentPadding)
         }
     }
 }
 
-private class TextPage(val lines: List<String>, val truncated: Boolean)
+private class TextPage(val lines: List<String>, val truncated: Boolean, val blocks: List<String>)
+
+private suspend fun loadTextPage(path: String, markdown: Boolean): TextPage = withContext(ioDispatcher) {
+    systemFileSystem.source(path.toPath()).buffer().use { source ->
+        val more = source.request(TEXT_PREVIEW_BYTES + 1)
+        val bytes = source.readByteArray(minOf(TEXT_PREVIEW_BYTES, source.buffer.size))
+        val text = (if (more) bytes.trimToUtf8Boundary() else bytes).decodeToString()
+        TextPage(splitLongLines(text.lines()), truncated = more, blocks = if (markdown) splitMarkdownBlocks(text) else emptyList())
+    }
+}
 
 @Composable
-private fun TextPreview(path: String, onTap: (() -> Unit)?, onFailed: () -> Unit, contentPadding: PaddingValues) {
-    val page by produceState<TextPage?>(null, path) {
+private fun rememberTextPage(path: String, markdown: Boolean, onFailed: () -> Unit): TextPage? =
+    produceState<TextPage?>(null, path, markdown) {
         value = try {
-            withContext(ioDispatcher) {
-                systemFileSystem.source(path.toPath()).buffer().use { source ->
-                    val more = source.request(TEXT_PREVIEW_BYTES + 1)
-                    val bytes = source.readByteArray(minOf(TEXT_PREVIEW_BYTES, source.buffer.size))
-                    val text = (if (more) bytes.trimToUtf8Boundary() else bytes).decodeToString()
-                    TextPage(splitLongLines(text.lines()), truncated = more)
-                }
-            }
+            loadTextPage(path, markdown)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             onFailed()
             null
         }
-    }
-    val shown = page ?: return CircularProgressIndicator()
+    }.value
+
+@Composable
+private fun TextPreview(path: String, monospace: Boolean, onTap: (() -> Unit)?, onFailed: () -> Unit, contentPadding: PaddingValues) {
+    val shown = rememberTextPage(path, markdown = false, onFailed) ?: return CircularProgressIndicator()
+    TextLines(shown, monospace, onTap, contentPadding)
+}
+
+@Composable
+private fun TextLines(page: TextPage, monospace: Boolean, onTap: (() -> Unit)?, contentPadding: PaddingValues) {
     val tap = if (onTap == null) Modifier else Modifier.pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) }
+    val style = if (monospace) MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace) else MaterialTheme.typography.bodyMedium
     SelectionContainer(tap) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 16.dp + contentPadding.calculateTopPadding(),
-                bottom = 16.dp + contentPadding.calculateBottomPadding(),
-            ),
-        ) {
-            if (shown.truncated) {
-                item {
-                    Text(
-                        stringResource(MR.string.file_preview_truncated, formatBytes(TEXT_PREVIEW_BYTES)),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
-                }
-            }
-            items(shown.lines) { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = textPadding(contentPadding)) {
+            if (page.truncated) item { TruncatedNote() }
+            items(page.lines) { Text(it, style = style) }
         }
     }
+}
+
+@Composable
+private fun MarkdownPreview(path: String, onTap: (() -> Unit)?, onFailed: () -> Unit, contentPadding: PaddingValues) {
+    var raw by remember(path) { mutableStateOf(false) }
+    val page = rememberTextPage(path, markdown = true, onFailed) ?: return CircularProgressIndicator()
+    val tap = if (onTap == null) Modifier else Modifier.pointerInput(onTap) { detectTapGestures(onTap = { onTap() }) }
+    Column(Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { raw = !raw }) {
+                Text(stringResource(if (raw) MR.string.file_preview_markdown_formatted else MR.string.file_preview_markdown_raw))
+            }
+        }
+        if (raw) {
+            TextLines(page, monospace = true, onTap, PaddingValues(bottom = contentPadding.calculateBottomPadding()))
+        } else {
+            SelectionContainer(tap) {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = textPadding(PaddingValues(bottom = contentPadding.calculateBottomPadding()))) {
+                    if (page.truncated) item { TruncatedNote() }
+                    items(page.blocks) { ChatMarkdown(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface) }
+                }
+            }
+        }
+    }
+}
+
+private fun textPadding(outer: PaddingValues) = PaddingValues(
+    start = 16.dp,
+    end = 16.dp,
+    top = 16.dp + outer.calculateTopPadding(),
+    bottom = 16.dp + outer.calculateBottomPadding(),
+)
+
+@Composable
+private fun TruncatedNote() {
+    Text(
+        stringResource(MR.string.file_preview_truncated, formatBytes(TEXT_PREVIEW_BYTES)),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 12.dp),
+    )
 }
 
 @Composable

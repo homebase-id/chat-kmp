@@ -11,6 +11,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.privatedrive.FilesyncPrivateDrive
 import id.homebase.core.privatedrive.PrivateDriveOptIn
+import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -108,6 +110,13 @@ class FilesyncViewModel(
 
         viewModelScope.launch {
             uploadQueue.errors.collect { _events.send(FilesyncUiEvent.Error(it)) }
+        }
+
+        viewModelScope.launch {
+            OpenedFileInbox.showFolder.filterNotNull().collect { path ->
+                OpenedFileInbox.showFolder.value = null
+                openPath(path)
+            }
         }
 
         viewModelScope.launch {

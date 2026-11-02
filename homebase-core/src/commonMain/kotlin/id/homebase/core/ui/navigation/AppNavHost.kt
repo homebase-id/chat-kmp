@@ -233,6 +233,9 @@ import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
 import id.homebase.core.ui.screens.filesync.FilesyncPlaces
 import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
 import id.homebase.core.ui.screens.filesync.FilesyncScreen
+import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
+import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
+import id.homebase.core.ui.screens.openedfile.OpenedFileScreen
 import id.homebase.core.ui.screens.filesync.FilesyncTrashScreen
 import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
@@ -683,6 +686,15 @@ fun AppNavHost(
             onRecent = { navController.navigate(Route.FilesyncRecent) { popUpTo(Route.Filesync); launchSingleTop = true } },
             onTrash = { navController.navigate(Route.FilesyncTrash) { popUpTo(Route.Filesync); launchSingleTop = true } },
         )
+    }
+
+    val pendingOpenedFile by OpenedFileInbox.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingOpenedFile, isAuthenticated) {
+        val request = pendingOpenedFile ?: return@LaunchedEffect
+        if (!isAuthenticated) return@LaunchedEffect
+        val stack = navController.awaitChatList()
+        val shown = stack.any { it.destination.hasRoute(Route.OpenedFile::class) && it.toRoute<Route.OpenedFile>().path == request.path }
+        if (!shown) navController.navigate(Route.OpenedFile(request.path, request.name, request.mimeType, request.sizeBytes))
     }
 
     // Handle notification tap navigation (needs navController, stays in composable)
@@ -2269,6 +2281,25 @@ fun AppNavHost(
                                             )
                                         }
                                     }
+                                }
+                            }
+
+                            scoped<Route.OpenedFile> { entry ->
+                                if (isAuthenticated) {
+                                    val route = entry.toRoute<Route.OpenedFile>()
+                                    OpenedFileScreen(
+                                        viewModel = koinViewModel(
+                                            key = route.path,
+                                            parameters = { parametersOf(OpenedFileRequest(route.path, route.name, route.mimeType, route.sizeBytes)) },
+                                        ),
+                                        onBack = { navController.popBackStack() },
+                                        onSignIn = { navController.navigate(Route.Login) },
+                                        onSetUpFilesync = { navController.navigate(Route.Filesync) },
+                                        onShowInFilesync = { path ->
+                                            OpenedFileInbox.showFolder.value = path
+                                            openFilesync()
+                                        },
+                                    )
                                 }
                             }
 

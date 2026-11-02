@@ -18,6 +18,7 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.size
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
@@ -74,8 +75,8 @@ class FilesyncUploadQueue(
         startWorker()
     }
 
-    /** Each file is queued as soon as it's ready, so the first upload doesn't wait for the whole pick to be copied. */
-    fun add(parentId: Uuid, files: List<PlatformFile>) {
+    /** Each file is queued as soon as it's ready, so the first upload doesn't wait for the whole pick to be copied; the job ends once every file has been copied. */
+    fun add(parentId: Uuid, files: List<PlatformFile>): Job =
         scope.launch(work) {
             for (file in files) {
                 val picked = try {
@@ -96,7 +97,6 @@ class FilesyncUploadQueue(
                 pending.trySend(upload.id)
             }
         }
-    }
 
     // Copied into the sandbox while the picker's grant is live: Android and iOS revoke it later.
     private suspend fun prepare(file: PlatformFile): FilesyncPickedFile? {

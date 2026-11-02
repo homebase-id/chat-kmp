@@ -2067,4 +2067,15 @@
     <string name="file_preview_truncated">Viser de første %1$s.</string>
     <string name="filesync_too_large_here">Filen er for stor til at hente i browseren.</string>
     <string name="chat_error_file_too_large_here">Filen er for stor til at åbne i browseren.</string>
+    <string name="file_preview_markdown_raw">Vis rå tekst</string>
+    <string name="file_preview_markdown_formatted">Vis formateret</string>
+    <string name="openedfile_save">Gem i Homebase</string>
+    <string name="openedfile_sign_in_to_save">Log ind for at gemme</string>
+    <string name="openedfile_open_with">Åbn med en anden app</string>
+    <string name="openedfile_no_preview">Ingen forhåndsvisning af denne filtype</string>
+    <string name="openedfile_save_to">Gem i</string>
+    <string name="openedfile_save_here">Gem her</string>
+    <string name="openedfile_saved">Gemt i %1$s</string>
+    <string name="openedfile_show">Vis</string>
+    <string name="openedfile_open_failed">Filen kunne ikke åbnes.</string>
 </resources>

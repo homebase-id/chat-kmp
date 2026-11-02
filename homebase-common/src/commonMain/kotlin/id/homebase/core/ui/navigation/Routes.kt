@@ -176,6 +176,10 @@ sealed class Route {
     data object FilesyncRecent : Route()
 
     @Serializable
+    @SerialName("opened-file")
+    data class OpenedFile(val path: String, val name: String, val mimeType: String? = null, val sizeBytes: Long = 0) : Route()
+
+    @Serializable
     @SerialName("vault-settings")
     data object VaultSettings : Route()
 

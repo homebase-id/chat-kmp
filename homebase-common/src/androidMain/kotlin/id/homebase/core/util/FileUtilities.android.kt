@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import android.content.ComponentName
 import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.Composable
@@ -48,6 +49,11 @@ actual fun getUriHandler(): FileSystemHandler {
                     val finalIntent = if (showChooser) {
                         Intent.createChooser(intent, null).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            // Homebase lists itself for documents: a chooser started from here must not offer it back.
+                            val own = context.packageManager.queryIntentActivities(intent, 0)
+                                .filter { it.activityInfo.packageName == context.packageName }
+                                .map { ComponentName(it.activityInfo.packageName, it.activityInfo.name) }
+                            if (own.isNotEmpty()) putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, own.toTypedArray())
                         }
                     } else {
                         intent

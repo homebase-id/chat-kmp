@@ -3159,4 +3159,15 @@
     <string name="call_report_problem">Report a problem</string>
     <string name="call_report_unavailable">No log found for this call</string>
     <string name="vault_make_private">Click to change your Vault Drive to true zero knowledge encryption</string>
+    <string name="file_preview_markdown_raw">Show raw text</string>
+    <string name="file_preview_markdown_formatted">Show formatted</string>
+    <string name="openedfile_save">Save to Homebase</string>
+    <string name="openedfile_sign_in_to_save">Sign in to save</string>
+    <string name="openedfile_open_with">Open with another app</string>
+    <string name="openedfile_no_preview">No preview for this file type</string>
+    <string name="openedfile_save_to">Save to</string>
+    <string name="openedfile_save_here">Save here</string>
+    <string name="openedfile_saved">Saved to %1$s</string>
+    <string name="openedfile_show">Show</string>
+    <string name="openedfile_open_failed">Couldn't open the file.</string>
 </resources>
