@@ -391,9 +391,24 @@ class ConversationServiceTestFixture : AutoCloseable {
 
     // ---------- internals ----------
 
+    private var rawDriver: JdbcSqliteDriver? = null
+
+    fun failOutboxInserts() {
+        rawDriver!!.execute(
+            null,
+            "CREATE TRIGGER fail_outbox_insert BEFORE INSERT ON Outbox BEGIN SELECT RAISE(ABORT, 'forced'); END;",
+            0,
+        )
+    }
+
+    fun allowOutboxInserts() {
+        rawDriver!!.execute(null, "DROP TRIGGER IF EXISTS fail_outbox_insert;", 0)
+    }
+
     private fun createInMemoryDbm(): DatabaseManager = DatabaseManager({
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         OdinDatabase.Schema.create(driver)
+        rawDriver = driver
         driver
     })
 

@@ -328,7 +328,7 @@ val appModule = module {
                     content = content,
                 )
             },
-            enqueueOutbox = { request -> outboxSync.tryEnqueue(request).enqueued },
+            enqueueOutbox = { request -> outboxSync.enqueueLatest(request).enqueued },
             eventBus = get(),
             scope = get(),
         )
