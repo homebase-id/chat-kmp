@@ -55,6 +55,9 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.core.ui.screens.contactbook.CreateCircleError
+import id.homebase.core.ui.screens.contactbook.CreateCircleSheet
+import id.homebase.core.ui.screens.contactbook.CreateCircleUiState
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -91,6 +94,7 @@ class ProfileCardEditorShotsTest {
         val completesToggle: Boolean = false,
         val failsToggle: Boolean = false,
         val showCard: Boolean = true,
+        val newCircle: Boolean = false,
         val act: ComposeUiTest.() -> Unit = {},
     )
 
@@ -288,8 +292,8 @@ class ProfileCardEditorShotsTest {
     private val editorWork = editorBase.copy(selectedAudience = workCard)
     private val editorPublic = editorBase.copy(selectedAudience = CardAudience.Public)
     private val editorEmpty = base.copy(attributes = emptyList(), circles = contentCircles, cards = listOf(public, card(friendsCard)), selectedAudience = friendsCard)
-    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), showCard: Boolean = true, act: ComposeUiTest.() -> Unit = {}) =
-        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, showCard = showCard, act = act)
+    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), showCard: Boolean = true, newCircle: Boolean = false, act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, showCard = showCard, newCircle = newCircle, act = act)
 
     private fun templateCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
         ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides)
@@ -331,6 +335,71 @@ class ProfileCardEditorShotsTest {
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
     )
+
+    private val polishShots = listOf(
+        editor("p01-edit-profile-new-circle", editorBase, newCircle = true),
+        editor("p02-edit-profile-preview", editorBase, act = {
+            onAllNodesWithContentDescription("Preview").onFirst().performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        Shot(
+            "p03-content-style",
+            editorBase.copy(previewDesign = CardDesign.LINKS),
+            EditorStep.Customise,
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+            act = tool("Content style"),
+        ),
+    )
+
+    @Test
+    fun polishedEditorSurfacesRender() {
+        for (dark in listOf(false, true)) {
+            for (shot in polishShots) render(shot, dark)
+        }
+    }
+
+    @Test
+    fun polishedIntroRendersTheNewCircleTile() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(width = (REDMI_W * SCALE).toInt(), height = (REDMI_H * SCALE).toInt()) {
+                mainClock.autoAdvance = false
+                setContent {
+                    themed(dark) {
+                        CardIntro(
+                            uiState = editorBase,
+                            tiles = emptyMap(),
+                            host = null,
+                            revision = 0,
+                            onOpen = {},
+                            onClose = {},
+                            onRetry = {},
+                            onCapture = {},
+                            onTilePainted = {},
+                            onNewCircle = {},
+                        )
+                    }
+                }
+                mainClock.advanceTimeBy(SETTLE_MS)
+                save("p04-intro-new-circle", dark)
+            }
+        }
+    }
+
+    @Test
+    fun polishedCreateCircleSheetRendersEveryState() {
+        val filled = CreateCircleUiState(open = true, name = "Climbing", emoji = "\uD83E\uDDD7", description = "Tuesday gym night")
+        for (dark in listOf(false, true)) {
+            for ((name, state) in listOf(
+                "p05-create-circle-empty" to CreateCircleUiState(open = true),
+                "p06-create-circle-filled" to filled,
+                "p07-create-circle-creating" to filled.copy(isCreating = true),
+                "p08-create-circle-error" to filled.copy(error = CreateCircleError.NeedsPermission),
+            )) {
+                renderPopup(name, dark) { CreateCircleSheet(state, {}, {}, {}, {}, {}) }
+            }
+        }
+    }
 
     @Test
     fun contentEditorRendersEveryState() {
@@ -504,6 +573,7 @@ class ProfileCardEditorShotsTest {
                             mode = shot.mode,
                             photo = shot.photo,
                             showCard = shot.showCard,
+                            onNewCircle = {}.takeIf { shot.newCircle },
                             step = step,
                             onStep = { step = it },
                             onBack = { step = EditorStep.Design },

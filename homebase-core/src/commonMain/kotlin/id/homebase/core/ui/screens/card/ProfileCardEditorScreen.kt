@@ -179,7 +179,7 @@ import id.homebase.resources.profile_edit_title
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val COMPACT_HEIGHT = 760.dp
 private val COMPACT_TILE_WIDTH = 88.dp
-private val COMPACT_TILE_CORNER = 12.dp
+private val COMPACT_TILE_CORNER = 16.dp
 
 internal enum class ContentLayout { PanelOnly, Wide, CompactHeader }
 
@@ -569,9 +569,18 @@ internal fun ProfileCardEditorContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { previewOpen = false }) {
+                        IconButton(onClick = { previewOpen = false }, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.Filled.Close, contentDescription = stringResource(MR.string.close))
                         }
+                        Text(
+                            text = stringResource(MR.string.profile_card_preview),
+                            style = MaterialTheme.typography.titleLargeEmphasized,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() },
+                        )
+                        Spacer(Modifier.size(48.dp))
                     }
                     CardPreviewFrame(
                         keepProportions = false,
@@ -803,7 +812,7 @@ private fun EditorTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp),
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onBack, shapes = IconButtonDefaults.shapes()) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(MR.string.menu_back),
@@ -812,7 +821,7 @@ private fun EditorTopBar(
             if (title != null) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleLargeEmphasized,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -831,7 +840,7 @@ private fun EditorTopBar(
                 }
             }
             if (onPreview != null) {
-                IconButton(onClick = onPreview) {
+                IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
                     Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
                 }
             } else if (onSave != null) {

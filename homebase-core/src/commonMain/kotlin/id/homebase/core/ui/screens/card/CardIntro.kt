@@ -239,19 +239,12 @@ private fun NewCircleTile(onClick: () -> Unit) {
             .semantics(mergeDescendants = true) { contentDescription = title }
             .padding(4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(
-                Icons.Outlined.Add,
-                contentDescription = null,
-                modifier = Modifier.size(with(LocalDensity.current) { TILE_ICON_SIZE.toDp() }),
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMediumEmphasized,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -261,7 +254,13 @@ private fun NewCircleTile(onClick: () -> Unit) {
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
         ) {
-            Icon(Icons.Outlined.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            CookieBadge(
+                icon = Icons.Outlined.Add,
+                container = MaterialTheme.colorScheme.primaryContainer,
+                content = MaterialTheme.colorScheme.onPrimaryContainer,
+                size = 64.dp,
+                iconSize = 28.dp,
+            )
         }
     }
 }

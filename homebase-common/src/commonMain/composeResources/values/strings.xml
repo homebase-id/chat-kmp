@@ -3159,7 +3159,7 @@
     <string name="circle_new">New circle</string>
     <string name="circle_create_title">New circle</string>
     <string name="circle_create_name">Name</string>
-    <string name="circle_create_emoji">Emoji (optional)</string>
+    <string name="circle_create_emoji">Emoji</string>
     <string name="circle_create_description">Description (optional)</string>
     <string name="circle_create_action">Create</string>
     <string name="circle_create_failed">Couldn't create the circle. Try again.</string>

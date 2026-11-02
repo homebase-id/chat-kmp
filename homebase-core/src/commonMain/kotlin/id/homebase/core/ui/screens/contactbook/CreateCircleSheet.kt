@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.foundation.clickable
@@ -13,9 +15,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -94,7 +99,7 @@ internal fun CreateCircleSheet(
         ) {
             Text(
                 text = stringResource(MR.string.circle_create_title),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleLargeEmphasized,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -135,9 +140,9 @@ internal fun CreateCircleSheet(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-            Button(onClick = onCreate, enabled = state.canCreate, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onCreate, enabled = state.canCreate, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) {
                 if (state.isCreating) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    LoadingIndicator(modifier = Modifier.size(ButtonDefaults.IconSize), color = LocalContentColor.current)
                 } else {
                     Text(stringResource(MR.string.circle_create_action))
                 }
