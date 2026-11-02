@@ -45,7 +45,7 @@ class SettingsShotsTest {
                 setContent {
                     KoinIsolatedContext(koin) {
                         HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
-                            SettingsUi(uiState = SettingsUiState(ownerSession = demoOwner), onAction = {}, actions = actions)
+                            SettingsUi(uiState = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK, ownerSession = demoOwner), onAction = {}, actions = actions)
                         }
                     }
                 }

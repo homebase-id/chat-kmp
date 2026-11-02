@@ -76,7 +76,7 @@ class AppsEverywhereScreenshotTest {
         onOpenWebDrop = {}, onLocation = {}, onContactBookSettings = {},
     )
 
-    private val state = SettingsUiState(ownerSession = owner, useNativeFeed = true, filesyncIconVisible = true)
+    private val state = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK, ownerSession = owner, useNativeFeed = true, filesyncIconVisible = true)
 
     private fun shot(name: String, width: Int, height: Int, content: @Composable () -> Unit) {
         for (dark in listOf(false, true)) {

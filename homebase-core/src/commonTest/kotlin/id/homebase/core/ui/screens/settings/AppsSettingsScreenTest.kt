@@ -32,7 +32,7 @@ class AppsSettingsScreenTest {
     )
 
     private fun ComposeUiTest.apps(onAction: (SettingsUiAction) -> Unit = {}) = setContent {
-        MaterialTheme { AppsSettingsUi(SettingsUiState(), onAction, actions) }
+        MaterialTheme { AppsSettingsUi(SettingsUiState(notificationStatus = NotificationVerificationStatus.OK), onAction, actions) }
     }
 
     private fun ComposeUiTest.tap(tag: String) {
@@ -57,7 +57,7 @@ class AppsSettingsScreenTest {
     fun rowsStopAtTheContentCapOnAWideWindow() = runComposeUiTest {
         setContent {
             MaterialTheme {
-                Box(Modifier.requiredWidth(1000.dp)) { AppsSettingsUi(SettingsUiState(), {}, actions) }
+                Box(Modifier.requiredWidth(1000.dp)) { AppsSettingsUi(SettingsUiState(notificationStatus = NotificationVerificationStatus.OK), {}, actions) }
             }
         }
         val bounds = onNodeWithTag("contactBookSettingsButton").getUnclippedBoundsInRoot()

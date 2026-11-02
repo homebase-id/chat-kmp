@@ -263,45 +263,53 @@ private fun CategoryPage(
             onBackClick = onDismiss,
         )
 
-        SettingsCategory.Apps -> when (appsPage) {
-            null -> AppsSettingsScreen(
-                viewModel = koinViewModel(),
-                actions = AppsSettingsActions(
-                    onBack = onDismiss,
-                    onMomentsSettings = { onSelectAppsPage(AppsPage.Moments) },
-                    onVaultSettings = { onSelectAppsPage(AppsPage.Vault) },
-                    onEmailSettings = { onSelectAppsPage(AppsPage.Email) },
-                    onOpenWebDrop = actions.onOpenWebDrop,
-                    onLocation = actions.onLocation,
-                    onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
-                ),
-            )
-            AppsPage.Moments -> MomentsSettingsScreen(
-                viewModel = koinViewModel(),
-                onBackClick = { onSelectAppsPage(null) },
-                onOpenMoments = actions.onOpenMoments,
-            )
+        SettingsCategory.Apps -> AppsCategoryPage(
+            appsPage = appsPage,
+            root = {
+                AppsSettingsScreen(
+                    viewModel = koinViewModel(),
+                    actions = AppsSettingsActions(
+                        onBack = onDismiss,
+                        onMomentsSettings = { onSelectAppsPage(AppsPage.Moments) },
+                        onVaultSettings = { onSelectAppsPage(AppsPage.Vault) },
+                        onEmailSettings = { onSelectAppsPage(AppsPage.Email) },
+                        onOpenWebDrop = actions.onOpenWebDrop,
+                        onLocation = actions.onLocation,
+                        onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
+                    ),
+                )
+            },
+            page = { shown ->
+                val back = { onSelectAppsPage(null) }
+                when (shown) {
+                    AppsPage.Moments -> MomentsSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenMoments = actions.onOpenMoments,
+                    )
 
-            AppsPage.Vault -> VaultSettingsScreen(
-                viewModel = koinViewModel(),
-                onBackClick = { onSelectAppsPage(null) },
-                onOpenVault = actions.onOpenVault,
-            )
+                    AppsPage.Vault -> VaultSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenVault = actions.onOpenVault,
+                    )
 
-            AppsPage.Email -> EmailSettingsScreen(
-                viewModel = koinViewModel(),
-                onBackClick = { onSelectAppsPage(null) },
-                onOpenEmail = actions.onOpenEmail,
-                mailboxMode = emailMailboxMode,
-                onChangeMode = actions.onOpenEmailModeSwitch,
-            )
+                    AppsPage.Email -> EmailSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenEmail = actions.onOpenEmail,
+                        mailboxMode = emailMailboxMode,
+                        onChangeMode = actions.onOpenEmailModeSwitch,
+                    )
 
-            AppsPage.Contacts -> ContactBookSettingsScreen(
-                viewModel = koinViewModel(),
-                onBackClick = { onSelectAppsPage(null) },
-                onOpenContacts = actions.onOpenContacts,
-            )
-        }
+                    AppsPage.Contacts -> ContactBookSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenContacts = actions.onOpenContacts,
+                    )
+                }
+            },
+        )
 
         SettingsCategory.Storage -> StorageSettingsScreen(
             viewModel = koinViewModel(),
@@ -323,4 +331,13 @@ private fun CategoryPage(
             onNavigateToDeveloperMenu = actions.onNavigateToDeveloperMenu,
         )
     }
+}
+
+@Composable
+internal fun AppsCategoryPage(
+    appsPage: AppsPage?,
+    root: @Composable () -> Unit,
+    page: @Composable (AppsPage) -> Unit,
+) {
+    if (appsPage == null) root() else page(appsPage)
 }

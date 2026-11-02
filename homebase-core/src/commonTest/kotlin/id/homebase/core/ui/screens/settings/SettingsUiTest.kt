@@ -51,7 +51,7 @@ class SettingsUiTest {
     }
 
     private fun ComposeUiTest.settings(
-        uiState: SettingsUiState = SettingsUiState(),
+        uiState: SettingsUiState = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK),
         routes: Routes = Routes(),
         onAction: (SettingsUiAction) -> Unit = {},
         actions: SettingsActions = routes.actions(),
