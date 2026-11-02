@@ -18,7 +18,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
+import id.homebase.api.common.SecureByteArray
+import androidx.compose.runtime.collectAsState
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.avatars.OwnerAvatarState
@@ -85,5 +89,24 @@ class RailOwnerAvatarTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Sync problem"))
         selected = true
         onNodeWithTag(RailOwnerAvatarTag).assertIsSelected()
+    }
+
+    @Test
+    fun railShowsTheAvatarFromCredentialsBeforeTheProfileLoads() = runComposeUiTest {
+        val creds = ApiCredentials.create(
+            domain = OdinId("frodo.baggins.demo.rocks"),
+            clientAccessToken = "token",
+            sharedSecret = SecureByteArray(byteArrayOf(1, 2, 3)),
+        )
+        val session = effectiveOwnerSessionFlow(MutableStateFlow(null), MutableStateFlow(creds))
+        setContent {
+            val owner by session.collectAsState(null)
+            KoinIsolatedContext(koin) {
+                MaterialTheme {
+                    RailOwnerAvatar(session = owner, state = OwnerAvatarState(), onNavigate = {})
+                }
+            }
+        }
+        onNodeWithTag(RailOwnerAvatarTag).assertExists()
     }
 }

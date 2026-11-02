@@ -12,6 +12,8 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
+import id.homebase.api.client.auth.synthesizeOwnerSession
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -2424,41 +2426,6 @@ internal fun shouldClearLoadingSpinnerOnLoadEnd(
     conversationId: Uuid,
     stillLoading: Boolean,
 ): Boolean = stillLoading && selectedConversationId == conversationId
-
-/**
- * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the fully-resolved
- * [live] session, fall back to a minimal one synthesized from [credentials] when the async
- * profile load hasn't arrived yet. Returns null only when neither source is available
- * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
- * display name / profile image with a bare odinId.
- */
-fun synthesizeOwnerSession(
-    live: OwnerSession?,
-    credentials: ApiCredentials?,
-): OwnerSession? = live ?: credentials?.let {
-    OwnerSession(
-        odinId = it.domain,
-        displayName = null,
-        firstName = null,
-        surName = null,
-        profileImageFileId = null,
-        profileImageFileKey = null,
-        profileImagePreviewThumbnail = null,
-        status = null,
-    )
-}
-
-/**
- * The owner session as the UI states should see it. [live] stays null until the connect
- * chain reaches `loadProfile()` — seconds on a slow link — while [credentials] are set
- * locally at login/restore, so own-vs-peer rendering must not wait on [live].
- */
-internal fun effectiveOwnerSessionFlow(
-    live: Flow<OwnerSession?>,
-    credentials: Flow<ApiCredentials?>,
-): Flow<OwnerSession?> = combine(live, credentials) { session, creds ->
-    synthesizeOwnerSession(session, creds)
-}
 
 /**
  * Decides whether a pending notification tap is ready to be resolved

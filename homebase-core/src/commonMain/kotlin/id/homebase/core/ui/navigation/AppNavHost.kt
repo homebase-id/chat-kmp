@@ -139,7 +139,9 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.assets.BootstrapChatOutlined
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
 import id.homebase.core.avatars.OwnerAvatarStatus
 import id.homebase.core.ui.assets.Apps
 import id.homebase.core.ui.assets.AppsOutlined
@@ -358,7 +360,11 @@ fun AppNavHost(
     // what keeps the resolutions above it alive across a teardown is IdentityScope (#1373).
     val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
     val isAuthenticated = authState is YouAuthState.Authenticated && identityScope?.closed == false
-    val railOwner by koinInject<OwnerSessionRepository>().user.collectAsStateWithLifecycle()
+    val ownerSessions = koinInject<OwnerSessionRepository>()
+    val credentials = koinInject<CredentialsManager>()
+    val railOwner by remember(ownerSessions, credentials) {
+        effectiveOwnerSessionFlow(ownerSessions.user, credentials.credentialsFlow)
+    }.collectAsStateWithLifecycle(null)
     val railAvatarState by koinInject<OwnerAvatarStatus>().state.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
