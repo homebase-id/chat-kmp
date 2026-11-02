@@ -64,6 +64,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -574,7 +575,7 @@ internal fun TableRow(
                     )
                 }
             } else {
-                FileTypeTile(node, size = 30.dp)
+                FileTypeTile(node, size = 30.dp, modifier = if (node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier)
             }
             Spacer(Modifier.width(12.dp))
             val nameInteraction = remember { MutableInteractionSource() }
