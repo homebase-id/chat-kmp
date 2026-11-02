@@ -945,6 +945,20 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun theEditorCapturesTilesEvenThoughTheViewerIsStillOpen() = runTest(dispatcher) {
+        val host = FakeHost()
+        host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        host.onPaintRequest = { host.send(CardEvent.Painted) }
+        val vm = viewModel(host, FakeSource(profile))
+        vm.onCardOpened(CardAudience.Public)
+
+        vm.captureEditorTiles()
+
+        assertTrue(vm.uiState.value.viewing)
+        assertTrue("public" in vm.introTiles.value.keys)
+    }
+
+    @Test
     fun capturingStopsWhenTheViewerOpensMidCapture() = runTest(dispatcher) {
         val host = FakeHost()
         val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")

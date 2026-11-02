@@ -32,6 +32,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -151,6 +152,8 @@ class UserCircleTest {
     private class FakeAccess(granted: Boolean) : CircleAccess {
         override val granted = MutableStateFlow(granted)
         override val dismissed: Flow<Unit> = emptyFlow()
+        val failures = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+        override val checkFailed: Flow<Unit> = failures
         override val permission: ExtendPermissionViewModel? = null
         var rechecks = 0
         override fun recheck() { rechecks++ }
@@ -239,6 +242,37 @@ class UserCircleTest {
 
         access.granted.value = true
         assertTrue(vm.uiState.value.open)
+    }
+
+    @Test
+    fun aFailedAccessCheckSettlesTheTapAndTheNextTapRechecks() = runTest(dispatcher) {
+        val access = FakeAccess(false)
+        val vm = viewModel(FakeBackend(), access)
+
+        advanceUntilIdle()
+        vm.onNewCircleClicked()
+        assertTrue(vm.uiState.value.checkingAccess)
+        access.failures.tryEmit(Unit)
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.checkingAccess)
+        assertTrue(vm.uiState.value.accessCheckFailed)
+
+        vm.onNewCircleClicked()
+        assertEquals(2, access.rechecks)
+        assertTrue(vm.uiState.value.checkingAccess)
+        assertFalse(vm.uiState.value.accessCheckFailed)
+    }
+
+    @Test
+    fun theEmojiFieldNeverEndsInALoneSurrogate() = runTest(dispatcher) {
+        val vm = viewModel(FakeBackend())
+        vm.onNewCircleClicked()
+        vm.onEmojiChanged("a".repeat(CIRCLE_EMOJI_MAX_CHARS - 1) + "😀😀")
+
+        val emoji = vm.uiState.value.emoji
+        assertEquals(CIRCLE_EMOJI_MAX_CHARS, emoji.codePointCount(0, emoji.length))
+        assertFalse(emoji.last().isHighSurrogate())
     }
 
     @Test

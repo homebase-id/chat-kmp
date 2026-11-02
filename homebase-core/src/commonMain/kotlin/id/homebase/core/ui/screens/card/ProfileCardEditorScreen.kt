@@ -377,7 +377,7 @@ fun ProfileCardEditorScreen(
             showCard = cardsEnabled,
             host = host,
             tiles = tiles,
-            onCaptureTiles = viewModel::captureIntroTiles,
+            onCaptureTiles = viewModel::captureEditorTiles,
             onSelectCard = viewModel::onCardSelected,
             onRetryLoad = viewModel::onRetry,
             onChangePhoto = {
@@ -625,7 +625,7 @@ internal fun ProfileCardEditorContent(
                     )
                 } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
                     val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
-                    val capturing = host != null && !uiState.viewing && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+                    val capturing = host != null && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
                     LaunchedEffect(capturing, host, uiState.contentSaves, uiState.selectedAudience, uiState.cards) {
                         if (capturing) onCaptureTiles()
                     }

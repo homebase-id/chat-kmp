@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -24,6 +25,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,7 +39,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
+import id.homebase.resources.circle_create_access_check_failed
 import id.homebase.resources.circle_create_action
+import id.homebase.resources.ok
 import id.homebase.resources.circle_create_description
 import id.homebase.resources.circle_create_emoji
 import id.homebase.resources.circle_create_failed
@@ -67,6 +71,15 @@ fun rememberNewCircleAction(onCreated: (String) -> Unit): () -> Unit {
         }
     }
     viewModel.permission?.let { ExtendPermissionDialog(viewModel = it) }
+    if (state.accessCheckFailed) {
+        AlertDialog(
+            onDismissRequest = viewModel::onAccessFailureAcknowledged,
+            text = { Text(stringResource(MR.string.circle_create_access_check_failed)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::onAccessFailureAcknowledged) { Text(stringResource(MR.string.ok)) }
+            },
+        )
+    }
     if (state.open) {
         CreateCircleSheet(
             state = state,

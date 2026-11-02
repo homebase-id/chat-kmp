@@ -3162,6 +3162,7 @@
     <string name="circle_create_emoji">Emoji</string>
     <string name="circle_create_description">Description (optional)</string>
     <string name="circle_create_action">Create</string>
+    <string name="circle_create_access_check_failed">Couldn't check your access. Check your connection and try again.</string>
     <string name="circle_create_failed">Couldn't create the circle. Try again.</string>
     <string name="circle_create_needs_permission">Chat needs more access to create circles. Approve it and try again.</string>
     <string name="circle_create_empty_action">Create a circle</string>

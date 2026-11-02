@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 interface CircleAccess : AutoCloseable {
     val granted: StateFlow<Boolean>
     val dismissed: Flow<Unit>
+    val checkFailed: Flow<Unit>
     val permission: ExtendPermissionViewModel?
     fun recheck()
 }
@@ -36,6 +37,8 @@ class ExtendPermissionCircleAccess(override val permission: ExtendPermissionView
     override val granted: StateFlow<Boolean> get() = permission.permissionsGranted
     override val dismissed: Flow<Unit> =
         permission.uiState.filterIsInstance<ExtendPermissionUiState.Dismissed>().map { }
+
+    override val checkFailed: Flow<Unit> = permission.checkFailed.filter { it }.map { }
 
     override fun recheck() = permission.recheckPermissions()
     override fun close() = permission.close()
@@ -46,6 +49,7 @@ enum class CreateCircleError { Failed, NeedsPermission }
 data class CreateCircleUiState(
     val open: Boolean = false,
     val checkingAccess: Boolean = false,
+    val accessCheckFailed: Boolean = false,
     val slug: String = "",
     val name: String = "",
     val emoji: String = "",
@@ -80,6 +84,11 @@ class CreateCircleViewModel(
         viewModelScope.launch {
             access.dismissed.collect { _uiState.update { it.copy(checkingAccess = false) } }
         }
+        viewModelScope.launch {
+            access.checkFailed.collect {
+                _uiState.update { if (it.checkingAccess) it.copy(checkingAccess = false, accessCheckFailed = true) else it }
+            }
+        }
     }
 
     fun onNewCircleClicked() {
@@ -88,10 +97,12 @@ class CreateCircleViewModel(
         if (access.granted.value) {
             openSheet()
         } else {
-            _uiState.update { it.copy(checkingAccess = true) }
+            _uiState.update { it.copy(checkingAccess = true, accessCheckFailed = false) }
             access.recheck()
         }
     }
+
+    fun onAccessFailureAcknowledged() = _uiState.update { it.copy(accessCheckFailed = false) }
 
     private fun openSheet() {
         _uiState.value = CreateCircleUiState(open = true, slug = newCircleSlug())
@@ -99,7 +110,7 @@ class CreateCircleViewModel(
 
     fun onNameChanged(name: String) = _uiState.update { it.copy(name = name.truncateToCodePoints(CIRCLE_NAME_MAX), error = null) }
 
-    fun onEmojiChanged(emoji: String) = _uiState.update { it.copy(emoji = emoji.take(CIRCLE_EMOJI_MAX_CHARS), error = null) }
+    fun onEmojiChanged(emoji: String) = _uiState.update { it.copy(emoji = emoji.truncateToCodePoints(CIRCLE_EMOJI_MAX_CHARS), error = null) }
 
     fun onDescriptionChanged(description: String) = _uiState.update { it.copy(description = description.truncateToCodePoints(CIRCLE_DESCRIPTION_MAX), error = null) }
 

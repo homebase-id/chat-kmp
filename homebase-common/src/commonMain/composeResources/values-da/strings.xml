@@ -2068,6 +2068,7 @@
     <string name="circle_create_emoji">Emoji</string>
     <string name="circle_create_description">Beskrivelse (valgfri)</string>
     <string name="circle_create_action">Opret</string>
+    <string name="circle_create_access_check_failed">Kunne ikke kontrollere din adgang. Tjek din forbindelse, og prøv igen.</string>
     <string name="circle_create_failed">Kunne ikke oprette kredsen. Prøv igen.</string>
     <string name="circle_create_needs_permission">Chat har brug for mere adgang for at oprette kredse. Godkend det, og prøv igen.</string>
     <string name="circle_create_empty_action">Opret en kreds</string>

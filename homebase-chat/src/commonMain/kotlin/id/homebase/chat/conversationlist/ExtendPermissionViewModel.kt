@@ -136,6 +136,7 @@ class ExtendPermissionViewModel(
             val active = credentialsManager.getActiveCredentials()
             if (active == null) {
                 Logger.d(tag = TAG) { "No active credentials — skipping permission check" }
+                if (generation == checkGeneration) _checkFailed.value = true
                 return
             }
             val activeDomain = active.domain.domainName
