@@ -122,88 +122,88 @@ fun AppsSettingsUi(
             ) {
                 AppsGroup(stringResource(MR.string.settings_apps_section_features)) {
                     SettingsRow(
-                    modifier = Modifier.testTag("nativeFeedToggle"),
-                    icon = Icons.Outlined.DynamicFeed,
-                    title = stringResource(MR.string.settings_native_feed),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.useNativeFeed,
-                        onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
-                    ),
-                )
+                        modifier = Modifier.testTag("nativeFeedToggle"),
+                        icon = Icons.Outlined.DynamicFeed,
+                        title = stringResource(MR.string.settings_native_feed),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Toggle(
+                            checked = uiState.useNativeFeed,
+                            onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
+                        ),
+                    )
                     SettingsRow(
-                    modifier = Modifier.testTag("filesyncIconToggle"),
-                    icon = HomebaseIcons.Filesync,
-                    title = stringResource(MR.string.filesync_label),
-                    supportingText = stringResource(MR.string.settings_filesync_icon_desc),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.filesyncIconVisible,
-                        onCheckedChange = { onAction(SettingsUiAction.SetFilesyncIconVisible(it)) },
-                    ),
-                )
+                        modifier = Modifier.testTag("filesyncIconToggle"),
+                        icon = HomebaseIcons.Filesync,
+                        title = stringResource(MR.string.filesync_label),
+                        supportingText = stringResource(MR.string.settings_filesync_icon_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Toggle(
+                            checked = uiState.filesyncIconVisible,
+                            onCheckedChange = { onAction(SettingsUiAction.SetFilesyncIconVisible(it)) },
+                        ),
+                    )
                     SettingsRow(
-                    modifier = Modifier.testTag("callsBetaToggle"),
-                    icon = Icons.Outlined.Call,
-                    title = stringResource(MR.string.settings_calls_beta),
-                    supportingText = stringResource(MR.string.settings_calls_beta_desc),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.callsEnabled,
-                        onCheckedChange = { onAction(SettingsUiAction.SetCallsEnabled(it)) },
-                    ),
-                )
+                        modifier = Modifier.testTag("callsBetaToggle"),
+                        icon = Icons.Outlined.Call,
+                        title = stringResource(MR.string.settings_calls_beta),
+                        supportingText = stringResource(MR.string.settings_calls_beta_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Toggle(
+                            checked = uiState.callsEnabled,
+                            onCheckedChange = { onAction(SettingsUiAction.SetCallsEnabled(it)) },
+                        ),
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 AppsGroup(stringResource(MR.string.settings_apps_section_pages)) {
                     SettingsRow(
-                    modifier = Modifier.testTag("momentsSettingsButton"),
-                    icon = Icons.Outlined.AutoAwesome,
-                    title = stringResource(MR.string.moments_settings_section),
-                    supportingText = stringResource(MR.string.settings_moments_desc),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Navigate(actions.onMomentsSettings),
-                )
+                        modifier = Modifier.testTag("momentsSettingsButton"),
+                        icon = Icons.Outlined.AutoAwesome,
+                        title = stringResource(MR.string.moments_settings_section),
+                        supportingText = stringResource(MR.string.settings_moments_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(actions.onMomentsSettings),
+                    )
                     SettingsRow(
-                    modifier = Modifier.testTag("vaultSettingsButton"),
-                    icon = Icons.Outlined.Lock,
-                    title = stringResource(MR.string.vault_settings_section),
-                    supportingText = stringResource(MR.string.settings_vault_desc),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Navigate(actions.onVaultSettings),
-                )
+                        modifier = Modifier.testTag("vaultSettingsButton"),
+                        icon = Icons.Outlined.Lock,
+                        title = stringResource(MR.string.vault_settings_section),
+                        supportingText = stringResource(MR.string.settings_vault_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(actions.onVaultSettings),
+                    )
                     SettingsRow(
-                    modifier = Modifier.testTag("emailSettingsButton"),
-                    icon = Icons.Outlined.MailOutline,
-                    title = stringResource(MR.string.email_settings_section),
-                    supportingText = stringResource(MR.string.settings_email_desc),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Navigate(actions.onEmailSettings),
-                )
+                        modifier = Modifier.testTag("emailSettingsButton"),
+                        icon = Icons.Outlined.MailOutline,
+                        title = stringResource(MR.string.email_settings_section),
+                        supportingText = stringResource(MR.string.settings_email_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                    )
                     SettingsRow(
-                    modifier = Modifier.testTag("webDropButton"),
-                    icon = Icons.Outlined.Redeem,
-                    title = stringResource(MR.string.webdrop_label),
-                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
-                )
+                        modifier = Modifier.testTag("webDropButton"),
+                        icon = Icons.Outlined.Redeem,
+                        title = stringResource(MR.string.webdrop_label),
+                        supportingText = stringResource(MR.string.webdrop_home_subtitle),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
+                    )
                     SettingsRow(
-                    modifier = Modifier.testTag("locationSettingsButton"),
-                    icon = Icons.Outlined.LocationOn,
-                    title = stringResource(MR.string.location_settings_section),
-                    supportingText = stringResource(MR.string.settings_location_desc),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Navigate(actions.onLocation),
-                )
+                        modifier = Modifier.testTag("locationSettingsButton"),
+                        icon = Icons.Outlined.LocationOn,
+                        title = stringResource(MR.string.location_settings_section),
+                        supportingText = stringResource(MR.string.settings_location_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(actions.onLocation),
+                    )
                     SettingsRow(
-                    modifier = Modifier.testTag("contactBookSettingsButton"),
-                    icon = Icons.Outlined.People,
-                    title = stringResource(MR.string.contactbook_settings_section),
-                    supportingText = stringResource(MR.string.settings_contactbook_desc),
-                    containerColor = rowColor,
-                    action = SettingsRowAction.Navigate(actions.onContactBookSettings),
-                )
+                        modifier = Modifier.testTag("contactBookSettingsButton"),
+                        icon = Icons.Outlined.People,
+                        title = stringResource(MR.string.contactbook_settings_section),
+                        supportingText = stringResource(MR.string.settings_contactbook_desc),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(actions.onContactBookSettings),
+                    )
                 }
             }
         }

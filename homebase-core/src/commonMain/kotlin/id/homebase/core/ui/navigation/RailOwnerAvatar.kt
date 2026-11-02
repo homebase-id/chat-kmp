@@ -101,7 +101,7 @@ internal fun RailOwnerAvatar(
 
 private fun ownerStatusLabel(state: OwnerAvatarState) = when {
     state.connectionStatus == AppConnectionStatus.Connected && state.hasDriveError -> MR.string.owner_status_sync_problem
-    state.connectionStatus == AppConnectionStatus.Connected && state.driveIsSyncing == true -> MR.string.owner_status_syncing
+    state.connectionStatus == AppConnectionStatus.Connected && state.driveIsSyncing -> MR.string.owner_status_syncing
     state.connectionStatus == AppConnectionStatus.Connected -> MR.string.owner_status_connected
     state.connectionStatus == AppConnectionStatus.Connecting -> MR.string.owner_status_connecting
     else -> MR.string.not_connected
