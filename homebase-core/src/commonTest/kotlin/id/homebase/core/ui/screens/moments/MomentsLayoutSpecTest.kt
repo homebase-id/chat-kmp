@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.compose.ui.unit.dp
+import id.homebase.core.moments.MomentsAlbumZoom
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -87,18 +88,20 @@ class MomentsLayoutSpecTest {
     }
 
     @Test
-    fun albumCellsStayPhoneSizedOnWideScreens() {
-        for (zoom in id.homebase.core.moments.MomentsAlbumZoom.entries) {
-            val cell = MomentsLayoutSpec.albumMinCellWidth(zoom)
-            val phoneColumns = (411 / cell.value).toInt()
-            assertEquals(
-                when (zoom) {
-                    id.homebase.core.moments.MomentsAlbumZoom.Day -> 3
-                    id.homebase.core.moments.MomentsAlbumZoom.Month -> 5
-                    id.homebase.core.moments.MomentsAlbumZoom.Year -> 8
-                },
-                phoneColumns,
-            )
+    fun albumKeepsPhoneColumnsOnEveryPhoneWidth() {
+        for (phoneWidth in 320..430) {
+            val grid = phoneWidth.dp - MomentsLayoutSpec.AlbumHorizontalPadding * 2
+            assertEquals(3, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Day, grid))
+            assertEquals(5, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Month, grid))
+            assertEquals(8, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Year, grid))
         }
+    }
+
+    @Test
+    fun albumAddsColumnsInsteadOfGrowingCellsAtTheFeedCap() {
+        val grid = MomentsLayoutSpec.FeedMaxWidth - MomentsLayoutSpec.AlbumHorizontalPadding * 2
+        assertEquals(4, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Day, grid))
+        assertEquals(7, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Month, grid))
+        assertEquals(11, MomentsLayoutSpec.albumColumnCount(MomentsAlbumZoom.Year, grid))
     }
 }

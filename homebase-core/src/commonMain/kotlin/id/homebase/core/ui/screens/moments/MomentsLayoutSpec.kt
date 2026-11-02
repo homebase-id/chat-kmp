@@ -7,6 +7,9 @@ import kotlin.uuid.Uuid
 
 internal object MomentsLayoutSpec {
     val FeedMaxWidth = 600.dp
+    val SelectionRingWidth = 3.dp
+    val AlbumCellSpacing = 2.dp
+    val AlbumHorizontalPadding = 4.dp
     val DockedCommentsRailWidth = CommentsRailWidth
     val MinDetailMediaWidth = 300.dp
     const val FeedPaneWidthFraction = 0.28f
@@ -24,7 +27,17 @@ internal object MomentsLayoutSpec {
     fun resolveSelection(current: Uuid?, newestFirstIds: List<Uuid>): Uuid? =
         if (current != null && current in newestFirstIds) current else newestFirstIds.firstOrNull()
 
-    fun albumMinCellWidth(zoom: MomentsAlbumZoom): Dp = when (zoom) {
+    fun albumColumnCount(zoom: MomentsAlbumZoom, gridWidth: Dp): Int {
+        val phoneColumns = when (zoom) {
+            MomentsAlbumZoom.Day -> 3
+            MomentsAlbumZoom.Month -> 5
+            MomentsAlbumZoom.Year -> 8
+        }
+        val fitted = (gridWidth + AlbumCellSpacing) / (albumMinCellWidth(zoom) + AlbumCellSpacing)
+        return maxOf(phoneColumns, fitted.toInt())
+    }
+
+    private fun albumMinCellWidth(zoom: MomentsAlbumZoom): Dp = when (zoom) {
         MomentsAlbumZoom.Day -> 120.dp
         MomentsAlbumZoom.Month -> 76.dp
         MomentsAlbumZoom.Year -> 48.dp

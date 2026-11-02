@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.moments
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -14,6 +15,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -35,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.ZeroCornerSize
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -66,7 +69,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,6 +83,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -213,6 +216,35 @@ fun MomentsScreen(
         uiState.viewMode
     }
 
+    MomentsAdaptiveContent(
+        uiState = uiState,
+        viewMode = effectiveViewMode,
+        onViewModeChange = viewModel::setViewMode,
+        onAlbumZoomChange = viewModel::setAlbumZoom,
+        onCreateMoment = onCreateMoment,
+        onProfileClick = onProfileClick,
+        onOpenMoment = onOpenMoment,
+        onAddReaction = viewModel::addReaction,
+        onDeleteFailedMoment = viewModel::deleteFailedMoment,
+        onDismissUpload = viewModel::dismissUpload,
+        detailPane = { momentId -> MomentDetailPaneHost(momentId) },
+    )
+}
+
+@Composable
+internal fun MomentsAdaptiveContent(
+    uiState: MomentsFeedUiState,
+    viewMode: MomentsViewMode,
+    onViewModeChange: (MomentsViewMode) -> Unit,
+    onAlbumZoomChange: (MomentsAlbumZoom) -> Unit,
+    onCreateMoment: () -> Unit,
+    onProfileClick: () -> Unit,
+    onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
+    onAddReaction: (Uuid, String) -> Unit,
+    onDeleteFailedMoment: (Uuid) -> Unit,
+    onDismissUpload: (Uuid) -> Unit,
+    detailPane: @Composable (Uuid) -> Unit,
+) {
     val listState = rememberLazyListState()
     var selectedMomentId by remember { mutableStateOf<Uuid?>(null) }
     val momentIds = remember(uiState.moments) { uiState.moments.map { it.id } }
@@ -222,7 +254,8 @@ fun MomentsScreen(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val availableWidth = maxWidth
-        val showPane = effectiveViewMode != MomentsViewMode.Reels &&
+        val showPane = viewMode != MomentsViewMode.Reels &&
+            momentIds.isNotEmpty() &&
             MomentsLayoutSpec.showsDetailPane(availableWidth)
         val feed: @Composable (Modifier) -> Unit = { feedModifier ->
             CompactMomentsLayout(
@@ -234,10 +267,10 @@ fun MomentsScreen(
                 connectionStatus = uiState.connectionStatus,
                 driveIsSyncing = uiState.driveIsSyncing,
                 hasDriveError = uiState.hasDriveError,
-                viewMode = effectiveViewMode,
-                onViewModeChange = viewModel::setViewMode,
+                viewMode = viewMode,
+                onViewModeChange = onViewModeChange,
                 albumZoom = uiState.albumZoom,
-                onAlbumZoomChange = viewModel::setAlbumZoom,
+                onAlbumZoomChange = onAlbumZoomChange,
                 onCreateMoment = onCreateMoment,
                 onProfileClick = onProfileClick,
                 onOpenMoment = if (showPane) {
@@ -245,9 +278,9 @@ fun MomentsScreen(
                 } else {
                     onOpenMoment
                 },
-                onAddReaction = viewModel::addReaction,
-                onDeleteFailedMoment = viewModel::deleteFailedMoment,
-                onDismissUpload = viewModel::dismissUpload,
+                onAddReaction = onAddReaction,
+                onDeleteFailedMoment = onDeleteFailedMoment,
+                onDismissUpload = onDismissUpload,
                 listState = listState,
                 selectedMomentId = if (showPane) effectiveSelectedId else null,
                 commentsSheetOnTap = !showPane,
@@ -255,18 +288,33 @@ fun MomentsScreen(
             )
         }
         if (showPane) {
-            Row(modifier = Modifier.fillMaxSize()) {
+            val motion = MaterialTheme.motionScheme
+            val paneShape = MaterialTheme.shapes.extraLarge.copy(
+                topEnd = ZeroCornerSize,
+                bottomEnd = ZeroCornerSize,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
                 feed(
                     Modifier
                         .width(MomentsLayoutSpec.feedPaneWidth(availableWidth))
                         .fillMaxHeight(),
                 )
-                VerticalDivider()
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    val current = effectiveSelectedId
-                    if (current != null) {
-                        MomentDetailPaneHost(momentId = current)
-                    }
+                AnimatedContent(
+                    targetState = effectiveSelectedId,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(paneShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                    transitionSpec = {
+                        fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec())
+                    },
+                ) { momentId ->
+                    if (momentId != null) detailPane(momentId)
                 }
             }
         } else {
@@ -283,17 +331,15 @@ fun MomentsScreen(
  */
 @Composable
 private fun MomentDetailPaneHost(momentId: Uuid) {
-    key(momentId) {
-        DisposableViewModelStoreOwner {
-            val detailVm: MomentDetailViewModel = koinViewModel(
-                key = "moment-detail-pane-$momentId",
-            ) { parametersOf(momentId, null) }
-            MomentDetailPane(
-                viewModel = detailVm,
-                onNavigateBack = null,
-                commentsDocked = true,
-            )
-        }
+    DisposableViewModelStoreOwner {
+        val detailVm: MomentDetailViewModel = koinViewModel(
+            key = "moment-detail-pane-$momentId",
+        ) { parametersOf(momentId, null) }
+        MomentDetailPane(
+            viewModel = detailVm,
+            onNavigateBack = null,
+            commentsDocked = true,
+        )
     }
 }
 
@@ -393,6 +439,7 @@ private fun CompactMomentsLayout(
                         onZoomChange = onAlbumZoomChange,
                         onOpenMoment = onOpenMoment,
                         pendingLocalPreviews = pendingLocalPreviews,
+                        selectedMomentId = selectedMomentId,
                         modifier = columnModifier,
                     ) }
                     MomentsViewMode.Reels -> MomentsReelsView(
@@ -842,6 +889,16 @@ private fun MomentPostCard(
     var failedSheetOpen by remember { mutableStateOf(false) }
     val failedSheetState = rememberModalBottomSheetState()
 
+    val selectionMotion = MaterialTheme.motionScheme
+    val selectionRing by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        animationSpec = selectionMotion.defaultEffectsSpec(),
+    )
+    val selectionTint by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        animationSpec = selectionMotion.defaultEffectsSpec(),
+    )
+
     // Floating-emoji feedback for double/triple-tap reactions. The same
     // controller backs the detail screen's reaction buttons, so adding a
     // heart in the feed and removing it on the detail screen produce
@@ -907,16 +964,13 @@ private fun MomentPostCard(
             }
             .padding(horizontal = 16.dp)
             .clip(MaterialTheme.shapes.large)
-            // Selected ring shows up in wide-screen mode where the right pane
-            // mirrors this card's contents. In compact mode `isSelected` is
-            // always false, so the background stays transparent.
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                else Color.Transparent,
-            )
+            .background(selectionTint)
+            // Media covers the tint edge to edge, so the ring is what marks the selection.
+            .border(MomentsLayoutSpec.SelectionRingWidth, selectionRing, MaterialTheme.shapes.large)
             // Talkback / accessibility services need a click action because
             // the raw pointerInput above isn't visible to them.
             .semantics {
+                if (isSelected) selected = true
                 onClick(label = onClickLabel) {
                     if (commentsSheetOnTap) {
                         onOpenComments(visiblePayloadKey)

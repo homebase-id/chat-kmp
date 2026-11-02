@@ -656,7 +656,7 @@ private const val MOMENT_COMMENTS_SHEET_FRACTION = 0.6f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailContent(
+internal fun DetailContent(
     uiState: MomentDetailUiState,
     onAction: (MomentDetailUiAction) -> Unit,
     onNavigateBack: (() -> Unit)?,

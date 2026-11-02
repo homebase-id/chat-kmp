@@ -1,9 +1,15 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,11 +28,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +84,7 @@ fun MomentsAlbumGrid(
     onZoomChange: (MomentsAlbumZoom) -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
+    selectedMomentId: Uuid? = null,
     modifier: Modifier = Modifier,
 ) {
     // Group + sort once per (moments, zoom) pair. Sorting newest-first inside
@@ -92,34 +100,45 @@ fun MomentsAlbumGrid(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         )
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(MomentsLayoutSpec.albumMinCellWidth(zoom)),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            grouped.forEach { group ->
-                item(
-                    key = "header-${group.key}",
-                    span = { GridItemSpan(maxLineSpan) },
-                    contentType = "album-header",
-                ) {
-                    AlbumDateHeader(
-                        label = group.label(),
-                        onClick = { onZoomChange(zoom.cycleOut()) },
-                    )
-                }
-                items(
-                    items = group.moments,
-                    key = { it.id },
-                    contentType = { "album-cell" },
-                ) { moment ->
-                    AlbumMomentCell(
-                        moment = moment,
-                        pendingLocalPreviewModel = pendingLocalPreviews[moment.id],
-                        onClick = { onOpenMoment(moment.id.toString(), null) },
-                    )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(
+                    MomentsLayoutSpec.albumColumnCount(
+                        zoom,
+                        maxWidth - MomentsLayoutSpec.AlbumHorizontalPadding * 2,
+                    ),
+                ),
+                verticalArrangement = Arrangement.spacedBy(MomentsLayoutSpec.AlbumCellSpacing),
+                horizontalArrangement = Arrangement.spacedBy(MomentsLayoutSpec.AlbumCellSpacing),
+                contentPadding = PaddingValues(
+                    horizontal = MomentsLayoutSpec.AlbumHorizontalPadding,
+                    vertical = 4.dp,
+                ),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                grouped.forEach { group ->
+                    item(
+                        key = "header-${group.key}",
+                        span = { GridItemSpan(maxLineSpan) },
+                        contentType = "album-header",
+                    ) {
+                        AlbumDateHeader(
+                            label = group.label(),
+                            onClick = { onZoomChange(zoom.cycleOut()) },
+                        )
+                    }
+                    items(
+                        items = group.moments,
+                        key = { it.id },
+                        contentType = { "album-cell" },
+                    ) { moment ->
+                        AlbumMomentCell(
+                            moment = moment,
+                            pendingLocalPreviewModel = pendingLocalPreviews[moment.id],
+                            isSelected = moment.id == selectedMomentId,
+                            onClick = { onOpenMoment(moment.id.toString(), null) },
+                        )
+                    }
                 }
             }
         }
@@ -181,9 +200,19 @@ private fun AlbumDateHeader(
 private fun AlbumMomentCell(
     moment: MomentFeedItem,
     pendingLocalPreviewModel: Any?,
+    isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val cellShape: Shape = RectangleShape
+    val motion = MaterialTheme.motionScheme
+    val cornerRadius by animateDpAsState(
+        targetValue = if (isSelected) 16.dp else 0.dp,
+        animationSpec = motion.defaultSpatialSpec(),
+    )
+    val ringColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        animationSpec = motion.defaultEffectsSpec(),
+    )
+    val cellShape: Shape = RoundedCornerShape(cornerRadius)
     val firstImagePayload = remember(moment.payloads) {
         moment.payloads.firstOrNull { it.isRenderableImage() }
             ?: moment.payloads.firstOrNull()
@@ -193,7 +222,9 @@ private fun AlbumMomentCell(
             .aspectRatio(1f)
             .clip(cellShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            .clickable(onClick = onClick),
+            .border(MomentsLayoutSpec.SelectionRingWidth, ringColor, cellShape)
+            .clickable(onClick = onClick)
+            .semantics { if (isSelected) selected = true },
     ) {
         if (firstImagePayload == null && pendingLocalPreviewModel != null) {
             // Placeholder window: row exists locally but thumbnails haven't
