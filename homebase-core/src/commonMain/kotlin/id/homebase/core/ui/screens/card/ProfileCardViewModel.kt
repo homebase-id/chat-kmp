@@ -654,7 +654,7 @@ class ProfileCardViewModel(
         viewModelScope.launch {
             load(force = true)
             loadJob?.join()
-            val card = _uiState.value.cards.firstOrNull { (it.audience as? CardAudience.Circle)?.let { c -> compareStringUuId(c.id, id) } == true }
+            val card = _uiState.value.cards.firstOrNull { it.audience.isSameAs(CardAudience.Circle(id, "")) }
                 ?: return@launch
             selectAudience(card.audience)
             if (openEditor) _events.tryEmit(ProfileCardEvent.OpenContentEditor)

@@ -20,6 +20,7 @@ import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.core.ui.screens.card.ownPhotoFor
 import id.homebase.core.ui.screens.card.profileCards
 import id.homebase.core.ui.screens.card.contactsCircles
+import id.homebase.core.ui.screens.card.isSameAs
 import id.homebase.core.ui.screens.card.shownOn
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.audience
@@ -82,7 +83,7 @@ class UserCircleService(private val backend: UserCircleBackend) {
         val removed = mutableSetOf<Uuid>()
 
         attributes.profileCards()
-            .filter { (it.audience as? CardAudience.Circle)?.let { c -> compareStringUuId(c.id, circleId) } == true }
+            .filter { it.audience.isSameAs(target) }
             .forEach { card ->
                 backend.deleteOrThrow(card.id, card.versionTag)
                 removed += card.id
