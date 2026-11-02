@@ -17,8 +17,9 @@ internal fun chatChipPreviewKind(
 
 /** A name for the decrypted copy that is unique to the payload and safe in a URI; the sender's name only lends its extension. */
 internal fun decryptedCopyName(fileId: Uuid, payloadKey: String, senderName: String?, contentType: String?): String {
-    val ext = senderName?.substringAfterLast('.', "")?.takeIf { it.isNotEmpty() && it.length <= 10 && it.all(Char::isLetterOrDigit) }
-        ?: contentType?.let { extensionForMimeType(it) ?: it.substringAfter('/', "").takeIf { s -> s.isNotEmpty() && s.length <= 10 && s.all(Char::isLetterOrDigit) } }
+    fun String.safeExt() = takeIf { it.isNotEmpty() && it.length <= 10 && it.all(Char::isLetterOrDigit) }
+    val ext = senderName?.substringAfterLast('.', "")?.safeExt()
+        ?: contentType?.let { extensionForMimeType(it) ?: it.substringAfter('/', "").safeExt() }
         ?: "bin"
     return "preview_${fileId}_${payloadKey.map { if (it.isLetterOrDigit() || it == '_' || it == '-') it else '_' }.joinToString("")}.$ext"
 }
