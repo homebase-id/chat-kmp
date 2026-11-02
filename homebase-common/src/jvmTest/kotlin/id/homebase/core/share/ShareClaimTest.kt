@@ -85,4 +85,15 @@ class ShareClaimTest {
         assertTrue(exists(pending))
         assertTrue(processor.readPendingContent() != null)
     }
+
+    @Test
+    fun discardShareRemovesAPartiallyStagedDirectoryAndNothingElse() = runBlocking<Unit> {
+        val partial = stage("a", "report.pdf")
+        val other = stage("b", "report.pdf")
+
+        processor.discardShare("a")
+
+        assertTrue(!exists(partial))
+        assertTrue(exists(other))
+    }
 }
