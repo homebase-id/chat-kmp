@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.wholePercentBytes
 import id.homebase.api.client.drives.files.SecurityGroupType
+import id.homebase.api.client.UploadProgress
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
@@ -28,11 +29,16 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Creates nodes the way the desktop engine does (filesync hbsync-homebase drive/mod.rs). */
-class FilesyncUploader(
-    private val driveUploadProvider: DriveUploadProvider,
+class FilesyncUploader internal constructor(
+    private val sendUpload: suspend (UploadFileRequest, UploadProgress?) -> Unit,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val clock: Clock = Clock.System,
+    private val clock: Clock,
 ) {
+    constructor(
+        driveUploadProvider: DriveUploadProvider,
+        fileOperationsProvider: FileOperationsProvider,
+        clock: Clock = Clock.System,
+    ) : this({ request, progress -> driveUploadProvider.uploadFile(request, onProgress = progress) }, fileOperationsProvider, clock)
 
     suspend fun createFolder(parentId: Uuid, name: String) {
         create(Uuid.random(), parentId, FilesyncProtocol.FolderFileType, FilesyncNodeContent(v = CONTENT_VERSION, name = name), KeyHeader.newRandom16())
@@ -108,7 +114,7 @@ class FilesyncUploader(
         // The node id is new to this upload and kept across every retry, the user's too: a 4105 can only mean an earlier attempt landed.
         withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) {
             try {
-                driveUploadProvider.uploadFile(request, onProgress = onProgress?.let(::wholePercentBytes))
+                sendUpload(request, onProgress?.let(::wholePercentBytes))
             } catch (e: ClientException) {
                 if (!e.isExistingFileWithUniqueId()) throw e
                 Logger.i(tag = TAG) { "node $nodeId already landed on an earlier attempt" }

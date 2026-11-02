@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.createImageThumbnail
 import id.homebase.api.image.tinyThumbSize
 import id.homebase.api.serialization.Base64Bytes
@@ -15,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 private const val TAG = "FilesyncThumbnail"
 private const val PDF_RENDER_WIDTH = 320
 private const val MAX_SOURCE_BYTES = 64L * 1024 * 1024
+private const val MAX_SOURCE_PIXELS = 40L * 1000 * 1000
 
 /** The tiny preview an image or PDF goes up with, or null: a preview never decides whether a file uploads. */
 internal suspend fun filesyncEmbeddedPreview(
@@ -31,6 +33,7 @@ internal suspend fun filesyncEmbeddedPreview(
         } else {
             fileOperations.readFileBytes(sourcePath)
         } ?: return null
+        if (kind == FileKind.Image && !withinPixelBudget(raster)) return null
         val tiny = createImageThumbnail(raster, FilesyncProtocol.PayloadKey, tinyThumbSize, isTinyThumb = true)
         EmbeddedThumb(tiny.pixelWidth, tiny.pixelHeight, tiny.contentType, Base64Bytes(tiny.thumbnailBytes))
     } catch (e: CancellationException) {
@@ -38,5 +41,14 @@ internal suspend fun filesyncEmbeddedPreview(
     } catch (e: Exception) {
         Logger.w(e, TAG) { "no preview for $name" }
         null
+    } catch (e: OutOfMemoryError) {
+        Logger.w(e, TAG) { "no preview for $name: out of memory" }
+        null
     }
+}
+
+// Header-only: getNaturalSize decodes the whole image on skia. An unparseable header (HEIC) gets no preview rather than a blind decode.
+private fun withinPixelBudget(bytes: ByteArray): Boolean {
+    val size = ImageHeaderParser.parse(bytes.copyOf(minOf(bytes.size, 64 * 1024))) ?: return false
+    return size.pixelWidth.toLong() * size.pixelHeight <= MAX_SOURCE_PIXELS
 }

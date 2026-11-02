@@ -146,6 +146,64 @@ class FilesyncUploaderTest {
         assertEquals(thumb, metadata.appData.previewThumbnail)
     }
 
+    private fun hugePng(name: String, side: Int): String {
+        val file = File(tempDir, name)
+        fun chunk(out: java.io.DataOutputStream, type: String, data: ByteArray) {
+            out.writeInt(data.size)
+            val body = type.toByteArray() + data
+            out.write(body)
+            out.writeInt(java.util.zip.CRC32().also { it.update(body) }.value.toInt())
+        }
+        java.io.DataOutputStream(file.outputStream().buffered()).use { out ->
+            out.write(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+            val ihdr = java.nio.ByteBuffer.allocate(13).putInt(side).putInt(side).put(1).put(0).put(0).put(0).put(0).array()
+            chunk(out, "IHDR", ihdr)
+            val deflater = java.util.zip.Deflater(9)
+            val compressed = java.io.ByteArrayOutputStream()
+            java.util.zip.DeflaterOutputStream(compressed, deflater).use { z ->
+                val row = ByteArray(1 + (side + 7) / 8)
+                repeat(side) { z.write(row) }
+            }
+            chunk(out, "IDAT", compressed.toByteArray())
+            chunk(out, "IEND", ByteArray(0))
+        }
+        return file.path
+    }
+
+    @Test
+    fun aSmallFileWithHugeDimensionsGetsNoPreviewInsteadOfADecode() = runTest {
+        val path = hugePng("huge.png", 30_000)
+        assertTrue(File(path).length() < 1_000_000)
+
+        assertNull(filesyncEmbeddedPreview(path, "huge.png", fileOps))
+    }
+
+    @Test
+    fun aPdfGetsATinyEmbeddedPreview() = runTest {
+        val pdf = File(tempDir, "doc.pdf")
+        pdf.writeText(
+            "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+                "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R/Size 4>>\n%%EOF\n",
+        )
+
+        val preview = filesyncEmbeddedPreview(pdf.path, "doc.pdf", fileOps)
+
+        assertNotNull(preview?.content)
+        assertTrue(preview!!.content!!.bytes.size <= 1024)
+    }
+
+    @Test
+    fun uploadingAnImageSendsItsPreviewOnTheNodeHeader() = runTest {
+        val sent = mutableListOf<id.homebase.api.client.drives.upload.UploadFileRequest>()
+        val spy = FilesyncUploader({ request, _ -> sent += request }, fileOps, kotlin.time.Clock.System)
+
+        spy.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, realImage("pic.png", "png"), "pic.png", null) {}
+
+        val preview = sent.single().metadata.appData.previewThumbnail
+        assertNotNull(preview?.content)
+        assertTrue(preview!!.content!!.bytes.size <= 1024)
+    }
+
     @Test
     fun aRetryAnsweredWith4105MeansTheFirstAttemptLanded() = runTest {
         responses = mutableListOf(dropped, clientError(4105))
