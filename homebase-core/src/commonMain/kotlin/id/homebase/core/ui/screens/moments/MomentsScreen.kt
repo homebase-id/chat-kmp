@@ -317,18 +317,23 @@ internal fun MomentsAdaptiveContent(
                 modifier = feedModifier,
             )
         }
-        if (showPane) {
-            val motion = MaterialTheme.motionScheme
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            ) {
-                feed(
+        val motion = MaterialTheme.motionScheme
+        // One Row for both layouts: moving the feed between call sites would dispose its open sheet mid-layout.
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (showPane) Modifier.background(MaterialTheme.colorScheme.background) else Modifier),
+        ) {
+            feed(
+                if (showPane) {
                     Modifier
                         .width(MomentsLayoutSpec.feedPaneWidth(availableWidth))
-                        .fillMaxHeight(),
-                )
+                        .fillMaxHeight()
+                } else {
+                    Modifier.fillMaxSize()
+                },
+            )
+            if (showPane) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -358,8 +363,6 @@ internal fun MomentsAdaptiveContent(
                     }
                 }
             }
-        } else {
-            feed(Modifier.fillMaxSize())
         }
     }
 }

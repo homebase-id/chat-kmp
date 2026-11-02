@@ -21,6 +21,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -33,7 +34,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import androidx.compose.ui.platform.LocalViewConfiguration
 import coil3.ImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.size.Size
@@ -84,6 +92,10 @@ fun ZoomableSubSamplingImage(
     }
     val zoomState = rememberCoilZoomState(subsamplingImageGenerators = generators)
     zoomState.zoomable.setKeepTransformWhenSameAspectRatioContentSizeChanged(true)
+    val tapScope = rememberCoroutineScope()
+    val doubleTapTimeout = LocalViewConfiguration.current.doubleTapTimeoutMillis
+    var pendingTap by remember { mutableStateOf<Job?>(null) }
+    var lastDoubleTap by remember { mutableStateOf<TimeMark?>(null) }
     zoomState.zoomable.setDisabledGestureTypes(
         if (onDoubleTap != null) GestureType.DOUBLE_TAP_SCALE else 0,
     )
@@ -182,7 +194,19 @@ fun ZoomableSubSamplingImage(
                 onLoaded?.invoke()
             },
             onError = onError?.let { callback -> { _ -> callback() } },
-            onTap = onTap?.let { callback -> { _: Offset -> callback() } },
+            onTap = onTap?.let { callback ->
+                { _: Offset ->
+                    if (onDoubleTap == null) {
+                        callback()
+                    } else if (lastDoubleTap?.elapsedNow()?.let { it < DOUBLE_TAP_ECHO } != true) {
+                        pendingTap?.cancel()
+                        pendingTap = tapScope.launch {
+                            delay(doubleTapTimeout)
+                            callback()
+                        }
+                    }
+                }
+            },
         )
     }
 
@@ -223,7 +247,11 @@ fun ZoomableSubSamplingImage(
     } else {
         modifier.fillMaxSize()
     }.let { base ->
-        if (onDoubleTap == null) base else base.passiveDoubleTap { currentOnDoubleTap?.invoke() }
+        if (onDoubleTap == null) base else base.passiveDoubleTap {
+            pendingTap?.cancel()
+            lastDoubleTap = TimeSource.Monotonic.markNow()
+            currentOnDoubleTap?.invoke()
+        }
     }
     val innerSizing = if (useAspectHero) {
         Modifier
@@ -375,6 +403,7 @@ private fun ReportZoomedState(
 }
 
 private const val USER_SCALE_EPSILON = 1.01f
+private val DOUBLE_TAP_ECHO = 150.milliseconds
 
 private fun Modifier.passiveDoubleTap(onDoubleTap: () -> Unit): Modifier = pointerInput(Unit) {
     awaitEachGesture {
