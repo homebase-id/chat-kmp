@@ -24,6 +24,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 
 /** A 216 tap through the real handler: it opens the view-once viewer or nothing, never a generic viewer. */
@@ -202,6 +206,26 @@ class ViewOnceMediaClickedTest {
             h.handler.handleViewOnceReply(ConversationListUiAction.ViewOnceReply(kotlin.uuid.Uuid.random()))
 
             assertNull(h.messages.value.replyToMessage)
+        }
+    }
+
+    private suspend fun TestScope.requestsAfterDecrypts(fixture: ChatMessageActionServiceTestFixture, taps: Int): Int {
+        val h = harness(this, fixture, mobile = true)
+        val m = incoming()
+        h.messages.value = MessageListUiState(messages = persistentListOf(MessageListContentModel.Message(m)))
+        repeat(taps) { h.handler.handleDecryptFile(ConversationListUiAction.DecryptFile(m.id, VIEW_ONCE_PAYLOAD_KEY)) }
+        runCurrent()
+        withContext(Dispatchers.Default) { delay(1500) }
+        runCurrent()
+        return h.server.requests
+    }
+
+    @Test
+    fun aSecondDecryptForTheSameChipWhileOneIsRunningIsSkipped() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val one = requestsAfterDecrypts(fixture, 1)
+            assertTrue(one > 0, "a single decrypt must reach the server")
+            assertEquals(one, requestsAfterDecrypts(fixture, 2))
         }
     }
 }

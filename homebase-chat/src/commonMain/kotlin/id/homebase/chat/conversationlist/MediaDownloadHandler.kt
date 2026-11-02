@@ -323,11 +323,14 @@ internal class MediaDownloadHandler(
         }
     }
 
+    private val decryptsInFlight = mutableSetOf<String>()
+
     fun handleDecryptFile(action: ConversationListUiAction.DecryptFile) {
         val message =
             messagesUiState.value.messageById(action.messageId) ?: return
 
         val fileKey = "${message.id}_${action.payloadKey}"
+        if (!decryptsInFlight.add(fileKey)) return
 
         scope.launch {
             try {
@@ -383,6 +386,7 @@ internal class MediaDownloadHandler(
                     ShowErrorMessage(MR.string.chat_error_downloading_file_detail, e.message ?: "")
                 )
             } finally {
+                decryptsInFlight.remove(fileKey)
                 // 4. Remove from downloadingFiles set
                 uiState.update {
                     it.copy(downloadingFiles = it.downloadingFiles - fileKey)
