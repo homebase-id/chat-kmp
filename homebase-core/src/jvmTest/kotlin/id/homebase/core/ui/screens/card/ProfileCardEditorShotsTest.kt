@@ -336,6 +336,9 @@ class ProfileCardEditorShotsTest {
         }),
     )
 
+    private fun polishCustomise(name: String, state: ProfileCardUiState, act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = act)
+
     private val polishShots = listOf(
         editor("p01-edit-profile-new-circle", editorBase, newCircle = true),
         editor("p02-edit-profile-preview", editorBase, act = {
@@ -350,6 +353,15 @@ class ProfileCardEditorShotsTest {
             heightDp = REDMI_H,
             act = tool("Content style"),
         ),
+        polishCustomise("p09-accent-dark-scheme", schemed, tool("Accent colour")),
+        polishCustomise("p10-accent-light-scheme", collageSchemed, tool("Accent colour")),
+        polishCustomise("p11-accent-default-scheme", base, tool("Accent colour")),
+        polishCustomise(
+            "p12-accent-saved-off-palette",
+            base.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45").with(CardOption.ACCENT, "#123456")),
+            tool("Accent colour"),
+        ),
+        polishCustomise("p13-colours-row", schemed),
     )
 
     @Test

@@ -203,6 +203,7 @@ internal const val LARGE_TEXT_SCALE = 1.3f
 private val SWATCH_SIZE = 36.dp
 private val SWATCH_TARGET = 48.dp
 private val INK_DOT_SIZE = 12.dp
+private val ACCENT_DOT_SIZE = 20.dp
 private val SHAPE_SEGMENT_MIN_WIDTH = 56.dp
 private val GLYPH_SIZE = 20.dp
 private val TOOL_SIZE = 48.dp
@@ -274,7 +275,7 @@ private fun OptionControl(
 ) {
     when (option) {
         CardOption.COLOURS -> SchemeRow(design, overrides.valueOf(option), enabled) { onOption(option, it) }
-        CardOption.ACCENT -> SwatchRow(CardDesignSpecs.accentsFor(design, overrides.valueOf(CardOption.COLOURS)), overrides.valueOf(option), enabled) { onOption(option, it) }
+        CardOption.ACCENT -> SwatchRow(design, overrides.valueOf(CardOption.COLOURS), overrides.valueOf(option), enabled) { onOption(option, it) }
         CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder().filter { it in orderable }, enabled, chipHeight) {
             onBlockOrder(overrides.withShownBlockOrder(orderable, it).blockOrder())
         }
@@ -523,7 +524,7 @@ private fun fontPreviewStyle(font: String?): TextStyle {
 @Composable
 private fun SchemeRow(design: String, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
     val schemes = CardDesignSpecs.of(design)?.schemes.orEmpty()
-    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET) {
+    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
         Swatch(
             fill = Color(CardDesign.baseArgb(design)),
             selected = selected == null || schemes.none { it.ground.equals(selected, ignoreCase = true) },
@@ -544,40 +545,44 @@ private fun SchemeRow(design: String, selected: String?, enabled: Boolean, onSel
 }
 
 @Composable
-private fun InkDot(ink: Color) {
-    Box(Modifier.size(INK_DOT_SIZE).background(ink, CircleShape))
+private fun InkDot(ink: Color, size: Dp = INK_DOT_SIZE) {
+    Box(Modifier.size(size).background(ink, CircleShape))
 }
 
+// Accents are curated per ground and vanish on the app's own surface, so each is shown on the scheme it is meant for.
 @Composable
-private fun SwatchRow(accents: List<String>, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
+private fun SwatchRow(design: String, colours: String?, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
+    val scheme = CardDesignSpecs.of(design)?.schemes?.firstOrNull { it.ground.equals(colours, ignoreCase = true) }
+    val ground = Color(scheme?.let { hexToArgb(it.ground) } ?: CardDesign.baseArgb(design))
+    val ink = Color(scheme?.let { hexToArgb(it.ink) } ?: CardDesign.inkArgb(design))
+    val accents = CardDesignSpecs.accentsFor(design, colours)
     val saved = selected?.takeIf { s -> accents.none { it.equals(s, ignoreCase = true) } }
     val values = listOf<String?>(null) + listOfNotNull(saved) + accents
-    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET) {
+    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
         values.forEach { hex ->
             if (hex == null) {
                 Swatch(
-                    fill = MaterialTheme.colorScheme.surfaceVariant,
+                    fill = ground,
                     selected = selected == null,
                     enabled = enabled,
                     description = stringResource(MR.string.profile_card_option_default),
                     onClick = { onSelect(null) },
-                ) { NoColourSlash() }
+                ) { NoColourSlash(ink) }
             } else {
                 Swatch(
-                    fill = Color(hexToArgb(hex)),
+                    fill = ground,
                     selected = selected.equals(hex, ignoreCase = true),
                     enabled = enabled,
                     description = stringResource(MR.string.profile_card_option_accent_swatch, hex),
                     onClick = { onSelect(hex) },
-                )
+                ) { InkDot(Color(hexToArgb(hex)), ACCENT_DOT_SIZE) }
             }
         }
     }
 }
 
 @Composable
-private fun NoColourSlash() {
-    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+private fun NoColourSlash(ink: Color) {
     Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
         drawLine(
             color = ink,
