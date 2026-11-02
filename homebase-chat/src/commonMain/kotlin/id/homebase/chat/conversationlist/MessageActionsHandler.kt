@@ -1026,6 +1026,9 @@ internal class MessageActionsHandler(
                         )
                     }
 
+                attachments.firstOrNull { !fileOperationsProvider.sourceExists(it.filePath) }
+                    ?.let { throw SourceUnavailableException(it.filePath) }
+
                 val sentAt = UnixTimeUtc.now()
 
                 // Awaited, not launched: the finally below deletes the shared files being encoded.
