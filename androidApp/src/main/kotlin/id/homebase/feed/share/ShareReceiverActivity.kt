@@ -206,8 +206,13 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             if (rawContent == null) "initShareFlow: extract() returned null"
             else "initShareFlow: extract() files=${rawContent.files.size} hasText=${rawContent.hasText} textLen=${rawContent.text?.length ?: 0}"
         }
+        if (rawContent != null && rawContent.failedFileCount > 0) {
+            Toast.makeText(this, getString(R.string.share_file_unavailable), Toast.LENGTH_LONG).show()
+        }
         if (rawContent == null || rawContent.isEmpty) {
-            Toast.makeText(this, getString(R.string.share_nothing_to_share), Toast.LENGTH_SHORT).show()
+            if (rawContent == null || rawContent.failedFileCount == 0) {
+                Toast.makeText(this, getString(R.string.share_nothing_to_share), Toast.LENGTH_SHORT).show()
+            }
             finish()
             return
         }
