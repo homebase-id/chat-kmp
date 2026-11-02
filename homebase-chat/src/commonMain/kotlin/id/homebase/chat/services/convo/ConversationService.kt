@@ -1406,7 +1406,7 @@ class ConversationService(
         // Behind the tag write, as in archive: the first write's server echo replaces the local row.
         audit.step(4, "stampConversationExitedAt + tryEnqueue(dep=$tagWrite)")
         optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
-            ?.let { outboxSync.tryEnqueue(it, dependencyUniqueId = tagWrite) }
+            ?.let { outboxSync.enqueueLatest(it, dependencyUniqueId = tagWrite) }
         audit.finish()
     }
 
@@ -1822,7 +1822,7 @@ class ConversationService(
      *  "never auto-unarchive" instead of a stale timestamp. */
     private suspend fun stampArchivedAt(conversationId: Uuid, at: UnixTimeUtc?, dependencyUniqueId: Uuid?) {
         optimisticWriter.stampConversationArchivedAt(chatDrive, conversationId, at)
-            ?.let { outboxSync.tryEnqueue(it, dependencyUniqueId = dependencyUniqueId) }
+            ?.let { outboxSync.enqueueLatest(it, dependencyUniqueId = dependencyUniqueId) }
     }
 
     suspend fun unarchiveConversation(conversationId: Uuid) {
@@ -2763,7 +2763,11 @@ class ConversationService(
         val request = optimisticWriter
             .stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
             ?: return@withLock
-        outboxSync.tryEnqueue(request)
+        val result = outboxSync.enqueueLatest(request)
+        if (result is EnqueueResult.Failed) {
+            Logger.w(throwable = result.cause) { "updateLocalDraft: enqueue failed for convo=$conversationId, will retry on next save" }
+            return@withLock
+        }
         lastPersistedDraft = conversationId to capped
     }
 
@@ -2787,8 +2791,12 @@ class ConversationService(
     suspend fun clearLocalDraft(conversationId: Uuid): Unit = draftMutex.withLock {
         lastPersistedDraft = conversationId to null
         if (readPersistedDraft(conversationId) == null) return@withLock
-        optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
-            ?.let { outboxSync.tryEnqueue(it) }
+        val request = optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
+            ?: return@withLock
+        val result = outboxSync.enqueueLatest(request)
+        if (result is EnqueueResult.Failed) {
+            Logger.w(throwable = result.cause) { "clearLocalDraft: enqueue failed for convo=$conversationId" }
+        }
     }
 
     /**
@@ -2854,12 +2862,9 @@ class ConversationService(
                     }
                     continue
                 }
-                // AlreadyQueued is expected and benign: the queued row picks up
-                // the latest localAppData when it drains, so the writeback still
-                // lands. A real Failed means nothing is queued — leave the
-                // conversation dirty so the next debounce flush retries instead
-                // of silently losing the writeback.
-                val result = outboxSync.tryEnqueue(request)
+                // A queued row carries the snapshot from when it was queued, so enqueueLatest
+                // supersedes it. Only a real Failed leaves the conversation dirty for a retry.
+                val result = outboxSync.enqueueLatest(request)
                 if (!result.enqueued && result != EnqueueResult.AlreadyQueued) {
                     Logger.w(tag = "MarkAsRead") {
                         "ConversationService.flushDirtyLastRead: enqueue → $result for convo=$id — left dirty, will retry next flush"
