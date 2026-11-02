@@ -210,6 +210,41 @@ class ZkDriveFilesTest {
         assertEquals(fileKey, zkDrive.open(email, SecureByteArray(sharedSecret)))
     }
 
+    @Test
+    fun aCommentWithItsFilesKeySendsItsOwnIvAndNoKey() = runTest {
+        unlockVault()
+        val comment = KeyHeader(ByteArrayUtil.getRndByteArray(16), KeyHeader.newRandom16().aesKey)
+
+        val locked = lockKeyHeader(comment, vault, sharedSecret, ByteArrayUtil.getRndByteArray(16), withCommentedFileKey = true)
+        assertEquals(EncryptionType.FileKey, locked.type)
+        assertEquals(1, locked.encryptionVersion)
+        assertContentEquals(comment.iv, locked.iv)
+        assertEquals(0, locked.encryptedAesKey.size)
+        assertTrue(""""type":"fileKey"""" in OdinSystemSerializer.serialize(locked))
+    }
+
+    @Test
+    fun aCommentFromTheServerOpensWithTheKeyOfTheFileItCommentsOn() = runTest {
+        val file = KeyHeader.newRandom16()
+        val iv = ByteArrayUtil.getRndByteArray(16)
+        val content = Base64.encode(KeyHeader(iv, file.aesKey).encryptDataAes("""{"body":"nice"}""".encodeToByteArray()))
+        val json = """
+            {
+              "fileId": "${Uuid.random()}",
+              "driveId": "$vault",
+              "fileState": "active",
+              "fileSystemType": "comment",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "fileKey", "iv": "${Base64.encode(iv)}", "encryptedAesKey": "" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 801, "content": "$content" } },
+              "serverMetadata": {}
+            }
+        """
+        val serverFile = OdinSystemSerializer.deserialize<ServerFile>(json)
+
+        assertEquals("""{"body":"nice"}""", serverFile.asHomebaseFile(SecureByteArray(sharedSecret), file.aesKey).fileMetadata.appData.content)
+        assertFailsWith<FileDecryptionException.KeyHeaderDecryptionFailed> { serverFile.asHomebaseFile(SecureByteArray(sharedSecret)) }
+    }
+
     private suspend fun unlockVault() {
         ZkKeyStore.saveAppKey(appKey)
         ZkKeyStore.openDriveKeys(context())

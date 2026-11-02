@@ -78,6 +78,8 @@ data class FilesyncUiState(
     val movePicker: FilesyncMovePicker? = null,
     /** What Share asks a target for. */
     val shareChooser: List<FilesyncNode>? = null,
+    /** The reactions and comments of the file the info pane shows. */
+    val discussion: FilesyncDiscussion? = null,
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
 
@@ -198,9 +200,20 @@ sealed interface FilesyncUiAction {
     data object DismissMove : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
+    /** The info pane shows [node]: its reactions and comments load once. */
+    data class ShowDiscussion(val node: FilesyncNode) : FilesyncDiscussionAction
+    /** Adds [emoji] as one of the user's reactions, or takes it away if it is one. */
+    data class ToggleReaction(val emoji: String) : FilesyncDiscussionAction
+    data object SendComment : FilesyncDiscussionAction
 }
 
-enum class FilesyncError { MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed, SignInAgainFailed }
+/** What the info pane does in place: the phone's info sheet stays open for these. */
+sealed interface FilesyncDiscussionAction : FilesyncUiAction
+
+enum class FilesyncError {
+    MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
+    SignInAgainFailed, ReactionFailed, CommentFailed,
+}
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
 enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon }

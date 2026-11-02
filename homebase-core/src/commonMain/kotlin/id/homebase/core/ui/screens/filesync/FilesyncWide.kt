@@ -308,7 +308,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         pane = {
             val selected = uiState.selected
             if (selected.size == 1) {
-                FilesyncInfoContent(selected.single(), crumbNames(uiState.path), scope.onAction)
+                FilesyncInfoContent(selected.single(), crumbNames(uiState.path), uiState.discussion, scope.commentDraft, scope.onAction)
             } else if (selected.isNotEmpty()) {
                 FilesyncSelectionContent(uiState, scope.onAction)
             } else {

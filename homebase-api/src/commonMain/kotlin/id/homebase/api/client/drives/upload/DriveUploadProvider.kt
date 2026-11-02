@@ -61,7 +61,9 @@ data class UploadFileRequest(
     val payloads: List<PayloadFile> = emptyList(),
     val thumbnails: List<ThumbnailFile> = emptyList(),
     val transitOptions: TransitOptions? = null,
-    val fileSystemType: FileSystemType? = null
+    val fileSystemType: FileSystemType? = null,
+    /** A comment on a SelectiveShare drive: [keyHeader] is the commented file's key with the comment's own IV. */
+    val withCommentedFileKey: Boolean = false,
 )
 
 @Serializable
@@ -154,7 +156,7 @@ class DriveUploadProvider(
 
         val transferIv = ByteArrayUtil.getRndByteArray(16)
         val sharedSecretEncryptedDescriptor = buildSharedSecretEncryptedUploadDescriptor(
-            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv),
+            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv, request.withCommentedFileKey),
             request.metadata,
             sharedSecret,
             transferIv = transferIv,
@@ -410,7 +412,7 @@ class DriveUploadProvider(
         val queryParams =
             buildMap {
                 if (fileSystemType != null) {
-                    put("xsft", fileSystemType.toString())
+                    put("xfst", fileSystemType.toString())
                 }
             }
 

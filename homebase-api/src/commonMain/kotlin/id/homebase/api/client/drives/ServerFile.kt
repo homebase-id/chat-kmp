@@ -31,7 +31,7 @@ data class ServerFile(
     val priority: Int = 0,
     val fileByteCount: Long = 0
 ) {
-    suspend fun asHomebaseFile(sharedSecret: SecureByteArray): HomebaseFile {
+    suspend fun asHomebaseFile(sharedSecret: SecureByteArray, commentedFileKey: SecureByteArray? = null): HomebaseFile {
         val resolvedKeyHeader: KeyHeader
         var resolvedMetadata: FileMetadata
         var serverFileIsEncrypted: Boolean = false
@@ -45,7 +45,7 @@ data class ServerFile(
             }
 
             resolvedKeyHeader = try {
-                sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret)
+                sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret, commentedFileKey)
             } catch (e: Throwable) {
                 throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             }
@@ -79,13 +79,16 @@ data class ServerFile(
 
 /**
  * Opens a key header as the server returns it: locked with the shared secret, or on a zero-knowledge drive with
- * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write).
+ * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write), or a comment's
+ * IV for [commentedFileKey].
  */
-suspend fun EncryptedKeyHeader.open(driveId: Uuid, sharedSecret: SecureByteArray): KeyHeader = when (type) {
-    EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
-    EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
-    EncryptionType.Sealed -> openSealed(driveId)
-}
+suspend fun EncryptedKeyHeader.open(driveId: Uuid, sharedSecret: SecureByteArray, commentedFileKey: SecureByteArray? = null): KeyHeader =
+    when (type) {
+        EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
+        EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
+        EncryptionType.Sealed -> openSealed(driveId)
+        EncryptionType.FileKey -> KeyHeader(iv, SecureByteArray((commentedFileKey ?: throw FileDecryptionException.NoFileKey()).unsafeBytes.copyOf()))
+    }
 
 // The sealed value is the file's IV then its AES key, as odin-js openClientLockedKeyHeader reads it.
 private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
@@ -96,10 +99,19 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
 
 /**
  * Locks [keyHeader] for an upload to [driveId]: with the shared secret under [transferIv], which the server
- * re-locks with the drive key; or on a zero-knowledge drive with its key under the file's own IV, stored as sent.
+ * re-locks with the drive key; or on a zero-knowledge drive with its key under the file's own IV, stored as sent;
+ * or, [withCommentedFileKey], as the IV alone, the key being the commented file's.
  */
-suspend fun lockKeyHeader(keyHeader: KeyHeader?, driveId: Uuid, sharedSecret: ByteArray, transferIv: ByteArray): EncryptedKeyHeader =
-    if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
+suspend fun lockKeyHeader(
+    keyHeader: KeyHeader?,
+    driveId: Uuid,
+    sharedSecret: ByteArray,
+    transferIv: ByteArray,
+    withCommentedFileKey: Boolean = false,
+): EncryptedKeyHeader =
+    if (keyHeader != null && withCommentedFileKey) {
+        EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.FileKey, iv = keyHeader.iv, encryptedAesKey = ByteArray(0))
+    } else if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
         EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader, keyHeader.iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
     } else {
         EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
@@ -211,4 +223,7 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
 
     class Sealed :
         FileDecryptionException("The key header is sealed to the drive's write-only key")
+
+    class NoFileKey :
+        FileDecryptionException("A comment encrypted with its file's key, read without that key")
 }
