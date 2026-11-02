@@ -84,11 +84,11 @@ class UserCircleService(private val backend: UserCircleBackend) {
         attributes.profileCards()
             .filter { (it.audience as? CardAudience.Circle)?.let { c -> compareStringUuId(c.id, circleId) } == true }
             .forEach { card ->
-                backend.deleteAttribute(card.id, card.versionTag)
+                backend.deleteOrThrow(card.id, card.versionTag)
                 removed += card.id
             }
         attributes.ownPhotoFor(target)?.let { photo ->
-            backend.deleteAttribute(photo.id, photo.versionTag)
+            backend.deleteOrThrow(photo.id, photo.versionTag)
             removed += photo.id
         }
 
@@ -105,6 +105,9 @@ class UserCircleService(private val backend: UserCircleBackend) {
         backend.deleteCircle(Uuid.parse(circleId), removeMembers)
     }
 }
+
+private suspend fun UserCircleBackend.deleteOrThrow(id: Uuid, versionTag: Uuid) =
+    check(deleteAttribute(id, versionTag)) { "Could not delete profile attribute $id" }
 
 class DefaultUserCircleBackend(
     private val connections: ConnectionService,

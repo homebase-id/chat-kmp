@@ -8,7 +8,6 @@ import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.errorCodeEnum
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -19,7 +18,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,7 +25,7 @@ import kotlinx.coroutines.launch
 /** Whether this app holds what creating a circle needs; the answer comes from the permission extension flow. */
 interface CircleAccess : AutoCloseable {
     val granted: StateFlow<Boolean>
-    val dismissed: Flow<Unit>
+    val cancelled: Flow<Unit>
     val checkFailed: Flow<Unit>
     val permission: ExtendPermissionViewModel?
     fun recheck()
@@ -35,8 +33,7 @@ interface CircleAccess : AutoCloseable {
 
 class ExtendPermissionCircleAccess(override val permission: ExtendPermissionViewModel) : CircleAccess {
     override val granted: StateFlow<Boolean> get() = permission.permissionsGranted
-    override val dismissed: Flow<Unit> =
-        permission.uiState.filterIsInstance<ExtendPermissionUiState.Dismissed>().map { }
+    override val cancelled: Flow<Unit> = permission.cancelled
 
     override val checkFailed: Flow<Unit> = permission.checkFailed.filter { it }.map { }
 
@@ -82,7 +79,7 @@ class CreateCircleViewModel(
             access.granted.filter { it }.collect { if (_uiState.value.checkingAccess) openSheet() }
         }
         viewModelScope.launch {
-            access.dismissed.collect { _uiState.update { it.copy(checkingAccess = false) } }
+            access.cancelled.collect { _uiState.update { it.copy(checkingAccess = false) } }
         }
         viewModelScope.launch {
             access.checkFailed.collect {

@@ -1353,6 +1353,7 @@ val appModule = module {
             get(),
             getCirclePermissionExtensionConfig(),
             autoCheck = false,
+            recheckOnAuthorizationFailure = false,
         )
     }
     single<UserCircleBackend> { DefaultUserCircleBackend(get(), get()) }

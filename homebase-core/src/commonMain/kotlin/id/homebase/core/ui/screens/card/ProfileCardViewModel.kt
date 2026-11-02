@@ -392,7 +392,7 @@ class ProfileCardViewModel(
         }
     }
 
-    fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value) }
+    fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value, CardDesignSpecs.of(_uiState.value.design)?.presetOrder ?: CardDesignSpecs.ORDERED_KINDS) }
 
     fun onBlockOrderChanged(kinds: List<String>?) = editOverrides { it.withBlockOrder(kinds) }
 

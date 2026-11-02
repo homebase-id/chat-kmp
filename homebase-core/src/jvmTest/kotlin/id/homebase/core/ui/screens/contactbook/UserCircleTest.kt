@@ -25,6 +25,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -35,7 +36,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -121,6 +121,7 @@ class UserCircleTest {
         val calls = mutableListOf<String>()
         val requests = mutableListOf<CreateAppCircleRequest>()
         var failures = mutableListOf<Throwable>()
+        var deleteSucceeds = true
         var known: List<CardCircle> = emptyList()
         var stored: List<ProfileAttribute> = emptyList()
         val created = Uuid.parse("9e22b429-52f7-4d25-80e1-1250b651d343")
@@ -145,13 +146,14 @@ class UserCircleTest {
 
         override suspend fun deleteAttribute(id: Uuid, versionTag: Uuid): Boolean {
             calls += "delete ${stored.first { it.id == id }.type}"
-            return true
+            return deleteSucceeds
         }
     }
 
     private class FakeAccess(granted: Boolean) : CircleAccess {
         override val granted = MutableStateFlow(granted)
-        override val dismissed: Flow<Unit> = emptyFlow()
+        val cancels = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+        override val cancelled: Flow<Unit> = cancels
         val failures = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
         override val checkFailed: Flow<Unit> = failures
         override val permission: ExtendPermissionViewModel? = null
@@ -242,6 +244,34 @@ class UserCircleTest {
 
         access.granted.value = true
         assertTrue(vm.uiState.value.open)
+    }
+
+    @Test
+    fun confirmingThePermissionPromptThenReturningOpensTheSheet() = runTest(dispatcher) {
+        val access = FakeAccess(false)
+        val vm = viewModel(FakeBackend(), access)
+        advanceUntilIdle()
+
+        vm.onNewCircleClicked()
+        assertTrue(vm.uiState.value.checkingAccess)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.checkingAccess)
+
+        access.granted.value = true
+        assertTrue(vm.uiState.value.open)
+    }
+
+    @Test
+    fun cancellingThePermissionPromptSettlesTheTap() = runTest(dispatcher) {
+        val access = FakeAccess(false)
+        val vm = viewModel(FakeBackend(), access)
+        advanceUntilIdle()
+
+        vm.onNewCircleClicked()
+        access.cancels.tryEmit(Unit)
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.checkingAccess)
     }
 
     @Test
@@ -344,5 +374,22 @@ class UserCircleTest {
         }
         runCatching { UserCircleService(backend).delete(target, removeMembers = false) }
         assertFalse(backend.deleted)
+    }
+
+    @Test
+    fun anAttributeThatWillNotDeleteStopsBeforeTheCircleIsDeleted() = runTest(dispatcher) {
+        val target = "9e22b42952f74d2580e11250b651d343"
+        val card = profileCardAttribute(
+            ProfileCard(Uuid.NIL, Uuid.NIL, CardAudience.Circle(target, "Climbing"), CardDesign.LINKS, CardOverrides.EMPTY).toData(),
+            ProfileVisibility.CONNECTED,
+            listOf(target),
+        )
+        val backend = FakeBackend().apply {
+            stored = listOf(card)
+            deleteSucceeds = false
+        }
+
+        assertFailsWith<IllegalStateException> { UserCircleService(backend).delete(target, removeMembers = true) }
+        assertFalse(backend.calls.any { it.startsWith("deleteCircle") })
     }
 }

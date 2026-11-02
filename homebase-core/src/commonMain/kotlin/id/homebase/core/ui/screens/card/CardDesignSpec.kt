@@ -20,6 +20,7 @@ data class CardDesignSpec(
     val portraitSlots: Int = 0,
     val schemes: List<CardColourScheme> = emptyList(),
     val orderedKinds: List<String> = CardDesignSpecs.ORDERED_KINDS,
+    val presetOrder: List<String> = CardDesignSpecs.ORDERED_KINDS,
 ) {
     /** Chat and moments always render; links only when the card has some. */
     fun reorderable(hasLinks: Boolean): List<String> = orderedKinds.filter { hasLinks || it != "links" }
@@ -59,6 +60,7 @@ object CardDesignSpecs {
         CardDesignSpec(
             CardDesign.POSTER,
             setOf(CardOption.COLOURS, CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.SOCIALS_STYLE, CardOption.BLOCK_ORDER, CardOption.BLOCK_STYLE),
+            presetOrder = listOf("chat", "moments", "links"),
             schemes = listOf(
                 CardColourScheme("midnight", "#0F1626", "#EEF2FA", "#B4BCCB", "#4A505E", "#EEF2FA"),
                 CardColourScheme("wine", "#2A0E14", "#F7E9EC", "#C9AEB4", "#5A3F45", "#F7E9EC"),
@@ -71,6 +73,7 @@ object CardDesignSpecs {
             CardDesign.BOARD,
             ALL_OPTIONS,
             portraitSlots = 1,
+            presetOrder = listOf("links", "moments", "chat"),
             schemes = listOf(
                 CardColourScheme("forest", "#1E5B45", "#FFFFFF", "#BFD6CC", "#FFFFFF", "#173B2E"),
                 CardColourScheme("plum", "#5B2A6E", "#FFFFFF", "#D9C3E2", "#FFFFFF", "#3A1A47"),
@@ -86,6 +89,7 @@ object CardDesignSpecs {
             ALL_OPTIONS,
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 2,
+            presetOrder = listOf("chat", "links", "moments"),
             schemes = listOf(
                 CardColourScheme("sage", "#DDE5D3", "#26331F", "#56664A", "#FFFFFF", "#26331F"),
                 CardColourScheme("mist", "#DCE6F0", "#1E2C3B", "#4D5E70", "#FFFFFF", "#1E2C3B"),
@@ -101,6 +105,7 @@ object CardDesignSpecs {
             ALL_OPTIONS,
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 1,
+            presetOrder = listOf("chat", "moments", "links"),
             schemes = listOf(
                 CardColourScheme("ink", "#0D1B2A", "#E3ECF5", "#8EA3B8", "#1B2E44", "#E3ECF5"),
                 CardColourScheme("moss", "#0F1A14", "#E4EFE7", "#8FA697", "#1E2E24", "#E4EFE7"),
@@ -115,6 +120,7 @@ object CardDesignSpecs {
             CardDesign.LINKS,
             ALL_OPTIONS,
             portraitSlots = 1,
+            presetOrder = listOf("links", "moments", "chat"),
             schemes = listOf(
                 CardColourScheme("cloud", "#F1F3F6", "#1B1F24", "#5C6673", "#FFFFFF", "#1B1F24"),
                 CardColourScheme("slate", "#1B1F24", "#F1F3F6", "#A3ACB8", "#2A3037", "#F1F3F6"),

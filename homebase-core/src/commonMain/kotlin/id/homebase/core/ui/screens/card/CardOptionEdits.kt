@@ -21,7 +21,11 @@ private fun completeOrder(kinds: List<String>): List<String> {
 }
 
 /** Sets a single-valued [option] to [value], or back to the preset for null. */
-fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when (option) {
+fun CardOverrides.with(
+    option: CardOption,
+    value: String?,
+    presetOrder: List<String> = CardDesignSpecs.ORDERED_KINDS,
+): CardOverrides = when (option) {
     CardOption.COLOURS -> copy(
         palette = (CardDesignSpecs.schemeByGround(value)?.applyTo(palette) ?: CardPalette(accent = palette?.accent))
             .takeUnless { it == CardPalette() },
@@ -32,7 +36,7 @@ fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when
     CardOption.PORTRAIT_SHAPE -> copy(portraits = value?.let { listOf(CardPortrait(shape = it)) })
     CardOption.SOCIALS_STYLE -> copy(socials = value)
     CardOption.BLOCK_ORDER -> this
-    CardOption.BLOCK_STYLE -> withBlockOrder(blockOrder()).let { ordered -> ordered.copy(blocks = ordered.blocks?.map { it.copy(presentation = value) }) }
+    CardOption.BLOCK_STYLE -> withBlockStyle(value, presetOrder)
 }
 
 fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides {
@@ -47,4 +51,12 @@ fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides {
 fun CardOverrides.withShownBlockOrder(kinds: List<String>, shown: List<String>): CardOverrides {
     val queue = shown.iterator()
     return withBlockOrder(blockOrder().map { if (it in kinds) queue.next() else it })
+}
+
+private fun CardOverrides.withBlockStyle(value: String?, presetOrder: List<String>): CardOverrides {
+    if (blocks == null && value == null) return this
+    val ordered = if (blocks == null) withBlockOrder(presetOrder) else this
+    val styled = ordered.blocks.orEmpty().map { it.copy(presentation = value) }
+    val unchanged = value == null && ordered.blockOrder() == completeOrder(presetOrder)
+    return copy(blocks = styled.takeUnless { unchanged })
 }
