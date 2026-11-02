@@ -108,7 +108,7 @@ private fun String.trimUrlEnd(): String {
     while (end > 0) {
         val c = this[end - 1]
         val unbalancedParen = c == ')' && count { it == ')' } > count { it == '(' }
-        if (c in ".,:?&=%" || unbalancedParen) end-- else break
+        if (c in ".,:?&=%~_" || unbalancedParen) end-- else break
     }
     return substring(0, end)
 }

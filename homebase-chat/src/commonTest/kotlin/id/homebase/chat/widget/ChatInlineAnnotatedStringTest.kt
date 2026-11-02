@@ -108,6 +108,24 @@ class ChatInlineAnnotatedStringTest {
     }
 
     @Test
+    fun capitalisedUrlInsideStrikethroughExcludesDelimiters() {
+        val a = build("~~Https://x.test~~")
+        assertEquals("Https://x.test", a.text)
+        val l = links(a).single()
+        assertEquals("Https://x.test", a.text.substring(l.start, l.end))
+        assertEquals("https://x.test", l.url)
+    }
+
+    @Test
+    fun capitalisedUrlInsideUnderscoreEmphasisExcludesDelimiters() {
+        val a = build("_Https://x.test/a_")
+        assertEquals("Https://x.test/a", a.text)
+        val l = links(a).single()
+        assertEquals("Https://x.test/a", a.text.substring(l.start, l.end))
+        assertEquals("https://x.test/a", l.url)
+    }
+
+    @Test
     fun trailingPunctuationIsNotPartOfTheLink() {
         val a = build("Https://example.test/a.")
         val l = links(a).single()
