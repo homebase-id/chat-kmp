@@ -135,7 +135,7 @@ fun OpenedFileScreen(
                 ) {
                     Button(
                         onClick = { viewModel.onAction(OpenedFileAction.SaveClicked) },
-                        enabled = !state.tooLarge && !state.saving,
+                        enabled = !state.tooLarge && !state.saving && !state.checking,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(stringResource(if (state.signedIn) MR.string.openedfile_save else MR.string.openedfile_sign_in_to_save))

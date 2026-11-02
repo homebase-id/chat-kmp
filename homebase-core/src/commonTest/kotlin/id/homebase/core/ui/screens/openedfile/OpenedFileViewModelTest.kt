@@ -48,10 +48,13 @@ class OpenedFileViewModelTest {
         var accepted = true
         var readyFails = false
         var enqueueFails = false
+        var enqueueCancels = false
+        var readyGate: CompletableDeferred<Unit>? = null
         val enqueued = mutableListOf<Pair<Uuid, String>>()
         val discarded = mutableListOf<String>()
 
         override suspend fun filesyncReady(): Boolean {
+            readyGate?.await()
             if (readyFails) error("offline")
             return ready
         }
@@ -64,6 +67,7 @@ class OpenedFileViewModelTest {
             enqueued += folderId to path
             gate?.await()
             if (enqueueFails) error("offline")
+            if (enqueueCancels) throw kotlinx.coroutines.CancellationException("session ended")
             return accepted
         }
         override fun discard(path: String) { discarded += path }
@@ -231,6 +235,31 @@ class OpenedFileViewModelTest {
         assertEquals(listOf<OpenedFileEvent>(OpenedFileEvent.SaveFailed), seen)
         assertNull(vm.uiState.value.picker)
         assertFalse(vm.uiState.value.saving)
+    }
+
+    @Test
+    fun aCancelledQueueFreesTheScreen() = runTest {
+        val g = gateway().apply { enqueueCancels = true }
+        val vm = vm(g)
+        val seen = collect(vm)
+        vm.onAction(OpenedFileAction.SaveClicked)
+        vm.onAction(OpenedFileAction.PickerConfirm)
+        runCurrent()
+        assertEquals(listOf<OpenedFileEvent>(OpenedFileEvent.SaveFailed), seen)
+        assertFalse(vm.uiState.value.saving, "Back is enabled again")
+    }
+
+    @Test
+    fun aSecondSaveTapWhileCheckingDoesNothing() = runTest {
+        val g = gateway().apply { ready = false; readyGate = CompletableDeferred() }
+        val vm = vm(g)
+        val seen = collect(vm)
+        vm.onAction(OpenedFileAction.SaveClicked)
+        vm.onAction(OpenedFileAction.SaveClicked)
+        g.readyGate!!.complete(Unit)
+        runCurrent()
+        assertEquals(listOf<OpenedFileEvent>(OpenedFileEvent.OpenFilesyncSetup), seen)
+        assertFalse(vm.uiState.value.checking)
     }
 
     @Test

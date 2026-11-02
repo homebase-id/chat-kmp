@@ -18,6 +18,7 @@ object OpenedFileBridge {
             true
         } catch (e: Exception) {
             Logger.w(e, tag = "OpenedFileBridge") { "couldn't copy the opened document" }
+            OpenedFileInbox.reportFailure()
             false
         }
 }

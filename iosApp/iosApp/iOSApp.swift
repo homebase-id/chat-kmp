@@ -297,9 +297,13 @@ struct iOSApp: App {
             let staging = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("open-with").path
             let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
-            _ = OpenedFileBridge.shared.handleIncomingFile(
+            let staged = OpenedFileBridge.shared.handleIncomingFile(
                 sourcePath: url.path, displayName: url.lastPathComponent, mimeType: mime, stagingRoot: staging)
-            if url.path.contains("/Inbox/") { try? FileManager.default.removeItem(at: url) }
+            let ownInbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Inbox").resolvingSymlinksInPath().path + "/"
+            if staged.boolValue && url.resolvingSymlinksInPath().path.hasPrefix(ownInbox) {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 

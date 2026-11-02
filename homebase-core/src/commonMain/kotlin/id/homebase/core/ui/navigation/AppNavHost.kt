@@ -279,6 +279,7 @@ import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import id.homebase.resources.filesync_label
+import id.homebase.resources.openedfile_open_failed
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
@@ -686,6 +687,11 @@ fun AppNavHost(
             onRecent = { navController.navigate(Route.FilesyncRecent) { popUpTo(Route.Filesync); launchSingleTop = true } },
             onTrash = { navController.navigate(Route.FilesyncTrash) { popUpTo(Route.Filesync); launchSingleTop = true } },
         )
+    }
+
+    val openedFileFailedMessage = stringResource(MR.string.openedfile_open_failed)
+    LaunchedEffect(Unit) {
+        OpenedFileInbox.failures.collect { snackbarHostState.showSnackbar(openedFileFailedMessage) }
     }
 
     val pendingOpenedFile by OpenedFileInbox.pending.collectAsStateWithLifecycle()
@@ -2293,7 +2299,7 @@ fun AppNavHost(
                                     ),
                                     onBack = { navController.popBackStack() },
                                     onSignIn = { navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } } },
-                                    onSetUpFilesync = { navController.navigate(Route.Filesync) },
+                                    onSetUpFilesync = { navController.navigate(Route.Filesync) { launchSingleTop = true } },
                                     onShowInFilesync = { path ->
                                         OpenedFileInbox.showFolder.value = path
                                         openFilesync()

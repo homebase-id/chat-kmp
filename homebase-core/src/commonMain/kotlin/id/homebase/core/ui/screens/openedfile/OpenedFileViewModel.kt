@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -53,6 +54,7 @@ data class OpenedFileUiState(
     val signedIn: Boolean = true,
     val picker: SavePicker? = null,
     val saving: Boolean = false,
+    val checking: Boolean = false,
 )
 
 sealed interface OpenedFileAction {
@@ -116,27 +118,32 @@ class OpenedFileViewModel(
 
     private fun save() {
         val state = _uiState.value
-        if (state.tooLarge || state.saving) return
+        if (state.tooLarge || state.saving || state.checking) return
         if (!state.signedIn) {
             // Sign-in replaces the whole back stack; the inbox brings this screen back, so the copy has to outlive it.
             keepStaged = true
             _events.trySend(OpenedFileEvent.OpenSignIn)
             return
         }
+        _uiState.update { it.copy(checking = true) }
         viewModelScope.launch {
-            val ready = try {
-                gateway.filesyncReady()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "checking Filesync before saving failed" }
-                _events.send(OpenedFileEvent.SaveFailed)
-                return@launch
-            }
-            if (!ready) {
-                _events.send(OpenedFileEvent.OpenFilesyncSetup)
-            } else {
-                showFolder(gateway.rememberedFolder()?.takeIf { it.isNotEmpty() } ?: listOf(root), fallbackToRoot = true)
+            try {
+                val ready = try {
+                    gateway.filesyncReady()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "checking Filesync before saving failed" }
+                    _events.send(OpenedFileEvent.SaveFailed)
+                    return@launch
+                }
+                if (!ready) {
+                    _events.send(OpenedFileEvent.OpenFilesyncSetup)
+                } else {
+                    showFolder(gateway.rememberedFolder()?.takeIf { it.isNotEmpty() } ?: listOf(root), fallbackToRoot = true)
+                }
+            } finally {
+                _uiState.update { it.copy(checking = false) }
             }
         }
     }
@@ -170,12 +177,15 @@ class OpenedFileViewModel(
                 gateway.remember(picker.path)
                 gateway.enqueue(target.nodeId, request.path)
             } catch (e: CancellationException) {
-                throw e
+                // The queue cancels its own Deferred on session end while this scope is still alive.
+                if (!isActive) throw e
+                null
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "saving the opened file failed" }
                 null
+            } finally {
+                _uiState.update { it.copy(saving = false) }
             }
-            _uiState.update { it.copy(saving = false) }
             when (queued) {
                 true -> _events.send(OpenedFileEvent.Saved(target.name, picker.path))
                 null -> _events.send(OpenedFileEvent.SaveFailed)

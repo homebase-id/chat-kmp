@@ -6,7 +6,10 @@ import id.homebase.chat.widget.preview.FilePreviewKind
 import id.homebase.chat.widget.preview.filePreviewKind
 import id.homebase.core.ui.screens.filesync.FilesyncCrumb
 import id.homebase.core.ui.screens.filesync.FilesyncNames
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -57,6 +60,13 @@ object OpenedFileInbox {
 
     /** The Filesync folder the "Show" action asks the browser to open. */
     val showFolder = MutableStateFlow<List<FilesyncCrumb>?>(null)
+
+    private val _failures = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val failures: SharedFlow<Unit> = _failures.asSharedFlow()
+
+    fun reportFailure() {
+        _failures.tryEmit(Unit)
+    }
 
     fun offer(request: OpenedFileRequest) {
         _pending.value = request
