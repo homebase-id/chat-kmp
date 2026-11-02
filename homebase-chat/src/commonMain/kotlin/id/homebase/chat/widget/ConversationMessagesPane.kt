@@ -281,7 +281,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.ViewMessageData -> "view"
                     is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
                     is FullScreenOverlay.AttachmentData -> "attachment"
-                    is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.FilePreviewData -> "pdf"
                     is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },

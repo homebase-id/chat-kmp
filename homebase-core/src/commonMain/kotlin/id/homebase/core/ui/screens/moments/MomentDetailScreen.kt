@@ -572,7 +572,7 @@ fun MomentDetailPane(
                     is FullScreenOverlay.ViewMessageData -> "image"
                     is FullScreenOverlay.VideoPlayerData -> "video"
                     is FullScreenOverlay.AttachmentData -> "attachment"
-                    is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.FilePreviewData -> "pdf"
                     is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },
@@ -625,7 +625,7 @@ fun MomentDetailPane(
                     // attachment editor. The VM never emits this variant.
                 }
 
-                is FullScreenOverlay.PdfViewerData -> {
+                is FullScreenOverlay.FilePreviewData -> {
                     // Not used by moments — PDFs are chat-only.
                 }
 

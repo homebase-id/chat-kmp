@@ -1015,7 +1015,7 @@ fun ConversationListUi(
                                 null -> "none"
                                 is FullScreenOverlay.ViewMessageData -> "view"
                                 is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
-                                is FullScreenOverlay.PdfViewerData -> "pdf"
+                                is FullScreenOverlay.FilePreviewData -> "pdf"
                                 is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                             }
                         },

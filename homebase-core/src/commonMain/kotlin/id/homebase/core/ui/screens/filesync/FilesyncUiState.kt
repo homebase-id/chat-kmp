@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.filePreviewKind
 import androidx.compose.runtime.Immutable
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.util.isMobile
@@ -130,6 +132,9 @@ data class FilesyncUiState(
     }
 }
 
+/** A downloaded file shown in the app: [path] is its copy in the cache, thrown away when the preview closes. */
+data class FilesyncPreviewFile(val path: String, val name: String, val kind: FilePreviewKind)
+
 enum class FilesyncBulkAction { Download, Share, Move, Delete, Restore }
 
 /** What the file dialog offers: where a file, or a ZIP of several, goes. */
@@ -139,7 +144,7 @@ enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherAp
         // A browser can't hand a file to an app; other apps to share with are only on phones.
         fun offered(nodes: List<FilesyncNode>): List<FilesyncShareTarget> = entries.filter { target ->
             when (target) {
-                Preview -> nodes.singleFile?.let { filesyncPreviewKind(it.name) } != null
+                Preview -> nodes.singleFile?.let { filePreviewKind(null, it.name, it.sizeBytes) } != null
                 Open -> !isWeb() && nodes.singleFile != null
                 OtherApp -> isMobile()
                 else -> true
@@ -194,7 +199,7 @@ sealed interface FilesyncUiAction {
     data object SignInAgain : FilesyncUiAction
 }
 
-enum class FilesyncError { MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, StorageFull, FolderFailed, RestoreFailed, DeleteFailed, SignInAgainFailed }
+enum class FilesyncError { MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed, SignInAgainFailed }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
 enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon }

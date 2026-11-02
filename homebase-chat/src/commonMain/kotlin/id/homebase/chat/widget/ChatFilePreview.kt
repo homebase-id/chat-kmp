@@ -29,7 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import id.homebase.core.pdf.PdfPageViewer
+import id.homebase.chat.widget.preview.FilePreviewContent
+import id.homebase.chat.widget.preview.FilePreviewKind
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_download_file
@@ -38,17 +39,15 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 
 /**
- * Fullscreen PDF viewer for a chat attachment (issue #909). Mirrors
- * [FullScreenMediaViewer]'s chrome so PDFs feel like the image viewer: a
- * name + date top bar that a tap toggles, back-arrow to dismiss, and the
- * shared [PdfPageViewer] (whose native Android/iOS renderer provides pinch
- * zoom). [filePath] is the already-decrypted local file, produced by the
- * DecryptFile path; null while it's still decrypting → spinner.
+ * Fullscreen preview of a chat file attachment: [FullScreenMediaViewer]'s chrome (a name + date top bar that a tap
+ * toggles, back-arrow to dismiss) around the shared [FilePreviewContent]. [filePath] is the already-decrypted
+ * local file from the DecryptFile path; null while it's still decrypting → spinner.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatPdfViewer(
+fun ChatFilePreview(
     title: String,
+    kind: FilePreviewKind,
     userDate: Instant,
     filePath: String?,
     isDownloading: Boolean,
@@ -64,10 +63,11 @@ fun ChatPdfViewer(
         if (filePath == null) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else {
-            PdfPageViewer(
-                filePath = filePath,
+            FilePreviewContent(
+                path = filePath,
+                name = title,
+                kind = kind,
                 onTap = { showUI = !showUI },
-                modifier = Modifier.fillMaxSize(),
             )
         }
 
