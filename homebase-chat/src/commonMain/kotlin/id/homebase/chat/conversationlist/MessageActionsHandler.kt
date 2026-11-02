@@ -47,6 +47,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.allTargetConversationIds
 import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
 import id.homebase.core.util.applyMarkDownContent
@@ -128,6 +129,7 @@ private val PLACEHOLDER_HANDOFF_TIMEOUT = 5.seconds
 // Dropping the placeholder on send() return left its key missing for a few frames, stranding a ghost row.
 internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
     messageId: Uuid,
+    awaitHandoff: Boolean = true,
     send: suspend () -> Unit,
 ) {
     try {
@@ -136,13 +138,54 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendUnderPlaceholder(
         update { it.withoutPendingSend(messageId, clearProgress = true) }
         throw e
     }
-    withTimeoutOrNull(PLACEHOLDER_HANDOFF_TIMEOUT) {
-        first { state ->
-            state.hasNewerMessages ||
-                state.messages.any { it is MessageListContentModel.Message && it.message.id == messageId }
+    if (awaitHandoff) {
+        withTimeoutOrNull(PLACEHOLDER_HANDOFF_TIMEOUT) {
+            first { state ->
+                state.hasNewerMessages ||
+                    state.messages.any { it is MessageListContentModel.Message && it.message.id == messageId }
+            }
         }
     }
     update { it.withoutPendingSend(messageId, clearProgress = false) }
+}
+
+// Placeholders are per conversation but registered up front, so every target shows one the moment Send lands.
+internal suspend fun MutableStateFlow<MessageListUiState>.sendSharedFilesToTargets(
+    targets: List<Uuid>,
+    visibleConversationId: Uuid,
+    text: String,
+    attachmentCount: Int,
+    sentAt: Instant,
+    send: suspend (messageId: Uuid, conversationId: Uuid) -> Unit,
+) {
+    val ids = targets.associateWith { Uuid.random() }
+    update { state ->
+        ids.entries.fold(state) { acc, (conversationId, messageId) ->
+            acc.withPendingSend(
+                PendingOutgoingMessage(
+                    id = messageId,
+                    conversationId = conversationId,
+                    text = text,
+                    attachmentCount = attachmentCount,
+                    sentAt = sentAt,
+                )
+            )
+        }
+    }
+    var failure: Throwable? = null
+    for ((conversationId, messageId) in ids) {
+        try {
+            sendUnderPlaceholder(messageId, awaitHandoff = conversationId == visibleConversationId) {
+                send(messageId, conversationId)
+            }
+        } catch (e: CancellationException) {
+            ids.values.forEach { id -> update { it.withoutPendingSend(id, clearProgress = true) } }
+            throw e
+        } catch (e: Throwable) {
+            if (failure == null) failure = e
+        }
+    }
+    failure?.let { throw it }
 }
 
 /**
@@ -921,7 +964,8 @@ internal class MessageActionsHandler(
 
         val descriptor = shareContentProcessor.readPendingContent() ?: return
         // Only process if the target conversation matches
-        if (descriptor.targetConversationId != conversationId.toString()) return
+        val targets = descriptor.allTargetConversationIds().mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
+        if (targets.firstOrNull() != conversationId) return
 
         Logger.i(tag = "ConversationListViewModel") {
             "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}, " +
@@ -980,24 +1024,18 @@ internal class MessageActionsHandler(
                         )
                     }
 
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
                 val sentAt = UnixTimeUtc.now()
 
                 // Awaited, not launched: the finally below deletes the shared files being encoded.
-                messagesUiState.update {
-                    it.withPendingSend(
-                        PendingOutgoingMessage(
-                            id = newMessageId,
-                            conversationId = conversationId,
-                            text = text,
-                            attachmentCount = attachments.size,
-                            sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
-                        )
-                    )
-                }
-                messagesUiState.sendUnderPlaceholder(newMessageId) {
-                    bundleAndSend(newMessageId, conversationId, text, attachments, replyTo = null, sentAt = sentAt, viewOnce = false)
+                messagesUiState.sendSharedFilesToTargets(
+                    targets = targets,
+                    visibleConversationId = conversationId,
+                    text = text,
+                    attachmentCount = attachments.size,
+                    sentAt = Instant.fromEpochMilliseconds(sentAt.milliseconds),
+                ) { messageId, targetId ->
+                    pendingMessageId = messageId
+                    bundleAndSend(messageId, targetId, text, attachments, replyTo = null, sentAt = sentAt, viewOnce = false)
                 }
             }
         } catch (e: CancellationException) {
