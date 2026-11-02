@@ -344,7 +344,7 @@ class ProfileCardEditorShotsTest {
         }),
         Shot(
             "p03-content-style",
-            editorBase.copy(previewDesign = CardDesign.LINKS),
+            editorBase.copy(previewDesign = CardDesign.BOARD),
             EditorStep.Customise,
             widthDp = REDMI_W,
             heightDp = REDMI_H,

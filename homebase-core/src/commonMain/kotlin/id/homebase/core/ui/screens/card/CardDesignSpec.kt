@@ -55,6 +55,9 @@ object CardDesignSpecs {
     private val PINNED_CHAT_KINDS = listOf("links", "moments")
     private val ALL_OPTIONS = CardOption.entries.toSet()
 
+    // The web draws Simple's links and Collage's links and chat the same for every style, so the option would change nothing.
+    private val WITHOUT_BLOCK_STYLE = ALL_OPTIONS - CardOption.BLOCK_STYLE
+
     // Poster's ground tints a photo and its paper section is set in the ground colour, so it only takes dark grounds.
     private val specs = listOf(
         CardDesignSpec(
@@ -86,7 +89,7 @@ object CardDesignSpecs {
         ),
         CardDesignSpec(
             CardDesign.COLLAGE,
-            ALL_OPTIONS,
+            WITHOUT_BLOCK_STYLE,
             orderedKinds = PINNED_CHAT_KINDS,
             portraitSlots = 2,
             presetOrder = listOf("chat", "links", "moments"),
@@ -118,7 +121,7 @@ object CardDesignSpecs {
         ),
         CardDesignSpec(
             CardDesign.LINKS,
-            ALL_OPTIONS,
+            WITHOUT_BLOCK_STYLE,
             portraitSlots = 1,
             presetOrder = listOf("links", "moments", "chat"),
             schemes = listOf(

@@ -130,7 +130,7 @@ class CardOverridesTest {
 
         val collage = everything.prunedFor(CardDesign.COLLAGE)
         assertEquals(CardPalette(accent = "#ABCDEF"), collage.palette)
-        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts", "row")), collage.blocks)
+        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts")), collage.blocks)
         assertEquals(listOf(CardPortrait(shape = "square"), CardPortrait()), collage.portraits)
 
         val dossier = everything.prunedFor(CardDesign.DOSSIER)
@@ -181,12 +181,12 @@ class CardOverridesTest {
     }
 
     @Test
-    fun everyDesignKeepsTheBlockStyleAndItsOrder() {
+    fun onlyDesignsThatDrawTheStyleKeepItAndEveryDesignKeepsItsOrder() {
         val styled = CardOverrides.EMPTY.withBlockOrder(listOf("links", "chat", "moments")).with(CardOption.BLOCK_STYLE, "row")
         for (design in CardDesign.all) {
-            assertTrue(CardOption.BLOCK_STYLE in CardDesignSpecs.of(design)!!.options, design)
+            val styleable = CardOption.BLOCK_STYLE in CardDesignSpecs.of(design)!!.options
             val pruned = styled.prunedFor(design)
-            assertEquals("row", pruned.valueOf(CardOption.BLOCK_STYLE), design)
+            assertEquals(if (styleable) "row" else null, pruned.valueOf(CardOption.BLOCK_STYLE), design)
             assertEquals(listOf("links", "chat", "moments"), pruned.blockOrder(), design)
         }
         assertEquals(CardOverrides.EMPTY, styled.prunedFor("hologram"))

@@ -1872,7 +1872,7 @@ class ProfileCardViewModelTest {
         assertEquals(5, CardDesign.all.size)
         assertEquals(CardDesign.LINKS, CardDesign.all.first())
         val spec = CardDesignSpecs.of(CardDesign.LINKS)!!
-        assertEquals(CardOption.entries.toSet(), spec.options)
+        assertEquals(CardOption.entries.toSet() - CardOption.BLOCK_STYLE, spec.options)
         assertEquals(1, spec.portraitSlots)
         assertEquals("#F1F3F6", spec.schemes.first().ground)
         val all = CardDesign.all.flatMap { CardDesignSpecs.of(it)!!.schemes.map { s -> s.ground.lowercase() } }
