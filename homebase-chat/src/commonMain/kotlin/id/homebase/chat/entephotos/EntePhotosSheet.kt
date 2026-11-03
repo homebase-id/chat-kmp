@@ -1,8 +1,10 @@
 package id.homebase.chat.entephotos
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,18 +13,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items as rowItems
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -36,6 +45,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -47,9 +58,13 @@ import id.homebase.core.config.EntePhotosDrive
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.util.formatHms
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_ente_photo
+import id.homebase.resources.cd_ente_video
+import id.homebase.resources.ente_photos_album_empty
+import id.homebase.resources.ente_photos_all
 import id.homebase.resources.ente_photos_allow
 import id.homebase.resources.ente_photos_empty
 import id.homebase.resources.ente_photos_failed
@@ -61,12 +76,13 @@ import id.homebase.resources.ente_photos_prepare_failed
 import id.homebase.resources.ente_photos_retry
 import id.homebase.resources.ente_photos_send
 import id.homebase.resources.ente_photos_title
+import id.homebase.resources.ente_photos_too_big
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
-import kotlin.uuid.Uuid
 
-/** Photos from the owner's Ente Photos library; [onPicked] gets each pick's original, decrypted into a temp file. */
+/** Photos and videos from the owner's Ente Photos library, by album; [onPicked] gets each pick's original, decrypted into a temp file. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntePhotosSheet(
@@ -117,6 +133,12 @@ fun EntePhotosSheet(
                     }
                 }
             }
+            if (state.preparing) {
+                LinearProgressIndicator(
+                    progress = { state.progress },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("ente_photos_progress"),
+                )
+            }
             if (state.prepareFailed) {
                 Text(
                     text = stringResource(MR.string.ente_photos_prepare_failed),
@@ -131,7 +153,10 @@ fun EntePhotosSheet(
                 EntePhotosAccess.NeedsAccess -> Message(MR.string.ente_photos_needs_access, MR.string.ente_photos_allow, viewModel::askForAccess)
                 EntePhotosAccess.Locked -> Message(MR.string.ente_photos_locked, MR.string.ente_photos_retry, viewModel::open)
                 EntePhotosAccess.Failed -> Message(MR.string.ente_photos_failed, MR.string.ente_photos_retry, viewModel::open)
-                EntePhotosAccess.Granted -> PhotoGrid(state, onToggle = viewModel::toggle, onLoadMore = viewModel::loadMore)
+                EntePhotosAccess.Granted -> {
+                    AlbumChips(state, onShow = viewModel::showAlbum)
+                    PhotoGrid(state, onToggle = viewModel::toggle, onLoadMore = viewModel::loadMore)
+                }
             }
         }
     }
@@ -140,11 +165,39 @@ fun EntePhotosSheet(
 }
 
 @Composable
-private fun PhotoGrid(state: EntePhotosUiState, onToggle: (Uuid) -> Unit, onLoadMore: () -> Unit) {
+private fun AlbumChips(state: EntePhotosUiState, onShow: (Uuid?) -> Unit) {
+    if (state.albums.isEmpty()) return
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().testTag("ente_albums"),
+    ) {
+        item(key = "all") {
+            FilterChip(
+                selected = state.album == null,
+                onClick = { onShow(null) },
+                label = { Text(stringResource(MR.string.ente_photos_all)) },
+                modifier = Modifier.testTag("ente_album_all"),
+            )
+        }
+        rowItems(state.albums, key = { it.id.toString() }) { album ->
+            FilterChip(
+                selected = state.album == album.id,
+                onClick = { onShow(album.id) },
+                label = { Text(album.name, maxLines = 1) },
+                modifier = Modifier.testTag("ente_album"),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PhotoGrid(state: EntePhotosUiState, onToggle: (EntePhoto) -> Unit, onLoadMore: () -> Unit) {
     if (state.photos.isEmpty()) {
         when {
             state.loading -> Centered { CircularProgressIndicator() }
             state.loadFailed -> Message(MR.string.ente_photos_failed, MR.string.ente_photos_retry, onLoadMore)
+            state.album != null -> Message(MR.string.ente_photos_album_empty)
             else -> Message(MR.string.ente_photos_empty)
         }
         return
@@ -161,6 +214,7 @@ private fun PhotoGrid(state: EntePhotosUiState, onToggle: (Uuid) -> Unit, onLoad
         if (nearEnd && state.canLoadMore) currentOnLoadMore()
     }
     val photoDescription = stringResource(MR.string.cd_ente_photo)
+    val videoDescription = stringResource(MR.string.cd_ente_video)
     LazyVerticalGrid(
         columns = GridCells.Adaptive(110.dp),
         state = gridState,
@@ -174,28 +228,53 @@ private fun PhotoGrid(state: EntePhotosUiState, onToggle: (Uuid) -> Unit, onLoad
             Box(
                 modifier = Modifier
                     .aspectRatio(1f)
-                    .clickable { onToggle(photo.fileId) }
-                    .testTag("ente_photo"),
+                    .clickable(enabled = !photo.tooBigToSend) { onToggle(photo) }
+                    .testTag(if (photo.isVideo) "ente_video" else "ente_photo"),
             ) {
-                HomebaseImage(
-                    imageData = remember(photo.fileId) {
-                        HomebaseImageData.from(
-                            driveId = Uuid.parse(EntePhotosDrive.ALIAS),
-                            fileId = photo.fileId,
-                            descriptor = photo.original,
-                            keyHeader = photo.payloadKey,
-                            requestedSize = ImageSize.THUMB_MEDIUM,
+                // A video's original is never loaded for its tile: no thumbnail, no picture.
+                if (photo.isVideo && !photo.hasThumbnails) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Movie, contentDescription = photo.title ?: videoDescription, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    HomebaseImage(
+                        imageData = remember(photo.fileId) {
+                            HomebaseImageData.from(
+                                driveId = Uuid.parse(EntePhotosDrive.ALIAS),
+                                fileId = photo.fileId,
+                                descriptor = photo.original,
+                                keyHeader = photo.payloadKey,
+                                requestedSize = ImageSize.THUMB_MEDIUM,
+                            )
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        contentDescription = photo.title ?: if (photo.isVideo) videoDescription else photoDescription,
+                    )
+                }
+                if (photo.isVideo) VideoBadge(photo)
+                if (photo.tooBigToSend) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).testTag("ente_too_big"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.ente_photos_too_big),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
                         )
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = photo.title ?: photoDescription,
-                )
-                SelectionBadge(
-                    isSelected = number > 0,
-                    selectionNumber = number,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
-                )
+                    }
+                } else {
+                    SelectionBadge(
+                        isSelected = number > 0,
+                        selectionNumber = number,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+                    )
+                }
             }
         }
         if (state.loading || state.loadFailed) {
@@ -208,6 +287,25 @@ private fun PhotoGrid(state: EntePhotosUiState, onToggle: (Uuid) -> Unit, onLoad
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.VideoBadge(photo: EntePhoto) {
+    Row(
+        modifier = Modifier
+            .align(Alignment.BottomStart)
+            .padding(6.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+        photo.durationSeconds?.let {
+            Text(text = formatHms(it * 1000, padMinutes = true), style = MaterialTheme.typography.labelSmall, color = Color.White)
         }
     }
 }

@@ -257,6 +257,7 @@ import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.config.getEntePhotosPermissionExtensionConfig
+import id.homebase.chat.entephotos.EnteLibrary
 import id.homebase.chat.entephotos.EntePhotosRepository
 import id.homebase.chat.entephotos.EntePhotosViewModel
 import id.homebase.core.location.EmergencyCircleNotifier
@@ -1011,7 +1012,7 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { FilesyncRepository(get(), get(), get(), get()) }
-    single { EntePhotosRepository(get(), get(), get()) }
+    single<EnteLibrary> { EntePhotosRepository(get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }

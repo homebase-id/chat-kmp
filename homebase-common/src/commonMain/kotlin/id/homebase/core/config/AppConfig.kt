@@ -585,7 +585,9 @@ object EntePhotosDrive {
     const val ALIAS = "0ada68d639fd7c0c7f35e46d80665c0c"
     const val TYPE = "762e8336095125323b9d7c0913f3ac7c"
     const val APP_SLUG = "ente-photos"
+    const val ALBUM_FILE_TYPE = 7202
     const val PHOTO_FILE_TYPE = 7210
+    const val MEMBERSHIP_FILE_TYPE = 7211
     const val PHOTO_PAYLOAD_KEY = "original"
 }
 
