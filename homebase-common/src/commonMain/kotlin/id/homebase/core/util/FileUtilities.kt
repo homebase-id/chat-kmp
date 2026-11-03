@@ -9,6 +9,7 @@ expect fun getUriHandler(): FileSystemHandler
 interface FileSystemHandler {
     fun openUrl(url: String, onError: (Throwable) -> Unit = {})
     fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
+    /** Opens [file] in another app; web: downloads the file. */
     fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     fun openFileBrowser(file: Path, onError: (Throwable) -> Unit = {})
     /**
