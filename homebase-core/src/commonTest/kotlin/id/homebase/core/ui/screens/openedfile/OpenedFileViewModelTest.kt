@@ -147,6 +147,29 @@ class OpenedFileViewModelTest {
     }
 
     @Test
+    fun returningFromSetupResumesTheSaveOnlyOnceAndOnlyIfSetUp() = runTest {
+        val g = gateway().apply { ready = false }
+        val vm = vm(g)
+        vm.onAction(OpenedFileAction.Resumed)
+        assertNull(vm.uiState.value.picker, "an ordinary resume does nothing")
+        vm.onAction(OpenedFileAction.SaveClicked)
+        assertEquals(OpenedFileEvent.OpenFilesyncSetup, vm.events.first())
+
+        vm.onAction(OpenedFileAction.Resumed)
+        assertNull(vm.uiState.value.picker, "setup dismissed: stays on the file")
+        g.ready = true
+        vm.onAction(OpenedFileAction.Resumed)
+        assertNull(vm.uiState.value.picker, "the dismissed setup isn't resumed later")
+
+        g.ready = false
+        vm.onAction(OpenedFileAction.SaveClicked)
+        assertEquals(OpenedFileEvent.OpenFilesyncSetup, vm.events.first())
+        g.ready = true
+        vm.onAction(OpenedFileAction.Resumed)
+        assertEquals(listOf(root), vm.uiState.value.picker?.path, "set up: the folder picker opens")
+    }
+
+    @Test
     fun notSignedInTheButtonSignsInAndKeepsTheCopy() = runTest {
         val g = gateway().apply { signedIn.value = false }
         val vm = vm(g)

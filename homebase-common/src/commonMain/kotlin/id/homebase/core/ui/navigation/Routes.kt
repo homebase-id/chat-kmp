@@ -167,6 +167,11 @@ sealed class Route {
     @SerialName("filesync")
     data object Filesync : Route()
 
+    // Not a tab: pushed over the screen that needs Filesync, and pops back to it once set up.
+    @Serializable
+    @SerialName("filesync-setup")
+    data object FilesyncSetup : Route()
+
     @Serializable
     @SerialName("filesync-trash")
     data object FilesyncTrash : Route()

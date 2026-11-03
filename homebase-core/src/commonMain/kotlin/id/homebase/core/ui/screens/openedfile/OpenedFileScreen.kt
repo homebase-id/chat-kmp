@@ -47,6 +47,8 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.preview.FilePreviewContent
 import id.homebase.common.util.formatBytes
@@ -96,6 +98,7 @@ fun OpenedFileScreen(
     val request = state.request
 
     BackHandler(enabled = state.saving) {}
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(OpenedFileAction.Resumed) }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->

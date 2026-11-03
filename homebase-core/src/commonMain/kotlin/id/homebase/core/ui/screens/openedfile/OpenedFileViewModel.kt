@@ -60,6 +60,7 @@ data class OpenedFileUiState(
 
 sealed interface OpenedFileAction {
     data object SaveClicked : OpenedFileAction
+    data object Resumed : OpenedFileAction
     data class PickerOpen(val folder: FilesyncNode) : OpenedFileAction
     data class PickerToCrumb(val index: Int) : OpenedFileAction
     data object PickerDismiss : OpenedFileAction
@@ -97,6 +98,7 @@ class OpenedFileViewModel(
     val events: Flow<OpenedFileEvent> = _events.receiveAsFlow()
 
     private var keepStaged = false
+    private var resumeAfterSetup = false
     private var listJob: Job? = null
 
     init {
@@ -107,6 +109,10 @@ class OpenedFileViewModel(
     fun onAction(action: OpenedFileAction) {
         when (action) {
             OpenedFileAction.SaveClicked -> save()
+            OpenedFileAction.Resumed -> if (resumeAfterSetup) {
+                resumeAfterSetup = false
+                save(openSetup = false)
+            }
             is OpenedFileAction.PickerOpen -> _uiState.value.picker?.let { showFolder(it.path + FilesyncCrumb(action.folder.nodeId, action.folder.name)) }
             is OpenedFileAction.PickerToCrumb -> _uiState.value.picker?.let { showFolder(it.path.take(action.index + 1)) }
             OpenedFileAction.PickerDismiss -> {
@@ -117,7 +123,7 @@ class OpenedFileViewModel(
         }
     }
 
-    private fun save() {
+    private fun save(openSetup: Boolean = true) {
         val state = _uiState.value
         if (state.tooLarge || state.saving || state.checking) return
         if (!state.signedIn) {
@@ -139,7 +145,10 @@ class OpenedFileViewModel(
                     return@launch
                 }
                 if (!ready) {
-                    _events.send(OpenedFileEvent.OpenFilesyncSetup)
+                    if (openSetup) {
+                        resumeAfterSetup = true
+                        _events.send(OpenedFileEvent.OpenFilesyncSetup)
+                    }
                 } else {
                     showFolder(gateway.rememberedFolder()?.takeIf { it.isNotEmpty() } ?: listOf(root), fallbackToRoot = true)
                 }

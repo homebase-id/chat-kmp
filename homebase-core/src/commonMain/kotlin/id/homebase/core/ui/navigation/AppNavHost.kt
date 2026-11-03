@@ -2290,6 +2290,24 @@ fun AppNavHost(
                                 }
                             }
 
+                            scoped<Route.FilesyncSetup> {
+                                val filesyncViewModel: FilesyncViewModel = koinViewModel()
+                                val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
+                                when (filesyncUiState.installed) {
+                                    null -> FilesyncCheckingScreen(
+                                        failed = filesyncUiState.checkFailed,
+                                        onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
+                                    )
+                                    false -> FilesyncOnboardingScreen(
+                                        viewModel = filesyncViewModel,
+                                        setupInitiated = filesyncUiState.setupInitiated,
+                                        checkFailed = filesyncUiState.checkFailed,
+                                        onDismiss = { navController.popBackStack() },
+                                    )
+                                    true -> LaunchedEffect(Unit) { navController.popBackStack<Route.FilesyncSetup>(inclusive = true) }
+                                }
+                            }
+
                             scoped<Route.OpenedFile> { entry ->
                                 val route = entry.toRoute<Route.OpenedFile>()
                                 OpenedFileScreen(
@@ -2299,7 +2317,7 @@ fun AppNavHost(
                                     ),
                                     onBack = { navController.popBackStack() },
                                     onSignIn = { navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } } },
-                                    onSetUpFilesync = { navController.navigate(Route.Filesync) { launchSingleTop = true } },
+                                    onSetUpFilesync = { navController.navigate(Route.FilesyncSetup) { launchSingleTop = true } },
                                     onShowInFilesync = { path ->
                                         OpenedFileInbox.showFolder.value = path
                                         openFilesync()
