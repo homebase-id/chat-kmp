@@ -3158,5 +3158,4 @@
     <string name="keystore_reset_confirm_title">Reset Homebase on this computer?</string>
     <string name="keystore_reset_confirm_message">This removes your local data and your login from this computer. You'll need to sign in again. This can't be undone.</string>
     <string name="keystore_reset_confirm">Reset</string>
-    <string name="keystore_reset_cancel">Cancel</string>
 </resources>

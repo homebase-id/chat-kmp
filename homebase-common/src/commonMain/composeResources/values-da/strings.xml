@@ -2064,5 +2064,4 @@
     <string name="keystore_reset_confirm_title">Nulstil Homebase på denne computer?</string>
     <string name="keystore_reset_confirm_message">Dette fjerner dine lokale data og dit login fra denne computer. Du skal logge ind igen. Det kan ikke fortrydes.</string>
     <string name="keystore_reset_confirm">Nulstil</string>
-    <string name="keystore_reset_cancel">Annuller</string>
 </resources>

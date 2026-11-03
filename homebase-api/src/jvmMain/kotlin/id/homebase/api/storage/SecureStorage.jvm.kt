@@ -226,14 +226,14 @@ internal class KeyStoreFileStorage(
         return chosen
     }
 
+    private fun sealedWithoutKey(fileKey: FileKey) = fileKey is FileKey.None && !loadProperties().isEmpty
+
     private fun resolveAbsent(fileKey: FileKey, create: Boolean): SecretKey {
         if (fileKey is FileKey.Valid) {
             if (persistKey(fileKey.key)) deleteFileKey() else Logger.w(tag = TAG) { "Key migration failed; keeping the key file and retrying next start" }
             return fileKey.key
         }
-        if (fileKey is FileKey.None && !loadProperties().isEmpty) {
-            throw OsKeyStoreUnavailableException(IllegalStateException("sealed values but no key in the OS key store"))
-        }
+        if (sealedWithoutKey(fileKey)) throw OsKeyStoreUnavailableException(IllegalStateException("sealed values but no key in the OS key store"))
         if (!create) throw SecureStorageKeyLostException("no key in the OS key store")
         val fresh = newKey()
         if (!persistKey(fresh)) throw OsKeyStoreUnavailableException(IllegalStateException("new key could not be stored"))
@@ -242,7 +242,7 @@ internal class KeyStoreFileStorage(
 
     private fun resolveNoStore(noStore: OsKeyRead.NoStore, fileKey: FileKey, create: Boolean): SecretKey {
         usingFallbackFile = true
-        if (fileKey is FileKey.None && !loadProperties().isEmpty) throw OsKeyStoreUnavailableException(noStore.cause)
+        if (sealedWithoutKey(fileKey)) throw OsKeyStoreUnavailableException(noStore.cause)
         Logger.w(tag = TAG) { "No OS key store available (${noStore.cause.message?.lineSequence()?.first()}); keeping the key in a 0600 file" }
         return when (fileKey) {
             is FileKey.Valid -> fileKey.key.also { restrict(keyStoreFile) }

@@ -74,7 +74,7 @@ import id.homebase.resources.desktop_menu_call_decline
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
-import id.homebase.resources.keystore_reset_cancel
+import id.homebase.resources.cancel
 import id.homebase.resources.keystore_reset_confirm
 import id.homebase.resources.keystore_reset_confirm_message
 import id.homebase.resources.keystore_reset_confirm_title
@@ -510,7 +510,7 @@ private fun askKeystoreChoice(): KeystoreChoice {
             MR.string.keystore_unavailable_title, MR.string.keystore_unavailable_message,
             MR.string.keystore_unavailable_retry, MR.string.keystore_unavailable_reset, MR.string.keystore_unavailable_quit,
             MR.string.keystore_reset_confirm_title, MR.string.keystore_reset_confirm_message,
-            MR.string.keystore_reset_confirm, MR.string.keystore_reset_cancel,
+            MR.string.keystore_reset_confirm, MR.string.cancel,
         ).map { getString(it) }
     }
     val (title, message, retry, reset, quit) = text
