@@ -14,26 +14,27 @@ import id.homebase.core.util.formatMomentDate
 import kotlin.time.Instant
 
 /**
- * Small dark-translucent pill rendered in the corner of a feed card. Reads
- * "Today" / "Yesterday" / "May 8" / "May 8, 2024" depending on how recent the
- * timestamp is — see [formatMomentDate].
+ * Small pill showing a moment's date. Reads "Today" / "Yesterday" / "May 8" /
+ * "May 8, 2024" depending on how recent the timestamp is — see [formatMomentDate].
  *
- * Stays as a static overlay so it reads on any photo without competing with
- * the bottom-right indicator badges. Color/sizing matches those badges so
- * the corners feel like the same family.
+ * With [overMedia] it is a dark-translucent overlay that reads on any photo and
+ * matches the corner badges; without it there is nothing to scrim, so it takes a
+ * tonal role pair instead.
  */
 @Composable
 fun MomentDatePill(
     timestamp: Instant,
     modifier: Modifier = Modifier,
+    overMedia: Boolean = true,
 ) {
+    val colors = MaterialTheme.colorScheme
     Text(
         text = formatMomentDate(timestamp),
-        color = Color.White,
+        color = if (overMedia) Color.White else colors.onSecondaryContainer,
         style = MaterialTheme.typography.labelSmall,
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.45f))
+            .background(if (overMedia) Color.Black.copy(alpha = 0.45f) else colors.secondaryContainer)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     )
 }

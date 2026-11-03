@@ -387,6 +387,8 @@
     <string name="moments_onboarding_setup">Sæt det op</string>
     <string name="moments_onboarding_dismiss">Ikke nu</string>
     <string name="moments_welcome">Øjeblikke der er værd at huske</string>
+    <string name="moments_empty_body">Billeder, videoer og noter, du deler, vises her.</string>
+    <string name="moments_empty_action">Tilføj et øjeblik</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Åbn Moments</string>
     <string name="moments_settings_show_icon">Vis Moments-ikonet i bundbjælken</string>
@@ -413,6 +415,7 @@
     <string name="moments_detail_metadata_device">Enhed</string>
     <string name="moments_detail_comments_section">Kommentarer</string>
     <string name="moments_detail_no_comments">Ingen kommentarer endnu</string>
+    <string name="moments_detail_first_comment">Vær den første til at sige noget</string>
     <string name="moments_detail_add_comment_hint">Tilføj en kommentar</string>
     <string name="moments_detail_send_comment">Send kommentar</string>
     <string name="moments_detail_comment_you">Dig</string>

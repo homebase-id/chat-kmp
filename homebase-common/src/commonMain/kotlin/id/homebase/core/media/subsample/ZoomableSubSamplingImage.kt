@@ -5,7 +5,10 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +21,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -25,15 +29,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import androidx.compose.ui.platform.LocalViewConfiguration
 import coil3.ImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.size.Size
 import com.github.panpf.zoomimage.CoilZoomAsyncImage
 import com.github.panpf.zoomimage.compose.zoom.ZoomableState
+import com.github.panpf.zoomimage.zoom.GestureType
 import com.github.panpf.zoomimage.rememberCoilZoomState
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.avatars.rememberPublicAvatarUrl
@@ -49,6 +63,7 @@ fun ZoomableSubSamplingImage(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     onTap: (() -> Unit)? = null,
+    onDoubleTap: (() -> Unit)? = null,
     onLoaded: (() -> Unit)? = null,
     onError: (() -> Unit)? = null,
     // Fires with `true` once the user pinches past fit and `false` when the
@@ -77,6 +92,13 @@ fun ZoomableSubSamplingImage(
     }
     val zoomState = rememberCoilZoomState(subsamplingImageGenerators = generators)
     zoomState.zoomable.setKeepTransformWhenSameAspectRatioContentSizeChanged(true)
+    val tapScope = rememberCoroutineScope()
+    val doubleTapTimeout = LocalViewConfiguration.current.doubleTapTimeoutMillis
+    var pendingTap by remember { mutableStateOf<Job?>(null) }
+    var lastDoubleTap by remember { mutableStateOf<TimeMark?>(null) }
+    zoomState.zoomable.setDisabledGestureTypes(
+        if (onDoubleTap != null) GestureType.DOUBLE_TAP_SCALE else 0,
+    )
 
     // Preserve the user's pinch zoom when the base painter swaps size (cached
     // thumbnail placeholder -> full image) — a content-size change the library's
@@ -172,7 +194,19 @@ fun ZoomableSubSamplingImage(
                 onLoaded?.invoke()
             },
             onError = onError?.let { callback -> { _ -> callback() } },
-            onTap = onTap?.let { callback -> { _: Offset -> callback() } },
+            onTap = onTap?.let { callback ->
+                { _: Offset ->
+                    if (onDoubleTap == null) {
+                        callback()
+                    } else if (lastDoubleTap?.elapsedNow()?.let { it < DOUBLE_TAP_ECHO } != true) {
+                        pendingTap?.cancel()
+                        pendingTap = tapScope.launch {
+                            delay(doubleTapTimeout)
+                            callback()
+                        }
+                    }
+                }
+            },
         )
     }
 
@@ -200,6 +234,7 @@ fun ZoomableSubSamplingImage(
     //    ContentScale.Fit — the source bubble is already aspect-correct, so the
     //    photo simply grows (Fit -> Fit). Unchanged from before.
     val currentOnTap by rememberUpdatedState(onTap)
+    val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
     val outerModifier = if (useAspectHero) {
         // Keyed on Unit so the tap detector launches once; the latest onTap is
         // read through rememberUpdatedState (callers may pass a fresh lambda each
@@ -211,6 +246,12 @@ fun ZoomableSubSamplingImage(
             }
     } else {
         modifier.fillMaxSize()
+    }.let { base ->
+        if (onDoubleTap == null) base else base.passiveDoubleTap {
+            pendingTap?.cancel()
+            lastDoubleTap = TimeSource.Monotonic.markNow()
+            currentOnDoubleTap?.invoke()
+        }
     }
     val innerSizing = if (useAspectHero) {
         Modifier
@@ -362,3 +403,15 @@ private fun ReportZoomedState(
 }
 
 private const val USER_SCALE_EPSILON = 1.01f
+private val DOUBLE_TAP_ECHO = 150.milliseconds
+
+private fun Modifier.passiveDoubleTap(onDoubleTap: () -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        waitForUpOrCancellation(PointerEventPass.Initial) ?: return@awaitEachGesture
+        withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        } ?: return@awaitEachGesture
+        if (waitForUpOrCancellation(PointerEventPass.Initial) != null) onDoubleTap()
+    }
+}

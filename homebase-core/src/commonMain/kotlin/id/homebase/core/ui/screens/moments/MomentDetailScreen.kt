@@ -68,7 +68,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -183,6 +182,19 @@ import id.homebase.resources.moments_detail_edit_description
 import id.homebase.resources.moments_detail_menu_add_people
 import id.homebase.resources.moments_detail_metadata_captured
 import id.homebase.resources.moments_detail_no_comments
+import id.homebase.resources.moments_detail_first_comment
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.material3.toShape
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.FilledTonalIconButton
 import id.homebase.resources.moments_detail_no_description
 import id.homebase.resources.moments_detail_send_comment
 import id.homebase.resources.moments_detail_shared_with
@@ -656,7 +668,7 @@ private const val MOMENT_COMMENTS_SHEET_FRACTION = 0.6f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailContent(
+internal fun DetailContent(
     uiState: MomentDetailUiState,
     onAction: (MomentDetailUiAction) -> Unit,
     onNavigateBack: (() -> Unit)?,
@@ -701,38 +713,50 @@ private fun DetailContent(
         // lightbox instead (routed inside MomentMediaScaffold). Both surfaces
         // share the same uiState/onAction, so the rail and the mobile sheet
         // show an identical thread via CommentsPanelContent.
-        Row(modifier = Modifier.fillMaxSize()) {
-            MomentMediaScaffold(
-                uiState = uiState,
-                onAction = onAction,
-                onNavigateBack = onNavigateBack,
-                snackbarHostState = snackbarHostState,
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-                isActivePage = isActivePage,
-                // Docked: never shrink the media for comments — the rail beside
-                // it already bounds the width.
-                commentsOpen = false,
-                commentsDocked = true,
-                onOpenComments = { showCommentsSheet = true },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-            )
-            VerticalDivider()
-            Surface(
-                modifier = Modifier
-                    .width(CommentsRailWidth)
-                    .fillMaxHeight(),
-            ) {
-                if (moment != null) {
-                    CommentsPanelContent(
-                        uiState = uiState,
-                        commentsEnabled = moment.commentsEnabled,
-                        onAction = onAction,
-                        fillHeight = true,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val railWidth = MomentsLayoutSpec.dockedRailWidth(maxWidth)
+            Row(modifier = Modifier.fillMaxSize()) {
+                MomentMediaScaffold(
+                    uiState = uiState,
+                    onAction = onAction,
+                    onNavigateBack = onNavigateBack,
+                    snackbarHostState = snackbarHostState,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    isActivePage = isActivePage,
+                    // Docked: never shrink the media for comments — the rail beside
+                    // it already bounds the width.
+                    commentsOpen = false,
+                    commentsDocked = true,
+                    onOpenComments = { showCommentsSheet = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(
+                            start = MomentsLayoutSpec.DetailStageInset,
+                            top = MomentsLayoutSpec.DetailStageInset,
+                            bottom = MomentsLayoutSpec.DetailStageInset,
+                        )
+                        .clip(MaterialTheme.shapes.large),
+                )
+                // Transparent: the rail shares the pane's tonal container with the stage.
+                Surface(
+                    color = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .width(railWidth)
+                        .fillMaxHeight(),
+                ) {
+                    if (moment != null) {
+                        CommentsPanelContent(
+                            uiState = uiState,
+                            commentsEnabled = moment.commentsEnabled,
+                            onAction = onAction,
+                            fillHeight = true,
+                            docked = true,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
@@ -1197,12 +1221,19 @@ private fun MomentMediaScaffold(
     // affordance that used to live on the MP4/HLS tag.
     var showCurrentInfo by remember { mutableStateOf(false) }
 
+    // In the docked pane a text moment has nothing to letterbox, and black would read as a failed load.
+    val textStage = commentsDocked &&
+        uiState.moment?.payloads?.isEmpty() == true &&
+        uiState.pendingLocalPreviewModel == null
+    val stageColor = if (textStage) MaterialTheme.colorScheme.secondaryContainer else Color.Black
+    val onStageColor = if (textStage) MaterialTheme.colorScheme.onSecondaryContainer else Color.White
+
     Scaffold(
         modifier = modifier,
         // Black so the letterbox bars around a Fit-scaled image or video
         // read as part of the cinematic surface rather than the surface
         // colour of the rest of the app.
-        containerColor = Color.Black,
+        containerColor = stageColor,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -1217,7 +1248,8 @@ private fun MomentMediaScaffold(
                 // own copy), then senderOdinId, then self.
                 title = {
                     val moment = uiState.moment
-                    if (moment != null) {
+                    // Docked: the rail leads with the author.
+                    if (moment != null && !commentsDocked) {
                         val avatarOdinId = moment.originalAuthor
                             ?: moment.senderOdinId
                             ?: uiState.selfOdinId
@@ -1278,7 +1310,7 @@ private fun MomentMediaScaffold(
                             onDeleteClick = {
                                 onAction(MomentDetailUiAction.RequestDeleteMoment)
                             },
-                            iconTint = Color.White,
+                            iconTint = onStageColor,
                         )
                     }
                 },
@@ -1332,6 +1364,8 @@ private fun MomentMediaScaffold(
                     onVisiblePayloadChanged = { visiblePayloadKey = it },
                     commentsOpen = commentsOpen,
                     commentsDocked = commentsDocked,
+                    stageColor = stageColor,
+                    onStageColor = onStageColor,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     isActivePage = isActivePage,
@@ -1431,6 +1465,8 @@ private fun MomentDetailContent(
     // overlay drops its description/date (the rail shows them), and the action
     // column hides its redundant comments button.
     commentsDocked: Boolean = false,
+    stageColor: Color = Color.Black,
+    onStageColor: Color = Color.White,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     isActivePage: Boolean,
@@ -1573,8 +1609,12 @@ private fun MomentDetailContent(
     // detail screen's heart and flame buttons feed this controller so the
     // visual confirmation is identical across surfaces.
     val floatingController = rememberFloatingReactionController()
+    val onDoubleTapHeart: () -> Unit = {
+        floatingController.show(HeartEmoji, HeartEmoji in moment.ownReactions)
+        onAction(MomentDetailUiAction.ToggleReactionOnMoment(HeartEmoji))
+    }
 
-    Box(modifier = modifier.background(Color.Black)) {
+    Box(modifier = modifier.background(stageColor)) {
         // Layer 1: full-screen media pager. ContentScale.Fit (via
         // preserveAspectRatio = true) so the whole image or video is visible
         // — letterbox bars take the Box's black background. No inner
@@ -1612,8 +1652,18 @@ private fun MomentDetailContent(
                 } else if (moment.description.isNotBlank()) {
                     Text(
                         text = moment.description,
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyLarge,
+                        color = onStageColor,
+                        style = if (commentsDocked) {
+                            MaterialTheme.typography.displaySmall
+                        } else {
+                            MaterialTheme.typography.bodyLarge
+                        },
+                        textAlign = if (commentsDocked) TextAlign.Center else null,
+                        autoSize = if (commentsDocked) {
+                            TextAutoSize.StepBased(minFontSize = 20.sp, maxFontSize = 36.sp)
+                        } else {
+                            null
+                        },
                         modifier = Modifier.padding(32.dp),
                     )
                 }
@@ -1733,6 +1783,7 @@ private fun MomentDetailContent(
                             // gesture-free so the tap falls to the wrapping Box
                             // and the horizontal swipe drives the pager cleanly.
                             onClick = if (commentsOpen) null else onMediaTap,
+                            onDoubleTap = if (commentsOpen) null else onDoubleTapHeart,
                             // Inline pinch-zoom in the reels viewer. Disabled
                             // while the media is shrunk to the comments band —
                             // there the lightweight fit render is enough.
@@ -1760,7 +1811,8 @@ private fun MomentDetailContent(
         // Hidden while the comments sheet is open — the column sits at
         // CenterStart of the full screen, which would otherwise float over the
         // sheet once the media has shrunk to the top third.
-        if (moment.payloads.isNotEmpty() && !commentsOpen) {
+        // Docked: the rail carries the reactions.
+        if (moment.payloads.isNotEmpty() && !commentsOpen && !commentsDocked) {
             val heartCount = remember(moment.reactionPreview) {
                 countReactionsByEmoji(moment.reactionPreview, HeartEmoji)
             }
@@ -1793,10 +1845,6 @@ private fun MomentDetailContent(
                     onAction(MomentDetailUiAction.OpenReactionsSheet)
                 },
                 onOpenComments = onOpenComments,
-                // Comments live in the always-visible rail on the docked desktop
-                // layout, so the overlay comment button there would be a no-op —
-                // hide it. Heart/flame stay (still the only way to react).
-                showCommentsButton = !commentsDocked,
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .padding(start = 12.dp),
@@ -1859,9 +1907,6 @@ private fun DetailActionColumn(
     onToggleFlame: () -> Unit,
     onShowReactors: () -> Unit,
     onOpenComments: () -> Unit,
-    // Hidden on the docked desktop layout where comments are always visible in
-    // the side rail (the overlay button would just be a no-op there).
-    showCommentsButton: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -1883,7 +1928,7 @@ private fun DetailActionColumn(
             onClick = onToggleFlame,
             onLongPress = onShowReactors,
         )
-        if (commentsEnabled && showCommentsButton) {
+        if (commentsEnabled) {
             OverlayActionButton(
                 icon = Icons.AutoMirrored.Filled.Chat,
                 contentDescription = stringResource(MR.string.moments_detail_comments_section),
@@ -2152,6 +2197,7 @@ private fun CommentsPanelContent(
     // or the full-height rail) so the thread fills the middle and the composer
     // pins to the bottom; false lets a content-sized sheet wrap to its content.
     fillHeight: Boolean,
+    docked: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -2177,9 +2223,28 @@ private fun CommentsPanelContent(
             state = listState,
             modifier = Modifier.weight(1f, fill = fillHeight),
         ) {
+            if (docked) {
+                val moment = uiState.moment
+                val author = moment?.originalAuthor ?: moment?.senderOdinId ?: uiState.selfOdinId
+                if (author != null) {
+                    item(key = "author") {
+                        RailAuthorRow(
+                            odinId = author,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, top = 24.dp, end = 16.dp, bottom = 8.dp),
+                        )
+                    }
+                }
+            }
             item(key = "description") {
                 MomentDescriptionSection(
                     description = uiState.moment?.description.orEmpty(),
+                    textStyle = if (docked) {
+                        MaterialTheme.typography.titleLarge
+                    } else {
+                        MaterialTheme.typography.bodyMedium
+                    },
                     isMine = uiState.isMine,
                     isEditing = uiState.isEditingDescription,
                     draft = uiState.descriptionDraft,
@@ -2215,19 +2280,39 @@ private fun CommentsPanelContent(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
-            item(key = "divider") { HorizontalDivider() }
+            val moment = uiState.moment
+            if (docked && moment != null) {
+                item(key = "reactions") {
+                    RailReactionRow(
+                        moment = moment,
+                        onAction = onAction,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            item(key = "divider") {
+                HorizontalDivider(modifier = if (docked) Modifier.padding(top = 16.dp) else Modifier)
+            }
             item(key = "comments-header") {
                 CommentsHeader(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(
+                            start = 16.dp,
+                            top = if (docked) 24.dp else 8.dp,
+                            end = 16.dp,
+                            bottom = 8.dp,
+                        ),
                 )
             }
             if (uiState.comments.isEmpty()) {
                 item(key = "comments-empty") {
                     CommentsEmpty(
+                        invite = commentsEnabled,
+                        docked = docked,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(if (docked) Modifier.fillParentMaxHeight(0.5f) else Modifier)
                             .padding(horizontal = 16.dp, vertical = 24.dp),
                     )
                 }
@@ -2248,10 +2333,11 @@ private fun CommentsPanelContent(
             }
         }
         if (commentsEnabled) {
-            Surface(tonalElevation = 3.dp) {
+            val composer: @Composable () -> Unit = {
                 AddCommentRow(
                     draft = uiState.commentDraft,
                     isPosting = uiState.isPostingComment,
+                    docked = docked,
                     onDraftChanged = { onAction(MomentDetailUiAction.CommentDraftChanged(it)) },
                     onSend = { onAction(MomentDetailUiAction.PostComment) },
                     modifier = Modifier
@@ -2260,6 +2346,90 @@ private fun CommentsPanelContent(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
+            if (docked) composer() else Surface(tonalElevation = 3.dp) { composer() }
+        }
+    }
+}
+
+@Composable
+private fun RailAuthorRow(
+    odinId: OdinId,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        IdentityAvatar(
+            odinId = odinId,
+            options = AvatarOptions(size = 40.dp, fontSize = 14.sp),
+        )
+        Text(
+            text = odinId.domainName,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun RailReactionRow(
+    moment: MomentFeedItem,
+    onAction: (MomentDetailUiAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(HeartEmoji, FlameEmoji).forEach { emoji ->
+            RailReactionPill(
+                emoji = emoji,
+                count = remember(moment.reactionPreview, emoji) {
+                    countReactionsByEmoji(moment.reactionPreview, emoji)
+                },
+                isActive = emoji in moment.ownReactions,
+                onClick = { onAction(MomentDetailUiAction.ToggleReactionOnMoment(emoji)) },
+                onLongPress = { onAction(MomentDetailUiAction.OpenReactionsSheet) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RailReactionPill(
+    emoji: String,
+    count: Int,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val container by animateColorAsState(
+        targetValue = if (isActive) colors.secondaryContainer else colors.surfaceContainerHighest,
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+    )
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(CircleShape)
+            .background(container)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .semantics { selected = isActive }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(text = emoji, style = MaterialTheme.typography.titleMedium)
+        if (count > 0) {
+            val countLabel = count.toString()
+            Text(
+                text = countLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (isActive) colors.onSecondaryContainer else colors.onSurface,
+            )
         }
     }
 }
@@ -2390,7 +2560,7 @@ private val MediaMaxWidth = 560.dp
 // `commentsDocked` branch in DetailContent). Fixed rather than a fraction —
 // comment text doesn't get more readable past a column width, and a fixed rail
 // keeps the media stage stable as the window resizes.
-private val CommentsRailWidth = 400.dp
+internal val CommentsRailWidth = 400.dp
 
 @Composable
 private fun PagerDots(
@@ -2992,6 +3162,7 @@ private fun MomentDescriptionSection(
     onSave: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
+    textStyle: TextStyle,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -3042,7 +3213,7 @@ private fun MomentDescriptionSection(
             ) {
                 Text(
                     text = descriptionText,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = textStyle,
                     color = if (hasDescription) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
@@ -3116,45 +3287,103 @@ private fun CommentsHeader(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun CommentsEmpty(modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(MR.string.moments_detail_no_comments),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun CommentsEmpty(
+    invite: Boolean,
+    docked: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (!docked) {
+        Text(
+            text = stringResource(MR.string.moments_detail_no_comments),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier,
+        )
+        return
+    }
+    Column(
         modifier = modifier,
-    )
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Chat,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+        Text(
+            text = stringResource(MR.string.moments_detail_no_comments),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        if (invite) {
+            Text(
+                text = stringResource(MR.string.moments_detail_first_comment),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable
 private fun AddCommentRow(
     draft: String,
     isPosting: Boolean,
+    docked: Boolean,
     onDraftChanged: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val canSend = draft.isNotBlank() && !isPosting
     val enterSendsMessage = rememberEnterSendsMessage()
+    val hint: @Composable () -> Unit = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) }
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedTextField(
-            value = draft,
-            onValueChange = onDraftChanged,
-            placeholder = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) },
-            modifier = Modifier
-                .weight(1f)
-                .composerKeyHandler(
-                    enterSendsMessage = enterSendsMessage,
-                    onSend = { if (canSend) onSend() },
+        val fieldModifier = Modifier
+            .weight(1f)
+            .composerKeyHandler(
+                enterSendsMessage = enterSendsMessage,
+                onSend = { if (canSend) onSend() },
+            )
+        if (docked) {
+            TextField(
+                value = draft,
+                onValueChange = onDraftChanged,
+                placeholder = hint,
+                shape = CircleShape,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
                 ),
-            singleLine = true,
-            // Disabling would drop focus and take the keyboard down after every send.
-            readOnly = isPosting,
-        )
-        IconButton(onClick = onSend, enabled = canSend) {
+                modifier = fieldModifier,
+                singleLine = true,
+                // Disabling would drop focus and take the keyboard down after every send.
+                readOnly = isPosting,
+            )
+        } else {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChanged,
+                placeholder = hint,
+                modifier = fieldModifier,
+                singleLine = true,
+                readOnly = isPosting,
+            )
+        }
+        val sendContent: @Composable () -> Unit = {
             if (isPosting) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
@@ -3166,6 +3395,11 @@ private fun AddCommentRow(
                     contentDescription = stringResource(MR.string.moments_detail_send_comment),
                 )
             }
+        }
+        if (docked) {
+            FilledTonalIconButton(onClick = onSend, enabled = canSend, content = { sendContent() })
+        } else {
+            IconButton(onClick = onSend, enabled = canSend, content = { sendContent() })
         }
     }
 }
