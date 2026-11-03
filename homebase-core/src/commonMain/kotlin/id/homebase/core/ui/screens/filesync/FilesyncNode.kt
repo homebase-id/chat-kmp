@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.filesync.FilesyncRoleFolder
@@ -46,6 +47,7 @@ data class FilesyncNode(
     val uploadedMs: Long? = null,
     val hashAlgorithm: PayloadHashAlgorithm? = null,
     val updatedMs: Long = 0,
+    val preview: EmbeddedThumb? = null,
 ) {
     // Once per node: search and sorting compare these on every keystroke, and neither is free on the web.
     internal val nameKey: String = FilesyncNames.key(name)
@@ -80,6 +82,7 @@ class FilesyncHandle(
     val content: JsonObject,
     val payload: FilesyncPayload?,
     version: Int = CONTENT_VERSION,
+    val previewThumbnail: EmbeddedThumb? = null,
 ) {
     val fileVersionTag: FileVersionTag? get() = versionTag?.let { FileVersionTag(fileId, it) }
 
@@ -153,9 +156,10 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         uploadedMs = descriptor?.lastModified,
         hashAlgorithm = payload?.hash?.knownAlgorithm,
         updatedMs = fileMetadata.updated.milliseconds,
+        preview = if (isFolder) null else appData.previewThumbnail?.takeIf { it.content != null },
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
-    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v)
+    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v, if (isFolder) null else appData.previewThumbnail)
 }
 
 /** A time in Unix ms as filesync writes it: an int, or a finite float rounded; anything else is none. */
