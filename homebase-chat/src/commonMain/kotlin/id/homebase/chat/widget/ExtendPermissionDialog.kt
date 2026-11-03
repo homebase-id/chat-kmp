@@ -66,7 +66,7 @@ fun ExtendPermissionDialog(
             }
             AlertDialog(
                 onDismissRequest = {
-                    viewModel.dismissDialog()
+                    viewModel.cancelDialog()
                     onCancel?.invoke()
                 },
                 title = { Text(title) },
@@ -81,7 +81,7 @@ fun ExtendPermissionDialog(
                 },
                 dismissButton = {
                     TextButton(onClick = {
-                        viewModel.dismissDialog()
+                        viewModel.cancelDialog()
                         onCancel?.invoke()
                     }) {
                         Text(stringResource(MR.string.cancel))

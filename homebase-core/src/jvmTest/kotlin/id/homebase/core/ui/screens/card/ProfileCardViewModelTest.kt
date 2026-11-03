@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import org.jetbrains.skia.Bitmap
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
@@ -101,7 +103,8 @@ class ProfileCardViewModelTest {
         var snapshots = 0
         override suspend fun snapshot(): ImageBitmap {
             snapshots++
-            return ImageBitmap(2, 2)
+            // ImageBitmap(2, 2) needs a graphics implementation that only a Compose scene registers.
+            return Bitmap().apply { allocN32Pixels(2, 2) }.asComposeImageBitmap()
         }
         override fun dispose() {
             disposed = true
@@ -945,6 +948,20 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun theEditorCapturesTilesEvenThoughTheViewerIsStillOpen() = runTest(dispatcher) {
+        val host = FakeHost()
+        host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
+        host.onPaintRequest = { host.send(CardEvent.Painted) }
+        val vm = viewModel(host, FakeSource(profile))
+        vm.onCardOpened(CardAudience.Public)
+
+        vm.captureEditorTiles()
+
+        assertTrue(vm.uiState.value.viewing)
+        assertTrue("public" in vm.introTiles.value.keys)
+    }
+
+    @Test
     fun capturingStopsWhenTheViewerOpensMidCapture() = runTest(dispatcher) {
         val host = FakeHost()
         val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
@@ -1360,6 +1377,40 @@ class ProfileCardViewModelTest {
         ),
         members = listOf(OdinId("sam.dotyou.cloud")),
     )
+
+    @Test
+    fun aCircleMadeInThisAppGetsACardAndIsSelectedOnceCreated() = runTest(dispatcher) {
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val (vm, source, _) = circleVm(store)
+        val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
+        val events = mutableListOf<ProfileCardEvent>()
+        backgroundScope.launch { vm.events.collect { events += it } }
+
+        source.circleList = source.circleList + made
+        vm.onCircleCreated(made.id, openEditor = true)
+        advanceUntilIdle()
+
+        val audience = CardAudience.Circle(made.id, "Climbing")
+        assertTrue(vm.uiState.value.cards.any { it.audience == audience })
+        assertEquals(audience, vm.uiState.value.selectedAudience)
+        assertTrue(ProfileCardEvent.OpenContentEditor in events)
+        assertTrue(store.writes.isEmpty())
+    }
+
+    @Test
+    fun creatingFromTheSwitcherSelectsTheNewCardWithoutOpeningTheEditor() = runTest(dispatcher) {
+        val (vm, source, _) = circleVm(FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)))
+        val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
+        val events = mutableListOf<ProfileCardEvent>()
+        backgroundScope.launch { vm.events.collect { events += it } }
+
+        source.circleList = source.circleList + made
+        vm.onCircleCreated(made.id, openEditor = false)
+        advanceUntilIdle()
+
+        assertEquals(CardAudience.Circle(made.id, "Climbing"), vm.uiState.value.selectedAudience)
+        assertTrue(events.none { it == ProfileCardEvent.OpenContentEditor })
+    }
 
     @Test
     fun theRealContactsCircleFilterLeavesExactlyPublicFamilyFriendsAndWork() = runTest(dispatcher) {
@@ -1824,7 +1875,7 @@ class ProfileCardViewModelTest {
         assertEquals(5, CardDesign.all.size)
         assertEquals(CardDesign.LINKS, CardDesign.all.first())
         val spec = CardDesignSpecs.of(CardDesign.LINKS)!!
-        assertEquals(CardOption.entries.toSet(), spec.options)
+        assertEquals(CardOption.entries.toSet() - CardOption.BLOCK_STYLE, spec.options)
         assertEquals(1, spec.portraitSlots)
         assertEquals("#F1F3F6", spec.schemes.first().ground)
         val all = CardDesign.all.flatMap { CardDesignSpecs.of(it)!!.schemes.map { s -> s.ground.lowercase() } }

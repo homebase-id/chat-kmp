@@ -20,7 +20,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
-import id.homebase.core.ui.screens.contactbook.isOwnedByContactsApp
+import id.homebase.core.ui.screens.contactbook.isPresentedByThisApp
 import id.homebase.core.ui.screens.profile.LoadedProfileAttributes
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.core.ui.screens.profile.keepingCircles
@@ -128,7 +128,10 @@ data class ProfileCardUiState(
     val canSaveDesign: Boolean get() = hasUnsavedChanges && !isSavingDesign && !isCardBusy && !isCircleReadOnly
 }
 
-data class CardCircle(val id: String, val name: String)
+data class CardCircle(val id: String, val name: String, val emoji: String? = null)
+
+internal fun List<CardCircle>.emojiOf(audience: CardAudience): String? =
+    (audience as? CardAudience.Circle)?.let { circle -> firstOrNull { compareStringUuId(it.id, circle.id) }?.emoji }
 
 data class ContentWrite(
     val type: String,
@@ -150,6 +153,7 @@ sealed interface ProfileCardEvent {
     data object DesignSaveFailed : ProfileCardEvent
     data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
+    data object OpenContentEditor : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
@@ -261,8 +265,8 @@ class DefaultProfileCardSource(
 
 internal fun contactsCircles(circles: List<CircleWithMembers>): List<CardCircle> =
     circles
-        .filter { it.circle.isOwnedByContactsApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
-        .map { CardCircle(it.circle.id, it.circle.name) }
+        .filter { it.circle.isPresentedByThisApp() && !it.circle.disabled && it.circle.name.isNotBlank() }
+        .map { CardCircle(it.circle.id, it.circle.name, it.circle.emoji?.takeIf(String::isNotBlank)) }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }
 
@@ -361,7 +365,7 @@ class ProfileCardViewModel(
             val edited = it.overrides
             it.copy(
                 previewDesign = design,
-                previewOverrides = if (edited.isEmpty() && it.previewOverrides == null) null else edited.prunedFor(design),
+                previewOverrides = if (edited.isEmpty() && it.previewOverrides == null) null else edited.switchedTo(design),
             )
         }
         designSwitchJob?.cancel()
@@ -391,7 +395,7 @@ class ProfileCardViewModel(
         }
     }
 
-    fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value) }
+    fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value, CardDesignSpecs.of(_uiState.value.design)?.presetOrder ?: CardDesignSpecs.ORDERED_KINDS, _uiState.value.design) }
 
     fun onBlockOrderChanged(kinds: List<String>?) = editOverrides { it.withBlockOrder(kinds) }
 
@@ -437,16 +441,21 @@ class ProfileCardViewModel(
         is CardAudience.Circle -> label
     }
 
-    private fun interruptedByViewer() = _uiState.value.viewing || _uiState.value.isExporting
+    private fun interruptedByViewer(ignoreViewing: Boolean) = (_uiState.value.viewing && !ignoreViewing) || _uiState.value.isExporting
 
     // The host goes back to the card the viewer shows when done or cancelled.
-    suspend fun captureIntroTiles() {
+    suspend fun captureIntroTiles() = captureTiles(ignoreViewing = false)
+
+    // The editor is reached from the open viewer, so `viewing` is still set while it is on screen.
+    suspend fun captureEditorTiles() = captureTiles(ignoreViewing = true)
+
+    private suspend fun captureTiles(ignoreViewing: Boolean) {
         val host = _host.value ?: return
         host.isLoaded.first { it }
         var touched = false
         try {
             for (card in _uiState.value.cards) {
-                if (interruptedByViewer()) return
+                if (interruptedByViewer(ignoreViewing)) return
                 val key = audienceKey(card.audience)
                 val design = if (card.audience == CardAudience.Public) _uiState.value.savedDesign else card.design
                 val payload = payloadFor(design, card.audience) ?: return
@@ -461,14 +470,14 @@ class ProfileCardViewModel(
                 withTimeoutOrNull(PAINT_TIMEOUT) {
                     host.events.onSubscription { host.requestPaint() }.first { it is CardEvent.Painted }
                 }
-                if (interruptedByViewer()) return
+                if (interruptedByViewer(ignoreViewing)) return
                 val image = attempt("capturing the ${card.audience.logName()} intro tile") { host.snapshot() }
                 if (image == null) {
                     Logger.i(tag = TAG) { "card intro: no snapshot for ${card.audience.logName()}, tile stays a placeholder" }
                     return
                 }
                 // The viewer may have opened during the snapshot, so the image can show its card, not this one.
-                if (interruptedByViewer()) return
+                if (interruptedByViewer(ignoreViewing)) return
                 tilePayloads[key] = payload
                 _introTiles.update { it + (key to image) }
             }
@@ -640,6 +649,20 @@ class ProfileCardViewModel(
     }
 
     fun onPhotoChanged() = load(force = true)
+
+    fun onCirclesChanged() = load(force = true)
+
+    /** Reloads so the new circle's card exists, then lands on it; every circle gets a card, borrowing the public design until saved. */
+    fun onCircleCreated(id: String, openEditor: Boolean) {
+        viewModelScope.launch {
+            load(force = true)
+            loadJob?.join()
+            val card = _uiState.value.cards.firstOrNull { it.audience.isSameAs(CardAudience.Circle(id, "")) }
+                ?: return@launch
+            selectAudience(card.audience)
+            if (openEditor) _events.tryEmit(ProfileCardEvent.OpenContentEditor)
+        }
+    }
 
     fun onImportRequested(from: CardAudience) {
         val state = _uiState.value

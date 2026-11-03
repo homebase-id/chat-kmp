@@ -74,18 +74,19 @@ private fun CircleWithMembers.toUi() = ContactCircleUi(
 )
 
 /**
- * True for a circle this app presents: one the contacts app owns.
+ * True for a circle this app presents: one the contacts app owns, or one made here.
  *
  * Every app seeds personal circles at GrantOn.None — Vault, Webdrop, Recovery, SocialSync and a
  * dozen more — and until odin-core sets Designation truthfully nothing separates them from
- * Friends. Their own apps present them; this one doesn't.
+ * Friends. Their own apps present them; this one doesn't. A circle made here is told apart by
+ * its owning app and the `c-` slug the app gives it.
  *
  * An unstamped circle is not presented at all: nothing tells an owner circle apart from an app
  * circle odin-core left without an appId, so the sheet would be offering the second to grant the
  * first.
  */
-internal fun RedactedCircleDefinition.isOwnedByContactsApp(): Boolean =
-    appId != null && appId.toString().equals(CONTACTS_APP_ID, ignoreCase = true)
+internal fun RedactedCircleDefinition.isPresentedByThisApp(): Boolean =
+    (appId != null && appId.toString().equals(CONTACTS_APP_ID, ignoreCase = true)) || isUserMadeCircle()
 
 /** Emergency Location Access is user-assigned like any personal circle, but grants location. */
 private fun RedactedCircleDefinition.isSpecialAccessCircle(): Boolean =
@@ -104,7 +105,7 @@ fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
             .filter {
                 !it.circle.isSpecialAccessCircle() &&
                     it.circle.grantOn == CircleGrantOn.None &&
-                    it.circle.isOwnedByContactsApp()
+                    it.circle.isPresentedByThisApp()
             }
             .map { it.toUi() },
         // Matched on its id rather than on ownership, so it survives an unstamped appId.

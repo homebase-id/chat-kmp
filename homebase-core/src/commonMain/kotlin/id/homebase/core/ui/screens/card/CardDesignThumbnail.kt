@@ -23,10 +23,16 @@ private fun thumbnailAccentArgb(design: String): Long = when (design) {
 
 /** A schematic of the design's layout, so picking reads as picking a look rather than a word. */
 @Composable
-internal fun CardDesignThumbnail(design: String, modifier: Modifier = Modifier, groundOverride: Color? = null, inkOverride: Color? = null) {
+internal fun CardDesignThumbnail(
+    design: String,
+    modifier: Modifier = Modifier,
+    groundOverride: Color? = null,
+    inkOverride: Color? = null,
+    accentOverride: Color? = null,
+) {
     val base = groundOverride ?: Color(CardDesign.baseArgb(design))
     val ink = inkOverride ?: Color(CardDesign.inkArgb(design))
-    val accent = Color(thumbnailAccentArgb(design))
+    val accent = accentOverride ?: Color(thumbnailAccentArgb(design))
     Canvas(modifier = modifier) {
         drawRect(base)
         when (design) {

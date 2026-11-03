@@ -255,7 +255,13 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
+import id.homebase.core.config.getCirclePermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.ui.screens.contactbook.CreateCircleViewModel
+import id.homebase.core.ui.screens.contactbook.DefaultUserCircleBackend
+import id.homebase.core.ui.screens.contactbook.ExtendPermissionCircleAccess
+import id.homebase.core.ui.screens.contactbook.UserCircleBackend
+import id.homebase.core.ui.screens.contactbook.UserCircleService
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
@@ -288,6 +294,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
+val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
@@ -1349,6 +1356,19 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    viewModel(CirclePermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getCirclePermissionExtensionConfig(),
+            autoCheck = false,
+            recheckOnAuthorizationFailure = false,
+        )
+    }
+    single<UserCircleBackend> { DefaultUserCircleBackend(get(), get()) }
+    single { UserCircleService(get()) }
+    viewModel { CreateCircleViewModel(get(), ExtendPermissionCircleAccess(get(CirclePermissionQualifier))) }
     viewModel(WebDropPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),

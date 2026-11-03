@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.card
 
+import id.homebase.resources.circle_new
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -73,9 +75,11 @@ import org.jetbrains.compose.resources.stringResource
 private val INTRO_MIN_TILE_WIDTH = 150.dp
 private val INTRO_MAX_WIDTH = 960.dp
 private val INTRO_TILE_CORNER = 20.dp
-private val CAPTURE_HOST_WIDTH = 240.dp
-private val CAPTURE_LAYOUT_WIDTH = 360.dp
+internal val CAPTURE_HOST_WIDTH = 240.dp
+internal val CAPTURE_LAYOUT_WIDTH = 360.dp
 private val TILE_ICON_SIZE = 18.sp
+// The back button's 4dp inset and 48dp width, so the hint lines up under the title.
+private val INTRO_TEXT_INSET = 52.dp
 
 @Composable
 @Suppress("DEPRECATION")
@@ -89,6 +93,7 @@ internal fun CardIntro(
     onRetry: () -> Unit,
     onCapture: suspend () -> Unit,
     onTilePainted: (CardAudience) -> Unit,
+    onNewCircle: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onClose)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -124,24 +129,23 @@ internal fun CardIntro(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 8.dp),
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 20.dp, top = 16.dp),
                     ) {
                         IconButton(onClick = onClose) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
                         }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(MR.string.profile_card_intro_title),
-                                style = MaterialTheme.typography.headlineMediumEmphasized,
-                                modifier = Modifier.semantics { heading() },
-                            )
-                            Text(
-                                text = stringResource(MR.string.profile_card_intro_hint),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Text(
+                            text = stringResource(MR.string.profile_card_intro_title),
+                            style = MaterialTheme.typography.headlineMediumEmphasized,
+                            modifier = Modifier.weight(1f).semantics { heading() },
+                        )
                     }
+                    Text(
+                        text = stringResource(MR.string.profile_card_intro_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = INTRO_TEXT_INSET, end = 20.dp, top = 4.dp, bottom = 4.dp),
+                    )
                     when {
                         uiState.loadFailed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CardErrorPlate(message = MR.string.profile_edit_load_failed, onRetry = onRetry)
@@ -162,10 +166,14 @@ internal fun CardIntro(
                             items(uiState.cards, key = { audienceKey(it.audience) }) { card ->
                                 IntroTile(
                                     card = card,
+                                    emoji = uiState.circles.emojiOf(card.audience),
                                     still = tiles[audienceKey(card.audience)],
                                     onClick = { onOpen(card.audience) },
                                     onPainted = { onTilePainted(card.audience) },
                                 )
+                            }
+                            if (onNewCircle != null && uiState.circleCardsSupported) {
+                                item(key = "new-circle") { NewCircleTile(onClick = onNewCircle) }
                             }
                         }
                     }
@@ -181,10 +189,9 @@ internal fun audienceKey(audience: CardAudience): String = when (audience) {
 }
 
 @Composable
-private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Unit, onPainted: () -> Unit) {
+private fun IntroTile(card: ProfileCard, emoji: String?, still: ImageBitmap?, onClick: () -> Unit, onPainted: () -> Unit) {
     val title = audienceLabel(card.audience)
     val open = stringResource(MR.string.profile_card_intro_open, title)
-    val palette = card.overrides.palette
     val shape = RoundedCornerShape(INTRO_TILE_CORNER)
     val cardModifier = Modifier
         .fillMaxWidth()
@@ -206,8 +213,37 @@ private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Uni
             .padding(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AudienceGlyph(
+                icon = audienceIcon(card.audience),
+                emoji = emoji,
+                size = with(LocalDensity.current) { TILE_ICON_SIZE.toDp() },
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        CardStill(card = card, still = still, modifier = cardModifier)
+    }
+}
+
+@Composable
+private fun NewCircleTile(onClick: () -> Unit) {
+    val title = stringResource(MR.string.circle_new)
+    val shape = RoundedCornerShape(INTRO_TILE_CORNER)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .clip(shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = title }
+            .padding(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(
-                audienceIcon(card.audience),
+                Icons.Outlined.Add,
                 contentDescription = null,
                 modifier = Modifier.size(with(LocalDensity.current) { TILE_ICON_SIZE.toDp() }),
             )
@@ -218,15 +254,38 @@ private fun IntroTile(card: ProfileCard, still: ImageBitmap?, onClick: () -> Uni
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (still != null) {
-            Image(bitmap = still, contentDescription = null, contentScale = ContentScale.Crop, modifier = cardModifier)
-        } else {
-            CardDesignThumbnail(
-                design = card.design,
-                groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
-                inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
-                modifier = cardModifier,
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(CARD_THUMB_ASPECT)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+        ) {
+            CookieBadge(
+                icon = Icons.Outlined.Add,
+                container = MaterialTheme.colorScheme.primaryContainer,
+                content = MaterialTheme.colorScheme.onPrimaryContainer,
+                size = 64.dp,
+                iconSize = 28.dp,
             )
         }
+    }
+}
+
+@Composable
+internal fun CardStill(card: ProfileCard, still: ImageBitmap?, modifier: Modifier) {
+    if (still != null) {
+        Image(bitmap = still, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
+    } else {
+        val palette = card.overrides.palette
+        CardDesignThumbnail(
+            design = card.design,
+            groundOverride = palette?.ground?.let { Color(hexToArgb(it)) },
+            inkOverride = palette?.ink?.let { Color(hexToArgb(it)) },
+            accentOverride = palette?.accent?.let { Color(hexToArgb(it)) },
+            modifier = modifier,
+        )
     }
 }

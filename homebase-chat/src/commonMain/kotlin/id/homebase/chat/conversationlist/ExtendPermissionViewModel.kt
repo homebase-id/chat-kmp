@@ -29,6 +29,7 @@ class ExtendPermissionViewModel(
     private val eventBus: EventBus,
     private val config: PermissionExtensionConfig,
     private val autoCheck: Boolean = true,
+    private val recheckOnAuthorizationFailure: Boolean = true,
 ) : ViewModel(), AutoCloseable {
 
     // Never in a ViewModelStore: the owning view model's addCloseable ends it.
@@ -71,6 +72,11 @@ class ExtendPermissionViewModel(
      * flow (`status=canceled`). Emitted on a SharedFlow so the screen consumes it
      * exactly once per cancel.
      */
+    private val _cancelled = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** The user said no, in the dialog or in the owner console; confirming the dialog is not a cancel. */
+    val cancelled: SharedFlow<Unit> = _cancelled.asSharedFlow()
+
     private val _navigateAwayRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val navigateAwayRequest: SharedFlow<Unit> = _navigateAwayRequest.asSharedFlow()
 
@@ -89,10 +95,12 @@ class ExtendPermissionViewModel(
             viewModelScope.launch { checkPermissions() }
         }
 
-        viewModelScope.launch {
-            eventBus.events
-                .filterIsInstance<BackendEvent.DriveAuthorizationFailed>()
-                .collect { checkPermissions() }
+        if (recheckOnAuthorizationFailure) {
+            viewModelScope.launch {
+                eventBus.events
+                    .filterIsInstance<BackendEvent.DriveAuthorizationFailed>()
+                    .collect { checkPermissions() }
+            }
         }
 
         viewModelScope.launch {
@@ -117,6 +125,7 @@ class ExtendPermissionViewModel(
                     // in the owner console, so re-prompting with the same dialog would
                     // just be the second of two cancel taps.
                     _uiState.value = ExtendPermissionUiState.Dismissed
+                    _cancelled.tryEmit(Unit)
                     _navigateAwayRequest.tryEmit(Unit)
                 }
         }
@@ -136,6 +145,7 @@ class ExtendPermissionViewModel(
             val active = credentialsManager.getActiveCredentials()
             if (active == null) {
                 Logger.d(tag = TAG) { "No active credentials — skipping permission check" }
+                if (generation == checkGeneration) _checkFailed.value = true
                 return
             }
             val activeDomain = active.domain.domainName
@@ -213,6 +223,11 @@ class ExtendPermissionViewModel(
         // every ON_RESUME / event-bus-triggered recheck unmount any UI gated on
         // "permissions checked" and reload from scratch.
         viewModelScope.launch { checkPermissions() }
+    }
+
+    fun cancelDialog() {
+        dismissDialog()
+        _cancelled.tryEmit(Unit)
     }
 
     fun dismissDialog() {
