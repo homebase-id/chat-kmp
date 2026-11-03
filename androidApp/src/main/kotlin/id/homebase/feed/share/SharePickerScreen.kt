@@ -71,7 +71,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.chat.conversationlist.synthesizeOwnerSession
+import id.homebase.api.client.auth.synthesizeOwnerSession
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel

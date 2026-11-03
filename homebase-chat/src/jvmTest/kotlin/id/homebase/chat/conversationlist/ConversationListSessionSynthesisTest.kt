@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.auth.synthesizeOwnerSession
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.common.OdinId

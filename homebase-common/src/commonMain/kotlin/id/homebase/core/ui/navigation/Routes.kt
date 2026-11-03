@@ -273,6 +273,10 @@ sealed class Route {
     data object CreateMomentGroup : Route()
 
     @Serializable
+    @SerialName("apps-settings")
+    data object AppsSettings : Route()
+
+    @Serializable
     @SerialName("moments-settings")
     data object MomentsSettings : Route()
 

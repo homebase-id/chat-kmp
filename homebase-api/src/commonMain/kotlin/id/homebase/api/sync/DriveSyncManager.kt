@@ -103,6 +103,8 @@ class DriveSyncManager(
                         eventBus.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Success))
                     previous is SyncState.Syncing && current is SyncState.Failed ->
                         eventBus.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Failure))
+                    previous !is SyncState.Idle && current is SyncState.Idle ->
+                        eventBus.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Cancelled))
                 }
                 previous = current
             }
