@@ -3,6 +3,12 @@ package id.homebase.core.ui.navigation
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
@@ -48,7 +54,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.LocationOn
@@ -133,6 +138,14 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
+import id.homebase.core.ui.assets.BootstrapChatOutlined
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
+import id.homebase.core.avatars.OwnerAvatarStatus
+import id.homebase.core.ui.assets.Apps
+import id.homebase.core.ui.assets.AppsOutlined
+import id.homebase.core.ui.assets.RssFeed
 import id.homebase.core.ui.assets.Filesync
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
@@ -198,6 +211,8 @@ import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsCategory
+import id.homebase.core.ui.screens.settings.AppsSettingsActions
+import id.homebase.core.ui.screens.settings.AppsSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsPaneRequest
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
 import id.homebase.core.ui.screens.settings.SettingsPaneHost
@@ -250,7 +265,7 @@ import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_calls
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
-import id.homebase.resources.nav_home
+import id.homebase.resources.nav_apps
 import id.homebase.resources.calls_missed_badge_cd
 import id.homebase.resources.location_attention_cd
 import id.homebase.chat.services.calling.history.CallHistoryService
@@ -318,7 +333,7 @@ private const val SHOW_ARCHIVED_KEY = "showArchived"
 
 // Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
 private val NavigationRailWidth = 64.dp
-private val RailIndicatorSize = 48.dp
+internal val RailIndicatorSize = 48.dp
 private val RailIconSize = 20.dp
 
 // Requesting focus (and so the IME) before the destination's slide-in settles
@@ -345,6 +360,12 @@ fun AppNavHost(
     // what keeps the resolutions above it alive across a teardown is IdentityScope (#1373).
     val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
     val isAuthenticated = authState is YouAuthState.Authenticated && identityScope?.closed == false
+    val ownerSessions = koinInject<OwnerSessionRepository>()
+    val credentials = koinInject<CredentialsManager>()
+    val railOwner by remember(ownerSessions, credentials) {
+        effectiveOwnerSessionFlow(ownerSessions.user, credentials.credentialsFlow)
+    }.collectAsStateWithLifecycle(null)
+    val railAvatarState by koinInject<OwnerAvatarStatus>().state.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
@@ -423,6 +444,8 @@ fun AppNavHost(
     val tabRoutes by rememberUpdatedState(topLevelRoutes.map { it.route })
     // The nearest tab root with a bar item: it stays lit under a pushed screen or a hidden add-on.
     val selectedTab = backStack.currentTabRoot(tabRoutes)?.destination
+    // The rail's avatar opens Settings, so it takes the selection for as long as the pane floats over the tab.
+    val settingsOpen = currentDestination?.hasRoute(Route.Settings::class) == true
     val openEmail: () -> Unit = { navController.openApp(Route.Email, tabRoutes) }
     val openContactBook: () -> Unit = { navController.openApp(Route.ContactBook, tabRoutes) }
     val openCalls: () -> Unit = { navController.openApp(Route.Calls, tabRoutes) }
@@ -861,6 +884,7 @@ fun AppNavHost(
                             icon = {
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
+                                    selected = isSelected,
                                     showMomentsBadge = momentsUnseenCount > 0,
                                     showCallsBadge = callsBadge,
                                     showEmailBadge = emailUnreadCount > 0,
@@ -904,11 +928,19 @@ fun AppNavHost(
                     Row {
                         NavigationRail(
                             modifier = Modifier.width(NavigationRailWidth),
-                            header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
+                            header = {
+                                Spacer(modifier = Modifier.height(8.dp + topInset))
+                                RailOwnerAvatar(
+                                    session = railOwner,
+                                    state = railAvatarState,
+                                    onNavigate = { navController.navigate(it) },
+                                    selected = settingsOpen,
+                                )
+                            },
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
                             topLevelRoutes.forEach { topLevelRoute ->
-                                val isSelected =
+                                val isSelected = !settingsOpen &&
                                     selectedTab?.hasRoute(topLevelRoute.route::class) == true
                                 RailItem(
                                     topLevelRoute = topLevelRoute,
@@ -1736,6 +1768,9 @@ fun AppNavHost(
                                         viewModel = koinViewModel(),
                                         actions = SettingsActions(
                                             onBack = { navController.popBackStack() },
+                                            onApps = {
+                                                navController.navigate(Route.AppsSettings)
+                                            },
                                             onNotifications = {
                                                 navController.navigate(Route.NotificationSettings)
                                             },
@@ -1756,20 +1791,6 @@ fun AppNavHost(
                                             },
                                             onHelp = {
                                                 navController.navigate(Route.Help)
-                                            },
-                                            onMomentsSettings = {
-                                                navController.navigate(Route.MomentsSettings)
-                                            },
-                                            onVaultSettings = {
-                                                navController.navigate(Route.VaultSettings)
-                                            },
-                                            onEmailSettings = {
-                                                navController.navigate(Route.EmailSettings)
-                                            },
-                                            onOpenWebDrop = openWebDrop,
-                                            onLocation = openLocation,
-                                            onContactBookSettings = {
-                                                navController.navigate(Route.ContactBookSettings)
                                             },
                                             onProfileEdit = {
                                                 navController.navigate(Route.ProfileCardEditor())
@@ -2436,6 +2457,25 @@ fun AppNavHost(
                                 }
                             }
 
+                            composable<Route.AppsSettings> { entry ->
+                                if (isAuthenticated) {
+                                    AppsSettingsScreen(
+                                        viewModel = koinViewModel(
+                                            viewModelStoreOwner = rememberSettingsOwner(navController, entry),
+                                        ),
+                                        actions = AppsSettingsActions(
+                                            onBack = { navController.popBackStack() },
+                                            onMomentsSettings = { navController.navigate(Route.MomentsSettings) },
+                                            onVaultSettings = { navController.navigate(Route.VaultSettings) },
+                                            onEmailSettings = { navController.navigate(Route.EmailSettings) },
+                                            onOpenWebDrop = openWebDrop,
+                                            onLocation = openLocation,
+                                            onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
+                                        ),
+                                    )
+                                }
+                            }
+
                             composable<Route.AccountSettings> { entry ->
                                 if (isAuthenticated) {
                                     AccountSettingsScreen(
@@ -2640,24 +2680,25 @@ internal fun topLevelRoutesFor(
     if (locationVisible) add(TopLevelRoute.Location)
     if (contactBookVisible) add(TopLevelRoute.ContactBook)
     if (emailVisible) add(TopLevelRoute.Email)
-    add(TopLevelRoute.Home)
+    add(TopLevelRoute.Apps)
 }
 
 sealed class TopLevelRoute(
     val route: Route,
     val labelRes: StringResource,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val outlinedIcon: androidx.compose.ui.graphics.vector.ImageVector = icon,
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
-    data object Calls : TopLevelRoute(Route.Calls, MR.string.nav_calls, Icons.Outlined.Call)
-    data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
-    data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
-    data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
-    data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat, BootstrapChatOutlined)
+    data object Calls : TopLevelRoute(Route.Calls, MR.string.nav_calls, Icons.Filled.Call, Icons.Outlined.Call)
+    data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, HomebaseIcons.RssFeed)
+    data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome)
+    data object Apps : TopLevelRoute(Route.Home, MR.string.nav_apps, HomebaseIcons.Apps, HomebaseIcons.AppsOutlined)
+    data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Filled.Lock, Icons.Outlined.Lock)
     data object Filesync : TopLevelRoute(Route.Filesync, MR.string.filesync_label, HomebaseIcons.Filesync)
-    data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Outlined.MailOutline)
-    data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
-    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
+    data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Filled.Mail, Icons.Outlined.MailOutline)
+    data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Filled.LocationOn, Icons.Outlined.LocationOn)
+    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Filled.People, Icons.Outlined.People)
 }
 
 /**
@@ -2689,6 +2730,7 @@ internal fun RailItem(
     ) {
         TopLevelNavIcon(
             topLevelRoute = topLevelRoute,
+            selected = selected,
             showMomentsBadge = showMomentsBadge,
             showCallsBadge = showCallsBadge,
             showEmailBadge = showEmailBadge,
@@ -2700,8 +2742,8 @@ internal fun RailItem(
     }
 }
 
-// Role.Button, not the Role.Tab the five destination items use: neither target is a
-// destination the rail can be sitting on, so neither can ever read back as selected.
+// Role.Button, not the Role.Tab the five destination items use: neither target is a tab,
+// and while Settings is open the owner avatar carries the selection, not this button.
 @Composable
 private fun RailActionItem(
     icon: ImageVector,
@@ -2726,6 +2768,7 @@ private fun RailActionItem(
 internal fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
+    selected: Boolean = false,
     showCallsBadge: Boolean = false,
     showEmailBadge: Boolean = false,
     showLocationBadge: Boolean = false,
@@ -2734,7 +2777,7 @@ internal fun TopLevelNavIcon(
 ) {
     val icon: @Composable () -> Unit = {
         Icon(
-            topLevelRoute.icon,
+            if (selected) topLevelRoute.icon else topLevelRoute.outlinedIcon,
             contentDescription = stringResource(topLevelRoute.labelRes),
             modifier = Modifier.size(size),
             tint = tint,

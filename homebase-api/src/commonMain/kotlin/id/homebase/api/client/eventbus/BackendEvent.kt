@@ -35,6 +35,7 @@ sealed interface BackendEvent {
     sealed interface SyncAllResult {
         data object Success : SyncAllResult
         data object Failure : SyncAllResult
+        data object Cancelled : SyncAllResult
     }
 
     sealed interface CircleNetworkEvent : BackendEvent {

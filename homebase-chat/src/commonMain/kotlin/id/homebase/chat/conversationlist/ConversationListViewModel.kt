@@ -12,6 +12,8 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
+import id.homebase.api.client.auth.synthesizeOwnerSession
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -52,9 +54,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.chat.widget.mentionNamesOf
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
@@ -164,7 +164,7 @@ class ConversationListViewModel(
     private val fileOperationsProvider: FileOperationsProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val credentialsManager: CredentialsManager,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val ownerAvatarStatus: id.homebase.core.avatars.OwnerAvatarStatus,
     private val audioRecorder: AudioRecorder,
     private val audioWaveFormGenerator: AudioWaveFormGenerator,
     private val eventBus: EventBus,
@@ -961,15 +961,18 @@ class ConversationListViewModel(
                 }
         }
 
-        // Set connected state
         viewModelScope.launch {
-            authConnectionCoordinator.connectionState
-                .collectLatest { state ->
-                    val status = state.toConnectionStatus()
-                    _uiState.update { it.copy(connectionStatus = status) }
-                    // Drives the media upload overlay's online-only "Sending" spinner (#948).
-                    _messagesUiState.update { it.copy(isConnected = status == AppConnectionStatus.Connected) }
+            ownerAvatarStatus.state.collectLatest { avatar ->
+                _uiState.update {
+                    it.copy(
+                        connectionStatus = avatar.connectionStatus,
+                        driveIsSyncing = avatar.driveIsSyncing,
+                        hasDriveError = avatar.hasDriveError,
+                    )
                 }
+                // Drives the media upload overlay's online-only "Sending" spinner (#948).
+                _messagesUiState.update { it.copy(isConnected = avatar.connectionStatus == AppConnectionStatus.Connected) }
+            }
         }
 
         viewModelScope.launch {
@@ -977,34 +980,6 @@ class ConversationListViewModel(
                 .map { it.initialSyncFailed }
                 .distinctUntilChanged()
                 .collect { failed -> _uiState.update { it.copy(initialSyncFailed = failed) } }
-        }
-
-        // Set isConnecting state
-        viewModelScope.launch {
-            eventBus.events
-                .filter {
-                    it is BackendEvent.SyncAllStarted ||
-                            it is BackendEvent.SyncAllStopped
-                }
-                .collectLatest { event ->
-                    when (event) {
-                        is BackendEvent.SyncAllStarted -> _uiState.update {
-                            it.copy(
-                                driveIsSyncing = true,
-                                hasDriveError = false
-                            )
-                        }
-
-                        is BackendEvent.SyncAllStopped -> _uiState.update {
-                            it.copy(
-                                driveIsSyncing = false,
-                                hasDriveError = event.result is BackendEvent.SyncAllResult.Failure
-                            )
-                        }
-
-                        else -> Unit
-                    }
-                }
         }
 
         // Deferred notification-tap resolution. NotificationService sets a
@@ -2451,41 +2426,6 @@ internal fun shouldClearLoadingSpinnerOnLoadEnd(
     conversationId: Uuid,
     stillLoading: Boolean,
 ): Boolean = stillLoading && selectedConversationId == conversationId
-
-/**
- * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the fully-resolved
- * [live] session, fall back to a minimal one synthesized from [credentials] when the async
- * profile load hasn't arrived yet. Returns null only when neither source is available
- * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
- * display name / profile image with a bare odinId.
- */
-fun synthesizeOwnerSession(
-    live: OwnerSession?,
-    credentials: ApiCredentials?,
-): OwnerSession? = live ?: credentials?.let {
-    OwnerSession(
-        odinId = it.domain,
-        displayName = null,
-        firstName = null,
-        surName = null,
-        profileImageFileId = null,
-        profileImageFileKey = null,
-        profileImagePreviewThumbnail = null,
-        status = null,
-    )
-}
-
-/**
- * The owner session as the UI states should see it. [live] stays null until the connect
- * chain reaches `loadProfile()` — seconds on a slow link — while [credentials] are set
- * locally at login/restore, so own-vs-peer rendering must not wait on [live].
- */
-internal fun effectiveOwnerSessionFlow(
-    live: Flow<OwnerSession?>,
-    credentials: Flow<ApiCredentials?>,
-): Flow<OwnerSession?> = combine(live, credentials) { session, creds ->
-    synthesizeOwnerSession(session, creds)
-}
 
 /**
  * Decides whether a pending notification tap is ready to be resolved

@@ -1741,7 +1741,14 @@
     <string name="calls_contact_not_connected">Not connected</string>
     <string name="calls_kind_voice">Voice</string>
     <string name="calls_kind_video">Video</string>
-    <string name="nav_home">Home</string>
+    <string name="nav_apps">Apps</string>
+    <string name="settings_apps_desc">Feed, Vault, Email and more</string>
+    <string name="settings_apps_section_features">Features</string>
+    <string name="settings_apps_section_pages">App settings</string>
+    <string name="owner_status_connected">Connected</string>
+    <string name="owner_status_connecting">Connecting</string>
+    <string name="owner_status_syncing">Syncing</string>
+    <string name="owner_status_sync_problem">Sync problem</string>
 
     <!-- Developer menu -->
     <string name="dev_menu_title">Developer menu</string>

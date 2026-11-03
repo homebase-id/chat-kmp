@@ -118,6 +118,8 @@ import id.homebase.core.audio.ProximityAudioRouter
 import id.homebase.core.audio.VoiceNotePlayback
 import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.OwnerAvatarStatus
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.diagnostics.ServerIpCapture
@@ -660,6 +662,14 @@ val appModule = module {
     }
 
     single {
+        OwnerAvatarStatus(
+            connection = get<AuthConnectionCoordinator>().connectionState.map { it.toConnectionStatus() },
+            events = get<EventBus>().events,
+            scope = get(),
+        )
+    }
+
+    single {
         AuthConnectionCoordinator(
             credentialsManager = get(),
             ownerSessionRepository = get(),
@@ -1132,7 +1142,7 @@ val appModule = module {
             fileOperationsProvider = get(),
             ownerSessionRepository = get(),
             credentialsManager = get(),
-            authConnectionCoordinator = get(),
+            ownerAvatarStatus = get(),
             audioRecorder = get(),
             audioWaveFormGenerator = get(),
             eventBus = get(),

@@ -88,3 +88,9 @@ internal fun renderStallMessage(event: StallEvent, stack: String?): String = bui
     }
     event.memory?.let { appendLine("Memory at stall: ${MemoryDiagnostics.format(it)}") }
 }
+
+/** Logged when a reported main-thread block ends: the CPU split says busy loop vs blocked or starved. */
+internal fun renderMainThreadRecovery(totalMs: Long, sinceReport: ProcessTimes?): String {
+    val cause = sinceReport?.let { ", ${classifyStallCause(it)}: cpu +${it.cpuMs}ms over ${it.continuousMs}ms wall since the report" }.orEmpty()
+    return "Main/UI thread recovered after ${totalMs}ms$cause"
+}
