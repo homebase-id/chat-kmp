@@ -30,6 +30,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import id.homebase.api.crypto.ShareKeys
+import id.homebase.api.common.toSecureByteArray
 import kotlin.uuid.Uuid
 
 class ZkDriveFilesTest {
@@ -241,8 +243,34 @@ class ZkDriveFilesTest {
         """
         val serverFile = OdinSystemSerializer.deserialize<ServerFile>(json)
 
-        assertEquals("""{"body":"nice"}""", serverFile.asHomebaseFile(SecureByteArray(sharedSecret), file.aesKey).fileMetadata.appData.content)
+        assertEquals("""{"body":"nice"}""", serverFile.asHomebaseFile(SecureByteArray(sharedSecret), { _, _, _ -> file.aesKey }).fileMetadata.appData.content)
         assertFailsWith<FileDecryptionException.KeyHeaderDecryptionFailed> { serverFile.asHomebaseFile(SecureByteArray(sharedSecret)) }
+    }
+
+    @Test
+    fun aFileSharedWithTheReaderOpensWithTheKeyItsShareUnlocks() = runTest {
+        val owner = Uuid.random()
+        val fileId = Uuid.random()
+        val circleId = Uuid.random()
+        val circleKey = ShareKeys.newCircleKey()
+        val file = KeyHeader.newRandom16()
+        val locked = ShareKeys.lockFileKey(circleKey, file.aesKey.toByteArray(), owner, fileId, circleId)
+        val content = Base64.encode(file.encryptDataAes("""{"name":"plan.pdf"}""".encodeToByteArray()))
+        val json = """
+            {
+              "fileId": "$fileId", "driveId": "$owner", "fileState": "active", "fileSystemType": "standard",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "share", "iv": "${Base64.encode(file.iv)}", "encryptedAesKey": "${Base64.encode(locked)}" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 7102, "content": "$content" } },
+              "serverMetadata": {},
+              "shares": [{ "circleId": "$circleId", "permissions": "read", "created": 1, "modified": 1 }]
+            }
+        """
+        val shared = OdinSystemSerializer.deserialize<ServerFile>(json)
+        val byShare = ExternalFileKey { id, shares, lockedFileKey ->
+            ShareKeys.openFileKey(circleKey, lockedFileKey, owner, id, shares.single().circleId).toSecureByteArray()
+        }
+
+        assertEquals("""{"name":"plan.pdf"}""", shared.asHomebaseFile(SecureByteArray(sharedSecret), byShare).fileMetadata.appData.content)
     }
 
     private suspend fun unlockVault() {
