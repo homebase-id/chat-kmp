@@ -54,6 +54,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
+import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
@@ -61,9 +62,10 @@ import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.contactcard.VCardContact
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
-import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.SharedContentDescriptor
+import id.homebase.core.share.SharedContentType
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
@@ -102,9 +104,7 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -133,6 +133,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val chatMessageSenderService: ChatMessageSenderService by inject()
     private val fileOperationsProvider: FileOperationsProvider by inject()
     private val userPreferences: UserPreferences by inject()
+    private val shareContentProcessor: ShareContentProcessor by inject()
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
     private val identitySession: IdentitySessionScope by inject()
     private val optionalDriveActivation: OptionalDriveActivation by inject()
@@ -205,8 +206,13 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             if (rawContent == null) "initShareFlow: extract() returned null"
             else "initShareFlow: extract() files=${rawContent.files.size} hasText=${rawContent.hasText} textLen=${rawContent.text?.length ?: 0}"
         }
+        if (rawContent != null && rawContent.failedFileCount > 0) {
+            Toast.makeText(this, getString(R.string.share_file_unavailable), Toast.LENGTH_LONG).show()
+        }
         if (rawContent == null || rawContent.isEmpty) {
-            Toast.makeText(this, getString(R.string.share_nothing_to_share), Toast.LENGTH_SHORT).show()
+            if (rawContent == null || rawContent.failedFileCount == 0) {
+                Toast.makeText(this, getString(R.string.share_nothing_to_share), Toast.LENGTH_SHORT).show()
+            }
             finish()
             return
         }
@@ -627,9 +633,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             try {
                 withContext(Dispatchers.IO) {
                     for (conversationId in conversationIds) {
-                        if (content.hasFiles) {
-                            sendWithFiles(conversationId, content)
-                        } else if (content.hasText) {
+                        if (content.hasText) {
                             chatMessageSenderService.sendNewMessage(
                                 messageUniqueId = Uuid.random(),
                                 conversationId = conversationId,
@@ -674,9 +678,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    if (content.hasFiles) {
-                        sendWithFiles(conversationId, content)
-                    } else if (content.hasText) {
+                    if (content.hasText) {
                         chatMessageSenderService.sendNewMessage(
                             messageUniqueId = Uuid.random(),
                             conversationId = conversationId,
@@ -707,30 +709,6 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 cleanupTempFiles()
             }
         }
-    }
-
-    private suspend fun sendWithFiles(conversationId: Uuid, content: SharedContent) {
-        val attachments = content.files.map { file ->
-            AttachmentInput(
-                filePath = file.path,
-                contentType = file.mimeType,
-                displayName = file.displayName,
-            )
-        }
-
-        val payloadBundle = MessageAttachmentBuilder.build(
-            attachments = attachments,
-            fileOperationsProvider = fileOperationsProvider,
-            mediaQuality = userPreferences.mediaQuality,
-        ) { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" }
-
-        chatMessageSenderService.sendNewMessage(
-            messageUniqueId = Uuid.random(),
-            conversationId = conversationId,
-            messageText = content.text ?: "",
-            previousMessageUniqueId = null,
-            payloadBundle = payloadBundle,
-        )
     }
 
     /**
@@ -983,6 +961,45 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         }
     }
 
+    private suspend fun stageSharedFiles(
+        conversationIds: Set<Uuid>,
+        caption: String,
+        attachments: List<AttachmentInput>,
+    ): SharedContentDescriptor {
+        val shareId = Uuid.random()
+        val names = try {
+            attachments.mapIndexed { index, attachment ->
+                val originalName = (attachment.displayName ?: attachment.filePath).substringAfterLast('/')
+                val name = "$shareId/$index/$originalName"
+                val target = java.io.File(shareContentProcessor.resolveFilePath(name))
+                target.parentFile?.mkdirs()
+                fileOperationsProvider.withResolvedFile(attachment.filePath) { source ->
+                    java.io.File(source).copyTo(target, overwrite = true)
+                }
+                name
+            }
+        } catch (e: Exception) {
+            shareContentProcessor.discardShare(shareId.toString())
+            throw e
+        }
+        val mimes = attachments.map { it.contentType }
+        val type = when {
+            mimes.all { it.startsWith("image/") } -> SharedContentType.IMAGE
+            mimes.all { it.startsWith("video/") } -> SharedContentType.VIDEO
+            mimes.none { it.startsWith("image/") || it.startsWith("video/") } -> SharedContentType.FILE
+            else -> SharedContentType.MIXED
+        }
+        val targets = conversationIds.map { it.toString() }
+        return SharedContentDescriptor(
+            contentType = type,
+            text = caption.ifBlank { null },
+            fileNames = names,
+            mimeTypes = mimes,
+            targetConversationId = targets.first(),
+            targetConversationIds = targets,
+        )
+    }
+
     private fun sendEditedFiles(
         conversationIds: Set<Uuid>,
         caption: String,
@@ -1032,40 +1049,15 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     }
                 }
 
-                val payloadBundle = withContext(Dispatchers.IO) {
-                    MessageAttachmentBuilder.build(
-                        attachments = attachments,
-                        fileOperationsProvider = fileOperationsProvider,
-                        mediaQuality = userPreferences.mediaQuality,
-                    ) { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" }
+                withContext(Dispatchers.IO) {
+                    shareContentProcessor.sweepOrphanedShares()
+                    shareContentProcessor.writeContent(stageSharedFiles(conversationIds, caption, attachments))
+                    cleanupTempFiles()
                 }
 
-                // Navigate immediately — don't wait for sends to complete
                 val firstId = conversationIds.first()
-                Logger.d(tag = COLD_TAG) { "sendEditedFiles: launching MainActivity for convo=$firstId then finish()" }
+                Logger.d(tag = COLD_TAG) { "sendEditedFiles: handing off to MainActivity for convo=$firstId then finish()" }
                 startActivity(openConversationIntent(firstId))
-
-                // Fire sends in background scope that survives the activity finish.
-                // Safe because MainActivity starts before finish(), keeping the process alive.
-                // For large uploads, consider migrating to WorkManager.
-                val sendScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-                sendScope.launch {
-                    try {
-                        for (conversationId in conversationIds) {
-                            chatMessageSenderService.sendNewMessage(
-                                messageUniqueId = Uuid.random(),
-                                conversationId = conversationId,
-                                messageText = caption,
-                                previousMessageUniqueId = null,
-                                payloadBundle = payloadBundle,
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Logger.e(tag = "ShareReceiver") { "Background send failed: ${e.message}" }
-                    } finally {
-                        cleanupTempFiles()
-                    }
-                }
 
                 finish()
             } catch (e: Exception) {

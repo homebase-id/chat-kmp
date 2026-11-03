@@ -842,7 +842,7 @@ class ConversationStream(
         // loads (cold start, reconnect).
         if (result.isNewlyRemoved) {
             optimisticWriter.stampConversationExitedAt(chatDrive, existing.id)
-                ?.let { outboxSync.tryEnqueue(it) }
+                ?.let { outboxSync.enqueueLatest(it) }
         }
 
         // We should optimize later to not map the full list

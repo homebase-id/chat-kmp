@@ -83,7 +83,7 @@ class PeerVideoDriveAccess(
         onProgress: ((Float) -> Unit)?,
     ): Boolean {
         var wroteAnything = false
-        fileOps.writeStream(
+        fileOps.writeDownload(
             outputPath,
             flow {
                 var offset = 0L

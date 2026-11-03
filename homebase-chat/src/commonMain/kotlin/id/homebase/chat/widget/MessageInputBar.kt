@@ -173,6 +173,7 @@ import id.homebase.resources.chat_markdown_link_dialog_cancel
 import id.homebase.resources.chat_markdown_link_dialog_edit_title
 import id.homebase.resources.chat_markdown_link_dialog_remove
 import id.homebase.resources.chat_markdown_link_dialog_save
+import id.homebase.api.util.normalizeUrlScheme
 import id.homebase.core.util.URL_REGEX
 import id.homebase.core.util.LinkAtSelection
 import id.homebase.core.util.addLinkReplacingSelection
@@ -268,7 +269,7 @@ fun MessageInputBar(
     val currentPayloadRenderers by rememberUpdatedState(payloadRenderers)
     val currentOnPayloadRenderersChange by rememberUpdatedState(onPayloadRenderersChange)
     val detectedUrl by remember(textFieldState) {
-        derivedStateOf { URL_REGEX.find(textFieldState.annotatedString.text)?.value }
+        derivedStateOf { URL_REGEX.find(textFieldState.annotatedString.text)?.value?.let(::normalizeUrlScheme) }
     }
 
     // Keyed on the URL, not the text: typing around the link must not cancel an in-flight fetch.

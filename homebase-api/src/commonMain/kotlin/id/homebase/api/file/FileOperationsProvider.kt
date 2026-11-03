@@ -165,6 +165,13 @@ interface FileOperationsProvider {
     )
 
     /**
+     * [writeStream] for a download the user chose to open: where the provider keeps files in memory
+     * (the web) it throws [FileTooLargeForMemoryException] once [data] passes the provider's limit,
+     * and removes the partial file. Elsewhere it is [writeStream].
+     */
+    suspend fun writeDownload(path: String, data: Flow<ByteArray>) = writeStream(path, data)
+
+    /**
      * Resolves a path that may be a content URI (Android) to a real filesystem path
      * by copying it to a temp file. On platforms without content URIs, returns [path] unchanged.
      */

@@ -15,8 +15,13 @@ data class SharedContentDescriptor(
     val url: String? = null,
     val fileNames: List<String> = emptyList(),
     val mimeTypes: List<String> = emptyList(),
-    val targetConversationId: String,
+    val targetConversationId: String = "",
+    val targetConversationIds: List<String> = emptyList(),
 )
+
+/** Every conversation to send to, in picked order; reads iOS's single-id descriptors too. */
+fun SharedContentDescriptor.allTargetConversationIds(): List<String> =
+    targetConversationIds.ifEmpty { listOfNotNull(targetConversationId.takeIf { it.isNotBlank() }) }
 
 /**
  * Body to send for a text/URL share — the iOS counterpart of Android's whole

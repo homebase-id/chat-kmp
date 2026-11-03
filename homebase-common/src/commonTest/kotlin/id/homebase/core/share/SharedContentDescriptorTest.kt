@@ -1,5 +1,6 @@
 package id.homebase.core.share
 
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -102,5 +103,23 @@ class SharedContentDescriptorTest {
     @Test
     fun ordinary_text_share_is_sendable() {
         assertTrue(descriptor(text = "hello", url = null).hasSendableContent())
+    }
+
+    @Test
+    fun old_single_target_descriptor_still_parses() {
+        val old = """{"contentType":"IMAGE","fileNames":["a.jpg"],"mimeTypes":["image/jpeg"],"targetConversationId":"c0ffee"}"""
+        val parsed = Json { ignoreUnknownKeys = true }.decodeFromString<SharedContentDescriptor>(old)
+        assertEquals(listOf("c0ffee"), parsed.allTargetConversationIds())
+    }
+
+    @Test
+    fun multi_target_descriptor_round_trips_in_order() {
+        val json = Json { ignoreUnknownKeys = true }
+        val original = descriptor(text = null, url = null, fileNames = listOf("v.mp4"))
+            .copy(targetConversationId = "b", targetConversationIds = listOf("b", "a", "c"))
+        val parsed = json.decodeFromString<SharedContentDescriptor>(
+            json.encodeToString(SharedContentDescriptor.serializer(), original),
+        )
+        assertEquals(listOf("b", "a", "c"), parsed.allTargetConversationIds())
     }
 }

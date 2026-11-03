@@ -8,6 +8,7 @@ import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.HeadingStyle
 import com.mohamedrejeb.richeditor.model.RichSpanStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.util.normalizeUrlScheme
 import id.homebase.core.ui.theme.LightColors
 
 fun RichTextState.programmaticBackspace() {
@@ -167,7 +168,8 @@ private fun isZWJ(cp: Int): Boolean = cp == 0x200D
 private fun isVariationSelector(cp: Int): Boolean = cp in 0xFE00..0xFE0F
 
 val URL_REGEX = Regex(
-    "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
+    "(?:https?://(?:www\\.)?|www\\.)[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)",
+    RegexOption.IGNORE_CASE,
 )
 
 data class LinkAtSelection(val text: String, val url: String)
@@ -212,7 +214,7 @@ fun RichTextState.pasteUrlOverSelection(clipboardText: String?): Boolean {
     val label = selectedPlainText()
     if (label.isBlank()) return false
     removeSelectedText()
-    addLink(text = label, url = url)
+    addLink(text = label, url = normalizeUrlScheme(url))
     return true
 }
 

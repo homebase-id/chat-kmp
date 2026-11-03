@@ -1,7 +1,9 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.chat.widget.preview.filePreviewKind
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDamagedException
+import id.homebase.api.file.FileTooLargeForMemoryException
 import id.homebase.api.client.drives.files.wholePercentFractions
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
@@ -92,7 +94,10 @@ internal class FilesyncTransfers(
                 val path = repository.writeToCache(cacheName, toShareOutbound = target == FilesyncShareTarget.Open || target == FilesyncShareTarget.OtherApp, write)
                 when (target) {
                     FilesyncShareTarget.Open -> send(FilesyncUiEvent.OpenFile(path))
-                    FilesyncShareTarget.Preview -> send(FilesyncUiEvent.PreviewFile(FilesyncPreviewFile(path, source.name)))
+                    FilesyncShareTarget.Preview -> {
+                        val kind = filePreviewKind(null, source.name, (source as? Source.One)?.node?.sizeBytes)
+                        send(if (kind != null) FilesyncUiEvent.PreviewFile(FilesyncPreviewFile(path, source.name, kind)) else FilesyncUiEvent.OpenFile(path))
+                    }
                     FilesyncShareTarget.Download -> send(FilesyncUiEvent.SaveFile(path, source.name))
                     FilesyncShareTarget.OtherApp -> send(FilesyncUiEvent.ShareFile(path))
                     FilesyncShareTarget.Chat -> send(FilesyncUiEvent.SendToChat(path, source.name))
@@ -114,6 +119,7 @@ internal class FilesyncTransfers(
                     when (e) {
                         is FilesyncArchiveDamaged -> FilesyncUiEvent.ArchiveDamaged(e.name)
                         is PayloadDamagedException -> FilesyncUiEvent.Error(FilesyncError.Damaged)
+                        is FileTooLargeForMemoryException -> FilesyncUiEvent.Error(FilesyncError.TooLargeHere)
                         else -> FilesyncUiEvent.Error(FilesyncError.DownloadFailed)
                     }
                 )
