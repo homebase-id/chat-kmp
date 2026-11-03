@@ -351,6 +351,8 @@ kotlin {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
             }
             implementation(libs.sqlite.jdbc.crypt)
+            implementation(libs.jna)
+            implementation(libs.jna.platform)
 
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)

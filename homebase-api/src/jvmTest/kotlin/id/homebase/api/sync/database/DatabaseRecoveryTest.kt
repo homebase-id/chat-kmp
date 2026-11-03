@@ -2,7 +2,9 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import id.homebase.api.storage.FakeOsKeyStore
 import id.homebase.api.storage.KeyStoreFileStorage
+import id.homebase.api.storage.OsKeyRead
 import id.homebase.api.storage.SecureRead
 import id.homebase.api.storage.dataFile
 import id.homebase.api.storage.makeStorageKeyUnrecoverable
@@ -29,7 +31,11 @@ class DatabaseRecoveryTest {
     /** A real key store and SQLCipher file, launched the way Android/Desktop launch. */
     private inner class Install {
         val secureDir = File(tempDir, "secure").apply { mkdirs() }
-        val storage = KeyStoreFileStorage(secureDir)
+        var storage = newStorage()
+
+        private fun newStorage() = KeyStoreFileStorage(secureDir, FakeOsKeyStore(OsKeyRead.NoStore(IllegalStateException("no store"))))
+
+        fun restart() { storage = newStorage() }
         val db = File(tempDir, "odin.db")
         var wipes = 0
 
@@ -91,6 +97,7 @@ class DatabaseRecoveryTest {
         val install = Install()
         install.launch { it.writeMarker() }
         makeStorageKeyUnrecoverable(install.secureDir)
+        install.restart()
 
         var reopened: Boolean? = null
         install.launch { reopened = it.hasProbe() }
