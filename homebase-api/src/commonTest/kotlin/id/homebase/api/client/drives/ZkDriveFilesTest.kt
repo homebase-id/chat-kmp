@@ -248,6 +248,20 @@ class ZkDriveFilesTest {
     }
 
     @Test
+    fun aDepositIsSealedToTheRecipientsDriveSoOnlyItsKeyOpensIt() = runTest {
+        val fileKey = KeyHeader.newRandom16()
+        val point = ShareKeys.pointOfJwk(
+            """{"kty":"EC","crv":"P-384","x":"yjx33dKI7M4I3IUdOl1Tdqf4mqLGyXnYEBg_Oo3B9_QjOxI1ol2usFU1t3FhnQ18","y":"FkGMeDRw4PJSFlCwESYb59Nltf3qE7Q5IXaUK2OiplW8aWP3oTWZQ5YZYdzJ7ReN"}"""
+        )
+
+        val locked = lockKeyHeader(fileKey, SystemDriveConstants.transientTempDrive.alias, sharedSecret, ByteArrayUtil.getRndByteArray(16), sealedTo = point)
+
+        assertEquals(EncryptionType.Sealed, locked.type)
+        assertContentEquals(fileKey.iv, locked.iv)
+        assertContentEquals(fileKey.iv + fileKey.aesKey.toByteArray(), ZkSeal.open(locked.encryptedAesKey, Golden.writeOnlyPrivateKeyPkcs8))
+    }
+
+    @Test
     fun aFileSharedWithTheReaderOpensWithTheKeyItsShareUnlocks() = runTest {
         val owner = Uuid.random()
         val fileId = Uuid.random()

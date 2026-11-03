@@ -114,7 +114,7 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
 /**
  * Locks [keyHeader] for an upload to [driveId]: with the shared secret under [transferIv], which the server
  * re-locks with the drive key; or on a zero-knowledge drive with its key under the file's own IV, stored as sent;
- * or, [withCommentedFileKey], as the IV alone.
+ * or, [withCommentedFileKey], as the IV alone; or [sealedTo] another drive's write-only public key (a deposit).
  */
 suspend fun lockKeyHeader(
     keyHeader: KeyHeader?,
@@ -122,9 +122,13 @@ suspend fun lockKeyHeader(
     sharedSecret: ByteArray,
     transferIv: ByteArray,
     withCommentedFileKey: Boolean = false,
+    sealedTo: ByteArray? = null,
 ): EncryptedKeyHeader =
     if (keyHeader != null && withCommentedFileKey) {
         EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.FileKey, iv = keyHeader.iv, encryptedAesKey = ByteArray(0))
+    } else if (keyHeader != null && sealedTo != null) {
+        val sealed = ZkSeal.seal(keyHeader.iv + keyHeader.aesKey.toByteArray(), sealedTo)
+        EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Sealed, iv = keyHeader.iv, encryptedAesKey = sealed)
     } else if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
         EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader, keyHeader.iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
     } else {

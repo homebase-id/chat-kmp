@@ -69,7 +69,8 @@ private data class AuthCodeFlowState(
     val identity: OdinId,
     val password: SecureByteArray,
     val keyPair: EccKeyPair,
-    val again: Boolean = false
+    val again: Boolean = false,
+    val otherApp: (suspend (Result<AuthResult>) -> Unit)? = null,
 )
 
 /**
@@ -233,15 +234,18 @@ class YouAuthFlowManager(
         circles: List<String>? = null,
         clientFriendlyName: String? = null,
         persistForRedirect: Boolean = false,
-        again: Boolean = false
+        again: Boolean = false,
+        // Signs in to another installed app as well: its token goes here, and this app's session is left alone.
+        otherApp: (suspend (Result<AuthResult>) -> Unit)? = null,
     ): String {
         val signedIn = _authState.value is YouAuthState.Authenticated
-        if (_authState.value == YouAuthState.Authenticating || signedIn != again) {
+        val mine = otherApp == null
+        if (mine && (_authState.value == YouAuthState.Authenticating || signedIn != again)) {
             Logger.e(tag = TAG) { "Can't start a sign-in (again=$again) in ${_authState.value::class.simpleName}" }
             throw AuthInProgressException()
         }
 
-        if (!again) _authState.value = YouAuthState.Authenticating
+        if (mine && !again) _authState.value = YouAuthState.Authenticating
         try {
             // Generate key pair for ECDH
             val password = SecureByteArray(generateUuidBytes())
@@ -249,7 +253,7 @@ class YouAuthFlowManager(
 
             // Generate unique state for CSRF protection and callback routing
             val state = generateUuidString()
-            val authCodeFlowState = AuthCodeFlowState(identity, password, keyPair, again)
+            val authCodeFlowState = AuthCodeFlowState(identity, password, keyPair, again, otherApp)
 
             // Register for callback
             callbackRegistry[state] = authCodeFlowState
@@ -310,7 +314,7 @@ class YouAuthFlowManager(
             return authorizeUrl
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error starting authorization" }
-            if (!again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
+            if (mine && !again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
             throw e
         }
     }
@@ -335,7 +339,7 @@ class YouAuthFlowManager(
             } catch (_: Exception) {
                 throw Exception("Invalid query param: identity")
             }
-            if (authCodeFlowState.again && identity != authCodeFlowState.identity) {
+            if ((authCodeFlowState.again || authCodeFlowState.otherApp != null) && identity != authCodeFlowState.identity) {
                 throw Exception("Signed in again as $identity, not ${authCodeFlowState.identity}")
             }
 
@@ -357,6 +361,11 @@ class YouAuthFlowManager(
                     publicKey = publicKey,
                     salt = salt
                 )
+
+            authCodeFlowState.otherApp?.let {
+                it(Result.success(result))
+                return
+            }
 
             val replaced = if (authCodeFlowState.again) credentialsManager.getActiveCredentials() else null
             result.zkAppKey?.let(ZkKeyStore::saveAppKey)
@@ -387,7 +396,8 @@ class YouAuthFlowManager(
             replaced?.let { _replacedSignIns.tryEmit(it) }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error completing auth (again=${authCodeFlowState.again})" }
-            if (!authCodeFlowState.again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
+            authCodeFlowState.otherApp?.invoke(Result.failure(e))
+            if (!authCodeFlowState.again && authCodeFlowState.otherApp == null) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
             callbackRegistry.remove(state)
             SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
