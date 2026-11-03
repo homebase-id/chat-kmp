@@ -36,6 +36,8 @@ data class EntePhoto(
     val payloadKey: KeyHeader,
     val isVideo: Boolean = false,
     val durationSeconds: Long? = null,
+    /** Ente's visibility: [ENTE_VISIBLE], archived (kept out of the whole library) or hidden (shown nowhere). */
+    val visibility: Int = ENTE_VISIBLE,
 ) {
     /** The stored (encrypted) size, at most 16 bytes over the original's. */
     val sizeBytes: Long? get() = original.bytesWritten
@@ -100,7 +102,7 @@ class EntePhotosRepository(
 
     /** The whole library, newest first. */
     override suspend fun photos(cursor: String?): EntePhotosPage {
-        val page = query(FileQueryParams(fileType = listOf(EntePhotosDrive.PHOTO_FILE_TYPE), fileState = listOf(FileState.Active)), cursor, EnteLibrary.PAGE_SIZE)
+        val page = query(FileQueryParams(fileType = listOf(EntePhotosDrive.PHOTO_FILE_TYPE), fileState = listOf(FileState.Active), archivalStatus = NOT_REMOVED), cursor, EnteLibrary.PAGE_SIZE)
         return EntePhotosPage(
             photos = page.searchResults.mapNotNull { it.toEntePhoto() },
             cursor = page.cursorState?.takeIf { page.hasMoreRows && it != cursor },
@@ -109,7 +111,7 @@ class EntePhotosRepository(
 
     /** Every album, hidden ones included so their photos can be kept out of the library. */
     override suspend fun albums(): List<EnteAlbum> =
-        query(FileQueryParams(fileType = listOf(EntePhotosDrive.ALBUM_FILE_TYPE), fileState = listOf(FileState.Active)), null, EnteLibrary.MAX_RECORDS)
+        query(FileQueryParams(fileType = listOf(EntePhotosDrive.ALBUM_FILE_TYPE), fileState = listOf(FileState.Active), archivalStatus = NOT_REMOVED), null, EnteLibrary.MAX_RECORDS)
             .searchResults.mapNotNull { it.toEnteAlbum() }
 
     /** The uniqueIds of an album's photos, most recently added first. */
@@ -124,7 +126,12 @@ class EntePhotosRepository(
     override suspend fun photosByUniqueId(ids: List<Uuid>): List<EntePhoto> {
         if (ids.isEmpty()) return emptyList()
         val found = query(
-            FileQueryParams(fileType = listOf(EntePhotosDrive.PHOTO_FILE_TYPE), fileState = listOf(FileState.Active), clientUniqueIdAtLeastOne = ids),
+            FileQueryParams(
+                fileType = listOf(EntePhotosDrive.PHOTO_FILE_TYPE),
+                fileState = listOf(FileState.Active),
+                archivalStatus = NOT_REMOVED,
+                clientUniqueIdAtLeastOne = ids,
+            ),
             null,
             ids.size,
         ).searchResults.mapNotNull { it.toEntePhoto() }.associateBy { it.uniqueId }
@@ -163,9 +170,14 @@ private const val TAG = "EntePhotos"
 private const val ENTE_IMAGE = 0
 private const val ENTE_VIDEO = 1
 
-// Ente's album magic metadata: subType 1 is the hidden album, visibility 2 is hidden.
+// Ente's album magic metadata: subType 1 is the hidden album. Albums and photos share visibility.
 private const val ENTE_SUBTYPE_DEFAULT_HIDDEN = 1
-private const val ENTE_VISIBILITY_HIDDEN = 2
+const val ENTE_VISIBLE = 0
+const val ENTE_ARCHIVED = 1
+const val ENTE_HIDDEN = 2
+
+// Odin's archivalStatus 2 marks a photo in Ente's trash, or a deleted album (ente-homebase-proxy EnteDrive.Removed).
+private val NOT_REMOVED = listOf(0)
 
 private fun HomebaseFile.contentJson(): JsonObject? = runCatching {
     OdinSystemSerializer.json.parseToJsonElement(fileMetadata.appData.content.orEmpty()).jsonObject
@@ -184,7 +196,8 @@ internal fun HomebaseFile.toEntePhoto(): EntePhoto? {
         Logger.w(tag = TAG) { "skipping $fileId: not a Homebase-encrypted photo" }
         return null
     }
-    val metadata = contentJson()?.obj("metadata")
+    val details = contentJson()
+    val metadata = details?.obj("metadata")
     if (metadata == null) {
         Logger.w(tag = TAG) { "skipping $fileId: unreadable details" }
         return null
@@ -204,6 +217,7 @@ internal fun HomebaseFile.toEntePhoto(): EntePhoto? {
         payloadKey = KeyHeader(iv, keyHeader.aesKey),
         isVideo = isVideo,
         durationSeconds = if (isVideo) metadata.long("duration")?.takeIf { it > 0 } else null,
+        visibility = details.obj("magicMetadata")?.obj("data")?.int("visibility") ?: ENTE_VISIBLE,
     )
 }
 
@@ -218,7 +232,7 @@ internal fun HomebaseFile.toEnteAlbum(): EnteAlbum? {
         return null
     }
     val settings = details.obj("magicMetadata")?.obj("data")
-    val hidden = settings?.int("subType") == ENTE_SUBTYPE_DEFAULT_HIDDEN || settings?.int("visibility") == ENTE_VISIBILITY_HIDDEN
+    val hidden = settings?.int("subType") == ENTE_SUBTYPE_DEFAULT_HIDDEN || settings?.int("visibility") == ENTE_HIDDEN
     return EnteAlbum(id = id, name = name, type = type, hidden = hidden)
 }
 

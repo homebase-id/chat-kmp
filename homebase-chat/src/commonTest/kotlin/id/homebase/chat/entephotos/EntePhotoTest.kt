@@ -80,6 +80,15 @@ class EntePhotoTest {
     }
 
     @Test
+    fun aPhotosVisibilityIsReadFromItsPrivateMagicMetadata() {
+        assertEquals(ENTE_VISIBLE, photo().toEntePhoto()!!.visibility)
+        val archived = """{"metadata":{"title":"a.jpg","fileType":0},"magicMetadata":{"version":2,"count":1,"data":{"visibility":1}}}"""
+        assertEquals(ENTE_ARCHIVED, photo(content = archived).toEntePhoto()!!.visibility)
+        val hidden = """{"metadata":{"title":"h.jpg","fileType":0},"magicMetadata":{"version":2,"count":1,"data":{"visibility":2}}}"""
+        assertEquals(ENTE_HIDDEN, photo(content = hidden).toEntePhoto()!!.visibility)
+    }
+
+    @Test
     fun onlyVideosOver200MbAreTooBigToSend() {
         val video = """{"metadata":{"title":"v.mp4","fileType":1}}"""
         assertFalse(photo(content = video, contentType = "video/mp4", size = MAX_ENTE_VIDEO_BYTES).toEntePhoto()!!.tooBigToSend)

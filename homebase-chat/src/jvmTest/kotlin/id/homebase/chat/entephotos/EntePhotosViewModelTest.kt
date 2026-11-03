@@ -34,7 +34,7 @@ import kotlin.uuid.Uuid
 
 class EntePhotosViewModelTest {
 
-    private fun item(name: String, video: Boolean = false, size: Long = 1_000) = EntePhoto(
+    private fun item(name: String, video: Boolean = false, size: Long = 1_000, visibility: Int = ENTE_VISIBLE) = EntePhoto(
         fileId = Uuid.random(),
         uniqueId = Uuid.random(),
         title = name,
@@ -42,6 +42,7 @@ class EntePhotosViewModelTest {
         original = PayloadDescriptor(key = "original", contentType = if (video) "video/mp4" else "image/jpeg", bytesWritten = size),
         payloadKey = KeyHeader(ByteArray(16), SecureByteArray(ByteArray(16))),
         isVideo = video,
+        visibility = visibility,
     )
 
     private class FakeLibrary(
@@ -128,6 +129,23 @@ class EntePhotosViewModelTest {
         vm.loadMore()
         val all = vm.settled { !it.canLoadMore }
         assertEquals(listOf(beach, clip, huge), all.photos)
+    }
+
+    @Test
+    fun archivedPhotosShowOnlyInTheirAlbumsAndHiddenOnesNowhere() = runBlocking<Unit> {
+        val archived = item("archived.jpg", visibility = ENTE_ARCHIVED)
+        val hiddenPhoto = item("hidden.jpg", visibility = ENTE_HIDDEN)
+        val trip = EnteAlbum(Uuid.random(), "Trip", "album", hidden = false)
+        val fake = FakeLibrary(
+            library = listOf(archived, hiddenPhoto, beach),
+            albums = listOf(trip),
+            members = mapOf(trip.id to listOf(archived.uniqueId!!, hiddenPhoto.uniqueId!!)),
+        )
+        val vm = EntePhotosViewModel(fake, permission())
+        vm.open()
+        assertEquals(listOf(beach), vm.settled { it.photos.isNotEmpty() && !it.canLoadMore }.photos)
+        vm.showAlbum(trip.id)
+        assertEquals(listOf(archived), vm.settled { it.album == trip.id && it.photos.isNotEmpty() }.photos)
     }
 
     @Test

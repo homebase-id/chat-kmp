@@ -153,7 +153,11 @@ class EntePhotosViewModel(
                 var fresh: List<EntePhoto>
                 do {
                     val page = if (album == null) libraryPage() else albumPage(album)
-                    fresh = page.filter { it.fileId !in known && it.uniqueId !in hidden }
+                    // As Ente shows them: archived photos only in their albums, hidden ones nowhere.
+                    fresh = page.filter {
+                        it.fileId !in known && it.uniqueId !in hidden &&
+                            it.visibility != ENTE_HIDDEN && (album != null || it.visibility != ENTE_ARCHIVED)
+                    }
                 } while (fresh.isEmpty() && !exhausted)
                 _uiState.update { s -> s.copy(photos = (s.photos + fresh).toImmutableList(), canLoadMore = !exhausted, loading = false) }
             } catch (e: CancellationException) {
