@@ -147,9 +147,9 @@ class ConnectionNetworkProvider(
      * Lists the owner's circles, each with its members, in one round-trip.
      * GET /api/v2/connections/circles/with-members (OwnerOrApp — guest tokens are
      * rejected with 403). The server's built-in system circle is never requested, and the
-     * one-person circles files are shared through are left out: they are no one's circle to show.
+     * one-person circles files are shared through are left out unless [withIndividual]: they are no one's circle to show.
      */
-    suspend fun getCirclesWithMembers(): List<CircleWithMembers> {
+    suspend fun getCirclesWithMembers(withIndividual: Boolean = false): List<CircleWithMembers> {
         val creds = requireCreds()
 
         val response = encryptedGet(
@@ -160,7 +160,7 @@ class ConnectionNetworkProvider(
         )
 
         throwForFailure(response)
-        return deserialize<List<CircleWithMembers>>(response.body).filter { it.circle.designation != CircleDesignation.Individual }
+        return deserialize<List<CircleWithMembers>>(response.body).filter { withIndividual || it.circle.designation != CircleDesignation.Individual }
     }
 
     /**

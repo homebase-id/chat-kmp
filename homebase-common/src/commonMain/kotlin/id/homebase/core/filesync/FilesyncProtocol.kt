@@ -16,6 +16,11 @@ object FilesyncProtocol {
 
     const val FolderFileType = 7101
     const val FileFileType = 7102
+    /** "Someone has files for you": left on a person's drive by whoever shares with them, kept out of the tree. */
+    const val MarkerFileType = 7103
+
+    /** The circle every connection joins, so any of them may leave a marker. */
+    const val SharersCircleSlug = "filesync-shr"
 
     /** Never stored: a node whose groupId is this is at the top level. */
     val RootNodeId: Uuid = Uuid.parse("2a1c0d55-8ad3-417e-a5d7-42c3d0baba0e")

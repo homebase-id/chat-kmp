@@ -47,9 +47,7 @@ object FilesyncSession {
         val token = SecureStorage.get(TOKEN) ?: return false
         val secret = SecureStorage.get(SHARED_SECRET)?.let(Base64::decode) ?: return false
         val key = SecureStorage.get(APP_KEY)?.let(Base64::decode) ?: return false
-        credentials.setActiveCredentials(ApiCredentials.create(identity, token, SecureByteArray(secret)))
-        appKey = key
-        _signedIn.value = true
+        use(ApiCredentials.create(identity, token, SecureByteArray(secret)), key)
         return true
     }
 
@@ -60,7 +58,11 @@ object FilesyncSession {
         SecureStorage.put(TOKEN, result.clientAuthToken)
         SecureStorage.put(SHARED_SECRET, Base64.encode(secret))
         SecureStorage.put(APP_KEY, Base64.encode(key))
-        credentials.setActiveCredentials(ApiCredentials.create(result.identity, result.clientAuthToken, SecureByteArray(secret)))
+        use(ApiCredentials.create(result.identity, result.clientAuthToken, SecureByteArray(secret)), key)
+    }
+
+    internal suspend fun use(filesync: ApiCredentials, key: ByteArray) {
+        credentials.setActiveCredentials(filesync)
         appKey = key
         _signedIn.value = true
     }
