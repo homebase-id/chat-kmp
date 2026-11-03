@@ -164,6 +164,7 @@ sealed interface FilesyncUiAction {
     data object Refresh : FilesyncUiAction
     data object NavigateUp : FilesyncUiAction
     data class NavigateToCrumb(val index: Int) : FilesyncUiAction
+    data class OpenFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
     data class NodeClicked(val node: FilesyncNode) : FilesyncUiAction
     data class SaveClicked(val node: FilesyncNode) : FilesyncUiAction
     data class AskShare(val nodes: List<FilesyncNode>) : FilesyncUiAction

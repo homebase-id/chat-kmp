@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.filesync
 
 import id.homebase.chat.widget.preview.FilePreviewDialog
 import id.homebase.resources.storage_full_upload_failed
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TriStateCheckbox
@@ -135,6 +137,28 @@ import org.jetbrains.compose.resources.stringResource
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
 private const val DELETED_ALPHA = 0.38f
 
+internal fun FilesyncError.message(): StringResource = when (this) {
+    FilesyncError.MoveFailed -> MR.string.filesync_move_failed
+    FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
+    FilesyncError.TooLargeHere -> MR.string.filesync_too_large_here
+    FilesyncError.Damaged -> MR.string.filesync_damaged
+    FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
+    FilesyncError.TooLarge -> MR.string.filesync_too_large
+    FilesyncError.StorageFull -> MR.string.storage_full_upload_failed
+    FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
+    FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
+    FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
+    FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
+}
+
+internal val FilesyncRowInset = 8.dp
+internal val FilesyncTileSize = 40.dp
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun animatedRowColor(target: Color): Color =
+    animateColorAsState(target, MaterialTheme.motionScheme.defaultEffectsSpec()).value
+
 /** Hands finished downloads to the OS or a preview, and shows every message a Filesync screen can get. */
 @Composable
 internal fun FilesyncEventsEffect(
@@ -179,21 +203,7 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.SendToChat -> onSendToChat(event.path, event.name)
                 is FilesyncUiEvent.OpenSignIn -> onOpenSignIn(event.url)
                 is FilesyncUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
-                is FilesyncUiEvent.Error -> show(
-                    when (event.error) {
-                        FilesyncError.MoveFailed -> MR.string.filesync_move_failed
-                        FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
-                        FilesyncError.TooLargeHere -> MR.string.filesync_too_large_here
-                        FilesyncError.Damaged -> MR.string.filesync_damaged
-                        FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
-                        FilesyncError.TooLarge -> MR.string.filesync_too_large
-                        FilesyncError.StorageFull -> MR.string.storage_full_upload_failed
-                        FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
-                        FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
-                        FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
-                        FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
-                    }
-                )
+                is FilesyncUiEvent.Error -> show(event.error.message())
                 is FilesyncUiEvent.Notice -> show(
                     when (event.notice) {
                         FilesyncNotice.Restored -> MR.string.filesync_restored
@@ -230,18 +240,19 @@ internal fun FilesyncNodeRow(
     checked: Boolean? = null,
     trailing: @Composable () -> Unit = {},
 ) {
-    val dim = if (dimDeleted && node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier
-    val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+    val deleted = dimDeleted && node.removedMs != null
+    val container = animatedRowColor(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+    val rounded = Modifier.padding(horizontal = FilesyncRowInset).clip(MaterialTheme.shapes.medium).then(modifier)
     ListItem(
-        modifier = if (checked == null) modifier else modifier.semantics { toggleableState = ToggleableState(checked) },
+        modifier = if (checked == null) rounded else rounded.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
-        headlineContent = { NodeName(node, ringColor = container, modifier = dim, fontWeight = if (node.isFolder) FontWeight.SemiBold else null, maxLines = 2) },
-        supportingContent = { if (details.isNotEmpty()) Text(details, modifier = dim) },
+        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2) },
+        supportingContent = { if (details.isNotEmpty()) Text(details) },
         leadingContent = {
             if (checked == null) {
-                FileTypeTile(node, modifier = dim)
+                FileTypeTile(node, deleted = deleted)
             } else {
-                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) { SelectBox(ToggleableState(checked)) }
+                Box(modifier = Modifier.size(FilesyncTileSize), contentAlignment = Alignment.Center) { SelectBox(ToggleableState(checked)) }
             }
         },
         trailingContent = trailing,
@@ -253,7 +264,7 @@ internal fun NodeName(
     node: FilesyncNode,
     ringColor: Color,
     modifier: Modifier = Modifier,
-    fontWeight: FontWeight? = null,
+    deleted: Boolean = false,
     maxLines: Int = 1,
     // On the name alone, not the badges or the space after it.
     nameModifier: Modifier = Modifier,
@@ -264,8 +275,11 @@ internal fun NodeName(
             text = node.name,
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
-            fontWeight = fontWeight,
-            textDecoration = textDecoration,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (node.isFolder) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (deleted) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+            // Colour alone would leave a deleted row readable as live; the strike survives any theme.
+            textDecoration = if (deleted) TextDecoration.LineThrough + (textDecoration ?: TextDecoration.None) else textDecoration,
             modifier = Modifier.weight(1f, fill = false).then(nameModifier),
         )
         if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
@@ -275,7 +289,7 @@ internal fun NodeName(
 }
 
 @Composable
-internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, size: Dp = FilesyncTileSize, deleted: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val kind = node.kind
     val (container, content) = when {
@@ -283,8 +297,14 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
         kind == FileKind.Image || kind == FileKind.Video || kind == FileKind.Audio -> colors.secondaryContainer to colors.onSecondaryContainer
         else -> colors.surfaceVariant to colors.onSurfaceVariant
     }
+    val shape = MaterialTheme.shapes.medium
     Box(
-        modifier = modifier.size(size).clip(RoundedCornerShape(size * 0.3f)).background(container),
+        modifier = modifier
+            .then(if (deleted) Modifier.alpha(DELETED_ALPHA) else Modifier)
+            .size(size)
+            .clip(shape)
+            .background(container)
+            .border(1.dp, colors.outlineVariant, shape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

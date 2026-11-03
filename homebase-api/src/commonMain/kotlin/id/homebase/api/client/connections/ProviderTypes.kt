@@ -202,6 +202,21 @@ data class RedactedCircleDefinition(
     val designation: CircleDesignation = CircleDesignation.Personal,
     /** Often a multi-codepoint ZWJ sequence — render whole, never substring it. */
     val emoji: String? = null,
+    val slug: String? = null,
+)
+
+@Serializable
+data class DriveGrantRequest(val permissionedDrive: PermissionedDrive)
+
+/** `grantOn` and `designation` are left to the server defaults: None and Personal. */
+@Serializable
+data class CreateAppCircleRequest(
+    val name: String,
+    val slug: String,
+    val description: String? = null,
+    val emoji: String? = null,
+    val driveGrants: List<DriveGrantRequest> = emptyList(),
+    val permissions: PermissionSet = PermissionSet(),
 )
 
 /**

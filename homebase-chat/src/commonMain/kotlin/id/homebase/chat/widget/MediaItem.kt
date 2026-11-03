@@ -578,7 +578,7 @@ fun MediaItem(
                 onDownloadClick = { onClick?.invoke() },
                 onLongPress = { onLongPress?.invoke(Offset.Zero) },
                 isDownloading = isDownloading,
-                showDownloadButton = chatChipPreviewKind(contentType, payload.filename() ?: payload.key, payload.bytesWritten) != FilePreviewKind.Text,
+                showDownloadButton = chatChipPreviewKind(contentType, payload.filename() ?: payload.key, payload.bytesWritten).let { it != FilePreviewKind.Text && it != FilePreviewKind.Markdown },
             )
         }
 

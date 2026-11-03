@@ -61,4 +61,4 @@ internal fun decideRawKey(key: SecureRead, file: DatabaseFileState): RawKeyDecis
  * The database file or its key can't be read yet, e.g. an iOS launch before the first unlock.
  * [DatabaseManager.initializeWithRecovery] rethrows it without wiping; a later launch retries.
  */
-class DatabaseUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class DatabaseUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)

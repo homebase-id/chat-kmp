@@ -4,6 +4,7 @@ import FirebaseCrashlytics
 import FirebaseMessaging
 import ComposeApp
 import SafariServices
+import UniformTypeIdentifiers
 import UserNotifications
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -258,6 +259,10 @@ struct iOSApp: App {
     }
 
     private func handleIncomingURL(_ url: URL) {
+        if url.isFileURL {
+            handleOpenedFileURL(url)
+            return
+        }
         switch url.scheme {
         // Accept both the prod scheme and the dev build's variant (see SHARE_URL_SCHEME /
         // ShareViewController.shareUrlScheme) — the app only ever receives its own.
@@ -280,6 +285,25 @@ struct iOSApp: App {
             }
         default:
             break
+        }
+    }
+
+    /// A document another app opened in Homebase. Opened in place (LSSupportsOpeningDocumentsInPlace), the file is only
+    /// readable inside its security scope, so it is copied into the app's cache before anything else touches it.
+    private func handleOpenedFileURL(_ url: URL) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let staging = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("open-with").path
+            let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+            let staged = OpenedFileBridge.shared.handleIncomingFile(
+                sourcePath: url.path, displayName: url.lastPathComponent, mimeType: mime, stagingRoot: staging)
+            let ownInbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Inbox").resolvingSymlinksInPath().path + "/"
+            if staged && url.resolvingSymlinksInPath().path.hasPrefix(ownInbox) {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 

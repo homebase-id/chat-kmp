@@ -26,7 +26,8 @@ internal fun makeStorageKeyUnrecoverable(dir: File) {
 
 class KeyStoreFileStorageTest {
     private val dir: File = Files.createTempDirectory("secure-storage").toFile()
-    private val storage = KeyStoreFileStorage(dir)
+    private fun newStorage() = KeyStoreFileStorage(dir, FakeOsKeyStore(OsKeyRead.NoStore(IllegalStateException("no store"))))
+    private var storage = newStorage()
 
     @AfterTest
     fun cleanup() {
@@ -38,6 +39,7 @@ class KeyStoreFileStorageTest {
     fun `a value sealed by an unrecoverable key is missing and the next put replaces the key`() {
         storage.put("k", "v")
         makeStorageKeyUnrecoverable(dir)
+        storage = newStorage()
 
         assertEquals(SecureRead.Missing, storage.read("k"))
         storage.put("k", "v2")
@@ -45,11 +47,12 @@ class KeyStoreFileStorageTest {
     }
 
     @Test
-    fun `a lost keystore file makes values missing and the read writes no new key`() {
+    fun `a lost keystore file with sealed values is unavailable and the read writes no new key`() {
         storage.put("k", "v")
         keyStoreFile(dir).delete()
+        storage = newStorage()
 
-        assertEquals(SecureRead.Missing, storage.read("k"))
+        assertIs<SecureRead.Unavailable>(storage.read("k"))
         assertFalse(keyStoreFile(dir).exists())
     }
 
@@ -57,6 +60,7 @@ class KeyStoreFileStorageTest {
     fun `an unreadable keystore file is unavailable, not missing`() {
         storage.put("k", "v")
         keyStoreFile(dir).setReadable(false)
+        storage = newStorage()
 
         assertIs<SecureRead.Unavailable>(storage.read("k"))
     }

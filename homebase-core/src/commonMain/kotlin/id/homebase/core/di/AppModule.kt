@@ -157,6 +157,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncRepository
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.ui.screens.openedfile.DefaultOpenedFileGateway
+import id.homebase.core.ui.screens.openedfile.OpenedFileGateway
+import id.homebase.core.ui.screens.openedfile.OpenedFileViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncEditor
 import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
@@ -255,7 +258,13 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
+import id.homebase.core.config.getCirclePermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.ui.screens.contactbook.CreateCircleViewModel
+import id.homebase.core.ui.screens.contactbook.DefaultUserCircleBackend
+import id.homebase.core.ui.screens.contactbook.ExtendPermissionCircleAccess
+import id.homebase.core.ui.screens.contactbook.UserCircleBackend
+import id.homebase.core.ui.screens.contactbook.UserCircleService
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.config.getEntePhotosPermissionExtensionConfig
@@ -292,6 +301,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
+val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val EntePhotosPermissionQualifier = named("entePhotosPermission")
 val EmailPermissionQualifier = named("emailPermission")
@@ -1355,6 +1365,19 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    viewModel(CirclePermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getCirclePermissionExtensionConfig(),
+            autoCheck = false,
+            recheckOnAuthorizationFailure = false,
+        )
+    }
+    single<UserCircleBackend> { DefaultUserCircleBackend(get(), get()) }
+    single { UserCircleService(get()) }
+    viewModel { CreateCircleViewModel(get(), ExtendPermissionCircleAccess(get(CirclePermissionQualifier))) }
     viewModel(WebDropPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1427,6 +1450,8 @@ val appModule = module {
             privateDriveOptIn = get(),
         )
     }
+    single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { params -> OpenedFileViewModel(params.get(), get()) }
     viewModel { FilesyncTrashViewModel(get(), get()) }
     viewModel { EntePhotosViewModel(get(), get(EntePhotosPermissionQualifier)) }
     viewModel { FilesyncRecentViewModel(get(), get(), get()) }

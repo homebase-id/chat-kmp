@@ -480,6 +480,31 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
     )
 }
 
+// Creating a circle grants Read on the profile drive, which the server only allows with its storage key.
+val circleCreateDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = profileLabeledDrive.drive.alias.toString(),
+        type = profileLabeledDrive.drive.type.toString(),
+        name = "Profile Drive",
+        description = "Drive which contains your profile information",
+        permissions = listOf(DrivePermission.Read),
+        driveSlug = PROFILE_DRIVE_SLUG,
+        driveTypeSlug = PROFILE_DRIVE_TYPE_SLUG,
+        requireStorageKey = true,
+    ),
+)
+
+fun getCirclePermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = circleCreateDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+        requester = "circles",
+    )
+}
+
 fun getEmailPermissionExtensionConfig(): PermissionExtensionConfig {
     return PermissionExtensionConfig(
         appId = AppConfig.APP_ID,

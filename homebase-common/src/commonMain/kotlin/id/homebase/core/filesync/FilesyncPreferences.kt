@@ -23,6 +23,12 @@ class FilesyncPreferences(private val databaseManager: DatabaseManager) {
         _iconVisible.value = value
     }
 
+    suspend fun lastSaveFolder(): ByteArray? = keyValue.selectByKey(LAST_SAVE_FOLDER_KEY)?.data_?.takeIf { it.isNotEmpty() }
+
+    suspend fun setLastSaveFolder(encoded: ByteArray) {
+        keyValue.upsertValue(LAST_SAVE_FOLDER_KEY, encoded)
+    }
+
     // Bootstrap-only sync read, as in VaultPreferences: commonMain has no runBlocking on wasmJs.
     private fun readIconVisible(): Boolean {
         val bytes = runCatching {
@@ -33,5 +39,6 @@ class FilesyncPreferences(private val databaseManager: DatabaseManager) {
 
     companion object {
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0a02")
+        val LAST_SAVE_FOLDER_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0a03")
     }
 }

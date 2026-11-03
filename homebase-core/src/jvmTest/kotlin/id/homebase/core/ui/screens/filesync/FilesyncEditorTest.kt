@@ -69,6 +69,13 @@ class FilesyncEditorTest {
     }
 
     @Test
+    fun aRewriteSendsNoPreviewThumbnail() = runTest {
+        val request = liveNodeUpdate(nodeId, handle, renamedContent(removedContent, "b.txt"), Uuid.random())
+
+        assertNull(request.metadata.appData.previewThumbnail)
+    }
+
+    @Test
     fun aRestoreIsALiveHeaderWithEveryKeyButRmUnderTheSameKey() = runTest {
         val target = Uuid.random()
         val request = liveNodeUpdate(nodeId, handle, renamedContent(removedContent, "a (restored).txt"), target)

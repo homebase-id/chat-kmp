@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -51,6 +52,7 @@ val pdfPageViewerAvailable: Boolean get() = !isWeb()
 expect fun PdfPageViewer(
     filePath: String,
     onTap: (() -> Unit)? = null,
+    onFailed: () -> Unit = {},
     modifier: Modifier = Modifier,
 )
 
@@ -187,8 +189,10 @@ private fun BitmapPdfPage(
 internal fun RenderedPdfPageViewer(
     filePath: String,
     onTap: (() -> Unit)?,
+    onFailed: () -> Unit,
     modifier: Modifier,
 ) {
+    val currentOnFailed by rememberUpdatedState(onFailed)
     var renderer by remember { mutableStateOf<PdfRenderer?>(null) }
 
     LaunchedEffect(filePath) {
@@ -203,6 +207,7 @@ internal fun RenderedPdfPageViewer(
             throw e
         } catch (_: Exception) {
             r.close()
+            currentOnFailed()
         }
     }
 
