@@ -1587,11 +1587,8 @@
     <string name="sign_in_again_continue">Continue</string>
     <string name="vault_error_image_unavailable">Image could not be loaded</string>
     <string name="vault_pdf_badge">PDF</string>
-    <string name="vault_pdf_preview_error">Unable to preview PDF</string>
     <string name="vault_pdf_not_supported">PDF preview is not supported on web</string>
     <string name="vault_pdf_page_content_description">PDF page %1$d of %2$d</string>
-    <string name="vault_text_preview_error">Unable to preview file</string>
-    <string name="vault_text_truncated">File is large — showing first 1 MB</string>
 
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
@@ -2652,6 +2649,7 @@
     <string name="chat_error_download_file">Could not download file</string>
     <string name="chat_error_downloading_file">Error downloading file</string>
     <string name="chat_error_downloading_file_detail">Error downloading file: %1$s</string>
+    <string name="chat_error_file_too_large_here">This file is too big to open in the browser.</string>
     <string name="chat_error_convert_video">Could not convert video</string>
     <string name="chat_error_media_click">Failed to handle media click: %1$s</string>
     <string name="chat_error_unattach_file">Failed to unattach file: %1$s</string>
@@ -3007,8 +3005,8 @@
     <string name="filesync_open">Open</string>
     <string name="filesync_open_in_app">Open in another app</string>
     <string name="filesync_preview">Preview</string>
-    <string name="filesync_preview_failed">This file can't be shown here.</string>
-    <string name="filesync_preview_truncated">Showing the first %1$s.</string>
+    <string name="file_preview_failed">This file can't be shown here.</string>
+    <string name="file_preview_truncated">Showing the first %1$s.</string>
     <string name="filesync_send_webdrop">Send with WebDrop</string>
     <string name="filesync_share_failed">Couldn't share the file.</string>
     <string name="filesync_info_hint">Select a file or folder to see its details.</string>
@@ -3090,6 +3088,7 @@
     <string name="filesync_download">Download</string>
     <string name="filesync_cancel_download">Cancel download</string>
     <string name="filesync_download_failed">Couldn't download the file.</string>
+    <string name="filesync_too_large_here">This file is too big to download in the browser.</string>
     <string name="filesync_damaged">This file is damaged, so it wasn't opened.</string>
     <string name="filesync_folder">Folder</string>
     <string name="filesync_upload">Upload files</string>

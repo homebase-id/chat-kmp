@@ -227,7 +227,7 @@ class FilesyncRepository(
         val path = "$folder/${cacheFileName(name)}"
         try {
             // Its own producer, so the bytes reach the disk as they come.
-            fileOperationsProvider.writeStream(path, channelFlow { write { send(it) } })
+            fileOperationsProvider.writeDownload(path, channelFlow { write { send(it) } })
         } catch (t: Throwable) {
             discard(path)
             throw t
