@@ -21,6 +21,9 @@ sealed interface CircleAddFailureReason {
      *  user-facing, not transient — don't offer a retry. */
     data object DriveAccessDenied : CircleAddFailureReason
 
+    /** 400 ContactNotReviewed: the contact has not been reviewed yet, so the server refuses the add. */
+    data object NotReviewed : CircleAddFailureReason
+
     /** Any other 403 (missing ManageCircleMembership, contact not connected, etc) — the server
      *  gives no code to distinguish these from each other, and per the API contract they're
      *  client-side/config bugs, not user-facing outcomes. Log the real reason; show a generic
@@ -31,6 +34,8 @@ sealed interface CircleAddFailureReason {
 
 /** Classifies a `connectionService.addToCircle` failure into a [CircleAddFailureReason]. */
 fun Throwable.toCircleAddFailureReason(): CircleAddFailureReason = when {
+    this is OdinApiException && problem?.errorCodeEnum() == OdinClientErrorCode.ContactNotReviewed ->
+        CircleAddFailureReason.NotReviewed
     this is ForbiddenException && problem?.errorCodeEnum() == OdinClientErrorCode.CannotSourceDriveStorageKeyForGrant ->
         CircleAddFailureReason.DriveAccessDenied
     this is ForbiddenException -> CircleAddFailureReason.OpaqueForbidden

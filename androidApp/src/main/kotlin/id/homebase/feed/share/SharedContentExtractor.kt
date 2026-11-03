@@ -39,6 +39,7 @@ object SharedContentExtractor {
         return SharedContent(
             text = text,
             files = files,
+            failedFileCount = (if (uri != null) 1 else 0) - files.size,
         )
     }
 
@@ -58,6 +59,7 @@ object SharedContentExtractor {
         return SharedContent(
             text = text,
             files = files,
+            failedFileCount = uris.size - files.size,
         )
     }
 
@@ -137,6 +139,7 @@ object SharedContentExtractor {
 data class SharedContent(
     val text: String? = null,
     val files: List<SharedFile> = emptyList(),
+    val failedFileCount: Int = 0,
 ) {
     val hasFiles: Boolean get() = files.isNotEmpty()
     val hasText: Boolean get() = !text.isNullOrBlank()

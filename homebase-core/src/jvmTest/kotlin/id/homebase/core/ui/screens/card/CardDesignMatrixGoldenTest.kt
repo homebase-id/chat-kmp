@@ -154,6 +154,11 @@ class CardDesignMatrixGoldenTest {
             put("schemeGrounds", buildJsonObject {
                 for (design in designs) CardDesignSpecs.of(design)?.let { s -> put(design, buildJsonArray { s.schemes.forEach { add(JsonPrimitive(it.ground)) } }) }
             })
+            put("schemeAccents", buildJsonObject {
+                for (design in designs) CardDesignSpecs.of(design)?.let { s ->
+                    put(design, buildJsonObject { s.schemes.forEach { sc -> put(sc.id, buildJsonArray { sc.accents.forEach { add(JsonPrimitive(it)) } }) } })
+                }
+            })
         }
         golden("design-specs.json", json)
     }

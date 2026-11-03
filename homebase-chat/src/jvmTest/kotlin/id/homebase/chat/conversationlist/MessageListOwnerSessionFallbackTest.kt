@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.data.MessageUiModel

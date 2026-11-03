@@ -229,4 +229,13 @@ class MainThreadWatchdogTest {
     fun processDeath_isSilentOnAFirstLaunch() {
         assertNull(renderProcessDeathMessage(previous = null, launchEpochMs = 1_000))
     }
+
+    @Test
+    fun mainThreadRecovery_namesTheCauseFromTheCpuSplit() {
+        assertEquals(
+            "Main/UI thread recovered after 180000ms, OS-SUSPENDED: cpu +40ms over 176000ms wall since the report",
+            renderMainThreadRecovery(180_000, ProcessTimes(cpuMs = 40, continuousMs = 176_000)),
+        )
+        assertEquals("Main/UI thread recovered after 5000ms", renderMainThreadRecovery(5_000, null))
+    }
 }

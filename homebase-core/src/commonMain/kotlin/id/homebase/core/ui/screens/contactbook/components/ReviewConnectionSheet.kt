@@ -42,7 +42,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.core.ui.screens.contactbook.NewCircleRow
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.util.formatMomentDate
 import id.homebase.core.widget.AdaptiveSheet
@@ -170,6 +172,7 @@ fun ReviewConnectionContent(
     // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
     var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
     var expanded by rememberSaveable(displayName) { mutableStateOf(false) }
+    val newCircle = rememberNewCircleAction { id -> selected = selected + id }
     // "Just chat" can't take held circles away — the review only ever grants — so skip that step.
     val offersShortStep = !groups.holdsAnyOffered(alreadyHeldCircleIds)
     val showAllOptions = expanded || !offersShortStep
@@ -268,21 +271,19 @@ fun ReviewConnectionContent(
                     { CircularProgressIndicator(modifier = Modifier.size(18.dp)) }
                 } else null,
             )
-            if (!groups.isEmpty) {
-                ReviewChoiceCard(
-                    icon = Icons.Outlined.Groups,
-                    title = stringResource(MR.string.contact_review_more_access),
-                    description = stringResource(MR.string.contact_review_more_access_desc),
-                    enabled = !isSubmitting,
-                    onClick = { expanded = true },
-                    trailing = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                        )
-                    },
-                )
-            }
+            ReviewChoiceCard(
+                icon = Icons.Outlined.Groups,
+                title = stringResource(MR.string.contact_review_more_access),
+                description = stringResource(MR.string.contact_review_more_access_desc),
+                enabled = !isSubmitting,
+                onClick = { expanded = true },
+                trailing = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                    )
+                },
+            )
         } else {
             if (offersShortStep) {
                 TextButton(
@@ -305,6 +306,7 @@ fun ReviewConnectionContent(
                 selected = selected,
                 isSubmitting = isSubmitting,
                 onToggle = { id -> selected = groups.toggleSelection(selected, id) },
+                onNewCircle = newCircle,
             )
         }
 
@@ -427,22 +429,22 @@ private fun CircleSections(
     selected: Set<String>,
     isSubmitting: Boolean,
     onToggle: (String) -> Unit,
+    onNewCircle: () -> Unit,
 ) {
-    if (groups.yours.isNotEmpty()) {
-        Section(
-            title = stringResource(MR.string.contact_review_group_yours),
-            caption = stringResource(MR.string.contact_review_group_yours_caption),
+    Section(
+        title = stringResource(MR.string.contact_review_group_yours),
+        caption = stringResource(MR.string.contact_review_group_yours_caption),
+    )
+    groups.yours.forEach { circle ->
+        CircleToggleRow(
+            circle = circle,
+            held = circle.id in alreadyHeldCircleIds,
+            checked = circle.id in alreadyHeldCircleIds || circle.id in selected,
+            enabled = !isSubmitting,
+            onToggle = { onToggle(circle.id) },
         )
-        groups.yours.forEach { circle ->
-            CircleToggleRow(
-                circle = circle,
-                held = circle.id in alreadyHeldCircleIds,
-                checked = circle.id in alreadyHeldCircleIds || circle.id in selected,
-                enabled = !isSubmitting,
-                onToggle = { onToggle(circle.id) },
-            )
-        }
     }
+    NewCircleRow(onClick = onNewCircle, enabled = !isSubmitting)
 
     // Its own section: one fixed circle granting a capability, not a pick from a set,
     // and the only choice here that shares something other than profile detail.

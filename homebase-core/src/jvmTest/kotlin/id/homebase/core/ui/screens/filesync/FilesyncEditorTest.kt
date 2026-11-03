@@ -69,6 +69,16 @@ class FilesyncEditorTest {
     }
 
     @Test
+    fun aRewriteKeepsTheEmbeddedPreview() = runTest {
+        val thumb = id.homebase.api.client.drives.upload.EmbeddedThumb(8, 6, "image/jpeg", id.homebase.api.serialization.Base64Bytes(byteArrayOf(1, 2, 3)))
+        val withPreview = FilesyncHandle(handle.fileId, versionTag, FilesyncProtocol.FileFileType, fileKey, removedContent, payload = null, previewThumbnail = thumb)
+
+        val request = liveNodeUpdate(nodeId, withPreview, renamedContent(removedContent, "b.txt"), Uuid.random())
+
+        assertEquals(thumb, request.metadata.appData.previewThumbnail)
+    }
+
+    @Test
     fun aRestoreIsALiveHeaderWithEveryKeyButRmUnderTheSameKey() = runTest {
         val target = Uuid.random()
         val request = liveNodeUpdate(nodeId, handle, renamedContent(removedContent, "a (restored).txt"), target)

@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.chat.widget.preview.FilePreviewKind
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
@@ -398,11 +399,13 @@ sealed interface FullScreenOverlay {
     ) : FullScreenOverlay.MediaViewer
 
     @Immutable
-    data class PdfViewerData(
+    data class FilePreviewData(
         val messageId: Uuid,
         val fileId: Uuid,
         val payloadKey: String,
         val title: String,
+        val name: String,
+        val kind: FilePreviewKind,
         val userDate: Instant,
     ) : FullScreenOverlay.MediaViewer
 }

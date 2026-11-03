@@ -408,6 +408,8 @@
     <string name="moments_onboarding_setup">Set it up</string>
     <string name="moments_onboarding_dismiss">Not now</string>
     <string name="moments_welcome">Moments worth remembering</string>
+    <string name="moments_empty_body">Photos, videos and notes you post appear here.</string>
+    <string name="moments_empty_action">Add a moment</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Open Moments</string>
     <string name="moments_settings_show_icon">Show Moments icon in bottom bar</string>
@@ -434,6 +436,7 @@
     <string name="moments_detail_metadata_device">Device</string>
     <string name="moments_detail_comments_section">Comments</string>
     <string name="moments_detail_no_comments">No comments yet</string>
+    <string name="moments_detail_first_comment">Be the first to say something</string>
     <string name="moments_detail_add_comment_hint">Add a comment</string>
     <string name="moments_detail_send_comment">Send comment</string>
     <string name="moments_detail_comment_you">You</string>
@@ -1587,11 +1590,8 @@
     <string name="sign_in_again_continue">Continue</string>
     <string name="vault_error_image_unavailable">Image could not be loaded</string>
     <string name="vault_pdf_badge">PDF</string>
-    <string name="vault_pdf_preview_error">Unable to preview PDF</string>
     <string name="vault_pdf_not_supported">PDF preview is not supported on web</string>
     <string name="vault_pdf_page_content_description">PDF page %1$d of %2$d</string>
-    <string name="vault_text_preview_error">Unable to preview file</string>
-    <string name="vault_text_truncated">File is large — showing first 1 MB</string>
 
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
@@ -1728,7 +1728,14 @@
     <string name="calls_contact_not_connected">Not connected</string>
     <string name="calls_kind_voice">Voice</string>
     <string name="calls_kind_video">Video</string>
-    <string name="nav_home">Home</string>
+    <string name="nav_apps">Apps</string>
+    <string name="settings_apps_desc">Feed, Vault, Email and more</string>
+    <string name="settings_apps_section_features">Features</string>
+    <string name="settings_apps_section_pages">App settings</string>
+    <string name="owner_status_connected">Connected</string>
+    <string name="owner_status_connecting">Connecting</string>
+    <string name="owner_status_syncing">Syncing</string>
+    <string name="owner_status_sync_problem">Sync problem</string>
 
     <!-- Developer menu -->
     <string name="dev_menu_title">Developer menu</string>
@@ -2589,6 +2596,12 @@
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
+    <string name="profile_card_option_block_style">Content style</string>
+    <string name="profile_card_tool_style">Style</string>
+    <string name="profile_card_presentation_bare">Plain</string>
+    <string name="profile_card_presentation_boxed">Boxed</string>
+    <string name="profile_card_presentation_row">Rows</string>
+    <string name="profile_card_presentation_button">Button</string>
     <string name="profile_card_option_move_up">Move %1$s up</string>
     <string name="profile_card_option_move_down">Move %1$s down</string>
     <string name="profile_card_option_drag">Drag to reorder %1$s</string>
@@ -2652,6 +2665,7 @@
     <string name="chat_error_download_file">Could not download file</string>
     <string name="chat_error_downloading_file">Error downloading file</string>
     <string name="chat_error_downloading_file_detail">Error downloading file: %1$s</string>
+    <string name="chat_error_file_too_large_here">This file is too big to open in the browser.</string>
     <string name="chat_error_convert_video">Could not convert video</string>
     <string name="chat_error_media_click">Failed to handle media click: %1$s</string>
     <string name="chat_error_unattach_file">Failed to unattach file: %1$s</string>
@@ -3007,8 +3021,8 @@
     <string name="filesync_open">Open</string>
     <string name="filesync_open_in_app">Open in another app</string>
     <string name="filesync_preview">Preview</string>
-    <string name="filesync_preview_failed">This file can't be shown here.</string>
-    <string name="filesync_preview_truncated">Showing the first %1$s.</string>
+    <string name="file_preview_failed">This file can't be shown here.</string>
+    <string name="file_preview_truncated">Showing the first %1$s.</string>
     <string name="filesync_send_webdrop">Send with WebDrop</string>
     <string name="filesync_share_failed">Couldn't share the file.</string>
     <string name="filesync_info_hint">Select a file or folder to see its details.</string>
@@ -3090,6 +3104,7 @@
     <string name="filesync_download">Download</string>
     <string name="filesync_cancel_download">Cancel download</string>
     <string name="filesync_download_failed">Couldn't download the file.</string>
+    <string name="filesync_too_large_here">This file is too big to download in the browser.</string>
     <string name="filesync_damaged">This file is damaged, so it wasn't opened.</string>
     <string name="filesync_folder">Folder</string>
     <string name="filesync_upload">Upload files</string>
@@ -3158,4 +3173,22 @@
     <string name="keystore_reset_confirm_title">Reset Homebase on this computer?</string>
     <string name="keystore_reset_confirm_message">This removes your local data and your login from this computer. You'll need to sign in again. This can't be undone.</string>
     <string name="keystore_reset_confirm">Reset</string>
+    <string name="circle_new">New circle</string>
+    <string name="circle_create_title">New circle</string>
+    <string name="circle_create_name">Name</string>
+    <string name="circle_create_approve">Approve</string>
+    <string name="circle_create_creating">Creating…</string>
+    <string name="circle_create_choose_emoji">Choose an emoji</string>
+    <string name="circle_create_remove_emoji">Remove emoji</string>
+    <string name="circle_create_description">Description (optional)</string>
+    <string name="circle_create_action">Create</string>
+    <string name="circle_create_access_check_failed">Couldn't check your access. Check your connection and try again.</string>
+    <string name="circle_create_failed">Couldn't create the circle. Try again.</string>
+    <string name="circle_create_needs_permission">Chat needs more access to create circles. Approve it and try again.</string>
+    <string name="circle_create_empty_action">Create a circle</string>
+    <string name="circle_delete">Delete circle</string>
+    <string name="circle_delete_title">Delete %1$s?</string>
+    <string name="circle_delete_body">This removes the circle and its card.</string>
+    <string name="circle_delete_body_members">%1$d people are in this circle. Deleting it removes them from it, and removes the circle and its card.</string>
+    <string name="circle_delete_failed">Couldn't delete the circle. Try again.</string>
 </resources>

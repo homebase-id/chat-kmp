@@ -2,6 +2,9 @@
 
 package id.homebase.core.ui.screens.vault.gallery
 
+import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.StreamedFilePreview
+import id.homebase.chat.widget.preview.filePreviewKind
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -14,6 +17,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,7 +86,9 @@ import id.homebase.resources.vault_permission_cancel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.resources.vault_gallery_send_webdrop
@@ -198,6 +207,9 @@ fun VaultGalleryScreen(
                     if (pages.isEmpty()) return@MediaPager
                     val descriptor = pages[page]
                     val isImage = descriptor.contentType?.startsWith("image/") == true
+                    val previewKind = remember(file, descriptor) {
+                        filePreviewKind(descriptor.contentType ?: file.contentType, file.fileName, descriptor.bytesWritten)
+                    }
 
                     val onTapImage: () -> Unit = {
                         val sheetState = scaffoldState.bottomSheetState
@@ -221,20 +233,29 @@ fun VaultGalleryScreen(
                             sharedTransitionScope = sharedTransitionScope.takeIf { isHero },
                             animatedVisibilityScope = animatedVisibilityScope.takeIf { isHero },
                         )
-                    } else if (file.isPdf) {
-                        PdfViewerPage(
-                            file = file,
-                            uploaderService = uploaderService,
-                            fileOperationsProvider = fileOperationsProvider,
-                            onToggleUI = onTapImage,
-                        )
-                    } else if (file.isText) {
-                        TextViewerPage(
-                            file = file,
-                            uploaderService = uploaderService,
-                            fileOperationsProvider = fileOperationsProvider,
-                            onToggleUI = onTapImage,
-                        )
+                    } else if (previewKind != null) {
+                        // Composed only on the settled page: a video fetches and decrypts its whole file.
+                        if (previewKind != FilePreviewKind.Video || pagerState.settledPage == page) {
+                            Box(
+                                Modifier.fillMaxSize().padding(
+                                    bottom = if (previewKind == FilePreviewKind.Video) sheetPeekHeight else 0.dp,
+                                ),
+                            ) {
+                                StreamedFilePreview(
+                                    key = descriptor.key,
+                                    name = file.fileName,
+                                    kind = previewKind,
+                                    load = {
+                                        withContext(Dispatchers.Default) { uploaderService.downloadPayload(file, descriptor.key) }
+                                    },
+                                    discard = { path -> runCatching { fileOperationsProvider.deleteTempFile(path) } },
+                                    onTap = onTapImage,
+                                    contentPadding = if (previewKind == FilePreviewKind.Video) PaddingValues() else PaddingValues(
+                                        top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp,
+                                    ),
+                                )
+                            }
+                        }
                     } else {
                         GalleryPageNonImage(
                             file = file,

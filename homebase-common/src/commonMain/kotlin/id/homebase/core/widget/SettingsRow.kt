@@ -1,9 +1,14 @@
 package id.homebase.core.widget
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
@@ -11,14 +16,15 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -63,6 +69,7 @@ fun SettingsRow(
     supportingText: String? = null,
     isDestructive: Boolean = false,
     status: (@Composable () -> Unit)? = null,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
 ) {
     val contentColor = if (isDestructive) {
         MaterialTheme.colorScheme.error
@@ -148,22 +155,33 @@ fun SettingsRow(
         is SettingsRowAction.Invoke -> modifier.clickable(onClick = action.onClick)
     }
 
-    ListItem(
-        modifier = rowModifier,
-        headlineContent = {
-            Text(text = title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        supportingContent = supportingText?.let { supporting ->
-            { Text(text = supporting) }
-        },
-        leadingContent = {
-            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(24.dp))
-        },
-        trailingContent = trailing,
-        colors = ListItemDefaults.colors(
-            headlineColor = contentColor,
-            leadingIconColor = contentColor,
-            trailingIconColor = affordanceColor,
-        ),
-    )
+    // Not ListItem: it top-aligns its icon and control once the text passes two lines.
+    Row(
+        modifier = rowModifier
+            .background(containerColor)
+            .fillMaxWidth()
+            .heightIn(min = if (supportingText == null) 56.dp else 72.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(24.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = contentColor,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            supportingText?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        trailing?.let { CompositionLocalProvider(LocalContentColor provides affordanceColor, content = it) }
+    }
 }

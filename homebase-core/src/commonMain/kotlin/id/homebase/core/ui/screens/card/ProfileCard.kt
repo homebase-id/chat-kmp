@@ -80,7 +80,7 @@ data class ProfileCard(
     /** A null [overrides] keeps this card's; either way a design change drops what the new design doesn't expose. */
     fun withDesign(design: String, overrides: CardOverrides? = null): ProfileCard {
         val kept = overrides ?: this.overrides
-        return copy(design = design, overrides = if (this.design != design) kept.prunedFor(design) else kept)
+        return copy(design = design, overrides = if (this.design != design) kept.switchedTo(design) else kept)
     }
 
     fun toData(): JsonObject = JsonObject(

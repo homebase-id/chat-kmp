@@ -92,6 +92,7 @@ class CardOverridesTest {
         CardOption.PORTRAIT_SHAPE -> "portraits[].shape"
         CardOption.SOCIALS_STYLE -> "socials"
         CardOption.BLOCK_ORDER -> "blocks[].kind"
+        CardOption.BLOCK_STYLE -> "blocks[].presentation"
     }
 
     private fun resolves(descriptor: SerialDescriptor, path: String): Boolean {
@@ -124,12 +125,12 @@ class CardOverridesTest {
         assertNull(poster.palette)
         assertNull(poster.portraits)
         assertEquals(CardTypeface(display = "caveat", text = "newsreader"), poster.type)
-        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), poster.blocks)
+        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts", "row")), poster.blocks)
         assertEquals("handles", poster.socials)
 
         val collage = everything.prunedFor(CardDesign.COLLAGE)
         assertEquals(CardPalette(accent = "#ABCDEF"), collage.palette)
-        assertEquals(listOf("links", "chat", "moments", "posts").map(::CardBlock), collage.blocks)
+        assertEquals(listOf(CardBlock("links"), CardBlock("chat"), CardBlock("moments"), CardBlock("posts")), collage.blocks)
         assertEquals(listOf(CardPortrait(shape = "square"), CardPortrait()), collage.portraits)
 
         val dossier = everything.prunedFor(CardDesign.DOSSIER)
@@ -150,5 +151,64 @@ class CardOverridesTest {
         val shown = listOf("links", "moments")
         val reordered = stored.withShownBlockOrder(shown, listOf("moments", "links"))
         assertEquals(listOf("moments", "chat", "links"), reordered.blockOrder())
+    }
+
+    @Test
+    fun blockStyleIsSetOnEverySectionAndClearsBackToThePreset() {
+        val styled = CardOverrides.EMPTY.with(CardOption.BLOCK_STYLE, "boxed")
+        assertEquals(listOf("chat", "links", "moments", "posts").map { CardBlock(it, "boxed") }, styled.blocks)
+        assertEquals("boxed", styled.valueOf(CardOption.BLOCK_STYLE))
+
+        val cleared = styled.with(CardOption.BLOCK_STYLE, null)
+        assertNull(cleared.valueOf(CardOption.BLOCK_STYLE))
+        assertNull(cleared.blocks)
+
+        assertNull(CardOverrides.EMPTY.valueOf(CardOption.BLOCK_STYLE))
+        assertNull(everything.valueOf(CardOption.BLOCK_STYLE))
+    }
+
+    @Test
+    fun reorderingKeepsEachSectionsStyle() {
+        val styled = CardOverrides(blocks = listOf(CardBlock("chat", "button"), CardBlock("links", "row"))).withBlockOrder(listOf("links", "chat", "moments"))
+        assertEquals(
+            listOf(CardBlock("links", "row"), CardBlock("chat", "button"), CardBlock("moments"), CardBlock("posts")),
+            styled.blocks,
+        )
+        assertEquals(
+            listOf("moments", "chat", "links"),
+            styled.withShownBlockOrder(listOf("links", "moments"), listOf("moments", "links")).blockOrder(),
+        )
+    }
+
+    @Test
+    fun onlyDesignsThatDrawTheStyleKeepItAndEveryDesignKeepsItsOrder() {
+        val styled = CardOverrides.EMPTY.withBlockOrder(listOf("links", "chat", "moments")).with(CardOption.BLOCK_STYLE, "row")
+        for (design in CardDesign.all) {
+            val styleable = CardOption.BLOCK_STYLE in CardDesignSpecs.of(design)!!.options
+            val pruned = styled.prunedFor(design)
+            assertEquals(if (styleable) "row" else null, pruned.valueOf(CardOption.BLOCK_STYLE), design)
+            assertEquals(listOf("links", "chat", "moments"), pruned.blockOrder(), design)
+        }
+        assertEquals(CardOverrides.EMPTY, styled.prunedFor("hologram"))
+    }
+
+    @Test
+    fun stylingThenResettingABoardCardLeavesItsPresetOrder() {
+        val board = CardDesignSpecs.of(CardDesign.BOARD)!!
+        val styled = CardOverrides.EMPTY.with(CardOption.BLOCK_STYLE, "row", board.presetOrder)
+        assertEquals(listOf("links", "moments", "chat"), styled.blockOrder())
+        assertEquals("row", styled.valueOf(CardOption.BLOCK_STYLE))
+
+        val reset = styled.with(CardOption.BLOCK_STYLE, null, board.presetOrder)
+        assertNull(reset.blocks)
+        assertNull(CardOverrides.EMPTY.with(CardOption.BLOCK_STYLE, null, board.presetOrder).blocks)
+    }
+
+    @Test
+    fun stylingKeepsACustomOrderAndResettingKeepsIt() {
+        val custom = CardOverrides.EMPTY.withBlockOrder(listOf("chat", "moments", "links"))
+        val reset = custom.with(CardOption.BLOCK_STYLE, "row", listOf("links", "moments", "chat"))
+            .with(CardOption.BLOCK_STYLE, null, listOf("links", "moments", "chat"))
+        assertEquals(listOf("chat", "moments", "links"), reset.blockOrder())
     }
 }

@@ -118,6 +118,8 @@ import id.homebase.core.audio.ProximityAudioRouter
 import id.homebase.core.audio.VoiceNotePlayback
 import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.OwnerAvatarStatus
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.diagnostics.ServerIpCapture
@@ -253,7 +255,13 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
+import id.homebase.core.config.getCirclePermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.ui.screens.contactbook.CreateCircleViewModel
+import id.homebase.core.ui.screens.contactbook.DefaultUserCircleBackend
+import id.homebase.core.ui.screens.contactbook.ExtendPermissionCircleAccess
+import id.homebase.core.ui.screens.contactbook.UserCircleBackend
+import id.homebase.core.ui.screens.contactbook.UserCircleService
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
@@ -286,6 +294,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
+val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
@@ -328,7 +337,7 @@ val appModule = module {
                     content = content,
                 )
             },
-            enqueueOutbox = { request -> outboxSync.tryEnqueue(request).enqueued },
+            enqueueOutbox = { request -> outboxSync.enqueueLatest(request).enqueued },
             eventBus = get(),
             scope = get(),
         )
@@ -653,6 +662,14 @@ val appModule = module {
         scoped { MomentCreateFlowState() }
         viewModelOf(::MomentComposeViewModel)
         viewModelOf(::MomentAudienceViewModel)
+    }
+
+    single {
+        OwnerAvatarStatus(
+            connection = get<AuthConnectionCoordinator>().connectionState.map { it.toConnectionStatus() },
+            events = get<EventBus>().events,
+            scope = get(),
+        )
     }
 
     single {
@@ -1127,7 +1144,7 @@ val appModule = module {
             fileOperationsProvider = get(),
             ownerSessionRepository = get(),
             credentialsManager = get(),
-            authConnectionCoordinator = get(),
+            ownerAvatarStatus = get(),
             audioRecorder = get(),
             audioWaveFormGenerator = get(),
             eventBus = get(),
@@ -1339,6 +1356,19 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    viewModel(CirclePermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getCirclePermissionExtensionConfig(),
+            autoCheck = false,
+            recheckOnAuthorizationFailure = false,
+        )
+    }
+    single<UserCircleBackend> { DefaultUserCircleBackend(get(), get()) }
+    single { UserCircleService(get()) }
+    viewModel { CreateCircleViewModel(get(), ExtendPermissionCircleAccess(get(CirclePermissionQualifier))) }
     viewModel(WebDropPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),

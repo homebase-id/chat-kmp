@@ -387,6 +387,8 @@
     <string name="moments_onboarding_setup">Sæt det op</string>
     <string name="moments_onboarding_dismiss">Ikke nu</string>
     <string name="moments_welcome">Øjeblikke der er værd at huske</string>
+    <string name="moments_empty_body">Billeder, videoer og noter, du deler, vises her.</string>
+    <string name="moments_empty_action">Tilføj et øjeblik</string>
     <string name="moments_settings_section">Moments</string>
     <string name="moments_settings_open">Åbn Moments</string>
     <string name="moments_settings_show_icon">Vis Moments-ikonet i bundbjælken</string>
@@ -413,6 +415,7 @@
     <string name="moments_detail_metadata_device">Enhed</string>
     <string name="moments_detail_comments_section">Kommentarer</string>
     <string name="moments_detail_no_comments">Ingen kommentarer endnu</string>
+    <string name="moments_detail_first_comment">Vær den første til at sige noget</string>
     <string name="moments_detail_add_comment_hint">Tilføj en kommentar</string>
     <string name="moments_detail_send_comment">Send kommentar</string>
     <string name="moments_detail_comment_you">Dig</string>
@@ -1190,11 +1193,8 @@
     <string name="vault_error_outbox_upload">Upload mislykkedes</string>
     <string name="vault_error_image_unavailable">Billedet kunne ikke indlæses</string>
     <string name="vault_pdf_badge">PDF</string>
-    <string name="vault_pdf_preview_error">Kan ikke forhåndsvise PDF</string>
     <string name="vault_pdf_not_supported">PDF-forhåndsvisning understøttes ikke på web</string>
     <string name="vault_pdf_page_content_description">PDF-side %1$d af %2$d</string>
-    <string name="vault_text_preview_error">Kan ikke forhåndsvise filen</string>
-    <string name="vault_text_truncated">Filen er stor — viser den første 1 MB</string>
 
     <string name="feed_error_title">Kunne ikke indlæse feed</string>
     <string name="feed_error_retry">Prøv igen</string>
@@ -1272,7 +1272,14 @@
     <string name="nav_chats">Chats</string>
     <string name="nav_feed">Feed</string>
     <string name="nav_moments">Moments</string>
-    <string name="nav_home">Hjem</string>
+    <string name="nav_apps">Apps</string>
+    <string name="settings_apps_desc">Feed, Vault, Email og mere</string>
+    <string name="settings_apps_section_features">Funktioner</string>
+    <string name="settings_apps_section_pages">App-indstillinger</string>
+    <string name="owner_status_connected">Forbundet</string>
+    <string name="owner_status_connecting">Forbinder</string>
+    <string name="owner_status_syncing">Synkroniserer</string>
+    <string name="owner_status_sync_problem">Synkroniseringsproblem</string>
 
     <!-- Developer menu -->
     <string name="dev_menu_title">Udviklermenu</string>
@@ -2064,4 +2071,32 @@
     <string name="keystore_reset_confirm_title">Nulstil Homebase på denne computer?</string>
     <string name="keystore_reset_confirm_message">Dette fjerner dine lokale data og dit login fra denne computer. Du skal logge ind igen. Det kan ikke fortrydes.</string>
     <string name="keystore_reset_confirm">Nulstil</string>
+    <string name="profile_card_option_block_style">Indholdsstil</string>
+    <string name="profile_card_tool_style">Stil</string>
+    <string name="profile_card_presentation_bare">Almindelig</string>
+    <string name="profile_card_presentation_boxed">Boks</string>
+    <string name="profile_card_presentation_row">Rækker</string>
+    <string name="profile_card_presentation_button">Knap</string>
+    <string name="circle_new">Ny kreds</string>
+    <string name="circle_create_title">Ny kreds</string>
+    <string name="circle_create_name">Navn</string>
+    <string name="circle_create_approve">Godkend</string>
+    <string name="circle_create_creating">Opretter…</string>
+    <string name="circle_create_choose_emoji">Vælg en emoji</string>
+    <string name="circle_create_remove_emoji">Fjern emoji</string>
+    <string name="circle_create_description">Beskrivelse (valgfri)</string>
+    <string name="circle_create_action">Opret</string>
+    <string name="circle_create_access_check_failed">Kunne ikke kontrollere din adgang. Tjek din forbindelse, og prøv igen.</string>
+    <string name="circle_create_failed">Kunne ikke oprette kredsen. Prøv igen.</string>
+    <string name="circle_create_needs_permission">Chat har brug for mere adgang for at oprette kredse. Godkend det, og prøv igen.</string>
+    <string name="circle_create_empty_action">Opret en kreds</string>
+    <string name="circle_delete">Slet kreds</string>
+    <string name="circle_delete_title">Slet %1$s?</string>
+    <string name="circle_delete_body">Det fjerner kredsen og dens kort.</string>
+    <string name="circle_delete_body_members">%1$d personer er i denne kreds. Sletter du den, fjernes de fra den, og kredsen og dens kort fjernes.</string>
+    <string name="circle_delete_failed">Kunne ikke slette kredsen. Prøv igen.</string>
+    <string name="file_preview_failed">Filen kan ikke vises her.</string>
+    <string name="file_preview_truncated">Viser de første %1$s.</string>
+    <string name="filesync_too_large_here">Filen er for stor til at hente i browseren.</string>
+    <string name="chat_error_file_too_large_here">Filen er for stor til at åbne i browseren.</string>
 </resources>
