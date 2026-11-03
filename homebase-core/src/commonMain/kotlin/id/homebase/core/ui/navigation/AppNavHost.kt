@@ -2260,51 +2260,22 @@ fun AppNavHost(
 
                             tab<Route.Filesync>(tabRoot) {
                                 if (isAuthenticated) {
-                                    val filesyncViewModel: FilesyncViewModel = koinViewModel()
-                                    val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
-                                    Crossfade(
-                                        targetState = filesyncUiState.installed,
-                                        animationSpec = chromeMotion.defaultEffectsSpec(),
-                                    ) { installed ->
-                                        when (installed) {
-                                            null -> FilesyncCheckingScreen(
-                                                failed = filesyncUiState.checkFailed,
-                                                onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
-                                            )
-                                            false -> FilesyncOnboardingScreen(
-                                                viewModel = filesyncViewModel,
-                                                setupInitiated = filesyncUiState.setupInitiated,
-                                                checkFailed = filesyncUiState.checkFailed,
-                                                onDismiss = { navController.popBackStack() },
-                                            )
-                                            true -> FilesyncScreen(
-                                                viewModel = filesyncViewModel,
-                                                places = filesyncPlaces,
-                                                onOpenWebDrop = openWebDrop,
-                                                onSendToChat = { path, name ->
-                                                    if (navController.sendFileOnChatList(path, name)) openChats()
-                                                },
-                                            )
-                                        }
+                                    FilesyncSetupGate(onDismiss = { navController.popBackStack() }) { filesyncViewModel ->
+                                        FilesyncScreen(
+                                            viewModel = filesyncViewModel,
+                                            places = filesyncPlaces,
+                                            onOpenWebDrop = openWebDrop,
+                                            onSendToChat = { path, name ->
+                                                if (navController.sendFileOnChatList(path, name)) openChats()
+                                            },
+                                        )
                                     }
                                 }
                             }
 
                             scoped<Route.FilesyncSetup> {
-                                val filesyncViewModel: FilesyncViewModel = koinViewModel()
-                                val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
-                                when (filesyncUiState.installed) {
-                                    null -> FilesyncCheckingScreen(
-                                        failed = filesyncUiState.checkFailed,
-                                        onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
-                                    )
-                                    false -> FilesyncOnboardingScreen(
-                                        viewModel = filesyncViewModel,
-                                        setupInitiated = filesyncUiState.setupInitiated,
-                                        checkFailed = filesyncUiState.checkFailed,
-                                        onDismiss = { navController.popBackStack() },
-                                    )
-                                    true -> LaunchedEffect(Unit) { navController.popBackStack<Route.FilesyncSetup>(inclusive = true) }
+                                FilesyncSetupGate(onDismiss = { navController.popBackStack() }) {
+                                    LaunchedEffect(Unit) { navController.popBackStack<Route.FilesyncSetup>(inclusive = true) }
                                 }
                             }
 
@@ -2671,6 +2642,30 @@ private fun entryShowsViewOnceViewer(entry: NavBackStackEntry): Boolean {
     val messages = chat.messagesUiState.collectAsStateWithLifecycle()
     val shows by remember(chat) { derivedStateOf { showsViewOnceViewer(messages.value) } }
     return shows
+}
+
+@Composable
+private fun FilesyncSetupGate(onDismiss: () -> Unit, installed: @Composable (FilesyncViewModel) -> Unit) {
+    val filesyncViewModel: FilesyncViewModel = koinViewModel()
+    val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
+    Crossfade(
+        targetState = filesyncUiState.installed,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    ) { state ->
+        when (state) {
+            null -> FilesyncCheckingScreen(
+                failed = filesyncUiState.checkFailed,
+                onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
+            )
+            false -> FilesyncOnboardingScreen(
+                viewModel = filesyncViewModel,
+                setupInitiated = filesyncUiState.setupInitiated,
+                checkFailed = filesyncUiState.checkFailed,
+                onDismiss = onDismiss,
+            )
+            true -> installed(filesyncViewModel)
+        }
+    }
 }
 
 private inline fun <reified T : Any> NavGraphBuilder.tab(
