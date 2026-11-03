@@ -13,7 +13,6 @@ import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
-import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.EncryptedKeyHeader
@@ -41,7 +40,6 @@ class FilesyncNodeTest {
         payloads: List<PayloadDescriptor>? = null,
         serverFileIsEncrypted: Boolean = true,
         status: ArchivalStatus? = null,
-        preview: EmbeddedThumb? = null,
     ) = HomebaseFile(
         fileId = Uuid.random(),
         driveId = FilesyncProtocol.DriveAlias,
@@ -58,7 +56,6 @@ class FilesyncNodeTest {
                 fileType = fileType,
                 content = content,
                 archivalStatus = status,
-                previewThumbnail = preview,
             ),
             payloads = payloads,
         ),
@@ -75,20 +72,6 @@ class FilesyncNodeTest {
         assertEquals(nodeId, node.nodeId)
         assertNull(handle.payload)
         assertNull(node.removedMs)
-    }
-
-    @Test
-    fun aFilesEmbeddedPreviewIsKeptOnTheNodeAndItsHandle() {
-        val thumb = EmbeddedThumb(8, 6, "image/jpeg", Base64Bytes(byteArrayOf(1, 2, 3)))
-        val (node, handle) = row(FilesyncProtocol.FileFileType, """{"v":1,"name":"a.jpg","size":3}""", listOf(syncData), preview = thumb).toFilesyncNode()!!
-        assertEquals(thumb, node.preview)
-        assertEquals(thumb, handle.previewThumbnail)
-    }
-
-    @Test
-    fun aFileWithoutAPreviewHasNone() {
-        val (node, _) = row(FilesyncProtocol.FileFileType, """{"v":1,"name":"a.jpg","size":3}""", listOf(syncData)).toFilesyncNode()!!
-        assertNull(node.preview)
     }
 
     @Test
