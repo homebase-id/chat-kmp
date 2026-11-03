@@ -15,6 +15,7 @@ import org.jetbrains.compose.resources.stringResource
 actual fun PdfPageViewer(
     filePath: String,
     onTap: (() -> Unit)?,
+    onFailed: () -> Unit,
     modifier: Modifier,
 ) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

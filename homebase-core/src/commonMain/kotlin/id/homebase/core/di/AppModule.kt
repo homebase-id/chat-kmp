@@ -157,6 +157,9 @@ import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncRepository
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.ui.screens.openedfile.DefaultOpenedFileGateway
+import id.homebase.core.ui.screens.openedfile.OpenedFileGateway
+import id.homebase.core.ui.screens.openedfile.OpenedFileViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncEditor
 import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
@@ -1438,6 +1441,8 @@ val appModule = module {
             privateDriveOptIn = get(),
         )
     }
+    single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { params -> OpenedFileViewModel(params.get(), get()) }
     viewModel { FilesyncTrashViewModel(get(), get()) }
     viewModel { FilesyncRecentViewModel(get(), get(), get()) }
     viewModel {

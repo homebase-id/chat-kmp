@@ -233,6 +233,16 @@ import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
 import id.homebase.core.ui.screens.filesync.FilesyncPlaces
 import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
 import id.homebase.core.ui.screens.filesync.FilesyncScreen
+import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
+import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
+import id.homebase.core.ui.screens.openedfile.OpenedFileScreen
+import id.homebase.core.ui.screens.openedfile.openedFileStagingRoot
+import id.homebase.core.ui.screens.openedfile.sweepStaged
+import id.homebase.core.ui.screens.filesync.FilesyncCrumb
+import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.withContext
+import kotlin.time.Clock
 import id.homebase.core.ui.screens.filesync.FilesyncTrashScreen
 import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
@@ -276,6 +286,7 @@ import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import id.homebase.resources.filesync_label
+import id.homebase.resources.openedfile_open_failed
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
@@ -601,7 +612,7 @@ fun AppNavHost(
         if (authState is YouAuthState.Unauthenticated || authState is YouAuthState.Error) {
             if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class) && !currentDestination.hasRoute(
                     Route.AppLoading::class
-                )
+                ) && !currentDestination.hasRoute(Route.OpenedFile::class)
             ) {
                 navController.navigate(Route.Login) {
                     popUpTo(0) { inclusive = true }
@@ -676,6 +687,8 @@ fun AppNavHost(
     val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
+    // Read only by the Filesync screen's own view model, the one "Show" opens.
+    var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
     val filesyncPlaces = remember(navController) {
         FilesyncPlaces(
@@ -683,6 +696,26 @@ fun AppNavHost(
             onRecent = { navController.navigate(Route.FilesyncRecent) { popUpTo(Route.Filesync); launchSingleTop = true } },
             onTrash = { navController.navigate(Route.FilesyncTrash) { popUpTo(Route.Filesync); launchSingleTop = true } },
         )
+    }
+
+    val openedFileFailedMessage = stringResource(MR.string.openedfile_open_failed)
+    LaunchedEffect(Unit) {
+        OpenedFileInbox.failures.collect { snackbarHostState.showSnackbar(openedFileFailedMessage) }
+    }
+
+    val pendingOpenedFile by OpenedFileInbox.pending.collectAsStateWithLifecycle()
+    val fileOperations: FileOperationsProvider = koinInject()
+    LaunchedEffect(pendingOpenedFile, isAuthenticated) {
+        val pending = pendingOpenedFile ?: return@LaunchedEffect
+        if (pending.waitingForSignIn && !isAuthenticated) return@LaunchedEffect
+        val request = pending.request
+        // Signed out, the file waits on top of Login: it can still be opened elsewhere, and "Sign in to save" brings it back after sign-in.
+        val stack = if (isAuthenticated) navController.awaitChatList() else navController.currentBackStack.firstContaining { it.destination.hasRoute(Route.Login::class) }
+        val routed = stack.filter { it.destination.hasRoute(Route.OpenedFile::class) }.map { it.toRoute<Route.OpenedFile>().path }
+        if (request.path !in routed) navController.navigate(Route.OpenedFile(request.path, request.name, request.mimeType, request.sizeBytes))
+        withContext(ioDispatcher) {
+            sweepStaged(openedFileStagingRoot(fileOperations.getCacheDirectory()), routed + request.path, Clock.System.now().toEpochMilliseconds())
+        }
     }
 
     // Handle notification tap navigation (needs navController, stays in composable)
@@ -2242,34 +2275,44 @@ fun AppNavHost(
 
                             tab<Route.Filesync>(tabRoot) {
                                 if (isAuthenticated) {
-                                    val filesyncViewModel: FilesyncViewModel = koinViewModel()
-                                    val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
-                                    Crossfade(
-                                        targetState = filesyncUiState.installed,
-                                        animationSpec = chromeMotion.defaultEffectsSpec(),
-                                    ) { installed ->
-                                        when (installed) {
-                                            null -> FilesyncCheckingScreen(
-                                                failed = filesyncUiState.checkFailed,
-                                                onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
-                                            )
-                                            false -> FilesyncOnboardingScreen(
-                                                viewModel = filesyncViewModel,
-                                                setupInitiated = filesyncUiState.setupInitiated,
-                                                checkFailed = filesyncUiState.checkFailed,
-                                                onDismiss = { navController.popBackStack() },
-                                            )
-                                            true -> FilesyncScreen(
-                                                viewModel = filesyncViewModel,
-                                                places = filesyncPlaces,
-                                                onOpenWebDrop = openWebDrop,
-                                                onSendToChat = { path, name ->
-                                                    if (navController.sendFileOnChatList(path, name)) openChats()
-                                                },
-                                            )
+                                    FilesyncSetupGate(onDismiss = { navController.popBackStack() }) { filesyncViewModel ->
+                                        LaunchedEffect(filesyncFolderToShow) {
+                                            filesyncFolderToShow?.let { filesyncViewModel.onAction(FilesyncUiAction.OpenFolder(it)) }
+                                            filesyncFolderToShow = null
                                         }
+                                        FilesyncScreen(
+                                            viewModel = filesyncViewModel,
+                                            places = filesyncPlaces,
+                                            onOpenWebDrop = openWebDrop,
+                                            onSendToChat = { path, name ->
+                                                if (navController.sendFileOnChatList(path, name)) openChats()
+                                            },
+                                        )
                                     }
                                 }
+                            }
+
+                            scoped<Route.FilesyncSetup> {
+                                FilesyncSetupGate(onDismiss = { navController.popBackStack() }) {
+                                    LaunchedEffect(Unit) { navController.popBackStack<Route.FilesyncSetup>(inclusive = true) }
+                                }
+                            }
+
+                            scoped<Route.OpenedFile> { entry ->
+                                val route = entry.toRoute<Route.OpenedFile>()
+                                OpenedFileScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.path,
+                                        parameters = { parametersOf(OpenedFileRequest(route.path, route.name, route.mimeType, route.sizeBytes)) },
+                                    ),
+                                    onBack = { navController.popBackStack() },
+                                    onSignIn = { navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } } },
+                                    onSetUpFilesync = { navController.navigate(Route.FilesyncSetup) { launchSingleTop = true } },
+                                    onShowInFilesync = { path ->
+                                        filesyncFolderToShow = path
+                                        openFilesync()
+                                    },
+                                )
                             }
 
                             scoped<Route.FilesyncTrash> {
@@ -2618,6 +2661,30 @@ private fun entryShowsViewOnceViewer(entry: NavBackStackEntry): Boolean {
     val messages = chat.messagesUiState.collectAsStateWithLifecycle()
     val shows by remember(chat) { derivedStateOf { showsViewOnceViewer(messages.value) } }
     return shows
+}
+
+@Composable
+private fun FilesyncSetupGate(onDismiss: () -> Unit, installed: @Composable (FilesyncViewModel) -> Unit) {
+    val filesyncViewModel: FilesyncViewModel = koinViewModel()
+    val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
+    Crossfade(
+        targetState = filesyncUiState.installed,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    ) { state ->
+        when (state) {
+            null -> FilesyncCheckingScreen(
+                failed = filesyncUiState.checkFailed,
+                onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
+            )
+            false -> FilesyncOnboardingScreen(
+                viewModel = filesyncViewModel,
+                setupInitiated = filesyncUiState.setupInitiated,
+                checkFailed = filesyncUiState.checkFailed,
+                onDismiss = onDismiss,
+            )
+            true -> installed(filesyncViewModel)
+        }
+    }
 }
 
 private inline fun <reified T : Any> NavGraphBuilder.tab(

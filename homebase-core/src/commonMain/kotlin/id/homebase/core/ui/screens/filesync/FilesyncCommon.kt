@@ -152,6 +152,20 @@ import org.jetbrains.compose.resources.stringResource
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
 private const val DELETED_ALPHA = 0.38f
 
+internal fun FilesyncError.message(): StringResource = when (this) {
+    FilesyncError.MoveFailed -> MR.string.filesync_move_failed
+    FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
+    FilesyncError.TooLargeHere -> MR.string.filesync_too_large_here
+    FilesyncError.Damaged -> MR.string.filesync_damaged
+    FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
+    FilesyncError.TooLarge -> MR.string.filesync_too_large
+    FilesyncError.StorageFull -> MR.string.storage_full_upload_failed
+    FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
+    FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
+    FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
+    FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
+}
+
 // Keeps a white page from out-shining the row's title in dark theme.
 private const val PAGE_DARK_DIM = 0.32f
 
@@ -207,21 +221,7 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.SendToChat -> onSendToChat(event.path, event.name)
                 is FilesyncUiEvent.OpenSignIn -> onOpenSignIn(event.url)
                 is FilesyncUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
-                is FilesyncUiEvent.Error -> show(
-                    when (event.error) {
-                        FilesyncError.MoveFailed -> MR.string.filesync_move_failed
-                        FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
-                        FilesyncError.TooLargeHere -> MR.string.filesync_too_large_here
-                        FilesyncError.Damaged -> MR.string.filesync_damaged
-                        FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
-                        FilesyncError.TooLarge -> MR.string.filesync_too_large
-                        FilesyncError.StorageFull -> MR.string.storage_full_upload_failed
-                        FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
-                        FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
-                        FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
-                        FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
-                    }
-                )
+                is FilesyncUiEvent.Error -> show(event.error.message())
                 is FilesyncUiEvent.Notice -> show(
                     when (event.notice) {
                         FilesyncNotice.Restored -> MR.string.filesync_restored

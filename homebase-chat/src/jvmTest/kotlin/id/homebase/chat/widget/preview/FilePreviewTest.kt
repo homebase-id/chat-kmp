@@ -30,9 +30,80 @@ class FilePreviewTest {
         assertEquals(FilePreviewKind.Image, kind(null, "Beach.JPG"))
         assertEquals(FilePreviewKind.Video, kind(null, "clip.mov"))
         assertEquals(FilePreviewKind.Pdf, kind(null, "report.pdf"))
-        assertEquals(FilePreviewKind.Text, kind(null, "notes.md"))
+        assertEquals(FilePreviewKind.Markdown, kind(null, "notes.md"))
         assertEquals(FilePreviewKind.Text, kind(null, "data.json"))
         listOf("photo.heic", "clip.webm", "budget.xlsx", "archive.zip", "noextension").forEach { assertNull(kind(null, it), it) }
+    }
+
+    @Test
+    fun markdownIsDecidedByTypeOrExtensionAndTheOtherTextStaysText() {
+        assertEquals(FilePreviewKind.Markdown, kind("text/markdown", "download"))
+        assertEquals(FilePreviewKind.Markdown, kind("text/x-markdown", "download"))
+        assertEquals(FilePreviewKind.Markdown, kind("application/octet-stream", "README.markdown"))
+        assertEquals(FilePreviewKind.Text, kind("text/plain", "notes.md"), "a declared plain type wins over the extension")
+        assertEquals(FilePreviewKind.Text, kind("text/csv", "a.csv"))
+        assertEquals(FilePreviewKind.Text, kind("application/json", "a.json"))
+    }
+
+    @Test
+    fun wordAndOfficeFilesHaveNoPreview() {
+        listOf(
+            "application/msword" to "a.doc",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" to "a.xlsx",
+            "application/vnd.ms-powerpoint" to "a.ppt",
+            "application/vnd.oasis.opendocument.text" to "a.odt",
+            "application/rtf" to "a.rtf",
+        ).forEach { (type, name) -> assertNull(kind(type, name), name) }
+    }
+
+    @Test
+    fun onlyCsvAndJsonAreShownInMonospace() {
+        assertTrue(isMonospacePreview("a.csv", "text/csv"))
+        assertTrue(isMonospacePreview("a.json", null))
+        assertTrue(isMonospacePreview("download", "application/json"))
+        assertFalse(isMonospacePreview("a.txt", "text/plain"))
+    }
+
+    @Test
+    fun markdownIsCutIntoBlocksAtBlankLinesButNeverInsideAFence() {
+        val text = "# Title\n\npara one\nstill one\n\n```\ncode\n\nmore code\n```\n\n\nlast"
+        assertEquals(
+            listOf("# Title", "para one\nstill one", "```\ncode\n\nmore code\n```", "last"),
+            splitMarkdownBlocks(text),
+        )
+        assertEquals(emptyList(), splitMarkdownBlocks("\n\n  \n"))
+        assertEquals(listOf("only"), splitMarkdownBlocks("only"))
+        assertEquals(listOf("a\nb"), splitMarkdownBlocks("a\r\nb"))
+    }
+
+    @Test
+    fun aMarkdownFileWithNoBlankLinesIsStillCutIntoBoundedBlocks() {
+        val text = (1..10_000).joinToString("\n") { "line number $it of a long paragraph" }
+        val blocks = splitMarkdownBlocks(text)
+        assertTrue(blocks.size > 50)
+        assertTrue(blocks.all { it.length <= MARKDOWN_BLOCK_MAX })
+        assertEquals(text, blocks.joinToString("\n"))
+    }
+
+    @Test
+    fun anUnclosedFenceIsCutIntoBoundedBlocksThatEachStayFenced() {
+        val text = "```\n" + (1..10_000).joinToString("\n") { "code line $it" }
+        val blocks = splitMarkdownBlocks(text)
+        assertTrue(blocks.size > 20)
+        assertTrue(blocks.all { it.length <= MARKDOWN_BLOCK_MAX + 8 })
+        assertTrue(blocks.drop(1).all { it.startsWith("```\n") })
+        assertTrue(blocks.dropLast(1).all { it.endsWith("\n```") })
+    }
+
+    @Test
+    fun aSingleHugeLineIsCutToo() {
+        val blocks = splitMarkdownBlocks("x".repeat(200_000))
+        assertTrue(blocks.all { it.length <= MARKDOWN_BLOCK_MAX })
+    }
+
+    @Test
+    fun aChatChipStillPreviewsMarkdown() {
+        assertEquals(FilePreviewKind.Markdown, chatChipPreviewKind("text/markdown", "a.md", 10, web = false, pdfAvailable = true))
     }
 
     @Test

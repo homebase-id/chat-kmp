@@ -13,7 +13,7 @@ internal fun chatChipPreviewKind(
     web: Boolean = isWeb(),
     pdfAvailable: Boolean = pdfPageViewerAvailable,
 ): FilePreviewKind? =
-    filePreviewKind(contentType, name, sizeBytes, web, pdfAvailable)?.takeIf { it == FilePreviewKind.Pdf || it == FilePreviewKind.Text }
+    filePreviewKind(contentType, name, sizeBytes, web, pdfAvailable)?.takeIf { it == FilePreviewKind.Pdf || it == FilePreviewKind.Text || it == FilePreviewKind.Markdown }
 
 /** A name for the decrypted copy that is unique to the payload and safe in a URI; the sender's name only lends its extension. */
 internal fun decryptedCopyName(fileId: Uuid, payloadKey: String, senderName: String?, contentType: String?): String {
