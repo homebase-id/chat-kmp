@@ -7,6 +7,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -28,8 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import id.homebase.core.pdf.PdfPageViewer
+import id.homebase.chat.widget.preview.FilePreviewContent
+import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.PreviewFailed
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_download_file
@@ -38,17 +46,15 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 
 /**
- * Fullscreen PDF viewer for a chat attachment (issue #909). Mirrors
- * [FullScreenMediaViewer]'s chrome so PDFs feel like the image viewer: a
- * name + date top bar that a tap toggles, back-arrow to dismiss, and the
- * shared [PdfPageViewer] (whose native Android/iOS renderer provides pinch
- * zoom). [filePath] is the already-decrypted local file, produced by the
- * DecryptFile path; null while it's still decrypting → spinner.
+ * Fullscreen preview of a chat file attachment: [FullScreenMediaViewer]'s chrome (a name + date top bar that a tap
+ * toggles, back-arrow to dismiss) around the shared [FilePreviewContent]. [filePath] is the already-decrypted
+ * local file from the DecryptFile path; null while it's still decrypting → spinner.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatPdfViewer(
+fun ChatFilePreview(
     title: String,
+    kind: FilePreviewKind,
     userDate: Instant,
     filePath: String?,
     isDownloading: Boolean,
@@ -57,17 +63,26 @@ fun ChatPdfViewer(
     modifier: Modifier = Modifier,
 ) {
     var showUI by remember { mutableStateOf(true) }
+    var failed by remember(filePath) { mutableStateOf(false) }
 
     Box(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
     ) {
-        if (filePath == null) {
+        if (failed) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { PreviewFailed() }
+        } else if (filePath == null) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else {
-            PdfPageViewer(
-                filePath = filePath,
+            FilePreviewContent(
+                path = filePath,
+                name = title,
+                kind = kind,
                 onTap = { showUI = !showUI },
-                modifier = Modifier.fillMaxSize(),
+                onFailed = { failed = true },
+                contentPadding = PaddingValues(
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ),
             )
         }
 
@@ -84,6 +99,8 @@ fun ChatPdfViewer(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = formatTimestamp(userDate),

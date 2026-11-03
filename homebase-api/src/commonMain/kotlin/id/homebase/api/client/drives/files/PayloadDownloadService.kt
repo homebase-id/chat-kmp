@@ -92,7 +92,7 @@ class PayloadDownloadService(
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
     ): String? = exportWith(destination) { path ->
-        driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOperationsProvider.writeStream(path, it) }
+        driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOperationsProvider.writeDownload(path, it) }
     }
 
     /** [exportToTemp] that checks the plaintext against [hash] as it streams; [keyHeader] is the payload's key. */
@@ -105,7 +105,7 @@ class PayloadDownloadService(
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
     ): String? = exportWith(destination) { path ->
-        streamVerified(driveId, fileId, key, keyHeader, hash, onProgress) { fileOperationsProvider.writeStream(path, it) }
+        streamVerified(driveId, fileId, key, keyHeader, hash, onProgress) { fileOperationsProvider.writeDownload(path, it) }
     }
 
     /**

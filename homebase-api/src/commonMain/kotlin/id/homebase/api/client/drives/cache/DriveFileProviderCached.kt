@@ -296,7 +296,7 @@ class DriveFileProviderCached(
             outputPath: String,
             fileOps: FileOperationsProvider = fileOperationsProvider,
             onProgress: ((Float) -> Unit)? = null,
-    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOps.writeStream(outputPath, it) }
+    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOps.writeDownload(outputPath, it) }
 
     /** The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. */
     suspend fun streamPayloadDecrypted(
