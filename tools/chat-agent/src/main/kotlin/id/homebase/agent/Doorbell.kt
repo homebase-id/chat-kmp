@@ -1,5 +1,6 @@
 package id.homebase.agent
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.drives.SystemDriveConstants
@@ -15,14 +16,12 @@ import id.homebase.api.client.websockets.WebsocketCommand
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.toBase64
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.http.HttpHeaders
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
-import kotlin.io.encoding.Base64
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -51,14 +50,14 @@ fun sessionConnector(session: Session, verbose: Boolean, log: (String) -> Unit, 
         suspend fun encrypt(command: WebsocketCommand): SharedSecretEncryptedPayload {
             val iv = ByteArrayUtil.getRndByteArray(16)
             val bytes = AesCbc.encrypt(OdinSystemSerializer.serialize(command).encodeToByteArray(), secret, iv)
-            return SharedSecretEncryptedPayload(iv = iv.toBase64(), data = bytes.toBase64())
+            return SharedSecretEncryptedPayload(iv = Base64Bytes(iv), data = Base64Bytes(bytes))
         }
 
         suspend fun decrypt(text: String): String {
             val envelope = OdinSystemSerializer.deserialize<WebSocketClientNotificationPayload>(text)
             if (!envelope.isEncrypted) return envelope.payload
             val inner = OdinSystemSerializer.deserialize<SharedSecretEncryptedPayload>(envelope.payload)
-            return AesCbc.decrypt(Base64.decode(inner.data), secret, Base64.decode(inner.iv)).decodeToString()
+            return AesCbc.decrypt(inner.data.bytes, secret, inner.iv.bytes).decodeToString()
         }
 
         client.webSocket(

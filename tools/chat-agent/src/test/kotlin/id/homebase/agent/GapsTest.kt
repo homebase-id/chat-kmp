@@ -1,5 +1,6 @@
 package id.homebase.agent
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
@@ -20,7 +21,7 @@ import kotlinx.coroutines.runBlocking
 
 class GapsTest {
     private val author = OdinId("alice.example.com")
-    private val thumb = EmbeddedThumb(10, 10, "image/jpeg", "abc")
+    private val thumb = EmbeddedThumb(10, 10, "image/jpeg", Base64Bytes(ByteArray(3)))
 
     private fun parent(
         text: String = "hello",

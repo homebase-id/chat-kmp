@@ -1,5 +1,6 @@
 package id.homebase.agent
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.EventBus
@@ -166,7 +167,7 @@ class OutgoingTest {
         assertEquals("image/png", image.contentType)
         assertEquals("", image.descriptorContent)
         val preview = assertNotNull(image.previewThumbnail)
-        assertTrue(Base64.decode(preview.content!!).size <= HomebaseProtocol.MaxEmbeddedThumbBytes)
+        assertTrue(preview.content!!.bytes.size <= HomebaseProtocol.MaxEmbeddedThumbBytes)
         assertTrue(maxOf(preview.pixelWidth, preview.pixelHeight) <= 20)
         assertEquals(listOf(preview), bundle.previewThumbs)
         assertTrue(bundle.thumbnails.isNotEmpty() && bundle.thumbnails.all { it.key == "chat_web0" })
@@ -206,7 +207,7 @@ class OutgoingTest {
     @Test
     fun metadataCarriesPreviewThumbnailAndAllowsBlankCaptionForMedia() = runBlocking<Unit> {
         val kh = KeyHeader.newRandom16()
-        val thumb = id.homebase.api.client.drives.upload.EmbeddedThumb(20, 10, "image/jpeg", "AAAA")
+        val thumb = id.homebase.api.client.drives.upload.EmbeddedThumb(20, 10, "image/jpeg", Base64Bytes(ByteArray(3)))
         val m = buildMessageMetadata(self, Uuid.random(), "", 1L, kh, distribute = false, previewThumbnail = thumb, allowBlank = true)
         assertEquals(thumb, m.appData.previewThumbnail)
         assertEquals(0, m.appData.dataType)
