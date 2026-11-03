@@ -1,6 +1,7 @@
 package id.homebase.feed.openfile
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -16,10 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.core.ui.screens.openedfile.OPENED_FILE_STAGING_DIR
 import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
 import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
 import id.homebase.core.ui.screens.openedfile.discardStaged
+import id.homebase.core.ui.screens.openedfile.isForeignContentUri
+import id.homebase.core.ui.screens.openedfile.openedFileStagingRoot
 import id.homebase.core.ui.screens.openedfile.reserveStagedPath
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.feed.MainActivity
@@ -53,7 +55,8 @@ class OpenFileActivity : ComponentActivity(), KoinComponent {
             var staged: String? = null
             var handedOver = false
             try {
-                val request = uri?.takeIf { it.scheme == "content" }?.let { stage(it) { path -> staged = path } }
+                val request = uri?.takeIf { isForeignContentUri(it.scheme, it.authority, ::isOwnAuthority) }
+                    ?.let { stage(it) { path -> staged = path } }
                 if (request == null) {
                     Toast.makeText(this@OpenFileActivity, getString(MR.string.openedfile_open_failed), Toast.LENGTH_LONG).show()
                 } else {
@@ -72,6 +75,11 @@ class OpenFileActivity : ComponentActivity(), KoinComponent {
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun isOwnAuthority(authority: String): Boolean =
+        packageManager.getPackageInfo(packageName, PackageManager.GET_PROVIDERS or PackageManager.MATCH_DISABLED_COMPONENTS)
+            .providers.orEmpty().any { provider -> provider.authority?.split(';')?.contains(authority) == true }
+
     private suspend fun stage(uri: Uri, onReserved: (String) -> Unit): OpenedFileRequest? = withContext(Dispatchers.IO) {
         var staged: String? = null
         try {
@@ -80,8 +88,7 @@ class OpenFileActivity : ComponentActivity(), KoinComponent {
                     if (cursor.moveToFirst()) cursor.getString(0) else null
                 }
             }.getOrNull() ?: uri.lastPathSegment
-            val root = fileOperationsProvider.getCacheDirectory().trimEnd('/') + "/" + OPENED_FILE_STAGING_DIR
-            val path = reserveStagedPath(root, displayName)
+            val path = reserveStagedPath(openedFileStagingRoot(fileOperationsProvider.getCacheDirectory()), displayName)
             staged = path
             onReserved(path)
             val input = contentResolver.openInputStream(uri)

@@ -67,6 +67,8 @@ class DefaultOpenedFileGateway(
 
     override suspend fun enqueue(folderId: Uuid, path: String): Boolean = queue.add(folderId, listOf(platformFileFromPath(path))).await() > 0
 
+    override fun waitForSignIn(request: OpenedFileRequest) = OpenedFileInbox.waitForSignIn(request)
+
     override fun discard(path: String) {
         discardStaged(path)
         OpenedFileInbox.clear(path)

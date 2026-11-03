@@ -11,7 +11,6 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.privatedrive.FilesyncPrivateDrive
 import id.homebase.core.privatedrive.PrivateDriveOptIn
-import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -26,8 +25,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -61,7 +61,8 @@ class FilesyncViewModel(
 
     // Buffered so a download that finishes while the screen is away is still handed off on return.
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
-    val events: Flow<FilesyncUiEvent> = _events.receiveAsFlow()
+    // Queue errors skip the buffer: one raised while another screen was in front was shown there.
+    val events: Flow<FilesyncUiEvent> = merge(_events.receiveAsFlow(), uploadQueue.errors.map { FilesyncUiEvent.Error(it) })
 
     private var loadJob: Job? = null
     private val transfers = FilesyncTransfers(
@@ -106,17 +107,6 @@ class FilesyncViewModel(
 
         viewModelScope.launch {
             editor.changed.collect { loadCurrentFolder() }
-        }
-
-        viewModelScope.launch {
-            uploadQueue.errors.collect { _events.send(FilesyncUiEvent.Error(it)) }
-        }
-
-        viewModelScope.launch {
-            OpenedFileInbox.showFolder.filterNotNull().collect { path ->
-                OpenedFileInbox.showFolder.value = null
-                openPath(path)
-            }
         }
 
         viewModelScope.launch {
@@ -173,6 +163,8 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.NavigateToCrumb -> openPath(_uiState.value.path.take(action.index + 1))
+
+            is FilesyncUiAction.OpenFolder -> openPath(action.path)
 
             is FilesyncUiAction.NodeClicked -> open(action.node)
 

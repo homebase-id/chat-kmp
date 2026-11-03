@@ -202,6 +202,7 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.client.mock)
             implementation(libs.jetbrains.compose.ui.test)
+            implementation(libs.okio.fakefilesystem)
         }
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)

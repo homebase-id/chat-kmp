@@ -52,6 +52,7 @@ class OpenedFileViewModelTest {
         var readyGate: CompletableDeferred<Unit>? = null
         val enqueued = mutableListOf<Pair<Uuid, String>>()
         val discarded = mutableListOf<String>()
+        val waitingForSignIn = mutableListOf<OpenedFileRequest>()
 
         override suspend fun filesyncReady(): Boolean {
             readyGate?.await()
@@ -70,6 +71,7 @@ class OpenedFileViewModelTest {
             if (enqueueCancels) throw kotlinx.coroutines.CancellationException("session ended")
             return accepted
         }
+        override fun waitForSignIn(request: OpenedFileRequest) { waitingForSignIn += request }
         override fun discard(path: String) { discarded += path }
     }
 
@@ -177,6 +179,7 @@ class OpenedFileViewModelTest {
         vm.onAction(OpenedFileAction.SaveClicked)
         assertEquals(OpenedFileEvent.OpenSignIn, vm.events.first())
         assertTrue(g.enqueued.isEmpty())
+        assertEquals(listOf(vm.request), g.waitingForSignIn, "the inbox, not the back stack, knows the file waits for sign-in")
         vm.release()
         assertTrue(g.discarded.isEmpty(), "the screen comes back after sign-in")
     }

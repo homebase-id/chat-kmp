@@ -36,6 +36,7 @@ interface OpenedFileGateway {
 
     /** Queues the file; true once the queue has its own copy, false when it couldn't take it (the queue reports why on [errors]). */
     suspend fun enqueue(folderId: Uuid, path: String): Boolean
+    fun waitForSignIn(request: OpenedFileRequest)
     fun discard(path: String)
 }
 
@@ -129,6 +130,7 @@ class OpenedFileViewModel(
         if (!state.signedIn) {
             // Sign-in replaces the whole back stack; the inbox brings this screen back, so the copy has to outlive it.
             keepStaged = true
+            gateway.waitForSignIn(request)
             _events.trySend(OpenedFileEvent.OpenSignIn)
             return
         }

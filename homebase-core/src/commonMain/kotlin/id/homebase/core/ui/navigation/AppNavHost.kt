@@ -236,6 +236,13 @@ import id.homebase.core.ui.screens.filesync.FilesyncScreen
 import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
 import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
 import id.homebase.core.ui.screens.openedfile.OpenedFileScreen
+import id.homebase.core.ui.screens.openedfile.openedFileStagingRoot
+import id.homebase.core.ui.screens.openedfile.sweepStaged
+import id.homebase.core.ui.screens.filesync.FilesyncCrumb
+import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.withContext
+import kotlin.time.Clock
 import id.homebase.core.ui.screens.filesync.FilesyncTrashScreen
 import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
@@ -680,6 +687,8 @@ fun AppNavHost(
     val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
+    // Read only by the Filesync screen's own view model, the one "Show" opens.
+    var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
     val filesyncPlaces = remember(navController) {
         FilesyncPlaces(
@@ -695,12 +704,18 @@ fun AppNavHost(
     }
 
     val pendingOpenedFile by OpenedFileInbox.pending.collectAsStateWithLifecycle()
+    val fileOperations: FileOperationsProvider = koinInject()
     LaunchedEffect(pendingOpenedFile, isAuthenticated) {
-        val request = pendingOpenedFile ?: return@LaunchedEffect
+        val pending = pendingOpenedFile ?: return@LaunchedEffect
+        if (pending.waitingForSignIn && !isAuthenticated) return@LaunchedEffect
+        val request = pending.request
         // Signed out, the file waits on top of Login: it can still be opened elsewhere, and "Sign in to save" brings it back after sign-in.
         val stack = if (isAuthenticated) navController.awaitChatList() else navController.currentBackStack.firstContaining { it.destination.hasRoute(Route.Login::class) }
-        val shown = stack.any { it.destination.hasRoute(Route.OpenedFile::class) && it.toRoute<Route.OpenedFile>().path == request.path }
-        if (!shown) navController.navigate(Route.OpenedFile(request.path, request.name, request.mimeType, request.sizeBytes))
+        val routed = stack.filter { it.destination.hasRoute(Route.OpenedFile::class) }.map { it.toRoute<Route.OpenedFile>().path }
+        if (request.path !in routed) navController.navigate(Route.OpenedFile(request.path, request.name, request.mimeType, request.sizeBytes))
+        withContext(ioDispatcher) {
+            sweepStaged(openedFileStagingRoot(fileOperations.getCacheDirectory()), routed + request.path, Clock.System.now().toEpochMilliseconds())
+        }
     }
 
     // Handle notification tap navigation (needs navController, stays in composable)
@@ -2261,6 +2276,10 @@ fun AppNavHost(
                             tab<Route.Filesync>(tabRoot) {
                                 if (isAuthenticated) {
                                     FilesyncSetupGate(onDismiss = { navController.popBackStack() }) { filesyncViewModel ->
+                                        LaunchedEffect(filesyncFolderToShow) {
+                                            filesyncFolderToShow?.let { filesyncViewModel.onAction(FilesyncUiAction.OpenFolder(it)) }
+                                            filesyncFolderToShow = null
+                                        }
                                         FilesyncScreen(
                                             viewModel = filesyncViewModel,
                                             places = filesyncPlaces,
@@ -2290,7 +2309,7 @@ fun AppNavHost(
                                     onSignIn = { navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } } },
                                     onSetUpFilesync = { navController.navigate(Route.FilesyncSetup) { launchSingleTop = true } },
                                     onShowInFilesync = { path ->
-                                        OpenedFileInbox.showFolder.value = path
+                                        filesyncFolderToShow = path
                                         openFilesync()
                                     },
                                 )

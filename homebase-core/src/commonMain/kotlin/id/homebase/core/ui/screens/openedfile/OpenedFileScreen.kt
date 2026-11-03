@@ -101,13 +101,14 @@ fun OpenedFileScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(OpenedFileAction.Resumed) }
 
     LaunchedEffect(viewModel) {
+        // A snackbar suspends until dismissed: it must not hold back the navigation events behind it.
         viewModel.events.collect { event ->
             when (event) {
                 OpenedFileEvent.OpenSignIn -> onSignIn()
                 OpenedFileEvent.OpenFilesyncSetup -> onSetUpFilesync()
-                is OpenedFileEvent.Error -> snackbar.showSnackbar(getString(event.error.message()))
-                OpenedFileEvent.SaveFailed -> snackbar.showSnackbar(getString(MR.string.openedfile_save_failed))
-                is OpenedFileEvent.Saved -> {
+                is OpenedFileEvent.Error -> scope.launch { snackbar.showSnackbar(getString(event.error.message())) }
+                OpenedFileEvent.SaveFailed -> scope.launch { snackbar.showSnackbar(getString(MR.string.openedfile_save_failed)) }
+                is OpenedFileEvent.Saved -> scope.launch {
                     val folder = event.folderName ?: getString(MR.string.filesync_label)
                     val result = snackbar.showSnackbar(
                         message = getString(MR.string.openedfile_saved, folder),
