@@ -403,10 +403,12 @@ fun attachmentActions(
     onGroodleClick: () -> Unit,
     onDicesClick: () -> Unit,
     onPollClick: () -> Unit,
-    onEntePhotosClick: () -> Unit,
+    onEntePhotosClick: (() -> Unit)?,
 ): ImmutableList<AttachmentAction> = listOfNotNull(
     AttachmentAction("attachment_gallery", Icons.Default.Image, MR.string.chat_message_attachment_gallery, onGalleryClick),
-    AttachmentAction("attachment_ente_photos", Icons.Default.PhotoLibrary, MR.string.chat_message_attachment_ente_photos, onEntePhotosClick),
+    onEntePhotosClick?.let {
+        AttachmentAction("attachment_ente_photos", Icons.Default.PhotoLibrary, MR.string.chat_message_attachment_ente_photos, it)
+    },
     AttachmentAction("attachment_file", Icons.Default.UploadFile, MR.string.chat_message_attachment_file, onFileClick),
     AttachmentAction("attachment_contact", Icons.Default.ContactPage, MR.string.chat_contact_share, onContactClick),
     if (isMobile()) {

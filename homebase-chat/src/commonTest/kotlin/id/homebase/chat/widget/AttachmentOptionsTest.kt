@@ -16,7 +16,7 @@ class AttachmentOptionsTest {
         onGalleryClick: () -> Unit = {},
         onFileClick: () -> Unit = {},
         onContactClick: () -> Unit = {},
-        onEntePhotosClick: () -> Unit = {},
+        onEntePhotosClick: (() -> Unit)? = {},
     ) = setContent {
         MaterialTheme {
             AttachmentOptions(
@@ -39,6 +39,13 @@ class AttachmentOptionsTest {
         setOptions(onEntePhotosClick = { clicked = true })
         onNodeWithTag("attachment_ente_photos").performClick()
         assertTrue(clicked)
+    }
+
+    @Test
+    fun entePhotosIsHiddenWithoutItsFlag() = runComposeUiTest {
+        setOptions(onEntePhotosClick = null)
+        onNodeWithTag("attachment_ente_photos").assertDoesNotExist()
+        onNodeWithTag("attachment_gallery").assertExists()
     }
 
     @Test

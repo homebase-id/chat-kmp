@@ -66,11 +66,20 @@ class DeveloperMenuViewModel(
                 _uiState.update { it.copy(profileCardEnabled = enabled) }
             }
         }
+        viewModelScope.launch {
+            developerPreferences.entePhotosEnabled.collect { enabled ->
+                _uiState.update { it.copy(entePhotosEnabled = enabled) }
+            }
+        }
     }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
         if (action is DeveloperMenuUiAction.SetProfileCardEnabled) {
             viewModelScope.launch { developerPreferences.setProfileCardEnabled(action.enabled) }
+            return
+        }
+        if (action is DeveloperMenuUiAction.SetEntePhotosEnabled) {
+            viewModelScope.launch { developerPreferences.setEntePhotosEnabled(action.enabled) }
             return
         }
         when (action) {
@@ -337,6 +346,7 @@ class DeveloperMenuViewModel(
 @Immutable
 data class DeveloperMenuUiState(
     val profileCardEnabled: Boolean = false,
+    val entePhotosEnabled: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,
     val networkDiagnostics: NetworkDiagnostics? = null,
@@ -352,6 +362,7 @@ sealed interface DeveloperMenuUiEvent {
 sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
     data class SetProfileCardEnabled(val enabled: Boolean) : DeveloperMenuUiAction
+    data class SetEntePhotosEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction

@@ -238,6 +238,7 @@ import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.chat.entephotos.EntePhotosSheet
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.clipboard.platformFileFromPath
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
@@ -291,6 +292,7 @@ fun ConversationContent(
     var showDiceRollComposer by remember { mutableStateOf(false) }
     var showPollComposer by remember { mutableStateOf(false) }
     var showEntePhotos by remember { mutableStateOf(false) }
+    val entePhotosEnabled by koinInject<DeveloperPreferences>().entePhotosEnabled.collectAsStateWithLifecycle()
     val composerPopovers = usesPointerUx() && isExpandedLayout()
     var showConversationMenu by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -568,7 +570,7 @@ fun ConversationContent(
         onGroodleClick = { showGroodleComposer = true },
         onDicesClick = { showDiceRollComposer = true },
         onPollClick = { showPollComposer = true },
-        onEntePhotosClick = { showEntePhotos = true },
+        onEntePhotosClick = if (entePhotosEnabled) ({ showEntePhotos = true }) else null,
     )
     val popoverAttachmentActions = if (composerPopovers) attachmentActions else null
 
@@ -1777,7 +1779,7 @@ fun ConversationContent(
         )
     }
 
-    if (showEntePhotos) {
+    if (showEntePhotos && entePhotosEnabled) {
         EntePhotosSheet(
             onDismiss = { showEntePhotos = false },
             onPicked = { paths ->

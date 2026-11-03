@@ -26,8 +26,18 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         _profileCardEnabled.value = value
     }
 
+    private val _entePhotosEnabled = MutableStateFlow(readBoolean(ENTE_PHOTOS_KEY, default = false))
+    val entePhotosEnabled: StateFlow<Boolean> = _entePhotosEnabled.asStateFlow()
+
+    suspend fun setEntePhotosEnabled(value: Boolean) {
+        if (_entePhotosEnabled.value == value) return
+        keyValue.upsertValue(ENTE_PHOTOS_KEY, encode(value))
+        _entePhotosEnabled.value = value
+    }
+
     fun reload() {
         _profileCardEnabled.value = readBoolean(PROFILE_CARD_KEY, default = false)
+        _entePhotosEnabled.value = readBoolean(ENTE_PHOTOS_KEY, default = false)
     }
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
@@ -45,5 +55,6 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         // 0a09xx — developer flags. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx,
         // 0a04xx and 0a07xx are taken, and DiceRollPreferences writes 0a0801-0a0803.
         val PROFILE_CARD_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0901")
+        val ENTE_PHOTOS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0902")
     }
 }
