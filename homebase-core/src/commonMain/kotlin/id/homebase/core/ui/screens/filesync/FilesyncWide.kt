@@ -308,7 +308,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         pane = {
             val selected = uiState.selected
             if (selected.size == 1) {
-                FilesyncInfoContent(selected.single(), crumbNames(uiState.path), uiState.discussion, scope.commentDraft, scope.onAction)
+                FilesyncInfoContent(selected.single(), crumbNames(uiState.path), uiState.discussion, scope.commentDraft, uiState.sharing, scope.onAction)
             } else if (selected.isNotEmpty()) {
                 FilesyncSelectionContent(uiState, scope.onAction)
             } else {
@@ -359,6 +359,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
                 if (scope.currentRemoved) DeletedFolderBanner(scope)
                 uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
+                if (uiState.path.size == 1) FilesyncSharersStrip(uiState.sharing.sharers, scope.onAction)
                 TableHeader(uiState.sort, uiState.selected.size, uiState.visible.size, columns, scope.onAction)
                 Box(modifier = Modifier.weight(1f)) {
                     BrowserListBody(scope) {

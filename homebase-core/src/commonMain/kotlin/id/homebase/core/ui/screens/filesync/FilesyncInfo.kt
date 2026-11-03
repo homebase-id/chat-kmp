@@ -116,6 +116,7 @@ internal fun FilesyncInfoContent(
     where: List<String>,
     discussion: FilesyncDiscussion?,
     commentDraft: TextFieldState,
+    sharing: FilesyncSharingState,
     onAction: (FilesyncUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -179,6 +180,8 @@ internal fun FilesyncInfoContent(
         }
 
         if (discussed) {
+            HorizontalDivider()
+            FilesyncSharedWithSection(node, sharing, onAction)
             HorizontalDivider()
             FilesyncDiscussionContent(node, discussion, commentDraft, onAction)
         }

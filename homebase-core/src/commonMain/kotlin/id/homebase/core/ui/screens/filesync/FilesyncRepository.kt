@@ -20,6 +20,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlin.time.Duration.Companion.milliseconds
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
+import id.homebase.api.common.OdinId
+import kotlinx.coroutines.flow.flow
+import id.homebase.api.client.drives.files.wholePercentFractions
 import kotlin.uuid.Uuid
 
 /** Nodes with what writing or downloading each one needs. */
@@ -45,6 +49,7 @@ class FilesyncRepository(
     private val payloadDownloadService: PayloadDownloadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val peerFiles: PeerFileByGlobalTransitProvider,
 ) {
 
     /** The live nodes of several folders at once. */
@@ -217,6 +222,38 @@ class FilesyncRepository(
         if (!found) throw IllegalStateException("payload of ${payload.fileId} is gone")
     }
 
+    /** As [streamPayload], for a file [owner] shares with this identity, read from their drive. */
+    suspend fun streamSharedPayload(
+        owner: OdinId,
+        globalTransitId: Uuid,
+        payload: FilesyncPayload,
+        total: Long?,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ) {
+        val fractions = onProgress?.let(::wholePercentFractions)
+        val found = payloadDownloadService.streamVerified(payload.payloadKey, payload.hash, consume) { hashed ->
+            var any = false
+            hashed(flow {
+                var offset = 0L
+                while (true) {
+                    val slice = peerFiles.getPayloadChunkOverPeerByGlobalTransitId(
+                        owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, offset, SHARED_CHUNK_BYTES,
+                    )?.bytes ?: break
+                    if (slice.isEmpty()) break
+                    any = true
+                    emit(slice)
+                    offset += slice.size
+                    if (total != null && total > 0) fractions?.invoke(offset.toFloat() / total)
+                    // A short read is the end of the file: the range routes clamp rather than 416.
+                    if (slice.size < SHARED_CHUNK_BYTES) break
+                }
+            })
+            any
+        }
+        if (!found) throw IllegalStateException("payload of ${payload.fileId} shared by $owner is gone")
+    }
+
     /**
      * What [write] makes, as a file called [name] in a folder of its own, so whatever it's handed to sees the real name:
      * one to open or share goes to share_outbound, swept like every other copy handed to another app; any other goes
@@ -259,6 +296,7 @@ class FilesyncRepository(
         const val PAGE_SIZE = 1000
         const val MAX_NAME_BYTES = 255
         const val RECENT_LIMIT = 100
+        const val SHARED_CHUNK_BYTES = 4L * 1024 * 1024
     }
 }
 

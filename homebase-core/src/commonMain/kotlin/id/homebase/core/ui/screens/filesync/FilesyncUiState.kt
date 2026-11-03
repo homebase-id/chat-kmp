@@ -7,6 +7,7 @@ import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import io.github.vinceglb.filekit.PlatformFile
+import id.homebase.api.common.OdinId
 import kotlin.uuid.Uuid
 
 /** One step of the breadcrumb trail; [name] is null for the top level, [removedMs] set when it's in Recently deleted. */
@@ -80,6 +81,7 @@ data class FilesyncUiState(
     val shareChooser: List<FilesyncNode>? = null,
     /** The reactions and comments of the file the info pane shows. */
     val discussion: FilesyncDiscussion? = null,
+    val sharing: FilesyncSharingState = FilesyncSharingState(),
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
 
@@ -134,13 +136,36 @@ data class FilesyncUiState(
     }
 }
 
+/** Sharing files with people, and what they share with this identity. */
+@Immutable
+data class FilesyncSharingState(
+    /** Signed in to Filesync as well, which sharing writes as. */
+    val on: Boolean = false,
+    val turningOn: Boolean = false,
+    /** Asks whom to share these files with. */
+    val shareWith: List<FilesyncNode>? = null,
+    val offered: List<FilesyncAccess> = emptyList(),
+    val sending: Boolean = false,
+    /** Who the file the info pane shows is shared with; null until loaded. */
+    val sharedWith: FilesyncSharedWith? = null,
+    /** The people who have files for this identity. */
+    val sharers: List<OdinId> = emptyList(),
+    /** Whose shared files are shown, and those files; null while they load. */
+    val sharer: OdinId? = null,
+    val sharedFiles: List<FilesyncNode>? = null,
+    val sharedFilesFailed: Boolean = false,
+)
+
+@Immutable
+data class FilesyncSharedWith(val nodeId: Uuid, val recipients: List<FilesyncShareRecipient>? = null)
+
 /** A downloaded file shown in the app: [path] is its copy in the cache, thrown away when the preview closes. */
 data class FilesyncPreviewFile(val path: String, val name: String, val kind: FilePreviewKind)
 
 enum class FilesyncBulkAction { Download, Share, Move, Delete, Restore }
 
 /** What the file dialog offers: where a file, or a ZIP of several, goes. */
-enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherApp;
+enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherApp, Person;
 
     companion object {
         // A browser can't hand a file to an app; other apps to share with are only on phones.
@@ -149,6 +174,7 @@ enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherAp
                 Preview -> nodes.singleFile?.let { filePreviewKind(null, it.name, it.sizeBytes) } != null
                 Open -> !isWeb() && nodes.singleFile != null
                 OtherApp -> isMobile()
+                Person -> nodes.any { !it.isFolder }
                 else -> true
             }
         }
@@ -205,6 +231,15 @@ sealed interface FilesyncUiAction {
     /** Adds [emoji] as one of the user's reactions, or takes it away if it is one. */
     data class ToggleReaction(val emoji: String) : FilesyncDiscussionAction
     data object SendComment : FilesyncDiscussionAction
+    /** The info pane shows [nodeId]: who it's shared with loads. */
+    data class ShowSharedWith(val nodeId: Uuid) : FilesyncDiscussionAction
+    data class Unshare(val nodeId: Uuid, val recipient: OdinId) : FilesyncDiscussionAction
+    data object TurnOnSharing : FilesyncUiAction
+    data class ShareWithPerson(val recipient: OdinId, val access: FilesyncAccess) : FilesyncUiAction
+    data object DismissShareWith : FilesyncUiAction
+    data object LoadSharers : FilesyncUiAction
+    data class OpenSharer(val sharer: OdinId?) : FilesyncUiAction
+    data class SaveShared(val node: FilesyncNode) : FilesyncUiAction
 }
 
 /** What the info pane does in place: the phone's info sheet stays open for these. */
@@ -212,11 +247,11 @@ sealed interface FilesyncDiscussionAction : FilesyncUiAction
 
 enum class FilesyncError {
     MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
-    SignInAgainFailed, ReactionFailed, CommentFailed,
+    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, RecipientNotReady, SharedFilesFailed,
 }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
-enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon }
+enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon, Shared }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent

@@ -164,6 +164,9 @@ import id.homebase.core.ui.screens.filesync.FilesyncEditor
 import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncDiscussions
+import id.homebase.api.client.connections.CircleShareKeyProvider
+import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
+import id.homebase.core.ui.screens.filesync.FilesyncSharing
 import id.homebase.core.ui.screens.filesync.FilesyncSession
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
@@ -1033,9 +1036,12 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
-    single { FilesyncRepository(get(), get(), get(), get()) }
+    single { FilesyncRepository(get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
+    single { CircleShareKeyProvider(get(), get()) }
+    single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
+    single { FilesyncSharingSetup(get(), get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
@@ -1451,6 +1457,8 @@ val appModule = module {
             webDropShareFlowState = get(),
             privateDriveOptIn = get(),
             discussions = get(),
+            filesyncSharing = get(),
+            sharingSetup = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }

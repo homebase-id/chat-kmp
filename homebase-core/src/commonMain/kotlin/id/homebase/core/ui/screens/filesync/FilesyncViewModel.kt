@@ -49,6 +49,8 @@ class FilesyncViewModel(
     private val webDropShareFlowState: WebDropShareFlowState,
     private val privateDriveOptIn: PrivateDriveOptIn,
     private val discussions: FilesyncDiscussions,
+    filesyncSharing: FilesyncSharing,
+    sharingSetup: FilesyncSharingSetup,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -79,6 +81,17 @@ class FilesyncViewModel(
         webDropShareFlowState = webDropShareFlowState,
     )
 
+    private val sharing = FilesyncSharingController(
+        viewModelScope,
+        filesyncSharing,
+        sharingSetup,
+        handles = { transfers.handles },
+        returnUrl = extendPermissionViewModel::callbackUrl,
+        state = { _uiState.value.sharing },
+        update = { change -> _uiState.update { it.copy(sharing = change(it.sharing)) } },
+        send = _events::send,
+    )
+
     private var setupPaused = false
 
     private var discussionJob: Job? = null
@@ -87,6 +100,7 @@ class FilesyncViewModel(
 
     init {
         addCloseable(extendPermissionViewModel)
+        sharing.start()
         viewModelScope.launch {
             snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
         }
@@ -156,9 +170,12 @@ class FilesyncViewModel(
                 extendPermissionViewModel.dismissDialog()
             }
 
-            FilesyncUiAction.Resumed -> if (setupPaused) {
-                setupPaused = false
-                onAction(FilesyncUiAction.SetupClicked)
+            FilesyncUiAction.Resumed -> {
+                sharing.resumed()
+                if (setupPaused) {
+                    setupPaused = false
+                    onAction(FilesyncUiAction.SetupClicked)
+                }
             }
 
             FilesyncUiAction.SetupLeft -> setupPaused = false
@@ -198,7 +215,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.ShareTo -> {
                 val nodes = _uiState.getAndUpdate { it.copy(shareChooser = null) }.shareChooser ?: return
-                transfers.send(nodes, zipName(nodes), action.target)
+                if (action.target == FilesyncShareTarget.Person) sharing.ask(nodes) else transfers.send(nodes, zipName(nodes), action.target)
             }
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
@@ -283,6 +300,25 @@ class FilesyncViewModel(
             FilesyncUiAction.MakePrivate -> {
                 val url = privateDriveOptIn.makePrivateUrl(FilesyncPrivateDrive, extendPermissionViewModel.callbackUrl())
                 if (url != null) _events.trySend(FilesyncUiEvent.OpenOwnerConsole(url))
+            }
+
+            FilesyncUiAction.TurnOnSharing -> sharing.turnOn()
+
+            is FilesyncUiAction.ShareWithPerson -> sharing.share(action.recipient, action.access)
+
+            FilesyncUiAction.DismissShareWith -> sharing.dismiss()
+
+            is FilesyncUiAction.ShowSharedWith -> sharing.showSharedWith(action.nodeId)
+
+            is FilesyncUiAction.Unshare -> sharing.unshare(action.nodeId, action.recipient)
+
+            FilesyncUiAction.LoadSharers -> sharing.loadSharers()
+
+            is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
+
+            is FilesyncUiAction.SaveShared -> {
+                val owner = _uiState.value.sharing.sharer ?: return
+                sharing.sharedHandle(action.node.nodeId)?.let { transfers.sendShared(action.node, it, owner, FilesyncShareTarget.Download) }
             }
 
             FilesyncUiAction.SignInAgain -> viewModelScope.launch {

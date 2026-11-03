@@ -63,12 +63,13 @@ data class FilesyncShareRecipient(val odinId: OdinId, val access: FilesyncAccess
 @Serializable
 data class FilesyncMarker(val odinId: String, @Serializable(with = UuidSerializer::class) val driveAlias: Uuid)
 
-sealed class FilesyncSharingException(message: String) : Exception(message) {
+sealed class FilesyncSharingException(message: String, cause: Throwable? = null) : Exception(message, cause) {
     /** Sharing writes as Filesync, which this device hasn't signed in to. */
     class NotSignedIn : FilesyncSharingException("Not signed in to Filesync")
 
     /** [recipient] hasn't turned sharing on, so nothing can be left for them yet. */
-    class RecipientNotReady(val recipient: OdinId) : FilesyncSharingException("$recipient can't receive shared files yet")
+    class RecipientNotReady(val recipient: OdinId, cause: Throwable? = null) :
+        FilesyncSharingException("$recipient can't receive shared files yet", cause)
 }
 
 /**
@@ -225,7 +226,7 @@ class FilesyncSharing(
         val key = try {
             peer.drivePublicKey(recipient, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug)
         } catch (e: ClientException) {
-            throw FilesyncSharingException.RecipientNotReady(recipient).initCause(e)
+            throw FilesyncSharingException.RecipientNotReady(recipient, e)
         }
         // Its server and members hold a collaborative drive's key: sealing to it would share with them too.
         if (!key.isZeroKnowledge || key.sharingModel == "collaborative") throw FilesyncSharingException.RecipientNotReady(recipient)

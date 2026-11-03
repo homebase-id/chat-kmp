@@ -1,5 +1,9 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.resources.filesync_shared
+import id.homebase.resources.filesync_shared_files_failed
+import id.homebase.resources.filesync_recipient_not_ready
+import id.homebase.resources.filesync_sharing_failed
 import id.homebase.chat.widget.preview.FilePreviewDialog
 import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.animateColorAsState
@@ -153,6 +157,9 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
     FilesyncError.ReactionFailed -> MR.string.filesync_reaction_failed
     FilesyncError.CommentFailed -> MR.string.filesync_comment_failed
+    FilesyncError.SharingFailed -> MR.string.filesync_sharing_failed
+    FilesyncError.RecipientNotReady -> MR.string.filesync_recipient_not_ready
+    FilesyncError.SharedFilesFailed -> MR.string.filesync_shared_files_failed
 }
 
 internal val FilesyncRowInset = 8.dp
@@ -215,6 +222,7 @@ internal fun FilesyncEventsEffect(
                         FilesyncNotice.DeletedForever -> MR.string.filesync_deleted_forever
                         FilesyncNotice.ChangedElsewhere -> MR.string.filesync_changed_elsewhere
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
+                        FilesyncNotice.Shared -> MR.string.filesync_shared
                     }
                 )
                 is FilesyncUiEvent.Removed -> scope.launch {

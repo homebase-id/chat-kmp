@@ -223,6 +223,8 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
     uiState.shareChooser?.let { FilesyncShareSheet(it, onShare = { target -> viewModel.onAction(FilesyncUiAction.ShareTo(target)) }, onDismiss = { viewModel.onAction(FilesyncUiAction.DismissShare) }) }
+    if (uiState.sharing.shareWith != null) FilesyncShareWithSheet(uiState.sharing, viewModel::onAction)
+    FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, viewModel::onAction)
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(
@@ -283,6 +285,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                 where = crumbNames(uiState.path),
                 discussion = uiState.discussion,
                 commentDraft = scope.commentDraft,
+                sharing = uiState.sharing,
                 onAction = {
                     if (it !is FilesyncDiscussionAction) dismiss()
                     scope.onAction(it)
@@ -401,6 +404,9 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                 BrowserListBody(scope) {
                     // Bottom padding keeps the last row's buttons clear of the upload button.
                     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+                        if (uiState.path.size == 1 && uiState.sharing.sharers.isNotEmpty()) {
+                            item(key = "sharers") { FilesyncSharersStrip(uiState.sharing.sharers, scope.onAction) }
+                        }
                         if (scope.uploads.isNotEmpty()) {
                             item(key = "uploads") {
                                 UploadStrip(scope.uploads, scope.onAction, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))

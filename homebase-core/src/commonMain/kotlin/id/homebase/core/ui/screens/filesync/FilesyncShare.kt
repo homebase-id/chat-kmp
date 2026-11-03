@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.resources.filesync_share_person
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -41,6 +43,7 @@ private val FilesyncShareTarget.label: StringResource
         FilesyncShareTarget.Chat -> MR.string.filesync_send_chat
         FilesyncShareTarget.WebDrop -> MR.string.filesync_send_webdrop
         FilesyncShareTarget.OtherApp -> MR.string.filesync_share_other
+        FilesyncShareTarget.Person -> MR.string.filesync_share_person
     }
 
 private val FilesyncShareTarget.icon: ImageVector
@@ -51,6 +54,7 @@ private val FilesyncShareTarget.icon: ImageVector
         FilesyncShareTarget.Chat -> Icons.AutoMirrored.Outlined.Send
         FilesyncShareTarget.WebDrop -> Icons.Outlined.Redeem
         FilesyncShareTarget.OtherApp -> Icons.Outlined.Share
+        FilesyncShareTarget.Person -> Icons.Outlined.PersonAdd
     }
 
 /** What to do with [nodes], asked when a file is opened or shared: a sheet on phones, a small dialog on wide layouts. */
