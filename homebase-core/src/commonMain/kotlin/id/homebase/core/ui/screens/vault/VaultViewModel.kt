@@ -19,6 +19,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
+import id.homebase.core.pdf.PDF_CARD_RENDER_WIDTH
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
@@ -540,7 +541,7 @@ class VaultViewModel(
                 if (firstContentType == "application/pdf") {
                     try {
                         val pdfResult = withContext(Dispatchers.Default) {
-                            generatePdfThumbnailFromFile(fileData.first().first, 320)
+                            generatePdfThumbnailFromFile(fileData.first().first, PDF_CARD_RENDER_WIDTH)
                         }
                         val thumbBytes = pdfResult?.thumbnailBytes
                         if (thumbBytes != null) {

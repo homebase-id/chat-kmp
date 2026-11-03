@@ -129,7 +129,7 @@ private fun RecentList(
                     text = formatMomentDate(Instant.fromEpochMilliseconds(timeOf(day.first()))),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
                 )
             }
             items(day, key = { it.nodeId.toString() }) { node ->

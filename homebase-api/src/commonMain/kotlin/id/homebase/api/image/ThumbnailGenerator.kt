@@ -184,7 +184,7 @@ suspend fun createThumbnails(
     }
 
     // general image case
-    val tinyThumbFile = createImageThumbnail(imageBytes, payloadKey, tinyThumbSize, isTinyThumb = true)
+    val embeddedTiny = createTinyPreview(imageBytes, payloadKey)
 
     val requestedSizes = thumbSizes ?: baseThumbSizes
     val applicableThumbs = getRevisedThumbs(naturalSize, requestedSizes)
@@ -195,14 +195,13 @@ suspend fun createThumbnails(
         createImageThumbnail(imageBytes, payloadKey, instr, isTinyThumb = false)
     }
 
-    val embeddedTiny = EmbeddedThumb(
-        pixelWidth = tinyThumbFile.pixelWidth,
-        pixelHeight = tinyThumbFile.pixelHeight,
-        contentType = "image/webp",
-        content = Base64Bytes(tinyThumbFile.thumbnailBytes)
-    )
-
     return@withContext Triple(naturalSize, embeddedTiny, additional)
+}
+
+/** The [tinyThumbSize] webp a file embeds in its metadata, sized as the tiny itself (unlike the GIF case above). */
+suspend fun createTinyPreview(imageBytes: ByteArray, payloadKey: String): EmbeddedThumb {
+    val tiny = createImageThumbnail(imageBytes, payloadKey, tinyThumbSize, isTinyThumb = true)
+    return EmbeddedThumb(tiny.pixelWidth, tiny.pixelHeight, "image/webp", Base64Bytes(tiny.thumbnailBytes))
 }
 
 /**

@@ -1,5 +1,8 @@
 package id.homebase.core.pdf
 
+/** Page-one render width for Vault cards and file-list previews; chat renders wider for its thumbnail ladder. */
+const val PDF_CARD_RENDER_WIDTH = 320
+
 /** [thumbnailBytes] is a JPEG of the first page; [pageCount] is the page count of the whole document. */
 data class PdfThumbnailResult(
     val thumbnailBytes: ByteArray?,
