@@ -13,9 +13,11 @@ actual fun getUriHandler(): FileSystemHandler {
             runCatching { window.open(url, "_blank") }.onFailure { onError(it) }
         }
 
-        // The browser has no path-based filesystem; file open/edit/browse aren't supported on web.
+        // The browser has no path-based filesystem; file edit/browse aren't supported on web.
         override fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {}
-        override fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {}
+        override fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {
+            runCatching { downloadWebFile(file, file.name) }.onFailure(onError)
+        }
         override fun openFileBrowser(file: Path, onError: (Throwable) -> Unit) {}
         override fun shareFile(file: Path, onError: (Throwable) -> Unit) {}
         override fun shareText(text: String, onError: (Throwable) -> Unit) {}
@@ -27,17 +29,21 @@ actual fun getUriHandler(): FileSystemHandler {
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
         ) {
-            runCatching {
-                val path = file.toString()
-                val bytes = readWebFileBytes(path) ?: error("No decrypted file at $path")
-                val mimeType = detectContentTypeFromExtensionOrHint(suggestedName)
-                triggerBrowserDownload(bytes.toBlobObjectUrl(mimeType), suggestedName)
-            }.onSuccess { onSuccess(DOWNLOADS_LOCATION) }.onFailure(onError)
+            runCatching { downloadWebFile(file, suggestedName) }
+                .onSuccess { onSuccess(DOWNLOADS_LOCATION) }
+                .onFailure(onError)
         }
     }
 }
 
 private const val DOWNLOADS_LOCATION = "Downloads"
+
+internal fun downloadWebFile(file: Path, fileName: String) {
+    val path = file.toString()
+    val bytes = readWebFileBytes(path) ?: error("No decrypted file at $path")
+    val mimeType = detectContentTypeFromExtensionOrHint(fileName)
+    triggerBrowserDownload(bytes.toBlobObjectUrl(mimeType), fileName)
+}
 
 /*
  * The Path is into the in-memory FakeFileSystem the decrypt-on-demand flow wrote to
