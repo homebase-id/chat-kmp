@@ -5,18 +5,16 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.convertHeicToJpeg
-import id.homebase.api.image.createImageThumbnail
-import id.homebase.api.image.tinyThumbSize
+import id.homebase.api.image.createTinyPreview
 import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.api.serialization.Base64Bytes
 import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.pdf.PDF_CARD_RENDER_WIDTH
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.core.util.FileKind
 import id.homebase.core.util.fileKindOf
 import kotlinx.coroutines.CancellationException
 
 private const val TAG = "FilesyncThumbnail"
-private const val PDF_RENDER_WIDTH = 320
 private const val MAX_SOURCE_BYTES = 64L * 1024 * 1024
 private const val MAX_SOURCE_PIXELS = 40L * 1000 * 1000
 
@@ -31,15 +29,14 @@ internal suspend fun filesyncEmbeddedPreview(
     return try {
         if (fileOperations.getFileSize(sourcePath) > MAX_SOURCE_BYTES) return null
         val raster = if (kind == FileKind.Pdf) {
-            generatePdfThumbnailFromFile(sourcePath, PDF_RENDER_WIDTH)?.thumbnailBytes
+            generatePdfThumbnailFromFile(sourcePath, PDF_CARD_RENDER_WIDTH)?.thumbnailBytes
         } else {
             fileOperations.readFileBytes(sourcePath).let { bytes ->
                 if (ImageFormatDetector.isHeic(bytes)) convertHeicToJpeg(bytes) else bytes
             }
         } ?: return null
         if (kind == FileKind.Image && !withinPixelBudget(raster)) return null
-        val tiny = createImageThumbnail(raster, FilesyncProtocol.PayloadKey, tinyThumbSize, isTinyThumb = true)
-        EmbeddedThumb(tiny.pixelWidth, tiny.pixelHeight, tiny.contentType, Base64Bytes(tiny.thumbnailBytes))
+        createTinyPreview(raster, FilesyncProtocol.PayloadKey)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
