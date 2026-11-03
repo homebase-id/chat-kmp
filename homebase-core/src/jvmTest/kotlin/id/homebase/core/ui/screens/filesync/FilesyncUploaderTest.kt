@@ -3,10 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.upload.CreateFileResult
-import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -34,7 +31,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -101,35 +97,8 @@ class FilesyncUploaderTest {
         assertTrue("\"storedHash\"" in body && "\"contentHash\"" in body)
     }
 
-    private fun realImage(name: String, format: String): String {
-        val image = java.awt.image.BufferedImage(400, 300, java.awt.image.BufferedImage.TYPE_INT_RGB)
-        val g = image.createGraphics()
-        g.paint = java.awt.GradientPaint(0f, 0f, java.awt.Color.RED, 400f, 300f, java.awt.Color.BLUE)
-        g.fillRect(0, 0, 400, 300)
-        g.dispose()
-        return File(tempDir, name).also { javax.imageio.ImageIO.write(image, format, it) }.path
-    }
-
-    private val fileOps get() = OkioFileOperationsProvider(FileSystem.SYSTEM, tempDir)
-
     @Test
-    fun anImageGetsATinyEmbeddedPreview() = runTest {
-        val preview = filesyncEmbeddedPreview(realImage("real.png", "png"), "real.png", fileOps)
-
-        assertNotNull(preview?.content)
-        assertTrue(preview!!.content!!.bytes.size <= 1024)
-    }
-
-    @Test
-    fun aFileThatIsNotAnImageOrPdfGetsNoPreview() = runTest {
-        val text = File(tempDir, "notes.txt").apply { writeText("hello") }.path
-
-        assertNull(filesyncEmbeddedPreview(text, "notes.txt", fileOps))
-    }
-
-    @Test
-    fun anUndecodableImageGetsNoPreviewAndTheUploadStillLands() = runTest {
-        assertNull(filesyncEmbeddedPreview(source, "photo.jpg", fileOps))
+    fun anUndecodableImageStillUploads() = runTest {
         responses = mutableListOf(created)
 
         uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
@@ -138,97 +107,15 @@ class FilesyncUploaderTest {
     }
 
     @Test
-    fun theNodeHeaderCarriesThePreview() {
-        val thumb = EmbeddedThumb(8, 6, "image/webp", Base64Bytes(byteArrayOf(1, 2)))
-
-        val metadata = filesyncMetadata(Uuid.random(), FilesyncProtocol.RootNodeId, FilesyncProtocol.FileFileType, "{}", ArchivalStatus.None, previewThumbnail = thumb)
-
-        assertEquals(thumb, metadata.appData.previewThumbnail)
-    }
-
-    private fun hugePng(name: String, side: Int): String {
-        val file = File(tempDir, name)
-        fun chunk(out: java.io.DataOutputStream, type: String, data: ByteArray) {
-            out.writeInt(data.size)
-            val body = type.toByteArray() + data
-            out.write(body)
-            out.writeInt(java.util.zip.CRC32().also { it.update(body) }.value.toInt())
-        }
-        java.io.DataOutputStream(file.outputStream().buffered()).use { out ->
-            out.write(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
-            val ihdr = java.nio.ByteBuffer.allocate(13).putInt(side).putInt(side).put(1).put(0).put(0).put(0).put(0).array()
-            chunk(out, "IHDR", ihdr)
-            val deflater = java.util.zip.Deflater(9)
-            val compressed = java.io.ByteArrayOutputStream()
-            java.util.zip.DeflaterOutputStream(compressed, deflater).use { z ->
-                val row = ByteArray(1 + (side + 7) / 8)
-                repeat(side) { z.write(row) }
-            }
-            chunk(out, "IDAT", compressed.toByteArray())
-            chunk(out, "IEND", ByteArray(0))
-        }
-        return file.path
-    }
-
-    @Test
-    fun aSmallFileWithHugeDimensionsGetsNoPreviewInsteadOfADecode() = runTest {
-        val path = hugePng("huge.png", 30_000)
-        assertTrue(File(path).length() < 1_000_000)
-
-        assertNull(filesyncEmbeddedPreview(path, "huge.png", fileOps))
-    }
-
-    @Test
-    fun aJpegWithMoreThan64KbOfSegmentsBeforeTheFrameHeaderStillGetsAPreview() = runTest {
-        val plain = File(realImage("plain.jpg", "jpg")).readBytes()
-        val filler = ByteArray(70_000)
-        val chunks = filler.toList().chunked(60_000).map { it.toByteArray() }
-        val app = java.io.ByteArrayOutputStream()
-        for (chunk in chunks) {
-            app.write(0xFF); app.write(0xE1)
-            app.write((chunk.size + 2) ushr 8); app.write((chunk.size + 2) and 0xFF)
-            app.write(chunk)
-        }
-        val padded = plain.copyOfRange(0, 2) + app.toByteArray() + plain.copyOfRange(2, plain.size)
-        assertTrue(padded.size > 64 * 1024 + 1000)
-        val path = File(tempDir, "padded.jpg").also { it.writeBytes(padded) }.path
-
-        assertNotNull(filesyncEmbeddedPreview(path, "padded.jpg", fileOps)?.content)
-    }
-
-    @Test
-    fun aHeicThatCannotBeConvertedGetsNoPreviewAndDoesNotThrow() = runTest {
-        val heic = byteArrayOf(0, 0, 0, 24, 'f'.code.toByte(), 't'.code.toByte(), 'y'.code.toByte(), 'p'.code.toByte(),
-            'h'.code.toByte(), 'e'.code.toByte(), 'i'.code.toByte(), 'c'.code.toByte()) + ByteArray(64)
-        val path = File(tempDir, "photo.heic").also { it.writeBytes(heic) }.path
-
-        assertNull(filesyncEmbeddedPreview(path, "photo.heic", fileOps))
-    }
-
-    @Test
-    fun aPdfGetsATinyEmbeddedPreview() = runTest {
-        val pdf = File(tempDir, "doc.pdf")
-        pdf.writeText(
-            "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
-                "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R/Size 4>>\n%%EOF\n",
-        )
-
-        val preview = filesyncEmbeddedPreview(pdf.path, "doc.pdf", fileOps)
-
-        assertNotNull(preview?.content)
-        assertTrue(preview!!.content!!.bytes.size <= 1024)
-    }
-
-    @Test
-    fun uploadingAnImageSendsItsPreviewOnTheNodeHeader() = runTest {
+    fun anUploadedImageCarriesNoPlaintextPreviewOnItsHeader() = runTest {
+        val image = java.awt.image.BufferedImage(400, 300, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val png = File(tempDir, "pic.png").also { javax.imageio.ImageIO.write(image, "png", it) }.path
         val sent = mutableListOf<id.homebase.api.client.drives.upload.UploadFileRequest>()
-        val spy = FilesyncUploader({ request, _ -> sent += request }, fileOps, kotlin.time.Clock.System)
+        val spy = FilesyncUploader({ request, _ -> sent += request }, OkioFileOperationsProvider(FileSystem.SYSTEM, tempDir), kotlin.time.Clock.System)
 
-        spy.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, realImage("pic.png", "png"), "pic.png", null) {}
+        spy.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, png, "pic.png", null) {}
 
-        val preview = sent.single().metadata.appData.previewThumbnail
-        assertNotNull(preview?.content)
-        assertTrue(preview!!.content!!.bytes.size <= 1024)
+        assertNull(sent.single().metadata.appData.previewThumbnail)
     }
 
     @Test

@@ -3,9 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import id.homebase.chat.widget.preview.FilePreviewDialog
 import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -13,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -52,7 +49,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,18 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
-import id.homebase.core.image.decodeBitmap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -165,9 +150,6 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
     FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
 }
-
-// Keeps a white page from out-shining the row's title in dark theme.
-private const val PAGE_DARK_DIM = 0.32f
 
 internal val FilesyncRowInset = 8.dp
 internal val FilesyncTileSize = 40.dp
@@ -306,7 +288,6 @@ internal fun NodeName(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, size: Dp = FilesyncTileSize, deleted: Boolean = false) {
     val colors = MaterialTheme.colorScheme
@@ -317,14 +298,6 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
         else -> colors.surfaceVariant to colors.onSurfaceVariant
     }
     val shape = MaterialTheme.shapes.medium
-    val preview by produceState<TilePreview>(if (node.preview == null) TilePreview.None else TilePreview.Decoding, node.preview) {
-        val bitmap = node.preview?.let { withContext(Dispatchers.Default) { it.decodeBitmap() } }
-        value = if (bitmap == null) TilePreview.None else TilePreview.Ready(bitmap)
-    }
-    val fade = animateFloatAsState(
-        targetValue = if (preview is TilePreview.Ready) 1f else 0f,
-        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-    )
     Box(
         modifier = modifier
             .then(if (deleted) Modifier.alpha(DELETED_ALPHA) else Modifier)
@@ -334,41 +307,13 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
             .border(1.dp, colors.outlineVariant, shape),
         contentAlignment = Alignment.Center,
     ) {
-        when (val state = preview) {
-            is TilePreview.Ready -> {
-                val page = kind == FileKind.Pdf
-                val ratio = state.bitmap.width.toFloat() / state.bitmap.height
-                Image(
-                    bitmap = state.bitmap,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    filterQuality = FilterQuality.High,
-                    colorFilter = if (page && colors.surface.luminance() < 0.5f) ColorFilter.tint(colors.scrim.copy(alpha = PAGE_DARK_DIM), BlendMode.SrcAtop) else null,
-                    modifier = Modifier
-                        // A whole sheet on the tile, margins showing: cropped to the edges a page reads as a list icon.
-                        .then(if (page) Modifier.padding(size * 0.12f).aspectRatio(ratio, matchHeightConstraintsFirst = ratio < 1f).clip(MaterialTheme.shapes.extraSmall) else Modifier.fillMaxSize())
-                        .testTag(FILE_TILE_PREVIEW_TAG)
-                        .graphicsLayer { alpha = fade.value },
-                )
-            }
-            // Blank, not the type icon: a row scrolled back in would flash the icon on every decode.
-            TilePreview.Decoding -> Unit
-            TilePreview.None -> Icon(
-                imageVector = node.role?.let(::roleFolderIcon) ?: node.kind?.let(::fileKindIcon) ?: Icons.Outlined.Folder,
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(size * 0.55f),
-            )
-        }
+        Icon(
+            imageVector = node.role?.let(::roleFolderIcon) ?: node.kind?.let(::fileKindIcon) ?: Icons.Outlined.Folder,
+            contentDescription = null,
+            tint = content,
+            modifier = Modifier.size(size * 0.55f),
+        )
     }
-}
-
-internal const val FILE_TILE_PREVIEW_TAG = "filesync_tile_preview"
-
-private sealed interface TilePreview {
-    data object Decoding : TilePreview
-    data object None : TilePreview
-    class Ready(val bitmap: ImageBitmap) : TilePreview
 }
 
 private fun roleFolderIcon(role: FilesyncRoleFolder): ImageVector = when (role) {

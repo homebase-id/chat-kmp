@@ -69,13 +69,10 @@ class FilesyncEditorTest {
     }
 
     @Test
-    fun aRewriteKeepsTheEmbeddedPreview() = runTest {
-        val thumb = id.homebase.api.client.drives.upload.EmbeddedThumb(8, 6, "image/jpeg", id.homebase.api.serialization.Base64Bytes(byteArrayOf(1, 2, 3)))
-        val withPreview = FilesyncHandle(handle.fileId, versionTag, FilesyncProtocol.FileFileType, fileKey, removedContent, payload = null, previewThumbnail = thumb)
+    fun aRewriteSendsNoPreviewThumbnail() = runTest {
+        val request = liveNodeUpdate(nodeId, handle, renamedContent(removedContent, "b.txt"), Uuid.random())
 
-        val request = liveNodeUpdate(nodeId, withPreview, renamedContent(removedContent, "b.txt"), Uuid.random())
-
-        assertEquals(thumb, request.metadata.appData.previewThumbnail)
+        assertNull(request.metadata.appData.previewThumbnail)
     }
 
     @Test
