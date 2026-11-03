@@ -17,9 +17,8 @@ import okio.Path.Companion.toPath
 /** A document another app handed to Homebase, already copied to [path] (its sanitized [name] is the file's own name). */
 data class OpenedFileRequest(val path: String, val name: String, val mimeType: String?, val sizeBytes: Long)
 
-const val OPENED_FILE_STAGING_DIR = "open-with"
-
-fun openedFileStagingRoot(cacheDir: String): String = cacheDir.trimEnd('/') + "/" + OPENED_FILE_STAGING_DIR
+// iOSApp.swift stages into the same "open-with" folder under Caches.
+fun openedFileStagingRoot(cacheDir: String): String = cacheDir.trimEnd('/') + "/open-with"
 
 // Long enough for an entry point to finish copying a file it has reserved but not yet offered.
 private const val STAGING_GRACE_MS = 60 * 60 * 1000L
