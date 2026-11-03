@@ -4,8 +4,12 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
+import id.homebase.api.youauth.AppCircleDeclaration
+import id.homebase.api.youauth.AppInstall
 import id.homebase.api.youauth.AppPermissionType
+import id.homebase.api.youauth.AppRegistrationParams
 import id.homebase.api.youauth.DrivePermission
+import id.homebase.api.youauth.DriveSharingModel
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import id.homebase.core.filesync.FilesyncProtocol
@@ -400,7 +404,8 @@ fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = feedTargetDriveAccessRequest,
         permissions = feedAppPermissions,
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "feed",
     )
 }
 
@@ -430,6 +435,7 @@ fun getMomentsPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = momentsTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "moments",
     )
 }
 
@@ -458,7 +464,8 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = targetDriveAccessRequest,
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "chat",
     )
 }
 
@@ -468,7 +475,33 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = vaultTargetDriveAccessRequest,
         permissions = emptyList(),
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "vault",
+    )
+}
+
+// Creating a circle grants Read on the profile drive, which the server only allows with its storage key.
+val circleCreateDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = profileLabeledDrive.drive.alias.toString(),
+        type = profileLabeledDrive.drive.type.toString(),
+        name = "Profile Drive",
+        description = "Drive which contains your profile information",
+        permissions = listOf(DrivePermission.Read),
+        driveSlug = PROFILE_DRIVE_SLUG,
+        driveTypeSlug = PROFILE_DRIVE_TYPE_SLUG,
+        requireStorageKey = true,
+    ),
+)
+
+fun getCirclePermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = circleCreateDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+        requester = "circles",
     )
 }
 
@@ -478,7 +511,8 @@ fun getEmailPermissionExtensionConfig(): PermissionExtensionConfig {
         appName = AppConfig.APP_NAME,
         drives = emailTargetDriveAccessRequest,
         permissions = emptyList(),
-        returnUrl = ::returnUrl
+        returnUrl = ::returnUrl,
+        requester = "email",
     )
 }
 
@@ -525,26 +559,49 @@ val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     )
 )
 
-// Not synced: the browser lists folders over the network, so the drive is never mounted.
-val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
-    TargetDriveAccessRequest(
-        alias = filesyncLabeledDrive.drive.alias.toString(),
-        type = filesyncLabeledDrive.drive.type.toString(),
-        name = filesyncLabeledDrive.label,
-        description = "Files synced from your computers by Homebase Filesync",
-        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
-        driveSlug = FilesyncProtocol.DriveSlug,
-        driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
-    )
+// Must match the desktop's own registration exactly (filesync app.rs, permission_request).
+private val filesyncDrive = TargetDriveAccessRequest(
+    alias = filesyncLabeledDrive.drive.alias.toString(),
+    type = filesyncLabeledDrive.drive.type.toString(),
+    name = filesyncLabeledDrive.label,
+    description = "Files synced with your computers by Homebase Filesync",
+    permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    driveSlug = FilesyncProtocol.DriveSlug,
+    driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
+    sharingModel = DriveSharingModel.SelectiveShare,
 )
 
-fun getFilesyncPermissionExtensionConfig(): PermissionExtensionConfig {
+// Not synced: the browser lists folders over the network, so the drive is never mounted.
+// Grant only: Filesync owns the drive, and installing Filesync is what creates it.
+val filesyncTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(filesyncDrive.copy(grantOnly = true))
+
+val filesyncAppRegistration = AppRegistrationParams(
+    appId = "03ae1a49cdae483f9da7fedc0e8f20b9",
+    name = "Homebase Filesync",
+    appSlug = FilesyncProtocol.AppSlug,
+    drives = listOf(filesyncDrive),
+    circles = listOf(
+        AppCircleDeclaration(
+            slug = FilesyncProtocol.CircleSlug,
+            name = "Filesync",
+            description = "People who can see the files you share through Homebase Filesync",
+            emoji = "📁",
+            drives = listOf(
+                filesyncDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),
+            ),
+        )
+    ),
+)
+
+fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): PermissionExtensionConfig {
     return PermissionExtensionConfig(
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
         drives = filesyncTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "filesync",
+        install = AppInstall(filesyncAppRegistration, isInstalled),
     )
 }
 
@@ -555,6 +612,7 @@ fun getWebDropPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = webDropTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "webdrop",
     )
 }
 
@@ -565,6 +623,7 @@ fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = locationTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "location",
     )
 }
 
@@ -575,5 +634,6 @@ fun getStickerPermissionExtensionConfig(): PermissionExtensionConfig {
         drives = stickerTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl,
+        requester = "stickers",
     )
 }

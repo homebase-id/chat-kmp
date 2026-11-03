@@ -1,9 +1,18 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,26 +20,33 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
@@ -57,7 +73,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Instant
 
@@ -78,8 +93,12 @@ fun MomentsAlbumGrid(
     onZoomChange: (MomentsAlbumZoom) -> Unit,
     onOpenMoment: (momentId: String, payloadKey: String?) -> Unit,
     pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
+    selectedMomentId: Uuid? = null,
+    wide: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val cellSpacing = if (wide) MomentsLayoutSpec.AlbumCellSpacing else 2.dp
+    val gridHorizontalPadding = if (wide) MomentsLayoutSpec.AlbumHorizontalPadding else 4.dp
     // Group + sort once per (moments, zoom) pair. Sorting newest-first inside
     // each group mirrors the feed's overall ordering so the per-day strip
     // reads top-left → bottom-right newest → oldest.
@@ -91,40 +110,58 @@ fun MomentsAlbumGrid(
             onChange = onZoomChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = if (wide) MomentsLayoutSpec.AlbumHorizontalPadding else 12.dp, vertical = 6.dp),
         )
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(zoom.columnCount),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            grouped.forEach { group ->
-                item(
-                    key = "header-${group.key}",
-                    span = { GridItemSpan(maxLineSpan) },
-                    contentType = "album-header",
-                ) {
-                    AlbumDateHeader(
-                        label = group.label(),
-                        onClick = { onZoomChange(zoom.cycleOut()) },
-                    )
-                }
-                items(
-                    items = group.moments,
-                    key = { it.id },
-                    contentType = { "album-cell" },
-                ) { moment ->
-                    AlbumMomentCell(
-                        moment = moment,
-                        pendingLocalPreviewModel = pendingLocalPreviews[moment.id],
-                        onClick = { onOpenMoment(moment.id.toString(), null) },
-                    )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val columnCount = MomentsLayoutSpec.albumColumnCount(
+                zoom,
+                maxWidth - MomentsLayoutSpec.AlbumHorizontalPadding * 2,
+            )
+            LazyVerticalGrid(
+                columns = if (wide) {
+                    remember(columnCount) { WholePixelColumns(columnCount) }
+                } else {
+                    GridCells.Fixed(MomentsLayoutSpec.phoneAlbumColumns(zoom))
+                },
+                verticalArrangement = Arrangement.spacedBy(cellSpacing),
+                horizontalArrangement = Arrangement.spacedBy(cellSpacing),
+                contentPadding = PaddingValues(horizontal = gridHorizontalPadding, vertical = 4.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                grouped.forEach { group ->
+                    item(
+                        key = "header-${group.key}",
+                        span = { GridItemSpan(maxLineSpan) },
+                        contentType = "album-header",
+                    ) {
+                        AlbumDateHeader(
+                            label = group.label(),
+                            wide = wide,
+                            onClick = { onZoomChange(zoom.cycleOut()) },
+                        )
+                    }
+                    items(
+                        items = group.moments,
+                        key = { it.id },
+                        contentType = { "album-cell" },
+                    ) { moment ->
+                        AlbumMomentCell(
+                            moment = moment,
+                            pendingLocalPreviewModel = pendingLocalPreviews[moment.id],
+                            isSelected = moment.id == selectedMomentId,
+                            wide = wide,
+                            onClick = { onOpenMoment(moment.id.toString(), null) },
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+private class WholePixelColumns(private val count: Int) : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> =
+        List(count) { MomentsLayoutSpec.albumCellSizePx(availableSize, spacing, count) }
 }
 
 @Composable
@@ -160,18 +197,21 @@ private fun AlbumZoomButtonGroup(
 @Composable
 private fun AlbumDateHeader(
     label: String,
+    wide: Boolean,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .then(
+                if (wide) Modifier.padding(vertical = 12.dp) else Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            ),
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
+            style = if (wide) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleSmall,
+            fontWeight = if (wide) FontWeight.ExtraBold else FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
@@ -182,9 +222,20 @@ private fun AlbumDateHeader(
 private fun AlbumMomentCell(
     moment: MomentFeedItem,
     pendingLocalPreviewModel: Any?,
+    isSelected: Boolean,
+    wide: Boolean,
     onClick: () -> Unit,
 ) {
-    val cellShape: Shape = RectangleShape
+    val motion = MaterialTheme.motionScheme
+    val cornerRadius by animateDpAsState(
+        targetValue = if (isSelected) 24.dp else if (wide) 12.dp else 0.dp,
+        animationSpec = motion.defaultSpatialSpec(),
+    )
+    val ringColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        animationSpec = motion.defaultEffectsSpec(),
+    )
+    val cellShape: Shape = RoundedCornerShape(cornerRadius)
     val firstImagePayload = remember(moment.payloads) {
         moment.payloads.firstOrNull { it.isRenderableImage() }
             ?: moment.payloads.firstOrNull()
@@ -194,7 +245,9 @@ private fun AlbumMomentCell(
             .aspectRatio(1f)
             .clip(cellShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            .clickable(onClick = onClick),
+            .border(MomentsLayoutSpec.SelectionRingWidth, ringColor, cellShape)
+            .clickable(onClick = onClick)
+            .semantics { if (isSelected) selected = true },
     ) {
         if (firstImagePayload == null && pendingLocalPreviewModel != null) {
             // Placeholder window: row exists locally but thumbnails haven't
@@ -212,9 +265,7 @@ private fun AlbumMomentCell(
             // pass `previewThumbnail` so the embedded tiny thumb shows
             // immediately while the higher-res server thumb loads.
             val payloadIv = remember(firstImagePayload.iv) {
-                firstImagePayload.iv?.let {
-                    runCatching { Base64.decode(it) }.getOrNull()
-                }
+                firstImagePayload.iv?.bytes
             }
             if (payloadIv != null) {
                 HomebaseImage(
@@ -246,6 +297,25 @@ private fun AlbumMomentCell(
             }
         } else {
             TextOnlyCell(description = moment.description)
+        }
+
+        AnimatedVisibility(
+            visible = isSelected,
+            enter = scaleIn(motion.defaultSpatialSpec()),
+            exit = scaleOut(motion.fastSpatialSpec()),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(6.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .padding(3.dp),
+            )
         }
 
         // "+N" badge for multi-payload moments — Photos shows a small stack
@@ -288,13 +358,6 @@ private fun TextOnlyCell(description: String) {
         )
     }
 }
-
-private val MomentsAlbumZoom.columnCount: Int
-    get() = when (this) {
-        MomentsAlbumZoom.Day -> 3
-        MomentsAlbumZoom.Month -> 5
-        MomentsAlbumZoom.Year -> 8
-    }
 
 private fun MomentsAlbumZoom.cycleOut(): MomentsAlbumZoom = when (this) {
     MomentsAlbumZoom.Day -> MomentsAlbumZoom.Month

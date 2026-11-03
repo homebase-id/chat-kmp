@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -9,7 +10,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.imageDataFor
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -58,7 +58,7 @@ class VaultEntryImageDataTest {
         val descriptor = PayloadDescriptor(
             key = "vlt_pg_00",
             contentType = "image/jpeg",
-            iv = Base64.encode(ivBytes),
+            iv = Base64Bytes(ivBytes),
             lastModified = 42L,
         )
 
@@ -82,12 +82,12 @@ class VaultEntryImageDataTest {
             pixelWidth = 10,
             pixelHeight = 10,
             contentType = "image/jpeg",
-            content = "abc",
+            content = Base64Bytes(byteArrayOf(1)),
         )
         val descriptor = PayloadDescriptor(
             key = "k",
             contentType = "image/jpeg",
-            iv = Base64.encode(ByteArray(16)),
+            iv = Base64Bytes(ByteArray(16)),
         )
 
         val data = assertNotNull(
@@ -113,14 +113,6 @@ class VaultEntryImageDataTest {
     }
 
     @Test
-    fun `returns null when the iv is not valid base64`() {
-        val entry = vaultEntry()
-        val descriptor = PayloadDescriptor(key = "k", contentType = "image/jpeg", iv = "%%%%")
-
-        assertNull(entry.imageDataFor(descriptor, loadFullPayload = true))
-    }
-
-    @Test
     fun `threads the descriptor content type as the payload content type`() {
         // A GIF's preview thumbnail is a tiny WebP, so the only way the loader
         // can tell it is a thumbless format is the real payload content type
@@ -130,7 +122,7 @@ class VaultEntryImageDataTest {
         val descriptor = PayloadDescriptor(
             key = "vlt_pg_00",
             contentType = "image/gif",
-            iv = Base64.encode(ByteArray(16)),
+            iv = Base64Bytes(ByteArray(16)),
         )
 
         val data = assertNotNull(entry.imageDataFor(descriptor, loadFullPayload = false))

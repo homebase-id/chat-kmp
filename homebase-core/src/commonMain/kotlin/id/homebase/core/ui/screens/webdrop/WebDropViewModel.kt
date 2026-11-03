@@ -44,6 +44,7 @@ class WebDropViewModel(
         get() = webDropPermissionViewModel
 
     init {
+        addCloseable(webDropPermissionViewModel)
         // Files shared in from the OS share sheet: the share flow seeded these before
         // deep-linking here, so land straight in the composer with them picked.
         webDropShareFlowState.consume()?.let { shared ->

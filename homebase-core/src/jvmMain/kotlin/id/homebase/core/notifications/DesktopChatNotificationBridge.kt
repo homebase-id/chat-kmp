@@ -24,6 +24,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val BODY_PREVIEW_MAX_CODEPOINTS = 200
+private const val NOTIFIED_IDS_CAP = 500
 
 /**
  * JVM-only bridge that turns inbound chat messages (delivered via the websocket /
@@ -49,6 +50,9 @@ class DesktopChatNotificationBridge(
     /** Messages with `created` before this instant are treated as replay and skipped. */
     @Volatile
     private var freshnessFloor: Instant = Instant.DISTANT_PAST
+
+    // The server follows fileAdded with a fileModified for the same message (delivery/read state); notify once.
+    private val notifiedMessageIds = LinkedHashSet<Uuid>()
 
     fun start() {
         if (started) return
@@ -90,6 +94,8 @@ class DesktopChatNotificationBridge(
             if (message.isDeleted || message.isStatusMessage || message.isPendingSend) continue
             if (message.isAuthoredBy(domain)) continue
             if (message.created < floor) continue
+            if (!notifiedMessageIds.add(message.id)) continue
+            if (notifiedMessageIds.size > NOTIFIED_IDS_CAP) notifiedMessageIds.remove(notifiedMessageIds.first())
 
             val senderId = message.originalAuthor?.domainName ?: continue
             val body = if (file.fileMetadata.appData.dataType == ChatProtocol.ChatCallEventMessageDataType) {

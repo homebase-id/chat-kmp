@@ -1,5 +1,7 @@
 package id.homebase.core.notifications
 
+import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.notifshared.isMomentsPush
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -57,9 +59,9 @@ class MomentsTapTest {
     }
 
     @Test
-    fun isMomentsTap_matchesResolver() {
-        assertEquals(true, isMomentsTap(moment.toString(), moment.toString()))
-        assertEquals(true, isMomentsTap(moment.toString(), MOMENT_COMMENT_TAG_SENTINEL))
-        assertEquals(false, isMomentsTap(Uuid.random().toString(), Uuid.random().toString()))
+    fun isMomentsPush_matchesResolver() {
+        assertEquals(true, isMomentsPush(moment.toString(), moment.toString()))
+        assertEquals(true, isMomentsPush(moment.toString(), MOMENT_COMMENT_TAG_SENTINEL))
+        assertEquals(false, isMomentsPush(Uuid.random().toString(), Uuid.random().toString()))
     }
 }

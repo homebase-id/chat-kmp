@@ -1,5 +1,7 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.serialization.LenientBase64BytesSerializer
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
@@ -16,7 +18,7 @@ data class PayloadDescriptor(
     val key: String,
     val contentType: String? = null,
     val thumbnails: List<ThumbnailDescriptor>? = null,
-    val iv: String? = null,
+    @Serializable(with = LenientBase64BytesSerializer::class) val iv: Base64Bytes? = null,
     val bytesWritten: Long? = null,
     val lastModified: Long? = null,
     val descriptorContent: String? = null,

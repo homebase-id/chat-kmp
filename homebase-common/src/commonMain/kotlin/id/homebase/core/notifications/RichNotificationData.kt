@@ -12,10 +12,11 @@ data class RichNotificationData(
     /** Non-null for chat/community conversations — used for grouping and navigation. */
     val conversationId: String?,
     val title: String,
+    /** For a group, already "Sender: text" (see [ChatNotificationContent]). */
     val body: String,
     val senderName: String,
     val senderId: String,
-    /** Circular avatar bytes fetched from https://{senderId}/pub/image. */
+    /** Sender avatar from https://{senderId}/pub/image, for the icon slot only. Null when the content level hides names. */
     val senderImageBytes: ByteArray?,
     val timestamp: Long,
     /** Full payload data for round-tripping through notification tap. */
@@ -36,6 +37,10 @@ data class RichNotificationData(
      * history) instead of collapsing to a "$N new messages" count. Redacted levels keep the count.
      */
     val showsRealContent: Boolean = false,
+    /** [body] without the group sender prefix, for displayers that show the sender themselves. */
+    val messageText: String = body,
+    /** The message's own photo / video poster / sticker, for the attachment or big-picture slot. */
+    val imageBytes: ByteArray? = null,
 )
 
 /**

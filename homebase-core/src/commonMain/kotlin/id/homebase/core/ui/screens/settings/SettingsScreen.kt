@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
@@ -39,8 +38,8 @@ import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -74,6 +73,8 @@ import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.permissions.PermissionType
+import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
 import id.homebase.resources.filesync_label
 import id.homebase.resources.settings_filesync_icon_desc
@@ -95,6 +96,7 @@ import id.homebase.resources.profile_card_intro_title
 import id.homebase.resources.settings_edit_profile
 import id.homebase.core.ui.screens.card.CardTapShareSettingsRow
 import id.homebase.resources.settings_account
+import id.homebase.resources.settings_apps_desc
 import id.homebase.resources.settings_account_desc
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_help_desc
@@ -107,6 +109,8 @@ import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_status_checking
+import id.homebase.resources.settings_notifications_status_allowed
+import id.homebase.resources.settings_notifications_status_denied
 import id.homebase.resources.settings_notifications_status_error
 import id.homebase.resources.settings_notifications_status_on
 import id.homebase.resources.settings_section_apps
@@ -122,6 +126,8 @@ import id.homebase.resources.settings_email_desc
 import id.homebase.resources.email_settings_section
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.ui.assets.Apps
+import id.homebase.core.ui.assets.HomebaseIcons
 
 @Composable
 fun SettingsScreen(
@@ -130,6 +136,14 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
+
+    if (!uiState.hasPushRegistration) {
+        val permissionManager = createPermissionsManager { _, _, _ -> }
+        LaunchedEffect(Unit) {
+            val granted = permissionManager.isPermissionGranted(PermissionType.NOTIFICATION)
+            viewModel.onAction(SettingsUiAction.NotificationPermissionChecked(granted))
+        }
+    }
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
@@ -239,11 +253,15 @@ fun SettingsUi(
                         NotificationVerificationStatus.CHECKING ->
                             stringResource(MR.string.settings_notifications_status_checking)
 
-                        NotificationVerificationStatus.OK ->
-                            stringResource(MR.string.settings_notifications_status_on)
+                        NotificationVerificationStatus.OK -> stringResource(
+                            if (uiState.hasPushRegistration) MR.string.settings_notifications_status_on
+                            else MR.string.settings_notifications_status_allowed
+                        )
 
-                        NotificationVerificationStatus.ERROR ->
-                            stringResource(MR.string.settings_notifications_status_error)
+                        NotificationVerificationStatus.ERROR -> stringResource(
+                            if (uiState.hasPushRegistration) MR.string.settings_notifications_status_error
+                            else MR.string.settings_notifications_status_denied
+                        )
                     },
                     action = SettingsRowAction.Navigate(actions.onNotifications),
                     status = { NotificationStatusIndicator(uiState.notificationStatus) },
@@ -283,94 +301,13 @@ fun SettingsUi(
                 }
             }
 
-            item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
             item {
                 SettingsRow(
-                    modifier = Modifier.testTag("nativeFeedToggle"),
-                    icon = Icons.Outlined.DynamicFeed,
-                    title = stringResource(MR.string.settings_native_feed),
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.useNativeFeed,
-                        onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
-                    ),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("filesyncIconToggle"),
-                    icon = Icons.Outlined.Folder,
-                    title = stringResource(MR.string.filesync_label),
-                    supportingText = stringResource(MR.string.settings_filesync_icon_desc),
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.filesyncIconVisible,
-                        onCheckedChange = { onAction(SettingsUiAction.SetFilesyncIconVisible(it)) },
-                    ),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("callsBetaToggle"),
-                    icon = Icons.Outlined.Call,
-                    title = stringResource(MR.string.settings_calls_beta),
-                    supportingText = stringResource(MR.string.settings_calls_beta_desc),
-                    action = SettingsRowAction.Toggle(
-                        checked = uiState.callsEnabled,
-                        onCheckedChange = { onAction(SettingsUiAction.SetCallsEnabled(it)) },
-                    ),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("momentsSettingsButton"),
-                    icon = Icons.Outlined.AutoAwesome,
-                    title = stringResource(MR.string.moments_settings_section),
-                    supportingText = stringResource(MR.string.settings_moments_desc),
-                    action = SettingsRowAction.Navigate(actions.onMomentsSettings),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("vaultSettingsButton"),
-                    icon = Icons.Outlined.Lock,
-                    title = stringResource(MR.string.vault_settings_section),
-                    supportingText = stringResource(MR.string.settings_vault_desc),
-                    action = SettingsRowAction.Navigate(actions.onVaultSettings),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("emailSettingsButton"),
-                    icon = Icons.Outlined.MailOutline,
-                    title = stringResource(MR.string.email_settings_section),
-                    supportingText = stringResource(MR.string.settings_email_desc),
-                    action = SettingsRowAction.Navigate(actions.onEmailSettings),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("webDropButton"),
-                    icon = Icons.Outlined.Redeem,
-                    title = stringResource(MR.string.webdrop_label),
-                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
-                    action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("locationSettingsButton"),
-                    icon = Icons.Outlined.LocationOn,
-                    title = stringResource(MR.string.location_settings_section),
-                    supportingText = stringResource(MR.string.settings_location_desc),
-                    action = SettingsRowAction.Navigate(actions.onLocation),
-                )
-            }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("contactBookSettingsButton"),
-                    icon = Icons.Outlined.People,
-                    title = stringResource(MR.string.contactbook_settings_section),
-                    supportingText = stringResource(MR.string.settings_contactbook_desc),
-                    action = SettingsRowAction.Navigate(actions.onContactBookSettings),
+                    modifier = Modifier.testTag("appsSettingsButton"),
+                    icon = HomebaseIcons.Apps,
+                    title = stringResource(MR.string.settings_section_apps),
+                    supportingText = stringResource(MR.string.settings_apps_desc),
+                    action = SettingsRowAction.Navigate(actions.onApps),
                 )
             }
 
@@ -539,6 +476,7 @@ fun SettingsUiPreview() {
             onAction = {},
             actions = SettingsActions(
                 onBack = {},
+                onApps = {},
                 onNotifications = {},
                 onAppearance = {},
                 onMedia = {},
@@ -546,12 +484,6 @@ fun SettingsUiPreview() {
                 onStorage = {},
                 onAccount = {},
                 onHelp = {},
-                onMomentsSettings = {},
-                onVaultSettings = {},
-                onEmailSettings = {},
-                onOpenWebDrop = {},
-                onLocation = {},
-                onContactBookSettings = {},
                 onProfileEdit = {},
                 onProfileAvatarEdit = {},
                 onProfileCard = {},

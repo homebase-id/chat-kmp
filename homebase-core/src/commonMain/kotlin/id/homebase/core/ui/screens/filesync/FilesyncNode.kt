@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.filesync.FilesyncRoleFolder
@@ -23,7 +24,6 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
-import kotlin.io.encoding.Base64
 import kotlin.math.roundToLong
 import kotlin.uuid.Uuid
 
@@ -47,11 +47,19 @@ data class FilesyncNode(
     val uploadedMs: Long? = null,
     val hashAlgorithm: PayloadHashAlgorithm? = null,
     val updatedMs: Long = 0,
+    val preview: EmbeddedThumb? = null,
 ) {
     // Once per node: search and sorting compare these on every keystroke, and neither is free on the web.
     internal val nameKey: String = FilesyncNames.key(name)
     internal val kind: FileKind? = if (isFolder) null else fileKindOf(null, name)
     internal val role: FilesyncRoleFolder? = if (isFolder) FilesyncRoleFolder.of(nodeId) else null
+    /** Role folders stay at the top, where computers sync them in place; Recovered files is only moved out of. */
+    internal val movable: Boolean get() = role == null && nodeId != FilesyncProtocol.RecoveredFilesNodeId
+
+    /** A folder things may be moved into: not Recovered files, not a state folder, and not from a newer content version. */
+    internal fun takesMoves(writable: Boolean): Boolean =
+        isFolder && removedMs == null && writable && nodeId != FilesyncProtocol.RecoveredFilesNodeId && !notOnComputers
+
     internal val notOnComputers: Boolean = nameKey == FilesyncNames.stateFolderKey && FilesyncNames.isSyncTop(parentId)
 
     /** Set while it's in Recently deleted: nothing writes to a removed node, so its last write is its removal. */
@@ -74,6 +82,7 @@ class FilesyncHandle(
     val content: JsonObject,
     val payload: FilesyncPayload?,
     version: Int = CONTENT_VERSION,
+    val previewThumbnail: EmbeddedThumb? = null,
 ) {
     val fileVersionTag: FileVersionTag? get() = versionTag?.let { FileVersionTag(fileId, it) }
 
@@ -89,6 +98,9 @@ internal data class FilesyncNodeContent(
     val mtime: Long? = null,
     val size: Long? = null,
 )
+
+/** The one file [this] is, which goes out as itself; anything else goes out as a ZIP. */
+internal val List<FilesyncNode>.singleFile: FilesyncNode? get() = singleOrNull()?.takeIf { !it.isFolder }
 
 // filesync wrote it to removed nodes before 2026-10-15; it means nothing now, and a write leaves it out.
 internal const val REMOVAL_KEY = "rm"
@@ -120,7 +132,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
 
     val descriptor = if (isFolder) null else fileMetadata.getPayloadDescriptor(FilesyncProtocol.PayloadKey)
     val payload = if (isFolder) null else {
-        val iv = descriptor?.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
+        val iv = descriptor?.iv?.bytes
         val hash = descriptor?.hash
         if (iv == null || hash == null) {
             Logger.w(tag = TAG) { "skipping file $nodeId: no hashed ${FilesyncProtocol.PayloadKey} payload" }
@@ -144,9 +156,10 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         uploadedMs = descriptor?.lastModified,
         hashAlgorithm = payload?.hash?.knownAlgorithm,
         updatedMs = fileMetadata.updated.milliseconds,
+        preview = if (isFolder) null else appData.previewThumbnail?.takeIf { it.content != null },
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
-    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v)
+    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v, if (isFolder) null else appData.previewThumbnail)
 }
 
 /** A time in Unix ms as filesync writes it: an int, or a finite float rounded; anything else is none. */

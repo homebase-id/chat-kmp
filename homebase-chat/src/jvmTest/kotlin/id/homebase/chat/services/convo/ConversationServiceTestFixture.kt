@@ -99,6 +99,7 @@ class ConversationServiceTestFixture : AutoCloseable {
         lastReadDebounceMs: Long = Long.MAX_VALUE / 2,
         driveFileProvider: id.homebase.api.client.drives.files.ResendPayloadByteSource? = null,
         fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
+        serverConversationHeader: (suspend (Uuid) -> HomebaseFile?)? = null,
     ): ConversationService {
         dbm = createInMemoryDbm()
         credentialsManager = createCredentialsManager(testDomain)
@@ -141,6 +142,7 @@ class ConversationServiceTestFixture : AutoCloseable {
             driveFileProvider = driveFileProvider,
             fileOperationsProvider = fileOperationsProvider,
             lastReadDebounceMs = lastReadDebounceMs,
+            serverConversationHeader = serverConversationHeader,
         )
     }
 
@@ -389,9 +391,24 @@ class ConversationServiceTestFixture : AutoCloseable {
 
     // ---------- internals ----------
 
+    private var rawDriver: JdbcSqliteDriver? = null
+
+    fun failOutboxInserts() {
+        rawDriver!!.execute(
+            null,
+            "CREATE TRIGGER fail_outbox_insert BEFORE INSERT ON Outbox BEGIN SELECT RAISE(ABORT, 'forced'); END;",
+            0,
+        )
+    }
+
+    fun allowOutboxInserts() {
+        rawDriver!!.execute(null, "DROP TRIGGER IF EXISTS fail_outbox_insert;", 0)
+    }
+
     private fun createInMemoryDbm(): DatabaseManager = DatabaseManager({
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         OdinDatabase.Schema.create(driver)
+        rawDriver = driver
         driver
     })
 

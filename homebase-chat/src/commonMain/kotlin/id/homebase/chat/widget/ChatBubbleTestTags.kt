@@ -23,4 +23,7 @@ object ChatBubbleTestTags {
 
     /** The content-kind icon leading the quoted body in the inline reply preview. */
     const val REPLY_QUOTE_ICON = "chat.bubble.reply.quote.icon"
+
+    /** The sender-avatar gutter beside a received bubble in a group conversation. */
+    const val AVATAR = "chat.bubble.avatar"
 }

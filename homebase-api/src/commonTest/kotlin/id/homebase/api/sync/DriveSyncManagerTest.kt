@@ -268,6 +268,31 @@ class DriveSyncManagerTest {
     }
 
     @Test
+    fun syncAllCancelledEventFiredWhenSyncingDrivesAreDropped() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val eventBus = EventBus()
+            val driveId = Uuid.random()
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
+            manager.start()
+            runCurrent()
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+
+            val emittedEvents = mutableListOf<BackendEvent>()
+            val job = launch { eventBus.events.collect { emittedEvents.add(it) } }
+
+            manager.stop()
+            runCurrent()
+
+            assertTrue(emittedEvents.any { it is BackendEvent.SyncAllStopped && it.result is BackendEvent.SyncAllResult.Cancelled })
+            job.cancel()
+        }
+        db.close()
+    }
+
+    @Test
     fun syncAllFailedEventFiredOnTransitionToFailed() {
         val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {

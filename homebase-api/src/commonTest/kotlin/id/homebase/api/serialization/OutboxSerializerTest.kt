@@ -1,5 +1,6 @@
 package id.homebase.api.serialization
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileSystemType
@@ -56,7 +57,7 @@ class OutboxSerializerTest {
     private val targetDrive = TargetDrive(Uuid.random(), Uuid.random())
     private val peer = OdinId("frodo.dotyou.cloud")
     private val keyHeader = KeyHeader(ByteArray(16) { it.toByte() }, SecureByteArray(ByteArray(16) { (it + 1).toByte() }))
-    private val thumb = EmbeddedThumb(20, 30, "image/webp", "AAEC")
+    private val thumb = EmbeddedThumb(20, 30, "image/webp", Base64Bytes(byteArrayOf(0, 1, 2)))
 
     private fun metadata(populated: Boolean) = UploadFileMetadata(
         allowDistribution = populated,
@@ -160,7 +161,7 @@ class OutboxSerializerTest {
 
     @Test
     fun updateLocalAppdataContentOutboxRequest() {
-        assertRoundTrips(UpdateLocalAppdataContentOutboxRequest(drive, file, "vt", "content", "iv"))
+        assertRoundTrips(UpdateLocalAppdataContentOutboxRequest(drive, file, "vt", "content", Base64Bytes(byteArrayOf(1, 2))))
         assertRoundTrips(UpdateLocalAppdataContentOutboxRequest(drive, file, null, null, null))
     }
 

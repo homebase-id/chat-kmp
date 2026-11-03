@@ -1,6 +1,8 @@
 package id.homebase.api.client.drives.query
 
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.errorCodeEnumOrUnhandled
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
@@ -46,6 +48,22 @@ class DriveQueryProvider(
         )
         throwForFailure(response)
         return deserialize(response.body)
+    }
+
+    /** Whether an app holds [appSlug]: GET /apps/{appSlug}/drives answers for any app, even one with no drives. */
+    suspend fun isAppRegistered(appSlug: String): Boolean {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/apps/$appSlug/drives"),
+            token = creds.accessToken,
+            secret = creds.secret,
+        )
+        // The expected "no" is answered here, before throwForFailure logs every 400 as an error.
+        if (response.status == 400 &&
+            parseProblemOrNull(response.body)?.errorCodeEnumOrUnhandled() == OdinClientErrorCode.InvalidDrive
+        ) return false
+        throwForFailure(response)
+        return true
     }
 
     /**

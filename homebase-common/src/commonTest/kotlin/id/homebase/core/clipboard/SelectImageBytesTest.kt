@@ -5,7 +5,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Covers the pure mime-selection core the Android [readClipboardImage] actual delegates to.
+ * Covers the pure mime-selection core the Android [readClipboard] actual delegates to.
  * Kept stdlib-typed (no ClipData/ContentResolver) since this module has no Robolectric/mockito
  * to fake the Android SDK stubs the androidHostTest classpath ships instead.
  */

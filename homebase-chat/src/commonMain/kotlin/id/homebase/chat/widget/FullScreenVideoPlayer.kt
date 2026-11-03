@@ -56,7 +56,6 @@ import id.homebase.resources.upload_preparing
 import id.homebase.resources.upload_sending
 import id.homebase.resources.upload_uploading
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 
 @Composable
 fun FullScreenVideoPlayer(
@@ -73,7 +72,7 @@ fun FullScreenVideoPlayer(
     var progress by remember(data) { mutableFloatStateOf(0f) }
 
     val payloadIv = remember(data.payload.iv) {
-        data.payload.iv?.let { Base64.decode(it) }
+        data.payload.iv?.bytes
     }
     val isLocalPlayback = data.localFilePath != null
 

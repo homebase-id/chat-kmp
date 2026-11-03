@@ -3,6 +3,11 @@ package id.homebase.chat.widget
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -383,5 +388,29 @@ class MentionRenderingTest {
             .filter { it.item == requireNotNull(selfStyle) }
             .map { drawn.text.substring(it.start, it.end) }
         assertEquals(listOf("@Bishwajeet Parhi"), runs)
+    }
+
+    @Test
+    fun selfMentionChipFollowsATertiaryContainerThemeChange() = runComposeUiTest {
+        val before = Color(0xFF112233)
+        val after = Color(0xFF445566)
+        var container by mutableStateOf(before)
+        var rendered: AnnotatedString? = null
+        setContent {
+            MaterialTheme(colorScheme = lightColorScheme(tertiaryContainer = container)) {
+                rendered = buildChatInlineAnnotatedString(
+                    "hi @me.example.test",
+                    MaterialTheme.typography.bodyLarge,
+                    LocalContentColor.current,
+                    MentionContext(selfOdinId = self),
+                )
+            }
+        }
+        waitForIdle()
+        fun chipBackground() = rendered!!.spanStyles.map { it.item.background }.first { it != Color.Unspecified }
+        assertEquals(before, chipBackground())
+        container = after
+        waitForIdle()
+        assertEquals(after, chipBackground())
     }
 }

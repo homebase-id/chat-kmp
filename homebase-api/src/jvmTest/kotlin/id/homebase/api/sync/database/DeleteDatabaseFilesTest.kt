@@ -97,4 +97,16 @@ class DeleteDatabaseFilesTest {
         assertFalse(Path.of("$dbPath-journal").exists())
         assertTrue(unrelated.exists(), "unrelated files in the directory must survive")
     }
+
+    @Test
+    fun deletes_the_encryption_copy_an_interrupted_first_launch_left_behind() {
+        Path.of(dbPath).createFile()
+        Path.of("$dbPath-encrypting").createFile()
+        Path.of("$dbPath-encrypting-journal").createFile()
+
+        deleteDatabaseFiles(dbPath)
+
+        assertFalse(Path.of("$dbPath-encrypting").exists())
+        assertFalse(Path.of("$dbPath-encrypting-journal").exists())
+    }
 }

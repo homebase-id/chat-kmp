@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,10 +23,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.core.ui.screens.auth.rememberBiometricUnlock
+import id.homebase.core.ui.screens.auth.rememberStopPrivacyOverlay
 import id.homebase.core.ui.screens.vault.components.VaultLockedContent
-import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
-import id.homebase.core.vault.authenticateBiometric
 import id.homebase.core.vault.needsComposePrivacyOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.vault_biometric_prompt_subtitle
@@ -46,14 +45,12 @@ fun VaultBiometricGate(
     val biometricTitle = stringResource(MR.string.vault_biometric_prompt_title)
     val biometricSubtitle = stringResource(MR.string.vault_biometric_prompt_subtitle)
 
-    var authorized by remember {
-        mutableStateOf(
-            !vaultPreferences.biometricsEnabled.value || vaultPreferences.isAuthSessionValid()
-        )
-    }
-
-    var unlockAttempt by remember { mutableStateOf(0) }
-    var isAuthenticating by remember { mutableStateOf(false) }
+    val unlock = rememberBiometricUnlock(
+        initiallyAuthorized = !vaultPreferences.biometricsEnabled.value || vaultPreferences.isAuthSessionValid(),
+        title = biometricTitle,
+        subtitle = biometricSubtitle,
+        onAuthenticated = vaultPreferences::recordAuthSuccess,
+    )
 
     val biometricsEnabled by vaultPreferences.biometricsEnabled.collectAsStateWithLifecycle()
 
@@ -62,20 +59,7 @@ fun VaultBiometricGate(
     // the whole Vault back stack — this gate is disposed when a sub-screen (e.g. the note
     // editor) is pushed on top, so it can't span the flow.
 
-    var isPrivacyOverlayVisible by remember { mutableStateOf(false) }
-
-    LaunchedEffect(authorized, unlockAttempt) {
-        if (authorized || isAuthenticating) return@LaunchedEffect
-        isAuthenticating = true
-        when (authenticateBiometric(biometricTitle, biometricSubtitle)) {
-            BiometricResult.Success, BiometricResult.Unavailable -> {
-                vaultPreferences.recordAuthSuccess()
-                authorized = true
-            }
-            BiometricResult.Failure -> { /* stay on locked screen */ }
-        }
-        isAuthenticating = false
-    }
+    val isPrivacyOverlayVisible = rememberStopPrivacyOverlay(biometricsEnabled && needsComposePrivacyOverlay)
 
     // Lifecycle observer: track backgrounding and recheck permissions on resume
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -92,12 +76,8 @@ fun VaultBiometricGate(
                     if (!isPickerActive) {
                         hasBeenBackgrounded = true
                     }
-                    if (biometricsEnabled && needsComposePrivacyOverlay) {
-                        isPrivacyOverlayVisible = true
-                    }
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    isPrivacyOverlayVisible = false
                     if (isPickerActive) {
                         onPickerHandled()
                     } else {
@@ -122,7 +102,7 @@ fun VaultBiometricGate(
     val unlockFade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val unlockScale = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     AnimatedContent(
-        targetState = authorized,
+        targetState = unlock.authorized,
         transitionSpec = {
             // Locking must cover the content on its first frame, so only unlocking animates.
             if (targetState) {
@@ -134,14 +114,15 @@ fun VaultBiometricGate(
     ) { isAuthorized ->
         if (!isAuthorized) {
             VaultLockedContent(
-                onUnlock = { unlockAttempt++ },
+                onUnlock = unlock::requestUnlock,
+                unlockEnabled = !unlock.isAuthenticating,
             )
         } else {
             content()
         }
     }
 
-    if (isPrivacyOverlayVisible && biometricsEnabled) {
+    if (isPrivacyOverlayVisible) {
         VaultLockedContent(
             onUnlock = { },
             modifier = Modifier

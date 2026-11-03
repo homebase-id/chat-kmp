@@ -167,6 +167,11 @@ sealed class Route {
     @SerialName("filesync")
     data object Filesync : Route()
 
+    // Not a tab: pushed over the screen that needs Filesync, and pops back to it once set up.
+    @Serializable
+    @SerialName("filesync-setup")
+    data object FilesyncSetup : Route()
+
     @Serializable
     @SerialName("filesync-trash")
     data object FilesyncTrash : Route()
@@ -174,6 +179,10 @@ sealed class Route {
     @Serializable
     @SerialName("filesync-recent")
     data object FilesyncRecent : Route()
+
+    @Serializable
+    @SerialName("opened-file")
+    data class OpenedFile(val path: String, val name: String, val mimeType: String? = null, val sizeBytes: Long = 0) : Route()
 
     @Serializable
     @SerialName("vault-settings")
@@ -271,6 +280,10 @@ sealed class Route {
     @Serializable
     @SerialName("create-moment-group")
     data object CreateMomentGroup : Route()
+
+    @Serializable
+    @SerialName("apps-settings")
+    data object AppsSettings : Route()
 
     @Serializable
     @SerialName("moments-settings")

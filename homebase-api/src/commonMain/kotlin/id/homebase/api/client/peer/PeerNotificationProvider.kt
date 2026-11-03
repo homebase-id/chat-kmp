@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlin.uuid.Uuid
@@ -18,8 +19,8 @@ private data class PeerTokenRequest(val identity: OdinId)
  */
 @Serializable
 data class PeerTokenResponse(
-    val authenticationToken64: String,
-    val sharedSecret: String,
+    val authenticationToken64: Base64Bytes,
+    val sharedSecret: Base64Bytes,
 )
 
 @Serializable

@@ -115,4 +115,11 @@ class Crc32cTest {
 
         assertNotEquals(0u, crc)
     }
+
+    @Test
+    fun matchesTheStandardCheckValueWholeOrInParts() {
+        assertEquals(0xCBF43926u, Crc32c.calculateCrc32c(0u, "123456789".encodeToByteArray()))
+        val first = Crc32c.calculateCrc32c(0u, "1234".encodeToByteArray())
+        assertEquals(0xCBF43926u, Crc32c.calculateCrc32c(first, "56789".encodeToByteArray()))
+    }
 }

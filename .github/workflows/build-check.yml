@@ -7,6 +7,13 @@ on:
   # this is restricted to main, so a layer can reach merge never having compiled.
   pull_request:
 
+env:
+  APP_BUILD_TIME: ci
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: Run unittests
@@ -25,15 +32,8 @@ jobs:
           java-version: "21"
           distribution: "temurin"
 
-      - name: Gradle Cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Set up Chrome
         # Required by Karma to run wasmJs tests headless.
@@ -109,15 +109,8 @@ jobs:
           java-version: "21"
           distribution: "temurin"
 
-      - name: Gradle Cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Cache Kotlin/Native
         if: matrix.os == 'macos-latest'
@@ -136,12 +129,12 @@ jobs:
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
-      # iOS simulator tests for homebase-api — covers FfmpegDecoderCommonTest (real FFmpegKit
+      # iOS simulator tests for homebase-api (and the NSE preview in homebase-notifshared) — covers FfmpegDecoderCommonTest (real FFmpegKit
       # via cinterop), FFmpegKitVideoDecoderNativeTest (polling/cancel paths driven by mock
       # bridges), and the full commonTest suite (sync/database/outbox/etc.).
       - name: Run iOS simulator tests
         if: ${{ matrix.name == 'iOS' }}
-        run: ./gradlew :homebase-api:iosSimulatorArm64Test
+        run: ./gradlew :homebase-api:iosSimulatorArm64Test :homebase-notifshared:iosSimulatorArm64Test
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
@@ -159,6 +152,33 @@ jobs:
       - name: Verify Desktop build artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
         run: test -d desktopApp/build/compose/binaries/main/app && ls desktopApp/build/compose/binaries/main/app
+
+      - name: Desktop launch smoke test
+        if: ${{ matrix.name == 'Android & Desktop' }}
+        timeout-minutes: 6
+        env:
+          HOMEBASE_SMOKE_MARKER: ${{ runner.temp }}/homebase-smoke-ok
+          SKIKO_RENDER_API: SOFTWARE
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
+          set +e
+          timeout 180 dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" \
+            desktopApp/build/compose/binaries/main/app/homebase-chat/bin/homebase-chat > smoke.log 2>&1
+          code=$?; set -e
+          tail -200 smoke.log
+          [ $code -eq 0 ] || { echo "::error::desktop app exited $code"; exit 1; }
+          [ -f "$HOMEBASE_SMOKE_MARKER" ] || { echo "::error::no first-frame marker"; exit 1; }
+          if grep -E "NoSuchMethodError|NoClassDefFoundError|NoSuchFieldError|AbstractMethodError|UnsatisfiedLinkError|IncompatibleClassChangeError" smoke.log ~/.homebase-chat-dev/logs/homebase.log 2>/dev/null; then echo "::error::linkage error"; exit 1; fi
+
+      - name: Upload desktop smoke logs
+        if: ${{ failure() && matrix.name == 'Android & Desktop' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-smoke-logs
+          path: |
+            smoke.log
+            ~/.homebase-chat-dev/logs/homebase.log
+          if-no-files-found: ignore
 
       - name: Upload Desktop artifact
         if: ${{ matrix.name == 'Android & Desktop' }}

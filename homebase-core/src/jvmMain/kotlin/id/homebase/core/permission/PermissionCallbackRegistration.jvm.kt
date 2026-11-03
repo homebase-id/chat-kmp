@@ -1,6 +1,8 @@
 package id.homebase.core.permission
 
-actual fun registerPermissionCallbackHandler(handler: (canceled: Boolean) -> Unit) {
+import id.homebase.api.youauth.PermissionCallback
+
+actual fun registerPermissionCallbackHandler(handler: (PermissionCallback) -> Unit) {
     // No-op on Desktop — handled by LocalCallbackServer + Main.kt
 }
 

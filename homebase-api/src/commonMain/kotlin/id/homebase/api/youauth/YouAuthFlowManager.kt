@@ -1,5 +1,8 @@
 package id.homebase.api.youauth
 
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
@@ -22,6 +25,7 @@ import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.share.NotificationExtensionStore
 import id.homebase.api.share.ShareAuthBridge
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
@@ -64,7 +68,8 @@ sealed interface YouAuthState {
 private data class AuthCodeFlowState(
     val identity: OdinId,
     val password: SecureByteArray,
-    val keyPair: EccKeyPair
+    val keyPair: EccKeyPair,
+    val again: Boolean = false
 )
 
 /**
@@ -107,6 +112,10 @@ class YouAuthFlowManager(
 
     // Registry for callback routing
     private val callbackRegistry = mutableMapOf<String, AuthCodeFlowState>()
+
+    private val _replacedSignIns = MutableSharedFlow<ApiCredentials>(extraBufferCapacity = 4)
+
+    val replacedSignIns: SharedFlow<ApiCredentials> = _replacedSignIns.asSharedFlow()
 
     // True once handleCallback() is invoked, preventing onAppResumed from cancelling a
     // finalization that is still in-flight on a slow network.
@@ -185,6 +194,7 @@ class YouAuthFlowManager(
                         sharedSecret = Base64.encode(credentials.sharedSecret.unsafeBytes)
                     )
                 ShareAuthBridge.setAuthenticated(true, identity.domainName)
+                NotificationExtensionStore.publishCredentials(apiCredentials)
                 Logger.i(tag = TAG) { "Session restored for $identity" }
                 return
             }
@@ -208,6 +218,8 @@ class YouAuthFlowManager(
      *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
      *   the web seamless-login path, which redirects the top window to the authorize endpoint
      *   (unloading the app) instead of opening a popup. See issue #853.
+     * @param again Sign in again for the app's zero-knowledge key. A failure changes nothing; on success the replaced
+     *   sign-in goes out on [replacedSignIns].
      */
     suspend fun authorize(
         identity: OdinId,
@@ -220,16 +232,16 @@ class YouAuthFlowManager(
         circleDrives: List<TargetDriveAccessRequest>? = null,
         circles: List<String>? = null,
         clientFriendlyName: String? = null,
-        persistForRedirect: Boolean = false
+        persistForRedirect: Boolean = false,
+        again: Boolean = false
     ): String {
-        if (_authState.value == YouAuthState.Authenticating ||
-            _authState.value is YouAuthState.Authenticated
-        ) {
-            Logger.e(tag = TAG) { "Already authenticating or authenticated" }
+        val signedIn = _authState.value is YouAuthState.Authenticated
+        if (_authState.value == YouAuthState.Authenticating || signedIn != again) {
+            Logger.e(tag = TAG) { "Can't start a sign-in (again=$again) in ${_authState.value::class.simpleName}" }
             throw AuthInProgressException()
         }
 
-        _authState.value = YouAuthState.Authenticating
+        if (!again) _authState.value = YouAuthState.Authenticating
         try {
             // Generate key pair for ECDH
             val password = SecureByteArray(generateUuidBytes())
@@ -237,7 +249,7 @@ class YouAuthFlowManager(
 
             // Generate unique state for CSRF protection and callback routing
             val state = generateUuidString()
-            val authCodeFlowState = AuthCodeFlowState(identity, password, keyPair)
+            val authCodeFlowState = AuthCodeFlowState(identity, password, keyPair, again)
 
             // Register for callback
             callbackRegistry[state] = authCodeFlowState
@@ -285,7 +297,8 @@ class YouAuthFlowManager(
                     publicKey = publicKeyToJwkBase64Url(keyPair.publicKey),
                     permissionRequest = permissionRequest.toJson(),
                     state = state,
-                    redirectUri = redirectUri
+                    redirectUri = redirectUri,
+                    zkAppKey = true
                 )
 
             // Build authorization URL
@@ -297,7 +310,7 @@ class YouAuthFlowManager(
             return authorizeUrl
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error starting authorization" }
-            _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
+            if (!again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
             throw e
         }
     }
@@ -322,6 +335,9 @@ class YouAuthFlowManager(
             } catch (_: Exception) {
                 throw Exception("Invalid query param: identity")
             }
+            if (authCodeFlowState.again && identity != authCodeFlowState.identity) {
+                throw Exception("Signed in again as $identity, not ${authCodeFlowState.identity}")
+            }
 
             val publicKey = decodeUrl(queryParams["public_key"] ?: "")
             if (publicKey.isEmpty()) throw Exception("Missing query param: public_key")
@@ -342,7 +358,8 @@ class YouAuthFlowManager(
                     salt = salt
                 )
 
-            // Save credentials
+            val replaced = if (authCodeFlowState.again) credentialsManager.getActiveCredentials() else null
+            result.zkAppKey?.let(ZkKeyStore::saveAppKey)
             CredentialStorage.saveCredentials(
                 identity = result.identity,
                 clientAuthToken = result.clientAuthToken,
@@ -365,10 +382,12 @@ class YouAuthFlowManager(
                 )
 
             ShareAuthBridge.setAuthenticated(true, result.identity.domainName)
+            NotificationExtensionStore.publishCredentials(apiCredentials)
             Logger.i(tag = TAG) { "Authentication completed successfully for ${result.identity}" }
+            replaced?.let { _replacedSignIns.tryEmit(it) }
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Error completing auth" }
-            _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
+            Logger.e(throwable = e, tag = TAG) { "Error completing auth (again=${authCodeFlowState.again})" }
+            if (!authCodeFlowState.again) _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
             callbackRegistry.remove(state)
             SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
@@ -457,7 +476,11 @@ class YouAuthFlowManager(
         // clearStorage() left the Keychain populated.
         stepOrLog("removeActiveCredentials") { credentialsManager.removeActiveCredentials() }
         stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
+        stepOrLog("clearZkKeys") { ZkKeyStore.clear() }
+        // A sign-in-again still open in a browser tab must not land on the next session.
+        stepOrLog("clearPendingFlows") { callbackRegistry.clear() }
         stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
+        stepOrLog("clearNotificationCredentials") { NotificationExtensionStore.clearCredentials() }
 
         stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
         stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }

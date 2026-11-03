@@ -36,31 +36,14 @@ data class CommentReaction(
     val mediaPayloadKey: String? = null
 )
 
-fun getTextRootsRecursive(children: RichText?, keepNewLines: Boolean = false): List<String> {
-    if (children.isNullOrEmpty()) return emptyList()
-
-    return children.flatMap { child ->
-        val childTexts = mutableListOf<String>()
-        if (!child.children.isNullOrEmpty()) {
-            val nestedText =
-                getTextRootsRecursive(child.children, keepNewLines)
-                    .joinToString(if (keepNewLines) "\n" else " ")
-            if (nestedText.isNotEmpty()) {
-                childTexts.add(nestedText)
-            }
-        }
-        val directText = child.text ?: child.value
-        if (!directText.isNullOrEmpty()) {
-            childTexts.add(directText)
-        }
-
-        val joined = childTexts.filter { it.isNotEmpty() }.joinToString(" ")
-        if (joined.isNotEmpty()) listOf(joined) else emptyList()
-    }
+/** Children's text joined by [separator], then the node's own text or value after a space. */
+internal fun RichTextNode.plainText(separator: String): String {
+    val nested = children.orEmpty().map { it.plainText(separator) }.filter { it.isNotEmpty() }.joinToString(separator)
+    return listOf(nested, text ?: value).filter { !it.isNullOrEmpty() }.joinToString(" ")
 }
 
 fun getPlainTextFromRichText(message: RichText?, keepNewLines: Boolean = false): String? {
     if (message.isNullOrEmpty()) return null
-    return getTextRootsRecursive(message, keepNewLines)
-        .joinToString(if (keepNewLines) "\n" else " ")
+    val separator = if (keepNewLines) "\n" else " "
+    return message.map { it.plainText(separator) }.filter { it.isNotEmpty() }.joinToString(separator)
 }

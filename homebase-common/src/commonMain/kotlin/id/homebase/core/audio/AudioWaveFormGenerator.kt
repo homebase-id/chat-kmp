@@ -18,28 +18,31 @@ interface AudioWaveFormGenerator {
     }
 }
 
-fun DrawScope.drawWaveform(amplitudes: List<Float>) {
-    val barWidth = size.width / amplitudes.size
+class WaveformBar(val x: Float, val top: Float, val bottom: Float)
+
+class WaveformLayout(val strokeWidth: Float, val bars: List<WaveformBar>)
+
+fun waveformLayout(amplitudes: List<Float>, width: Float, height: Float): WaveformLayout {
+    val barWidth = width / amplitudes.size
     val strokeWidth = barWidth * 0.8f
+    // Leave room for the round caps, half a stroke at each end.
+    val availableHeight = height - strokeWidth
+    val bars = amplitudes.mapIndexed { index, amplitude ->
+        val adjusted = amplitude.coerceAtLeast(AudioWaveFormGenerator.MIN_BAR_HEIGHT_PERCENT)
+        val barHeight = (adjusted * availableHeight).coerceAtMost(availableHeight)
+        WaveformBar((index + 0.5f) * barWidth, height / 2 - barHeight / 2, height / 2 + barHeight / 2)
+    }
+    return WaveformLayout(strokeWidth, bars)
+}
 
-    // Reserve space for rounded caps (half stroke width on each end)
-    val verticalPadding = strokeWidth / 2f
-    val availableHeight = size.height - (verticalPadding * 2)
-
-    amplitudes.forEachIndexed { index, amplitude ->
-        val x = (index + 0.5f) * barWidth
-
-        // Apply minimum height constraint
-        val adjustedAmplitude = amplitude.coerceAtLeast(AudioWaveFormGenerator.MIN_BAR_HEIGHT_PERCENT)
-
-        // Calculate bar height within the available space (leaving room for caps)
-        val barHeight = (adjustedAmplitude * availableHeight).coerceAtMost(availableHeight)
-
+fun DrawScope.drawWaveform(amplitudes: List<Float>) {
+    val layout = waveformLayout(amplitudes, size.width, size.height)
+    layout.bars.forEach { bar ->
         drawLine(
             color = AudioWaveFormGenerator.BAR_COLOR,
-            start = Offset(x, size.height / 2 - barHeight / 2),
-            end = Offset(x, size.height / 2 + barHeight / 2),
-            strokeWidth = strokeWidth,
+            start = Offset(bar.x, bar.top),
+            end = Offset(bar.x, bar.bottom),
+            strokeWidth = layout.strokeWidth,
             cap = StrokeCap.Round,
         )
     }

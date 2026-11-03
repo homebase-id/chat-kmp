@@ -14,10 +14,14 @@ import kotlin.uuid.Uuid
  * — nothing plaintext is sent through the server.
  */
 interface NotificationMessageResolver {
-    suspend fun resolvePreview(conversationId: Uuid, messageId: Uuid): NotificationMessagePreview?
+    /** [withImage] false skips the thumbnail fetch, for a content level that won't show it. */
+    suspend fun resolvePreview(conversationId: Uuid, messageId: Uuid, withImage: Boolean): NotificationMessagePreview?
 }
 
-data class NotificationMessagePreview(
+/** [groupTitle] is null for a 1:1 conversation. [imageBytes] is the message's own photo, never an avatar. */
+class NotificationMessagePreview(
     val senderName: String?,
     val preview: String,
+    val groupTitle: String? = null,
+    val imageBytes: ByteArray? = null,
 )

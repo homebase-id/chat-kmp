@@ -39,6 +39,7 @@ import id.homebase.resources.chat_message_video
 import id.homebase.resources.chat_message_voice_duration
 import id.homebase.resources.chat_preview_sticker
 import id.homebase.core.widget.formatAudioTime
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -109,71 +110,67 @@ fun messageContentLabel(
         return null
     }
 
-    if (hasMultiplePayloads) {
-        return ContentLabel(
-            text = stringResource(MR.string.chat_message_multiple_media),
-            icon = Icons.Default.PhotoLibrary
+    val kind = payloadPreviewKind(firstPayload, hasMultiplePayloads) ?: return null
+    return when (kind) {
+        PayloadPreviewKind.MultipleMedia -> ContentLabel(stringResource(kind.labelRes()), Icons.Default.PhotoLibrary)
+        PayloadPreviewKind.Link -> ContentLabel(stringResource(kind.labelRes()), Icons.Default.Description)
+        PayloadPreviewKind.Location -> ContentLabel(stringResource(kind.labelRes()), Icons.Default.LocationOn)
+        PayloadPreviewKind.Sticker -> ContentLabel(stringResource(kind.labelRes()), Icons.AutoMirrored.Filled.StickyNote2)
+        // GIF indicator is the 👾 emoji baked into the string (like the deleted-message
+        // 🚫), so no Material icon — keeps the playful marker without an extra glyph.
+        PayloadPreviewKind.Gif -> ContentLabel(stringResource(kind.labelRes()), icon = null)
+        PayloadPreviewKind.Image -> ContentLabel(stringResource(kind.labelRes()), Icons.Default.Image)
+        PayloadPreviewKind.Video -> ContentLabel(stringResource(kind.labelRes()), Icons.Default.PlayArrow)
+        PayloadPreviewKind.Audio -> {
+            // Only the in-app recorder measures a length; picked audio files carry 0.
+            val voiceNoteSeconds = remember(firstPayload) { firstPayload?.audioLengthSeconds() }
+            if (voiceNoteSeconds != null) {
+                ContentLabel(
+                    text = stringResource(MR.string.chat_message_voice_duration, formatAudioTime(voiceNoteSeconds)),
+                    icon = Icons.Default.Mic
+                )
+            } else {
+                ContentLabel(stringResource(kind.labelRes()), Icons.Default.PlayArrow)
+            }
+        }
+        PayloadPreviewKind.File -> ContentLabel(
+            text = firstPayload?.descriptorContent?.takeIf { it.isNotBlank() }
+                ?: stringResource(kind.labelRes()),
+            icon = Icons.Default.Description
         )
     }
+}
 
-    if (firstPayload != null) {
-        return when {
-            // Specific payload keys first: a Location carries a map *image* and a Link
-            // carries a preview *image*, so they'd otherwise match the generic image/
-            // branch below and mis-label as "Image". The key identifies the kind exactly.
-            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> ContentLabel(
-                text = stringResource(MR.string.chat_message_link),
-                icon = Icons.Default.Description
-            )
-            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> ContentLabel(
-                text = stringResource(MR.string.chat_message_location),
-                icon = Icons.Default.LocationOn
-            )
-            // A solo transparent cut-out image carries DescriptorContent.ImageFile(isSticker=true).
-            // hasMultiplePayloads is already false here, so this is the single-payload case the
-            // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
-            firstPayload.isImage() &&
-                (firstPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true ->
-                ContentLabel(
-                    text = stringResource(MR.string.chat_preview_sticker),
-                    icon = Icons.AutoMirrored.Filled.StickyNote2
-                )
-            // GIF indicator is the 👾 emoji baked into the string (like the deleted-message
-            // 🚫), so no Material icon — keeps the playful marker without an extra glyph.
-            firstPayload.contentType == "image/gif" -> ContentLabel(
-                text = stringResource(MR.string.chat_message_gif),
-                icon = null
-            )
-            firstPayload.isImage() -> ContentLabel(
-                text = stringResource(MR.string.chat_message_image),
-                icon = Icons.Default.Image
-            )
-            firstPayload.isVideo() -> ContentLabel(
-                text = stringResource(MR.string.chat_message_video),
-                icon = Icons.Default.PlayArrow
-            )
-            firstPayload.isAudio() -> {
-                // Only the in-app recorder measures a length; picked audio files carry 0.
-                val voiceNoteSeconds = remember(firstPayload) { firstPayload.audioLengthSeconds() }
-                if (voiceNoteSeconds != null) {
-                    ContentLabel(
-                        text = stringResource(MR.string.chat_message_voice_duration, formatAudioTime(voiceNoteSeconds)),
-                        icon = Icons.Default.Mic
-                    )
-                } else {
-                    ContentLabel(
-                        text = stringResource(MR.string.chat_message_audio),
-                        icon = Icons.Default.PlayArrow
-                    )
-                }
-            }
-            else -> ContentLabel(
-                text = firstPayload.descriptorContent?.takeIf { it.isNotBlank() }
-                    ?: stringResource(MR.string.chat_message_file),
-                icon = Icons.Default.Description
-            )
-        }
-    }
+enum class PayloadPreviewKind { MultipleMedia, Link, Location, Sticker, Gif, Image, Video, Audio, File }
 
-    return null
+fun PayloadPreviewKind.labelRes(): StringResource = when (this) {
+    PayloadPreviewKind.MultipleMedia -> MR.string.chat_message_multiple_media
+    PayloadPreviewKind.Link -> MR.string.chat_message_link
+    PayloadPreviewKind.Location -> MR.string.chat_message_location
+    PayloadPreviewKind.Sticker -> MR.string.chat_preview_sticker
+    PayloadPreviewKind.Gif -> MR.string.chat_message_gif
+    PayloadPreviewKind.Image -> MR.string.chat_message_image
+    PayloadPreviewKind.Video -> MR.string.chat_message_video
+    PayloadPreviewKind.Audio -> MR.string.chat_message_audio
+    PayloadPreviewKind.File -> MR.string.chat_message_file
+}
+
+fun payloadPreviewKind(firstPayload: PayloadDescriptor?, hasMultiplePayloads: Boolean): PayloadPreviewKind? = when {
+    hasMultiplePayloads -> PayloadPreviewKind.MultipleMedia
+    firstPayload == null -> null
+    // Specific payload keys first: a Location carries a map *image* and a Link
+    // carries a preview *image*, so they'd otherwise match the generic image/
+    // branch below and mis-label as "Image". The key identifies the kind exactly.
+    firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> PayloadPreviewKind.Link
+    firstPayload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> PayloadPreviewKind.Location
+    // A solo transparent cut-out image carries DescriptorContent.ImageFile(isSticker=true).
+    // hasMultiplePayloads is already false here, so this is the single-payload case the
+    // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
+    firstPayload.isImage() &&
+        (firstPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true -> PayloadPreviewKind.Sticker
+    firstPayload.contentType == "image/gif" -> PayloadPreviewKind.Gif
+    firstPayload.isImage() -> PayloadPreviewKind.Image
+    firstPayload.isVideo() -> PayloadPreviewKind.Video
+    firstPayload.isAudio() -> PayloadPreviewKind.Audio
+    else -> PayloadPreviewKind.File
 }

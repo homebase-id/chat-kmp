@@ -755,15 +755,26 @@ Reference: `SettingsScreen.kt`, `VaultSettingsScreen.kt`, `VaultSettingsViewMode
 
 ### In `SettingsScreen.kt`
 
-Add a new callback parameter `onNavigateToFooSettings: () -> Unit` and render a row:
+`SettingsScreen` has a single **Apps** row; per-app rows live on `AppsSettingsScreen`
+(`screens/settings/AppsSettingsScreen.kt`), which `Route.AppsSettings` opens. Add your
+row there, with a `SettingsRow` and a tag in `AppsSettingsRowTags`, and a new
+`onFooSettings` callback on `AppsSettingsActions`:
 
 ```kotlin
-SettingsItemAction(
-    imageVector = Icons.Outlined.<FooIcon>,
-    text = stringResource(MR.string.foo_settings_section),
-    onClick = onNavigateToFooSettings,
+SettingsRow(
+    modifier = Modifier.testTag("fooSettingsButton"),
+    icon = Icons.Outlined.<FooIcon>,
+    title = stringResource(MR.string.foo_settings_section),
+    containerColor = rowColor,
+    action = SettingsRowAction.Navigate(actions.onFooSettings),
 )
 ```
+
+On desktop and web the same screen is the root of the **Apps** category in
+`SettingsPaneHost.kt`. Add an `AppsPage.Foo` entry (`SettingsPaneCategory.kt`), call
+`onSelectAppsPage(AppsPage.Foo)` from the row, and render `FooSettingsScreen` in the
+`page` branch. `SettingsPaneRequest.open(SettingsCategory.Apps, AppsPage.Foo)` then
+deep-links to it. Update `AppsSettingsScreenTest` for the new row.
 
 ### `FooSettingsScreen`
 
@@ -790,7 +801,8 @@ visible as a secondary entry point.
 Reference: `HomeScreen.kt`, `AppNavHost.kt`.
 
 The bottom-bar icon can be hidden by the user (via *Dismiss* / settings toggle),
-so add a permanent shortcut on the **Home** tab. This ensures the feature is
+so add a permanent shortcut on the launcher screen behind the **Apps** tab
+(`Route.Home`, `HomeScreen.kt`; the tab is `TopLevelRoute.Apps`). This ensures the feature is
 always discoverable regardless of the icon-visibility preference.
 
 ### In `HomeScreen.kt`
@@ -851,9 +863,9 @@ Reference: `AppNavHost.kt`.
 sealed class TopLevelRoute(
     val route: Route, val label: String, val icon: ImageVector
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
-    data object Foo  : TopLevelRoute(Route.Foo, "Foo", Icons.Outlined.<FooIcon>)
-    data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
+    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat, BootstrapChatOutlined)
+    data object Foo  : TopLevelRoute(Route.Foo, MR.string.foo_label, Icons.Filled.<FooIcon>, Icons.Outlined.<FooIcon>)
+    data object Apps : TopLevelRoute(Route.Home, MR.string.nav_apps, HomebaseIcons.Apps, HomebaseIcons.AppsOutlined)
 }
 ```
 
@@ -868,7 +880,7 @@ val topLevelRoutes = remember(fooIconVisible) {
     buildList {
         add(TopLevelRoute.Chat)
         if (fooIconVisible) add(TopLevelRoute.Foo)
-        add(TopLevelRoute.Home)
+        add(TopLevelRoute.Apps)
     }
 }
 ```
@@ -963,17 +975,17 @@ Foo screen even though the user has hidden the icon. Extend it:
 ```kotlin
 private fun NavDestination?.isTopLevelRoute(): Boolean =
     this?.hasRoute(Route.ChatList::class) == true ||
-    this?.hasRoute(Route.Home::class) == true ||
+    this?.hasRoute(Route.Home::class) == true ||   // the Apps tab
     this?.hasRoute(Route.Foo::class) == true    // add your route here
 ```
 
 ### 8h — Settings screen callback
 
-Wire the new callback you added in Step 7 inside the `composable<Route.Settings>`
-block:
+Wire the new callback you added in Step 7 inside the `composable<Route.AppsSettings>`
+block, in the `AppsSettingsActions(...)`:
 
 ```kotlin
-onNavigateToFooSettings = { navController.navigate(Route.FooSettings) },
+onFooSettings = { navController.navigate(Route.FooSettings) },
 ```
 
 ---
@@ -1093,8 +1105,8 @@ Copy this into your PR description and tick off each wiring point:
       `AppNavHost`
 - [ ] Three `composable<Route.Foo…>` entries + event-collecting `LaunchedEffect`
 - [ ] `isTopLevelRoute()` updated to include `Route.Foo`
-- [ ] Settings row + `onNavigateToFooSettings` wired
-- [ ] Home screen shortcut tile wired via `onNavigateToFoo` (always visible)
+- [ ] Row on `AppsSettingsScreen` (tag in `AppsSettingsRowTags`, `AppsSettingsActions.onFooSettings`) wired in both `AppNavHost` and `SettingsPaneHost`, plus an `AppsPage.Foo` for the desktop/web pane
+- [ ] Apps launcher (`HomeScreen`) shortcut tile wired via `onNavigateToFoo` (always visible)
 - [ ] (Optional) `FooBiometricAuth` expect + three actuals
 - [ ] (Optional) `auth/FooBiometricGate.kt` extracted from screen
 

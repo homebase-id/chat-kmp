@@ -14,13 +14,19 @@ import app.cash.sqldelight.db.SqlDriver
  */
 internal const val DB_FILE_NAME = "odin-2.db"
 
+/** iOS's in-place encryption writes this copy beside the database; a killed first launch can leave it. */
+internal const val ENCRYPTING_COPY_SUFFIX = "-encrypting"
+
+private val SQLITE_SIDECAR_SUFFIXES = listOf("", "-wal", "-shm", "-journal")
+
 /**
- * The SQLite database file plus the sidecar files it can spawn — the single suffix list
- * shared by everything that enumerates DB files (recovery delete, size probe). `-journal`
- * (rollback mode), `-wal` (write-ahead log), `-shm` (WAL shared-memory index); any may
- * exist depending on which journal mode last touched the DB.
+ * The SQLite database file, the sidecar files it can spawn, and the [ENCRYPTING_COPY_SUFFIX] copy
+ * with its sidecars — the single suffix list shared by everything that enumerates DB files
+ * (recovery delete, size probe).
  */
-internal val DB_FILE_SUFFIXES = listOf("", "-wal", "-shm", "-journal")
+internal val DB_FILE_SUFFIXES = listOf("", ENCRYPTING_COPY_SUFFIX).flatMap { copy ->
+    SQLITE_SIDECAR_SUFFIXES.map { copy + it }
+}
 
 /**
  * Every on-disk file backing the database at [basePath] (the `.db` itself plus its
@@ -79,6 +85,20 @@ expect class DatabaseDriverFactory {
      *
      * wasmJs is the exception: sql.js is one in-memory connection on the browser's single
      * thread, with no journal and no pragmas.
+     *
+     * Encryption at rest: a non-empty [passphrase] means SQLCipher encrypts the file with a raw
+     * key cached in SecureStorage, and after the first launch only that raw key reaches
+     * SQLCipher. A new file gets a random key. Android and desktop derive an existing file's raw
+     * key from [passphrase] (SqlCipherKeyMode); iOS uses [passphrase] only as encryption on/off
+     * and encrypts its old plaintext file in place (decideRawKey). A null or empty [passphrase]
+     * opens a plaintext database and stores no key. wasmJs has no file to encrypt.
+     *
+     * Unreadable key or file (iOS before the first unlock): throws [DatabaseUnavailableException]
+     * and nothing is written or wiped. Wrong key: when the file exists and no key decrypts it,
+     * this call throws and leaves nothing open; [DatabaseManager.initializeWithRecovery] then
+     * deletes the files and starts fresh. wasmJs never rejects a key. Blocking: runs on the
+     * caller's thread and may do file I/O and, once per install, a slow key derivation or the
+     * in-place encryption.
      */
     fun createDriver(passphrase: String? = null): SqlDriver
 

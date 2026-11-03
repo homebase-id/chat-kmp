@@ -4,11 +4,15 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
-import kotlin.io.encoding.Base64
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import kotlin.uuid.Uuid
+
+fun String.replyQuotePlainText(): String =
+    markdownToPlainPreview(stripComposerLineBreakArtifacts(), maxCodePoints = 400)
 
 fun List<PayloadDescriptor>?.mediaPayloads(): List<PayloadDescriptor> =
     this?.filter { payload ->
@@ -30,11 +34,7 @@ fun PayloadDescriptor.replyQuoteImageData(
     aesKey: SecureByteArray,
     fallbackPreview: EmbeddedThumb?,
 ): HomebaseImageData? {
-    val payloadIv = try {
-        iv?.let { Base64.decode(it) }
-    } catch (_: Exception) {
-        null
-    } ?: return null
+    val payloadIv = iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

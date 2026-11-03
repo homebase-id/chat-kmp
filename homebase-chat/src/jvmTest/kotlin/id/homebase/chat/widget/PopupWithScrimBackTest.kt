@@ -11,7 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.LocalCompatNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -33,7 +33,7 @@ class PopupWithScrimBackTest {
     fun `back closes the long-press menu and stays in the conversation`() = runSkikoComposeUiTest {
         setContent {
             @Suppress("DEPRECATION")
-            val dispatcher = LocalCompatNavigationEventDispatcherOwner.current!!.navigationEventDispatcher
+            val dispatcher = LocalNavigationEventDispatcherOwner.current!!.navigationEventDispatcher
             DisposableEffect(dispatcher) {
                 dispatcher.addInput(back)
                 onDispose { dispatcher.removeInput(back) }

@@ -30,8 +30,9 @@ kotlin {
 
     android {
         namespace = "id.homebase.core"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
-        compileSdkExtension = 19
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
         withDeviceTest {}
@@ -52,7 +53,6 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-            linkerOpts("-lsqlite3")
             linkerOpts("-lz", "-lbz2", "-liconv")
 
             freeCompilerArgs += listOf("-Xbinary=bundleId=id.homebase.core")
@@ -202,6 +202,7 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.client.mock)
             implementation(libs.jetbrains.compose.ui.test)
+            implementation(libs.okio.fakefilesystem)
         }
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)

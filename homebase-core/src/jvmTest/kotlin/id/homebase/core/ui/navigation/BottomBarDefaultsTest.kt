@@ -25,7 +25,9 @@ class BottomBarDefaultsTest {
         return DatabaseManager({ driver }, dispatcher = dispatcher, readDispatcher = dispatcher)
     }
 
-    private fun routes(db: DatabaseManager) = topLevelRoutesFor(
+    private fun routes(db: DatabaseManager) = tabs(db).map { it.route }
+
+    private fun tabs(db: DatabaseManager) = topLevelRoutesFor(
         callsAvailable = true,
         callsIconVisible = CallsPreferences(db).iconVisible.value,
         momentsVisible = MomentsPreferences(db).iconVisible.value,
@@ -33,16 +35,17 @@ class BottomBarDefaultsTest {
         locationVisible = LocationPreferences(db).iconVisible.value,
         contactBookVisible = ContactBookPreferences(db).iconVisible.value,
         emailVisible = EmailPreferences(db).iconVisible.value,
-    ).map { it.route }
+    )
 
     @Test
-    fun freshInstallBarIsChatsCallsFeedMomentsContactsHome() = runTest {
+    fun freshInstallBarIsChatsCallsFeedMomentsContactsApps() = runTest {
         val db = db()
         BottomBarDefaultsMigration.run(db)
         assertEquals(
             listOf(Route.ChatList, Route.Calls, Route.Feed, Route.Moments, Route.ContactBook, Route.Home),
             routes(db),
         )
+        assertEquals(TopLevelRoute.Apps, tabs(db).last())
     }
 
     private val cursorKey = SystemDriveConstants.chatDrive.alias

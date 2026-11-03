@@ -28,7 +28,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.io.files.Path
-import kotlin.io.encoding.Base64
 
 private const val TAG = "ChatMediaAutoSave"
 
@@ -143,7 +142,7 @@ class ChatMediaAutoSaveService(
             driveId = chatDrive,
             fileId = file.fileId,
             key = payload.key,
-            keyHeader = KeyHeader(Base64.decode(iv), file.keyHeader.aesKey),
+            keyHeader = KeyHeader(iv.bytes, file.keyHeader.aesKey),
             destination = ExportDestination.Scratch("hbautosave_", ".$extension"),
         ) ?: return
 

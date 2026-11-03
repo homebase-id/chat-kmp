@@ -3,6 +3,12 @@ package id.homebase.core.ui.navigation
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
@@ -48,8 +54,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.LocationOn
@@ -134,6 +138,16 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
+import id.homebase.core.ui.assets.BootstrapChatOutlined
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
+import id.homebase.core.avatars.OwnerAvatarStatus
+import id.homebase.core.ui.assets.Apps
+import id.homebase.core.ui.assets.AppsOutlined
+import id.homebase.core.ui.assets.RssFeed
+import id.homebase.core.ui.assets.Filesync
+import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
@@ -152,6 +166,7 @@ import org.koin.compose.getKoin
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
+import id.homebase.core.ui.screens.feed.following.FollowingScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
@@ -196,6 +211,8 @@ import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsCategory
+import id.homebase.core.ui.screens.settings.AppsSettingsActions
+import id.homebase.core.ui.screens.settings.AppsSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsPaneRequest
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
 import id.homebase.core.ui.screens.settings.SettingsPaneHost
@@ -203,6 +220,8 @@ import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
 import id.homebase.core.ui.screens.vault.auth.VaultSessionTracker
+import id.homebase.core.ui.screens.email.auth.EmailBiometricGate
+import id.homebase.core.ui.screens.email.auth.EmailSessionTracker
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.webdrop.WebDropScreen
@@ -214,6 +233,16 @@ import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
 import id.homebase.core.ui.screens.filesync.FilesyncPlaces
 import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
 import id.homebase.core.ui.screens.filesync.FilesyncScreen
+import id.homebase.core.ui.screens.openedfile.OpenedFileInbox
+import id.homebase.core.ui.screens.openedfile.OpenedFileRequest
+import id.homebase.core.ui.screens.openedfile.OpenedFileScreen
+import id.homebase.core.ui.screens.openedfile.openedFileStagingRoot
+import id.homebase.core.ui.screens.openedfile.sweepStaged
+import id.homebase.core.ui.screens.filesync.FilesyncCrumb
+import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.withContext
+import kotlin.time.Clock
 import id.homebase.core.ui.screens.filesync.FilesyncTrashScreen
 import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
@@ -246,7 +275,7 @@ import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_calls
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
-import id.homebase.resources.nav_home
+import id.homebase.resources.nav_apps
 import id.homebase.resources.calls_missed_badge_cd
 import id.homebase.resources.location_attention_cd
 import id.homebase.chat.services.calling.history.CallHistoryService
@@ -257,6 +286,7 @@ import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import id.homebase.resources.filesync_label
+import id.homebase.resources.openedfile_open_failed
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
@@ -314,7 +344,7 @@ private const val SHOW_ARCHIVED_KEY = "showArchived"
 
 // Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
 private val NavigationRailWidth = 64.dp
-private val RailIndicatorSize = 48.dp
+internal val RailIndicatorSize = 48.dp
 private val RailIconSize = 20.dp
 
 // Requesting focus (and so the IME) before the destination's slide-in settles
@@ -341,6 +371,12 @@ fun AppNavHost(
     // what keeps the resolutions above it alive across a teardown is IdentityScope (#1373).
     val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
     val isAuthenticated = authState is YouAuthState.Authenticated && identityScope?.closed == false
+    val ownerSessions = koinInject<OwnerSessionRepository>()
+    val credentials = koinInject<CredentialsManager>()
+    val railOwner by remember(ownerSessions, credentials) {
+        effectiveOwnerSessionFlow(ownerSessions.user, credentials.credentialsFlow)
+    }.collectAsStateWithLifecycle(null)
+    val railAvatarState by koinInject<OwnerAvatarStatus>().state.collectAsStateWithLifecycle()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
@@ -419,6 +455,8 @@ fun AppNavHost(
     val tabRoutes by rememberUpdatedState(topLevelRoutes.map { it.route })
     // The nearest tab root with a bar item: it stays lit under a pushed screen or a hidden add-on.
     val selectedTab = backStack.currentTabRoot(tabRoutes)?.destination
+    // The rail's avatar opens Settings, so it takes the selection for as long as the pane floats over the tab.
+    val settingsOpen = currentDestination?.hasRoute(Route.Settings::class) == true
     val openEmail: () -> Unit = { navController.openApp(Route.Email, tabRoutes) }
     val openContactBook: () -> Unit = { navController.openApp(Route.ContactBook, tabRoutes) }
     val openCalls: () -> Unit = { navController.openApp(Route.Calls, tabRoutes) }
@@ -562,6 +600,7 @@ fun AppNavHost(
     // Keeps the Vault biometric session alive across every Vault sub-screen — owned by
     // the vault feature, not this nav host.
     VaultSessionTracker(navController)
+    EmailSessionTracker(navController)
 
     // Track active conversation + auth guard + notification permission
     LaunchedEffect(authState, currentDestination) {
@@ -573,7 +612,7 @@ fun AppNavHost(
         if (authState is YouAuthState.Unauthenticated || authState is YouAuthState.Error) {
             if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class) && !currentDestination.hasRoute(
                     Route.AppLoading::class
-                )
+                ) && !currentDestination.hasRoute(Route.OpenedFile::class)
             ) {
                 navController.navigate(Route.Login) {
                     popUpTo(0) { inclusive = true }
@@ -611,6 +650,8 @@ fun AppNavHost(
                 is VaultUiEvent.NavigateToCropper,
                 is VaultUiEvent.NavigateToDrawer,
                 is VaultUiEvent.OpenWebDrop,
+                is VaultUiEvent.OpenSignIn,
+                is VaultUiEvent.OpenOwnerConsole,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
             }
         }
@@ -646,6 +687,8 @@ fun AppNavHost(
     val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
+    // Read only by the Filesync screen's own view model, the one "Show" opens.
+    var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
     val filesyncPlaces = remember(navController) {
         FilesyncPlaces(
@@ -653,6 +696,26 @@ fun AppNavHost(
             onRecent = { navController.navigate(Route.FilesyncRecent) { popUpTo(Route.Filesync); launchSingleTop = true } },
             onTrash = { navController.navigate(Route.FilesyncTrash) { popUpTo(Route.Filesync); launchSingleTop = true } },
         )
+    }
+
+    val openedFileFailedMessage = stringResource(MR.string.openedfile_open_failed)
+    LaunchedEffect(Unit) {
+        OpenedFileInbox.failures.collect { snackbarHostState.showSnackbar(openedFileFailedMessage) }
+    }
+
+    val pendingOpenedFile by OpenedFileInbox.pending.collectAsStateWithLifecycle()
+    val fileOperations: FileOperationsProvider = koinInject()
+    LaunchedEffect(pendingOpenedFile, isAuthenticated) {
+        val pending = pendingOpenedFile ?: return@LaunchedEffect
+        if (pending.waitingForSignIn && !isAuthenticated) return@LaunchedEffect
+        val request = pending.request
+        // Signed out, the file waits on top of Login: it can still be opened elsewhere, and "Sign in to save" brings it back after sign-in.
+        val stack = if (isAuthenticated) navController.awaitChatList() else navController.currentBackStack.firstContaining { it.destination.hasRoute(Route.Login::class) }
+        val routed = stack.filter { it.destination.hasRoute(Route.OpenedFile::class) }.map { it.toRoute<Route.OpenedFile>().path }
+        if (request.path !in routed) navController.navigate(Route.OpenedFile(request.path, request.name, request.mimeType, request.sizeBytes))
+        withContext(ioDispatcher) {
+            sweepStaged(openedFileStagingRoot(fileOperations.getCacheDirectory()), routed + request.path, Clock.System.now().toEpochMilliseconds())
+        }
     }
 
     // Handle notification tap navigation (needs navController, stays in composable)
@@ -854,6 +917,7 @@ fun AppNavHost(
                             icon = {
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
+                                    selected = isSelected,
                                     showMomentsBadge = momentsUnseenCount > 0,
                                     showCallsBadge = callsBadge,
                                     showEmailBadge = emailUnreadCount > 0,
@@ -897,11 +961,19 @@ fun AppNavHost(
                     Row {
                         NavigationRail(
                             modifier = Modifier.width(NavigationRailWidth),
-                            header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
+                            header = {
+                                Spacer(modifier = Modifier.height(8.dp + topInset))
+                                RailOwnerAvatar(
+                                    session = railOwner,
+                                    state = railAvatarState,
+                                    onNavigate = { navController.navigate(it) },
+                                    selected = settingsOpen,
+                                )
+                            },
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
                             topLevelRoutes.forEach { topLevelRoute ->
-                                val isSelected =
+                                val isSelected = !settingsOpen &&
                                     selectedTab?.hasRoute(topLevelRoute.route::class) == true
                                 RailItem(
                                     topLevelRoute = topLevelRoute,
@@ -1091,6 +1163,9 @@ fun AppNavHost(
                                             onNavigateToDetail = {
                                                 navController.navigate(Route.PostDetail(it.toString()))
                                             },
+                                            onNavigateToFollowing = {
+                                                navController.navigate(Route.Following)
+                                            },
                                             onAuthorClick = {
                                                 navController.navigateToIdentity(it.domainName)
                                             },
@@ -1122,9 +1197,15 @@ fun AppNavHost(
                                 }
                             }
 
-                            // ponytail: Route.Following is unregistered — the v2 API has no followers
-                            // controller, so the screen could only show its 404 empty state. The screen,
-                            // VM and provider are kept; re-add this destination once the routes ship.
+                            composable<Route.Following> {
+                                if (isAuthenticated) {
+                                    FollowingScreen(
+                                        viewModel = koinViewModel(),
+                                        onBack = { navController.popBackStack() },
+                                        onIdentityClick = { navController.navigateToIdentity(it) },
+                                    )
+                                }
+                            }
 
                             tab<Route.ContactBook>(tabRoot) {
                                 if (isAuthenticated) {
@@ -1294,6 +1375,15 @@ fun AppNavHost(
                                             )
                                             backStackEntry.savedStateHandle[SHOW_ARCHIVED_KEY] = false
                                         }
+                                    }
+                                    val sendFilePath by backStackEntry.savedStateHandle
+                                        .getStateFlow<String?>(SEND_FILE_PATH_KEY, null)
+                                        .collectAsStateWithLifecycle()
+                                    LaunchedEffect(sendFilePath) {
+                                        val path = sendFilePath ?: return@LaunchedEffect
+                                        val name = backStackEntry.savedStateHandle.get<String>(SEND_FILE_NAME_KEY).orEmpty()
+                                        conversationListViewModel.onAction(ConversationListUiAction.ChooseChatForFile(path, name))
+                                        backStackEntry.savedStateHandle[SEND_FILE_PATH_KEY] = null
                                     }
                                     var pendingContactCard by rememberSaveable(
                                         stateSaver = ContactCardDescriptorSaver,
@@ -1711,6 +1801,9 @@ fun AppNavHost(
                                         viewModel = koinViewModel(),
                                         actions = SettingsActions(
                                             onBack = { navController.popBackStack() },
+                                            onApps = {
+                                                navController.navigate(Route.AppsSettings)
+                                            },
                                             onNotifications = {
                                                 navController.navigate(Route.NotificationSettings)
                                             },
@@ -1731,20 +1824,6 @@ fun AppNavHost(
                                             },
                                             onHelp = {
                                                 navController.navigate(Route.Help)
-                                            },
-                                            onMomentsSettings = {
-                                                navController.navigate(Route.MomentsSettings)
-                                            },
-                                            onVaultSettings = {
-                                                navController.navigate(Route.VaultSettings)
-                                            },
-                                            onEmailSettings = {
-                                                navController.navigate(Route.EmailSettings)
-                                            },
-                                            onOpenWebDrop = openWebDrop,
-                                            onLocation = openLocation,
-                                            onContactBookSettings = {
-                                                navController.navigate(Route.ContactBookSettings)
                                             },
                                             onProfileEdit = {
                                                 navController.navigate(Route.ProfileCardEditor())
@@ -2196,30 +2275,44 @@ fun AppNavHost(
 
                             tab<Route.Filesync>(tabRoot) {
                                 if (isAuthenticated) {
-                                    val filesyncViewModel: FilesyncViewModel = koinViewModel()
-                                    val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
-                                    Crossfade(
-                                        targetState = filesyncUiState.installed,
-                                        animationSpec = chromeMotion.defaultEffectsSpec(),
-                                    ) { installed ->
-                                        when (installed) {
-                                            null -> FilesyncCheckingScreen(
-                                                failed = filesyncUiState.checkFailed,
-                                                onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
-                                            )
-                                            false -> FilesyncOnboardingScreen(
-                                                viewModel = filesyncViewModel,
-                                                setupInitiated = filesyncUiState.setupInitiated,
-                                                onDismiss = { navController.popBackStack() },
-                                            )
-                                            true -> FilesyncScreen(
-                                                viewModel = filesyncViewModel,
-                                                places = filesyncPlaces,
-                                                onOpenWebDrop = openWebDrop,
-                                            )
+                                    FilesyncSetupGate(onDismiss = { navController.popBackStack() }) { filesyncViewModel ->
+                                        LaunchedEffect(filesyncFolderToShow) {
+                                            filesyncFolderToShow?.let { filesyncViewModel.onAction(FilesyncUiAction.OpenFolder(it)) }
+                                            filesyncFolderToShow = null
                                         }
+                                        FilesyncScreen(
+                                            viewModel = filesyncViewModel,
+                                            places = filesyncPlaces,
+                                            onOpenWebDrop = openWebDrop,
+                                            onSendToChat = { path, name ->
+                                                if (navController.sendFileOnChatList(path, name)) openChats()
+                                            },
+                                        )
                                     }
                                 }
+                            }
+
+                            scoped<Route.FilesyncSetup> {
+                                FilesyncSetupGate(onDismiss = { navController.popBackStack() }) {
+                                    LaunchedEffect(Unit) { navController.popBackStack<Route.FilesyncSetup>(inclusive = true) }
+                                }
+                            }
+
+                            scoped<Route.OpenedFile> { entry ->
+                                val route = entry.toRoute<Route.OpenedFile>()
+                                OpenedFileScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.path,
+                                        parameters = { parametersOf(OpenedFileRequest(route.path, route.name, route.mimeType, route.sizeBytes)) },
+                                    ),
+                                    onBack = { navController.popBackStack() },
+                                    onSignIn = { navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } } },
+                                    onSetUpFilesync = { navController.navigate(Route.FilesyncSetup) { launchSingleTop = true } },
+                                    onShowInFilesync = { path ->
+                                        filesyncFolderToShow = path
+                                        openFilesync()
+                                    },
+                                )
                             }
 
                             scoped<Route.FilesyncTrash> {
@@ -2230,7 +2323,13 @@ fun AppNavHost(
 
                             scoped<Route.FilesyncRecent> {
                                 if (isAuthenticated) {
-                                    FilesyncRecentScreen(viewModel = koinViewModel(), places = filesyncPlaces, onBack = { navController.popBackStack() })
+                                    FilesyncRecentScreen(
+                                        viewModel = koinViewModel(),
+                                        places = filesyncPlaces,
+                                        onBack = { navController.popBackStack() },
+                                        onOpenWebDrop = openWebDrop,
+                                        onSendToChat = { path, name -> if (navController.sendFileOnChatList(path, name)) openChats() },
+                                    )
                                 }
                             }
 
@@ -2248,19 +2347,23 @@ fun AppNavHost(
 
                             composable<Route.EmailThunderbirdSetup> {
                                 if (isAuthenticated) {
-                                    EmailThunderbirdSetupScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                    )
+                                    EmailBiometricGate {
+                                        EmailThunderbirdSetupScreen(
+                                            viewModel = koinViewModel(),
+                                            onBackClick = { navController.popBackStack() },
+                                        )
+                                    }
                                 }
                             }
 
                             composable<Route.EmailSecrets> {
                                 if (isAuthenticated) {
-                                    EmailSecretsScreen(
-                                        viewModel = koinViewModel(),
-                                        onBackClick = { navController.popBackStack() },
-                                    )
+                                    EmailBiometricGate {
+                                        EmailSecretsScreen(
+                                            viewModel = koinViewModel(),
+                                            onBackClick = { navController.popBackStack() },
+                                        )
+                                    }
                                 }
                             }
 
@@ -2397,6 +2500,25 @@ fun AppNavHost(
                                 }
                             }
 
+                            composable<Route.AppsSettings> { entry ->
+                                if (isAuthenticated) {
+                                    AppsSettingsScreen(
+                                        viewModel = koinViewModel(
+                                            viewModelStoreOwner = rememberSettingsOwner(navController, entry),
+                                        ),
+                                        actions = AppsSettingsActions(
+                                            onBack = { navController.popBackStack() },
+                                            onMomentsSettings = { navController.navigate(Route.MomentsSettings) },
+                                            onVaultSettings = { navController.navigate(Route.VaultSettings) },
+                                            onEmailSettings = { navController.navigate(Route.EmailSettings) },
+                                            onOpenWebDrop = openWebDrop,
+                                            onLocation = openLocation,
+                                            onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
+                                        ),
+                                    )
+                                }
+                            }
+
                             composable<Route.AccountSettings> { entry ->
                                 if (isAuthenticated) {
                                     AccountSettingsScreen(
@@ -2483,6 +2605,21 @@ private fun NavHostController.selectConversationOnChatList(
     return true
 }
 
+// The name goes first: ChatList reads it when the path arrives.
+private fun NavHostController.sendFileOnChatList(path: String, name: String): Boolean {
+    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
+    if (entry == null) {
+        Logger.w(tag = "AppNavHost") { "ChatList missing from stack — dropping file $name for a chat" }
+        return false
+    }
+    entry.savedStateHandle[SEND_FILE_NAME_KEY] = name
+    entry.savedStateHandle[SEND_FILE_PATH_KEY] = path
+    return true
+}
+
+private const val SEND_FILE_PATH_KEY = "sendFilePath"
+private const val SEND_FILE_NAME_KEY = "sendFileName"
+
 private const val OWNS_WINDOW_KEY = "ownsWindow"
 
 internal fun navContentInsets(base: WindowInsets, paintsUnderNavigationBar: Boolean, edgeToEdge: Boolean): WindowInsets = when {
@@ -2524,6 +2661,30 @@ private fun entryShowsViewOnceViewer(entry: NavBackStackEntry): Boolean {
     val messages = chat.messagesUiState.collectAsStateWithLifecycle()
     val shows by remember(chat) { derivedStateOf { showsViewOnceViewer(messages.value) } }
     return shows
+}
+
+@Composable
+private fun FilesyncSetupGate(onDismiss: () -> Unit, installed: @Composable (FilesyncViewModel) -> Unit) {
+    val filesyncViewModel: FilesyncViewModel = koinViewModel()
+    val filesyncUiState by filesyncViewModel.uiState.collectAsStateWithLifecycle()
+    Crossfade(
+        targetState = filesyncUiState.installed,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    ) { state ->
+        when (state) {
+            null -> FilesyncCheckingScreen(
+                failed = filesyncUiState.checkFailed,
+                onRetry = { filesyncViewModel.onAction(FilesyncUiAction.RetryCheck) },
+            )
+            false -> FilesyncOnboardingScreen(
+                viewModel = filesyncViewModel,
+                setupInitiated = filesyncUiState.setupInitiated,
+                checkFailed = filesyncUiState.checkFailed,
+                onDismiss = onDismiss,
+            )
+            true -> installed(filesyncViewModel)
+        }
+    }
 }
 
 private inline fun <reified T : Any> NavGraphBuilder.tab(
@@ -2586,24 +2747,25 @@ internal fun topLevelRoutesFor(
     if (locationVisible) add(TopLevelRoute.Location)
     if (contactBookVisible) add(TopLevelRoute.ContactBook)
     if (emailVisible) add(TopLevelRoute.Email)
-    add(TopLevelRoute.Home)
+    add(TopLevelRoute.Apps)
 }
 
 sealed class TopLevelRoute(
     val route: Route,
     val labelRes: StringResource,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val outlinedIcon: androidx.compose.ui.graphics.vector.ImageVector = icon,
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat)
-    data object Calls : TopLevelRoute(Route.Calls, MR.string.nav_calls, Icons.Outlined.Call)
-    data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, Icons.Default.RssFeed)
-    data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
-    data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
-    data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
-    data object Filesync : TopLevelRoute(Route.Filesync, MR.string.filesync_label, Icons.Outlined.Folder)
-    data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Outlined.MailOutline)
-    data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
-    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
+    data object Chat : TopLevelRoute(Route.ChatList, MR.string.nav_chats, BootstrapChat, BootstrapChatOutlined)
+    data object Calls : TopLevelRoute(Route.Calls, MR.string.nav_calls, Icons.Filled.Call, Icons.Outlined.Call)
+    data object Feed : TopLevelRoute(Route.Feed, MR.string.nav_feed, HomebaseIcons.RssFeed)
+    data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome)
+    data object Apps : TopLevelRoute(Route.Home, MR.string.nav_apps, HomebaseIcons.Apps, HomebaseIcons.AppsOutlined)
+    data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Filled.Lock, Icons.Outlined.Lock)
+    data object Filesync : TopLevelRoute(Route.Filesync, MR.string.filesync_label, HomebaseIcons.Filesync)
+    data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Filled.Mail, Icons.Outlined.MailOutline)
+    data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Filled.LocationOn, Icons.Outlined.LocationOn)
+    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Filled.People, Icons.Outlined.People)
 }
 
 /**
@@ -2635,6 +2797,7 @@ internal fun RailItem(
     ) {
         TopLevelNavIcon(
             topLevelRoute = topLevelRoute,
+            selected = selected,
             showMomentsBadge = showMomentsBadge,
             showCallsBadge = showCallsBadge,
             showEmailBadge = showEmailBadge,
@@ -2646,8 +2809,8 @@ internal fun RailItem(
     }
 }
 
-// Role.Button, not the Role.Tab the five destination items use: neither target is a
-// destination the rail can be sitting on, so neither can ever read back as selected.
+// Role.Button, not the Role.Tab the five destination items use: neither target is a tab,
+// and while Settings is open the owner avatar carries the selection, not this button.
 @Composable
 private fun RailActionItem(
     icon: ImageVector,
@@ -2672,6 +2835,7 @@ private fun RailActionItem(
 internal fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
+    selected: Boolean = false,
     showCallsBadge: Boolean = false,
     showEmailBadge: Boolean = false,
     showLocationBadge: Boolean = false,
@@ -2680,7 +2844,7 @@ internal fun TopLevelNavIcon(
 ) {
     val icon: @Composable () -> Unit = {
         Icon(
-            topLevelRoute.icon,
+            if (selected) topLevelRoute.icon else topLevelRoute.outlinedIcon,
             contentDescription = stringResource(topLevelRoute.labelRes),
             modifier = Modifier.size(size),
             tint = tint,

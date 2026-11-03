@@ -29,14 +29,14 @@ import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.core.util.extensionForMimeType
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.image.ImageUtils
-import id.homebase.api.image.createImageThumbnail
-import id.homebase.api.image.tinyThumbSize
+import id.homebase.api.image.createTinyPreview
+import id.homebase.core.pdf.PDF_CARD_RENDER_WIDTH
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CoroutineScope
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -399,15 +399,15 @@ class VaultUploaderService(
                 // fresh IV, so file.keyHeader.iv is stale for the new payload. Do NOT fall back
                 // to it on a malformed descriptor IV — decrypting with the wrong IV silently
                 // returns corrupt bytes. Let the failure hit the outer catch → null (issue #927).
-                KeyHeader(Base64.decode(iv), file.keyHeader.aesKey)
+                KeyHeader(iv.bytes, file.keyHeader.aesKey)
             } else {
                 file.keyHeader
             }
 
             val ct = payloadDescriptor?.contentType ?: file.contentType
-            val extension = ct.substringAfter("/", "bin").let {
-                if (it == "jpeg") "jpg" else it
-            }
+            val extension = extensionForMimeType(ct.substringBefore(';').trim().lowercase())
+                ?: file.fileName.substringAfterLast('.', "").takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
+                ?: ct.substringAfter("/", "bin")
             // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
             // for any payload size; the old byte path buffered the whole payload
             // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.
@@ -450,19 +450,10 @@ class VaultUploaderService(
                 }
             } else if (contentType == "application/pdf") {
                 try {
-                    val pdfResult = generatePdfThumbnailFromFile(filePath, 320)
+                    val pdfResult = generatePdfThumbnailFromFile(filePath, PDF_CARD_RENDER_WIDTH)
                     val thumbBytes = pdfResult?.thumbnailBytes
                     if (thumbBytes != null) {
-                        // Tiny embedded preview for appData (must fit under MaxEmbeddedThumbBytes)
-                        val tinyThumb = createImageThumbnail(
-                            thumbBytes, key, tinyThumbSize, isTinyThumb = true,
-                        )
-                        previewThumbnail = EmbeddedThumb(
-                            pixelWidth = tinyThumb.pixelWidth,
-                            pixelHeight = tinyThumb.pixelHeight,
-                            contentType = tinyThumb.contentType,
-                            content = Base64.encode(tinyThumb.thumbnailBytes),
-                        )
+                        previewThumbnail = createTinyPreview(thumbBytes, key)
                         // Larger thumbnail for crisp card display
                         val naturalSize = ImageUtils.getNaturalSize(thumbBytes)
                         thumbnails = listOf(

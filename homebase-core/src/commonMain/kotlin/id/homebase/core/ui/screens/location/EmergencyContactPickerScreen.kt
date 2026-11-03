@@ -63,6 +63,7 @@ import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.circle_member_add_drive_access_denied
 import id.homebase.resources.circle_member_add_generic_failed
+import id.homebase.resources.circle_member_add_unreviewed_reason
 import id.homebase.resources.contacts
 import id.homebase.resources.location_emergency_add_already_member
 import id.homebase.resources.location_emergency_add_none_eligible
@@ -88,6 +89,7 @@ fun EmergencyContactPickerScreen(
     val alreadyMemberLabel = stringResource(MR.string.location_emergency_add_already_member)
     val driveAccessDeniedLabel = stringResource(MR.string.circle_member_add_drive_access_denied)
     val genericFailedLabel = stringResource(MR.string.circle_member_add_generic_failed)
+    val notReviewedLabel = stringResource(MR.string.circle_member_add_unreviewed_reason)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -106,6 +108,7 @@ fun EmergencyContactPickerScreen(
                                 is CircleAddFailureReason.Raw -> r.message
                                 CircleAddFailureReason.DriveAccessDenied -> driveAccessDeniedLabel
                                 CircleAddFailureReason.OpaqueForbidden -> genericFailedLabel
+                                CircleAddFailureReason.NotReviewed -> notReviewedLabel
                             }
                             add("${f.name}: $reason")
                         }

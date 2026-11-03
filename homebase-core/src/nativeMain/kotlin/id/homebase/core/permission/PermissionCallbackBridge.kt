@@ -1,31 +1,29 @@
 package id.homebase.core.permission
 
+import id.homebase.api.youauth.PermissionCallback
 import co.touchlab.kermit.Logger
 
 /**
  * Bridge between Swift (iOSApp.swift onOpenURL) and KMP (AppViewModel).
  * Swift calls [handlePermissionCallback] when it receives a
- * `homebase-fchat://permission-callback?status=...` URL. AppViewModel registers
+ * `homebase-fchat://permission-callback?...` URL. AppViewModel registers
  * itself via [setHandler] during init. Mirrors [id.homebase.core.share.ShareHandlerBridge].
  */
 object PermissionCallbackBridge {
-    private var handler: ((canceled: Boolean) -> Unit)? = null
+    private var handler: ((PermissionCallback) -> Unit)? = null
 
     /** Called from AppViewModel to register the permission-callback handler. */
-    fun setHandler(handler: (canceled: Boolean) -> Unit) {
+    fun setHandler(handler: (PermissionCallback) -> Unit) {
         this.handler = handler
     }
 
     /**
-     * Called from Swift when the app opens via the
-     * `homebase-fchat://permission-callback` URL scheme. The `canceled` flag
-     * reflects the `status=canceled` query parameter.
+     * Called from Swift with the `homebase-fchat://permission-callback` URL the app opened with.
      */
-    fun handlePermissionCallback(canceled: Boolean) {
-        Logger.i(tag = "PermissionCallbackBridge") {
-            "Permission-extend deep link (canceled=$canceled)"
-        }
-        this.handler?.invoke(canceled)
+    fun handlePermissionCallback(url: String) {
+        val callback = PermissionCallback.parse(url)
+        Logger.i(tag = "PermissionCallbackBridge") { "Permission-extend deep link ($callback)" }
+        this.handler?.invoke(callback)
             ?: Logger.w(tag = "PermissionCallbackBridge") {
                 "No handler registered for permission callback"
             }

@@ -80,7 +80,7 @@ private fun EventListener(handler: (Event) -> Unit): EventListenerInterface =
  *
  * Reads `items` first, where a screenshot arrives, and falls back to `files`, where a file
  * manager copy arrives. Base64 keeps the boundary free of typed-array ownership concerns — the
- * idiom [readClipboardImage] and the ffmpeg/video bridges already use.
+ * idiom [readClipboard] and the ffmpeg/video bridges already use.
  */
 @Suppress("UNUSED_PARAMETER")
 private fun pastedImageBase64(event: Event): Promise<JsString> = js(

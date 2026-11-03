@@ -7,6 +7,8 @@ import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 
 actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThumbnailResult? {
+    // PDFBox clamps a zero or negative DPI to a 1-pixel image instead of failing.
+    if (maxWidth <= 0) return null
     return try {
         Loader.loadPDF(java.io.File(filePath)).use { document ->
             val pageCount = document.numberOfPages
@@ -28,6 +30,7 @@ actual fun generatePdfThumbnailFromFile(filePath: String, maxWidth: Int): PdfThu
 }
 
 actual fun generatePdfThumbnail(bytes: ByteArray, maxWidth: Int): PdfThumbnailResult? {
+    if (maxWidth <= 0) return null
     return try {
         Loader.loadPDF(bytes).use { document ->
             val pageCount = document.numberOfPages

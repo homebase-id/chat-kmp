@@ -70,6 +70,13 @@ actual class ShareCacheStorage {
         return NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
     }
 
+    actual fun clearSharedContentDescriptor() {
+        val dir = containerUrl ?: return
+        try {
+            fileManager.removeItemAtPath("$dir/$SHARED_CONTENT_FILE", null)
+        } catch (_: Exception) { }
+    }
+
     actual fun clearSharedContent() {
         val dir = containerUrl ?: return
         try {

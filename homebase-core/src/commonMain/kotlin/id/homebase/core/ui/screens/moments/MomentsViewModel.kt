@@ -57,6 +57,7 @@ class MomentsViewModel(
     private var activationKicked = false
 
     init {
+        addCloseable(momentsPermissionViewModel)
         viewModelScope.launch {
             momentsPermissionViewModel.permissionsGranted
                 .filter { it }

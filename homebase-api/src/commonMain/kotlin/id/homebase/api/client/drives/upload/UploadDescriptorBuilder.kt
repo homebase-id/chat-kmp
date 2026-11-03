@@ -1,7 +1,5 @@
 package id.homebase.api.client.drives.upload
 
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -17,21 +15,14 @@ import id.homebase.api.serialization.OdinSystemSerializer
  * Matches the TypeScript `buildDescriptor` helper.
  */
 internal suspend fun buildSharedSecretEncryptedUploadDescriptor(
-    keyHeader: KeyHeader?,
+    encryptedKeyHeader: EncryptedKeyHeader,
     metadata: UploadFileMetadata,
     sharedSecret: ByteArray,
     transferIv: ByteArray,
 ): ByteArray {
-    val sharedSecretEncryptedKeyHeader =
-        EncryptedKeyHeader.encryptKeyHeaderAes(
-            keyHeader ?: KeyHeader.empty(),
-            transferIv,
-            SecureByteArray(sharedSecret),
-        )
-
     val descriptor =
         UploadFileDescriptor(
-            encryptedKeyHeader = sharedSecretEncryptedKeyHeader,
+            encryptedKeyHeader = encryptedKeyHeader,
             fileMetadata = metadata,
         )
 

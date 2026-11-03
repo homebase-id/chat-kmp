@@ -176,6 +176,7 @@ class MainThreadWatchdog(
         val acked = withTimeoutOrNull(thresholdMs) { pong.await() }
         if (acked == null) {
             val stalledMs = nowMs() - postedAt
+            val stallTimes = captureProcessTimes()
             val stack = captureStack()
             reporter.reportIfDue {
                 renderStallMessage(
@@ -191,6 +192,11 @@ class MainThreadWatchdog(
             // Wait for the UI thread to recover before ticking again, so a long hang
             // leaves only one outstanding sentinel rather than one per tick.
             pong.await()
+            lifecycleLog(
+                Severity.Warn,
+                renderMainThreadRecovery(nowMs() - postedAt, processTimesDelta(stallTimes, captureProcessTimes())),
+                null,
+            )
         }
 
         // Checkpoint immediately around the suspend point that depends on workDispatcher

@@ -11,7 +11,9 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.PayloadHashAlgorithm
 import id.homebase.api.client.drives.files.wholePercentBytes
 import id.homebase.api.client.drives.files.SecurityGroupType
+import id.homebase.api.client.UploadProgress
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
@@ -27,11 +29,16 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Creates nodes the way the desktop engine does (filesync hbsync-homebase drive/mod.rs). */
-class FilesyncUploader(
-    private val driveUploadProvider: DriveUploadProvider,
+class FilesyncUploader internal constructor(
+    private val sendUpload: suspend (UploadFileRequest, UploadProgress?) -> Unit,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val clock: Clock = Clock.System,
+    private val clock: Clock,
 ) {
+    constructor(
+        driveUploadProvider: DriveUploadProvider,
+        fileOperationsProvider: FileOperationsProvider,
+        clock: Clock = Clock.System,
+    ) : this({ request, progress -> driveUploadProvider.uploadFile(request, onProgress = progress) }, fileOperationsProvider, clock)
 
     suspend fun createFolder(parentId: Uuid, name: String) {
         create(Uuid.random(), parentId, FilesyncProtocol.FolderFileType, FilesyncNodeContent(v = CONTENT_VERSION, name = name), KeyHeader.newRandom16())
@@ -46,13 +53,14 @@ class FilesyncUploader(
         onProgress: (Float) -> Unit,
     ) {
         val mtime = modifiedMs ?: clock.now().toEpochMilliseconds()
+        val preview = filesyncEmbeddedPreview(sourcePath, name, fileOperationsProvider)
         try {
-            uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
+            uploadOnce(nodeId, parentId, sourcePath, name, mtime, preview, onProgress)
         } catch (e: ClientException) {
             // A hash rejection means the bytes changed under us or a bug: start over once from the source, never resend blindly.
             if (!e.isPayloadHashRejection()) throw e
             Logger.w(tag = TAG) { "hash rejected (${e.errorCode}); encrypting again" }
-            uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
+            uploadOnce(nodeId, parentId, sourcePath, name, mtime, preview, onProgress)
         }
     }
 
@@ -62,6 +70,7 @@ class FilesyncUploader(
         sourcePath: String,
         name: String,
         mtime: Long,
+        preview: EmbeddedThumb?,
         onProgress: (Float) -> Unit,
     ) {
         val keyHeader = KeyHeader.newRandom16()
@@ -77,7 +86,7 @@ class FilesyncUploader(
                 iv = hashed.iv,
                 hash = hashed.hash,
             )
-            create(nodeId, parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress)
+            create(nodeId, parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress, preview)
         } finally {
             runCatching { fileOperationsProvider.deleteTempFile(encryptedPath) }
         }
@@ -91,8 +100,9 @@ class FilesyncUploader(
         keyHeader: KeyHeader,
         payload: PayloadFile? = null,
         onProgress: ((Float) -> Unit)? = null,
+        preview: EmbeddedThumb? = null,
     ) {
-        val metadata = filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None)
+        val metadata = filesyncMetadata(nodeId, parentId, fileType, OdinSystemSerializer.serialize(content), ArchivalStatus.None, previewThumbnail = preview)
             .encryptContent(keyHeader)
         val request = UploadFileRequest(
             driveId = FilesyncProtocol.DriveAlias,
@@ -104,7 +114,7 @@ class FilesyncUploader(
         // The node id is new to this upload and kept across every retry, the user's too: a 4105 can only mean an earlier attempt landed.
         withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) {
             try {
-                driveUploadProvider.uploadFile(request, onProgress = onProgress?.let(::wholePercentBytes))
+                sendUpload(request, onProgress?.let(::wholePercentBytes))
             } catch (e: ClientException) {
                 if (!e.isExistingFileWithUniqueId()) throw e
                 Logger.i(tag = TAG) { "node $nodeId already landed on an earlier attempt" }
@@ -126,6 +136,7 @@ internal fun filesyncMetadata(
     content: String,
     archivalStatus: ArchivalStatus,
     versionTag: Uuid? = null,
+    previewThumbnail: EmbeddedThumb? = null,
 ) = UploadFileMetadata(
     allowDistribution = false,
     isEncrypted = true,
@@ -137,6 +148,7 @@ internal fun filesyncMetadata(
         dataType = 0,
         archivalStatus = archivalStatus,
         content = content,
+        previewThumbnail = previewThumbnail,
     ),
     versionTag = versionTag,
 )

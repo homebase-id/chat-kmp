@@ -93,13 +93,8 @@ class AppViewModel(
         syncIconBadge()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
         registerMomentShareHandler { handleMomentShareIntent() }
-        registerPermissionCallbackHandler { canceled ->
-            viewModelScope.launch {
-                eventBus.emit(
-                    if (canceled) BackendEvent.PermissionsExtensionCanceled
-                    else BackendEvent.PermissionsExtensionReturned
-                )
-            }
+        registerPermissionCallbackHandler { callback ->
+            viewModelScope.launch { eventBus.emit(callback.event) }
         }
         viewModelScope.launch {
             pendingUpgradeManager.state.collect { upgradeState ->

@@ -18,6 +18,7 @@ import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.PlatformInfo
+import id.homebase.core.util.isDesktop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +50,7 @@ class SettingsViewModel(
         SettingsUiState(
             useNativeFeed = userPreferences.useNativeFeed,
             appVersion = platformInfo.versionName,
+            hasPushRegistration = !isDesktop(),
         ),
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -56,7 +58,7 @@ class SettingsViewModel(
     init {
         loadSettings()
         observePreferences()
-        verifyNotificationSubscription()
+        if (_uiState.value.hasPushRegistration) verifyNotificationSubscription()
         measureStorageUsage()
     }
 
@@ -126,6 +128,10 @@ class SettingsViewModel(
 
     fun onAction(action: SettingsUiAction) {
         when (action) {
+            is SettingsUiAction.NotificationPermissionChecked -> {
+                _uiState.update { it.copy(notificationStatus = permissionStatus(action.granted)) }
+            }
+
             is SettingsUiAction.LogoutClicked -> {
                 handleLogout()
             }
@@ -206,3 +212,6 @@ class SettingsViewModel(
         }
     }
 }
+
+internal fun permissionStatus(granted: Boolean) =
+    if (granted) NotificationVerificationStatus.OK else NotificationVerificationStatus.ERROR

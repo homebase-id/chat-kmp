@@ -341,7 +341,7 @@ fun LinkPreviewCard(
     val pendingModel: Any? = remember(localImagePath, previewThumbnail?.content, isUploading) {
         if (!isUploading) return@remember null
         localImagePath
-            ?: previewThumbnail?.content?.let { runCatching { Base64.decode(it) }.getOrNull() }
+            ?: previewThumbnail?.content?.bytes
     }
 
     Column(

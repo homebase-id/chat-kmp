@@ -23,15 +23,16 @@ kotlin {
 
     android {
         namespace = "id.homebase.chat"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
-        compileSdkExtension = 19
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         // Enable the Android resource pipeline so PlayerView's XML layout in
         // src/androidMain/res/layout/ is picked up and an R class is
         // generated for this module's namespace. Matches homebase-common /
         // homebase-api / image-editor-ui.
         androidResources.enable = true
-        withHostTest {}
+        withHostTest { isIncludeAndroidResources = true }
     }
 
     jvm()
@@ -120,11 +121,18 @@ kotlin {
             dependsOn(commonMain.get())
             dependencies { implementation(libs.webrtc.kmp) }
         }
+        // okio's openZip needs zlib, which wasmJs lacks.
+        val zipMain = create("zipMain") { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(zipMain)
+        jvmMain.get().dependsOn(zipMain)
+        nativeMain.get().dependsOn(zipMain)
         androidMain.get().dependsOn(webrtcKmpMain)
         appleMain.get().dependsOn(webrtcKmpMain)
         getByName("androidHostTest").dependencies {
             implementation(libs.junit)
             implementation(libs.robolectric)
+            implementation(libs.androidx.ui.test.junit4)
+            implementation(libs.androidx.ui.test.manifest)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
@@ -184,6 +192,7 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
             implementation(libs.androidx.navigationevent)
+            implementation(libs.androidx.navigationevent.compose)
         }
     }
 
@@ -270,5 +279,8 @@ tasks.named("jvmJar") {
 // commonTest's Compose UI tests are Skiko-backed and don't run on the mocked Android host classpath,
 // so the Android host run is limited to the Android-only tests until those move to jvmTest/.
 tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
-    filter { includeTestsMatching("org.webrtc.*") }
+    filter {
+        includeTestsMatching("org.webrtc.*")
+        includeTestsMatching("id.homebase.chat.widget.ComposerSelectionToolbarTest")
+    }
 }

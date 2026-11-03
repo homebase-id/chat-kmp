@@ -22,6 +22,10 @@ actual class ShareCacheStorage {
 
     actual fun readSharedContent(): String? = null
 
+    actual fun clearSharedContentDescriptor() {
+        // No-op on web
+    }
+
     actual fun clearSharedContent() {
         // No-op on web
     }

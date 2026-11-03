@@ -140,8 +140,8 @@ class CryptoHelperTest {
 
         val payload = CryptoHelper.encryptData(plainText, sharedSecret)
 
-        assertTrue(payload.iv.isNotEmpty())
-        assertTrue(payload.data.isNotEmpty())
+        assertTrue(payload.iv.bytes.isNotEmpty())
+        assertTrue(payload.data.bytes.isNotEmpty())
     }
 
     // ========================================================================

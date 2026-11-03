@@ -1,5 +1,6 @@
 package id.homebase.api.sync.database
 
+import id.homebase.api.client.drives.FileDecryptionException
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.isTransientNetworkFailure
@@ -159,6 +160,7 @@ class OutboxSync(
     private val counterMutex = Mutex()
 
     private val checkoutMutex = Mutex()
+    private val latestWriteMutex = Mutex()
 
     // Held for as long as any worker is draining, so iOS doesn't suspend the process
     // mid-POST (#1467). Only ever touched under counterMutex, alongside the
@@ -341,6 +343,22 @@ class OutboxSync(
                     storageQuota?.reportStorageFull()
                     eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
                     eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Storage full"))
+                    continue
+                }
+
+                // A private drive this device has no key for yet: it waits, uncharged, until the device
+                // signs in again, however long that takes. Charged, the row would drop after ~48h.
+                if (e.isMissingDriveKey()) {
+                    Logger.w(
+                        "OutboxSync: no key for drive ${outboxRecord.driveId} yet — uniqueId=${outboxRecord.uniqueId} " +
+                            "checked back in uncharged, retry in $NO_DRIVE_KEY_RETRY_SECONDS s"
+                    )
+                    databaseManager.outbox.checkInUncharged(
+                        outboxRecord.checkOutStamp!!,
+                        UnixTimeUtc.now().addSeconds(NO_DRIVE_KEY_RETRY_SECONDS).milliseconds
+                    )
+                    recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
+                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
                     continue
                 }
 
@@ -660,6 +678,8 @@ class OutboxSync(
     }
 
     public companion object {
+        private const val NO_DRIVE_KEY_RETRY_SECONDS = 300L
+
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
@@ -669,6 +689,14 @@ class OutboxSync(
 
         // Bounds the walk past held rows; a chain of held rows is at most the uploads queued while full
         private const val MAX_HELD_CHAIN = 100
+
+        private const val LATEST_WRITE_ATTEMPTS = 3
+
+        private const val LOCAL_APP_DATA_FOLLOW_UP_MASK = 0x4C4F43414C415050L
+
+        internal fun localAppDataFollowUpKey(fileId: Uuid): Uuid = fileId.toLongs { msb, lsb ->
+            Uuid.fromLongs(msb, lsb xor LOCAL_APP_DATA_FOLLOW_UP_MASK)
+        }
     }
 
     // Checkout stamps of rows currently held by a LIVE upload worker in THIS
@@ -884,6 +912,63 @@ class OutboxSync(
         )
         Logger.d(tag = "MarkAsRead") {
             "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): result=$result drive=${request.driveId} fileId=${request.fileId}"
+        }
+        return kickIfEnqueued(result, sendNow)
+    }
+
+    /**
+     * Queue a whole-content localAppData write so the newest snapshot always goes out last.
+     * `tryEnqueue` would drop it as `AlreadyQueued` behind an older pending row, and that row
+     * sends its stale snapshot. Two slots per file: a pending row is replaced in place, an
+     * in-flight row is never touched, and the newer write waits in the other slot behind it.
+     */
+    public suspend fun enqueueLatest(
+        request: UpdateLocalAppdataContentOutboxRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): EnqueueResult {
+        val json = OutboxSerializer.serialize(request)
+        val keyA = request.fileId
+        val keyB = localAppDataFollowUpKey(keyA)
+        val result = latestWriteMutex.withLock {
+            var outcome: EnqueueResult = EnqueueResult.AlreadyQueued
+            repeat(LATEST_WRITE_ATTEMPTS) {
+                val a = databaseManager.outbox.selectByDriveAndUnique(request.driveId, keyA)
+                val b = databaseManager.outbox.selectByDriveAndUnique(request.driveId, keyB)
+                val target = when {
+                    a == null && b == null -> keyA
+                    a == null -> if (b!!.checkOutStamp == null) keyB else keyA
+                    b == null -> if (a.checkOutStamp == null) keyA else keyB
+                    a.checkOutStamp != null && b.checkOutStamp != null -> {
+                        Logger.w("OutboxSync: enqueueLatest found both slots in flight ($keyA, $keyB) — dropping the newer write")
+                        return@withLock EnqueueResult.AlreadyQueued
+                    }
+                    a.checkOutStamp != null -> keyB
+                    b.checkOutStamp != null -> keyA
+                    // Both pending: the one waiting on the other holds the newest snapshot.
+                    a.dependencyUniqueId == keyB -> keyA
+                    else -> keyB
+                }
+                val targetRow = if (target == keyA) a else b
+                val otherKey = if (target == keyA) keyB else keyA
+                val otherRow = if (target == keyA) b else a
+                if (targetRow != null &&
+                    databaseManager.outbox.deleteByIfNotCheckedOut(request.driveId, target) == 0L
+                ) {
+                    return@repeat // a worker checked it out meanwhile; re-evaluate
+                }
+                outcome = tryEnqueue(
+                    driveId = request.driveId,
+                    uniqueId = target,
+                    dependencyUniqueId = if (otherRow != null) otherKey else dependencyUniqueId ?: targetRow?.dependencyUniqueId?.takeIf { it != otherKey },
+                    priority = priority,
+                    uploadType = DriveOutboxUploader.UpdateLocalMetadataContent,
+                    json = json,
+                )
+                return@withLock outcome
+            }
+            outcome
         }
         return kickIfEnqueued(result, sendNow)
     }
@@ -1158,3 +1243,6 @@ class OutboxSync(
         Logger.i("OutboxSync: clearCheckout() DONE — checked $cleared row(s) back in (waited ${UnixTimeUtc.now().milliseconds - start}ms)")
     }
 }
+
+private fun Throwable.isMissingDriveKey(): Boolean =
+    generateSequence(this) { it.cause }.any { it is FileDecryptionException.NoDriveKey }

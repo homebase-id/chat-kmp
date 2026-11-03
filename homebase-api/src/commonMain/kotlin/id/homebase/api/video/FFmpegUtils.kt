@@ -20,10 +20,32 @@ data class VideoTrackInfo(
     val isHdr: Boolean?,
 )
 
+/**
+ * Low-level video operations on ffmpeg (FFmpegKit on Android and iOS, a subprocess on desktop,
+ * ffmpeg.wasm on web). Input and output paths are filesystem paths; on web they are paths in the
+ * in-memory okio file system. Every suspend function runs its work off the caller's thread and
+ * is cancellable, except on web, where an ffmpeg.wasm call that has started cannot be
+ * interrupted. Do not run two ffmpeg operations at once: Android and iOS share one engine and
+ * web one worker, and overlapping sessions crash or collide.
+ *
+ * Failure: functions returning nullable or Boolean report failure that way and do not throw;
+ * [compressVideo] throws [VideoCompressionFailedException]. A missing input is a failure.
+ */
 @LowLevelFfmpegApi
 expect object FFmpegUtils {
+    /**
+     * Stable id for the file at [filePath], used to name scratch output. Same file name and size
+     * give the same id; different files that share both collide. Opaque, so don't parse it.
+     * Android and desktop return a UUID, iOS a decimal hash. Web returns [filePath] itself.
+     * A missing file does not throw: its size counts as 0. On Android a `content://` URI also
+     * has size 0, so gallery picks of the same tail collide.
+     */
     fun getUniqueId(filePath: String): String
 
+    /**
+     * Rotation in degrees the container asks players to apply (0, 90, 180 or 270),
+     * or 0 when there is none or it cannot be read, including a missing file.
+     */
     suspend fun getRotationFromFile(filePath: String): Int
 
     /**
@@ -45,19 +67,29 @@ expect object FFmpegUtils {
         quality: VideoQuality = VideoQuality.STANDARD,
     ): String
 
+    /** Duration in milliseconds, or 0 when it cannot be determined, including a missing file. */
     suspend fun getDurationMs(inputPath: String): Long
 
+    /**
+     * Splits [inputPath] into a single-file HLS stream encrypted with AES-128 using [keyHeader]'s
+     * key and IV (both must be 16 bytes), and returns (playlist path, segment path) in a new
+     * scratch directory, or null on any failure. Portrait sources are re-encoded to bake in
+     * rotation; others are stream-copied. [onProgress] reports 0..1. The key material is
+     * deleted from disk when the call ends, success or not.
+     */
     suspend fun segmentAndEncryptVideo(
         inputPath: String,
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>?
 
+    /** As [segmentAndEncryptVideo] but the segment is not encrypted. */
     suspend fun segmentVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?
     ): Pair<String, String>?
 
+    /** Writes [data] to a new file in the media scratch directory and returns its path. */
     suspend fun cacheInputVideo(fileName: String, data: ByteArray): String
 
     /**

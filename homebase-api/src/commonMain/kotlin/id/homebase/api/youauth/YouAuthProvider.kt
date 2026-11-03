@@ -7,6 +7,8 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EccKeyPair
 import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.HashUtil
+import id.homebase.api.crypto.ZkSeal
+import id.homebase.api.crypto.decryptPrivateKey
 import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.performEcdhKeyAgreement
 import id.homebase.api.crypto.publicKeyFromJwkBase64Url
@@ -24,7 +26,8 @@ import kotlin.io.encoding.Base64
 data class AuthResult(
     val clientAuthToken: String,
     val sharedSecret: String,
-    val identity: OdinId
+    val identity: OdinId,
+    val zkAppKey: ByteArray? = null
 )
 
 class YouAuthProvider(
@@ -135,24 +138,34 @@ class YouAuthProvider(
 
         val sharedSecret =
             AesCbc.decrypt(
-                Base64.decode(token.base64SharedSecretCipher),
+                token.base64SharedSecretCipher.bytes,
                 exchangedSecret.unsafeBytes,
-                Base64.decode(token.base64SharedSecretIv)
+                token.base64SharedSecretIv.bytes
             )
 
         val clientAuthToken =
             AesCbc.decrypt(
-                Base64.decode(token.base64ClientAuthTokenCipher),
+                token.base64ClientAuthTokenCipher.bytes,
                 exchangedSecret.unsafeBytes,
-                Base64.decode(token.base64ClientAuthTokenIv)
+                token.base64ClientAuthTokenIv.bytes
             )
 
         return AuthResult(
             clientAuthToken = Base64.encode(clientAuthToken),
             sharedSecret = Base64.encode(sharedSecret),
-            identity = identity
+            identity = identity,
+            zkAppKey = token.zkAppKey?.let { openZkAppKey(it.bytes, keyPair, password) }
         )
     }
+
+    // A key that doesn't open leaves the sign-in working and the zero-knowledge drives locked.
+    private suspend fun openZkAppKey(sealed: ByteArray, keyPair: EccKeyPair, password: SecureByteArray): ByteArray? =
+        try {
+            ZkSeal.open(sealed, decryptPrivateKey(keyPair.privateKey, password))
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "The zero-knowledge app key didn't open" }
+            null
+        }
 
     suspend fun logout(): Boolean =
         try {

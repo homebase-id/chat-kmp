@@ -13,7 +13,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
-import id.homebase.api.sync.database.SqlCipherKeyMode
+import id.homebase.api.sync.database.SqlCipherRawKey
 import id.homebase.api.sync.database.cipherUrl
 import id.homebase.api.sync.database.deleteDatabaseFiles
 import id.homebase.api.sync.database.openSqliteDriver
@@ -121,7 +121,7 @@ class DbPerfBench {
     // Production desktop's driver and URL (raw-key SQLCipher, shared pragmas).
     // DB_BENCH_DRIVER=legacy runs SQLDelight's connection-per-statement driver for comparison.
     private fun driverFor(file: File): SqlDriver {
-        val url = cipherUrl(file, SqlCipherKeyMode.rawKey(KEY_HEX))
+        val url = cipherUrl(file, SqlCipherRawKey.format(KEY_HEX))
         return if (legacyDriver) JdbcSqliteDriver(url, tuningProperties()) else openSqliteDriver(url)
     }
 

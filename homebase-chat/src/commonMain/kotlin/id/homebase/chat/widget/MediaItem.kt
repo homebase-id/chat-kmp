@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -74,7 +76,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**
@@ -175,7 +176,7 @@ fun MediaItem(
                 }
             }
 
-            val payloadIv = payload.iv?.let { Base64.decode(it) }
+            val payloadIv = payload.iv?.bytes
 
             if (payloadIv != null && linkDescriptors != null) {
                 LinkPreviewCard(
@@ -216,7 +217,7 @@ fun MediaItem(
             }
             val descriptor = locationHeaderDescriptor ?: payloadDescriptor
 
-            val payloadIv = payload.iv?.let { Base64.decode(it) }
+            val payloadIv = payload.iv?.bytes
 
             if (payloadIv != null && descriptor != null) {
                 LocationPreviewCard(
@@ -283,7 +284,7 @@ fun MediaItem(
                 // which would cause Coil to restart the image loading pipeline and cause flickering.
                 val imageData =
                     remember(driveId, fileId, payload.key, payload.lastModified, imageSize, contentType) {
-                        val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                        val payloadIv = payload.iv?.bytes ?: return@remember null
                         HomebaseImageData.from(
                             driveId = driveId,
                             fileId = fileId,
@@ -323,7 +324,7 @@ fun MediaItem(
 
         payload.isVideo() -> {
             val payloadIv = remember(payload.iv) {
-                payload.iv?.let { Base64.decode(it) }
+                payload.iv?.bytes
             }
             if (payloadIv != null) {
                 val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
@@ -548,7 +549,7 @@ fun MediaItem(
             val pdfPreviewData =
                 remember(driveId, fileId, payload.key, payload.lastModified) {
                     val previewThumb = payload.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail
-                    val payloadIv = payload.iv?.let { Base64.decode(it) }
+                    val payloadIv = payload.iv?.bytes
                     if (previewThumb == null || payloadIv == null) return@remember null
                     HomebaseImageData.from(
                         driveId = driveId,
@@ -576,7 +577,8 @@ fun MediaItem(
                 modifier = baseModifier,
                 onDownloadClick = { onClick?.invoke() },
                 onLongPress = { onLongPress?.invoke(Offset.Zero) },
-                isDownloading = isDownloading
+                isDownloading = isDownloading,
+                showDownloadButton = chatChipPreviewKind(contentType, payload.filename() ?: payload.key, payload.bytesWritten).let { it != FilePreviewKind.Text && it != FilePreviewKind.Markdown },
             )
         }
 

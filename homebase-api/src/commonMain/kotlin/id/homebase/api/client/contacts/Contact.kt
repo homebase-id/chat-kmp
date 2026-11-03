@@ -7,7 +7,6 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -60,7 +59,7 @@ internal val ContactImageRef.isSvg: Boolean
 /** The IV is per-payload, the AES key is the file's. Null until the payload is decodable. */
 fun ContactImageRef.payloadKeyHeader(): KeyHeader? {
     val aesKey = keyHeader?.aesKey ?: return null
-    val iv = payload.iv?.let { runCatching { Base64.decode(it) }.getOrNull() } ?: return null
+    val iv = payload.iv?.bytes ?: return null
     return KeyHeader(iv = iv, aesKey = aesKey)
 }
 

@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.api.serialization.Base64Bytes
 import app.cash.sqldelight.Query
 import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
@@ -413,9 +414,9 @@ class VaultStreamTest {
 
         val entry = buildEntry(uniqueId = entryId, groupId = sectionId).copy(
             payloadDescriptors = listOf(
-                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = "abc"),
-                PayloadDescriptor(key = "vlt_pg_01", contentType = "image/jpeg", iv = "def"),
-                PayloadDescriptor(key = "vlt_pg_02", contentType = "image/jpeg", iv = "ghi"),
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = Base64Bytes(byteArrayOf(1))),
+                PayloadDescriptor(key = "vlt_pg_01", contentType = "image/jpeg", iv = Base64Bytes(byteArrayOf(2))),
+                PayloadDescriptor(key = "vlt_pg_02", contentType = "image/jpeg", iv = Base64Bytes(byteArrayOf(3))),
             ),
         )
         stream.insertOptimisticEntry(entry, sectionId)
@@ -575,8 +576,8 @@ class VaultStreamTest {
 
         val entry = buildEntry(uniqueId = entryId, groupId = sectionId).copy(
             payloadDescriptors = listOf(
-                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = "abc"),
-                PayloadDescriptor(key = "vlt_pg_01", contentType = "image/jpeg", iv = "def"),
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = Base64Bytes(byteArrayOf(1))),
+                PayloadDescriptor(key = "vlt_pg_01", contentType = "image/jpeg", iv = Base64Bytes(byteArrayOf(2))),
             ),
         )
         stream.insertOptimisticEntry(entry, sectionId)
@@ -608,7 +609,7 @@ class VaultStreamTest {
 
         val entry = buildEntry(uniqueId = entryId, groupId = sectionId).copy(
             payloadDescriptors = listOf(
-                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = "abc"),
+                PayloadDescriptor(key = "vlt_pg_00", contentType = "image/jpeg", iv = Base64Bytes(byteArrayOf(1))),
             ),
         )
         stream.insertOptimisticEntry(entry, sectionId)

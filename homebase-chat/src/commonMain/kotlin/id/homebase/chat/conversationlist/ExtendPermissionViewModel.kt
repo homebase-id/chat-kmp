@@ -11,14 +11,17 @@ import id.homebase.api.youauth.PermissionCheckResult
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 class ExtendPermissionViewModel(
     private val securityContextProvider: SecurityContextProvider,
@@ -26,7 +29,11 @@ class ExtendPermissionViewModel(
     private val eventBus: EventBus,
     private val config: PermissionExtensionConfig,
     private val autoCheck: Boolean = true,
-) : ViewModel() {
+    private val recheckOnAuthorizationFailure: Boolean = true,
+) : ViewModel(), AutoCloseable {
+
+    // Never in a ViewModelStore: the owning view model's addCloseable ends it.
+    override fun close() = viewModelScope.cancel()
 
     private val _uiState = MutableStateFlow<ExtendPermissionUiState>(ExtendPermissionUiState.Idle)
     val uiState: StateFlow<ExtendPermissionUiState> = _uiState.asStateFlow()
@@ -65,6 +72,11 @@ class ExtendPermissionViewModel(
      * flow (`status=canceled`). Emitted on a SharedFlow so the screen consumes it
      * exactly once per cancel.
      */
+    private val _cancelled = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** The user said no, in the dialog or in the owner console; confirming the dialog is not a cancel. */
+    val cancelled: SharedFlow<Unit> = _cancelled.asSharedFlow()
+
     private val _navigateAwayRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val navigateAwayRequest: SharedFlow<Unit> = _navigateAwayRequest.asSharedFlow()
 
@@ -76,20 +88,25 @@ class ExtendPermissionViewModel(
      */
     private var lastMissingResult: MissingPermissionsResult? = null
 
+    private var checkGeneration = 0
+
     init {
         if (autoCheck) {
             viewModelScope.launch { checkPermissions() }
         }
 
-        viewModelScope.launch {
-            eventBus.events
-                .filterIsInstance<BackendEvent.DriveAuthorizationFailed>()
-                .collect { checkPermissions() }
+        if (recheckOnAuthorizationFailure) {
+            viewModelScope.launch {
+                eventBus.events
+                    .filterIsInstance<BackendEvent.DriveAuthorizationFailed>()
+                    .collect { checkPermissions() }
+            }
         }
 
         viewModelScope.launch {
             eventBus.events
                 .filterIsInstance<BackendEvent.PermissionsExtensionReturned>()
+                .filter { answersMe(it.requester) }
                 .collect {
                     Logger.i(tag = TAG) { "Permissions-extension return — rechecking" }
                     recheckPermissions()
@@ -99,6 +116,7 @@ class ExtendPermissionViewModel(
         viewModelScope.launch {
             eventBus.events
                 .filterIsInstance<BackendEvent.PermissionsExtensionCanceled>()
+                .filter { answersMe(it.requester) }
                 .collect {
                     Logger.i(tag = TAG) {
                         "Permissions-extension canceled — dismissing dialog, requesting nav-away"
@@ -107,18 +125,27 @@ class ExtendPermissionViewModel(
                     // in the owner console, so re-prompting with the same dialog would
                     // just be the second of two cancel taps.
                     _uiState.value = ExtendPermissionUiState.Dismissed
+                    _cancelled.tryEmit(Unit)
                     _navigateAwayRequest.tryEmit(Unit)
                 }
         }
     }
 
+    fun callbackUrl(): String = config.callbackUrl()
+
+    // Another mini-app's answer isn't ours; an untagged return (an older URL) is everyone's.
+    private fun answersMe(requester: String?) = requester == null || requester == config.requester
+
     private suspend fun checkPermissions() {
         if (_uiState.value is ExtendPermissionUiState.Dismissed) return
+        // Latest wins: a slow check finishing last must not replace a newer verdict.
+        val generation = ++checkGeneration
         _checkFailed.value = false
         try {
             val active = credentialsManager.getActiveCredentials()
             if (active == null) {
                 Logger.d(tag = TAG) { "No active credentials — skipping permission check" }
+                if (generation == checkGeneration) _checkFailed.value = true
                 return
             }
             val activeDomain = active.domain.domainName
@@ -144,7 +171,9 @@ class ExtendPermissionViewModel(
             }
             val manager = PermissionExtensionManager.create(securityContextProvider, activeDomain)
 
-            when (val result = manager.getMissingPermissions(config)) {
+            val result = manager.getMissingPermissions(config)
+            if (generation != checkGeneration) return
+            when (result) {
                 // An unreachable security context is not a grant. Leaving _permissionsChecked
                 // false is the point: a wrong verdict cached here would be treated as final
                 // for the rest of the session.
@@ -163,7 +192,7 @@ class ExtendPermissionViewModel(
                     lastMissingResult = details
                     _permissionsGranted.value = false
                     _uiState.value =
-                        ExtendPermissionUiState.ShowDialog(appName = config.appName)
+                        ExtendPermissionUiState.ShowDialog(appName = config.appName, installs = details.installs)
                     _permissionsChecked.value = true
                 }
 
@@ -174,7 +203,13 @@ class ExtendPermissionViewModel(
                     _permissionsChecked.value = true
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            if (generation != checkGeneration) {
+                Logger.w(throwable = e, tag = TAG) { "Superseded permission check failed: ${e.message}" }
+                return
+            }
             Logger.e(throwable = e, tag = TAG) { "Error checking permissions: ${e.message}" }
             _checkFailed.value = true
         }
@@ -190,7 +225,13 @@ class ExtendPermissionViewModel(
         viewModelScope.launch { checkPermissions() }
     }
 
+    fun cancelDialog() {
+        dismissDialog()
+        _cancelled.tryEmit(Unit)
+    }
+
     fun dismissDialog() {
+        checkGeneration++
         _uiState.value = ExtendPermissionUiState.Dismissed
     }
 
@@ -214,7 +255,7 @@ sealed interface ExtendPermissionUiState {
     data object Idle : ExtendPermissionUiState
 
     /** Missing permissions detected, dialog should be shown. */
-    data class ShowDialog(val appName: String) : ExtendPermissionUiState
+    data class ShowDialog(val appName: String, val installs: String? = null) : ExtendPermissionUiState
 
     /** User dismissed the dialog. */
     data object Dismissed : ExtendPermissionUiState

@@ -1,5 +1,10 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.file.FileTooLargeForMemoryException
+import kotlinx.coroutines.CancellationException
+import id.homebase.chat.widget.preview.chatChipPreviewKind
+import id.homebase.chat.widget.preview.decryptedCopyName
+import id.homebase.resources.chat_error_file_too_large_here
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
@@ -11,6 +16,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoCompressionService
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.core.util.formatMediumDate
+import id.homebase.resources.chat_error_copy_image
+import id.homebase.resources.chat_image_copied
 import id.homebase.core.util.isMobile
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.resources.vault_chat_image_name
@@ -50,7 +57,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**
@@ -84,11 +90,9 @@ internal class MediaDownloadHandler(
                 val message = messageModel.message
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException(
+                val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
-                    )
-                )
+                    )).bytes
                 val extension = payload.contentType?.let { extensionForMimeType(it) }
                     ?: payload.contentType?.substringAfter("/")
                     ?: "bin"
@@ -132,14 +136,11 @@ internal class MediaDownloadHandler(
         scope.launch {
             val saved = try {
                 val message =
-                    messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                        .map { it.message }.find { it.id == action.messageId } ?: return@launch
+                    messagesUiState.value.messageById(action.messageId) ?: return@launch
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                 val contentType = payload.contentType ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
-                )
+                val payloadIv = (payload.iv ?: throw IllegalStateException("encrypted payload requires key header")).bytes
                 val extension = extensionForMimeType(contentType) ?: contentType.substringAfter("/")
                 val tempPath = chatMessageActionService.streamPayloadToUploadTemp(
                     message.fileId,
@@ -168,6 +169,19 @@ internal class MediaDownloadHandler(
         }
     }
 
+    fun handleCopyImage(action: ConversationListUiAction.CopyImage) {
+        val message = messagesUiState.value.messageById(action.messageId)
+            ?.takeIf { it.canCopyImage(action.payloadKey) } ?: return
+        val payload = message.payloads?.find { it.key == action.payloadKey } ?: return
+        scope.launch {
+            val copied = chatMessageActionService.copyImagePayloadToClipboard(message.fileId, payload, message.keyHeader)
+            sendEvent(
+                if (copied) ConversationListUiEvent.ShowInfoMessage(MR.string.chat_image_copied)
+                else ShowErrorMessage(MR.string.chat_error_copy_image)
+            )
+        }
+    }
+
     fun handleShareMessage(action: ConversationListUiAction.ShareMessage) {
         val message = action.message
         val filteredPayloads = message.payloads?.filter {
@@ -190,8 +204,7 @@ internal class MediaDownloadHandler(
 
     fun handleDownloadMedia(action: ConversationListUiAction.DownloadMedia) {
         val message =
-            messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                .map { it.message }.find { it.id == action.messageId } ?: return
+            messagesUiState.value.messageById(action.messageId) ?: return
 
         val fileKey = "${message.id}_${action.payloadKey}"
 
@@ -202,11 +215,9 @@ internal class MediaDownloadHandler(
             try {
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException(
+                val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
-                    )
-                )
+                    )).bytes
 
                 val fullName = resolveDownloadFileName(
                     payload.filename(), payload.key, payload.contentType
@@ -295,6 +306,8 @@ internal class MediaDownloadHandler(
                         sendEvent(ShowErrorMessage(MR.string.chat_error_download_file))
                     }
                 }
+            } catch (e: FileTooLargeForMemoryException) {
+                sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
             } catch (e: Exception) {
                 sendEvent(ShowErrorMessage(MR.string.chat_error_downloading_file_detail, e.message ?: ""))
             } finally {
@@ -303,33 +316,33 @@ internal class MediaDownloadHandler(
         }
     }
 
+    private fun closePreviewOf(fileId: Uuid, payloadKey: String) {
+        messagesUiState.update {
+            val open = it.fullScreenOverlay as? FullScreenOverlay.FilePreviewData
+            if (open != null && open.fileId == fileId && open.payloadKey == payloadKey) it.closeMediaViewer() else it
+        }
+    }
+
+    private val decryptsInFlight = mutableSetOf<String>()
+
     fun handleDecryptFile(action: ConversationListUiAction.DecryptFile) {
         val message =
-            messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
-                .map { it.message }.find { it.id == action.messageId } ?: return
+            messagesUiState.value.messageById(action.messageId) ?: return
 
         val fileKey = "${message.id}_${action.payloadKey}"
+        if (!decryptsInFlight.add(fileKey)) return
 
         scope.launch {
             try {
 
                 val payload =
                     message.payloads?.find { it.key == action.payloadKey } ?: return@launch
-                val payloadIv = Base64.decode(
-                    payload.iv ?: throw IllegalStateException(
+                val payloadIv = (payload.iv ?: throw IllegalStateException(
                         "encrypted payload requires key header"
-                    )
-                )
+                    )).bytes
 
-                val rawName = payload.filename() ?: payload.key
-                val filePath = if (rawName.contains('.')) {
-                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName"
-                } else {
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
-                    "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$rawName.$extension"
-                }
+                val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/" +
+                    decryptedCopyName(message.fileId, action.payloadKey, payload.filename(), payload.contentType)
 
                 val success = driveFileProvider.streamPayloadDecryptedToPath(
                     driveId = chatTargetDrive.alias,
@@ -351,9 +364,17 @@ internal class MediaDownloadHandler(
                         "stream returned false file=${message.fileId} key=${action.payloadKey} " +
                             "contentType=${payload.contentType} bytesWritten=${payload.bytesWritten} path=$filePath"
                     }
+                    closePreviewOf(message.fileId, action.payloadKey)
                     sendEvent(ShowErrorMessage(MR.string.chat_error_downloading_file))
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                closePreviewOf(message.fileId, action.payloadKey)
+                if (e is FileTooLargeForMemoryException) {
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_file_too_large_here))
+                    return@launch
+                }
                 Logger.e(throwable = e, tag = "DecryptFile") {
                     val payload = message.payloads?.find { it.key == action.payloadKey }
                     val aesKey = message.keyHeader.aesKey.unsafeBytes
@@ -365,6 +386,7 @@ internal class MediaDownloadHandler(
                     ShowErrorMessage(MR.string.chat_error_downloading_file_detail, e.message ?: "")
                 )
             } finally {
+                decryptsInFlight.remove(fileKey)
                 // 4. Remove from downloadingFiles set
                 uiState.update {
                     it.copy(downloadingFiles = it.downloadingFiles - fileKey)
@@ -485,7 +507,7 @@ internal class MediaDownloadHandler(
 
                     selectedPayload.isVideo() -> {
                         val localContext = localVideoContextStore.get(action.message.id, selectedPayload.key)
-                        val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
+                        val ivBytes = selectedPayload.iv?.bytes
 
                         if (ivBytes != null || localContext != null) {
                             messagesUiState.update {
@@ -508,24 +530,34 @@ internal class MediaDownloadHandler(
                     }
 
                     selectedPayload.isAudio() -> {}
-                    contentType == "application/pdf" -> {
-                        val alreadyDecrypted = messagesUiState.value.decryptedFiles
-                            .containsKey(DecryptedFileKey(action.message.fileId, action.payloadKey))
-                        if (!alreadyDecrypted) {
-                            dispatch(
-                                ConversationListUiAction.DecryptFile(
-                                    action.message.id, action.payloadKey
-                                )
-                            )
-                        }
+                    chatChipPreviewKind(contentType, selectedPayload.filename() ?: selectedPayload.key, selectedPayload.bytesWritten) != null -> {
+                        val name = selectedPayload.filename() ?: selectedPayload.key
+                        val kind = chatChipPreviewKind(contentType, name, selectedPayload.bytesWritten) ?: return@launch
+                        val key = DecryptedFileKey(action.message.fileId, action.payloadKey)
+                        val known = messagesUiState.value.decryptedFiles[key]
+                        val needDecrypt = known == null || !fileOperationsProvider.sourceExists(known)
                         messagesUiState.update {
                             it.copy(
-                                fullScreenOverlay = FullScreenOverlay.PdfViewerData(
+                                fullScreenOverlay = FullScreenOverlay.FilePreviewData(
                                     messageId = action.message.id,
                                     fileId = action.message.fileId,
                                     payloadKey = action.payloadKey,
-                                    title = action.message.originalAuthor?.domainName ?: "null",
+                                    title = name,
+                                    name = name,
+                                    kind = kind,
                                     userDate = action.message.userDate,
+                                )
+                            )
+                        }
+                        if (needDecrypt) {
+                            if (known != null) {
+                                messagesUiState.update {
+                                    it.copy(decryptedFiles = it.decryptedFiles.toMutableMap().apply { remove(key) }.toPersistentMap())
+                                }
+                            }
+                            dispatch(
+                                ConversationListUiAction.DecryptFile(
+                                    action.message.id, action.payloadKey
                                 )
                             )
                         }

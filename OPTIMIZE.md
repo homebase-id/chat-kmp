@@ -50,6 +50,24 @@ DB_OPS_UPDATE=1 ./gradlew :homebase-chat:jvmTest --tests '*DbOpsBaselineTest*'  
   Not covered yet: ConversationListViewModel's own reads when opening (it needs Koin), the
   push-tap path, mark-as-read, typed messages (polls, events) that auto-pin.
 
+### Chat UI benchmarks (desktop JVM, headless)
+
+```bash
+CHAT_UI_BENCH=1 ./gradlew :homebase-chat:jvmTest --tests '*bench.*Bench*' --rerun
+# CHAT_UI_BENCH_RUNS=30 for tighter timings
+```
+
+- `ChatMarkdownPerfBench`: `parseChatMarkdown` per message kind and per synthetic 50/100-message
+  conversation, cold and through `ChatMarkdownParseCache`; the cache's retained heap at 256
+  entries; `highlightCode` per block. Timings are the median of 15 timed runs after a JIT warm-up.
+- `ComposerRecompositionBench`: restart scopes entered per keystroke in `MessageInputBar`, counted
+  with the runtime's `CompositionObserver` (every composition, subcompositions included) and
+  attributed to the composable that first entered each scope; plus an A/B of the editor's
+  `onFormat` argument. Counts are deterministic.
+- Results go to the test's stdout (`homebase-chat/build/test-results/jvmTest/TEST-*Bench.xml`).
+  Skipped unless `CHAT_UI_BENCH=1`, so CI never runs them.
+- A warm desktop JVM is the best case. A phone, and the first open on a cold process, are slower.
+
 ### On a device
 
 `homebase.log` already carries:
@@ -81,6 +99,49 @@ All plans use indexes. The chat fetch seeks `idx_chatmessage_convid_userDate`, s
 size barely matters. The per-conversation SQL isn't the slow part of opening a conversation
 on desktop.
 
+### 2026-10-26, 6ee395a35, desktop JVM (macOS, Apple M1 Pro, 16 GB), chat UI benches
+
+Temurin 21.0.12 test JVM, 8 cpus. Two runs back to back agreed within 10%; the first is shown.
+Fixtures are synthetic (`MarkdownFixtures`): mostly short text, some emoji, mentions, links,
+inline formatting, multi-line, lists, a few fenced Kotlin blocks and tables.
+
+| Measurement | Result | Verdict |
+|---|---|---|
+| `parseChatMarkdown`, one short message (plain / emoji / mention / link) | 1.8 / 2.3 / 2.4 / 3.9 µs | |
+| one message: inline formatting / bullet list / 10-line code block / table | 7.0 / 12.1 / 6.7 / 21.9 µs | |
+| one ~4 KB message | 110 µs | |
+| 50-message conversation (3.1K chars), cold / all cache hits | 0.26 / 0.003 ms | no action |
+| 100-message conversation (7.6K chars), cold / all cache hits | 0.54 / 0.008 ms | no action: 3% of a 16 ms frame on JVM |
+| `ChatMarkdownParseCache`, 256 typical messages (avg 67 chars) | 0.19 MiB (of which 0.03 MiB the strings) | no action |
+| `ChatMarkdownParseCache`, 256 ~4 KB messages | 4.8 MiB (of which 1.0 MiB the strings) | no action: that ceiling needs every entry to be a 4 KB message |
+| `highlightCode`, 10-line Kotlin block | 0.15 ms | no action |
+| `highlightCode`, 200-line Kotlin block | 4.8 ms | worth fixing: paid again every time the item scrolls back in |
+| `MessageInputBar`, restart scopes entered per keystroke | 59 (incl. `MessageInputBar` 1, `MessageTextFieldCompact` 1) | see below |
+| scopes from `onFormat = state::applyFormatShortcut` | 0 | no action |
+
+Memory method: `System.gc()` until used heap stops falling, then the used-heap delta of holding
+8 filled caches, divided by 8; 5 samples, median. Spread across samples: 0.18–0.24 MiB (typical),
+4.82–4.83 MiB (long). The parse result's lazy render state is built as rendering would. The
+message strings are counted because the cache key keeps them alive; their share is measured
+separately.
+
+Highlight per scroll-back-in: the highlighted string is `remember`ed inside the bubble, so it's
+dropped when the item leaves the LazyColumn and recomputed on return, even though the parse
+itself comes from the cache. A bubble pays the sum over its fenced blocks.
+
+`onFormat` A/B (parent recomposes, nothing else changes; editor subtree scopes per parent
+recomposition): bound reference 15, remembered lambda 15, no `onFormat` 15, no
+`composerKeyHandler` at all 1. The reference costs nothing extra: what defeats skipping is
+`composerKeyHandler` itself: it builds a new `onPreviewKeyEvent` lambda on
+every call, so `RichTextEditor`'s modifier is never equal and its whole subtree re-runs whenever
+its parent does. In the real bar the parent does recompose on every keystroke (`MessageInputBar`
+and `MessageTextFieldCompact` each enter once per character), so the editor subtree runs anyway.
+Not measured as time; check a keystroke frame on a phone before acting on it.
+
+Still needs the iPhone: the share of the 400–700 ms conversation open spent in
+`parseChatMarkdown` versus layout, cold and warm, and the one-time SQLCipher in-place encryption
+of a large database on an old device.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
@@ -93,8 +154,8 @@ on desktop.
   are open, so check concurrency with `DatabaseConnectionContractAndroidTest`.
 - **A passphrase costs a key derivation per connection.** SQLCipher runs PBKDF2 × 256,000 on
   every connection it opens with a passphrase, and Android's pool opens readers one at a time.
-  Desktop and Android hand it a raw key derived once (`SqlCipherKeyMode`). iOS doesn't encrypt
-  yet; when it does, start in raw-key mode (see `openNativeSqliteDriver`).
+  Desktop and Android hand it a raw key derived once (`SqlCipherKeyMode`); iOS has only ever
+  had a random raw key (`openKeyedNativeSqliteDriver`).
 - **Desktop prepares every statement again.** `JdbcDriver` ignores the statement
   `identifier`; Android's and iOS's drivers cache prepared statements per connection. Now that
   desktop connections live long, a per-connection cache keyed by `identifier` would save a
@@ -153,4 +214,6 @@ on desktop.
 | 2026-10-24 | Android raw-key mode: the shared `SqlCipherKeyMode` (`javaMain`, desktop and Android) hands SQLCipher a cached raw key. The first launch after the update opens with the passphrase and derives the raw key on a background thread, because Android's PBKDF2 runs in Java: 3,261 ms on the main thread when tried inline, 1,705 ms in the background on an API 36 emulator. The database opens once; the old separate key probe also checkpointed the WAL on the main thread. The file isn't rewritten | Per fresh driver, passphrase → raw key: open plus first read 220–307 → 2–6 ms; 4 first reads during a write 766–988 → 5–9 ms (the pool opened 3 readers one after another, each deriving the key). Upgrade from the previous build on the emulator: migrated, salt unchanged, next launch silent | Yes |
 | 2026-10-24 | Sync batch: save the drive cursor once per batch, not once per file (`performBaseUpsert`) | `background-wake.txt` 12 → 10 writes for 3 files. Linux, Python's sqlite3 (no SQLCipher): 1,000 redundant upserts cost 6.8 ms per batch, plus serializing the cursor each time | Yes |
 | 2026-10-24 | Skip the two tag `DELETE`s (`DriveTagIndex`, `DriveLocalTagIndex`) for new rows | Same setup: 2,000 no-match deletes over 57K tag rows cost 4.0 ms per 1,000-file batch. Skipping needs proof that no tag rows exist for the fileId; if that is wrong, the tag `INSERT` breaks UNIQUE and the batch fails | No: risk outweighs 4 ms |
+| 2026-10-26 | iOS encrypts its database: SQLCipher 4.19.0 (Zetetic's `SQLCipher.swift` package in iosApp; the same xcframework, fetched by checksum, for the simulator test binary) replaces the system `libsqlite3`, which ignored `PRAGMA key`. Raw-key mode from the start: a random 32-byte key under the same SecureStorage name as Android and desktop, set first in sqliter's `onCreateConnection` on every connection. An existing plaintext file is checkpointed, copied with `sqlcipher_export` into an encrypted file (plus `user_version`), checked, and renamed over the original; if that fails the plaintext file opens unencrypted and the next launch tries again | Phone cost: next row. `IosDatabaseEncryptionTest` on the iOS simulator: header encrypted, no-key open fails, migrated rows and `user_version` kept | Yes |
+| 2026-10-26 | iOS SQLCipher on the phone (iPhone 15, `iosApp Dev`, debug K/N framework, demo frodo: 8.4 MB, 1,947 `DriveMainIndex` rows, 310 messages, 70 conversations). Before: 004c805e5 plaintext, plus an uncommitted change that moves `QueryBatch`'s JSON decode off the read lane, so `SlowDbRead` counts don't compare; after: this branch installed over it. Medians of 3 cold starts, ms after `APP STARTUP` from `homebase.log` | One-time export on the first launch: DB init 6–7 → 99, `initializeApp` 30–35 → 167. Later launches, before → after: DB init 6–7 → 6–9; `initializeApp` 30–35 → 32–35; `ComposeView` built 374 → 379; `App()` first composition 389 → 394; list data ready (70 items) 429 → 420; `loadBasicConversations` 46–61 → 37–53; WebSocket `drainOnce` 5.5 → 6.1 (8 drains); unread counts 5–6 → 6. Process start → `APP STARTUP` 112–114 after (device syslog; no like-for-like before). The file starts with a random salt, no plaintext strings in the file or WAL, no `-encrypting` left over, the export ran once | Yes |
 | 2026-10-26 | Rich text: one markdown parse per message (`ChatMarkdownParseCache`, LRU 256 keyed by content, default instance via `LocalChatMarkdownParseCache`). Before, a block bubble ran 3 `MarkdownParser` passes per composition entry (`markdownHasBlockElements`, `withChatHardLineBreaks`, mikepenz `rememberMarkdownState`) and an inline bubble 3 (same two, then `buildMarkdownAnnotatedString`), plus `MessageBubbleRaw`'s own `markdownHasBlockElements`: 4 per bubble, all repeated when the LazyColumn recycled the item. After: 1 parse for a body with no paragraph soft breaks, 2 for one with (the promoted text has different offsets, so it is parsed again), once per content for the life of the cache. `ChatMarkdownParseCacheTest` counts the cache's parse seam: 1 across restyle and dispose/re-add. The search-highlight path still strips with its own CommonMark parse (different flavour, active only while searching) | Parse count, not timed on a device | Yes |

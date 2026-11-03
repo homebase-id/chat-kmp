@@ -28,6 +28,7 @@ import id.homebase.core.config.dataUpgradeReturnUrl
 
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.DriveSyncPolicy
@@ -99,6 +100,7 @@ import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationMapper
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.GroupHealConversationOps
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -116,6 +118,8 @@ import id.homebase.core.audio.ProximityAudioRouter
 import id.homebase.core.audio.VoiceNotePlayback
 import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.OwnerAvatarStatus
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.diagnostics.ServerIpCapture
@@ -146,18 +150,23 @@ import id.homebase.core.ui.screens.vault.VaultUploaderFileSaver
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.vault.VaultFileSaver
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.privatedrive.PrivateDriveOptIn
 import id.homebase.core.ui.screens.webdrop.WebDropService
 import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncRepository
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
+import id.homebase.core.ui.screens.openedfile.DefaultOpenedFileGateway
+import id.homebase.core.ui.screens.openedfile.OpenedFileGateway
+import id.homebase.core.ui.screens.openedfile.OpenedFileViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncEditor
 import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
+import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -188,6 +197,7 @@ import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.ReportingUrlProvider
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
+import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
@@ -200,6 +210,7 @@ import id.homebase.core.sync.RegistryDriveFileType
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.image.ImageSize
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
@@ -247,7 +258,13 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
+import id.homebase.core.config.getCirclePermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.ui.screens.contactbook.CreateCircleViewModel
+import id.homebase.core.ui.screens.contactbook.DefaultUserCircleBackend
+import id.homebase.core.ui.screens.contactbook.ExtendPermissionCircleAccess
+import id.homebase.core.ui.screens.contactbook.UserCircleBackend
+import id.homebase.core.ui.screens.contactbook.UserCircleService
 import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.config.getFilesyncPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
@@ -280,6 +297,7 @@ import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
+val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
@@ -322,7 +340,7 @@ val appModule = module {
                     content = content,
                 )
             },
-            enqueueOutbox = { request -> outboxSync.tryEnqueue(request).enqueued },
+            enqueueOutbox = { request -> outboxSync.enqueueLatest(request).enqueued },
             eventBus = get(),
             scope = get(),
         )
@@ -335,6 +353,7 @@ val appModule = module {
     singleOf(::MomentGroupService)
 
     // Native Feed services. FollowProvider is registered in ApiModule.
+    single { FollowGraph(followProvider = get(), eventBus = get(), scope = get()) }
     singleOf(::FeedTimelineService)
     singleOf(::ChannelDefinitionService)
     singleOf(::ChannelPostQueryService)
@@ -546,12 +565,12 @@ val appModule = module {
                     ),
                 ),
             ),
-            // Likely-large drives go LAST in the syncAll batch-collection so the greedy budget
-            // serves every small drive first; chat is expected largest and goes very last.
+            // Chat is the landing screen (and web's first paint): first claim on the greedy budget.
+            // Feed and Moments are large and not visible on first paint: after every small drive.
+            collectionHead = listOf(chatLabeledDrive.drive.alias),
             collectionTail = listOf(
                 feedLabeledDrive.drive.alias,
                 momentsLabeledDrive.drive.alias,
-                chatLabeledDrive.drive.alias,
             ),
         )
     }
@@ -646,6 +665,14 @@ val appModule = module {
         scoped { MomentCreateFlowState() }
         viewModelOf(::MomentComposeViewModel)
         viewModelOf(::MomentAudienceViewModel)
+    }
+
+    single {
+        OwnerAvatarStatus(
+            connection = get<AuthConnectionCoordinator>().connectionState.map { it.toConnectionStatus() },
+            events = get<EventBus>().events,
+            scope = get(),
+        )
     }
 
     single {
@@ -860,6 +887,7 @@ val appModule = module {
     // singleton (`NoDefinitionFoundException` at app startup). Spelling
     // the injections out lets the Long default through.
     single {
+        val driveFiles = get<id.homebase.api.client.drives.files.DriveFileProvider>()
         ConversationService(
             credentialsManager = get(),
             payloadBundleEncryptionService = get(),
@@ -873,8 +901,11 @@ val appModule = module {
             conversationStream = get(),
             participantLookup = get(),
             driveSyncManager = get(),
-            driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
+            driveFileProvider = driveFiles,
             fileOperationsProvider = get(),
+            serverConversationHeader = { uniqueId ->
+                driveFiles.getFileHeaderByUid(chatTargetDrive.alias, uniqueId)
+            },
         )
     }
     single<LocalLastReadUpdater> { get<ConversationService>() }
@@ -955,9 +986,20 @@ val appModule = module {
             eventBus = get(),
             authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
             messageResolver = get(),
+            replacedSignIns = get<id.homebase.api.youauth.YouAuthFlowManager>().replacedSignIns,
+            httpClient = get(),
         )
     }
-    single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
+    single<NotificationMessageResolver> {
+        ChatNotificationMessageResolver(
+            messageLookup = get<MessageLookup>(),
+            conversation = { id ->
+                get<ConversationStream>().getConversationById(id)
+                    ?: get<ConversationService>().getConversation(id)
+            },
+            loadImage = { data -> get<HomebaseImageLoader>().loadThumbnail(data, ImageSize.THUMB_MEDIUM)?.bytes },
+        )
+    }
     singleOf(::NotificationEntry)
     singleOf(::WebPushService)
     single {
@@ -1105,7 +1147,7 @@ val appModule = module {
             fileOperationsProvider = get(),
             ownerSessionRepository = get(),
             credentialsManager = get(),
-            authConnectionCoordinator = get(),
+            ownerAvatarStatus = get(),
             audioRecorder = get(),
             audioWaveFormGenerator = get(),
             eventBus = get(),
@@ -1317,6 +1359,19 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    viewModel(CirclePermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getCirclePermissionExtensionConfig(),
+            autoCheck = false,
+            recheckOnAuthorizationFailure = false,
+        )
+    }
+    single<UserCircleBackend> { DefaultUserCircleBackend(get(), get()) }
+    single { UserCircleService(get()) }
+    viewModel { CreateCircleViewModel(get(), ExtendPermissionCircleAccess(get(CirclePermissionQualifier))) }
     viewModel(WebDropPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1328,11 +1383,14 @@ val appModule = module {
     }
     // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
     viewModel(FilesyncPermissionQualifier) {
+        val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
             get(),
             get(),
             get(),
-            getFilesyncPermissionExtensionConfig(),
+            getFilesyncPermissionExtensionConfig(
+                isInstalled = { drives.isAppRegistered(FilesyncProtocol.AppSlug) },
+            ),
         )
     }
     viewModel(EmailPermissionQualifier) {
@@ -1372,6 +1430,7 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     singleOf(::DesktopViewModel)
+    factoryOf(::PrivateDriveOptIn)
     viewModel {
         FilesyncViewModel(
             repository = get(),
@@ -1379,10 +1438,13 @@ val appModule = module {
             editor = get(),
             extendPermissionViewModel = get(FilesyncPermissionQualifier),
             webDropShareFlowState = get(),
+            privateDriveOptIn = get(),
         )
     }
+    single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { params -> OpenedFileViewModel(params.get(), get()) }
     viewModel { FilesyncTrashViewModel(get(), get()) }
-    viewModel { FilesyncRecentViewModel(get(), get()) }
+    viewModel { FilesyncRecentViewModel(get(), get(), get()) }
     viewModel {
         WebDropViewModel(
             webDropService = get(),
@@ -1408,6 +1470,7 @@ val appModule = module {
             cropResultBus = get(),
             drawResultBus = get(),
             webDropShareFlowState = get(),
+            privateDriveOptIn = get(),
         )
     }
     viewModel { VaultSettingsViewModel(vaultPreferences = get()) }
@@ -1420,6 +1483,7 @@ val appModule = module {
             mailProvider = get(),
             emailStream = get(),
             credentialsManager = get(),
+            privateDriveOptIn = get(),
         )
     }
     singleOf(::EmailStream)

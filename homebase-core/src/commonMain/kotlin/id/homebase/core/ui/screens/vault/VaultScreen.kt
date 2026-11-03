@@ -2,6 +2,12 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.core.ui.screens.privatedrive.PrivateDriveBanners
+import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
+import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.vault_make_private
+import id.homebase.resources.vault_sign_in_again_body
+import id.homebase.resources.vault_sign_in_again_title
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
@@ -176,6 +182,8 @@ fun VaultScreen(
 
     var pendingError by remember { mutableStateOf<VaultError?>(null) }
 
+    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+
     pendingError?.let { error ->
         val message = resolveVaultError(error)
         LaunchedEffect(error) {
@@ -208,6 +216,8 @@ fun VaultScreen(
                 }
                 is VaultUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
                 is VaultUiEvent.NavigateToDrawer -> onNavigateToDrawer(event.requestId)
+                is VaultUiEvent.OpenSignIn -> signIn.open(event.url)
+                is VaultUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
             }
@@ -386,33 +396,44 @@ fun VaultScreen(
                     contentKey = { it?.let { "gallery" } },
                 ) { overlay ->
                     if (overlay == null) {
-                        VaultContent(
-                            sections = uiState.sections,
-                            isLoading = uiState.isLoading,
-                            isSyncing = uiState.isSyncing,
-                            localAttachmentStore = localAttachmentStore,
-                            onEntryClick = {
-                                viewModel.onAction(VaultUiAction.EntryClicked(it))
-                            },
-                            onAddEntry = { section ->
-                                activeSectionForEntry = section
-                                showImageAddSheet = true
-                            },
-                            onMoveUp = {
-                                viewModel.onAction(VaultUiAction.MoveSectionUp(it))
-                            },
-                            onMoveDown = {
-                                viewModel.onAction(VaultUiAction.MoveSectionDown(it))
-                            },
-                            onRenameSection = { sectionToRename = it },
-                            onDeleteSection = { sectionToDelete = it },
-                            onAddSection = { showNewSectionSheet = true },
-                            modifier = contentModifier,
-                            lazyListState = vaultListState,
-                            sectionRowStates = sectionRowStates,
-                            sharedTransitionScope = this@SharedTransitionLayout,
-                            animatedVisibilityScope = this@AnimatedContent,
-                        )
+                        Column(contentModifier) {
+                            PrivateDriveBanners(
+                                state = uiState.privateDrive,
+                                makePrivateText = MR.string.vault_make_private,
+                                signInTitle = MR.string.vault_sign_in_again_title,
+                                signInBody = MR.string.vault_sign_in_again_body,
+                                signIn = signIn,
+                                onMakePrivate = { viewModel.onAction(VaultUiAction.MakePrivate) },
+                                onSignInAgain = { viewModel.onAction(VaultUiAction.SignInAgain) },
+                            )
+                            VaultContent(
+                                sections = uiState.sections,
+                                isLoading = uiState.isLoading,
+                                isSyncing = uiState.isSyncing,
+                                localAttachmentStore = localAttachmentStore,
+                                onEntryClick = {
+                                    viewModel.onAction(VaultUiAction.EntryClicked(it))
+                                },
+                                onAddEntry = { section ->
+                                    activeSectionForEntry = section
+                                    showImageAddSheet = true
+                                },
+                                onMoveUp = {
+                                    viewModel.onAction(VaultUiAction.MoveSectionUp(it))
+                                },
+                                onMoveDown = {
+                                    viewModel.onAction(VaultUiAction.MoveSectionDown(it))
+                                },
+                                onRenameSection = { sectionToRename = it },
+                                onDeleteSection = { sectionToDelete = it },
+                                onAddSection = { showNewSectionSheet = true },
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                lazyListState = vaultListState,
+                                sectionRowStates = sectionRowStates,
+                                sharedTransitionScope = this@SharedTransitionLayout,
+                                animatedVisibilityScope = this@AnimatedContent,
+                            )
+                        }
                     } else if (overlay is VaultOverlay.Gallery) {
                         VaultGalleryScreen(
                             file = overlay.file,
@@ -720,6 +741,7 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     is VaultError.UpdateLabelFailed -> stringResource(MR.string.vault_error_update_label, error.fileName)
     VaultError.DownloadPageFailed -> stringResource(MR.string.vault_error_download_page)
     VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
+    VaultError.SignInAgainFailed -> stringResource(MR.string.sign_in_again_failed)
     VaultError.EditPageFailed -> stringResource(MR.string.vault_error_edit_page)
     VaultError.OpenEditorFailed -> stringResource(MR.string.vault_error_open_editor)
     VaultError.WebDropPrepareFailed -> stringResource(MR.string.vault_error_webdrop_prepare)

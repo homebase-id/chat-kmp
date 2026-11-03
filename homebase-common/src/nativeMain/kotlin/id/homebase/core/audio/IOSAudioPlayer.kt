@@ -31,7 +31,11 @@ class IOSAudioPlayer : AudioPlayer {
 
     @OptIn(ExperimentalForeignApi::class)
     override fun play(filePath: String) {
-        if (!AudioSession.configureForPlayback()) return
+        release()
+        if (!AudioSession.configureForPlayback()) {
+            delegate.observer?.onComplete()
+            return
+        }
 
         // Create and start player — AVAudioPlayer's ObjC init returns nil for
         // unplayable files, and K/N's interop bridge throws NPE for nil failable

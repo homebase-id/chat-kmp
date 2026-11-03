@@ -1,10 +1,17 @@
 package id.homebase.api.util
 
+import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class MarkdownLineBreaksTest {
+
+    // The composition parseChatMarkdown runs.
+    private fun String.withChatHardLineBreaks(): String {
+        val text = normalizeChatNewlines()
+        return text.withParagraphSoftBreaksPromoted(MarkdownParser(ChatMarkdownFlavour).buildMarkdownTreeFromString(text))
+    }
 
     @Test
     fun singleNewlineBecomesHardBreak() {

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -22,15 +21,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.screens.filesync.FilesyncUiAction
 import id.homebase.core.ui.screens.filesync.FilesyncViewModel
 import id.homebase.core.ui.screens.filesync.components.FilesyncDesktopAppCard
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_check_failed
 import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_onboarding_body_1
 import id.homebase.resources.filesync_onboarding_body_2
@@ -38,16 +41,23 @@ import id.homebase.resources.filesync_onboarding_dismiss
 import id.homebase.resources.filesync_onboarding_setup
 import id.homebase.resources.filesync_onboarding_title
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.ui.assets.Filesync
+import id.homebase.core.ui.assets.HomebaseIcons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilesyncOnboardingScreen(
     viewModel: FilesyncViewModel,
     setupInitiated: Boolean,
+    checkFailed: Boolean,
     onDismiss: () -> Unit,
 ) {
     // The grant is checked silently on open; the dialog only appears once the user asks to set up.
     if (setupInitiated) ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onAction(FilesyncUiAction.Paused) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onAction(FilesyncUiAction.Resumed) }
+    // Left for another tab, or set up meanwhile: only leaving Chat itself resumes setup.
+    DisposableEffect(viewModel) { onDispose { viewModel.onAction(FilesyncUiAction.SetupLeft) } }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(MR.string.filesync_label)) }) },
@@ -63,7 +73,7 @@ fun FilesyncOnboardingScreen(
             verticalArrangement = Arrangement.Top,
         ) {
             Icon(
-                imageVector = Icons.Outlined.Folder,
+                imageVector = HomebaseIcons.Filesync,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(96.dp),
@@ -89,6 +99,15 @@ fun FilesyncOnboardingScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(40.dp))
+            if (checkFailed) {
+                Text(
+                    text = stringResource(MR.string.filesync_check_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             FilledTonalButton(
                 onClick = { viewModel.onAction(FilesyncUiAction.SetupClicked) },
                 modifier = Modifier.fillMaxWidth(),

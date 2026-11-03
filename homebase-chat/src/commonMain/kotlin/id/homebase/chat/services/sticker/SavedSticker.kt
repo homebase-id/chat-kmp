@@ -11,7 +11,6 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -93,9 +92,7 @@ internal const val TRAY_ANIMATED_MAX_BYTES = 2L * 1024 * 1024
  */
 @OptIn(ExperimentalEncodingApi::class)
 fun SavedSticker.toImageData(requestedSize: ImageSize? = ImageSize.THUMB_SMALL): HomebaseImageData? {
-    val ivBytes = payloadDescriptor.iv?.let {
-        try { Base64.decode(it) } catch (_: Exception) { null }
-    } ?: return null
+    val ivBytes = payloadDescriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

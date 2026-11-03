@@ -109,6 +109,7 @@ class LocationViewModel(
     private var activationKicked = false
 
     init {
+        addCloseable(locationPermissionViewModel)
         // "Who can locate you" = the members of our emergency-location-access circle. We host this
         // circle on our OWN identity, so its membership is the source of truth — no app-data flag.
         // Reactive: ConnectionService refreshes circle membership on the ConnectionChanged websocket

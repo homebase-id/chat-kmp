@@ -1,5 +1,6 @@
 package id.homebase.api.util
 
+import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -10,6 +11,9 @@ import kotlin.test.assertTrue
  * bubble's timestamp-tucking custom Layout); anything with a real block element
  * must route to the block renderer.
  */
+internal fun markdownHasBlockElements(content: String) =
+    markdownTreeHasBlockElements(MarkdownParser(ChatMarkdownFlavour).buildMarkdownTreeFromString(content))
+
 class MarkdownHasBlockElementsTest {
 
     @Test

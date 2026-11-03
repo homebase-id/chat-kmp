@@ -8,6 +8,7 @@ import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.HeadingStyle
 import com.mohamedrejeb.richeditor.model.RichSpanStyle
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.util.normalizeUrlScheme
 import id.homebase.core.ui.theme.LightColors
 
 fun RichTextState.programmaticBackspace() {
@@ -56,14 +57,34 @@ fun RichTextState.programmaticBackspace() {
  *
  * This drops standalone `<br>` lines and the leading/trailing blank lines they leave behind, while
  * preserving real text and intentional paragraph breaks (an intended blank line between paragraphs
- * serialises as plain `\n\n`, never `<br>`, so it survives untouched).
+ * serialises as plain `\n\n`, never `<br>`, so it survives untouched). Lines inside a fenced code
+ * block are literal content and are never dropped.
  */
 fun String.stripComposerLineBreakArtifacts(): String =
     lines()
-        .filterNot { it.trim() == "<br>" }
+        .filterInFence { it.trim() != "<br>" }
         .dropWhile { it.isBlank() }
         .dropLastWhile { it.isBlank() }
         .joinToString("\n")
+
+private fun List<String>.filterInFence(keep: (String) -> Boolean): List<String> {
+    var fence: String? = null
+    return filter { line ->
+        val marker = line.trimStart().let { t ->
+            when {
+                t.startsWith("```") -> "```"
+                t.startsWith("~~~") -> "~~~"
+                else -> null
+            }
+        }
+        when {
+            fence == null && marker != null -> { fence = marker; true }
+            fence != null && marker == fence -> { fence = null; true }
+            fence != null -> true
+            else -> keep(line)
+        }
+    }
+}
 
 /**
  * The composer's markdown body as it should be sent: [RichTextState.toMarkdown] with richeditor's
@@ -147,7 +168,8 @@ private fun isZWJ(cp: Int): Boolean = cp == 0x200D
 private fun isVariationSelector(cp: Int): Boolean = cp in 0xFE00..0xFE0F
 
 val URL_REGEX = Regex(
-    "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
+    "(?:https?://(?:www\\.)?|www\\.)[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)",
+    RegexOption.IGNORE_CASE,
 )
 
 data class LinkAtSelection(val text: String, val url: String)
@@ -192,12 +214,15 @@ fun RichTextState.pasteUrlOverSelection(clipboardText: String?): Boolean {
     val label = selectedPlainText()
     if (label.isBlank()) return false
     removeSelectedText()
-    addLink(text = label, url = url)
+    addLink(text = label, url = normalizeUrlScheme(url))
     return true
 }
 
 suspend fun RichTextState.pasteOverSelectionAsync(readText: suspend () -> String?) {
-    val text = readText() ?: return
+    pasteText(readText() ?: return)
+}
+
+fun RichTextState.pasteText(text: String) {
     if (pasteUrlOverSelection(text)) return
     if (!selection.collapsed) removeSelectedText()
     addTextAfterSelection(text)

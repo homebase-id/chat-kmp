@@ -33,6 +33,7 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import id.homebase.api.youauth.ZkKeyStore
 import kotlin.uuid.Uuid
 
 class DriveOutboxUploader(
@@ -244,6 +245,13 @@ class DriveOutboxUploader(
                 "$TAG retryAsUpdate: local AES key diverged from the server file for uniqueId=$uniqueId — " +
                         "re-encrypted the header with the server's key"
             )
+        }
+
+        // The server can't compare AES keys on a drive it can't open, so it would take this update under another key.
+        if (rekeyed == null && original.metadata.isEncrypted && ZkKeyStore.isZeroKnowledge(original.driveId) &&
+            original.keyHeader.aesKey != serverFile.keyHeader.aesKey
+        ) {
+            throw ZkKeyMismatchException(uniqueId)
         }
 
         // Standard path: original.metadata is already encrypted (encryptContent
@@ -641,3 +649,7 @@ internal fun serverFileIsOurLandedCreate(
     val serverPayloadKeys = serverFile.fileMetadata.payloads?.mapTo(mutableSetOf()) { it.key } ?: emptySet()
     return original.payloads.all { it.key in serverPayloadKeys }
 }
+
+/** A payload-carrying retry whose AES key differs from the file it would update on a zero-knowledge drive. */
+class ZkKeyMismatchException(uniqueId: Uuid) :
+    IllegalStateException("The AES key must match the existing file's: uniqueId=$uniqueId is on a zero-knowledge drive")

@@ -12,6 +12,9 @@ actual object SecureStorage {
         return localStorage.getItem(key)
     }
 
+    actual fun read(key: String): SecureRead =
+        get(key).toSecureRead()
+
     actual fun remove(key: String) {
         localStorage.removeItem(key)
     }
