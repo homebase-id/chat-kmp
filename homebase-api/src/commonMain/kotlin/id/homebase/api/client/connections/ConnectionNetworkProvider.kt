@@ -192,6 +192,10 @@ class ConnectionNetworkProvider(
         return deserialize(response.body)
     }
 
+    /** Connections that qualify for [circleId] but are not in it yet. Requires ReadConnections. */
+    suspend fun getEnrollmentCandidatesForCircle(circleId: Uuid): CircleEnrollmentCandidates =
+        postAndDeserialize("/connections/circles/enrollment-candidates-for-circle", circleId)
+
     /**
      * Add several identities to one circle at once.
      *

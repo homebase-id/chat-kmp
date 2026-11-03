@@ -5,6 +5,7 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
+import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
 /**
@@ -81,5 +82,26 @@ class PeerDriveQueryProvider(
         return body
     }
 
+    /** [peer]'s write-only public key for one of an app's drives; asks UseTransitWrite here and drive Write there. */
+    suspend fun drivePublicKey(peer: OdinId, appSlug: String, driveSlug: String): DrivePublicKey {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/peer/${peer.domainName}/apps/$appSlug/drives/$driveSlug/public-key"),
+            token = creds.accessToken,
+            secret = creds.secret,
+        )
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
     companion object { private const val TAG = "PeerDriveQuery" }
 }
+
+/** [publicKeyCrc32] is not a seal's key id, which is computed from the key itself. */
+@Serializable
+data class DrivePublicKey(
+    val publicKeyJwk: String,
+    val publicKeyCrc32: Long = 0,
+    val isZeroKnowledge: Boolean = false,
+    val sharingModel: String? = null,
+)
