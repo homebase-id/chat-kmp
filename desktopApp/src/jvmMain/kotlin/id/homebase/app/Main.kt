@@ -33,6 +33,7 @@ import id.homebase.core.util.hostOs
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
+import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DatabaseUnavailableException
@@ -73,8 +74,13 @@ import id.homebase.resources.desktop_menu_call_decline
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
+import id.homebase.resources.keystore_reset_cancel
+import id.homebase.resources.keystore_reset_confirm
+import id.homebase.resources.keystore_reset_confirm_message
+import id.homebase.resources.keystore_reset_confirm_title
 import id.homebase.resources.keystore_unavailable_message
 import id.homebase.resources.keystore_unavailable_quit
+import id.homebase.resources.keystore_unavailable_reset
 import id.homebase.resources.keystore_unavailable_retry
 import id.homebase.resources.keystore_unavailable_title
 import id.homebase.resources.desktop_tray_call_indicator
@@ -479,32 +485,53 @@ internal fun isContainableNonFatal(throwable: Throwable): Boolean =
         throwable.isRecoverableServerConflict() ||
         throwable.isRecoverablePermissionFailure()
 
+// Reset clears secure storage only; the open that follows hits the old encrypted file and initializeWithRecovery wipes it.
 private fun openDatabaseOrQuit() {
     while (true) {
         try {
             runBlocking { DatabaseManager.initializeWithRecovery(DatabaseDriverFactory()) }
             return
         } catch (e: DatabaseUnavailableException) {
-            Logger.w(tag = "Main", throwable = e) { "Secure storage is unreachable; asking whether to retry" }
-            if (!askRetryKeystore()) exitProcess(1)
+            Logger.w(tag = "Main", throwable = e) { "Secure storage can't be opened; asking the user" }
+            when (askKeystoreChoice()) {
+                KeystoreChoice.Retry -> Unit
+                KeystoreChoice.Reset -> SecureStorage.clear()
+                KeystoreChoice.Quit -> exitProcess(1)
+            }
         }
     }
 }
 
-private fun askRetryKeystore(): Boolean {
-    val (title, message, retry, quit) = runBlocking {
+private enum class KeystoreChoice { Retry, Reset, Quit }
+
+private fun askKeystoreChoice(): KeystoreChoice {
+    val text = runBlocking {
         listOf(
-            getString(MR.string.keystore_unavailable_title),
-            getString(MR.string.keystore_unavailable_message),
-            getString(MR.string.keystore_unavailable_retry),
-            getString(MR.string.keystore_unavailable_quit),
-        )
+            MR.string.keystore_unavailable_title, MR.string.keystore_unavailable_message,
+            MR.string.keystore_unavailable_retry, MR.string.keystore_unavailable_reset, MR.string.keystore_unavailable_quit,
+            MR.string.keystore_reset_confirm_title, MR.string.keystore_reset_confirm_message,
+            MR.string.keystore_reset_confirm, MR.string.keystore_reset_cancel,
+        ).map { getString(it) }
     }
-    val choice = JOptionPane.showOptionDialog(
-        null, message, title, JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE,
-        null, arrayOf(retry, quit), retry,
-    )
-    return choice == 0
+    val (title, message, retry, reset, quit) = text
+    val (confirmTitle, confirmMessage, confirm, cancel) = text.drop(5)
+    while (true) {
+        when (
+            JOptionPane.showOptionDialog(
+                null, message, title, JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE,
+                null, arrayOf(retry, reset, quit), retry,
+            )
+        ) {
+            0 -> return KeystoreChoice.Retry
+            1 -> if (
+                JOptionPane.showOptionDialog(
+                    null, confirmMessage, confirmTitle, JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
+                    null, arrayOf(confirm, cancel), cancel,
+                ) == 0
+            ) return KeystoreChoice.Reset
+            else -> return KeystoreChoice.Quit
+        }
+    }
 }
 
 private fun setupCrashHandler() {

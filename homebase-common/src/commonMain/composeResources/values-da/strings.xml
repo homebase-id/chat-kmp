@@ -2057,7 +2057,12 @@
     <string name="vault_make_private">Klik for at ændre dit Vault-drev til ægte zero knowledge-kryptering</string>
     <string name="filesync_make_private">Klik for at ændre dit Filesync-drev til ægte zero knowledge-kryptering</string>
     <string name="keystore_unavailable_title">Kan ikke åbne din sikre lagring</string>
-    <string name="keystore_unavailable_message">Homebase kan ikke nå systemets nøglelager lige nu (det kan være låst, eller adgangen blev afvist). Dine data er urørte. Lås det op eller giv adgang, og prøv igen.</string>
+    <string name="keystore_unavailable_message">Homebase kan ikke nå systemets nøglelager lige nu (det kan være låst, eller adgangen blev afvist). Dine data er urørte. Lås det op eller giv adgang, og prøv igen. Hvis nøglen er væk for altid, for eksempel efter en nulstilling af nøgleringen eller på en ny computer, kan du nulstille og logge ind igen.</string>
     <string name="keystore_unavailable_retry">Prøv igen</string>
     <string name="keystore_unavailable_quit">Afslut</string>
+    <string name="keystore_unavailable_reset">Nulstil og log ind igen</string>
+    <string name="keystore_reset_confirm_title">Nulstil Homebase på denne computer?</string>
+    <string name="keystore_reset_confirm_message">Dette fjerner dine lokale data og dit login fra denne computer. Du skal logge ind igen. Det kan ikke fortrydes.</string>
+    <string name="keystore_reset_confirm">Nulstil</string>
+    <string name="keystore_reset_cancel">Annuller</string>
 </resources>

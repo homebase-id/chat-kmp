@@ -126,8 +126,9 @@ internal class KeyStoreFileStorage(
         saveKeyStore(keyStore)
     }
 
+    // The data file may predate createRestricted, so it is tightened once the key leaves the p12.
     private fun deleteFileKey() {
-        keyStoreFile.delete()
+        if (keyStoreFile.delete() && dataFile.exists()) restrict(dataFile)
     }
 
     private fun loadProperties(): Properties {
@@ -230,6 +231,9 @@ internal class KeyStoreFileStorage(
             if (persistKey(fileKey.key)) deleteFileKey() else Logger.w(tag = TAG) { "Key migration failed; keeping the key file and retrying next start" }
             return fileKey.key
         }
+        if (fileKey is FileKey.None && !loadProperties().isEmpty) {
+            throw OsKeyStoreUnavailableException(IllegalStateException("sealed values but no key in the OS key store"))
+        }
         if (!create) throw SecureStorageKeyLostException("no key in the OS key store")
         val fresh = newKey()
         if (!persistKey(fresh)) throw OsKeyStoreUnavailableException(IllegalStateException("new key could not be stored"))
@@ -238,15 +242,12 @@ internal class KeyStoreFileStorage(
 
     private fun resolveNoStore(noStore: OsKeyRead.NoStore, fileKey: FileKey, create: Boolean): SecretKey {
         usingFallbackFile = true
+        if (fileKey is FileKey.None && !loadProperties().isEmpty) throw OsKeyStoreUnavailableException(noStore.cause)
         Logger.w(tag = TAG) { "No OS key store available (${noStore.cause.message?.lineSequence()?.first()}); keeping the key in a 0600 file" }
         return when (fileKey) {
             is FileKey.Valid -> fileKey.key.also { restrict(keyStoreFile) }
             is FileKey.Lost -> if (create) newKey().also(::writeFileKey) else throw SecureStorageKeyLostException("key file has no usable key")
-            is FileKey.None -> when {
-                !loadProperties().isEmpty -> throw OsKeyStoreUnavailableException(noStore.cause)
-                create -> newKey().also(::writeFileKey)
-                else -> throw SecureStorageKeyLostException("no key")
-            }
+            is FileKey.None -> if (create) newKey().also(::writeFileKey) else throw SecureStorageKeyLostException("no key")
         }
     }
 

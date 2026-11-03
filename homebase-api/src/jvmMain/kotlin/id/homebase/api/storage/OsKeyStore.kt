@@ -16,6 +16,7 @@ internal sealed interface OsKeyRead {
     data class NoStore(val cause: Throwable) : OsKeyRead
 }
 
+/** A key that can't be read now (Unreachable, or Absent/NoStore with sealed values and no key file) is never replaced; only the user's confirmed reset ([SecureStorage.clear]) makes a new one. */
 internal interface OsKeyStore {
     fun read(): OsKeyRead
 

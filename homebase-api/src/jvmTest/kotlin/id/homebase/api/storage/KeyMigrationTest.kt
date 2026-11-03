@@ -1,12 +1,15 @@
 package id.homebase.api.storage
 
 import java.io.File
-import javax.crypto.spec.SecretKeySpec
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -143,16 +146,30 @@ class KeyMigrationTest {
     }
 
     @Test
-    fun `an absent store with no file key is a lost key, and a put makes a new one in the store`() {
+    fun `an absent store with sealed values and no file key makes no new key until the user resets`() {
         val store = FakeOsKeyStore()
         open(store).put("a", "1")
         store.stored = null
+        val writes = store.writeCalls
 
         val storage = open(store)
-        assertEquals(SecureRead.Missing, storage.read("a"))
+        assertIs<SecureRead.Unavailable>(storage.read("a"))
+        assertFailsWith<OsKeyStoreUnavailableException> { storage.put("a", "2") }
+        assertEquals(writes, store.writeCalls)
+
+        storage.clear()
         storage.put("a", "2")
         assertEquals(SecureRead.Found("2"), storage.read("a"))
-        assertNotNull(store.stored)
-        assertEquals(SecretKeySpec(storedKeyBytes(store)!!, "AES").encoded.size, 32)
+        assertEquals(32, storedKeyBytes(store)?.size)
+    }
+
+    @Test
+    fun `migration tightens an old world readable data file`() {
+        writeLegacyInstall(dir, mapOf("a" to "1"))
+        if (!dir.toPath().fileSystem.supportedFileAttributeViews().contains("posix")) return
+        Files.setPosixFilePermissions(dataFile(dir).toPath(), PosixFilePermissions.fromString("rw-r--r--"))
+
+        assertEquals(SecureRead.Found("1"), open(FakeOsKeyStore()).read("a"))
+        assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(dataFile(dir).toPath())))
     }
 }

@@ -122,4 +122,21 @@ class KeyUnavailableTest {
 
         assertIs<SecureRead.Unavailable>(KeyStoreFileStorage(dir, broken).read("k"))
     }
+
+    @Test
+    fun `a DPAPI blob that will never open is unavailable, and the user's reset makes a new key`() {
+        val sealing = WindowsOsKeyStore(dir, protect = { it.reversedArray() }, unprotect = { it.reversedArray() })
+        KeyStoreFileStorage(dir, sealing).put("odin_db_encryption_key", "pass")
+        val broken = WindowsOsKeyStore(dir, protect = { it.reversedArray() }, unprotect = { throw DpapiException(13) })
+        val storage = KeyStoreFileStorage(dir, broken)
+
+        assertFailsWith<DatabaseUnavailableException> {
+            DatabaseKeyManager.getOrGenerateKey(storage.read("odin_db_encryption_key")) { storage.put("odin_db_encryption_key", it) }
+        }
+
+        storage.clear()
+        val fresh = KeyStoreFileStorage(dir, sealing)
+        fresh.put("odin_db_encryption_key", "new")
+        assertEquals(SecureRead.Found("new"), fresh.read("odin_db_encryption_key"))
+    }
 }
