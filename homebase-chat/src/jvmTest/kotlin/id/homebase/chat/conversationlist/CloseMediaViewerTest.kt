@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.chat.widget.preview.FilePreviewKind
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import kotlin.test.Test
@@ -31,11 +32,13 @@ class CloseMediaViewerTest {
         payload = PayloadDescriptor(key = "chat_web0", contentType = "video/mp4"),
     )
 
-    private fun pdfViewer() = FullScreenOverlay.PdfViewerData(
+    private fun pdfViewer() = FullScreenOverlay.FilePreviewData(
         messageId = Uuid.random(),
         fileId = Uuid.random(),
         payloadKey = "chat_web0",
         title = "spec.pdf",
+        name = "spec.pdf",
+        kind = FilePreviewKind.Pdf,
         userDate = Instant.fromEpochMilliseconds(0),
     )
 

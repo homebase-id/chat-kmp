@@ -41,7 +41,7 @@ internal fun FeedMediaFullScreenHost(
                     is FullScreenOverlay.ViewMessageData -> "image"
                     is FullScreenOverlay.VideoPlayerData -> "video"
                     is FullScreenOverlay.AttachmentData -> "attachment"
-                    is FullScreenOverlay.PdfViewerData -> "pdf"
+                    is FullScreenOverlay.FilePreviewData -> "pdf"
                     is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
                 }
             },
@@ -67,7 +67,7 @@ internal fun FeedMediaFullScreenHost(
 
                 // Chat-composer / PDF overlays; [feedMediaOverlay] never produces them.
                 is FullScreenOverlay.AttachmentData -> Unit
-                is FullScreenOverlay.PdfViewerData -> Unit
+                is FullScreenOverlay.FilePreviewData -> Unit
                 is FullScreenOverlay.ViewOnceViewer -> Unit
             }
         }

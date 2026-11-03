@@ -30,6 +30,7 @@ import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
 import id.homebase.core.ui.screens.vault.model.VAULT_FILE_TYPE
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
+import id.homebase.core.util.extensionForMimeType
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.createImageThumbnail
@@ -405,9 +406,9 @@ class VaultUploaderService(
             }
 
             val ct = payloadDescriptor?.contentType ?: file.contentType
-            val extension = ct.substringAfter("/", "bin").let {
-                if (it == "jpeg") "jpg" else it
-            }
+            val extension = extensionForMimeType(ct.substringBefore(';').trim().lowercase())
+                ?: file.fileName.substringAfterLast('.', "").takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
+                ?: ct.substringAfter("/", "bin")
             // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
             // for any payload size; the old byte path buffered the whole payload
             // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.

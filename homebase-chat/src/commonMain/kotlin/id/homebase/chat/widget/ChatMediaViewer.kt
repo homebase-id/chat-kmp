@@ -82,8 +82,9 @@ internal fun ChatMediaViewer(
             onDismiss = { onUiAction(CloseFullScreenOverlay) },
         )
 
-        is FullScreenOverlay.PdfViewerData -> ChatPdfViewer(
+        is FullScreenOverlay.FilePreviewData -> ChatFilePreview(
             title = data.title,
+            kind = data.kind,
             userDate = data.userDate,
             filePath = uiState.decryptedFiles[DecryptedFileKey(data.fileId, data.payloadKey)],
             isDownloading = "${data.messageId}_${data.payloadKey}" in uiState.downloadingFiles,

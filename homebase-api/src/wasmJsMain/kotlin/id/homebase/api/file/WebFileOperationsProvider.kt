@@ -10,4 +10,4 @@ package id.homebase.api.file
  * and cache dir. The logic is unit-tested generically in `OkioFileOperationsProviderTest` against a
  * `FakeFileSystem` (the same FS type [systemFileSystem] is on web).
  */
-class WebFileOperationsProvider : OkioFileOperationsProvider(systemFileSystem, "/tmp/homebase")
+class WebFileOperationsProvider : OkioFileOperationsProvider(systemFileSystem, "/tmp/homebase", downloadLimitBytes = WEB_DOWNLOAD_LIMIT_BYTES)

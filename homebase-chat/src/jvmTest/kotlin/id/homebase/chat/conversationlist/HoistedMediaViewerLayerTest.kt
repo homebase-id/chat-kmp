@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.chat.widget.preview.FilePreviewKind
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -49,11 +50,13 @@ class HoistedMediaViewerLayerTest {
             setContent {
                 Subject(
                     MessageListUiState(
-                        fullScreenOverlay = FullScreenOverlay.PdfViewerData(
+                        fullScreenOverlay = FullScreenOverlay.FilePreviewData(
                             messageId = Uuid.random(),
                             fileId = Uuid.random(),
                             payloadKey = "chat_web0",
                             title = title,
+                            name = title,
+                            kind = FilePreviewKind.Pdf,
                             userDate = Instant.fromEpochMilliseconds(1_700_000_000_000),
                         )
                     )

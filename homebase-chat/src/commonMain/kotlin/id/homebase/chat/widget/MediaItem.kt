@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import id.homebase.chat.widget.preview.FilePreviewKind
+import id.homebase.chat.widget.preview.chatChipPreviewKind
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -575,7 +577,8 @@ fun MediaItem(
                 modifier = baseModifier,
                 onDownloadClick = { onClick?.invoke() },
                 onLongPress = { onLongPress?.invoke(Offset.Zero) },
-                isDownloading = isDownloading
+                isDownloading = isDownloading,
+                showDownloadButton = chatChipPreviewKind(contentType, payload.filename() ?: payload.key, payload.bytesWritten) != FilePreviewKind.Text,
             )
         }
 

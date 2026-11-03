@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.chat.widget.preview.FilePreviewDialog
 import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -85,6 +86,7 @@ import id.homebase.resources.filesync_delete_failed
 import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_deleted_forever
 import id.homebase.resources.filesync_download_failed
+import id.homebase.resources.filesync_too_large_here
 import id.homebase.resources.filesync_executable
 import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.time_today
@@ -150,7 +152,7 @@ internal fun FilesyncEventsEffect(
         scope.launch { snackbarHostState.showSnackbar(getString(message)) }
     }
     var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
-    preview?.let { file -> FilesyncPreview(file, onClose = { preview = null }, onGone = onHandedOff) }
+    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onHandedOff) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
@@ -181,6 +183,7 @@ internal fun FilesyncEventsEffect(
                     when (event.error) {
                         FilesyncError.MoveFailed -> MR.string.filesync_move_failed
                         FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
+                        FilesyncError.TooLargeHere -> MR.string.filesync_too_large_here
                         FilesyncError.Damaged -> MR.string.filesync_damaged
                         FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
                         FilesyncError.TooLarge -> MR.string.filesync_too_large

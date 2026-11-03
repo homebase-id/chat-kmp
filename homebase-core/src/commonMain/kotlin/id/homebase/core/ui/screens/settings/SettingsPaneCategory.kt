@@ -8,14 +8,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.ManageAccounts
-import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
@@ -44,12 +40,11 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import id.homebase.core.ui.assets.Apps
+import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.resources.MR
-import id.homebase.resources.contactbook_settings_section
-import id.homebase.resources.email_settings_section
-import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings_account
 import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_category_general
@@ -57,12 +52,12 @@ import id.homebase.resources.settings_data_storage
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_keyboard
 import id.homebase.resources.settings_media
+import id.homebase.resources.settings_section_apps
 import id.homebase.resources.settings_notifications
-import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-internal val SettingsSidebarWidth = 220.dp
+internal val SettingsSidebarWidth = 244.dp
 
 internal enum class SettingsCategory(
     val label: StringResource,
@@ -74,26 +69,27 @@ internal enum class SettingsCategory(
     Appearance(MR.string.settings_appearance, Icons.Outlined.Brightness6),
     Media(MR.string.settings_media, Icons.Outlined.PermMedia),
     Keyboard(MR.string.settings_keyboard, Icons.Outlined.Keyboard),
-    Moments(MR.string.moments_settings_section, Icons.Outlined.AutoAwesome),
-    Vault(MR.string.vault_settings_section, Icons.Outlined.Lock),
-    Email(MR.string.email_settings_section, Icons.Outlined.MailOutline),
-    Contacts(MR.string.contactbook_settings_section, Icons.Outlined.People),
+    Apps(MR.string.settings_section_apps, HomebaseIcons.Apps),
     Storage(MR.string.settings_data_storage, Icons.Outlined.Storage),
     Help(MR.string.settings_help, Icons.AutoMirrored.Outlined.HelpOutline),
 }
 
+internal enum class AppsPage { Moments, Vault, Email, Contacts }
+
+internal data class SettingsPaneTarget(val category: SettingsCategory, val appsPage: AppsPage? = null)
+
 /**
- * The category the settings pane opens on next, for a link from outside Settings (the storage-full banner's
+ * Where the settings pane opens next, for a link from outside Settings (the storage-full banner's
  * "Fix it" opens Account). Taken once, by the pane as it opens; without one it opens on General.
  */
 internal object SettingsPaneRequest {
-    private var pending: SettingsCategory? = null
+    private var pending: SettingsPaneTarget? = null
 
-    fun open(category: SettingsCategory) {
-        pending = category
+    fun open(category: SettingsCategory, appsPage: AppsPage? = null) {
+        pending = SettingsPaneTarget(category, appsPage)
     }
 
-    fun take(): SettingsCategory? = pending.also { pending = null }
+    fun take(): SettingsPaneTarget? = pending.also { pending = null }
 }
 
 @Composable

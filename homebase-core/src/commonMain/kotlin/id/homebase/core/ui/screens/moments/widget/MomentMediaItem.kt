@@ -92,6 +92,7 @@ fun MomentMediaItem(
     // intrinsic `.aspectRatio()` below sizes the image to its own ratio and overflows that box.
     fitBounds: Boolean = false,
     onClick: (() -> Unit)? = null,
+    onDoubleTap: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
     // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
@@ -253,6 +254,7 @@ fun MomentMediaItem(
                 // At base scale the component doesn't consume taps, so this
                 // still opens comments/detail; while zoomed it pans instead.
                 onTap = onClick,
+                onDoubleTap = onDoubleTap,
                 onZoomedChanged = onZoomedChanged,
                 // Moments pass null hero aspect (container-level sharedBounds
                 // path, like chat) — see ZoomableSubSamplingImage docs.
