@@ -8,7 +8,8 @@ package id.homebase.api.storage
  * Platform implementations:
  * - Android: Android KeyStore with AES-GCM encryption
  * - iOS: Keychain Services
- * - Desktop: Java KeyStore with AES-GCM encryption
+ * - Desktop: AES-GCM values in a file; the key lives in the OS store (Keychain, DPAPI, Secret Service),
+ *   or in a 0600 file when none exists
  */
 expect object SecureStorage {
     /**

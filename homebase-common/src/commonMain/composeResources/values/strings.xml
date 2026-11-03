@@ -3165,6 +3165,14 @@
     <string name="call_report_problem">Report a problem</string>
     <string name="call_report_unavailable">No log found for this call</string>
     <string name="vault_make_private">Click to change your Vault Drive to true zero knowledge encryption</string>
+    <string name="keystore_unavailable_title">Can't open your secure storage</string>
+    <string name="keystore_unavailable_message">Homebase can't reach your system's key storage right now (it may be locked, or access was denied). Your data is untouched. Unlock it or allow access, then try again. If the key is gone for good, for example after a keyring reset or on a new computer, you can reset and sign in again.</string>
+    <string name="keystore_unavailable_retry">Try again</string>
+    <string name="keystore_unavailable_quit">Quit</string>
+    <string name="keystore_unavailable_reset">Reset and sign in again</string>
+    <string name="keystore_reset_confirm_title">Reset Homebase on this computer?</string>
+    <string name="keystore_reset_confirm_message">This removes your local data and your login from this computer. You'll need to sign in again. This can't be undone.</string>
+    <string name="keystore_reset_confirm">Reset</string>
     <string name="circle_new">New circle</string>
     <string name="circle_create_title">New circle</string>
     <string name="circle_create_name">Name</string>
