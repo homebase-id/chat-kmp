@@ -94,6 +94,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -167,6 +168,12 @@ import id.homebase.resources.profile_card_font_space_mono
 import id.homebase.resources.profile_card_option_accent
 import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
+import id.homebase.resources.profile_card_option_block_style
+import id.homebase.resources.profile_card_tool_style
+import id.homebase.resources.profile_card_presentation_bare
+import id.homebase.resources.profile_card_presentation_boxed
+import id.homebase.resources.profile_card_presentation_row
+import id.homebase.resources.profile_card_presentation_button
 import id.homebase.resources.profile_card_option_default
 import id.homebase.resources.profile_card_option_display_font
 import id.homebase.resources.profile_card_option_drag
@@ -193,18 +200,20 @@ internal val TOOLBAR_HEIGHT = 64.dp
 internal val CHIP_HEIGHT = 40.dp
 // Past this text scale, controls stop growing and labels get their own line.
 internal const val LARGE_TEXT_SCALE = 1.3f
-private val SWATCH_SIZE = 36.dp
-private val SWATCH_TARGET = 48.dp
-private val INK_DOT_SIZE = 12.dp
+private val SWATCH_SIZE = 40.dp
+private val SWATCH_TARGET = 52.dp
+private val INK_DOT_SIZE = 14.dp
+private val ACCENT_DOT_SIZE = 24.dp
 private val SHAPE_SEGMENT_MIN_WIDTH = 56.dp
 private val GLYPH_SIZE = 20.dp
 private val TOOL_SIZE = 48.dp
-private val TOOL_PADDING = 4.dp
-private val TOOL_LABEL_GAP = 3.dp
+private val TOOL_MIN_PADDING = 4.dp
+private val TOOL_PADDING = 10.dp
+private val TOOL_LABEL_GAP = 4.dp
 private val FADE_LENGTH = 24.dp
 private val OPTION_SIDE_INSET = 16.dp
-// Seven 48dp tools plus the picked label only fit 393dp at this inset.
-private val TOOLBAR_SIDE_INSET = 2.dp
+// Seven tools plus the picked label only fit 393dp at this inset.
+private val TOOLBAR_SIDE_INSET = 0.dp
 private val SWATCH_ROW_INSET = OPTION_SIDE_INSET - 4.dp
 private val CAPTION_INSET = 24.dp
 private const val REVEAL_MARGIN = 0.6f
@@ -266,8 +275,8 @@ private fun OptionControl(
     onBlockOrder: (List<String>) -> Unit,
 ) {
     when (option) {
-        CardOption.COLOURS -> SchemeRow(design, overrides.valueOf(option), enabled) { onOption(option, it) }
-        CardOption.ACCENT -> SwatchRow(overrides.valueOf(option), enabled) { onOption(option, it) }
+        CardOption.COLOURS -> SchemeRow(design, overrides.palette, enabled) { onOption(option, it) }
+        CardOption.ACCENT -> SwatchRow(design, overrides.valueOf(CardOption.COLOURS), overrides.valueOf(option), enabled) { onOption(option, it) }
         CardOption.BLOCK_ORDER -> BlockOrderRow(overrides.blockOrder().filter { it in orderable }, enabled, chipHeight) {
             onBlockOrder(overrides.withShownBlockOrder(orderable, it).blockOrder())
         }
@@ -282,6 +291,15 @@ private fun OptionControl(
             onSelect = { onOption(option, it) },
         ) { shape ->
             if (shape == null) DefaultGlyph() else ShapeGlyph(shape)
+        }
+        CardOption.BLOCK_STYLE -> SegmentedChoices(
+            values = listOf(null) + CardDesignSpecs.PRESENTATIONS,
+            selected = overrides.valueOf(option),
+            enabled = enabled,
+            chipHeight = chipHeight,
+            onSelect = { onOption(option, it) },
+        ) { style ->
+            SegmentLabel(stringResource(style?.let(::presentationLabel) ?: MR.string.profile_card_option_default))
         }
         CardOption.SOCIALS_STYLE -> SegmentedChoices(
             values = listOf(null) + CardDesignSpecs.SOCIALS_STYLES,
@@ -311,7 +329,7 @@ private fun OptionControl(
     }
 }
 
-// When every tool fits it sits still and whole, naming the picked one; when that doesn't fit the row scrolls.
+// When every tool fits it sits still and whole, naming the picked one, with what room is left around that label; otherwise the row scrolls.
 @Composable
 private fun OptionToolbar(
     options: List<CardOption>,
@@ -329,9 +347,9 @@ private fun OptionToolbar(
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
         val widestLabel = with(density) { labels.maxOf { measurer.measure(it, labelStyle).size.width }.toDp() }
-        val pickedWidth = TOOL_PADDING * 2 + GLYPH_SIZE + TOOL_LABEL_GAP + widestLabel
-        val rowWidth = TOOL_SIZE * (count - 1) + pickedWidth + ButtonGroupDefaults.ConnectedSpaceBetween * (count - 1)
-        val fits = rowWidth <= maxWidth
+        val rowWidth = TOOL_SIZE * (count - 1) + GLYPH_SIZE + TOOL_LABEL_GAP + widestLabel + ButtonGroupDefaults.ConnectedSpaceBetween * (count - 1)
+        val fits = rowWidth + TOOL_MIN_PADDING * 2 <= maxWidth
+        val padding = if (fits) ((maxWidth - rowWidth) / 2).coerceIn(TOOL_MIN_PADDING, TOOL_PADDING) else TOOL_PADDING
         val tools: @Composable RowScope.() -> Unit = {
             for (index in 0 until count) {
                 ToolItem(
@@ -341,6 +359,7 @@ private fun OptionToolbar(
                     selected = index == pickedIndex,
                     shapes = connectedButtonShapes(index, count),
                     onClick = { onPick(options[index]) },
+                    padding = padding,
                 )
             }
         }
@@ -372,6 +391,7 @@ private fun ToolItem(
     selected: Boolean,
     shapes: ToggleButtonShapes,
     onClick: () -> Unit,
+    padding: Dp,
 ) {
     val motion = MaterialTheme.motionScheme
     WithTooltip(description) {
@@ -386,7 +406,7 @@ private fun ToolItem(
                 checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                 checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             ),
-            contentPadding = PaddingValues(horizontal = TOOL_PADDING),
+            contentPadding = PaddingValues(horizontal = padding),
             modifier = Modifier
                 .revealWhenSelected(selected)
                 .height(TOOL_SIZE)
@@ -456,7 +476,11 @@ private fun SegmentedChoices(
                     onCheckedChange = { onSelect(value) },
                     enabled = enabled,
                     shapes = if (connected) connectedButtonShapes(index, values.size) else LOOSE_CHOICE_SHAPES,
-                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    colors = ToggleButtonDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
                     modifier = Modifier
                         .revealWhenSelected(value == selected)
                         .widthIn(min = segmentWidth)
@@ -505,16 +529,28 @@ private fun fontPreviewStyle(font: String?): TextStyle {
 
 // Each swatch is the scheme in small: its ground with an ink dot, so the pairing is judged before it is picked.
 @Composable
-private fun SchemeRow(design: String, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
+private fun SchemeRow(design: String, palette: CardPalette?, enabled: Boolean, onSelect: (String?) -> Unit) {
     val schemes = CardDesignSpecs.of(design)?.schemes.orEmpty()
-    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET) {
+    val selected = palette?.ground
+    val saved = selected?.takeIf { ground -> schemes.none { it.ground.equals(ground, ignoreCase = true) } }
+    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
         Swatch(
             fill = Color(CardDesign.baseArgb(design)),
-            selected = selected == null || schemes.none { it.ground.equals(selected, ignoreCase = true) },
+            selected = selected == null,
             enabled = enabled,
             description = stringResource(MR.string.profile_card_option_default),
             onClick = { onSelect(null) },
         ) { InkDot(Color(CardDesign.inkArgb(design))) }
+        // A saved ground outside this design's set still shows as what the card is wearing, never as Default.
+        saved?.let { ground ->
+            Swatch(
+                fill = Color(hexToArgb(ground)),
+                selected = true,
+                enabled = enabled,
+                description = stringResource(MR.string.profile_card_option_colours_swatch, ground),
+                onClick = {},
+            ) { InkDot(Color(palette.ink?.let(::hexToArgb) ?: CardDesign.inkArgb(design))) }
+        }
         schemes.forEach { scheme ->
             Swatch(
                 fill = Color(hexToArgb(scheme.ground)),
@@ -528,39 +564,45 @@ private fun SchemeRow(design: String, selected: String?, enabled: Boolean, onSel
 }
 
 @Composable
-private fun InkDot(ink: Color) {
-    Box(Modifier.size(INK_DOT_SIZE).background(ink, CircleShape))
+private fun InkDot(ink: Color, size: Dp = INK_DOT_SIZE, edge: Color = Color.Transparent) {
+    Box(Modifier.size(size).background(ink, CircleShape).border(1.dp, edge, CircleShape))
 }
 
+// Accents are curated per ground and vanish on the app's own surface, so each is shown on the scheme it is meant for.
 @Composable
-private fun SwatchRow(selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    val values = listOf<String?>(null) + CardDesignSpecs.ACCENT_SWATCHES
-    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET) {
+private fun SwatchRow(design: String, colours: String?, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
+    val scheme = CardDesignSpecs.of(design)?.schemes?.firstOrNull { it.ground.equals(colours, ignoreCase = true) }
+    val ground = Color(scheme?.let { hexToArgb(it.ground) } ?: CardDesign.baseArgb(design))
+    val ink = Color(scheme?.let { hexToArgb(it.ink) } ?: CardDesign.inkArgb(design))
+    val accents = CardDesignSpecs.accentsFor(design, colours)
+    val saved = selected?.takeIf { s -> accents.none { it.equals(s, ignoreCase = true) } }
+    val values = listOf<String?>(null) + listOfNotNull(saved) + accents
+    ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
         values.forEach { hex ->
             if (hex == null) {
                 Swatch(
-                    fill = MaterialTheme.colorScheme.surfaceVariant,
+                    fill = ground,
                     selected = selected == null,
                     enabled = enabled,
                     description = stringResource(MR.string.profile_card_option_default),
                     onClick = { onSelect(null) },
-                ) { NoColourSlash() }
+                ) { NoColourSlash(ink) }
             } else {
                 Swatch(
-                    fill = Color(hexToArgb(hex)),
+                    fill = ground,
                     selected = selected.equals(hex, ignoreCase = true),
                     enabled = enabled,
                     description = stringResource(MR.string.profile_card_option_accent_swatch, hex),
                     onClick = { onSelect(hex) },
-                )
+                    // The ground's ink rings the dot, so a saved accent close to the ground stays visible.
+                ) { InkDot(Color(hexToArgb(hex)), ACCENT_DOT_SIZE, edge = ink.copy(alpha = 0.45f)) }
             }
         }
     }
 }
 
 @Composable
-private fun NoColourSlash() {
-    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+private fun NoColourSlash(ink: Color) {
     Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
         drawLine(
             color = ink,
@@ -772,6 +814,7 @@ private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_option_portrait_shape
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_option_socials_style
     CardOption.BLOCK_ORDER -> MR.string.profile_card_option_block_order
+    CardOption.BLOCK_STYLE -> MR.string.profile_card_option_block_style
 }
 
 private fun toolLabel(option: CardOption): StringResource = when (option) {
@@ -782,6 +825,7 @@ private fun toolLabel(option: CardOption): StringResource = when (option) {
     CardOption.PORTRAIT_SHAPE -> MR.string.profile_card_tool_portrait
     CardOption.SOCIALS_STYLE -> MR.string.profile_card_tool_socials
     CardOption.BLOCK_ORDER -> MR.string.profile_card_tool_order
+    CardOption.BLOCK_STYLE -> MR.string.profile_card_tool_style
 }
 
 private fun optionIcon(option: CardOption): ImageVector = when (option) {
@@ -792,6 +836,7 @@ private fun optionIcon(option: CardOption): ImageVector = when (option) {
     CardOption.PORTRAIT_SHAPE -> Icons.Outlined.AccountCircle
     CardOption.SOCIALS_STYLE -> Icons.Outlined.AlternateEmail
     CardOption.BLOCK_ORDER -> Icons.Outlined.ViewAgenda
+    CardOption.BLOCK_STYLE -> Icons.Outlined.Style
 }
 
 private fun fontLabel(font: String): StringResource = when (font) {
@@ -815,6 +860,13 @@ private fun socialsLabel(style: String): StringResource = when (style) {
     "wordmark" -> MR.string.profile_card_socials_wordmark
     "handles" -> MR.string.profile_card_socials_handles
     else -> MR.string.profile_card_socials_glyphs
+}
+
+private fun presentationLabel(style: String): StringResource = when (style) {
+    "boxed" -> MR.string.profile_card_presentation_boxed
+    "row" -> MR.string.profile_card_presentation_row
+    "button" -> MR.string.profile_card_presentation_button
+    else -> MR.string.profile_card_presentation_bare
 }
 
 private fun blockLabel(kind: String): StringResource = when (kind) {

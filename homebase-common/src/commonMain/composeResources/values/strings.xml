@@ -2596,6 +2596,12 @@
     <string name="profile_card_option_portrait_shape">Portrait shape</string>
     <string name="profile_card_option_socials_style">Social links style</string>
     <string name="profile_card_option_block_order">Section order</string>
+    <string name="profile_card_option_block_style">Content style</string>
+    <string name="profile_card_tool_style">Style</string>
+    <string name="profile_card_presentation_bare">Plain</string>
+    <string name="profile_card_presentation_boxed">Boxed</string>
+    <string name="profile_card_presentation_row">Rows</string>
+    <string name="profile_card_presentation_button">Button</string>
     <string name="profile_card_option_move_up">Move %1$s up</string>
     <string name="profile_card_option_move_down">Move %1$s down</string>
     <string name="profile_card_option_drag">Drag to reorder %1$s</string>
@@ -3172,4 +3178,22 @@
     <string name="openedfile_show">Show</string>
     <string name="openedfile_open_failed">Couldn't open the file.</string>
     <string name="openedfile_save_failed">Couldn't save the file. Check your connection and try again.</string>
+    <string name="circle_new">New circle</string>
+    <string name="circle_create_title">New circle</string>
+    <string name="circle_create_name">Name</string>
+    <string name="circle_create_approve">Approve</string>
+    <string name="circle_create_creating">Creating…</string>
+    <string name="circle_create_choose_emoji">Choose an emoji</string>
+    <string name="circle_create_remove_emoji">Remove emoji</string>
+    <string name="circle_create_description">Description (optional)</string>
+    <string name="circle_create_action">Create</string>
+    <string name="circle_create_access_check_failed">Couldn't check your access. Check your connection and try again.</string>
+    <string name="circle_create_failed">Couldn't create the circle. Try again.</string>
+    <string name="circle_create_needs_permission">Chat needs more access to create circles. Approve it and try again.</string>
+    <string name="circle_create_empty_action">Create a circle</string>
+    <string name="circle_delete">Delete circle</string>
+    <string name="circle_delete_title">Delete %1$s?</string>
+    <string name="circle_delete_body">This removes the circle and its card.</string>
+    <string name="circle_delete_body_members">%1$d people are in this circle. Deleting it removes them from it, and removes the circle and its card.</string>
+    <string name="circle_delete_failed">Couldn't delete the circle. Try again.</string>
 </resources>

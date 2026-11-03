@@ -68,6 +68,7 @@ fun CircleMemberPickerScreen(
     val alreadyMemberLabel = stringResource(MR.string.circle_member_add_already_member)
     val driveAccessDeniedLabel = stringResource(MR.string.circle_member_add_drive_access_denied)
     val genericFailedLabel = stringResource(MR.string.circle_member_add_generic_failed)
+    val notReviewedLabel = stringResource(MR.string.circle_member_add_unreviewed_reason)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -86,6 +87,7 @@ fun CircleMemberPickerScreen(
                                 is CircleAddFailureReason.Raw -> r.message
                                 CircleAddFailureReason.DriveAccessDenied -> driveAccessDeniedLabel
                                 CircleAddFailureReason.OpaqueForbidden -> genericFailedLabel
+                                CircleAddFailureReason.NotReviewed -> notReviewedLabel
                             }
                             add("${f.name}: $reason")
                         }

@@ -246,7 +246,8 @@ class ArchitectureTest {
         assertTrue(owners.isNotEmpty())
         owners.assertTrue(additionalMessage = "It's in no ViewModelStore: without addCloseable its collectors outlive the owner.") { c ->
             c.primaryConstructor!!.parameters.filter { it.type.name == "ExtendPermissionViewModel" }
-                .all { c.text.contains("addCloseable(${it.name})") }
+                // An AutoCloseable adapter hands the job to whoever owns it by forwarding close.
+                .all { c.text.contains("addCloseable(${it.name})") || c.text.contains("${it.name}.close()") }
         }
     }
 }

@@ -1,7 +1,9 @@
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -26,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.resources.MR
+import id.homebase.resources.circle_create_empty_action
 import id.homebase.resources.enroll_banner
 import id.homebase.resources.enroll_banner_action
 import id.homebase.resources.contactbook_circle_disabled
@@ -41,6 +45,7 @@ fun CirclesTabContent(
     /** Contacts who qualify for one of this app's circles and are not in it yet; 0 hides the row. */
     candidateCount: Int = 0,
     listState: LazyListState,
+    onNewCircle: () -> Unit,
 ) {
     when {
         loading && circles.isEmpty() -> Box(
@@ -52,11 +57,19 @@ fun CirclesTabContent(
             modifier = modifier.fillMaxSize().padding(32.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(MR.string.contactbook_circles_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = stringResource(MR.string.contactbook_circles_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FilledTonalButton(onClick = onNewCircle) {
+                    Text(stringResource(MR.string.circle_create_empty_action))
+                }
+            }
         }
 
         else -> {
@@ -92,6 +105,7 @@ fun CirclesTabContent(
                         )
                     }
                 }
+                item(key = "new-circle") { NewCircleRow(onClick = onNewCircle) }
                 items(circles, key = { it.circle.id }) { circle ->
                     val description = circle.circle.description
                     ListItem(

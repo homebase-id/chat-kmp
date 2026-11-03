@@ -6,6 +6,7 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.blockingCircles
 import id.homebase.api.client.connections.CircleEnrollmentCandidates
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.api.client.connections.CreateAppCircleRequest
 import id.homebase.api.client.connections.EnrollmentResult
 import id.homebase.api.client.connections.PendingCircleMember
 import id.homebase.api.client.connections.ConnectionNetworkProvider
@@ -330,6 +331,17 @@ class ConnectionService(
         val result = provider.addManyToCircle(circleId, odinIds)
         refresh()
         return result
+    }
+
+    suspend fun createCircle(request: CreateAppCircleRequest): Uuid {
+        val id = provider.createCircle(request)
+        refresh()
+        return id
+    }
+
+    suspend fun deleteCircle(circleId: Uuid, removeMembers: Boolean) {
+        provider.deleteCircle(circleId, removeMembers)
+        refresh()
     }
 
     /** Revoke [odinId]'s membership in [circleId] — also drops any still-pending deposit. */

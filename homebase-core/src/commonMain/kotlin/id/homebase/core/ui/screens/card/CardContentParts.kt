@@ -129,7 +129,7 @@ private val HEADING_BADGE_SIZE = 36.dp
 private val ADD_PADDING = 12.dp
 
 @Composable
-internal fun AudienceHeading(card: CardAudience) {
+internal fun AudienceHeading(card: CardAudience, emoji: String? = null) {
     val text = when (card) {
         CardAudience.Public -> stringResource(MR.string.profile_card_content_shown_everyone)
         is CardAudience.Circle -> stringResource(MR.string.profile_card_content_shown_to, audienceLabel(card))
@@ -144,6 +144,7 @@ internal fun AudienceHeading(card: CardAudience) {
             content = onAudienceContainer(card),
             size = HEADING_BADGE_SIZE,
             iconSize = 20.dp,
+            emoji = emoji,
         )
         Spacer(Modifier.width(12.dp))
         Text(
@@ -267,6 +268,7 @@ internal fun ContentSheet(
     onAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
     onEdit: (Map<String, String>, ProfileAudience) -> Unit = { _, _ -> },
     onDelete: ((Uuid) -> Unit)? = null,
+    onCirclesChanged: (() -> Unit)? = null,
 ) {
     // Opens expanded: from the half-height anchor the keyboard covers the field and Save.
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true) {
@@ -344,6 +346,7 @@ internal fun ContentSheet(
                     circles = circles,
                     onChange = { audience = it },
                     otherCircles = otherCirclesOf(editing.audience, audience),
+                    onCircleCreated = onCirclesChanged,
                 )
                 if (editing.audience == ProfileAudience.Public && audience != ProfileAudience.Public) {
                     Text(

@@ -134,9 +134,10 @@ class FilesyncPlaces(val onFiles: () -> Unit, val onRecent: () -> Unit, val onTr
 
 private val ModifiedWidth = 150.dp
 private val SizeWidth = 84.dp
-private val KindWidth = 118.dp
+private val KindWidth = 134.dp
+private val KindGutter = 32.dp
 private val ActionsWidth = 80.dp
-private val RowHeight = 44.dp
+private val RowHeight = 52.dp
 private val PaneWidth = 320.dp
 
 // Below these content widths a column gives way to the name: Kind first, then Modified.
@@ -361,7 +362,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 TableHeader(uiState.sort, uiState.selected.size, uiState.visible.size, columns, scope.onAction)
                 Box(modifier = Modifier.weight(1f)) {
                     BrowserListBody(scope) {
-                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = FilesyncRowInset, vertical = 4.dp)) {
                             val several = uiState.selected.size > 1
                             items(uiState.visible, key = { it.nodeId.toString() }) { node ->
                                 val selected = node.nodeId in uiState.selection.ids
@@ -428,13 +429,13 @@ private fun ColumnScope.TagFilters(uiState: FilesyncUiState, onAction: (Filesync
 }
 
 @Composable
-private fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: Int, columns: TableColumns, onAction: (FilesyncUiAction) -> Unit) {
+internal fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: Int, columns: TableColumns, onAction: (FilesyncUiAction) -> Unit) {
     val onSort: (FilesyncSortKey) -> Unit = { onAction(FilesyncUiAction.SortBy(it)) }
     Row(
         modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(modifier = Modifier.width(42.dp)) {
+        Box(modifier = Modifier.width(FilesyncTileSize + 12.dp)) {
             if (visibleCount > 0) {
                 val all = selectedCount == visibleCount
                 SelectBox(
@@ -451,7 +452,7 @@ private fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: In
         HeaderCell(FilesyncSortKey.Name, sort, onSort, Modifier.weight(1f))
         if (columns.modified) HeaderCell(FilesyncSortKey.Modified, sort, onSort, Modifier.width(ModifiedWidth))
         HeaderCell(FilesyncSortKey.Size, sort, onSort, Modifier.width(SizeWidth), Arrangement.End)
-        if (columns.kind) HeaderCell(FilesyncSortKey.Kind, sort, onSort, Modifier.width(KindWidth).padding(start = 20.dp))
+        if (columns.kind) HeaderCell(FilesyncSortKey.Kind, sort, onSort, Modifier.width(KindWidth).padding(start = KindGutter))
         Spacer(Modifier.width(ActionsWidth))
     }
     HorizontalDivider()
@@ -506,7 +507,7 @@ internal fun TableRow(
     val select by rememberUpdatedState(onSelect)
     val isSelected by rememberUpdatedState(selected)
     val colors = MaterialTheme.colorScheme
-    val background = when {
+    val rowColor = when {
         selected -> colors.secondaryContainer
         hovered -> colors.surfaceContainerLow
         else -> Color.Transparent
@@ -516,8 +517,8 @@ internal fun TableRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(RowHeight)
-                .clip(RoundedCornerShape(10.dp))
-                .background(background)
+                .clip(MaterialTheme.shapes.medium)
+                .background(animatedRowColor(rowColor))
                 .hoverable(interaction)
                 // Touch, keyboard and screen readers; a mouse press never reaches it, the handler below consumes it.
                 .combinedClickable(
@@ -563,10 +564,10 @@ internal fun TableRow(
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val textColor = if (node.removedMs != null) colors.onSurfaceVariant else colors.onSurface
+            val deleted = node.removedMs != null
             // The checkbox takes the icon's place, as in OneDrive: on hover, and on every row once anything is selected.
             if (hovered || selecting) {
-                Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(FilesyncTileSize), contentAlignment = Alignment.Center) {
                     SelectBox(
                         state = ToggleableState(selected),
                         description = stringResource(MR.string.filesync_select, node.name),
@@ -574,15 +575,15 @@ internal fun TableRow(
                     )
                 }
             } else {
-                FileTypeTile(node, size = 30.dp)
+                FileTypeTile(node, deleted = deleted)
             }
             Spacer(Modifier.width(12.dp))
             val nameInteraction = remember { MutableInteractionSource() }
             val nameHovered by nameInteraction.collectIsHoveredAsState()
             NodeName(
                 node = node,
-                ringColor = if (background == Color.Transparent) colors.surface else background,
-                fontWeight = if (node.isFolder) FontWeight.SemiBold else FontWeight.Medium,
+                ringColor = if (rowColor == Color.Transparent) colors.surface else rowColor,
+                deleted = deleted,
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
                 textDecoration = if (nameHovered) TextDecoration.Underline else null,
                 // The name opens like a link, as in OneDrive and Dropbox; Ctrl/Cmd or Shift on it still picks the row.
@@ -619,9 +620,9 @@ internal fun TableRow(
                         }
                     },
             )
-            if (columns.modified) Cell(node.modifiedMs?.let { formatDayTime(it) } ?: DASH, Modifier.width(ModifiedWidth), textColor)
-            Cell(node.sizeBytes?.let { formatBytes(it) } ?: DASH, Modifier.width(SizeWidth), textColor, TextAlign.End)
-            if (columns.kind) Cell(kindLabel(node), Modifier.width(KindWidth).padding(start = 20.dp), textColor)
+            if (columns.modified) Cell(node.modifiedMs?.let { formatDayTime(it) } ?: DASH, Modifier.width(ModifiedWidth))
+            Cell(node.sizeBytes?.let { formatBytes(it) } ?: DASH, Modifier.width(SizeWidth), TextAlign.End)
+            if (columns.kind) Cell(kindLabel(node), Modifier.width(KindWidth).padding(start = KindGutter))
             Row(modifier = Modifier.width(ActionsWidth), horizontalArrangement = Arrangement.End) {
                 when {
                     progress != null -> CancelTransferButton(progress) { actions.onAction(FilesyncUiAction.CancelTransfer) }
@@ -668,11 +669,11 @@ private fun RowActions(node: FilesyncNode, onAction: (FilesyncUiAction) -> Unit,
 }
 
 @Composable
-private fun Cell(text: String, modifier: Modifier, color: Color, align: TextAlign = TextAlign.Start) {
+private fun Cell(text: String, modifier: Modifier, align: TextAlign = TextAlign.Start) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = color,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = align,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
