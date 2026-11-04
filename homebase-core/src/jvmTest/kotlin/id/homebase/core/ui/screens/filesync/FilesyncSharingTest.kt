@@ -155,7 +155,7 @@ class FilesyncSharingTest {
 
     @Test
     fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndLeavesHimAMarker() = runTest {
-        sharing.share(listOf(file), sam, FilesyncAccess.View)
+        sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null)
 
         // Circles, their keys and shares are written as Filesync; the public key and the marker as the app
         assertTrue(calls.filter { "/connections/" in it.path || it.path.endsWith("/shares") }.all { it.asFilesync })
@@ -196,17 +196,25 @@ class FilesyncSharingTest {
 
     @Test
     fun aSecondShareReusesTheCirclesKey() = runTest {
-        sharing.share(listOf(file), sam, FilesyncAccess.View)
-        sharing.share(listOf(file), sam, FilesyncAccess.Edit)
+        sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null)
+        sharing.share(listOf(file), sam, FilesyncAccess.Edit, expiresAt = null)
 
         assertEquals(1, calls.count { it.path.endsWith("/share-key") && it.request.method == HttpMethod.Put })
+    }
+
+    @Test
+    fun aShareCarriesItsExpiry() = runTest {
+        sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = 1_900_000_000_000)
+
+        val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
+        assertEquals("1900000000000", share["expiresAt"]!!.jsonPrimitive.content)
     }
 
     @Test
     fun someoneWhoHasntTurnedSharingOnCantBeSharedWith() = runTest {
         samReady = false
 
-        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View) }
+        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null) }
         assertTrue(calls.none { it.path.endsWith("/shares") })
     }
 
@@ -214,7 +222,7 @@ class FilesyncSharingTest {
     fun someoneWhoseSharersCircleDoesntHoldUsYetCantBeSharedWith() = runTest {
         samGrantsWrite = false
 
-        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View) }
+        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null) }
         assertTrue(calls.none { it.path.endsWith("/shares") })
     }
 

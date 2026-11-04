@@ -306,7 +306,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.ShareWithConnection -> sharing.ask(action.nodes)
 
-            is FilesyncUiAction.ShareWithPerson -> sharing.share(action.recipient, action.access)
+            is FilesyncUiAction.ShareWithPerson -> sharing.share(action.recipient, action.access, action.expiry)
 
             FilesyncUiAction.DismissShareWith -> sharing.dismiss()
 
@@ -321,6 +321,8 @@ class FilesyncViewModel(
             is FilesyncUiAction.OpenRecipient -> sharing.openRecipient(action.recipient)
 
             is FilesyncUiAction.StopSharing -> sharing.stopSharing(action.nodeId)
+
+            is FilesyncUiAction.ChangeExpiry -> sharing.changeExpiry(action.nodeId, action.expiry)
 
             is FilesyncUiAction.SaveShared -> {
                 val owner = _uiState.value.sharing.sharer ?: return

@@ -3163,6 +3163,17 @@
     <string name="filesync_access_edit">Can edit and comment</string>
     <string name="filesync_shared_with_me">Shared with me</string>
     <string name="filesync_shared_files_from">Shared files from</string>
+    <string name="filesync_you_shared_with">You shared with</string>
+    <string name="filesync_expiry_title">Sharing ends after</string>
+    <string name="filesync_expiry_day">1 day</string>
+    <string name="filesync_expiry_week">1 week</string>
+    <string name="filesync_expiry_month">30 days</string>
+    <string name="filesync_expiry_year">1 year</string>
+    <string name="filesync_expiry_never">Never</string>
+    <string name="filesync_expires_never">Doesn't expire</string>
+    <string name="filesync_expires_within_day">Expires within a day</string>
+    <string name="filesync_expires_on">Expires %1$s</string>
+    <string name="filesync_change_expiry">Change when sharing ends</string>
     <string name="filesync_view_from_title">Shared with you by %1$s</string>
     <string name="filesync_view_from_body">These files stay on their Homebase. Save one to keep a copy.</string>
     <string name="filesync_view_to_title">Shared with %1$s</string>

@@ -165,7 +165,7 @@ data class FilesyncSharingState(
 }
 
 @Immutable
-data class FilesyncOutgoingShare(val node: FilesyncNode, val access: FilesyncAccess)
+data class FilesyncOutgoingShare(val node: FilesyncNode, val access: FilesyncAccess, val expiresAt: Long?)
 
 @Immutable
 data class FilesyncSharedWith(val nodeId: Uuid, val recipients: List<FilesyncShareRecipient>? = null)
@@ -247,12 +247,13 @@ sealed interface FilesyncUiAction {
     data class Unshare(val nodeId: Uuid, val recipient: OdinId) : FilesyncDiscussionAction
     data object TurnOnSharing : FilesyncUiAction
     data class ShareWithConnection(val nodes: List<FilesyncNode>) : FilesyncUiAction
-    data class ShareWithPerson(val recipient: OdinId, val access: FilesyncAccess) : FilesyncUiAction
+    data class ShareWithPerson(val recipient: OdinId, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
     data object DismissShareWith : FilesyncUiAction
     data object LoadSharers : FilesyncUiAction
     data class OpenSharer(val sharer: OdinId?) : FilesyncUiAction
     data class OpenRecipient(val recipient: OdinId?) : FilesyncUiAction
     data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
+    data class ChangeExpiry(val nodeId: Uuid, val expiry: FilesyncExpiry) : FilesyncUiAction
     data class SaveShared(val node: FilesyncNode) : FilesyncUiAction
 }
 

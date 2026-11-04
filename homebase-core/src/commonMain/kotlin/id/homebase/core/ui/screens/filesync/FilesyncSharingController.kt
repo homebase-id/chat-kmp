@@ -14,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Turning sharing on: signing in to Filesync too ([FilesyncSession]), and the permission its registration may lack. */
@@ -107,13 +108,13 @@ internal class FilesyncSharingController(
         scope.launch { finishTurningOn() }
     }
 
-    fun share(recipient: OdinId, access: FilesyncAccess) {
+    fun share(recipient: OdinId, access: FilesyncAccess, expiry: FilesyncExpiry) {
         val files = state().shareWith ?: return
         val fileHandles = files.mapNotNull { handles()[it.nodeId] }
         update { it.copy(sending = true) }
         scope.launch {
             try {
-                sharing.share(fileHandles, recipient, access)
+                sharing.share(fileHandles, recipient, access, expiry.expiresAt(Clock.System.now().toEpochMilliseconds()))
                 update { it.copy(sending = false, shareWith = null) }
                 send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
                 loadRecipients()
@@ -172,7 +173,7 @@ internal class FilesyncSharingController(
             }
             listed.forEach { recipientHandles[it.node.nodeId] = it.handle }
             val byId = listed.associateBy { it.node.nodeId }
-            update { it.copy(recipientFiles = listed.map { f -> f.node }.arranged(FilesyncSort()).mapNotNull { node -> byId[node.nodeId]?.let { FilesyncOutgoingShare(node, it.access) } }) }
+            update { it.copy(recipientFiles = listed.map { f -> f.node }.arranged(FilesyncSort()).mapNotNull { node -> byId[node.nodeId]?.let { FilesyncOutgoingShare(node, it.access, it.expiresAt) } }) }
         }
     }
 
@@ -187,6 +188,25 @@ internal class FilesyncSharingController(
                 throw e
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "withdrawing $nodeId from $recipient failed" }
+                send(FilesyncUiEvent.Error(FilesyncError.SharingFailed))
+            }
+        }
+    }
+
+    /** Shares the file with the shown person again, for [expiry] from now; the new row replaces the old. */
+    fun changeExpiry(nodeId: Uuid, expiry: FilesyncExpiry) {
+        val recipient = state().recipient ?: return
+        val handle = recipientHandles[nodeId] ?: return
+        val shown = state().recipientFiles?.firstOrNull { it.node.nodeId == nodeId } ?: return
+        scope.launch {
+            try {
+                val expiresAt = expiry.expiresAt(Clock.System.now().toEpochMilliseconds())
+                sharing.share(listOf(handle), recipient, shown.access, expiresAt)
+                update { s -> s.copy(recipientFiles = s.recipientFiles?.map { if (it.node.nodeId == nodeId) it.copy(expiresAt = expiresAt) else it }) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "changing $nodeId's expiry for $recipient failed" }
                 send(FilesyncUiEvent.Error(FilesyncError.SharingFailed))
             }
         }

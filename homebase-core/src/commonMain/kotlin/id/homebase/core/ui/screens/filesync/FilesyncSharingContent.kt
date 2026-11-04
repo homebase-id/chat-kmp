@@ -2,8 +2,10 @@ package id.homebase.core.ui.screens.filesync
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,8 +21,12 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,12 +57,24 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.common.util.formatBytes
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
+import id.homebase.core.util.formatMediumDate
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.filesync_access_edit
 import id.homebase.resources.filesync_access_view
+import id.homebase.resources.filesync_change_expiry
+import id.homebase.resources.filesync_expires_in_days
+import id.homebase.resources.filesync_expires_never
+import id.homebase.resources.filesync_expires_on
+import id.homebase.resources.filesync_expires_within_day
+import id.homebase.resources.filesync_expiry_day
+import id.homebase.resources.filesync_expiry_month
+import id.homebase.resources.filesync_expiry_never
+import id.homebase.resources.filesync_expiry_title
+import id.homebase.resources.filesync_expiry_week
+import id.homebase.resources.filesync_expiry_year
 import id.homebase.resources.filesync_share_access_edit
 import id.homebase.resources.filesync_share_access_view
 import id.homebase.resources.filesync_share_no_people
@@ -80,7 +98,11 @@ import id.homebase.resources.filesync_view_from_title
 import id.homebase.resources.filesync_view_to_body
 import id.homebase.resources.filesync_view_to_none
 import id.homebase.resources.filesync_view_to_title
+import id.homebase.resources.filesync_you_shared_with
+import kotlin.time.Clock
+import kotlin.time.Instant
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -95,6 +117,26 @@ private val FilesyncAccess.label: StringResource
         FilesyncAccess.View -> MR.string.filesync_access_view
         FilesyncAccess.Edit -> MR.string.filesync_access_edit
     }
+
+private val FilesyncExpiry.choice: StringResource
+    get() = when (this) {
+        FilesyncExpiry.Day -> MR.string.filesync_expiry_day
+        FilesyncExpiry.Week -> MR.string.filesync_expiry_week
+        FilesyncExpiry.Month -> MR.string.filesync_expiry_month
+        FilesyncExpiry.Year -> MR.string.filesync_expiry_year
+        FilesyncExpiry.Never -> MR.string.filesync_expiry_never
+    }
+
+@Composable
+private fun expiryText(expiresAt: Long?): String {
+    expiresAt ?: return stringResource(MR.string.filesync_expires_never)
+    val days = ((expiresAt - Clock.System.now().toEpochMilliseconds()) / FilesyncExpiry.DAY_MS).toInt()
+    return when {
+        days < 1 -> stringResource(MR.string.filesync_expires_within_day)
+        days <= 60 -> pluralStringResource(MR.plurals.filesync_expires_in_days, days, days)
+        else -> stringResource(MR.string.filesync_expires_on, formatMediumDate(Instant.fromEpochMilliseconds(expiresAt)))
+    }
+}
 
 /** Whom to share the files with, and how; first asks to turn sharing on when it's off. */
 @Composable
@@ -131,6 +173,7 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
     val search = rememberTextFieldState()
     var chosen by rememberSaveable { mutableStateOf<String?>(null) }
     var access by rememberSaveable { mutableStateOf(FilesyncAccess.View) }
+    var expiry by rememberSaveable { mutableStateOf(FilesyncExpiry.Default) }
     val query = search.text.toString().trim()
     val people = remember(connections, query) {
         connections.map.values.filter { it.status == ConnectionStatus.Connected }.map { it.odinId }
@@ -164,11 +207,17 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
             Text(stringResource(option.choice), modifier = Modifier.padding(start = 8.dp))
         }
     }
+    Text(stringResource(MR.string.filesync_expiry_title), style = MaterialTheme.typography.labelLarge)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilesyncExpiry.entries.forEach { option ->
+            FilterChip(selected = expiry == option, onClick = { expiry = option }, label = { Text(stringResource(option.choice)) })
+        }
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = { onAction(FilesyncUiAction.DismissShareWith) }) { Text(stringResource(MR.string.cancel)) }
         Button(
             enabled = chosen != null && access in sharing.offered && !sharing.sending,
-            onClick = { chosen?.let { onAction(FilesyncUiAction.ShareWithPerson(OdinId(it), access)) } },
+            onClick = { chosen?.let { onAction(FilesyncUiAction.ShareWithPerson(OdinId(it), access, expiry)) } },
         ) {
             if (sharing.sending) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             else Text(stringResource(MR.string.filesync_share_send))
@@ -196,7 +245,12 @@ internal fun FilesyncSharedWithSection(node: FilesyncNode, sharing: FilesyncShar
                     IdentityAvatar(recipient.odinId, AvatarOptions(size = 32.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(recipient.odinId.domainName, style = MaterialTheme.typography.bodyMedium)
-                        Text(stringResource(recipient.access.label), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val terms = listOf(stringResource(recipient.access.label), expiryText(recipient.expiresAt)).joinToString(" · ")
+                        Text(
+                            terms,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     IconButton(onClick = { onAction(FilesyncUiAction.Unshare(node.nodeId, recipient.odinId)) }) {
                         Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, recipient.odinId.domainName))
@@ -259,7 +313,7 @@ internal fun ColumnScope.FilesyncRecipientsSidebar(sharing: FilesyncSharingState
     if (sharing.recipients.isEmpty()) return
     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp))
     Text(
-        text = stringResource(MR.string.filesync_shared_with),
+        text = stringResource(MR.string.filesync_you_shared_with),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
@@ -330,14 +384,34 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
                 items(sharing.recipientFiles.orEmpty(), key = { it.node.nodeId }) { share ->
                     FilesyncNodeRow(
                         node = share.node,
-                        details = listOf(stringResource(share.access.label), share.node.sharedDetails()).filter { it.isNotEmpty() }.joinToString(" · "),
+                        details = listOf(stringResource(share.access.label), expiryText(share.expiresAt), share.node.sharedDetails())
+                            .filter { it.isNotEmpty() }.joinToString(" · "),
                         trailing = {
+                            ExpiryMenu(onPick = { onAction(FilesyncUiAction.ChangeExpiry(share.node.nodeId, it)) })
                             IconButton(onClick = { onAction(FilesyncUiAction.StopSharing(share.node.nodeId)) }) {
                                 Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, person.domainName))
                             }
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpiryMenu(onPick: (FilesyncExpiry) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Outlined.Schedule, contentDescription = stringResource(MR.string.filesync_change_expiry))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            FilesyncExpiry.entries.forEach { option ->
+                DropdownMenuItem(text = { Text(stringResource(option.choice)) }, onClick = {
+                    open = false
+                    onPick(option)
+                })
             }
         }
     }

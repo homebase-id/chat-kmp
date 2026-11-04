@@ -59,9 +59,21 @@ enum class FilesyncAccess(val permissions: List<DrivePermission>) {
     Edit(listOf(DrivePermission.Read, DrivePermission.Write, DrivePermission.React, DrivePermission.Comment)),
 }
 
-data class FilesyncShareRecipient(val odinId: OdinId, val access: FilesyncAccess)
+/** How long a share lasts; [days] null never ends. */
+enum class FilesyncExpiry(val days: Int?) {
+    Day(1), Week(7), Month(30), Year(365), Never(null);
 
-data class FilesyncSharedFile(val node: FilesyncNode, val handle: FilesyncHandle, val access: FilesyncAccess)
+    fun expiresAt(nowMs: Long): Long? = days?.let { nowMs + it * DAY_MS }
+
+    companion object {
+        val Default = Month
+        const val DAY_MS = 24 * 60 * 60 * 1000L
+    }
+}
+
+data class FilesyncShareRecipient(val odinId: OdinId, val access: FilesyncAccess, val expiresAt: Long?)
+
+data class FilesyncSharedFile(val node: FilesyncNode, val handle: FilesyncHandle, val access: FilesyncAccess, val expiresAt: Long?)
 
 /** "[odinId] has files for you", left on the recipient's Filesync drive. */
 @Serializable
@@ -125,7 +137,7 @@ class FilesyncSharing(
     }
 
     /** Shares the [files] with [recipient], then leaves them a marker, if they have none from this identity yet. */
-    suspend fun share(files: List<FilesyncHandle>, recipient: OdinId, access: FilesyncAccess) {
+    suspend fun share(files: List<FilesyncHandle>, recipient: OdinId, access: FilesyncAccess, expiresAt: Long?) {
         requireSignedIn()
         val self = requireNotNull(appCredentials.getActiveCredentials()).domain
         val point = recipientPoint(recipient)
@@ -147,20 +159,23 @@ class FilesyncSharing(
                 FilesyncProtocol.DriveAlias,
                 chunk.map { file ->
                     val locked = ShareKeys.lockFileKey(own.key, file.keyHeader.aesKey.toByteArray(), FilesyncProtocol.DriveAlias, file.fileId, circleId)
-                    ShareRequest(file.fileId, circleId, permissions, lockedFileKey = locked)
+                    ShareRequest(file.fileId, circleId, permissions, expiresAt = expiresAt, lockedFileKey = locked)
                 },
             )
         }
         leaveMarker(self, recipient, point)
     }
 
-    /** Who [fileId] is shared with now, withdrawn shares left out. */
+    /** Who [fileId] is shared with now, withdrawn and expired shares left out. */
     suspend fun sharedWith(fileId: Uuid): List<FilesyncShareRecipient> {
         requireSignedIn()
         val people = individualCircles()
+        val now = Clock.System.now().toEpochMilliseconds()
         return filesyncShares.shares(FilesyncProtocol.DriveAlias, fileId).mapNotNull { row ->
             val person = people[row.circleId] ?: return@mapNotNull null
-            row.access()?.let { FilesyncShareRecipient(person, it) }
+            // Expired rows are listed too, for renewing; they no longer share anything.
+            if (row.expiresAt?.let { it <= now } == true) return@mapNotNull null
+            row.access()?.let { FilesyncShareRecipient(person, it, row.expiresAt) }
         }
     }
 
@@ -191,8 +206,9 @@ class FilesyncSharing(
                 ),
             )
             page.searchResults.filter { it.fileState == FileState.Active }.forEach { file ->
-                val access = file.shares.orEmpty().firstOrNull { it.circleId == circleId }?.access() ?: return@forEach
-                file.toFilesyncNode()?.let { (node, handle) -> found += FilesyncSharedFile(node, handle, access) }
+                val row = file.shares.orEmpty().firstOrNull { it.circleId == circleId } ?: return@forEach
+                val access = row.access() ?: return@forEach
+                file.toFilesyncNode()?.let { (node, handle) -> found += FilesyncSharedFile(node, handle, access, row.expiresAt) }
             }
             cursor = page.cursorState
         } while (page.hasMoreRows)
