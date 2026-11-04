@@ -1,6 +1,5 @@
 package id.homebase.core.ui.screens.card
 
-import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -29,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -101,7 +101,9 @@ internal fun CardStyleRow(
         val minWidth = maxOf(STYLE_TILE_MIN_WIDTH * grow, widestLabel)
         val widest = maxOf(STYLE_TILE_WIDTH * grow, minWidth)
         val perRow = (tiles.size + 1) / 2
-        val rows = if (widthFor(tiles.size) < minWidth && wrap && widthFor(perRow) >= minWidth) 2 else 1
+        val single = widthFor(tiles.size) >= minWidth
+        val twoRows = !single && wrap && widthFor(perRow) >= minWidth
+        val rows = if (twoRows) 2 else 1
         SideEffect { onRows(rows) }
         val tile: @Composable (ResolvedCardStyle, Dp) -> Unit = { style, width ->
             StyleTile(
@@ -114,11 +116,11 @@ internal fun CardStyleRow(
             )
         }
         when {
-            widthFor(tiles.size) >= minWidth -> Row(
+            single -> Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = STYLE_ROW_INSET).selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(STYLE_SPACING, Alignment.CenterHorizontally),
             ) { tiles.forEach { tile(it, widthFor(tiles.size).coerceAtMost(widest)) } }
-            wrap && widthFor(perRow) >= minWidth -> FlowRow(
+            twoRows -> FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = STYLE_ROW_INSET).selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(STYLE_SPACING, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(STYLE_SPACING),
