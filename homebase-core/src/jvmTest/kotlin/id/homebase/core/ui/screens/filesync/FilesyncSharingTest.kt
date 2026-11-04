@@ -1,5 +1,8 @@
 package id.homebase.core.ui.screens.filesync
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlPreparedStatement
 import id.homebase.api.client.CryptoHelper
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
@@ -17,6 +20,8 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -26,8 +31,14 @@ import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.crypto.ZkSeal
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OutboxSerializer
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.Outbox
+import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.youauth.DrivePermissionsSerializer
 import id.homebase.core.config.filesyncAppRegistration
+import id.homebase.core.feed.newInMemoryJdbcDriver
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -155,13 +166,44 @@ class FilesyncSharingTest {
 
     private val json = headersOf(HttpHeaders.ContentType, "application/json")
     private val appCredentials = CredentialsManager()
-    private val sharing = HttpClient(engine).let { http ->
-        FilesyncSharing(
-            http, appCredentials,
-            ConnectionNetworkProvider(http, appCredentials), CircleShareKeyProvider(http, appCredentials),
-            PeerDriveQueryProvider(http, appCredentials), DriveQueryProvider(http, appCredentials),
-            DriveUploadProvider(http, appCredentials, NoFiles),
-        )
+    private val http = HttpClient(engine)
+    private val upload = DriveUploadProvider(http, appCredentials, NoFiles)
+
+    // Refuses the first n outbox inserts, as a full or broken database would.
+    private class OutboxRefusingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
+        var refuse = 0
+        override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
+            if (refuse > 0 && sql.contains("INSERT INTO Outbox")) {
+                refuse--
+                throw IllegalStateException("outbox insert refused")
+            }
+            return delegate.execute(identifier, sql, parameters, binders)
+        }
+    }
+
+    private val driver = OutboxRefusingDriver(newInMemoryJdbcDriver())
+    private val database = DatabaseManager({ driver })
+    private val outbox = OutboxSync(
+        database,
+        object : OutboxUploader {
+            override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("the test delivers markers itself")
+        },
+        EventBus(),
+    )
+    private val sharing = FilesyncSharing(
+        http, appCredentials,
+        ConnectionNetworkProvider(http, appCredentials), CircleShareKeyProvider(http, appCredentials),
+        PeerDriveQueryProvider(http, appCredentials), DriveQueryProvider(http, appCredentials),
+        outbox,
+    )
+
+    /** Sends each queued marker as the outbox's DriveOutboxUploader does. */
+    private suspend fun deliverMarkers() {
+        while (true) {
+            val row = database.outbox.checkout() ?: return
+            upload.uploadFile(OutboxSerializer.decode<UploadFileRequest>(row))
+            database.outbox.deleteByRowId(row.rowId)
+        }
     }
 
     @BeforeTest
@@ -176,6 +218,7 @@ class FilesyncSharingTest {
     @Test
     fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndLeavesHimAMarker() = runTest {
         sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
+        deliverMarkers()
 
         // Circles, their keys and shares are written as Filesync; the public key and the marker as the app
         assertTrue(calls.filter { "/connections/" in it.path || it.path.endsWith("/shares") }.all { it.asFilesync })
@@ -212,6 +255,18 @@ class FilesyncSharingTest {
         assertEquals(FilesyncProtocol.MarkerFileType, appData["fileType"]!!.jsonPrimitive.int)
         val content = KeyHeader(opened.copyOf(16), SecureByteArray(opened.copyOfRange(16, 32))).decrypt(Base64.decode(appData["content"]!!.jsonPrimitive.content))
         assertEquals("frodo.test", Json.parseToJsonElement(content.decodeToString()).jsonObject["odinId"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aMarkerThatCantBeQueuedNeitherFailsTheShareNorSkipsTheOtherMembers() = runTest {
+        unsealed = listOf("sam.test", "merry.test")
+        driver.refuse = 1
+
+        sharing.share(listOf(file), FilesyncAudience.Group(groupCircle, "Hiking", listOf(merry, sam)), FilesyncAccess.View, expiresAt = null)
+        deliverMarkers()
+
+        assertEquals(1, calls.count { it.path.endsWith("/shares") })
+        assertEquals(1, calls.count { it.path.endsWith("/files") })
     }
 
     @Test
@@ -424,6 +479,7 @@ class FilesyncSharingTest {
         unsealed = listOf("sam.test", "merry.test")
 
         sharing.share(listOf(file), FilesyncAudience.Group(groupCircle, "Hiking", listOf(merry, sam)), FilesyncAccess.View, expiresAt = null)
+        deliverMarkers()
 
         val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
         assertEquals(groupCircle.toString(), share["circleId"]!!.jsonPrimitive.content)

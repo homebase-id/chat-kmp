@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.KeyHeader
@@ -32,7 +33,6 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.shares.DriveShareProvider
 import id.homebase.api.client.drives.shares.ShareRequest
 import id.homebase.api.client.drives.shares.ShareRow
-import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
@@ -46,6 +46,7 @@ import id.homebase.api.crypto.HashUtil
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.UuidSerializer
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.util.compareStringUuId
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DrivePermissionSet
@@ -55,6 +56,7 @@ import id.homebase.core.config.filesyncLabeledDrive
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import kotlin.time.Clock
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -139,7 +141,7 @@ class FilesyncSharing(
     private val circleShareKeys: CircleShareKeyProvider,
     private val peer: PeerDriveQueryProvider,
     private val query: DriveQueryProvider,
-    private val upload: DriveUploadProvider,
+    private val outbox: OutboxSync,
 ) {
     private val asFilesync = ConnectionNetworkProvider(httpClient, FilesyncSession.credentials)
     private val filesyncKeys = CircleShareKeyProvider(httpClient, FilesyncSession.credentials)
@@ -206,7 +208,16 @@ class FilesyncSharing(
                 },
             )
         }
-        members.forEach { leaveMarker(self, it, points.getValue(it)) }
+        members.forEach { member ->
+            try {
+                leaveMarker(self, member, points.getValue(member))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The files are already shared; one member's missing marker mustn't fail the share or skip the rest.
+                Logger.w(e, TAG) { "no marker queued for $member" }
+            }
+        }
     }
 
     /**
@@ -387,13 +398,13 @@ class FilesyncSharing(
         return found
     }
 
-    /** The people who left this identity a marker, each trusted only when it was sent by the identity it names; whoever shared last first. */
+    /** The people who left this identity a marker, each trusted only when it was sent by the identity it names; newest marker first. */
     suspend fun sharers(): List<OdinId> =
         query.queryBatch(
             FilesyncProtocol.DriveAlias,
             QueryBatchRequest(
                 queryParams = FileQueryParams(fileType = listOf(FilesyncProtocol.MarkerFileType)),
-                // Every share sends the marker again, which updates it.
+                // A marker is refused when sent again, so this orders by each sharer's first share until senders can update it.
                 resultOptionsRequest = QueryBatchResultOptionsRequest(
                     maxRecords = PAGE,
                     includeMetadataHeader = true,
@@ -446,7 +457,7 @@ class FilesyncSharing(
                 content = OdinSystemSerializer.serialize(FilesyncMarker(self.domainName, FilesyncProtocol.DriveAlias)),
             ),
         ).encryptContent(keyHeader)
-        upload.uploadFile(
+        outbox.tryEnqueue(
             UploadFileRequest(
                 driveId = SystemDriveConstants.transientTempDrive.alias,
                 keyHeader = keyHeader,
