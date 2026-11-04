@@ -2128,6 +2128,7 @@
     <string name="profile_card_style_editorial">Redaktionel</string>
     <string name="profile_card_style_blossom">Blomst</string>
     <string name="profile_card_style_sunset">Solnedgang</string>
+    <string name="profile_card_style_custom">Tilpasset</string>
     <string name="profile_card_style_terminal">Terminal</string>
     <string name="profile_card_first_add_content">Tilføj indhold</string>
     <string name="profile_card_first_customise">Tilpas design</string>

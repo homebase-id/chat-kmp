@@ -61,3 +61,17 @@ internal fun ResolvedCardStyle.matches(overrides: CardOverrides): Boolean =
         (accent == null || overrides.valueOf(CardOption.ACCENT).equals(accent, ignoreCase = true)) &&
         (display == null || overrides.valueOf(CardOption.DISPLAY_FONT) == display) &&
         (text == null || overrides.valueOf(CardOption.TEXT_FONT) == text)
+
+/** The card's own colours as a tile, when they are set but no style in [styles] matches them, so the row shows why none is chosen. */
+internal fun customStyle(styles: List<ResolvedCardStyle>, overrides: CardOverrides, design: String): ResolvedCardStyle? {
+    val ground = overrides.valueOf(CardOption.COLOURS) ?: return null
+    if (styles.any { it.matches(overrides) }) return null
+    return ResolvedCardStyle(
+        id = CUSTOM_STYLE_ID,
+        ground = ground,
+        ink = overrides.palette?.ink ?: "#" + (CardDesign.inkArgb(design) and 0xFFFFFF).toString(16).padStart(6, '0'),
+        accent = overrides.valueOf(CardOption.ACCENT),
+        display = overrides.valueOf(CardOption.DISPLAY_FONT),
+        text = overrides.valueOf(CardOption.TEXT_FONT),
+    )
+}

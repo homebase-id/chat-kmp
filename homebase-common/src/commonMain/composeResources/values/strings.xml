@@ -3212,6 +3212,7 @@
     <string name="profile_card_style_editorial">Editorial</string>
     <string name="profile_card_style_blossom">Blossom</string>
     <string name="profile_card_style_sunset">Sunset</string>
+    <string name="profile_card_style_custom">Custom</string>
     <string name="profile_card_style_terminal">Terminal</string>
     <string name="profile_card_first_add_content">Add content</string>
     <string name="profile_card_first_customise">Customise design</string>

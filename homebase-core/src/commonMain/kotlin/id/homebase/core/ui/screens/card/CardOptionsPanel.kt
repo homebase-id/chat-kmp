@@ -231,8 +231,10 @@ internal fun CardOptionsPanel(
     hasLinks: Boolean,
     modifier: Modifier = Modifier,
     onStyle: (ResolvedCardStyle) -> Unit = {},
+    wrapStyles: Boolean = false,
 ) {
     val styles = remember(design) { cardStylesFor(design) }
+    val custom = remember(styles, overrides, design) { customStyle(styles, overrides, design) }
     val spec = CardDesignSpecs.of(design)
     val orderable = spec?.reorderable(hasLinks).orEmpty()
     val options = CardOption.entries.filter { spec != null && it in spec.options && (it != CardOption.BLOCK_ORDER || orderable.size > 1) }
@@ -241,7 +243,7 @@ internal fun CardOptionsPanel(
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
-        if (styles.isNotEmpty()) CardStyleRow(styles, overrides, enabled, onStyle)
+        if (styles.isNotEmpty()) CardStyleRow(styles, overrides, enabled, onStyle, custom = custom, wrap = wrapStyles)
         AnimatedContent(
             targetState = current.name,
             transitionSpec = {
@@ -252,8 +254,8 @@ internal fun CardOptionsPanel(
             contentAlignment = Alignment.TopStart,
         ) { shown ->
             val option = options.firstOrNull { it.name == shown } ?: current
-            // The picked tool names itself in the group below, so the control stands alone here.
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // The picked tool names itself in the group below, so the control stands alone here; under styles it sits with them.
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = if (styles.isEmpty()) Alignment.Center else Alignment.TopCenter) {
                 OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
             }
         }

@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -128,8 +129,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material.icons.outlined.Public
@@ -183,6 +182,10 @@ import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val CARD_FIRST_HEIGHT = ButtonDefaults.MediumContainerHeight
+private val CARD_FIRST_GAP = 12.dp
+private val CARD_FIRST_INSET = 16.dp
+private val CARD_FIRST_SIDE = 16.dp
+private const val WIDE_STYLES_PER_ROW = 5
 private val COMPACT_HEIGHT = 760.dp
 private val COMPACT_TILE_WIDTH = 88.dp
 private val COMPACT_TILE_CORNER = 16.dp
@@ -212,7 +215,6 @@ private val CAPTION_LINE = 20.dp
 // The card keeps at least the rest of the height, so the controls never shrink it out of being the hero.
 private const val PANEL_MAX_SHARE = 0.55f
 private const val HERO_PULSE_SCALE = 0.97f
-private val WIDE_CHIP_GAP = 12.dp
 private const val DISABLED_TILE_ALPHA = 0.38f
 private const val UNSELECTED_TILE_SCALE = 0.92f
 private const val LARGE_TILE_GROWTH = 1.25f
@@ -535,8 +537,6 @@ internal fun ProfileCardEditorContent(
             var previewOpen by rememberSaveable { mutableStateOf(false) }
             val previewing = previewOpen && contentOpen && showCard
             @Suppress("DEPRECATION") BackHandler(enabled = previewing) { previewOpen = false }
-            val density = LocalDensity.current
-            var wideCard by remember { mutableStateOf(IntSize.Zero) }
             val panelMaxHeight = maxHeight * PANEL_MAX_SHARE
             // A content change lands on the card, so the card answers it with a brief pulse.
             val heroPulse = remember { Animatable(1f) }
@@ -618,7 +618,7 @@ internal fun ProfileCardEditorContent(
             ) {
                 EditorTopBar(
                     audience = uiState.selectedAudience,
-                    showsChip = !wide,
+                    showsChip = true,
                     readOnly = uiState.isCircleReadOnly,
                     unsaved = uiState.isUnsavedCard,
                     onBack = onBack,
@@ -685,7 +685,7 @@ internal fun ProfileCardEditorContent(
                         }
                     }
                 } else if (wide) {
-                    // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
+                    // Two columns that start and end on the same lines; card-first's two buttons sit level with the card's middle.
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -695,30 +695,13 @@ internal fun ProfileCardEditorContent(
                         horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.Top,
                     ) {
-                        Column(
+                        CardPreviewFrame(
+                            keepProportions = true,
+                            alignment = Alignment.TopCenter,
                             modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(WIDE_CHIP_GAP),
-                        ) {
-                            val chipDescription = stringResource(MR.string.profile_card_audience_editing, audienceLabel(uiState.selectedAudience))
-                            AudienceChip(
-                                audience = uiState.selectedAudience,
-                                locked = uiState.isCircleReadOnly,
-                                unsaved = uiState.isUnsavedCard,
-                                elevated = false,
-                                modifier = Modifier
-                                    .widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified)
-                                    .clearAndSetSemantics { contentDescription = chipDescription },
-                            )
-                            CardPreviewFrame(
-                                keepProportions = true,
-                                alignment = Alignment.TopCenter,
-                                onCardSize = { wideCard = it },
-                                modifier = Modifier.weight(1f),
-                            ) { preview(cardWidth) }
-                        }
+                        ) { preview(cardWidth) }
                         panel(
-                            Modifier.width(widePanelWidth),
+                            Modifier.width(widePanelWidth).then(if (mode == EditorMode.Card) Modifier.align(Alignment.CenterVertically) else Modifier),
                             MaterialTheme.shapes.extraLargeIncreased,
                         )
                     }
@@ -770,7 +753,6 @@ private fun CardPreviewFrame(
     modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center,
     fadeInto: (() -> Color)? = null,
-    onCardSize: ((IntSize) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = MaterialTheme.shapes.extraLargeIncreased
@@ -782,7 +764,6 @@ private fun CardPreviewFrame(
                     if (keepProportions) Modifier.aspectRatio(CARD_THUMB_ASPECT, matchHeightConstraintsFirst = true)
                     else Modifier.fillMaxSize(),
                 )
-                .then(if (onCardSize != null) Modifier.onSizeChanged(onCardSize) else Modifier)
                 .clip(shape)
                 // Sets the card off the page when its own colour is close to the backdrop's.
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
@@ -794,7 +775,7 @@ private fun CardPreviewFrame(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(PREVIEW_FADE_HEIGHT)
+                        .height(PREVIEW_FADE_HEIGHT * LocalDensity.current.fontScale.coerceAtLeast(1f))
                         .drawBehind {
                             val color = fadeInto()
                             drawRect(Brush.verticalGradient(listOf(color.copy(alpha = 0f), color)))
@@ -913,13 +894,18 @@ private fun EditorPanel(
     val isSaving = uiState.isSavingDesign
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
-    val styleRow = remember(design) { if (cardStylesFor(design).isEmpty()) 0.dp else STYLE_ROW_HEIGHT * grow + metrics.gap }
+    val styleCount = remember(design, uiState.overrides) {
+        cardStylesFor(design).let { styles -> if (styles.isEmpty()) 0 else styles.size + if (customStyle(styles, uiState.overrides, design) != null) 1 else 0 }
+    }
+    val wrapStyles = metrics == PanelMetrics.Wide
+    val styleRow = if (styleCount == 0) 0.dp else styleRowHeight(fontScale, rows = if (wrapStyles && styleCount > WIDE_STYLES_PER_ROW) 2 else 1) + metrics.gap
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT + styleRow
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
     val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
+    // The card-first choices sit on the page itself; a sheet behind two buttons is a surface with nothing to hold.
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = if (mode == EditorMode.Card) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
         modifier = modifier,
     ) {
@@ -939,7 +925,7 @@ private fun EditorPanel(
                     enabled = !uiState.loadFailed,
                     onAddContent = onAddContent,
                     onCustomiseDesign = onCustomiseDesign,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = CARD_FIRST_INSET),
                 )
                 return@Column
             }
@@ -1000,6 +986,7 @@ private fun EditorPanel(
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
                         onStyle = onStyle,
+                        wrapStyles = wrapStyles,
                         gap = metrics.gap,
                         hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                         modifier = Modifier.fillMaxSize(),
@@ -1017,24 +1004,43 @@ private fun CardFirstChoices(
     onCustomiseDesign: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        CardFirstButton(Icons.Outlined.Edit, stringResource(MR.string.profile_card_first_add_content), enabled, onAddContent)
-        CardFirstButton(Icons.Outlined.Palette, stringResource(MR.string.profile_card_first_customise), enabled, onCustomiseDesign)
+    val addLabel = stringResource(MR.string.profile_card_first_add_content)
+    val customiseLabel = stringResource(MR.string.profile_card_first_customise)
+    val measurer = rememberTextMeasurer()
+    val labelStyle = ButtonDefaults.textStyleFor(ButtonDefaults.MinHeight)
+    val density = LocalDensity.current
+    val widestLabel = remember(addLabel, customiseLabel, labelStyle, density) {
+        with(density) { maxOf(measurer.measure(addLabel, labelStyle).size.width, measurer.measure(customiseLabel, labelStyle).size.width).toDp() }
+    }
+    // Side by side while both labels fit whole; otherwise stacked rather than either being cut.
+    BoxWithConstraints(modifier) {
+        val buttonNeeds = CARD_FIRST_SIDE * 2 + ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight) + ButtonDefaults.iconSpacingFor(ButtonDefaults.MinHeight) + widestLabel
+        if (buttonNeeds * 2 + CARD_FIRST_GAP <= maxWidth) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(CARD_FIRST_GAP)) {
+                CardFirstButton(Icons.Outlined.Edit, addLabel, enabled, onAddContent, Modifier.weight(1f))
+                CardFirstButton(Icons.Outlined.Palette, customiseLabel, enabled, onCustomiseDesign, Modifier.weight(1f))
+            }
+        } else {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(CARD_FIRST_GAP)) {
+                CardFirstButton(Icons.Outlined.Edit, addLabel, enabled, onAddContent, Modifier.fillMaxWidth())
+                CardFirstButton(Icons.Outlined.Palette, customiseLabel, enabled, onCustomiseDesign, Modifier.fillMaxWidth())
+            }
+        }
     }
 }
 
 @Composable
-private fun CardFirstButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun CardFirstButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled,
         shapes = ButtonDefaults.shapes(),
-        contentPadding = ButtonDefaults.contentPaddingFor(CARD_FIRST_HEIGHT),
-        modifier = Modifier.fillMaxWidth().heightIn(min = CARD_FIRST_HEIGHT),
+        contentPadding = PaddingValues(horizontal = CARD_FIRST_SIDE),
+        modifier = modifier.heightIn(min = CARD_FIRST_HEIGHT),
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(CARD_FIRST_HEIGHT)))
-        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(CARD_FIRST_HEIGHT)))
-        Text(label, style = ButtonDefaults.textStyleFor(CARD_FIRST_HEIGHT), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight)))
+        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ButtonDefaults.MinHeight)))
+        Text(label, style = ButtonDefaults.textStyleFor(ButtonDefaults.MinHeight), maxLines = 1, softWrap = false)
     }
 }
 
