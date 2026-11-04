@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -28,6 +29,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,6 +74,12 @@ import id.homebase.resources.filesync_sharing_body
 import id.homebase.resources.filesync_sharing_title
 import id.homebase.resources.filesync_sharing_turn_on
 import id.homebase.resources.filesync_unshare
+import id.homebase.resources.filesync_view_close
+import id.homebase.resources.filesync_view_from_body
+import id.homebase.resources.filesync_view_from_title
+import id.homebase.resources.filesync_view_to_body
+import id.homebase.resources.filesync_view_to_none
+import id.homebase.resources.filesync_view_to_title
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -245,6 +253,100 @@ internal fun ColumnScope.FilesyncSharersSidebar(sharing: FilesyncSharingState, o
     }
 }
 
+/** The wide sidebar's "Shared with": each person this identity shares files with; one shows those files. */
+@Composable
+internal fun ColumnScope.FilesyncRecipientsSidebar(sharing: FilesyncSharingState, onAction: (FilesyncUiAction) -> Unit) {
+    if (sharing.recipients.isEmpty()) return
+    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp))
+    Text(
+        text = stringResource(MR.string.filesync_shared_with),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
+    )
+    sharing.recipients.forEach { recipient ->
+        NavigationDrawerItem(
+            label = { Text(recipient.domainName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            icon = { IdentityAvatar(recipient, AvatarOptions(size = 24.dp)) },
+            selected = sharing.recipient == recipient,
+            onClick = { onAction(FilesyncUiAction.OpenRecipient(recipient)) },
+            modifier = Modifier.height(40.dp),
+        )
+    }
+}
+
+/** The wide browser's centre while a person is picked in the sidebar: their files shared with this identity, or the reverse. */
+@Composable
+internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
+    val person = sharing.sharer ?: sharing.recipient ?: return
+    val incoming = sharing.sharer != null
+    Column(modifier = Modifier.fillMaxSize()) {
+        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(16.dp)) {
+                IdentityAvatar(person, AvatarOptions(size = 40.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(if (incoming) MR.string.filesync_view_from_title else MR.string.filesync_view_to_title, person.domainName),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        stringResource(if (incoming) MR.string.filesync_view_from_body else MR.string.filesync_view_to_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                TextButton(onClick = { onAction(FilesyncUiAction.OpenSharer(null)) }) { Text(stringResource(MR.string.filesync_view_close)) }
+            }
+        }
+        val failed = if (incoming) sharing.sharedFilesFailed else sharing.recipientFilesFailed
+        val count = if (incoming) sharing.sharedFiles?.size else sharing.recipientFiles?.size
+        when {
+            failed -> Text(
+                stringResource(MR.string.filesync_shared_files_failed),
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+            count == null -> CircularProgressIndicator(modifier = Modifier.padding(horizontal = 24.dp).size(24.dp))
+            count == 0 -> Text(
+                stringResource(if (incoming) MR.string.filesync_shared_by_none else MR.string.filesync_view_to_none),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+            incoming -> LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node ->
+                    FilesyncNodeRow(
+                        node = node,
+                        details = node.sharedDetails(),
+                        trailing = {
+                            SaveButton(
+                                progress = transfer.progressOf(node.nodeId),
+                                onSave = { onAction(FilesyncUiAction.SaveShared(node)) },
+                                onCancel = { onAction(FilesyncUiAction.CancelTransfer) },
+                            )
+                        },
+                    )
+                }
+            }
+            else -> LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                items(sharing.recipientFiles.orEmpty(), key = { it.node.nodeId }) { share ->
+                    FilesyncNodeRow(
+                        node = share.node,
+                        details = listOf(stringResource(share.access.label), share.node.sharedDetails()).filter { it.isNotEmpty() }.joinToString(" · "),
+                        trailing = {
+                            IconButton(onClick = { onAction(FilesyncUiAction.StopSharing(share.node.nodeId)) }) {
+                                Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, person.domainName))
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilesyncNode.sharedDetails(): String =
+    listOfNotNull(sizeBytes?.let { formatBytes(it) }, modifiedMs?.let { formatDayTime(it) }).joinToString(" · ")
+
 /** What [FilesyncSharingState.sharer] shares with this identity, each file to save. */
 @Composable
 internal fun FilesyncSharedFilesSheet(sharing: FilesyncSharingState, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
@@ -272,7 +374,7 @@ internal fun FilesyncSharedFilesSheet(sharing: FilesyncSharingState, transfer: F
                     items(files, key = { it.nodeId }) { node ->
                         FilesyncNodeRow(
                             node = node,
-                            details = listOfNotNull(node.sizeBytes?.let { formatBytes(it) }, node.modifiedMs?.let { formatDayTime(it) }).joinToString(" · "),
+                            details = node.sharedDetails(),
                             trailing = {
                                 SaveButton(
                                     progress = transfer.progressOf(node.nodeId),

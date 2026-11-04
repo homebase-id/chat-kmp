@@ -6,15 +6,27 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.ServerFile
+import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.FileMetadata
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.crypto.ZkSeal
+import id.homebase.api.serialization.Base64Bytes
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.config.filesyncAppRegistration
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -24,15 +36,6 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.headersOf
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.io.encoding.Base64
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -42,6 +45,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class FilesyncSharingTest {
 
@@ -66,6 +78,32 @@ class FilesyncSharingTest {
         val path get() = request.url.encodedPath
     }
 
+    private val sharedPages = mutableListOf<String>()
+
+    private fun sharedFile(name: String, sharedWith: Uuid, permissions: String): String {
+        val key = KeyHeader.newRandom16()
+        val file = ServerFile(
+            fileId = Uuid.random(),
+            driveId = FilesyncProtocol.DriveAlias,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            sharedSecretEncryptedKeyHeader = runBlocking { EncryptedKeyHeader.encryptKeyHeaderAes(key, ByteArray(16) { 9 }, SecureByteArray(filesyncSecret)) },
+            fileMetadata = FileMetadata(
+                isEncrypted = true,
+                appData = AppFileMetaData(
+                    uniqueId = Uuid.random(),
+                    groupId = FilesyncProtocol.RootNodeId,
+                    fileType = FilesyncProtocol.FileFileType,
+                    content = Base64.encode(runBlocking { key.encryptDataAes("""{"v":1,"name":"$name","size":5}""".encodeToByteArray()) }),
+                ),
+                payloads = listOf(PayloadDescriptor(key = FilesyncProtocol.PayloadKey, iv = Base64Bytes(ByteArray(16)), hash = PayloadHash("blake3", Base64Bytes(byteArrayOf(1)), Base64Bytes(byteArrayOf(2))))),
+            ),
+            serverMetadata = ServerMetadata(),
+        )
+        val shares = """[{"circleId":"$sharedWith","permissions":"$permissions","created":1,"modified":1}]"""
+        return OdinSystemSerializer.serialize(file).removeSuffix("}") + ""","shares":$shares}"""
+    }
+
     private val calls = mutableListOf<Call>()
     private var samReady = true
     private var samGrantsWrite = true
@@ -86,6 +124,9 @@ class FilesyncSharingTest {
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call, filesyncSecret).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/share-key/members") || path.endsWith("/shares") -> "{}"
+            path.endsWith("/circles/with-members") ->
+                """[{"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"${Uuid.parseHex(filesyncAppRegistration.appId)}"},"members":["sam.test"]}]"""
+            path.endsWith("/query-batch") -> sharedPages.removeFirst()
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
             else -> error("unexpected ${request.method} $path")
         }
@@ -175,6 +216,22 @@ class FilesyncSharingTest {
 
         assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View) }
         assertTrue(calls.none { it.path.endsWith("/shares") })
+    }
+
+    @Test
+    fun theFilesSharedWithSamComeFromTheFilterPageByPageWithTheAccessTheirShareGives() = runTest {
+        sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "readWrite")}],"cursorState":"next","hasMoreRows":true}"""
+        sharedPages += """{"searchResults":[${sharedFile("notes.txt", samsCircle, "read")}, ${sharedFile("other.txt", recipientsCircle, "read")}],"hasMoreRows":false}"""
+
+        val shared = sharing.sharedWithRecipient(sam)
+
+        assertEquals(listOf("plan.pdf" to FilesyncAccess.Edit, "notes.txt" to FilesyncAccess.View), shared.map { it.node.name to it.access })
+        val queries = calls.filter { it.path.endsWith("/query-batch") }
+        assertTrue(queries.all { it.asFilesync })
+        val asked = queries.map { decrypted(it, filesyncSecret).jsonObject }
+        assertTrue(asked.all { q -> q["queryParams"]!!.jsonObject["sharedWith"]!!.jsonArray.map { it.jsonPrimitive.content } == listOf(samsCircle.toString()) })
+        assertTrue(asked.all { it["resultOptionsRequest"]!!.jsonObject["includeShares"]!!.jsonPrimitive.content.toBoolean() })
+        assertEquals("next", asked[1]["resultOptionsRequest"]!!.jsonObject["cursorState"]!!.jsonPrimitive.content)
     }
 
     @Test

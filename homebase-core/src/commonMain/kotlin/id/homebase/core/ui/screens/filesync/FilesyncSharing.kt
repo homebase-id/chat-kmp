@@ -61,6 +61,8 @@ enum class FilesyncAccess(val permissions: List<DrivePermission>) {
 
 data class FilesyncShareRecipient(val odinId: OdinId, val access: FilesyncAccess)
 
+data class FilesyncSharedFile(val node: FilesyncNode, val handle: FilesyncHandle, val access: FilesyncAccess)
+
 /** "[odinId] has files for you", left on the recipient's Filesync drive. */
 @Serializable
 data class FilesyncMarker(val odinId: String, @Serializable(with = UuidSerializer::class) val driveAlias: Uuid)
@@ -92,6 +94,7 @@ class FilesyncSharing(
     private val asFilesync = ConnectionNetworkProvider(httpClient, FilesyncSession.credentials)
     private val filesyncKeys = CircleShareKeyProvider(httpClient, FilesyncSession.credentials)
     private val filesyncShares = DriveShareProvider(httpClient, FilesyncSession.credentials)
+    private val filesyncQuery = DriveQueryProvider(httpClient, FilesyncSession.credentials)
 
     private class OwnCircleKey(val locked: ByteArray, val key: ByteArray)
 
@@ -165,6 +168,35 @@ class FilesyncSharing(
         requireSignedIn()
         val circleId = individualCircles().entries.firstOrNull { it.value == recipient }?.key ?: return
         filesyncShares.withdraw(FilesyncProtocol.DriveAlias, fileId, circleId)
+    }
+
+    /** The people this identity has shared files with: one circle of one each. */
+    suspend fun recipients(): List<OdinId> {
+        requireSignedIn()
+        return individualCircles().values.sortedBy { it.domainName }
+    }
+
+    /** The files shared with [recipient] now, each with the access its share gives. */
+    suspend fun sharedWithRecipient(recipient: OdinId): List<FilesyncSharedFile> {
+        requireSignedIn()
+        val circleId = individualCircles().entries.firstOrNull { it.value == recipient }?.key ?: return emptyList()
+        val found = mutableListOf<FilesyncSharedFile>()
+        var cursor: String? = null
+        do {
+            val page = filesyncQuery.queryBatch(
+                FilesyncProtocol.DriveAlias,
+                QueryBatchRequest(
+                    queryParams = FileQueryParams(fileType = listOf(FilesyncProtocol.FileFileType), sharedWith = listOf(circleId)),
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = PAGE, includeMetadataHeader = true, includeShares = true),
+                ),
+            )
+            page.searchResults.filter { it.fileState == FileState.Active }.forEach { file ->
+                val access = file.shares.orEmpty().firstOrNull { it.circleId == circleId }?.access() ?: return@forEach
+                file.toFilesyncNode()?.let { (node, handle) -> found += FilesyncSharedFile(node, handle, access) }
+            }
+            cursor = page.cursorState
+        } while (page.hasMoreRows)
+        return found
     }
 
     /** The people who left this identity a marker, each trusted only when it was sent by the identity it names. */

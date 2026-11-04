@@ -154,7 +154,18 @@ data class FilesyncSharingState(
     val sharer: OdinId? = null,
     val sharedFiles: List<FilesyncNode>? = null,
     val sharedFilesFailed: Boolean = false,
-)
+    /** The people this identity shares files with. */
+    val recipients: List<OdinId> = emptyList(),
+    /** Whom this identity's shared files are shown for, and those files; null while they load. */
+    val recipient: OdinId? = null,
+    val recipientFiles: List<FilesyncOutgoingShare>? = null,
+    val recipientFilesFailed: Boolean = false,
+) {
+    val viewing: Boolean get() = sharer != null || recipient != null
+}
+
+@Immutable
+data class FilesyncOutgoingShare(val node: FilesyncNode, val access: FilesyncAccess)
 
 @Immutable
 data class FilesyncSharedWith(val nodeId: Uuid, val recipients: List<FilesyncShareRecipient>? = null)
@@ -240,6 +251,8 @@ sealed interface FilesyncUiAction {
     data object DismissShareWith : FilesyncUiAction
     data object LoadSharers : FilesyncUiAction
     data class OpenSharer(val sharer: OdinId?) : FilesyncUiAction
+    data class OpenRecipient(val recipient: OdinId?) : FilesyncUiAction
+    data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
     data class SaveShared(val node: FilesyncNode) : FilesyncUiAction
 }
 

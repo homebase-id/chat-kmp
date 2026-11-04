@@ -130,7 +130,10 @@ import org.jetbrains.compose.resources.stringResource
 
 enum class FilesyncPlace { Files, Recent, Trash }
 
-class FilesyncPlaces(val onFiles: () -> Unit, val onRecent: () -> Unit, val onTrash: () -> Unit)
+class FilesyncPlaces(val onFiles: () -> Unit, val onRecent: () -> Unit, val onTrash: () -> Unit) {
+    /** The same places, each first running [close]. */
+    fun closing(close: () -> Unit) = FilesyncPlaces({ close(); onFiles() }, { close(); onRecent() }, { close(); onTrash() })
+}
 
 private val ModifiedWidth = 150.dp
 private val SizeWidth = 84.dp
@@ -146,7 +149,7 @@ private val ModifiedFrom = 520.dp
 
 @Composable
 internal fun FilesyncShell(
-    place: FilesyncPlace,
+    place: FilesyncPlace?,
     places: FilesyncPlaces,
     snackbarHostState: SnackbarHostState,
     title: @Composable RowScope.() -> Unit,
@@ -257,17 +260,24 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         if (keyMoves > 0) listState.bringIntoView(uiState.visibleIds.indexOf(uiState.selection.focus))
     }
     val actions = scope.actions
+    val viewing = uiState.sharing.viewing
     FilesyncShell(
-        place = FilesyncPlace.Files,
-        places = scope.places,
+        place = FilesyncPlace.Files.takeUnless { viewing },
+        places = if (viewing) scope.places.closing { scope.onAction(FilesyncUiAction.OpenSharer(null)) } else scope.places,
         snackbarHostState = scope.snackbarHostState,
         modifier = Modifier.onPreviewKeyEvent { event ->
             val find = event.type == KeyEventType.KeyDown && event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed)
             if (find) searchFocus.requestFocus()
             find
         },
-        title = { Breadcrumbs(uiState.path, onCrumb = { scope.onAction(FilesyncUiAction.NavigateToCrumb(it)) }) },
-        actions = {
+        title = {
+            Breadcrumbs(uiState.path, onCrumb = {
+                if (viewing) scope.onAction(FilesyncUiAction.OpenSharer(null))
+                scope.onAction(FilesyncUiAction.NavigateToCrumb(it))
+            })
+        },
+        actions = actions@{
+            if (viewing) return@actions
             MinimalSearchTextField(
                 // Esc clears the search; unhandled, desktop and web turn it into Back and leave the folder.
                 modifier = Modifier.width(260.dp).focusRequester(searchFocus).onPreviewKeyEvent { event ->
@@ -304,11 +314,12 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         },
         sidebarExtra = {
             FilesyncSharersSidebar(uiState.sharing, scope.onAction)
-            TagFilters(uiState, scope.onAction)
+            FilesyncRecipientsSidebar(uiState.sharing, scope.onAction)
+            if (!viewing) TagFilters(uiState, scope.onAction)
         },
         // Always there, empty until a row is selected: a pane that opened on the first press of a
         // double-click would move the row out from under the second.
-        pane = {
+        pane = if (viewing) null else { ->
             val selected = uiState.selected
             if (selected.size == 1) {
                 FilesyncInfoContent(selected.single(), crumbNames(uiState.path), uiState.discussion, scope.commentDraft, uiState.sharing, scope.onAction)
@@ -323,6 +334,10 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             }
         },
     ) {
+        if (viewing) {
+            FilesyncShareView(uiState.sharing, uiState.transfer, scope.onAction)
+            return@FilesyncShell
+        }
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()

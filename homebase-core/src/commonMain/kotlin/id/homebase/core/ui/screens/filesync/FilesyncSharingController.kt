@@ -63,11 +63,14 @@ internal class FilesyncSharingController(
     private var sharedWithJob: Job? = null
     private var sharedFilesJob: Job? = null
     private val sharedHandles = mutableMapOf<Uuid, FilesyncHandle>()
+    private var recipientFilesJob: Job? = null
+    private val recipientHandles = mutableMapOf<Uuid, FilesyncHandle>()
 
     fun start() {
         scope.launch {
             if (guarded { setup.restore() } == true) {
                 update { it.copy(on = true) }
+                loadRecipients()
                 // Keeps the circle every connection joins filled with the ones made before it.
                 guarded { sharing.openToMarkers() }
             }
@@ -113,6 +116,7 @@ internal class FilesyncSharingController(
                 sharing.share(fileHandles, recipient, access)
                 update { it.copy(sending = false, shareWith = null) }
                 send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
+                loadRecipients()
                 state().sharedWith?.nodeId?.takeIf { id -> files.any { it.nodeId == id } }?.let { loadSharedWith(it) }
             } catch (e: CancellationException) {
                 throw e
@@ -150,11 +154,48 @@ internal class FilesyncSharingController(
         }
     }
 
+    fun loadRecipients() {
+        if (!state().on) return
+        scope.launch { guarded { sharing.recipients() }?.let { recipients -> update { it.copy(recipients = recipients) } } }
+    }
+
+    /** Shows what [recipient] is given, each file with a way to stop; null goes back to the folder. */
+    fun openRecipient(recipient: OdinId?) {
+        closeViews()
+        recipient ?: return
+        update { it.copy(recipient = recipient) }
+        recipientFilesJob = scope.launch {
+            val listed = guarded { sharing.sharedWithRecipient(recipient) }
+            if (listed == null) {
+                update { it.copy(recipientFilesFailed = true) }
+                return@launch
+            }
+            listed.forEach { recipientHandles[it.node.nodeId] = it.handle }
+            val byId = listed.associateBy { it.node.nodeId }
+            update { it.copy(recipientFiles = listed.map { f -> f.node }.arranged(FilesyncSort()).mapNotNull { node -> byId[node.nodeId]?.let { FilesyncOutgoingShare(node, it.access) } }) }
+        }
+    }
+
+    fun stopSharing(nodeId: Uuid) {
+        val recipient = state().recipient ?: return
+        val fileId = recipientHandles[nodeId]?.fileId ?: return
+        scope.launch {
+            try {
+                sharing.withdraw(fileId, recipient)
+                update { s -> s.copy(recipientFiles = s.recipientFiles?.filter { it.node.nodeId != nodeId }) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "withdrawing $nodeId from $recipient failed" }
+                send(FilesyncUiEvent.Error(FilesyncError.SharingFailed))
+            }
+        }
+    }
+
     fun openSharer(sharer: OdinId?) {
-        sharedFilesJob?.cancel()
-        sharedHandles.clear()
-        update { it.copy(sharer = sharer, sharedFiles = null, sharedFilesFailed = false) }
+        closeViews()
         sharer ?: return
+        update { it.copy(sharer = sharer) }
         sharedFilesJob = scope.launch {
             val listed = guarded { sharing.sharedBy(sharer) }
             if (listed == null) {
@@ -164,6 +205,14 @@ internal class FilesyncSharingController(
             listed.forEach { (node, handle) -> sharedHandles[node.nodeId] = handle }
             update { it.copy(sharedFiles = listed.map { it.first }.arranged(FilesyncSort())) }
         }
+    }
+
+    private fun closeViews() {
+        sharedFilesJob?.cancel()
+        sharedHandles.clear()
+        recipientFilesJob?.cancel()
+        recipientHandles.clear()
+        update { it.copy(sharer = null, sharedFiles = null, sharedFilesFailed = false, recipient = null, recipientFiles = null, recipientFilesFailed = false) }
     }
 
     /** The shared file's handle, for downloading it from its owner's drive. */
@@ -186,6 +235,7 @@ internal class FilesyncSharingController(
         if (guarded { sharing.openToMarkers() } == null) return failed(FilesyncError.SharingFailed)
         update { it.copy(on = true, turningOn = false) }
         loadOffered()
+        loadRecipients()
         state().sharedWith?.nodeId?.let { loadSharedWith(it) }
     }
 

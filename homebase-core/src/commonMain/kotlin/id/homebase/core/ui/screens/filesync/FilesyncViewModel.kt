@@ -318,6 +318,10 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
 
+            is FilesyncUiAction.OpenRecipient -> sharing.openRecipient(action.recipient)
+
+            is FilesyncUiAction.StopSharing -> sharing.stopSharing(action.nodeId)
+
             is FilesyncUiAction.SaveShared -> {
                 val owner = _uiState.value.sharing.sharer ?: return
                 sharing.sharedHandle(action.node.nodeId)?.let { transfers.sendShared(action.node, it, owner, FilesyncShareTarget.Download) }

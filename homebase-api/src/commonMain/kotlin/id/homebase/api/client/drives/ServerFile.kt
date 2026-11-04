@@ -76,7 +76,8 @@ data class ServerFile(
             fileMetadata = resolvedMetadata,
             serverMetadata = serverMetadata,
             priority = priority,
-            fileByteCount = fileByteCount
+            fileByteCount = fileByteCount,
+            shares = shares,
         )
     }
 }

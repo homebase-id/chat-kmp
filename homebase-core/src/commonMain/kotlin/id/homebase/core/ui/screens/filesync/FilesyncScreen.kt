@@ -224,7 +224,8 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
     uiState.shareChooser?.let { FilesyncShareSheet(it, onShare = { target -> viewModel.onAction(FilesyncUiAction.ShareTo(target)) }, onDismiss = { viewModel.onAction(FilesyncUiAction.DismissShare) }) }
     if (uiState.sharing.shareWith != null) FilesyncShareWithSheet(uiState.sharing, viewModel::onAction)
-    FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, viewModel::onAction)
+    // Wide windows show them in the browser's centre.
+    if (!isExpandedLayout()) FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, viewModel::onAction)
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(
