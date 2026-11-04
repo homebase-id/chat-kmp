@@ -29,35 +29,22 @@ class CircleShareKeyProvider(
 
     /** Null until a device of the owning app sets it. */
     suspend fun getShareKey(circleId: Uuid): ByteArray? =
-        deserialize<AppKeyLockedShareKey>(get(path(circleId))).appKeyLockedShareKey
+        deserialize<AppKeyLockedShareKey>(getChecked(path(circleId))).appKeyLockedShareKey
 
     /** Set once: a second set is refused with CircleShareKeyAlreadySet, and that device reads the winner's. */
     suspend fun setShareKey(circleId: Uuid, appKeyLockedShareKey: ByteArray) =
-        put(path(circleId), OdinSystemSerializer.serialize(AppKeyLockedShareKey(appKeyLockedShareKey)))
+        putChecked(path(circleId), OdinSystemSerializer.serialize(AppKeyLockedShareKey(appKeyLockedShareKey)))
 
     suspend fun getUnsealedMembers(circleId: Uuid): List<OdinId> =
-        deserialize(get("${path(circleId)}/unsealed-members"))
+        deserialize(getChecked("${path(circleId)}/unsealed-members"))
 
     /** All or none; refused with CircleShareKeyChanged when [SealedMemberShareKeys.sealedFrom] is no longer the circle's key. */
     suspend fun setMemberKeys(circleId: Uuid, keys: SealedMemberShareKeys) =
-        put("${path(circleId)}/members", OdinSystemSerializer.serialize(keys))
+        putChecked("${path(circleId)}/members", OdinSystemSerializer.serialize(keys))
 
     /** The caller's own copy of [owner]'s circle key, sealed to the caller's drive; null until [owner] seals one. */
     suspend fun getMySealedKey(owner: OdinId, circleId: Uuid): ByteArray? =
-        deserialize<MySealedShareKey>(get("/peer/${owner.domainName}/circles/$circleId/share-key")).sealedKey
+        deserialize<MySealedShareKey>(getChecked("/peer/${owner.domainName}/circles/$circleId/share-key")).sealedKey
 
     private fun path(circleId: Uuid) = "/connections/circles/$circleId/share-key"
-
-    private suspend fun get(endpoint: String): String {
-        val creds = requireCreds()
-        val response = encryptedGet(url = apiUrl(creds.domain, endpoint), token = creds.accessToken, secret = creds.secret)
-        throwForFailure(response)
-        return response.body
-    }
-
-    private suspend fun put(endpoint: String, jsonBody: String) {
-        val creds = requireCreds()
-        val response = encryptedPutJson(url = apiUrl(creds.domain, endpoint), token = creds.accessToken, jsonBody = jsonBody, secret = creds.secret)
-        throwForFailure(response)
-    }
 }

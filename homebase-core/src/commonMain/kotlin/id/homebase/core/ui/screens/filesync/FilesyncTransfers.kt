@@ -22,30 +22,20 @@ import kotlin.uuid.Uuid
 
 /** What a transfer downloads: one file as itself, or several nodes as one ZIP called [name]. */
 private sealed interface Source {
+    /** The one file it downloads; none for a ZIP. */
+    val node: FilesyncNode? get() = null
     val name: String
 
-    class One(val node: FilesyncNode, val payload: FilesyncPayload) : Source {
+    class One(override val node: FilesyncNode, val payload: FilesyncPayload) : Source {
         override val name get() = node.name
     }
 
     class Zip(val nodes: List<FilesyncNode>, override val name: String) : Source
 
     /** A file [owner] shares with this identity, read from their drive. */
-    class Shared(val node: FilesyncNode, val payload: FilesyncPayload, val owner: OdinId, val globalTransitId: Uuid) : Source {
+    class Shared(override val node: FilesyncNode, val payload: FilesyncPayload, val owner: OdinId, val globalTransitId: Uuid) : Source {
         override val name get() = node.name
     }
-}
-
-private val Source.nodeId: Uuid? get() = when (this) {
-    is Source.One -> node.nodeId
-    is Source.Shared -> node.nodeId
-    is Source.Zip -> null
-}
-
-private val Source.sizeBytes: Long? get() = when (this) {
-    is Source.One -> node.sizeBytes
-    is Source.Shared -> node.sizeBytes
-    is Source.Zip -> null
 }
 
 /**
@@ -90,7 +80,7 @@ internal class FilesyncTransfers(
         // Not isActive: a cancelled transfer is still putting things away.
         if (job?.isCompleted == false) return
         job = scope.launch {
-            onTransfer { FilesyncTransfer(source.nodeId) }
+            onTransfer { FilesyncTransfer(source.node?.nodeId) }
             val progress: (Float) -> Unit = { fraction -> onTransfer { it?.copy(progress = fraction) } }
             var browser: StreamedSave? = null
             try {
@@ -123,7 +113,7 @@ internal class FilesyncTransfers(
                 when (target) {
                     FilesyncShareTarget.Open -> send(FilesyncUiEvent.OpenFile(path))
                     FilesyncShareTarget.Preview -> {
-                        val kind = filePreviewKind(null, source.name, source.sizeBytes)
+                        val kind = filePreviewKind(null, source.name, source.node?.sizeBytes)
                         send(if (kind != null) FilesyncUiEvent.PreviewFile(FilesyncPreviewFile(path, source.name, kind)) else FilesyncUiEvent.OpenFile(path))
                     }
                     FilesyncShareTarget.Download -> send(FilesyncUiEvent.SaveFile(path, source.name))

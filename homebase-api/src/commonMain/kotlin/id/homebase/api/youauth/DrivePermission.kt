@@ -34,6 +34,7 @@ enum class DrivePermission(val value: Int) {
             "readwrite" to entries,
             "all" to entries,
             "writereactionsandcomments" to listOf(React, Comment),
+            "reactandwrite" to listOf(Write, React),
         )
 
         /** Combine multiple permissions into a single integer value. */

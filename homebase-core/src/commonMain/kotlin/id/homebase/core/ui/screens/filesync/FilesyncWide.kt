@@ -323,8 +323,8 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             FilesyncRecipientsSidebar(uiState.sharing, scope.onAction)
             if (!viewing) TagFilters(uiState, scope.onAction)
         },
-        // Always there, empty until a row is selected: a pane that opened on the first press of a
-        // double-click would move the row out from under the second.
+        // In the browser, always there and empty until a row is selected: a pane that opened on the first
+        // press of a double-click would move the row out from under the second.
         pane = if (viewing) null else { ->
             val selected = uiState.selected
             if (selected.size == 1) {

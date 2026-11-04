@@ -45,36 +45,12 @@ class DriveShareProvider(
     /** All or none, up to [MAX_SHARES_PER_REQUEST]. */
     suspend fun share(driveId: Uuid, shares: List<ShareRequest>) {
         require(shares.size in 1..MAX_SHARES_PER_REQUEST) { "${shares.size} shares in one request" }
-        val creds = requireCreds()
-        val response = encryptedPutJson(
-            url = apiUrl(creds.domain, "/drives/$driveId/shares"),
-            token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(ShareRequests(shares)),
-            secret = creds.secret,
-        )
-        throwForFailure(response)
+        putChecked("/drives/$driveId/shares", OdinSystemSerializer.serialize(ShareRequests(shares)))
     }
 
-    suspend fun shares(driveId: Uuid, fileId: Uuid): List<ShareRow> {
-        val creds = requireCreds()
-        val response = encryptedGet(
-            url = apiUrl(creds.domain, "/drives/$driveId/files/$fileId/shares"),
-            token = creds.accessToken,
-            secret = creds.secret,
-        )
-        throwForFailure(response)
-        return deserialize(response.body)
-    }
+    suspend fun shares(driveId: Uuid, fileId: Uuid): List<ShareRow> = deserialize(getChecked("/drives/$driveId/files/$fileId/shares"))
 
-    suspend fun withdraw(driveId: Uuid, fileId: Uuid, circleId: Uuid) {
-        val creds = requireCreds()
-        val response = encryptedDelete(
-            url = apiUrl(creds.domain, "/drives/$driveId/files/$fileId/shares/$circleId"),
-            token = creds.accessToken,
-            secret = creds.secret,
-        )
-        throwForFailure(response)
-    }
+    suspend fun withdraw(driveId: Uuid, fileId: Uuid, circleId: Uuid) = deleteChecked("/drives/$driveId/files/$fileId/shares/$circleId")
 
     companion object {
         const val MAX_SHARES_PER_REQUEST = 100

@@ -57,6 +57,7 @@ import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -75,11 +76,10 @@ enum class FilesyncAccess(val permissions: List<DrivePermission>) {
 enum class FilesyncExpiry(val days: Int?) {
     Day(1), Week(7), Month(30), Year(365), Never(null);
 
-    fun expiresAt(nowMs: Long): Long? = days?.let { nowMs + it * DAY_MS }
+    fun expiresAt(nowMs: Long): Long? = days?.let { nowMs + it.days.inWholeMilliseconds }
 
     companion object {
         val Default = Year
-        const val DAY_MS = 24 * 60 * 60 * 1000L
     }
 }
 

@@ -118,6 +118,7 @@ import id.homebase.resources.filesync_you_shared_with
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
@@ -148,7 +149,7 @@ private val FilesyncExpiry.choice: StringResource
 @Composable
 private fun expiryText(expiresAt: Long?): String {
     expiresAt ?: return stringResource(MR.string.filesync_expires_never)
-    val days = ((expiresAt - Clock.System.now().toEpochMilliseconds()) / FilesyncExpiry.DAY_MS).toInt()
+    val days = ((expiresAt - Clock.System.now().toEpochMilliseconds()) / 1.days.inWholeMilliseconds).toInt()
     return when {
         days < 1 -> stringResource(MR.string.filesync_expires_within_day)
         days <= 60 -> pluralStringResource(MR.plurals.filesync_expires_in_days, days, days)
@@ -186,8 +187,6 @@ private fun TurnOnSharing(turningOn: Boolean, onAction: (FilesyncUiAction) -> Un
 
 @Composable
 private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAction) -> Unit) {
-    val connectionService: ConnectionService = koinInject()
-    val connections by connectionService.connections.collectAsStateWithLifecycle()
     val search = rememberTextFieldState()
     var chosenGroup by rememberSaveable { mutableStateOf<String?>(null) }
     var chosenPeople by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -201,12 +200,7 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
             query.isEmpty() || group.name.contains(query, ignoreCase = true) || group.members.any { it.domainName.contains(query, ignoreCase = true) }
         }
     }
-    val people = remember(connections, sharing.recipients, query) {
-        val before = sharing.recipients.filterIsInstance<FilesyncAudience.Person>().mapTo(HashSet()) { it.odinId.domainName }
-        connections.map.values.filter { it.status == ConnectionStatus.Connected }.map { it.odinId }
-            .filter { query.isEmpty() || it.domainName.contains(query, ignoreCase = true) }
-            .sortedWith(compareBy<OdinId> { it.domainName !in before }.thenBy { it.domainName })
-    }
+    val people = rememberPeople(query, first = sharing.recipients.filterIsInstance<FilesyncAudience.Person>().mapTo(HashSet()) { it.odinId.domainName })
     // Picking the people of a group already made shares with it, unless a new one is asked for.
     val sameGroup = remember(sharing.recipients, chosenPeople) {
         chosenPeople.toSet().takeIf { it.size > 1 }?.let { picked ->
@@ -250,17 +244,11 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
             item(key = "people") { PickerHeading(MR.string.filesync_share_people) }
             items(people, key = { it.domainName }) { person ->
                 val checked = person.domainName in chosenPeople
-                ListItem(
-                    headlineContent = { Text(person.domainName) },
-                    leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
-                    trailingContent = { Checkbox(checked = checked, onCheckedChange = null) },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.toggleable(value = checked, role = Role.Checkbox) {
-                        chosenGroup = null
-                        newGroupInstead = false
-                        chosenPeople = if (checked) chosenPeople - person.domainName else chosenPeople + person.domainName
-                    },
-                )
+                PersonCheckRow(person, checked) {
+                    chosenGroup = null
+                    newGroupInstead = false
+                    chosenPeople = if (checked) chosenPeople - person.domainName else chosenPeople + person.domainName
+                }
             }
         }
     }
@@ -459,24 +447,12 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
                 TextButton(onClick = { onAction(FilesyncUiAction.CloseShareView) }) { Text(stringResource(MR.string.filesync_view_close)) }
             }
         }
-        val failed = if (incoming) sharing.sharedFilesFailed else sharing.recipientFilesFailed
-        val count = if (incoming) sharing.sharedFiles?.size else sharing.recipientFiles?.size
-        when {
-            failed -> Text(
-                stringResource(MR.string.filesync_shared_files_failed),
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 24.dp),
-            )
-            count == null -> CircularProgressIndicator(modifier = Modifier.padding(horizontal = 24.dp).size(24.dp))
-            count == 0 -> Text(
-                stringResource(if (incoming) MR.string.filesync_shared_by_none else MR.string.filesync_view_to_none),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 24.dp),
-            )
-            incoming -> LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+        if (incoming) SharedFilesBody(sharing.sharedFilesFailed, sharing.sharedFiles?.size, MR.string.filesync_shared_by_none) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                 items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node -> IncomingRow(node, sharing.sharerPath, transfer, onAction) }
             }
-            else -> LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+        } else SharedFilesBody(sharing.recipientFilesFailed, sharing.recipientFiles?.size, MR.string.filesync_view_to_none) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                 items(sharing.recipientFiles.orEmpty(), key = { it.node.nodeId }) { share ->
                     FilesyncNodeRow(
                         node = share.node,
@@ -495,20 +471,50 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
     }
 }
 
+/** Connected people whose name has [query], and [extra] who may no longer be connected; those in [first] first. */
+@Composable
+private fun rememberPeople(query: String, first: Set<String>, extra: List<OdinId> = emptyList()): List<OdinId> {
+    val connectionService: ConnectionService = koinInject()
+    val connections by connectionService.connections.collectAsStateWithLifecycle()
+    return remember(connections, query, first, extra) {
+        (connections.map.values.filter { it.status == ConnectionStatus.Connected }.map { it.odinId } + extra).distinct()
+            .filter { query.isEmpty() || it.domainName.contains(query, ignoreCase = true) }
+            .sortedWith(compareBy<OdinId> { it.domainName !in first }.thenBy { it.domainName })
+    }
+}
+
+@Composable
+private fun PersonCheckRow(person: OdinId, checked: Boolean, onToggle: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(person.domainName) },
+        leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
+        trailingContent = { Checkbox(checked = checked, onCheckedChange = null) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.toggleable(value = checked, role = Role.Checkbox) { onToggle() },
+    )
+}
+
+// A shared list's failure, loading and empty states; [list] once there is something to show.
+@Composable
+private fun SharedFilesBody(failed: Boolean, count: Int?, empty: StringResource, list: @Composable () -> Unit) {
+    when {
+        failed -> Text(
+            stringResource(MR.string.filesync_shared_files_failed),
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+        count == null -> CircularProgressIndicator(modifier = Modifier.padding(horizontal = 24.dp).size(24.dp))
+        count == 0 -> Text(stringResource(empty), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 24.dp))
+        else -> list()
+    }
+}
+
 /** Picks [group]'s members from the connections, the ones in it now first; at least one stays. */
 @Composable
 private fun GroupMembersSheet(group: FilesyncAudience.Group, onDismiss: () -> Unit, onSave: (List<OdinId>) -> Unit) {
-    val connectionService: ConnectionService = koinInject()
-    val connections by connectionService.connections.collectAsStateWithLifecycle()
     val search = rememberTextFieldState()
     var chosen by rememberSaveable { mutableStateOf(group.members.map { it.domainName }) }
-    val query = search.text.toString().trim()
-    val people = remember(connections, group, query) {
-        val now = group.members.mapTo(HashSet()) { it.domainName }
-        (connections.map.values.filter { it.status == ConnectionStatus.Connected }.map { it.odinId } + group.members).distinct()
-            .filter { query.isEmpty() || it.domainName.contains(query, ignoreCase = true) }
-            .sortedWith(compareBy<OdinId> { it.domainName !in now }.thenBy { it.domainName })
-    }
+    val people = rememberPeople(search.text.toString().trim(), first = group.members.mapTo(HashSet()) { it.domainName }, extra = group.members)
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 420.dp) {
         Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(MR.string.filesync_group_members_title, group.name), style = MaterialTheme.typography.titleMedium)
@@ -517,15 +523,7 @@ private fun GroupMembersSheet(group: FilesyncAudience.Group, onDismiss: () -> Un
             LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
                 items(people, key = { it.domainName }) { person ->
                     val checked = person.domainName in chosen
-                    ListItem(
-                        headlineContent = { Text(person.domainName) },
-                        leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
-                        trailingContent = { Checkbox(checked = checked, onCheckedChange = null) },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                        modifier = Modifier.toggleable(value = checked, role = Role.Checkbox) {
-                            chosen = if (checked) chosen - person.domainName else chosen + person.domainName
-                        },
-                    )
+                    PersonCheckRow(person, checked) { chosen = if (checked) chosen - person.domainName else chosen + person.domainName }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
@@ -601,21 +599,9 @@ internal fun FilesyncSharedFilesSheet(sharing: FilesyncSharingState, transfer: F
                 IdentityAvatar(sharer, AvatarOptions(size = 36.dp))
                 Text(path.lastOrNull()?.name ?: sharer.domainName, style = MaterialTheme.typography.titleMedium)
             }
-            val files = sharing.sharedFiles
-            when {
-                sharing.sharedFilesFailed -> Text(
-                    stringResource(MR.string.filesync_shared_files_failed),
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                )
-                files == null -> CircularProgressIndicator(modifier = Modifier.padding(horizontal = 24.dp).size(24.dp))
-                files.isEmpty() -> Text(
-                    stringResource(MR.string.filesync_shared_by_none),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                )
-                else -> LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
-                    items(files, key = { it.nodeId }) { node -> IncomingRow(node, sharing.sharerPath, transfer, onAction) }
+            SharedFilesBody(sharing.sharedFilesFailed, sharing.sharedFiles?.size, MR.string.filesync_shared_by_none) {
+                LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
+                    items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node -> IncomingRow(node, sharing.sharerPath, transfer, onAction) }
                 }
             }
         }

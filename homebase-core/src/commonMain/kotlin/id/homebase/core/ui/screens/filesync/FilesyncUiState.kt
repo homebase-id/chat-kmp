@@ -153,18 +153,20 @@ data class FilesyncSharingState(
     val sharedWith: FilesyncSharedWith? = null,
     /** The people who have files for this identity. */
     val sharers: List<OdinId> = emptyList(),
-    /** Whose shared files are shown, and those files; null while they load. */
+    /** Whose shared files are shown. */
     val sharer: OdinId? = null,
     /** The folder of theirs shown, below what they share at the top. */
     val sharerPath: List<FilesyncCrumb> = emptyList(),
+    /** Null while they load. */
     val sharedFiles: List<FilesyncNode>? = null,
     val sharedFilesFailed: Boolean = false,
     /** The nodes of the folder shown that are shared with anyone now. */
     val sharedIds: Set<Uuid> = emptySet(),
     /** The groups and people this identity shares files with. */
     val recipients: List<FilesyncAudience> = emptyList(),
-    /** Whom this identity's shared files are shown for, and those files; null while they load. */
+    /** Whom this identity's shared files are shown for. */
     val recipient: FilesyncAudience? = null,
+    /** Null while they load. */
     val recipientFiles: List<FilesyncOutgoingShare>? = null,
     val recipientFilesFailed: Boolean = false,
     /** Who'd stop seeing what's being moved, asked about before it moves. */

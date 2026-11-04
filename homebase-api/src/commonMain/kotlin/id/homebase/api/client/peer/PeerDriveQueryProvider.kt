@@ -83,16 +83,8 @@ class PeerDriveQueryProvider(
     }
 
     /** [peer]'s write-only public key for one of an app's drives; asks UseTransitWrite here and drive Write there. */
-    suspend fun drivePublicKey(peer: OdinId, appSlug: String, driveSlug: String): DrivePublicKey {
-        val creds = requireCreds()
-        val response = encryptedGet(
-            url = apiUrl(creds.domain, "/peer/${peer.domainName}/apps/$appSlug/drives/$driveSlug/public-key"),
-            token = creds.accessToken,
-            secret = creds.secret,
-        )
-        throwForFailure(response)
-        return deserialize(response.body)
-    }
+    suspend fun drivePublicKey(peer: OdinId, appSlug: String, driveSlug: String): DrivePublicKey =
+        deserialize(getChecked("/peer/${peer.domainName}/apps/$appSlug/drives/$driveSlug/public-key"))
 
     companion object { private const val TAG = "PeerDriveQuery" }
 }

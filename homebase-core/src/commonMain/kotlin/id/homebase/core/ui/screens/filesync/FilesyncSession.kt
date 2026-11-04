@@ -53,12 +53,11 @@ object FilesyncSession {
 
     internal suspend fun save(result: AuthResult) {
         val key = checkNotNull(result.zkAppKey) { "Filesync's sign-in brought no app key" }
-        val secret = Base64.decode(result.sharedSecret)
         SecureStorage.put(IDENTITY, result.identity.domainName)
         SecureStorage.put(TOKEN, result.clientAuthToken)
-        SecureStorage.put(SHARED_SECRET, Base64.encode(secret))
+        SecureStorage.put(SHARED_SECRET, result.sharedSecret)
         SecureStorage.put(APP_KEY, Base64.encode(key))
-        use(ApiCredentials.create(result.identity, result.clientAuthToken, SecureByteArray(secret)), key)
+        use(ApiCredentials.create(result.identity, result.clientAuthToken, SecureByteArray(Base64.decode(result.sharedSecret))), key)
     }
 
     internal suspend fun use(filesync: ApiCredentials, key: ByteArray) {
