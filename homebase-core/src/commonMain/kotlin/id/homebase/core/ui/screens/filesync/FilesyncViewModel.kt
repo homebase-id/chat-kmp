@@ -304,6 +304,8 @@ class FilesyncViewModel(
 
             FilesyncUiAction.TurnOnSharing -> sharing.turnOn()
 
+            is FilesyncUiAction.ShareWithConnection -> sharing.ask(action.nodes)
+
             is FilesyncUiAction.ShareWithPerson -> sharing.share(action.recipient, action.access)
 
             FilesyncUiAction.DismissShareWith -> sharing.dismiss()

@@ -190,7 +190,7 @@ internal fun FilesyncSharedWithSection(node: FilesyncNode, sharing: FilesyncShar
                 }
             }
         }
-        TextButton(onClick = { onAction(FilesyncUiAction.AskShare(listOf(node))) }) {
+        TextButton(onClick = { onAction(FilesyncUiAction.ShareWithConnection(listOf(node))) }) {
             Icon(Icons.Outlined.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(stringResource(MR.string.filesync_share_person), modifier = Modifier.padding(start = 8.dp))
         }

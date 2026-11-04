@@ -68,6 +68,7 @@ class FilesyncSharingTest {
 
     private val calls = mutableListOf<Call>()
     private var samReady = true
+    private var samGrantsWrite = true
     private var storedShareKey: String? = null
 
     private val engine = MockEngine { request ->
@@ -75,7 +76,8 @@ class FilesyncSharingTest {
         val path = call.path
         val body = when {
             path.endsWith("/apps/filesync/drives/filesync/public-key") ->
-                if (samReady) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
+                if (!samGrantsWrite) return@MockEngine respond("""{"title":"Write access is required"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
+                else if (samReady) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
                 else return@MockEngine respond("""{"title":"no such drive","errorCode":"invalidRequest"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
             path.endsWith("/connections/circles/create") ->
                 if (decrypted(call, filesyncSecret).jsonObject["slug"]!!.jsonPrimitive.content == FilesyncProtocol.CircleSlug) "\"$recipientsCircle\"" else "\"$samsCircle\""
@@ -162,6 +164,14 @@ class FilesyncSharingTest {
     @Test
     fun someoneWhoHasntTurnedSharingOnCantBeSharedWith() = runTest {
         samReady = false
+
+        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View) }
+        assertTrue(calls.none { it.path.endsWith("/shares") })
+    }
+
+    @Test
+    fun someoneWhoseSharersCircleDoesntHoldUsYetCantBeSharedWith() = runTest {
+        samGrantsWrite = false
 
         assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View) }
         assertTrue(calls.none { it.path.endsWith("/shares") })

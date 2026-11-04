@@ -1,7 +1,9 @@
 package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.CircleDesignation
@@ -225,7 +227,9 @@ class FilesyncSharing(
     private suspend fun recipientPoint(recipient: OdinId): ByteArray {
         val key = try {
             peer.drivePublicKey(recipient, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug)
-        } catch (e: ClientException) {
+        } catch (e: OdinApiException) {
+            // No drive yet (400), or no Write on it (403) until their sharers circle grants it: sharing is off there
+            if (e !is ClientException && e !is ForbiddenException) throw e
             throw FilesyncSharingException.RecipientNotReady(recipient, e)
         }
         // Its server and members hold a collaborative drive's key: sealing to it would share with them too.

@@ -3143,12 +3143,12 @@
     <string name="filesync_comment_hint">Add a comment</string>
     <string name="filesync_comment_failed">Couldn't post your comment.</string>
     <string name="filesync_discussion_failed">Couldn't load reactions and comments.</string>
-    <string name="filesync_share_person">Share with a person</string>
+    <string name="filesync_share_person">Share with a connection</string>
     <string name="filesync_share_with">Share with</string>
     <string name="filesync_share_search">Search your connections</string>
     <string name="filesync_share_no_people">No connections match.</string>
     <string name="filesync_share_access_view">Can view and comment</string>
-    <string name="filesync_share_access_edit">Can edit</string>
+    <string name="filesync_share_access_edit">Can edit and comment</string>
     <string name="filesync_share_send">Share</string>
     <string name="filesync_shared">Shared.</string>
     <string name="filesync_sharing_failed">Couldn't share. Try again.</string>
@@ -3159,8 +3159,8 @@
     <string name="filesync_shared_with">Shared with</string>
     <string name="filesync_shared_with_none">Not shared with anyone.</string>
     <string name="filesync_unshare">Stop sharing with %1$s</string>
-    <string name="filesync_access_view">Can view</string>
-    <string name="filesync_access_edit">Can edit</string>
+    <string name="filesync_access_view">Can view and comment</string>
+    <string name="filesync_access_edit">Can edit and comment</string>
     <string name="filesync_shared_with_me">Shared with me</string>
     <string name="filesync_shared_with_me_none">No one has shared files with you yet.</string>
     <string name="filesync_shared_by_none">Nothing is shared with you here any more.</string>

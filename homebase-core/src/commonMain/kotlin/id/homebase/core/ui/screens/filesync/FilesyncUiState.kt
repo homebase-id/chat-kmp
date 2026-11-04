@@ -235,6 +235,7 @@ sealed interface FilesyncUiAction {
     data class ShowSharedWith(val nodeId: Uuid) : FilesyncDiscussionAction
     data class Unshare(val nodeId: Uuid, val recipient: OdinId) : FilesyncDiscussionAction
     data object TurnOnSharing : FilesyncUiAction
+    data class ShareWithConnection(val nodes: List<FilesyncNode>) : FilesyncUiAction
     data class ShareWithPerson(val recipient: OdinId, val access: FilesyncAccess) : FilesyncUiAction
     data object DismissShareWith : FilesyncUiAction
     data object LoadSharers : FilesyncUiAction
