@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.runtime.mutableIntStateOf
 import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.rememberScrollState
@@ -185,7 +186,6 @@ private val CARD_FIRST_HEIGHT = ButtonDefaults.MediumContainerHeight
 private val CARD_FIRST_GAP = 12.dp
 private val CARD_FIRST_INSET = 16.dp
 private val CARD_FIRST_SIDE = 16.dp
-private const val WIDE_STYLES_PER_ROW = 5
 private val COMPACT_HEIGHT = 760.dp
 private val COMPACT_TILE_WIDTH = 88.dp
 private val COMPACT_TILE_CORNER = 16.dp
@@ -267,6 +267,7 @@ fun ProfileCardEditorScreen(
     }
     var mode by rememberSaveable { mutableStateOf(openingMode(cardsEnabled, openDesign)) }
     var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
+    var customiseFromCard by rememberSaveable { mutableStateOf(false) }
     var designOpened by remember { mutableStateOf(false) }
     LaunchedEffect(mode) {
         if (mode == EditorMode.Design) {
@@ -280,16 +281,17 @@ fun ProfileCardEditorScreen(
     val backToCard = {
         viewModel.onPreviewDiscarded()
         step = EditorStep.Design
+        customiseFromCard = false
         mode = EditorMode.Card
     }
     val closeDesign = if (openDesign) leave else backToCard
     val requestBack = {
-        when {
-            mode == EditorMode.Content -> if (cardsEnabled) mode = EditorMode.Card else leave()
-            mode == EditorMode.Card -> leave()
-            step == EditorStep.Customise -> step = EditorStep.Design
-            uiState.hasUnsavedChanges && !uiState.isSavingDesign -> confirmDiscard = true
-            else -> closeDesign()
+        when (editorBack(mode, step, customiseFromCard, cardsEnabled, uiState.hasUnsavedChanges && !uiState.isSavingDesign)) {
+            EditorBack.Leave -> leave()
+            EditorBack.ToCard -> mode = EditorMode.Card
+            EditorBack.ToDesignStep -> step = EditorStep.Design
+            EditorBack.ConfirmDiscard -> confirmDiscard = true
+            EditorBack.CloseDesign -> closeDesign()
         }
     }
     @Suppress("DEPRECATION") BackHandler { requestBack() }
@@ -376,11 +378,12 @@ fun ProfileCardEditorScreen(
             uiState = uiState,
             mode = mode,
             step = step,
-            onStep = { step = it },
+            onStep = { step = it; customiseFromCard = false },
             onBack = requestBack,
             onAddContent = { mode = EditorMode.Content },
             onCustomiseDesign = {
                 step = EditorStep.Customise
+                customiseFromCard = true
                 mode = EditorMode.Design
             },
             onStyle = viewModel::onStyleSelected,
@@ -898,7 +901,8 @@ private fun EditorPanel(
         cardStylesFor(design).let { styles -> if (styles.isEmpty()) 0 else styles.size + if (customStyle(styles, uiState.overrides, design) != null) 1 else 0 }
     }
     val wrapStyles = metrics == PanelMetrics.Wide
-    val styleRow = if (styleCount == 0) 0.dp else styleRowHeight(fontScale, rows = if (wrapStyles && styleCount > WIDE_STYLES_PER_ROW) 2 else 1) + metrics.gap
+    var styleRows by remember { mutableIntStateOf(1) }
+    val styleRow = if (styleCount == 0) 0.dp else styleRowHeight(fontScale, rows = styleRows) + metrics.gap
     val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT + styleRow
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
@@ -987,6 +991,7 @@ private fun EditorPanel(
                         onBlockOrder = onBlockOrder,
                         onStyle = onStyle,
                         wrapStyles = wrapStyles,
+                        onStyleRows = { styleRows = it },
                         gap = metrics.gap,
                         hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                         modifier = Modifier.fillMaxSize(),
@@ -1381,6 +1386,16 @@ private fun DesignTile(
 internal enum class EditorStep { Design, Customise }
 
 internal enum class EditorMode { Card, Content, Design }
+
+internal enum class EditorBack { Leave, ToCard, ToDesignStep, ConfirmDiscard, CloseDesign }
+
+internal fun editorBack(mode: EditorMode, step: EditorStep, customiseFromCard: Boolean, cardsEnabled: Boolean, discardable: Boolean): EditorBack = when {
+    mode == EditorMode.Content -> if (cardsEnabled) EditorBack.ToCard else EditorBack.Leave
+    mode == EditorMode.Card -> EditorBack.Leave
+    step == EditorStep.Customise && !customiseFromCard -> EditorBack.ToDesignStep
+    discardable -> EditorBack.ConfirmDiscard
+    else -> EditorBack.CloseDesign
+}
 
 internal fun openingMode(cardsEnabled: Boolean, openDesign: Boolean): EditorMode = when {
     !cardsEnabled -> EditorMode.Content

@@ -232,6 +232,7 @@ internal fun CardOptionsPanel(
     modifier: Modifier = Modifier,
     onStyle: (ResolvedCardStyle) -> Unit = {},
     wrapStyles: Boolean = false,
+    onStyleRows: (Int) -> Unit = {},
 ) {
     val styles = remember(design) { cardStylesFor(design) }
     val custom = remember(styles, overrides, design) { customStyle(styles, overrides, design) }
@@ -243,7 +244,7 @@ internal fun CardOptionsPanel(
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
-        if (styles.isNotEmpty()) CardStyleRow(styles, overrides, enabled, onStyle, custom = custom, wrap = wrapStyles)
+        if (styles.isNotEmpty()) CardStyleRow(styles, overrides, enabled, onStyle, custom = custom, wrap = wrapStyles, onRows = onStyleRows)
         AnimatedContent(
             targetState = current.name,
             transitionSpec = {

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.card
 
+import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -81,6 +82,7 @@ internal fun CardStyleRow(
     modifier: Modifier = Modifier,
     custom: ResolvedCardStyle? = null,
     wrap: Boolean = false,
+    onRows: (Int) -> Unit = {},
 ) {
     val tiles = listOfNotNull(custom) + styles
     val selectedId = custom?.id ?: styles.firstOrNull { it.matches(overrides) }?.id
@@ -99,6 +101,8 @@ internal fun CardStyleRow(
         val minWidth = maxOf(STYLE_TILE_MIN_WIDTH * grow, widestLabel)
         val widest = maxOf(STYLE_TILE_WIDTH * grow, minWidth)
         val perRow = (tiles.size + 1) / 2
+        val rows = if (widthFor(tiles.size) < minWidth && wrap && widthFor(perRow) >= minWidth) 2 else 1
+        SideEffect { onRows(rows) }
         val tile: @Composable (ResolvedCardStyle, Dp) -> Unit = { style, width ->
             StyleTile(
                 style = style,
