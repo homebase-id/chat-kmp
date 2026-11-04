@@ -231,22 +231,23 @@ class FilesyncRepository(
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ) {
+        val size = total ?: throw IllegalStateException("${payload.fileId} shared by $owner has no size")
         val fractions = onProgress?.let(::wholePercentFractions)
         val found = payloadDownloadService.streamVerified(payload.payloadKey, payload.hash, consume) { hashed ->
-            var any = false
+            var any = size == 0L
             hashed(flow {
                 var offset = 0L
-                while (true) {
+                while (offset < size) {
                     val slice = peerFiles.getPayloadChunkOverPeerByGlobalTransitId(
                         owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, offset, SHARED_CHUNK_BYTES,
                     )?.bytes ?: break
                     if (slice.isEmpty()) break
                     any = true
-                    emit(slice)
-                    offset += slice.size
-                    if (total != null && total > 0) fractions?.invoke(offset.toFloat() / total)
-                    // A short read is the end of the file: the range routes clamp rather than 416.
-                    if (slice.size < SHARED_CHUNK_BYTES) break
+                    // The last chunk decrypts with the cipher's padding still on it: the node's size is where the file ends.
+                    val kept = if (offset + slice.size > size) slice.copyOf((size - offset).toInt()) else slice
+                    emit(kept)
+                    offset += kept.size
+                    fractions?.invoke(offset.toFloat() / size)
                 }
             })
             any
