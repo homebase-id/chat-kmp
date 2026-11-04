@@ -895,6 +895,21 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun introChoosingACardSelectsItWithoutOpeningTheViewer() = runTest(dispatcher) {
+        val host = FakeHost()
+        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
+        val vm = viewModel(
+            host,
+            FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0, CardOverrides.EMPTY)),
+        )
+
+        vm.onCardChosen(friends)
+
+        assertFalse(vm.uiState.value.viewing)
+        assertEquals(friends, vm.uiState.value.selectedAudience)
+    }
+
+    @Test
     fun introTilesAreStillsOfEachRealCardAndTheHostGoesBackToTheViewedCard() = runTest(dispatcher) {
         val host = FakeHost()
         host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }

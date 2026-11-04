@@ -244,7 +244,15 @@ fun ProfileCardScreen(
     LaunchedEffect(viewModel) {
         viewModel.events.filterIsInstance<ProfileCardEvent.OpenContentEditor>().collect { onEditState() }
     }
-    IntroViewerSwitch(viewModel = viewModel, onBack = onBack, onNewCircle = newCircle) { onClose ->
+    IntroViewerSwitch(
+        viewModel = viewModel,
+        onBack = onBack,
+        onNewCircle = newCircle,
+        onOpenCard = { audience ->
+            viewModel.onCardChosen(audience)
+            onEdit()
+        },
+    ) { onClose ->
         ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
     }
 }
@@ -254,6 +262,7 @@ internal fun IntroViewerSwitch(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onNewCircle: (() -> Unit)? = null,
+    onOpenCard: (CardAudience) -> Unit = viewModel::onCardOpened,
     viewer: @Composable (onClose: () -> Unit) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -274,7 +283,7 @@ internal fun IntroViewerSwitch(
                 tiles = tiles,
                 host = host,
                 revision = revision,
-                onOpen = viewModel::onCardOpened,
+                onOpen = onOpenCard,
                 onClose = onBack,
                 onRetry = viewModel::onRetry,
                 onCapture = viewModel::captureIntroTiles,

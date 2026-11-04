@@ -426,6 +426,13 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(viewing = true) }
     }
 
+    fun onCardChosen(audience: CardAudience) {
+        val state = _uiState.value
+        val card = state.cards.firstOrNull { it.audience.isSameAs(audience) }
+        if (state.isExporting || card == null) return
+        selectAudience(card.audience)
+    }
+
     fun onIntroReturned() {
         _uiState.update { it.copy(viewing = false) }
     }
