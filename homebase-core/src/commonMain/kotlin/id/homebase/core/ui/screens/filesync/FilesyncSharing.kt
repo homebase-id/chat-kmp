@@ -192,11 +192,7 @@ class FilesyncSharing(
             ).also { asFilesync.addManyToCircle(it.toString(), listOf(audience.odinId.domainName)) }
         }
         val own = ownCircleKey(circleId)
-        val unsealed = filesyncKeys.getUnsealedMembers(circleId).filter { it in points }
-        if (unsealed.isNotEmpty()) {
-            val sealed = unsealed.map { SealedMemberShareKey(it.domainName, ShareKeys.sealCircleKey(own.key, points.getValue(it), circleId, it)) }
-            filesyncKeys.setMemberKeys(circleId, SealedMemberShareKeys(own.locked, sealed))
-        }
+        sealCircleKey(circleId, points)
 
         val permissions = DrivePermission.combine(access.permissions)
         files.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
@@ -208,16 +204,7 @@ class FilesyncSharing(
                 },
             )
         }
-        members.forEach { member ->
-            try {
-                leaveMarker(self, member, points.getValue(member))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // The files are already shared; one member's missing marker mustn't fail the share or skip the rest.
-                Logger.w(e, TAG) { "no marker queued for $member" }
-            }
-        }
+        leaveMarkers(self, points)
     }
 
     /**
@@ -243,6 +230,32 @@ class FilesyncSharing(
             throw FilesyncSharingException.RecipientNotReady(refused)
         }
         return FilesyncAudience.Group(circleId, name, members.sortedBy { it.domainName })
+    }
+
+    /**
+     * Makes [group]'s members [members]: whoever's added sees everything shared with it, whoever's removed stops seeing
+     * it. Those added who can't receive shared files are left out and named once the rest is done.
+     */
+    suspend fun setGroupMembers(group: FilesyncAudience.Group, members: List<OdinId>) {
+        requireSignedIn()
+        val self = requireNotNull(appCredentials.getActiveCredentials()).domain
+        val added = members.filter { it !in group.members }
+        val ready = added.associateWith { recipientPointOrNull(it) }
+        val points = ready.mapNotNull { (member, point) -> point?.let { member to it } }.toMap()
+        val enrolled = if (points.isEmpty()) emptySet() else {
+            points.keys.chunked(ADD_MANY_LIMIT).forEach { asFilesync.addManyToCircle(recipientsCircle().toString(), it.map(OdinId::domainName)) }
+            val refused = points.keys.chunked(ADD_MANY_LIMIT).flatMap { chunk ->
+                asFilesync.addManyToCircle(group.circleId.toString(), chunk.map(OdinId::domainName)).outcomes.filter { it.kind != EnrollmentOutcomeKind.Enrolled }.map { it.odinId }
+            }.toSet()
+            points.keys - refused
+        }
+        val joined = points.filterKeys { it in enrolled }
+        sealCircleKey(group.circleId, joined)
+        leaveMarkers(self, joined)
+        group.members.filter { it !in members }.forEach { asFilesync.removeFromCircle(group.circleId, it) }
+
+        val notReady = added.filter { it !in enrolled }
+        if (notReady.isNotEmpty()) throw FilesyncSharingException.RecipientNotReady(notReady)
     }
 
     /** Who [fileId] is shared with now, withdrawn and expired shares left out. */
@@ -447,6 +460,27 @@ class FilesyncSharing(
             cursor = page.cursorState
         } while (page.hasMoreRows)
         return found
+    }
+
+    private suspend fun sealCircleKey(circleId: Uuid, points: Map<OdinId, ByteArray>) {
+        val unsealed = filesyncKeys.getUnsealedMembers(circleId).filter { it in points }
+        if (unsealed.isEmpty()) return
+        val own = ownCircleKey(circleId)
+        val sealed = unsealed.map { SealedMemberShareKey(it.domainName, ShareKeys.sealCircleKey(own.key, points.getValue(it), circleId, it)) }
+        filesyncKeys.setMemberKeys(circleId, SealedMemberShareKeys(own.locked, sealed))
+    }
+
+    private suspend fun leaveMarkers(self: OdinId, points: Map<OdinId, ByteArray>) {
+        points.forEach { (member, point) ->
+            try {
+                leaveMarker(self, member, point)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The files are already shared; one member's missing marker mustn't fail the share or skip the rest.
+                Logger.w(e, TAG) { "no marker queued for $member" }
+            }
+        }
     }
 
     private suspend fun leaveMarker(self: OdinId, recipient: OdinId, point: ByteArray) {

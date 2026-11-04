@@ -328,6 +328,7 @@ class FilesyncViewModel(
             is FilesyncUiAction.OpenSharedFolder -> sharing.openSharedFolder(action.path)
 
             is FilesyncUiAction.OpenRecipient -> sharing.openRecipient(action.recipient)
+            is FilesyncUiAction.SetGroupMembers -> sharing.setGroupMembers(action.group, action.members)
 
             is FilesyncUiAction.StopSharing -> sharing.stopSharing(action.nodeId)
 

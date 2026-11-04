@@ -3151,6 +3151,9 @@
     <string name="filesync_group_name">Group name</string>
     <string name="filesync_group_same_people">These are the people in %1$s, so it's shared with that group.</string>
     <string name="filesync_group_new_instead">Make a new group instead</string>
+    <string name="filesync_group_edit_members">Edit members</string>
+    <string name="filesync_group_members_title">People in %1$s</string>
+    <string name="filesync_group_members_body">Whoever you add sees everything shared with %1$s. Whoever you remove stops seeing it.</string>
     <string name="filesync_share_no_people">No connections match.</string>
     <string name="filesync_share_access_view">Can view and comment</string>
     <string name="filesync_share_access_edit">Can edit and comment</string>

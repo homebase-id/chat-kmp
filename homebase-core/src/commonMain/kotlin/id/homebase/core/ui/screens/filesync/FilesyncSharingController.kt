@@ -238,6 +238,25 @@ internal class FilesyncSharingController(
         scope.launch { guarded { sharing.audiences() }?.let { recipients -> update { it.copy(recipients = recipients) } } }
     }
 
+    fun setGroupMembers(group: FilesyncAudience.Group, members: List<OdinId>) {
+        scope.launch {
+            try {
+                sharing.setGroupMembers(group, members)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "changing ${group.circleId}'s members failed" }
+                send(if (e is FilesyncSharingException.RecipientNotReady) FilesyncUiEvent.NotReady(e.recipients) else FilesyncUiEvent.Error(FilesyncError.SharingFailed))
+            }
+            // Read back, so a change that only partly went through shows as it is.
+            val recipients = guarded { sharing.audiences() } ?: return@launch
+            update { s ->
+                val shown = (s.recipient as? FilesyncAudience.Group)?.takeIf { it.circleId == group.circleId }
+                s.copy(recipients = recipients, recipient = shown?.let { recipients.firstOrNull { r -> r is FilesyncAudience.Group && r.circleId == group.circleId } ?: it } ?: s.recipient)
+            }
+        }
+    }
+
     /** Shows what [recipient] is given, each file with a way to stop; null goes back to the folder. */
     fun openRecipient(recipient: FilesyncAudience?) {
         closeViews()

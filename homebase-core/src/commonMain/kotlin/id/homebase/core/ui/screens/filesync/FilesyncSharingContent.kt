@@ -84,6 +84,9 @@ import id.homebase.resources.filesync_expiry_never
 import id.homebase.resources.filesync_expiry_title
 import id.homebase.resources.filesync_expiry_week
 import id.homebase.resources.filesync_expiry_year
+import id.homebase.resources.filesync_group_edit_members
+import id.homebase.resources.filesync_group_members_body
+import id.homebase.resources.filesync_group_members_title
 import id.homebase.resources.filesync_group_name
 import id.homebase.resources.filesync_group_new_instead
 import id.homebase.resources.filesync_group_same_people
@@ -113,6 +116,7 @@ import id.homebase.resources.filesync_view_to_none
 import id.homebase.resources.filesync_view_to_title
 import id.homebase.resources.filesync_you_shared_with
 import id.homebase.resources.menu_back
+import id.homebase.resources.save
 import kotlin.time.Clock
 import kotlin.time.Instant
 import org.jetbrains.compose.resources.StringResource
@@ -426,6 +430,13 @@ internal fun ColumnScope.FilesyncRecipientsSidebar(sharing: FilesyncSharingState
 internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
     val shown = sharing.sharer?.let { FilesyncAudience.Person(it) } ?: sharing.recipient ?: return
     val incoming = sharing.sharer != null
+    var editingMembers by rememberSaveable { mutableStateOf(false) }
+    if (editingMembers && shown is FilesyncAudience.Group) {
+        GroupMembersSheet(shown, onDismiss = { editingMembers = false }) { members ->
+            editingMembers = false
+            onAction(FilesyncUiAction.SetGroupMembers(shown, members))
+        }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(16.dp)) {
@@ -439,6 +450,11 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
                         stringResource(if (incoming) MR.string.filesync_view_from_body else MR.string.filesync_view_to_body),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    if (!incoming && shown is FilesyncAudience.Group) {
+                        val members = shown.members.joinToString { it.domainName }
+                        Text(members, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick = { editingMembers = true }) { Text(stringResource(MR.string.filesync_group_edit_members)) }
+                    }
                 }
                 TextButton(onClick = { onAction(FilesyncUiAction.OpenSharer(null)) }) { Text(stringResource(MR.string.filesync_view_close)) }
             }
@@ -474,6 +490,50 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+/** Picks [group]'s members from the connections, the ones in it now first; at least one stays. */
+@Composable
+private fun GroupMembersSheet(group: FilesyncAudience.Group, onDismiss: () -> Unit, onSave: (List<OdinId>) -> Unit) {
+    val connectionService: ConnectionService = koinInject()
+    val connections by connectionService.connections.collectAsStateWithLifecycle()
+    val search = rememberTextFieldState()
+    var chosen by rememberSaveable { mutableStateOf(group.members.map { it.domainName }) }
+    val query = search.text.toString().trim()
+    val people = remember(connections, group, query) {
+        val now = group.members.mapTo(HashSet()) { it.domainName }
+        (connections.map.values.filter { it.status == ConnectionStatus.Connected }.map { it.odinId } + group.members).distinct()
+            .filter { query.isEmpty() || it.domainName.contains(query, ignoreCase = true) }
+            .sortedWith(compareBy<OdinId> { it.domainName !in now }.thenBy { it.domainName })
+    }
+    AdaptiveSheet(onDismiss = onDismiss, maxWidth = 420.dp) {
+        Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(MR.string.filesync_group_members_title, group.name), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(MR.string.filesync_group_members_body, group.name), style = MaterialTheme.typography.bodyMedium)
+            MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.filesync_share_search), modifier = Modifier.fillMaxWidth())
+            LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                items(people, key = { it.domainName }) { person ->
+                    val checked = person.domainName in chosen
+                    ListItem(
+                        headlineContent = { Text(person.domainName) },
+                        leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
+                        trailingContent = { Checkbox(checked = checked, onCheckedChange = null) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                        modifier = Modifier.toggleable(value = checked, role = Role.Checkbox) {
+                            chosen = if (checked) chosen - person.domainName else chosen + person.domainName
+                        },
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
+                Button(
+                    enabled = chosen.isNotEmpty() && chosen.toSet() != group.members.mapTo(HashSet()) { it.domainName },
+                    onClick = { onSave(chosen.map(::OdinId)) },
+                ) { Text(stringResource(MR.string.save)) }
             }
         }
     }

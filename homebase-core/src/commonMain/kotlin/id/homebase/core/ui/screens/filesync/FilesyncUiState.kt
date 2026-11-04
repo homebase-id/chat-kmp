@@ -264,6 +264,7 @@ sealed interface FilesyncUiAction {
     data class OpenSharer(val sharer: OdinId?) : FilesyncUiAction
     data class OpenSharedFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
     data class OpenRecipient(val recipient: FilesyncAudience?) : FilesyncUiAction
+    data class SetGroupMembers(val group: FilesyncAudience.Group, val members: List<OdinId>) : FilesyncUiAction
     data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
     data class ChangeExpiry(val nodeId: Uuid, val expiry: FilesyncExpiry) : FilesyncUiAction
     data class SaveShared(val node: FilesyncNode) : FilesyncUiAction

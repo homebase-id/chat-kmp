@@ -126,6 +126,7 @@ class FilesyncSharingTest {
 
     private val calls = mutableListOf<Call>()
     private var samReady = true
+    private var notReady = emptySet<String>()
     private var samGrantsWrite = true
     private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
@@ -140,7 +141,7 @@ class FilesyncSharingTest {
         val body = when {
             path.endsWith("/apps/filesync/drives/filesync/public-key") ->
                 if (!samGrantsWrite) return@MockEngine respond("""{"title":"Write access is required"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
-                else if (samReady) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
+                else if (samReady && notReady.none { "/peer/$it/" in path }) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
                 else return@MockEngine respond("""{"title":"no such drive","errorCode":"invalidRequest"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
             path.endsWith("/connections/circles/create") ->
                 when (decrypted(call, filesyncSecret).jsonObject["slug"]!!.jsonPrimitive.content) {
@@ -150,7 +151,7 @@ class FilesyncSharingTest {
                 }
             path.endsWith("/connections/circles/add-many") ->
                 """{"enrolled":1,"deposited":0,"skipped":0,"outcomes":[${refusedByAddMany.joinToString { """{"odinId":"$it","kind":"skipped"}""" }}]}"""
-            "/connections/circles/delete" in path -> "{}"
+            "/connections/circles/delete" in path || path.endsWith("/connections/circles/revoke") -> "{}"
             path.endsWith("/share-key/unsealed-members") -> unsealed.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call, filesyncSecret).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
@@ -267,6 +268,50 @@ class FilesyncSharingTest {
 
         assertEquals(1, calls.count { it.path.endsWith("/shares") })
         assertEquals(1, calls.count { it.path.endsWith("/files") })
+    }
+
+    private val hiking get() = FilesyncAudience.Group(groupCircle, "Hiking", listOf(sam))
+    private val pippin = OdinId("pippin.test")
+
+    private suspend fun Call.addedTo(): Pair<String, List<String>> = decrypted(this, filesyncSecret).jsonObject.let { body ->
+        body["circleId"]!!.jsonPrimitive.content to body["odinIds"]!!.jsonArray.map { it.jsonPrimitive.content }
+    }
+
+    @Test
+    fun addingToAGroupLetsTheNewMemberInAndLeavesThemAMarker() = runTest {
+        unsealed = listOf("merry.test")
+
+        sharing.setGroupMembers(hiking, listOf(sam, merry))
+        deliverMarkers()
+
+        val added = calls.filter { it.path.endsWith("/add-many") }.map { it.addedTo() }
+        assertEquals(listOf(recipientsCircle.toString() to listOf("merry.test"), groupCircle.toString() to listOf("merry.test")), added)
+        val sealed = decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject["members"]!!.jsonArray
+        assertEquals(listOf("merry.test"), sealed.map { it.jsonObject["odinId"]!!.jsonPrimitive.content })
+        val marker = Json.parseToJsonElement(multipart(calls.single { it.path.endsWith("/files") }.body, calls.single { it.path.endsWith("/files") }.request).getValue("instructions").decodeToString()).jsonObject
+        assertEquals("merry.test", marker["transitOptions"]!!.jsonObject["recipients"]!!.jsonArray.single().jsonPrimitive.content)
+        assertTrue(calls.none { it.path.endsWith("/revoke") })
+    }
+
+    @Test
+    fun removingFromAGroupRevokesOnlyThem() = runTest {
+        sharing.setGroupMembers(hiking.copy(members = listOf(merry, sam)), listOf(merry))
+
+        val revoked = calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject }
+        assertEquals(listOf("sam.test"), revoked.map { it["odinId"]!!.jsonPrimitive.content })
+        assertEquals(listOf(groupCircle.toString()), revoked.map { it["circleId"]!!.jsonPrimitive.content })
+        assertTrue(calls.none { it.path.endsWith("/add-many") || it.path.endsWith("/files") })
+    }
+
+    @Test
+    fun addingSomeoneNotReadyStillAddsTheRestAndNamesThem() = runTest {
+        unsealed = listOf("merry.test")
+        notReady = setOf("pippin.test")
+
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.setGroupMembers(hiking, listOf(sam, merry, pippin)) }
+
+        assertEquals(listOf(pippin), e.recipients)
+        assertTrue(calls.filter { it.path.endsWith("/add-many") }.all { it.addedTo().second == listOf("merry.test") })
     }
 
     @Test
