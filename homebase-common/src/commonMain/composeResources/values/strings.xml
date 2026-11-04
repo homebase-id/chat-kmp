@@ -3162,6 +3162,7 @@
     <string name="filesync_access_view">Can view and comment</string>
     <string name="filesync_access_edit">Can edit and comment</string>
     <string name="filesync_shared_with_me">Shared with me</string>
+    <string name="filesync_shared_files_from">Shared files from</string>
     <string name="filesync_shared_with_me_none">No one has shared files with you yet.</string>
     <string name="filesync_shared_by_none">Nothing is shared with you here any more.</string>
     <string name="filesync_shared_files_failed">Couldn't load the shared files.</string>

@@ -3,8 +3,10 @@ package id.homebase.core.ui.screens.filesync
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,11 +20,13 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.connections.ConnectionStatus
@@ -59,6 +64,7 @@ import id.homebase.resources.filesync_share_send
 import id.homebase.resources.filesync_share_with
 import id.homebase.resources.filesync_shared_by_none
 import id.homebase.resources.filesync_shared_files_failed
+import id.homebase.resources.filesync_shared_files_from
 import id.homebase.resources.filesync_shared_with
 import id.homebase.resources.filesync_shared_with_me
 import id.homebase.resources.filesync_shared_with_none
@@ -214,6 +220,28 @@ internal fun FilesyncSharersStrip(sharers: List<OdinId>, onAction: (FilesyncUiAc
                 }
             }
         }
+    }
+}
+
+/** The wide sidebar's "Shared files from": each person who shares with this identity; one opens what they share. */
+@Composable
+internal fun ColumnScope.FilesyncSharersSidebar(sharing: FilesyncSharingState, onAction: (FilesyncUiAction) -> Unit) {
+    if (sharing.sharers.isEmpty()) return
+    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp))
+    Text(
+        text = stringResource(MR.string.filesync_shared_files_from),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
+    )
+    sharing.sharers.forEach { sharer ->
+        NavigationDrawerItem(
+            label = { Text(sharer.domainName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            icon = { IdentityAvatar(sharer, AvatarOptions(size = 24.dp)) },
+            selected = sharing.sharer == sharer,
+            onClick = { onAction(FilesyncUiAction.OpenSharer(sharer)) },
+            modifier = Modifier.height(40.dp),
+        )
     }
 }
 

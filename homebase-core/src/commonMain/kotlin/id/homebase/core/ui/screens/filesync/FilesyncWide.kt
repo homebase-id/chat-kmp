@@ -302,7 +302,10 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 places = null,
             )
         },
-        sidebarExtra = { TagFilters(uiState, scope.onAction) },
+        sidebarExtra = {
+            FilesyncSharersSidebar(uiState.sharing, scope.onAction)
+            TagFilters(uiState, scope.onAction)
+        },
         // Always there, empty until a row is selected: a pane that opened on the first press of a
         // double-click would move the row out from under the second.
         pane = {
@@ -359,7 +362,6 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
                 if (scope.currentRemoved) DeletedFolderBanner(scope)
                 uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
-                if (uiState.path.size == 1) FilesyncSharersStrip(uiState.sharing.sharers, scope.onAction)
                 TableHeader(uiState.sort, uiState.selected.size, uiState.visible.size, columns, scope.onAction)
                 Box(modifier = Modifier.weight(1f)) {
                     BrowserListBody(scope) {
