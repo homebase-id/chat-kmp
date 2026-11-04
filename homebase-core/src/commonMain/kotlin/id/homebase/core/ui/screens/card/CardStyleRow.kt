@@ -1,7 +1,10 @@
 package id.homebase.core.ui.screens.card
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,16 +18,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.profile_card_style_blossom
@@ -40,7 +47,11 @@ import org.jetbrains.compose.resources.stringResource
 
 internal val STYLE_ROW_HEIGHT = 84.dp
 private val STYLE_TILE_WIDTH = 76.dp
-private val STYLE_SWATCH_HEIGHT = 52.dp
+private val STYLE_SWATCH_HEIGHT = 46.dp
+private val STYLE_CORNER = 12.dp
+private val STYLE_CORNER_SELECTED = 20.dp
+private val STYLE_RING = 2.dp
+private val STYLE_RING_GAP = 3.dp
 private val STYLE_DOT = 10.dp
 private const val STYLE_SAMPLE = "Aa"
 
@@ -63,37 +74,52 @@ internal fun CardStyleRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun StyleTile(style: ResolvedCardStyle, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
-    val ground = Color(hexToArgb(style.ground))
+    val colors = MaterialTheme.colorScheme
+    val spatial = MaterialTheme.motionScheme.fastSpatialSpec<Dp>()
+    val corner by animateDpAsState(if (selected) STYLE_CORNER_SELECTED else STYLE_CORNER, spatial)
+    val ring by animateColorAsState(if (selected) colors.primary else Color.Transparent, MaterialTheme.motionScheme.fastEffectsSpec())
     val ink = Color(hexToArgb(style.ink))
-    val name = stringResource(styleLabel(style.id))
-    val border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    // Width follows the text scale so the name isn't ellipsised at large font sizes.
+    val width = STYLE_TILE_WIDTH * LocalDensity.current.fontScale.coerceAtLeast(1f)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .width(STYLE_TILE_WIDTH)
+            .width(width)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
     ) {
-        Surface(shape = shape, color = ground, border = border, modifier = Modifier.fillMaxWidth().height(STYLE_SWATCH_HEIGHT)) {
-            Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = STYLE_SAMPLE,
-                    style = fontPreviewStyle(style.display).copy(color = ink),
-                    maxLines = 1,
-                    softWrap = false,
-                )
-                style.accent?.let {
-                    Spacer(Modifier.size(6.dp))
-                    Box(Modifier.size(STYLE_DOT).background(Color(hexToArgb(it)), CircleShape))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .border(STYLE_RING, ring, RoundedCornerShape(corner + STYLE_RING_GAP))
+                .padding(STYLE_RING_GAP),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(corner),
+                color = Color(hexToArgb(style.ground)),
+                border = BorderStroke(1.dp, colors.outlineVariant),
+                modifier = Modifier.fillMaxWidth().height(STYLE_SWATCH_HEIGHT),
+            ) {
+                Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = STYLE_SAMPLE,
+                        style = fontPreviewStyle(style.display).copy(color = ink),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                    style.accent?.let {
+                        Spacer(Modifier.size(6.dp))
+                        Box(Modifier.size(STYLE_DOT).background(Color(hexToArgb(it)), CircleShape))
+                    }
                 }
             }
         }
         Text(
-            text = name,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            text = stringResource(styleLabel(style.id)),
+            style = if (selected) MaterialTheme.typography.labelMediumEmphasized else MaterialTheme.typography.labelMedium,
+            color = if (selected) colors.primary else colors.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,

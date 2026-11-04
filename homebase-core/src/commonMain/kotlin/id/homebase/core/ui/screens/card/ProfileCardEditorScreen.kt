@@ -78,6 +78,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.ui.graphics.vector.ImageVector
 import id.homebase.resources.profile_card_first_add_content
 import id.homebase.resources.profile_card_first_customise
 import androidx.compose.material3.Icon
@@ -181,6 +182,7 @@ import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
+private val CARD_FIRST_HEIGHT = ButtonDefaults.MediumContainerHeight
 private val COMPACT_HEIGHT = 760.dp
 private val COMPACT_TILE_WIDTH = 88.dp
 private val COMPACT_TILE_CORNER = 16.dp
@@ -1016,28 +1018,23 @@ private fun CardFirstChoices(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        FilledTonalButton(
-            onClick = onAddContent,
-            enabled = enabled,
-            shapes = ButtonDefaults.shapes(),
-            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-            modifier = Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT),
-        ) {
-            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)))
-            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-            ActionLabel(stringResource(MR.string.profile_card_first_add_content))
-        }
-        FilledTonalButton(
-            onClick = onCustomiseDesign,
-            enabled = enabled,
-            shapes = ButtonDefaults.shapes(),
-            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
-            modifier = Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT),
-        ) {
-            Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)))
-            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
-            ActionLabel(stringResource(MR.string.profile_card_first_customise))
-        }
+        CardFirstButton(Icons.Outlined.Edit, stringResource(MR.string.profile_card_first_add_content), enabled, onAddContent)
+        CardFirstButton(Icons.Outlined.Palette, stringResource(MR.string.profile_card_first_customise), enabled, onCustomiseDesign)
+    }
+}
+
+@Composable
+private fun CardFirstButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        shapes = ButtonDefaults.shapes(),
+        contentPadding = ButtonDefaults.contentPaddingFor(CARD_FIRST_HEIGHT),
+        modifier = Modifier.fillMaxWidth().heightIn(min = CARD_FIRST_HEIGHT),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(CARD_FIRST_HEIGHT)))
+        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(CARD_FIRST_HEIGHT)))
+        Text(label, style = ButtonDefaults.textStyleFor(CARD_FIRST_HEIGHT), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
