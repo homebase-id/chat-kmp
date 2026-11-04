@@ -3205,4 +3205,14 @@
     <string name="circle_delete_body">This removes the circle and its card.</string>
     <string name="circle_delete_body_members">%1$d people are in this circle. Deleting it removes them from it, and removes the circle and its card.</string>
     <string name="circle_delete_failed">Couldn't delete the circle. Try again.</string>
+    <string name="profile_card_style_nocturne">Nocturne</string>
+    <string name="profile_card_style_ember">Ember</string>
+    <string name="profile_card_style_woodland">Woodland</string>
+    <string name="profile_card_style_harbour">Harbour</string>
+    <string name="profile_card_style_editorial">Editorial</string>
+    <string name="profile_card_style_blossom">Blossom</string>
+    <string name="profile_card_style_sunset">Sunset</string>
+    <string name="profile_card_style_terminal">Terminal</string>
+    <string name="profile_card_first_add_content">Add content</string>
+    <string name="profile_card_first_customise">Customise design</string>
 </resources>

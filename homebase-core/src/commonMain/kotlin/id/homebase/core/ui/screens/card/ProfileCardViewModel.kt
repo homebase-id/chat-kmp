@@ -397,6 +397,8 @@ class ProfileCardViewModel(
 
     fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value, CardDesignSpecs.of(_uiState.value.design)?.presetOrder ?: CardDesignSpecs.ORDERED_KINDS, _uiState.value.design) }
 
+    internal fun onStyleSelected(style: ResolvedCardStyle) = editOverrides { it.withStyle(style, _uiState.value.design) }
+
     fun onBlockOrderChanged(kinds: List<String>?) = editOverrides { it.withBlockOrder(kinds) }
 
     private fun editOverrides(edit: (CardOverrides) -> CardOverrides) {

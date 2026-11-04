@@ -2003,6 +2003,24 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun applyingAStyleIsOneUnsavedPreviewEditThatRenders() = runTest(dispatcher) {
+        val (vm, host, store) = boardVm()
+        val style = cardStylesFor(CardDesign.BOARD).first { it.id == "terminal" }
+
+        vm.onStyleSelected(style)
+
+        val overrides = vm.uiState.value.overrides
+        assertEquals(style.ground, overrides.palette?.ground)
+        assertEquals(style.accent, overrides.palette?.accent)
+        assertEquals("space-mono", overrides.type?.display)
+        assertEquals("space-mono", overrides.type?.text)
+        assertTrue(style.matches(overrides))
+        assertTrue(vm.uiState.value.canSaveDesign)
+        assertTrue(store.writes.isEmpty())
+        assertEquals(style.ground, host.rendered.last().overrides?.palette?.ground)
+    }
+
+    @Test
     fun anOptionTheDesignDoesNotExposeIsIgnored() = runTest(dispatcher) {
         val (vm, host, _) = boardVm(FakeCardStore(listOf(cardAttribute(CardDesign.POSTER))))
         val rendered = host.rendered.size

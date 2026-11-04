@@ -2121,4 +2121,14 @@
     <string name="openedfile_show">Vis</string>
     <string name="openedfile_open_failed">Filen kunne ikke åbnes.</string>
     <string name="openedfile_save_failed">Filen kunne ikke gemmes. Tjek din forbindelse, og prøv igen.</string>
+    <string name="profile_card_style_nocturne">Nocturne</string>
+    <string name="profile_card_style_ember">Gløder</string>
+    <string name="profile_card_style_woodland">Skov</string>
+    <string name="profile_card_style_harbour">Havn</string>
+    <string name="profile_card_style_editorial">Redaktionel</string>
+    <string name="profile_card_style_blossom">Blomst</string>
+    <string name="profile_card_style_sunset">Solnedgang</string>
+    <string name="profile_card_style_terminal">Terminal</string>
+    <string name="profile_card_first_add_content">Tilføj indhold</string>
+    <string name="profile_card_first_customise">Tilpas design</string>
 </resources>

@@ -230,7 +230,9 @@ internal fun CardOptionsPanel(
     gap: Dp,
     hasLinks: Boolean,
     modifier: Modifier = Modifier,
+    onStyle: (ResolvedCardStyle) -> Unit = {},
 ) {
+    val styles = remember(design) { cardStylesFor(design) }
     val spec = CardDesignSpecs.of(design)
     val orderable = spec?.reorderable(hasLinks).orEmpty()
     val options = CardOption.entries.filter { spec != null && it in spec.options && (it != CardOption.BLOCK_ORDER || orderable.size > 1) }
@@ -239,6 +241,7 @@ internal fun CardOptionsPanel(
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
+        if (styles.isNotEmpty()) CardStyleRow(styles, overrides, enabled, onStyle)
         AnimatedContent(
             targetState = current.name,
             transitionSpec = {
@@ -510,7 +513,7 @@ private fun DefaultGlyph() {
 
 // Each name set in the card's own face (Latin subsets bundled from the web card's fonts), so look-alike names still differ.
 @Composable
-private fun fontPreviewStyle(font: String?): TextStyle {
+internal fun fontPreviewStyle(font: String?): TextStyle {
     val base = MaterialTheme.typography.titleMedium
     val face = when (font) {
         "montserrat" -> MR.font.montserrat_regular

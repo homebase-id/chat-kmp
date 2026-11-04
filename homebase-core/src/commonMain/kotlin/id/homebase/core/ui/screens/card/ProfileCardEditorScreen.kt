@@ -76,6 +76,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Palette
+import id.homebase.resources.profile_card_first_add_content
+import id.homebase.resources.profile_card_first_customise
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
@@ -257,7 +261,7 @@ fun ProfileCardEditorScreen(
         viewModel.onPreviewDiscarded()
         onBack()
     }
-    var mode by rememberSaveable { mutableStateOf(if (openDesign && cardsEnabled) EditorMode.Design else EditorMode.Content) }
+    var mode by rememberSaveable { mutableStateOf(openingMode(cardsEnabled, openDesign)) }
     var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
     var designOpened by remember { mutableStateOf(false) }
     LaunchedEffect(mode) {
@@ -269,15 +273,16 @@ fun ProfileCardEditorScreen(
         }
     }
     var confirmDiscard by remember { mutableStateOf(false) }
-    val backToContent = {
+    val backToCard = {
         viewModel.onPreviewDiscarded()
         step = EditorStep.Design
-        mode = EditorMode.Content
+        mode = EditorMode.Card
     }
-    val closeDesign = if (openDesign) leave else backToContent
+    val closeDesign = if (openDesign) leave else backToCard
     val requestBack = {
         when {
-            mode == EditorMode.Content -> leave()
+            mode == EditorMode.Content -> if (cardsEnabled) mode = EditorMode.Card else leave()
+            mode == EditorMode.Card -> leave()
             step == EditorStep.Customise -> step = EditorStep.Design
             uiState.hasUnsavedChanges && !uiState.isSavingDesign -> confirmDiscard = true
             else -> closeDesign()
@@ -369,6 +374,12 @@ fun ProfileCardEditorScreen(
             step = step,
             onStep = { step = it },
             onBack = requestBack,
+            onAddContent = { mode = EditorMode.Content },
+            onCustomiseDesign = {
+                step = EditorStep.Customise
+                mode = EditorMode.Design
+            },
+            onStyle = viewModel::onStyleSelected,
             onSelect = viewModel::onDesignPicked,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
@@ -485,6 +496,9 @@ internal fun ProfileCardEditorContent(
     onSave: () -> Unit,
     snackbarHostState: SnackbarHostState,
     mode: EditorMode = EditorMode.Design,
+    onAddContent: () -> Unit = {},
+    onCustomiseDesign: () -> Unit = {},
+    onStyle: (ResolvedCardStyle) -> Unit = {},
     photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
     showCard: Boolean = true,
     host: CardHost? = null,
@@ -544,6 +558,9 @@ internal fun ProfileCardEditorContent(
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
+                    onStyle = onStyle,
+                    onAddContent = onAddContent,
+                    onCustomiseDesign = onCustomiseDesign,
                     showCardsButton = showCard,
                     onContentAudience = onContentAudience,
                     onContentEdit = onContentEdit,
@@ -869,6 +886,9 @@ private fun EditorPanel(
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
+    onStyle: (ResolvedCardStyle) -> Unit,
+    onAddContent: () -> Unit,
+    onCustomiseDesign: () -> Unit,
     showCardsButton: Boolean,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
@@ -891,7 +911,8 @@ private fun EditorPanel(
     val isSaving = uiState.isSavingDesign
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
-    val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
+    val styleRow = remember(design) { if (cardStylesFor(design).isEmpty()) 0.dp else STYLE_ROW_HEIGHT * grow + metrics.gap }
+    val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT + styleRow
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
     val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
@@ -907,8 +928,17 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
-            if (mode == EditorMode.Content && uiState.cards.isEmpty()) {
+            if (mode != EditorMode.Design && uiState.cards.isEmpty()) {
                 ContentLoading(failed = uiState.loadFailed, onRetry = onRetry)
+                return@Column
+            }
+            if (mode == EditorMode.Card) {
+                CardFirstChoices(
+                    enabled = !uiState.loadFailed,
+                    onAddContent = onAddContent,
+                    onCustomiseDesign = onCustomiseDesign,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                )
                 return@Column
             }
             if (mode == EditorMode.Content) {
@@ -967,12 +997,46 @@ private fun EditorPanel(
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
+                        onStyle = onStyle,
                         gap = metrics.gap,
                         hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CardFirstChoices(
+    enabled: Boolean,
+    onAddContent: () -> Unit,
+    onCustomiseDesign: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        FilledTonalButton(
+            onClick = onAddContent,
+            enabled = enabled,
+            shapes = ButtonDefaults.shapes(),
+            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+            modifier = Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT),
+        ) {
+            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)))
+            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+            ActionLabel(stringResource(MR.string.profile_card_first_add_content))
+        }
+        FilledTonalButton(
+            onClick = onCustomiseDesign,
+            enabled = enabled,
+            shapes = ButtonDefaults.shapes(),
+            contentPadding = ButtonDefaults.contentPaddingFor(ACTION_HEIGHT),
+            modifier = Modifier.fillMaxWidth().heightIn(min = ACTION_HEIGHT),
+        ) {
+            Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ACTION_HEIGHT)))
+            Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ACTION_HEIGHT)))
+            ActionLabel(stringResource(MR.string.profile_card_first_customise))
         }
     }
 }
@@ -1313,7 +1377,13 @@ private fun DesignTile(
 
 internal enum class EditorStep { Design, Customise }
 
-internal enum class EditorMode { Content, Design }
+internal enum class EditorMode { Card, Content, Design }
+
+internal fun openingMode(cardsEnabled: Boolean, openDesign: Boolean): EditorMode = when {
+    !cardsEnabled -> EditorMode.Content
+    openDesign -> EditorMode.Design
+    else -> EditorMode.Card
+}
 
 @Composable
 private fun DiscardDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {
