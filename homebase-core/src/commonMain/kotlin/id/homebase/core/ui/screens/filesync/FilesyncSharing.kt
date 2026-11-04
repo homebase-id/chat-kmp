@@ -14,6 +14,7 @@ import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.CreateAppCircleRequest
 import id.homebase.api.client.connections.DriveGrantRequest
+import id.homebase.api.client.connections.EnrollmentOutcomeKind
 import id.homebase.api.client.connections.PermissionedDrive
 import id.homebase.api.client.connections.SealedMemberShareKey
 import id.homebase.api.client.connections.SealedMemberShareKeys
@@ -77,7 +78,24 @@ enum class FilesyncExpiry(val days: Int?) {
     }
 }
 
-data class FilesyncShareRecipient(val odinId: OdinId, val access: FilesyncAccess, val expiresAt: Long?)
+/** Whom files are shared with: one person, through a circle of their own, or a named group, a circle of the app's. */
+sealed interface FilesyncAudience {
+    val members: List<OdinId>
+
+    data class Person(val odinId: OdinId) : FilesyncAudience {
+        override val members get() = listOf(odinId)
+    }
+
+    data class Group(val circleId: Uuid, val name: String, override val members: List<OdinId>) : FilesyncAudience
+}
+
+val FilesyncAudience.label: String
+    get() = when (this) {
+        is FilesyncAudience.Person -> odinId.domainName
+        is FilesyncAudience.Group -> name
+    }
+
+data class FilesyncShareRecipient(val audience: FilesyncAudience, val access: FilesyncAccess, val expiresAt: Long?)
 
 data class FilesyncSharedFile(val node: FilesyncNode, val handle: FilesyncHandle, val access: FilesyncAccess, val expiresAt: Long?)
 
@@ -103,9 +121,9 @@ sealed class FilesyncSharingException(message: String, cause: Throwable? = null)
     /** Sharing writes as Filesync, which this device hasn't signed in to. */
     class NotSignedIn : FilesyncSharingException("Not signed in to Filesync")
 
-    /** [recipient] hasn't turned sharing on, so nothing can be left for them yet. */
-    class RecipientNotReady(val recipient: OdinId, cause: Throwable? = null) :
-        FilesyncSharingException("$recipient can't receive shared files yet", cause)
+    /** [recipients] haven't turned sharing on, so nothing can be left for them yet. */
+    class RecipientNotReady(val recipients: List<OdinId>, cause: Throwable? = null) :
+        FilesyncSharingException("$recipients can't receive shared files yet", cause)
 }
 
 /**
@@ -156,21 +174,26 @@ class FilesyncSharing(
         return FilesyncAccess.entries.filter { granted.containsAll(it.permissions) }
     }
 
-    /** Shares the [files] with [recipient], then leaves them a marker, if they have none from this identity yet. */
-    suspend fun share(files: List<FilesyncHandle>, recipient: OdinId, access: FilesyncAccess, expiresAt: Long?) {
+    /** Shares the [files] with [audience], then leaves each of its members a marker. */
+    suspend fun share(files: List<FilesyncHandle>, audience: FilesyncAudience, access: FilesyncAccess, expiresAt: Long?) {
         requireSignedIn()
         val self = requireNotNull(appCredentials.getActiveCredentials()).domain
-        val point = recipientPoint(recipient)
+        val members = audience.members
+        val points = recipientPoints(members)
 
-        asFilesync.addManyToCircle(recipientsCircle().toString(), listOf(recipient.domainName))
-        val circleId = asFilesync.createCircle(
-            CreateAppCircleRequest(name = recipient.domainName, slug = individualSlug(recipient), designation = CircleDesignation.Individual)
-        )
-        asFilesync.addManyToCircle(circleId.toString(), listOf(recipient.domainName))
+        // Their individual shares then don't depend on a group they might leave.
+        members.chunked(ADD_MANY_LIMIT).forEach { asFilesync.addManyToCircle(recipientsCircle().toString(), it.map(OdinId::domainName)) }
+        val circleId = when (audience) {
+            is FilesyncAudience.Group -> audience.circleId
+            is FilesyncAudience.Person -> asFilesync.createCircle(
+                CreateAppCircleRequest(name = audience.odinId.domainName, slug = individualSlug(audience.odinId), designation = CircleDesignation.Individual)
+            ).also { asFilesync.addManyToCircle(it.toString(), listOf(audience.odinId.domainName)) }
+        }
         val own = ownCircleKey(circleId)
-        if (filesyncKeys.getUnsealedMembers(circleId).any { it == recipient }) {
-            val sealed = ShareKeys.sealCircleKey(own.key, point, circleId, recipient)
-            filesyncKeys.setMemberKeys(circleId, SealedMemberShareKeys(own.locked, listOf(SealedMemberShareKey(recipient.domainName, sealed))))
+        val unsealed = filesyncKeys.getUnsealedMembers(circleId).filter { it in points }
+        if (unsealed.isNotEmpty()) {
+            val sealed = unsealed.map { SealedMemberShareKey(it.domainName, ShareKeys.sealCircleKey(own.key, points.getValue(it), circleId, it)) }
+            filesyncKeys.setMemberKeys(circleId, SealedMemberShareKeys(own.locked, sealed))
         }
 
         val permissions = DrivePermission.combine(access.permissions)
@@ -183,25 +206,50 @@ class FilesyncSharing(
                 },
             )
         }
-        leaveMarker(self, recipient, point)
+        members.forEach { leaveMarker(self, it, points.getValue(it)) }
+    }
+
+    /**
+     * Makes a group called [name] of [members], each of whom must be able to receive shared files: a circle of the
+     * app's granting the drive what the circle every recipient joins grants, so a share with it may be View or Edit.
+     */
+    suspend fun createGroup(name: String, members: List<OdinId>): FilesyncAudience.Group {
+        requireSignedIn()
+        recipientPoints(members)
+        val declared = filesyncAppRegistration.circles.single { it.slug == FilesyncProtocol.CircleSlug }
+        val circleId = asFilesync.createCircle(
+            CreateAppCircleRequest(
+                name = name,
+                slug = groupSlug(),
+                driveGrants = declared.drives.map { DriveGrantRequest(PermissionedDrive(filesyncLabeledDrive.drive, DrivePermissionSet(it.permissions))) },
+            )
+        )
+        val refused = members.chunked(ADD_MANY_LIMIT).flatMap { chunk ->
+            asFilesync.addManyToCircle(circleId.toString(), chunk.map(OdinId::domainName)).outcomes.filter { it.kind != EnrollmentOutcomeKind.Enrolled }.map { it.odinId }
+        }
+        if (refused.isNotEmpty()) {
+            asFilesync.deleteCircle(circleId, removeMembers = true)
+            throw FilesyncSharingException.RecipientNotReady(refused)
+        }
+        return FilesyncAudience.Group(circleId, name, members.sortedBy { it.domainName })
     }
 
     /** Who [fileId] is shared with now, withdrawn and expired shares left out. */
     suspend fun sharedWith(fileId: Uuid): List<FilesyncShareRecipient> {
         requireSignedIn()
-        val people = individualCircles()
+        val audiences = audienceCircles()
         val now = Clock.System.now().toEpochMilliseconds()
         return filesyncShares.shares(FilesyncProtocol.DriveAlias, fileId).mapNotNull { row ->
-            val person = people[row.circleId] ?: return@mapNotNull null
+            val audience = audiences[row.circleId] ?: return@mapNotNull null
             // Expired rows are listed too, for renewing; they no longer share anything.
             if (row.expiresAt?.let { it <= now } == true) return@mapNotNull null
-            row.access()?.let { FilesyncShareRecipient(person, it, row.expiresAt) }
+            row.access()?.let { FilesyncShareRecipient(audience, it, row.expiresAt) }
         }
     }
 
-    suspend fun withdraw(fileId: Uuid, recipient: OdinId) {
+    suspend fun withdraw(fileId: Uuid, audience: FilesyncAudience) {
         requireSignedIn()
-        val circleId = individualCircles().entries.firstOrNull { it.value == recipient }?.key ?: return
+        val circleId = circleOf(audience) ?: return
         filesyncShares.withdraw(FilesyncProtocol.DriveAlias, fileId, circleId)
     }
 
@@ -240,7 +288,7 @@ class FilesyncSharing(
         val folders = liveShares(nodes.mapTo(HashSet()) { it.parentId } + into)
         // Neither folder shares anything: the move changes no one's access, and big folders aren't walked for it.
         if (folders.isEmpty()) return FilesyncMoveSharing.None
-        val people = individualCircles()
+        val audiences = audienceCircles()
         val entering = folders[into].orEmpty()
         val kept = entering.mapTo(HashSet()) { it.circleId }
         val trees = nodes.associate { it.nodeId to tree(it) }
@@ -249,7 +297,7 @@ class FilesyncSharing(
         val starts = mutableMapOf<Uuid, List<ShareRequest>>()
         for (node in nodes) {
             val tree = trees.getValue(node.nodeId)
-            val leaving = folders[node.parentId].orEmpty().map { it.circleId }.filter { it !in kept && it in people }.toSet()
+            val leaving = folders[node.parentId].orEmpty().map { it.circleId }.filter { it !in kept && it in audiences }.toSet()
             stops[node.nodeId] = tree.flatMap { (id, handle) -> rows[id].orEmpty().filter { it.circleId in leaving }.map { handle.fileId to it.circleId } }
             starts[node.nodeId] = tree.flatMap { (id, handle) ->
                 val has = rows[id].orEmpty().mapTo(HashSet()) { it.circleId }
@@ -259,7 +307,7 @@ class FilesyncSharing(
                 }
             }
         }
-        val losing = stops.values.flatten().mapNotNull { people[it.second] }.distinct().sortedBy { it.domainName }
+        val losing = stops.values.flatten().mapNotNull { audiences[it.second] }.flatMap { it.members }.distinct().sortedBy { it.domainName }
         return FilesyncMoveSharing(stops, starts, losing)
     }
 
@@ -307,16 +355,18 @@ class FilesyncSharing(
         return shared
     }
 
-    /** The people this identity has shared files with: one circle of one each. */
-    suspend fun recipients(): List<OdinId> {
+    /** The groups this identity made, by name, then the people it has shared files with. */
+    suspend fun audiences(): List<FilesyncAudience> {
         requireSignedIn()
-        return individualCircles().values.sortedBy { it.domainName }
+        return audienceCircles().values.sortedWith(
+            compareBy<FilesyncAudience> { it is FilesyncAudience.Person }.thenBy { it.label.lowercase() }
+        )
     }
 
-    /** The files shared with [recipient] now, each with the access its share gives. */
-    suspend fun sharedWithRecipient(recipient: OdinId): List<FilesyncSharedFile> {
+    /** The files shared with [audience] now, each with the access its share gives. */
+    suspend fun sharedWithAudience(audience: FilesyncAudience): List<FilesyncSharedFile> {
         requireSignedIn()
-        val circleId = individualCircles().entries.firstOrNull { it.value == recipient }?.key ?: return emptyList()
+        val circleId = circleOf(audience) ?: return emptyList()
         val found = mutableListOf<FilesyncSharedFile>()
         var cursor: String? = null
         do {
@@ -407,16 +457,24 @@ class FilesyncSharing(
         )
     }
 
-    private suspend fun recipientPoint(recipient: OdinId): ByteArray {
+    /** Each of [recipients]' point to seal to; all who can't receive shared files yet are named together. */
+    private suspend fun recipientPoints(recipients: List<OdinId>): Map<OdinId, ByteArray> {
+        val points = recipients.associateWith { recipientPointOrNull(it) }
+        val notReady = points.filterValues { it == null }.keys.toList()
+        if (notReady.isNotEmpty()) throw FilesyncSharingException.RecipientNotReady(notReady)
+        return points.mapValues { it.value!! }
+    }
+
+    private suspend fun recipientPointOrNull(recipient: OdinId): ByteArray? {
         val key = try {
             peer.drivePublicKey(recipient, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug)
         } catch (e: OdinApiException) {
             // No drive yet (400), or no Write on it (403) until their sharers circle grants it: sharing is off there
             if (e !is ClientException && e !is ForbiddenException) throw e
-            throw FilesyncSharingException.RecipientNotReady(recipient, e)
+            return null
         }
         // Its server and members hold a collaborative drive's key: sealing to it would share with them too.
-        if (!key.isZeroKnowledge || key.sharingModel == "collaborative") throw FilesyncSharingException.RecipientNotReady(recipient)
+        if (!key.isZeroKnowledge || key.sharingModel == "collaborative") return null
         return ShareKeys.pointOfJwk(key.publicKeyJwk)
     }
 
@@ -461,11 +519,25 @@ class FilesyncSharing(
             .filter { compareStringUuId(it.drive?.alias.orEmpty(), FilesyncProtocol.DriveAlias.toString()) }
             .flatMap { DrivePermission.fromNames(it.permission.orEmpty()) }
 
-    private suspend fun individualCircles(): Map<Uuid, OdinId> =
+    /** The app's circles that files are shared with: each person's own, and the groups not disabled. */
+    private suspend fun audienceCircles(): Map<Uuid, FilesyncAudience> =
         connections.getCirclesWithMembers(withIndividual = true)
-            .filter { it.circle.designation == CircleDesignation.Individual && it.circle.appId == filesyncAppId }
-            .mapNotNull { c -> c.members.singleOrNull()?.let { Uuid.parse(c.circle.id) to it } }
+            .filter { it.circle.appId == filesyncAppId }
+            .mapNotNull { c ->
+                val id = Uuid.parse(c.circle.id)
+                when {
+                    c.circle.designation == CircleDesignation.Individual -> c.members.singleOrNull()?.let { id to FilesyncAudience.Person(it) }
+                    !c.circle.disabled && c.circle.slug?.matches(GROUP_SLUG) == true ->
+                        id to FilesyncAudience.Group(id, c.circle.name, c.members.sortedBy { it.domainName })
+                    else -> null
+                }
+            }
             .toMap()
+
+    private suspend fun circleOf(audience: FilesyncAudience): Uuid? = when (audience) {
+        is FilesyncAudience.Group -> audience.circleId
+        is FilesyncAudience.Person -> audienceCircles().entries.firstOrNull { it.value == audience }?.key
+    }
 
     private fun requireSignedIn() {
         if (!FilesyncSession.signedIn.value) throw FilesyncSharingException.NotSignedIn()
@@ -481,6 +553,8 @@ class FilesyncSharing(
         private const val PAGE = 1000
         private val RETRY = RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException })
         private const val ADD_MANY_LIMIT = 500
+        // The recipients and sharers circles' slugs never look like this; nothing else of Filesync's may.
+        private val GROUP_SLUG = Regex("g[0-9a-f]{13}")
         private const val TAG = "FilesyncSharing"
         private val filesyncAppId = Uuid.parseHex(filesyncAppRegistration.appId)
 
@@ -491,5 +565,7 @@ class FilesyncSharing(
         /** `i` and 13 hex characters of the person's hash: within the 14-character slug limit, the same on every device. */
         fun individualSlug(person: OdinId): String =
             "i" + HashUtil.sha256Sync(person.domainName.lowercase().encodeToByteArray()).toHexString().take(13)
+
+        internal fun groupSlug(): String = "g" + Uuid.random().toHexString().take(13)
     }
 }

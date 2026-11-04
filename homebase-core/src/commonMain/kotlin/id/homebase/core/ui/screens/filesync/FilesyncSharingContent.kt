@@ -18,13 +18,17 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +40,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.connections.ConnectionStatus
@@ -78,9 +84,14 @@ import id.homebase.resources.filesync_expiry_never
 import id.homebase.resources.filesync_expiry_title
 import id.homebase.resources.filesync_expiry_week
 import id.homebase.resources.filesync_expiry_year
+import id.homebase.resources.filesync_group_name
+import id.homebase.resources.filesync_group_new_instead
+import id.homebase.resources.filesync_group_same_people
 import id.homebase.resources.filesync_share_access_edit
 import id.homebase.resources.filesync_share_access_view
+import id.homebase.resources.filesync_share_groups
 import id.homebase.resources.filesync_share_no_people
+import id.homebase.resources.filesync_share_people
 import id.homebase.resources.filesync_share_person
 import id.homebase.resources.filesync_share_search
 import id.homebase.resources.filesync_share_send
@@ -174,32 +185,93 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
     val connectionService: ConnectionService = koinInject()
     val connections by connectionService.connections.collectAsStateWithLifecycle()
     val search = rememberTextFieldState()
-    var chosen by rememberSaveable { mutableStateOf<String?>(null) }
+    var chosenGroup by rememberSaveable { mutableStateOf<String?>(null) }
+    var chosenPeople by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var groupName by rememberSaveable { mutableStateOf("") }
+    var newGroupInstead by rememberSaveable { mutableStateOf(false) }
     var access by rememberSaveable { mutableStateOf(FilesyncAccess.View) }
     var expiry by rememberSaveable { mutableStateOf(FilesyncExpiry.Default) }
     val query = search.text.toString().trim()
-    val people = remember(connections, query) {
+    val groups = remember(sharing.recipients, query) {
+        sharing.recipients.filterIsInstance<FilesyncAudience.Group>().filter { group ->
+            query.isEmpty() || group.name.contains(query, ignoreCase = true) || group.members.any { it.domainName.contains(query, ignoreCase = true) }
+        }
+    }
+    val people = remember(connections, sharing.recipients, query) {
+        val before = sharing.recipients.filterIsInstance<FilesyncAudience.Person>().mapTo(HashSet()) { it.odinId.domainName }
         connections.map.values.filter { it.status == ConnectionStatus.Connected }.map { it.odinId }
             .filter { query.isEmpty() || it.domainName.contains(query, ignoreCase = true) }
-            .sortedBy { it.domainName }
+            .sortedWith(compareBy<OdinId> { it.domainName !in before }.thenBy { it.domainName })
     }
+    // Picking the people of a group already made shares with it, unless a new one is asked for.
+    val sameGroup = remember(sharing.recipients, chosenPeople) {
+        chosenPeople.toSet().takeIf { it.size > 1 }?.let { picked ->
+            sharing.recipients.filterIsInstance<FilesyncAudience.Group>().firstOrNull { g -> g.members.map { it.domainName }.toSet() == picked }
+        }
+    }
+    val audience: FilesyncAudience? = when {
+        chosenGroup != null -> sharing.recipients.filterIsInstance<FilesyncAudience.Group>().firstOrNull { it.circleId.toString() == chosenGroup }
+        chosenPeople.size == 1 -> FilesyncAudience.Person(OdinId(chosenPeople.single()))
+        sameGroup != null && !newGroupInstead -> sameGroup
+        else -> null
+    }
+    val makesGroup = audience == null && chosenPeople.size > 1
     LaunchedEffect(sharing.offered) { if (access !in sharing.offered) sharing.offered.firstOrNull()?.let { access = it } }
 
     Text(stringResource(MR.string.filesync_share_with), style = MaterialTheme.typography.titleMedium)
     MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.filesync_share_search), modifier = Modifier.fillMaxWidth())
-    if (people.isEmpty()) {
+    if (groups.isEmpty() && people.isEmpty()) {
         Text(stringResource(MR.string.filesync_share_no_people), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
-        items(people, key = { it.domainName }) { person ->
-            ListItem(
-                headlineContent = { Text(person.domainName) },
-                leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
-                trailingContent = { RadioButton(selected = chosen == person.domainName, onClick = null) },
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.selectable(selected = chosen == person.domainName, role = Role.RadioButton) { chosen = person.domainName },
-            )
+    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+        if (groups.isNotEmpty()) {
+            item(key = "groups") { PickerHeading(MR.string.filesync_share_groups) }
+            items(groups, key = { it.circleId.toString() }) { group ->
+                val selected = chosenGroup == group.circleId.toString()
+                val members = group.members.joinToString { it.domainName }
+                ListItem(
+                    headlineContent = { Text(group.name) },
+                    supportingContent = { Text(members, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingContent = { AudienceAvatar(group, 36.dp) },
+                    trailingContent = { RadioButton(selected = selected, onClick = null) },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) {
+                        chosenGroup = group.circleId.toString()
+                        chosenPeople = emptyList()
+                    },
+                )
+            }
         }
+        if (people.isNotEmpty()) {
+            item(key = "people") { PickerHeading(MR.string.filesync_share_people) }
+            items(people, key = { it.domainName }) { person ->
+                val checked = person.domainName in chosenPeople
+                ListItem(
+                    headlineContent = { Text(person.domainName) },
+                    leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
+                    trailingContent = { Checkbox(checked = checked, onCheckedChange = null) },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.toggleable(value = checked, role = Role.Checkbox) {
+                        chosenGroup = null
+                        newGroupInstead = false
+                        chosenPeople = if (checked) chosenPeople - person.domainName else chosenPeople + person.domainName
+                    },
+                )
+            }
+        }
+    }
+    if (sameGroup != null && !newGroupInstead) {
+        Text(stringResource(MR.string.filesync_group_same_people, sameGroup.name), style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = { newGroupInstead = true }) { Text(stringResource(MR.string.filesync_group_new_instead)) }
+    }
+    if (makesGroup) {
+        OutlinedTextField(
+            value = groupName,
+            onValueChange = { groupName = it },
+            label = { Text(stringResource(MR.string.filesync_group_name)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
     sharing.offered.forEach { option ->
         Row(
@@ -219,8 +291,13 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = { onAction(FilesyncUiAction.DismissShareWith) }) { Text(stringResource(MR.string.cancel)) }
         Button(
-            enabled = chosen != null && access in sharing.offered && !sharing.sending,
-            onClick = { chosen?.let { onAction(FilesyncUiAction.ShareWithPerson(OdinId(it), access, expiry)) } },
+            enabled = (audience != null || (makesGroup && groupName.isNotBlank())) && access in sharing.offered && !sharing.sending,
+            onClick = {
+                when {
+                    audience != null -> onAction(FilesyncUiAction.ShareWith(audience, access, expiry))
+                    makesGroup -> onAction(FilesyncUiAction.ShareWithNewGroup(groupName.trim(), chosenPeople.map(::OdinId), access, expiry))
+                }
+            },
         ) {
             if (sharing.sending) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             else Text(stringResource(MR.string.filesync_share_send))
@@ -245,9 +322,9 @@ internal fun FilesyncSharedWithSection(node: FilesyncNode, sharing: FilesyncShar
             )
             else -> recipients.forEach { recipient ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    IdentityAvatar(recipient.odinId, AvatarOptions(size = 32.dp))
+                    AudienceAvatar(recipient.audience, 32.dp)
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(recipient.odinId.domainName, style = MaterialTheme.typography.bodyMedium)
+                        Text(recipient.audience.label, style = MaterialTheme.typography.bodyMedium)
                         val terms = listOf(stringResource(recipient.access.label), expiryText(recipient.expiresAt)).joinToString(" · ")
                         Text(
                             terms,
@@ -255,8 +332,8 @@ internal fun FilesyncSharedWithSection(node: FilesyncNode, sharing: FilesyncShar
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = { onAction(FilesyncUiAction.Unshare(node.nodeId, recipient.odinId)) }) {
-                        Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, recipient.odinId.domainName))
+                    IconButton(onClick = { onAction(FilesyncUiAction.Unshare(node.nodeId, recipient.audience)) }) {
+                        Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, recipient.audience.label))
                     }
                 }
             }
@@ -299,7 +376,30 @@ internal fun LazyListScope.sharerRows(sharers: List<OdinId>, onAction: (Filesync
     }
 }
 
-/** The wide sidebar's "Shared with": each person this identity shares files with; one shows those files. */
+@Composable
+private fun PickerHeading(text: StringResource) {
+    Text(
+        stringResource(text),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+    )
+}
+
+/** A person's avatar, or for a group a round tile with the groups icon. */
+@Composable
+internal fun AudienceAvatar(audience: FilesyncAudience, size: Dp) {
+    when (audience) {
+        is FilesyncAudience.Person -> IdentityAvatar(audience.odinId, AvatarOptions(size = size))
+        is FilesyncAudience.Group -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.size(size)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(size * 0.6f))
+            }
+        }
+    }
+}
+
+/** The wide sidebar's "Shared with": each group and person this identity shares files with; one shows those files. */
 @Composable
 internal fun ColumnScope.FilesyncRecipientsSidebar(sharing: FilesyncSharingState, onAction: (FilesyncUiAction) -> Unit) {
     if (sharing.recipients.isEmpty()) return
@@ -312,8 +412,8 @@ internal fun ColumnScope.FilesyncRecipientsSidebar(sharing: FilesyncSharingState
     )
     sharing.recipients.forEach { recipient ->
         NavigationDrawerItem(
-            label = { Text(recipient.domainName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            icon = { IdentityAvatar(recipient, AvatarOptions(size = 24.dp)) },
+            label = { Text(recipient.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            icon = { AudienceAvatar(recipient, 24.dp) },
             selected = sharing.recipient == recipient,
             onClick = { onAction(FilesyncUiAction.OpenRecipient(recipient)) },
             modifier = Modifier.height(40.dp),
@@ -324,15 +424,15 @@ internal fun ColumnScope.FilesyncRecipientsSidebar(sharing: FilesyncSharingState
 /** The wide browser's centre while a person is picked in the sidebar: their files shared with this identity, or the reverse. */
 @Composable
 internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
-    val person = sharing.sharer ?: sharing.recipient ?: return
+    val shown = sharing.sharer?.let { FilesyncAudience.Person(it) } ?: sharing.recipient ?: return
     val incoming = sharing.sharer != null
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(16.dp)) {
-                IdentityAvatar(person, AvatarOptions(size = 40.dp))
+                AudienceAvatar(shown, 40.dp)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        stringResource(if (incoming) MR.string.filesync_view_from_title else MR.string.filesync_view_to_title, person.domainName),
+                        stringResource(if (incoming) MR.string.filesync_view_from_title else MR.string.filesync_view_to_title, shown.label),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
@@ -369,7 +469,7 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
                         trailing = {
                             ExpiryMenu(onPick = { onAction(FilesyncUiAction.ChangeExpiry(share.node.nodeId, it)) })
                             IconButton(onClick = { onAction(FilesyncUiAction.StopSharing(share.node.nodeId)) }) {
-                                Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, person.domainName))
+                                Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, shown.label))
                             }
                         },
                     )

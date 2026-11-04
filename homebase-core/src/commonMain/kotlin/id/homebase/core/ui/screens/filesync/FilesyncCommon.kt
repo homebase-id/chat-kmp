@@ -163,7 +163,6 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.ReactionFailed -> MR.string.filesync_reaction_failed
     FilesyncError.CommentFailed -> MR.string.filesync_comment_failed
     FilesyncError.SharingFailed -> MR.string.filesync_sharing_failed
-    FilesyncError.RecipientNotReady -> MR.string.filesync_recipient_not_ready
     FilesyncError.SharedFilesFailed -> MR.string.filesync_shared_files_failed
     FilesyncError.InheritFailed -> MR.string.filesync_inherit_failed
     FilesyncError.MoveCheckFailed -> MR.string.filesync_move_check_failed
@@ -242,6 +241,9 @@ internal fun FilesyncEventsEffect(
                 }
                 is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
+                }
+                is FilesyncUiEvent.NotReady -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_recipient_not_ready, event.recipients.joinToString { it.domainName }))
                 }
             }
         }

@@ -161,10 +161,10 @@ data class FilesyncSharingState(
     val sharedFilesFailed: Boolean = false,
     /** The nodes of the folder shown that are shared with anyone now. */
     val sharedIds: Set<Uuid> = emptySet(),
-    /** The people this identity shares files with. */
-    val recipients: List<OdinId> = emptyList(),
+    /** The groups and people this identity shares files with. */
+    val recipients: List<FilesyncAudience> = emptyList(),
     /** Whom this identity's shared files are shown for, and those files; null while they load. */
-    val recipient: OdinId? = null,
+    val recipient: FilesyncAudience? = null,
     val recipientFiles: List<FilesyncOutgoingShare>? = null,
     val recipientFilesFailed: Boolean = false,
     /** Who'd stop seeing what's being moved, asked about before it moves. */
@@ -254,15 +254,16 @@ sealed interface FilesyncUiAction {
     data object SendComment : FilesyncDiscussionAction
     /** The info pane shows [nodeId]: who it's shared with loads. */
     data class ShowSharedWith(val nodeId: Uuid) : FilesyncDiscussionAction
-    data class Unshare(val nodeId: Uuid, val recipient: OdinId) : FilesyncDiscussionAction
+    data class Unshare(val nodeId: Uuid, val recipient: FilesyncAudience) : FilesyncDiscussionAction
     data object TurnOnSharing : FilesyncUiAction
     data class ShareWithConnection(val nodes: List<FilesyncNode>) : FilesyncUiAction
-    data class ShareWithPerson(val recipient: OdinId, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
+    data class ShareWith(val audience: FilesyncAudience, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
+    data class ShareWithNewGroup(val name: String, val members: List<OdinId>, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
     data object DismissShareWith : FilesyncUiAction
     data object LoadSharers : FilesyncUiAction
     data class OpenSharer(val sharer: OdinId?) : FilesyncUiAction
     data class OpenSharedFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
-    data class OpenRecipient(val recipient: OdinId?) : FilesyncUiAction
+    data class OpenRecipient(val recipient: FilesyncAudience?) : FilesyncUiAction
     data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
     data class ChangeExpiry(val nodeId: Uuid, val expiry: FilesyncExpiry) : FilesyncUiAction
     data class SaveShared(val node: FilesyncNode) : FilesyncUiAction
@@ -273,7 +274,7 @@ sealed interface FilesyncDiscussionAction : FilesyncUiAction
 
 enum class FilesyncError {
     MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
-    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, RecipientNotReady, SharedFilesFailed, InheritFailed,
+    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, SharedFilesFailed, InheritFailed,
     MoveCheckFailed, MoveSharingFailed,
 }
 
@@ -290,6 +291,8 @@ sealed interface FilesyncUiEvent {
     data class OpenSignIn(val url: String) : FilesyncUiEvent
     data class OpenOwnerConsole(val url: String) : FilesyncUiEvent
     data class Error(val error: FilesyncError) : FilesyncUiEvent
+    /** [recipients] can't receive shared files until they turn sharing on. */
+    data class NotReady(val recipients: List<OdinId>) : FilesyncUiEvent
     data class Notice(val notice: FilesyncNotice) : FilesyncUiEvent
     /** [name] failed its hash check, so the ZIP holding it was thrown away. */
     data class ArchiveDamaged(val name: String) : FilesyncUiEvent

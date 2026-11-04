@@ -312,7 +312,8 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.ShareWithConnection -> sharing.ask(action.nodes)
 
-            is FilesyncUiAction.ShareWithPerson -> sharing.share(action.recipient, action.access, action.expiry)
+            is FilesyncUiAction.ShareWith -> sharing.share(action.audience, action.access, action.expiry)
+            is FilesyncUiAction.ShareWithNewGroup -> sharing.shareWithNewGroup(action.name, action.members, action.access, action.expiry)
 
             FilesyncUiAction.DismissShareWith -> sharing.dismiss()
 

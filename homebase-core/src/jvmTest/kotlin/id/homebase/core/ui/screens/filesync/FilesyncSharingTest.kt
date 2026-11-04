@@ -26,6 +26,7 @@ import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.crypto.ZkSeal
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.youauth.DrivePermissionsSerializer
 import id.homebase.core.config.filesyncAppRegistration
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
@@ -59,6 +60,7 @@ class FilesyncSharingTest {
 
     private val frodo = OdinId("frodo.test")
     private val sam = OdinId("sam.test")
+    private val toSam = FilesyncAudience.Person(sam)
     private val appSecret = ByteArray(16) { 1 }
     private val filesyncSecret = ByteArray(16) { 2 }
     private val filesyncAppKey = ByteArray(16) { 3 }
@@ -115,6 +117,11 @@ class FilesyncSharingTest {
     private var samReady = true
     private var samGrantsWrite = true
     private var storedShareKey: String? = null
+    private val merry = OdinId("merry.test")
+    private val groupCircle = Uuid.random()
+    private var unsealed = listOf("sam.test")
+    private var refusedByAddMany = emptyList<String>()
+    private var circles = """[{"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"${Uuid.parseHex(filesyncAppRegistration.appId)}"},"members":["sam.test"]}]"""
 
     private val engine = MockEngine { request ->
         val call = Call(request, request.body.toByteArray()).also { calls += it }
@@ -125,15 +132,20 @@ class FilesyncSharingTest {
                 else if (samReady) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
                 else return@MockEngine respond("""{"title":"no such drive","errorCode":"invalidRequest"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
             path.endsWith("/connections/circles/create") ->
-                if (decrypted(call, filesyncSecret).jsonObject["slug"]!!.jsonPrimitive.content == FilesyncProtocol.CircleSlug) "\"$recipientsCircle\"" else "\"$samsCircle\""
-            path.endsWith("/connections/circles/add-many") -> """{"enrolled":1,"deposited":0,"skipped":0,"outcomes":[]}"""
-            path.endsWith("/share-key/unsealed-members") -> """["sam.test"]"""
+                when (decrypted(call, filesyncSecret).jsonObject["slug"]!!.jsonPrimitive.content) {
+                    FilesyncProtocol.CircleSlug -> "\"$recipientsCircle\""
+                    FilesyncSharing.individualSlug(sam) -> "\"$samsCircle\""
+                    else -> "\"$groupCircle\""
+                }
+            path.endsWith("/connections/circles/add-many") ->
+                """{"enrolled":1,"deposited":0,"skipped":0,"outcomes":[${refusedByAddMany.joinToString { """{"odinId":"$it","kind":"skipped"}""" }}]}"""
+            "/connections/circles/delete" in path -> "{}"
+            path.endsWith("/share-key/unsealed-members") -> unsealed.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call, filesyncSecret).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/share-key/members") || path.endsWith("/shares") -> "{}"
             "/shares/" in path && request.method == HttpMethod.Delete -> "{}"
-            path.endsWith("/circles/with-members") ->
-                """[{"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"${Uuid.parseHex(filesyncAppRegistration.appId)}"},"members":["sam.test"]}]"""
+            path.endsWith("/circles/with-members") -> circles
             path.endsWith("/query-batch") -> sharedPages.removeFirst()
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
             else -> error("unexpected ${request.method} $path")
@@ -163,7 +175,7 @@ class FilesyncSharingTest {
 
     @Test
     fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndLeavesHimAMarker() = runTest {
-        sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null)
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
 
         // Circles, their keys and shares are written as Filesync; the public key and the marker as the app
         assertTrue(calls.filter { "/connections/" in it.path || it.path.endsWith("/shares") }.all { it.asFilesync })
@@ -204,15 +216,15 @@ class FilesyncSharingTest {
 
     @Test
     fun aSecondShareReusesTheCirclesKey() = runTest {
-        sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null)
-        sharing.share(listOf(file), sam, FilesyncAccess.Edit, expiresAt = null)
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
+        sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null)
 
         assertEquals(1, calls.count { it.path.endsWith("/share-key") && it.request.method == HttpMethod.Put })
     }
 
     @Test
     fun aShareCarriesItsExpiry() = runTest {
-        sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = 1_900_000_000_000)
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = 1_900_000_000_000)
 
         val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
         assertEquals("1900000000000", share["expiresAt"]!!.jsonPrimitive.content)
@@ -222,7 +234,7 @@ class FilesyncSharingTest {
     fun someoneWhoHasntTurnedSharingOnCantBeSharedWith() = runTest {
         samReady = false
 
-        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null) }
+        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
         assertTrue(calls.none { it.path.endsWith("/shares") })
     }
 
@@ -230,7 +242,7 @@ class FilesyncSharingTest {
     fun someoneWhoseSharersCircleDoesntHoldUsYetCantBeSharedWith() = runTest {
         samGrantsWrite = false
 
-        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), sam, FilesyncAccess.View, expiresAt = null) }
+        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
         assertTrue(calls.none { it.path.endsWith("/shares") })
     }
 
@@ -239,7 +251,7 @@ class FilesyncSharingTest {
         sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "readWrite")}],"cursorState":"next","hasMoreRows":true}"""
         sharedPages += """{"searchResults":[${sharedFile("notes.txt", samsCircle, "read")}, ${sharedFile("other.txt", recipientsCircle, "read")}],"hasMoreRows":false}"""
 
-        val shared = sharing.sharedWithRecipient(sam)
+        val shared = sharing.sharedWithAudience(toSam)
 
         assertEquals(listOf("plan.pdf" to FilesyncAccess.Edit, "notes.txt" to FilesyncAccess.View), shared.map { it.node.name to it.access })
         val queries = calls.filter { it.path.endsWith("/query-batch") }
@@ -366,6 +378,76 @@ class FilesyncSharingTest {
 
         assertEquals(emptyList(), plan.losingAccess)
         assertEquals(1, calls.count { it.path.endsWith("/query-batch") })
+    }
+
+    private val appId = Uuid.parseHex(filesyncAppRegistration.appId)
+
+    @Test
+    fun aGroupIsACircleOfTheAppsGrantingWhatRecipientsAreGrantedWithItsMembersInIt() = runTest {
+        val group = sharing.createGroup("Hiking", listOf(sam, merry))
+
+        assertEquals(FilesyncAudience.Group(groupCircle, "Hiking", listOf(merry, sam)), group)
+        val created = decrypted(calls.single { it.path.endsWith("/circles/create") }, filesyncSecret).jsonObject
+        assertEquals("Hiking", created["name"]!!.jsonPrimitive.content)
+        assertTrue(Regex("g[0-9a-f]{13}").matches(created["slug"]!!.jsonPrimitive.content))
+        val declared = filesyncAppRegistration.circles.single { it.slug == FilesyncProtocol.CircleSlug }.drives.single().permissions
+        val granted = created["driveGrants"]!!.jsonArray.single().jsonObject["permissionedDrive"]!!.jsonObject["permission"]!!
+        assertEquals(declared.toSet(), Json.decodeFromJsonElement(DrivePermissionsSerializer, granted).values.toSet())
+        assertTrue(created["grantOn"].let { it == null || it.jsonPrimitive.content == "none" })
+        val added = decrypted(calls.single { it.path.endsWith("/add-many") }, filesyncSecret).jsonObject
+        assertEquals(groupCircle.toString(), added["circleId"]!!.jsonPrimitive.content)
+        assertEquals(setOf("sam.test", "merry.test"), added["odinIds"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet())
+    }
+
+    @Test
+    fun noGroupIsMadeWhileAMemberCantReceiveSharedFiles() = runTest {
+        samReady = false
+
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.createGroup("Hiking", listOf(sam, merry)) }
+
+        assertEquals(listOf(sam, merry), e.recipients)
+        assertTrue(calls.none { it.path.endsWith("/circles/create") })
+    }
+
+    @Test
+    fun aGroupSomeoneCouldntJoinIsDeletedAgain() = runTest {
+        refusedByAddMany = listOf("merry.test")
+
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.createGroup("Hiking", listOf(sam, merry)) }
+
+        assertEquals(listOf(merry), e.recipients)
+        assertEquals(1, calls.count { "/connections/circles/delete" in it.path })
+    }
+
+    @Test
+    fun sharingWithAGroupWritesOneRowForItsCircleAndLeavesEveryMemberAMarker() = runTest {
+        unsealed = listOf("sam.test", "merry.test")
+
+        sharing.share(listOf(file), FilesyncAudience.Group(groupCircle, "Hiking", listOf(merry, sam)), FilesyncAccess.View, expiresAt = null)
+
+        val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
+        assertEquals(groupCircle.toString(), share["circleId"]!!.jsonPrimitive.content)
+        val members = decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject["members"]!!.jsonArray
+        assertEquals(setOf("sam.test", "merry.test"), members.map { it.jsonObject["odinId"]!!.jsonPrimitive.content }.toSet())
+        assertTrue(calls.none { decryptedOrNull(it)?.jsonObject?.get("designation")?.jsonPrimitive?.content == "individual" }, "no individual circle for a group")
+        val markers = calls.filter { it.path.endsWith("/files") }.map { marker ->
+            val instructions = Json.parseToJsonElement(multipart(marker.body, marker.request).getValue("instructions").decodeToString()).jsonObject
+            instructions["transitOptions"]!!.jsonObject["recipients"]!!.jsonArray.single().jsonPrimitive.content
+        }
+        assertEquals(setOf("sam.test", "merry.test"), markers.toSet())
+    }
+
+    @Test
+    fun groupsComeFirstByNameThenPeopleAndTheAppsOtherCirclesAreLeftOut() = runTest {
+        circles = """[
+            {"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"$appId"},"members":["sam.test"]},
+            {"circle":{"id":"$groupCircle","name":"Hiking","slug":"g0123456789abc","appId":"$appId"},"members":["sam.test","merry.test"]},
+            {"circle":{"id":"${Uuid.random()}","name":"Old","slug":"g0123456789abd","disabled":true,"appId":"$appId"},"members":["sam.test"]},
+            {"circle":{"id":"$recipientsCircle","name":"Filesync","slug":"${FilesyncProtocol.CircleSlug}","appId":"$appId"},"members":["sam.test"]},
+            {"circle":{"id":"${Uuid.random()}","name":"Family","slug":"g0123456789abe"},"members":["sam.test"]}
+        ]"""
+
+        assertEquals(listOf(FilesyncAudience.Group(groupCircle, "Hiking", listOf(merry, sam)), FilesyncAudience.Person(sam)), sharing.audiences())
     }
 
     @Test

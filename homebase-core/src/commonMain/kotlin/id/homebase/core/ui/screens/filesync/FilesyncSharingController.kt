@@ -114,13 +114,20 @@ internal class FilesyncSharingController(
         scope.launch { finishTurningOn() }
     }
 
-    fun share(recipient: OdinId, access: FilesyncAccess, expiry: FilesyncExpiry) {
+    fun share(audience: FilesyncAudience, access: FilesyncAccess, expiry: FilesyncExpiry) = share(access, expiry) { audience }
+
+    fun shareWithNewGroup(name: String, members: List<OdinId>, access: FilesyncAccess, expiry: FilesyncExpiry) =
+        share(access, expiry) { sharing.createGroup(name, members) }
+
+    private fun share(access: FilesyncAccess, expiry: FilesyncExpiry, audience: suspend () -> FilesyncAudience) {
         val files = state().shareWith ?: return
         update { it.copy(sending = true) }
         scope.launch {
             var fileHandles = emptyList<FilesyncHandle>()
+            var recipient: FilesyncAudience? = null
             try {
                 fileHandles = withDescendants(files).values.toList()
+                recipient = audience()
                 sharing.share(fileHandles, recipient, access, expiry.expiresAt(Clock.System.now().toEpochMilliseconds()))
                 update { it.copy(sending = false, shareWith = null) }
                 send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
@@ -130,9 +137,9 @@ internal class FilesyncSharingController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.e(e, TAG) { "sharing ${fileHandles.size} files with $recipient failed" }
+                Logger.e(e, TAG) { "sharing ${fileHandles.size} files with ${recipient ?: "a new group"} failed" }
                 update { it.copy(sending = false) }
-                send(FilesyncUiEvent.Error(if (e is FilesyncSharingException.RecipientNotReady) FilesyncError.RecipientNotReady else FilesyncError.SharingFailed))
+                send(if (e is FilesyncSharingException.RecipientNotReady) FilesyncUiEvent.NotReady(e.recipients) else FilesyncUiEvent.Error(FilesyncError.SharingFailed))
             }
         }
     }
@@ -195,7 +202,7 @@ internal class FilesyncSharingController(
         if (state().on) loadSharedWith(nodeId)
     }
 
-    fun unshare(nodeId: Uuid, recipient: OdinId) {
+    fun unshare(nodeId: Uuid, recipient: FilesyncAudience) {
         scope.launch {
             try {
                 sharing.withdraw(handles()[nodeId]?.fileId ?: return@launch, recipient)
@@ -228,16 +235,16 @@ internal class FilesyncSharingController(
 
     fun loadRecipients() {
         if (!state().on) return
-        scope.launch { guarded { sharing.recipients() }?.let { recipients -> update { it.copy(recipients = recipients) } } }
+        scope.launch { guarded { sharing.audiences() }?.let { recipients -> update { it.copy(recipients = recipients) } } }
     }
 
     /** Shows what [recipient] is given, each file with a way to stop; null goes back to the folder. */
-    fun openRecipient(recipient: OdinId?) {
+    fun openRecipient(recipient: FilesyncAudience?) {
         closeViews()
         recipient ?: return
         update { it.copy(recipient = recipient) }
         recipientFilesJob = scope.launch {
-            val listed = guarded { sharing.sharedWithRecipient(recipient) }
+            val listed = guarded { sharing.sharedWithAudience(recipient) }
             if (listed == null) {
                 update { it.copy(recipientFilesFailed = true) }
                 return@launch
