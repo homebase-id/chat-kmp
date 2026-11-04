@@ -26,7 +26,7 @@ import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 
-// Every connection may leave a file on the drive (the sharers circle grants Write); none of theirs is the owner's tree.
+// Every connection may leave a file on the drive (the sharers circle grants Write); theirs shows, saying who put it there.
 class FilesyncDepositsTest {
     private val frodo = OdinId("frodo.test")
     private val secret = ByteArray(16) { 4 }
@@ -56,7 +56,7 @@ class FilesyncDepositsTest {
     }
 
     @Test
-    fun aNodeLeftBySomeoneElseIsNotInTheTree() = runTest {
+    fun aNodeLeftBySomeoneElseSaysWhoAddedIt() = runTest {
         val page = listOf(node("Mine", frodo), node("Older", sender = null), node("Planted", OdinId("pippin.test")))
         val engine = MockEngine {
             respond("""{"searchResults":[${page.joinToString(",")}],"hasMoreRows":false}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -66,6 +66,6 @@ class FilesyncDepositsTest {
 
         val listed = testFilesyncRepository(HttpClient(engine), credentials).listFolder(FilesyncProtocol.RootNodeId)
 
-        assertEquals(setOf("Mine", "Older"), listed.nodes.values.map { it.name }.toSet())
+        assertEquals(mapOf("Mine" to null, "Older" to null, "Planted" to OdinId("pippin.test")), listed.nodes.values.associate { it.name to it.addedBy })
     }
 }

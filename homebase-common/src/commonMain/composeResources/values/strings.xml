@@ -3080,6 +3080,8 @@
     <string name="filesync_archive_cancel">Stop zipping</string>
     <string name="filesync_archive_damaged">%1$s didn't match the original file, so the ZIP was thrown away.</string>
     <string name="filesync_root">Homebase</string>
+    <string name="filesync_added_by">Added by %1$s</string>
+    <string name="filesync_info_added_by">Added by</string>
     <string name="filesync_tags_here">Tags in this folder</string>
     <string name="filesync_search">Search this folder</string>
     <string name="filesync_no_matches">Nothing here matches.</string>

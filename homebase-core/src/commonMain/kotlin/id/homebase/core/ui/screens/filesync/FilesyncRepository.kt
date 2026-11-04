@@ -199,10 +199,7 @@ class FilesyncRepository(
         val handles = mutableMapOf<Uuid, FilesyncHandle>()
         val self = credentials.getActiveCredentials()?.domain
         page.searchResults.forEach { file ->
-            // Every connection may leave a file here (the sharers circle); only this identity's own are its tree.
-            val sender = file.fileMetadata.senderOdinId
-            if (sender != null && self != null && !sender.domainName.equals(self.domainName, ignoreCase = true)) return@forEach
-            val (node, handle) = file.toFilesyncNode() ?: return@forEach
+            val (node, handle) = file.toFilesyncNode(addedByOtherThan = self) ?: return@forEach
             nodes[node.nodeId] = node
             handles[node.nodeId] = handle
         }

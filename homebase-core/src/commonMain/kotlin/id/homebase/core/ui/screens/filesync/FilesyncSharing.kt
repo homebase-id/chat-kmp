@@ -442,7 +442,7 @@ class FilesyncSharing(
             ownerOdinId = owner,
             externalFileKey = byShare,
         ) { page ->
-            found += page.searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toFilesyncNode() }
+            found += page.searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toFilesyncNode(addedByOtherThan = owner) }
             true
         }
         return found

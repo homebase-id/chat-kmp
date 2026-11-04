@@ -143,6 +143,8 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.material.icons.outlined.MoveToInbox
+import id.homebase.resources.filesync_added_by
 
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
 private const val DELETED_ALPHA = 0.38f
@@ -308,6 +310,14 @@ internal fun NodeName(
             Icon(
                 Icons.Outlined.People,
                 contentDescription = stringResource(MR.string.filesync_shared_badge),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        node.addedBy?.let { by ->
+            Icon(
+                Icons.Outlined.MoveToInbox,
+                contentDescription = stringResource(MR.string.filesync_added_by, by.domainName),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp),
             )
