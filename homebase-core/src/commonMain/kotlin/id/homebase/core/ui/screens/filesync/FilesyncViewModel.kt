@@ -86,6 +86,7 @@ class FilesyncViewModel(
         filesyncSharing,
         sharingSetup,
         handles = { transfers.handles },
+        listFolders = repository::listFolders,
         returnUrl = extendPermissionViewModel::callbackUrl,
         state = { _uiState.value.sharing },
         update = { change -> _uiState.update { it.copy(sharing = change(it.sharing)) } },
@@ -317,6 +318,8 @@ class FilesyncViewModel(
             FilesyncUiAction.LoadSharers -> sharing.loadSharers()
 
             is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
+
+            is FilesyncUiAction.OpenSharedFolder -> sharing.openSharedFolder(action.path)
 
             is FilesyncUiAction.OpenRecipient -> sharing.openRecipient(action.recipient)
 

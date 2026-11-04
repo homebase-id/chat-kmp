@@ -179,9 +179,11 @@ internal fun FilesyncInfoContent(
             node.hashAlgorithm?.let { Fact(Icons.Outlined.VerifiedUser, stringResource(MR.string.filesync_info_checked, it.displayName)) }
         }
 
-        if (discussed) {
+        if (node.removedMs == null) {
             HorizontalDivider()
             FilesyncSharedWithSection(node, sharing, onAction)
+        }
+        if (discussed) {
             HorizontalDivider()
             FilesyncDiscussionContent(node, discussion, commentDraft, onAction)
         }

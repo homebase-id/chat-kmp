@@ -229,22 +229,29 @@ class FilesyncSharing(
             file.fileMetadata.senderOdinId?.takeIf { it.domainName.equals(marker.odinId, ignoreCase = true) }
         }.distinct()
 
-    /** The files [owner] shares with this identity, opened with the keys their shares unlock. */
+    /** The files and folders [owner] shares with this identity, opened with the keys their shares unlock. */
     suspend fun sharedBy(owner: OdinId): List<Pair<FilesyncNode, FilesyncHandle>> {
         val self = requireNotNull(appCredentials.getActiveCredentials()).domain
         val byShare = ExternalFileKey { fileId, shares, locked ->
             val circleId = shares.firstOrNull()?.circleId ?: error("file $fileId came with no share")
             ShareKeys.openFileKey(memberCircleKey(owner, circleId, self), locked, FilesyncProtocol.DriveAlias, fileId, circleId).toSecureByteArray()
         }
-        return query.queryBatch(
-            FilesyncProtocol.DriveAlias,
-            QueryBatchRequest(
-                queryParams = FileQueryParams(fileType = listOf(FilesyncProtocol.FileFileType)),
-                resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true),
-            ),
-            ownerOdinId = owner,
-            externalFileKey = byShare,
-        ).searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toFilesyncNode() }
+        val found = mutableListOf<Pair<FilesyncNode, FilesyncHandle>>()
+        var cursor: String? = null
+        do {
+            val page = query.queryBatch(
+                FilesyncProtocol.DriveAlias,
+                QueryBatchRequest(
+                    queryParams = FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType)),
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = PAGE, includeMetadataHeader = true),
+                ),
+                ownerOdinId = owner,
+                externalFileKey = byShare,
+            )
+            found += page.searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toFilesyncNode() }
+            cursor = page.cursorState
+        } while (page.hasMoreRows)
+        return found
     }
 
     private suspend fun leaveMarker(self: OdinId, recipient: OdinId, point: ByteArray) {

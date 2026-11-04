@@ -128,7 +128,7 @@ class FilesyncArchiveTest {
             FilesyncShareTarget.offered(listOf(zip)),
             "nothing here shows a ZIP",
         )
-        assertEquals(desktop, FilesyncShareTarget.offered(listOf(live)), "a folder opens as itself, not in another app, and only files are shared with a person")
+        assertEquals(desktop + FilesyncShareTarget.Person, FilesyncShareTarget.offered(listOf(live)), "a folder opens as itself, not in another app")
         assertEquals(desktop + FilesyncShareTarget.Person, FilesyncShareTarget.offered(listOf(doc, doc)), "a ZIP isn't opened in another app")
     }
 

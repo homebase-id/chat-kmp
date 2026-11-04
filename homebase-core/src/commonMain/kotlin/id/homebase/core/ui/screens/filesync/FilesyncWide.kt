@@ -276,8 +276,9 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         },
         title = {
             val sharer = uiState.sharing.sharer
-            Breadcrumbs(if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) else uiState.path, onCrumb = { index ->
-                if (sharer != null && index > 0) return@Breadcrumbs
+            val sharerPath = uiState.sharing.sharerPath
+            Breadcrumbs(if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) + sharerPath else uiState.path, onCrumb = { index ->
+                if (sharer != null && index > 0) return@Breadcrumbs scope.onAction(FilesyncUiAction.OpenSharedFolder(sharerPath.take(index - 1)))
                 if (viewing) scope.onAction(FilesyncUiAction.OpenSharer(null))
                 scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
             })

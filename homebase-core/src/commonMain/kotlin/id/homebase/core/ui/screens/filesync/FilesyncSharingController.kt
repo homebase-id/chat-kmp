@@ -55,6 +55,7 @@ internal class FilesyncSharingController(
     private val sharing: FilesyncSharing,
     private val setup: FilesyncSharingSetup,
     private val handles: () -> Map<Uuid, FilesyncHandle>,
+    private val listFolders: suspend (List<Uuid>) -> FilesyncNodes,
     private val returnUrl: () -> String,
     private val state: () -> FilesyncSharingState,
     private val update: ((FilesyncSharingState) -> FilesyncSharingState) -> Unit,
@@ -64,6 +65,7 @@ internal class FilesyncSharingController(
     private var sharedWithJob: Job? = null
     private var sharedFilesJob: Job? = null
     private val sharedHandles = mutableMapOf<Uuid, FilesyncHandle>()
+    private var sharedNodes = emptyList<FilesyncNode>()
     private var recipientFilesJob: Job? = null
     private val recipientHandles = mutableMapOf<Uuid, FilesyncHandle>()
 
@@ -81,8 +83,8 @@ internal class FilesyncSharingController(
 
     /** Asks whom to share [nodes]' files with, turning sharing on first when it's off. */
     fun ask(nodes: List<FilesyncNode>) {
-        val files = nodes.filter { !it.isFolder }.takeIf { it.isNotEmpty() } ?: return
-        update { it.copy(shareWith = files) }
+        val live = nodes.filter { it.removedMs == null }.takeIf { it.isNotEmpty() } ?: return
+        update { it.copy(shareWith = live) }
         if (state().on) loadOffered() else turnOn()
     }
 
@@ -110,10 +112,11 @@ internal class FilesyncSharingController(
 
     fun share(recipient: OdinId, access: FilesyncAccess, expiry: FilesyncExpiry) {
         val files = state().shareWith ?: return
-        val fileHandles = files.mapNotNull { handles()[it.nodeId] }
         update { it.copy(sending = true) }
         scope.launch {
+            var fileHandles = emptyList<FilesyncHandle>()
             try {
+                fileHandles = withDescendants(files)
                 sharing.share(fileHandles, recipient, access, expiry.expiresAt(Clock.System.now().toEpochMilliseconds()))
                 update { it.copy(sending = false, shareWith = null) }
                 send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
@@ -193,6 +196,8 @@ internal class FilesyncSharingController(
         }
     }
 
+    private suspend fun withDescendants(nodes: List<FilesyncNode>) = withDescendants(nodes, handles(), listFolders)
+
     /** Shares the file with the shown person again, for [expiry] from now; the new row replaces the old. */
     fun changeExpiry(nodeId: Uuid, expiry: FilesyncExpiry) {
         val recipient = state().recipient ?: return
@@ -223,16 +228,23 @@ internal class FilesyncSharingController(
                 return@launch
             }
             listed.forEach { (node, handle) -> sharedHandles[node.nodeId] = handle }
-            update { it.copy(sharedFiles = listed.map { it.first }.arranged(FilesyncSort())) }
+            sharedNodes = listed.map { it.first }
+            openSharedFolder(emptyList())
         }
+    }
+
+    /** Shows a folder of the shown sharer's; at the top, whatever's shared without the folder it's in. */
+    fun openSharedFolder(path: List<FilesyncCrumb>) {
+        update { it.copy(sharerPath = path, sharedFiles = sharedLevel(sharedNodes, path.lastOrNull()?.nodeId).arranged(FilesyncSort())) }
     }
 
     private fun closeViews() {
         sharedFilesJob?.cancel()
         sharedHandles.clear()
+        sharedNodes = emptyList()
         recipientFilesJob?.cancel()
         recipientHandles.clear()
-        update { it.copy(sharer = null, sharedFiles = null, sharedFilesFailed = false, recipient = null, recipientFiles = null, recipientFilesFailed = false) }
+        update { it.copy(sharer = null, sharerPath = emptyList(), sharedFiles = null, sharedFilesFailed = false, recipient = null, recipientFiles = null, recipientFilesFailed = false) }
     }
 
     /** The shared file's handle, for downloading it from its owner's drive. */
@@ -292,4 +304,26 @@ internal class FilesyncSharingController(
     private companion object {
         const val TAG = "FilesyncSharing"
     }
+}
+
+/** [nodes] and, for each folder among them, everything below it now; a shared folder shares what it holds. */
+internal suspend fun withDescendants(
+    nodes: List<FilesyncNode>,
+    handles: Map<Uuid, FilesyncHandle>,
+    listFolders: suspend (List<Uuid>) -> FilesyncNodes,
+): List<FilesyncHandle> {
+    val found = nodes.mapNotNull { node -> handles[node.nodeId]?.let { node.nodeId to it } }.toMap(LinkedHashMap())
+    var folders = nodes.filter { it.isFolder }.map { it.nodeId }
+    while (folders.isNotEmpty()) {
+        val below = listFolders(folders)
+        folders = below.nodes.values.filter { it.isFolder && it.nodeId !in found }.map { it.nodeId }
+        below.handles.forEach { (id, handle) -> found.getOrPut(id) { handle } }
+    }
+    return found.values.toList()
+}
+
+/** What [parent] holds of [shared]; at the top (null), whatever's shared without the folder it's in. */
+internal fun sharedLevel(shared: List<FilesyncNode>, parent: Uuid?): List<FilesyncNode> {
+    val folders = shared.filter { it.isFolder }.mapTo(HashSet()) { it.nodeId }
+    return shared.filter { if (parent == null) it.parentId !in folders else it.parentId == parent }
 }

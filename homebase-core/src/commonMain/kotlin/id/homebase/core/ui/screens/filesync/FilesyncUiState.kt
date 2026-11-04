@@ -155,6 +155,8 @@ data class FilesyncSharingState(
     val sharers: List<OdinId> = emptyList(),
     /** Whose shared files are shown, and those files; null while they load. */
     val sharer: OdinId? = null,
+    /** The folder of theirs shown, below what they share at the top. */
+    val sharerPath: List<FilesyncCrumb> = emptyList(),
     val sharedFiles: List<FilesyncNode>? = null,
     val sharedFilesFailed: Boolean = false,
     /** The people this identity shares files with. */
@@ -188,7 +190,6 @@ enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherAp
                 Preview -> nodes.singleFile?.let { filePreviewKind(null, it.name, it.sizeBytes) } != null
                 Open -> !isWeb() && nodes.singleFile != null
                 OtherApp -> isMobile()
-                Person -> nodes.any { !it.isFolder }
                 else -> true
             }
         }
@@ -254,6 +255,7 @@ sealed interface FilesyncUiAction {
     data object DismissShareWith : FilesyncUiAction
     data object LoadSharers : FilesyncUiAction
     data class OpenSharer(val sharer: OdinId?) : FilesyncUiAction
+    data class OpenSharedFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
     data class OpenRecipient(val recipient: OdinId?) : FilesyncUiAction
     data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
     data class ChangeExpiry(val nodeId: Uuid, val expiry: FilesyncExpiry) : FilesyncUiAction
