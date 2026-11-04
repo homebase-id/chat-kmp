@@ -22,6 +22,7 @@ actual fun TrimmableVideoPlayerSurface(
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
     onFirstFrameRendered: (() -> Unit)?,
+    hideWhenPaused: Boolean,
 ) {
     DesktopVideoPlayer(
         videoPath = filePath,

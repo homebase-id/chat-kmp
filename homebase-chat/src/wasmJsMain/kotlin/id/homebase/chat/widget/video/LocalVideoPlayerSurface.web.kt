@@ -114,6 +114,7 @@ actual fun TrimmableVideoPlayerSurface(
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
     onFirstFrameRendered: (() -> Unit)?,
+    hideWhenPaused: Boolean,
 ) {
     val density = LocalDensity.current.density
     var element by remember(filePath) { mutableStateOf<JsAny?>(null) }
@@ -171,6 +172,7 @@ actual fun TrimmableVideoPlayerSurface(
 
     LaunchedEffect(element, isPlaying) {
         val el = element ?: return@LaunchedEffect
+        setVideoOverlayHidden(el, hideWhenPaused && !isPlaying)
         if (isPlaying) playVideoOverlay(el) else pauseVideoOverlay(el)
     }
 
