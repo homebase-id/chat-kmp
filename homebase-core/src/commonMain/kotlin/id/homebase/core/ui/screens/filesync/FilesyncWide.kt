@@ -267,7 +267,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
     val viewing = uiState.sharing.viewing
     FilesyncShell(
         place = FilesyncPlace.Files.takeUnless { uiState.sharing.recipient != null },
-        places = if (viewing) scope.places.closing { scope.onAction(FilesyncUiAction.OpenSharer(null)) } else scope.places,
+        places = if (viewing) scope.places.closing { scope.onAction(FilesyncUiAction.CloseShareView) } else scope.places,
         snackbarHostState = scope.snackbarHostState,
         modifier = Modifier.onPreviewKeyEvent { event ->
             val find = event.type == KeyEventType.KeyDown && event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed)
@@ -279,7 +279,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             val sharerPath = uiState.sharing.sharerPath
             Breadcrumbs(if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) + sharerPath else uiState.path, onCrumb = { index ->
                 if (sharer != null && index > 0) return@Breadcrumbs scope.onAction(FilesyncUiAction.OpenSharedFolder(sharerPath.take(index - 1)))
-                if (viewing) scope.onAction(FilesyncUiAction.OpenSharer(null))
+                if (viewing) scope.onAction(FilesyncUiAction.CloseShareView)
                 scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
             })
         },

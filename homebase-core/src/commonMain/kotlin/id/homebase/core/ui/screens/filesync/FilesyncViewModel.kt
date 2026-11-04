@@ -291,7 +291,7 @@ class FilesyncViewModel(
                 closeMovePicker()
                 val handles = transfers.handles
                 val target = picker.path.last()
-                sharing.move(picker.nodes, handles, target.nodeId) {
+                sharing.move(picker.nodes, target.nodeId) {
                     var moved = emptyList<Uuid>()
                     reportWrite(FilesyncUiEvent.Moved(target.name), FilesyncError.MoveFailed, _events::send) {
                         editor.move(picker.nodes, handles, picker.path.map { it.nodeId }).also { moved = it.moved }
@@ -321,9 +321,9 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.Unshare -> sharing.unshare(action.node, action.recipient)
 
-            FilesyncUiAction.LoadSharers -> sharing.loadSharers()
 
             is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
+            FilesyncUiAction.CloseShareView -> sharing.closeShareView()
 
             is FilesyncUiAction.OpenSharedFolder -> sharing.openSharedFolder(action.path)
 

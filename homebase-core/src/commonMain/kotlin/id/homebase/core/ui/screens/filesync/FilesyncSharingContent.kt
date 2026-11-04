@@ -456,7 +456,7 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
                         TextButton(onClick = { editingMembers = true }) { Text(stringResource(MR.string.filesync_group_edit_members)) }
                     }
                 }
-                TextButton(onClick = { onAction(FilesyncUiAction.OpenSharer(null)) }) { Text(stringResource(MR.string.filesync_view_close)) }
+                TextButton(onClick = { onAction(FilesyncUiAction.CloseShareView) }) { Text(stringResource(MR.string.filesync_view_close)) }
             }
         }
         val failed = if (incoming) sharing.sharedFilesFailed else sharing.recipientFilesFailed
@@ -589,7 +589,7 @@ private fun FilesyncNode.sharedDetails(): String =
 @Composable
 internal fun FilesyncSharedFilesSheet(sharing: FilesyncSharingState, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
     val sharer = sharing.sharer ?: return
-    AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.OpenSharer(null)) }, maxWidth = 520.dp) {
+    AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.CloseShareView) }, maxWidth = 520.dp) {
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
                 val path = sharing.sharerPath

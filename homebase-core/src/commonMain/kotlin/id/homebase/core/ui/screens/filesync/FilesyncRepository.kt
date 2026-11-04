@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
@@ -11,20 +12,20 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadDownloadService
+import id.homebase.api.client.drives.files.wholePercentFractions
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
+import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.filesync.FilesyncProtocol
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
-import kotlin.time.Duration.Companion.milliseconds
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
-import id.homebase.api.common.OdinId
 import kotlinx.coroutines.flow.flow
-import id.homebase.api.client.drives.files.wholePercentFractions
-import kotlin.uuid.Uuid
 
 /** Nodes with what writing or downloading each one needs. */
 class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
@@ -181,15 +182,8 @@ class FilesyncRepository(
         return all to readAtMs
     }
 
-    /** Reads every page while [onPage] asks for the next. */
-    private suspend fun forEachPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest, onPage: (QueryBatchResponse) -> Boolean) {
-        var cursor: String? = null
-        do {
-            val page = queryPage(params, options.copy(cursorState = cursor))
-            val more = onPage(page)
-            cursor = page.cursorState?.takeIf { more && page.hasMoreRows && it != cursor }
-        } while (cursor != null)
-    }
+    private suspend fun forEachPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest, onPage: suspend (QueryBatchResponse) -> Boolean) =
+        driveQueryProvider.forEachFilesyncPage(params, options, onPage = onPage)
 
     private suspend fun queryPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest): QueryBatchResponse =
         driveQueryProvider.queryBatch(
@@ -302,3 +296,24 @@ class FilesyncRepository(
 }
 
 private fun HomebaseFile.fileVersionTag() = fileMetadata.versionTag?.let { FileVersionTag(fileId, it) }
+
+/** Reads every page of [params] on the Filesync drive while [onPage] asks for the next; a cursor the server repeats ends it. */
+internal suspend fun DriveQueryProvider.forEachFilesyncPage(
+    params: FileQueryParams,
+    options: QueryBatchResultOptionsRequest,
+    ownerOdinId: OdinId? = null,
+    externalFileKey: ExternalFileKey? = null,
+    onPage: suspend (QueryBatchResponse) -> Boolean,
+) {
+    var cursor: String? = null
+    do {
+        val page = queryBatch(
+            FilesyncProtocol.DriveAlias,
+            QueryBatchRequest(queryParams = params, resultOptionsRequest = options.copy(cursorState = cursor)),
+            ownerOdinId = ownerOdinId,
+            externalFileKey = externalFileKey,
+        )
+        val more = onPage(page)
+        cursor = page.cursorState?.takeIf { more && page.hasMoreRows && it != cursor }
+    } while (cursor != null)
+}

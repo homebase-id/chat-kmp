@@ -260,10 +260,10 @@ sealed interface FilesyncUiAction {
     data class ShareWith(val audience: FilesyncAudience, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
     data class ShareWithNewGroup(val name: String, val members: List<OdinId>, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
     data object DismissShareWith : FilesyncUiAction
-    data object LoadSharers : FilesyncUiAction
-    data class OpenSharer(val sharer: OdinId?) : FilesyncUiAction
+    data class OpenSharer(val sharer: OdinId) : FilesyncUiAction
+    data object CloseShareView : FilesyncUiAction
     data class OpenSharedFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
-    data class OpenRecipient(val recipient: FilesyncAudience?) : FilesyncUiAction
+    data class OpenRecipient(val recipient: FilesyncAudience) : FilesyncUiAction
     data class SetGroupMembers(val group: FilesyncAudience.Group, val members: List<OdinId>) : FilesyncUiAction
     data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
     data class ChangeExpiry(val nodeId: Uuid, val expiry: FilesyncExpiry) : FilesyncUiAction
@@ -275,7 +275,7 @@ sealed interface FilesyncDiscussionAction : FilesyncUiAction
 
 enum class FilesyncError {
     MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
-    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, SharedFilesFailed, InheritFailed,
+    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, InheritFailed,
     MoveCheckFailed, MoveSharingFailed,
 }
 

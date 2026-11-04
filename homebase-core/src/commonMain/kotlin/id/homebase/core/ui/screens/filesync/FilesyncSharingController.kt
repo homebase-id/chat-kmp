@@ -123,24 +123,15 @@ internal class FilesyncSharingController(
         val files = state().shareWith ?: return
         update { it.copy(sending = true) }
         scope.launch {
-            var fileHandles = emptyList<FilesyncHandle>()
-            var recipient: FilesyncAudience? = null
-            try {
-                fileHandles = withDescendants(files).values.toList()
-                recipient = audience()
-                sharing.share(fileHandles, recipient, access, expiry.expiresAt(Clock.System.now().toEpochMilliseconds()))
-                update { it.copy(sending = false, shareWith = null) }
-                send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
-                loadRecipients()
-                loadSharedIn()
-                state().sharedWith?.nodeId?.takeIf { id -> files.any { it.nodeId == id } }?.let { loadSharedWith(it) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "sharing ${fileHandles.size} files with ${recipient ?: "a new group"} failed" }
-                update { it.copy(sending = false) }
-                send(if (e is FilesyncSharingException.RecipientNotReady) FilesyncUiEvent.NotReady(e.recipients) else FilesyncUiEvent.Error(FilesyncError.SharingFailed))
-            }
+            val shared = attempt("sharing ${files.size} nodes") {
+                sharing.share(withDescendants(files).values.toList(), audience(), access, expiry.expiresAt(Clock.System.now().toEpochMilliseconds()))
+            } != null
+            update { if (shared) it.copy(sending = false, shareWith = null) else it.copy(sending = false) }
+            if (!shared) return@launch
+            send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
+            loadRecipients()
+            loadSharedIn()
+            state().sharedWith?.nodeId?.takeIf { id -> files.any { it.nodeId == id } }?.let { loadSharedWith(it) }
         }
     }
 
@@ -148,31 +139,16 @@ internal class FilesyncSharingController(
      * Moves [nodes] into [into] with [move], which says which of them moved, and shares those like their new folder;
      * asks first when someone would lose access. Nothing moves when their sharing can't be read.
      */
-    fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, into: Uuid, move: suspend () -> List<Uuid>) {
+    fun move(nodes: List<FilesyncNode>, into: Uuid, move: suspend () -> List<Uuid>) {
         scope.launch {
             val going = nodes.filter { it.parentId != into && it.removedMs == null }
-            val plan = try {
-                if (going.isEmpty()) FilesyncMoveSharing.None
-                else sharing.planMove(going, into) { node -> withDescendants(listOf(node), handles, listFolders) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "reading the sharing of ${going.size} nodes moving to $into failed" }
-                send(FilesyncUiEvent.Error(FilesyncError.MoveCheckFailed))
-                return@launch
-            }
+            val plan = if (going.isEmpty()) FilesyncMoveSharing.None else attempt("reading the sharing of ${going.size} nodes moving to $into", FilesyncError.MoveCheckFailed) {
+                sharing.planMove(going, into) { node -> withDescendants(listOf(node)) }
+            } ?: return@launch
             val go: suspend () -> Unit = {
                 val moved = move()
                 if (moved.isNotEmpty() && plan !== FilesyncMoveSharing.None) {
-                    try {
-                        sharing.applyMove(plan, moved)
-                        loadSharedIn()
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Logger.e(e, TAG) { "sharing ${moved.size} moved nodes like $into failed" }
-                        send(FilesyncUiEvent.Error(FilesyncError.MoveSharingFailed))
-                    }
+                    attempt("sharing ${moved.size} moved nodes like $into", FilesyncError.MoveSharingFailed) { sharing.applyMove(plan, moved) }?.let { loadSharedIn() }
                 }
             }
             if (plan.losingAccess.isEmpty()) {
@@ -204,20 +180,13 @@ internal class FilesyncSharingController(
 
     fun unshare(node: FilesyncNode, recipient: FilesyncAudience) {
         scope.launch {
-            try {
-                sharing.withdraw(withDescendants(listOf(node)), recipient)
-                loadSharedWith(node.nodeId)
-                loadSharedIn()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "withdrawing ${node.nodeId} from $recipient failed" }
-                send(FilesyncUiEvent.Error(FilesyncError.SharingFailed))
-            }
+            attempt("withdrawing ${node.nodeId} from $recipient") { sharing.withdraw(withDescendants(listOf(node)), recipient) } ?: return@launch
+            loadSharedWith(node.nodeId)
+            loadSharedIn()
         }
     }
 
-    fun loadSharers() {
+    private fun loadSharers() {
         scope.launch {
             guarded { sharing.sharers() }?.let { sharers -> update { it.copy(sharers = sharers) } }
         }
@@ -240,14 +209,7 @@ internal class FilesyncSharingController(
 
     fun setGroupMembers(group: FilesyncAudience.Group, members: List<OdinId>) {
         scope.launch {
-            try {
-                sharing.setGroupMembers(group, members)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "changing ${group.circleId}'s members failed" }
-                send(if (e is FilesyncSharingException.RecipientNotReady) FilesyncUiEvent.NotReady(e.recipients) else FilesyncUiEvent.Error(FilesyncError.SharingFailed))
-            }
+            attempt("changing ${group.circleId}'s members") { sharing.setGroupMembers(group, members) }
             // Read back, so a change that only partly went through shows as it is.
             val recipients = guarded { sharing.audiences() } ?: return@launch
             update { s ->
@@ -257,10 +219,9 @@ internal class FilesyncSharingController(
         }
     }
 
-    /** Shows what [recipient] is given, each file with a way to stop; null goes back to the folder. */
-    fun openRecipient(recipient: FilesyncAudience?) {
+    /** Shows what [recipient] is given, each file with a way to stop. */
+    fun openRecipient(recipient: FilesyncAudience) {
         closeViews()
-        recipient ?: return
         update { it.copy(recipient = recipient) }
         recipientFilesJob = scope.launch {
             val listed = guarded { sharing.sharedWithAudience(recipient) }
@@ -278,43 +239,28 @@ internal class FilesyncSharingController(
         val recipient = state().recipient ?: return
         val node = state().recipientFiles?.firstOrNull { it.node.nodeId == nodeId }?.node ?: return
         scope.launch {
-            try {
-                val stopped = sharing.withdraw(withDescendants(listOf(node), recipientHandles, listFolders), recipient)
-                update { s -> s.copy(recipientFiles = s.recipientFiles?.filter { it.node.nodeId !in stopped }) }
-                loadSharedIn()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "withdrawing $nodeId from $recipient failed" }
-                send(FilesyncUiEvent.Error(FilesyncError.SharingFailed))
-            }
+            val stopped = attempt("withdrawing $nodeId from $recipient") { sharing.withdraw(withDescendants(listOf(node), recipientHandles, listFolders), recipient) } ?: return@launch
+            update { s -> s.copy(recipientFiles = s.recipientFiles?.filter { it.node.nodeId !in stopped }) }
+            loadSharedIn()
         }
     }
 
     private suspend fun withDescendants(nodes: List<FilesyncNode>) = withDescendants(nodes, handles(), listFolders)
 
-    /** Shares the file with the shown person again, for [expiry] from now; the new row replaces the old. */
+    /** Shares the file with the shown audience again, for [expiry] from now; the new row replaces the old. */
     fun changeExpiry(nodeId: Uuid, expiry: FilesyncExpiry) {
         val recipient = state().recipient ?: return
         val handle = recipientHandles[nodeId] ?: return
         val shown = state().recipientFiles?.firstOrNull { it.node.nodeId == nodeId } ?: return
         scope.launch {
-            try {
-                val expiresAt = expiry.expiresAt(Clock.System.now().toEpochMilliseconds())
-                sharing.share(listOf(handle), recipient, shown.access, expiresAt)
-                update { s -> s.copy(recipientFiles = s.recipientFiles?.map { if (it.node.nodeId == nodeId) it.copy(expiresAt = expiresAt) else it }) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "changing $nodeId's expiry for $recipient failed" }
-                send(FilesyncUiEvent.Error(FilesyncError.SharingFailed))
-            }
+            val expiresAt = expiry.expiresAt(Clock.System.now().toEpochMilliseconds())
+            attempt("changing $nodeId's expiry for $recipient") { sharing.renew(handle, recipient, shown.access, expiresAt) } ?: return@launch
+            update { s -> s.copy(recipientFiles = s.recipientFiles?.map { if (it.node.nodeId == nodeId) it.copy(expiresAt = expiresAt) else it }) }
         }
     }
 
-    fun openSharer(sharer: OdinId?) {
+    fun openSharer(sharer: OdinId) {
         closeViews()
-        sharer ?: return
         update { it.copy(sharer = sharer) }
         sharedFilesJob = scope.launch {
             val listed = guarded { sharing.sharedBy(sharer) }
@@ -332,6 +278,8 @@ internal class FilesyncSharingController(
     fun openSharedFolder(path: List<FilesyncCrumb>) {
         update { it.copy(sharerPath = path, sharedFiles = sharedLevel(sharedNodes, path.lastOrNull()?.nodeId).arranged(FilesyncSort())) }
     }
+
+    fun closeShareView() = closeViews()
 
     private fun closeViews() {
         sharedFilesJob?.cancel()
@@ -386,7 +334,19 @@ internal class FilesyncSharingController(
         send(FilesyncUiEvent.Error(error))
     }
 
-    // Null when [block] failed; logged, and the caller says what failed.
+    // Null when [block] failed: logged as [what], and the user hears [error], or who isn't ready.
+    private suspend fun <T : Any> attempt(what: String, error: FilesyncError = FilesyncError.SharingFailed, block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "$what failed" }
+            send(if (e is FilesyncSharingException.RecipientNotReady) FilesyncUiEvent.NotReady(e.recipients) else FilesyncUiEvent.Error(error))
+            null
+        }
+
+    // Null when [block] failed, which is logged.
     private suspend fun <T> guarded(block: suspend () -> T): T? =
         try {
             block()

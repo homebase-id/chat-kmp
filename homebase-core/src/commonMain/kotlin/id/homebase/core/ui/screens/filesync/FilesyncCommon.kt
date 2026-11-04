@@ -121,7 +121,6 @@ import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_shared
 import id.homebase.resources.filesync_shared_badge
-import id.homebase.resources.filesync_shared_files_failed
 import id.homebase.resources.filesync_sharing_failed
 import id.homebase.resources.filesync_too_large
 import id.homebase.resources.filesync_too_large_here
@@ -163,7 +162,6 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.ReactionFailed -> MR.string.filesync_reaction_failed
     FilesyncError.CommentFailed -> MR.string.filesync_comment_failed
     FilesyncError.SharingFailed -> MR.string.filesync_sharing_failed
-    FilesyncError.SharedFilesFailed -> MR.string.filesync_shared_files_failed
     FilesyncError.InheritFailed -> MR.string.filesync_inherit_failed
     FilesyncError.MoveCheckFailed -> MR.string.filesync_move_check_failed
     FilesyncError.MoveSharingFailed -> MR.string.filesync_move_sharing_failed
