@@ -78,6 +78,7 @@ import id.homebase.core.util.formatTime
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.filesync_root
 import id.homebase.resources.cancel
 import id.homebase.resources.filesync_archive_cancel
 import id.homebase.resources.filesync_archive_damaged
@@ -99,7 +100,6 @@ import id.homebase.resources.filesync_file_count
 import id.homebase.resources.filesync_folder_count
 import id.homebase.resources.filesync_folder_failed
 import id.homebase.resources.filesync_inherit_failed
-import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_move_check_failed
 import id.homebase.resources.filesync_move_failed
 import id.homebase.resources.filesync_move_sharing_failed
@@ -235,7 +235,7 @@ internal fun FilesyncEventsEffect(
                     if (undo == SnackbarResult.ActionPerformed) onUndoRemove(event.nodeIds)
                 }
                 is FilesyncUiEvent.Moved -> scope.launch {
-                    snackbarHostState.showSnackbar(getString(MR.string.filesync_moved, event.folderName ?: getString(MR.string.filesync_label)))
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_moved, event.folderName ?: getString(MR.string.filesync_root)))
                 }
                 is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
@@ -441,7 +441,7 @@ internal fun deletedAt(time: String): String =
 /** The name of the folder [parentId], or of the top level. */
 @Composable
 internal fun folderName(parentId: Uuid, names: Map<Uuid, String>): String =
-    names[parentId] ?: stringResource(MR.string.filesync_label)
+    names[parentId] ?: stringResource(MR.string.filesync_root)
 
 /** Save to device, or the download's progress, which cancels it when tapped. */
 @Composable

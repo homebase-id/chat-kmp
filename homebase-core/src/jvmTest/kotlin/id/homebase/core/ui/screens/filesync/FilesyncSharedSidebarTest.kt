@@ -55,14 +55,14 @@ class FilesyncSharedSidebarTest {
             }
         }
         waitForIdle()
-        val before = onAllNodesWithText("All files").fetchSemanticsNodes().single().boundsInRoot
+        val before = onAllNodesWithText("Homebase").fetchSemanticsNodes().single().boundsInRoot
 
         mainClock.autoAdvance = false
         runOnIdle { places.onRecent() }
         mainClock.advanceTimeBy(400)
 
         // The copy the shared element hides has no size; the one drawn must be where it was.
-        val drawn = onAllNodesWithText("All files").fetchSemanticsNodes().filter { it.boundsInRoot.width > 0f }
+        val drawn = onAllNodesWithText("Homebase").fetchSemanticsNodes().filter { it.boundsInRoot.width > 0f }
         assertTrue(drawn.isNotEmpty())
         drawn.forEach { assertEquals(before, it.boundsInRoot, "the sidebar moved mid-transition") }
     }

@@ -92,6 +92,9 @@ import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
+import androidx.compose.material3.LocalTextStyle
+import id.homebase.common.util.WindowTitleEffect
+import id.homebase.resources.filesync_root
 import id.homebase.resources.filesync_get_title
 import id.homebase.resources.filesync_install_computer
 import id.homebase.resources.filesync_install_app
@@ -106,7 +109,6 @@ import id.homebase.resources.filesync_files
 import id.homebase.resources.filesync_folder_deleted
 import id.homebase.resources.filesync_folder_empty
 import id.homebase.resources.filesync_folders
-import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_make_private
 import id.homebase.resources.filesync_sign_in_again_body
 import id.homebase.resources.filesync_sign_in_again_title
@@ -268,6 +270,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         places = places,
         signIn = signIn,
     )
+    WindowTitleEffect(crumbNames(uiState.path).last())
     if (isExpandedLayout()) {
         FilesyncWideBrowser(scope)
     } else {
@@ -347,7 +350,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                             )
                         } else {
                             Text(
-                                text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_label),
+                                text = uiState.path.lastOrNull()?.name ?: stringResource(MR.string.filesync_root),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -620,7 +623,7 @@ private fun UploadCard(content: @Composable androidx.compose.foundation.layout.R
 
 @Composable
 internal fun crumbNames(path: List<FilesyncCrumb>): List<String> {
-    val root = stringResource(MR.string.filesync_label)
+    val root = stringResource(MR.string.filesync_root)
     return path.map { it.name ?: root }
 }
 
@@ -730,8 +733,9 @@ internal fun OverflowMenu(
 }
 
 @Composable
-internal fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
+internal fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit, heading: Boolean = false) {
     val names = crumbNames(path)
+    val style = if (heading) MaterialTheme.typography.titleLarge else LocalTextStyle.current
     LazyRow(
         modifier = Modifier.padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -749,6 +753,7 @@ internal fun Breadcrumbs(path: List<FilesyncCrumb>, onCrumb: (Int) -> Unit) {
             TextButton(onClick = { onCrumb(index) }, enabled = !last) {
                 Text(
                     text = names[index],
+                    style = style,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = if (last) FontWeight.Bold else null,
