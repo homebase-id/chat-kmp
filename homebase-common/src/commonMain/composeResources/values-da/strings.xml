@@ -1547,6 +1547,8 @@
     <string name="contactbook_onboarding_dismiss">Måske senere</string>
 
     <string name="contactbook_tab_circles">Kredse</string>
+    <string name="contactbook_requests_banner_one">Du har en forbindelsesanmodning fra %1$s</string>
+
     <string name="contactbook_connected">Forbundet</string>
     <string name="contactbook_circles_empty">Du har ingen kredse endnu.</string>
     <string name="contactbook_circle_members_empty">Denne kreds har ingen medlemmer.</string>
@@ -1642,7 +1644,10 @@
     <string name="contactbook_action_settings">Kontaktindstillinger</string>
 
     <string name="contactbook_empty_title">Ingen kontakter endnu</string>
-    <string name="contactbook_empty_body">Tilføj en kontakt manuelt.</string>
+    <string name="contactbook_empty_body">Inviter en ven, eller tilføj en, du allerede kender.</string>
+    <string name="contactbook_empty_invite">Inviter en ven</string>
+    <string name="contactbook_empty_share_card">Del mit kort</string>
+    <string name="contactbook_invite_message">Forbind med mig på Homebase: %1$s</string>
     <string name="contactbook_empty_new">Tilføj en kontakt</string>
 
     <string name="contactbook_detail_message">Besked</string>

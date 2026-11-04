@@ -1,6 +1,12 @@
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.animation.AnimatedContent
+import org.jetbrains.compose.resources.pluralStringResource
+import androidx.compose.material3.Surface
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -65,9 +71,16 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
+import id.homebase.core.clipboard.rememberCopyToClipboard
+import id.homebase.core.ui.screens.card.cardOrigin
+import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
+import id.homebase.resources.contactbook_invite_message
 import id.homebase.resources.contactbook_label
+import id.homebase.resources.contactbook_requests_banner_more
+import id.homebase.resources.contactbook_requests_banner_one
 import id.homebase.resources.contactbook_search_hint
 import id.homebase.resources.contactbook_tab_circles
 import id.homebase.resources.contactbook_tab_known
@@ -92,9 +105,15 @@ fun ContactBookScreen(
     connectRequestViewModel: ConnectRequestViewModel,
     onProfileClick: () -> Unit,
     onOpenConversation: (Uuid) -> Unit,
+    onShareCard: (() -> Unit)?,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
+    val uriHandler = getUriHandler()
+    val inviteMessage = uiState.ownerSession?.let {
+        stringResource(MR.string.contactbook_invite_message, cardOrigin(it.odinId.domainName))
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -299,6 +318,19 @@ fun ContactBookScreen(
                 }
             }
 
+            val newestRequester = uiState.newestIncomingRequestOdinId
+            AnimatedVisibility(
+                visible = newestRequester != null && uiState.selectedTab != ContactTab.NEW,
+                enter = expandVertically() + fadeIn(enterFade),
+                exit = shrinkVertically() + fadeOut(exitFade),
+            ) {
+                ConnectionRequestsBanner(
+                    newestOdinId = newestRequester.orEmpty(),
+                    count = uiState.incomingRequestCount,
+                    onClick = { viewModel.onAction(ContactBookUiAction.TabSelected(ContactTab.NEW)) },
+                )
+            }
+
             val tabSlideFade = rememberTabSlideFade()
             AnimatedContent(
                 targetState = uiState.selectedTab,
@@ -312,6 +344,13 @@ fun ContactBookScreen(
                         uiState = uiState,
                         onAction = viewModel::onAction,
                         listState = knownListState,
+                        onInviteClick = inviteMessage?.let { message ->
+                            {
+                                // Desktop and web have no share sheet: shareText there is silent or a no-op.
+                                if (isDesktopOrWeb()) copyToClipboard(message) else uriHandler.shareText(message)
+                            }
+                        },
+                        onShareCardClick = onShareCard,
                     )
                     ContactTab.NEW -> ContactBookContent(
                         uiState = uiState,
@@ -394,6 +433,36 @@ fun ContactBookScreen(
         snackbarHostState = snackbarHostState,
         onNavigateToConversation = onOpenConversation,
     )
+}
+
+@Composable
+private fun ConnectionRequestsBanner(newestOdinId: String, count: Int, onClick: () -> Unit) {
+    val others = count - 1
+    val text = if (others > 0) {
+        pluralStringResource(MR.plurals.contactbook_requests_banner_more, others, newestOdinId, others)
+    } else {
+        stringResource(MR.string.contactbook_requests_banner_one, newestOdinId)
+    }
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Filled.PersonAdd, contentDescription = null)
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+    }
 }
 
 private fun ContactTab.labelRes() = when (this) {

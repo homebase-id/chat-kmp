@@ -1222,6 +1222,9 @@ fun AppNavHost(
                                                 navController.selectConversationOnChatList(conversationId)
                                                 openChats()
                                             },
+                                            onShareCard = {
+                                                navController.navigate(Route.ProfileCard)
+                                            }.takeIf { profileCardEnabled },
                                         )
                                     }
                                 }

@@ -2023,6 +2023,7 @@
     <string name="contactbook_tab_known">Contacts</string>
     <string name="contactbook_tab_new">New</string>
     <string name="contactbook_tab_circles">Circles</string>
+    <string name="contactbook_requests_banner_one">You have a connection request from %1$s</string>
     <string name="contactbook_connected">Connected</string>
     <string name="contactbook_filter_circles">Circles</string>
     <string name="contactbook_new_empty">Nothing waiting on you.</string>
@@ -2139,7 +2140,10 @@
     <string name="contactbook_action_settings">Contact settings</string>
 
     <string name="contactbook_empty_title">No contacts yet</string>
-    <string name="contactbook_empty_body">Add a contact by hand.</string>
+    <string name="contactbook_empty_body">Invite a friend, or add someone you already know.</string>
+    <string name="contactbook_empty_invite">Invite a friend</string>
+    <string name="contactbook_empty_share_card">Share my card</string>
+    <string name="contactbook_invite_message">Connect with me on Homebase: %1$s</string>
     <string name="contactbook_empty_new">Add a contact</string>
 
     <string name="contactbook_detail_message">Message</string>
