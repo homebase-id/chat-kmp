@@ -22,6 +22,8 @@ import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.QueryBatchSortField
+import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -263,13 +265,19 @@ class FilesyncSharing(
         return found
     }
 
-    /** The people who left this identity a marker, each trusted only when it was sent by the identity it names. */
+    /** The people who left this identity a marker, each trusted only when it was sent by the identity it names; whoever shared last first. */
     suspend fun sharers(): List<OdinId> =
         query.queryBatch(
             FilesyncProtocol.DriveAlias,
             QueryBatchRequest(
                 queryParams = FileQueryParams(fileType = listOf(FilesyncProtocol.MarkerFileType)),
-                resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true),
+                // Every share sends the marker again, which updates it.
+                resultOptionsRequest = QueryBatchResultOptionsRequest(
+                    maxRecords = PAGE,
+                    includeMetadataHeader = true,
+                    ordering = QueryBatchSortOrder.NewestFirst,
+                    sorting = QueryBatchSortField.AnyChangeDate,
+                ),
             ),
         ).searchResults.filter { it.fileState == FileState.Active }.mapNotNull { file ->
             val marker = file.fileMetadata.appData.content

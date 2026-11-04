@@ -250,6 +250,17 @@ class FilesyncSharingTest {
     }
 
     @Test
+    fun whoeverSharedLastIsAskedForFirst() = runTest {
+        sharedPages += """{"searchResults":[],"hasMoreRows":false}"""
+
+        sharing.sharers()
+
+        val options = decrypted(calls.single { it.path.endsWith("/query-batch") }, appSecret).jsonObject["resultOptionsRequest"]!!.jsonObject
+        assertEquals("newestFirst", options["ordering"]!!.jsonPrimitive.content)
+        assertEquals("anyChangeDate", options["sorting"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun aNodeMadeInASharedFolderIsSharedLikeIt() = runTest {
         val folder = Uuid.random()
         val node = Uuid.random()
