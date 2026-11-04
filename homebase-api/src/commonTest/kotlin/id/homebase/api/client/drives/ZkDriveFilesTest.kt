@@ -33,6 +33,10 @@ import kotlin.test.assertTrue
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.common.toSecureByteArray
 import kotlin.uuid.Uuid
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.query.DriveQueryProvider
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
 
 class ZkDriveFilesTest {
 
@@ -279,12 +283,14 @@ class ZkDriveFilesTest {
               "shares": [{ "circleId": "$circleId", "permissions": "read", "created": 1, "modified": 1 }]
             }
         """
-        val shared = OdinSystemSerializer.deserialize<ServerFile>(json)
         val byShare = ExternalFileKey { id, shares, lockedFileKey ->
             ShareKeys.openFileKey(circleKey, lockedFileKey, owner, id, shares.single().circleId).toSecureByteArray()
         }
+        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
 
-        assertEquals("""{"name":"plan.pdf"}""", shared.asHomebaseFile(SecureByteArray(sharedSecret), byShare).fileMetadata.appData.content)
+        val shared = queries.mapQueryBatchResponse("""{"searchResults":[$json]}""", SecureByteArray(sharedSecret), byShare).searchResults.single()
+
+        assertEquals("""{"name":"plan.pdf"}""", shared.fileMetadata.appData.content)
     }
 
     private suspend fun unlockVault() {

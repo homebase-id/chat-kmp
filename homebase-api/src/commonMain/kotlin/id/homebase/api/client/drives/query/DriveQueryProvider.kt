@@ -32,6 +32,7 @@ import kotlin.uuid.Uuid
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.client.drives.shares.ShareRow
 
 /** Drive query provider for querying files from a drive */
 class DriveQueryProvider(
@@ -247,7 +248,8 @@ class DriveQueryProvider(
             fileMetadata = fileMetadata,
             serverMetadata = serverFileWithRawMetadata.serverMetadata ?: ServerMetadata(),
             priority = serverFileWithRawMetadata.priority,
-            fileByteCount = serverFileWithRawMetadata.fileByteCount
+            fileByteCount = serverFileWithRawMetadata.fileByteCount,
+            shares = serverFileWithRawMetadata.shares,
         )
         
         return serverFile.asHomebaseFile(secret, externalFileKey)
@@ -298,7 +300,8 @@ data class ServerFileWithRawMetadata(
     // createServerFileWithSafeMetadata substitutes an empty ServerMetadata() downstream.
     val serverMetadata: ServerMetadata? = null,
     val priority: Int = 0,
-    val fileByteCount: Long = 0
+    val fileByteCount: Long = 0,
+    val shares: List<ShareRow>? = null,
 )
 
 //@Serializable
