@@ -3078,7 +3078,7 @@
     <string name="filesync_archive_listing">Gathering files…</string>
     <string name="filesync_archive_progress">Zipping · %1$s of %2$s</string>
     <string name="filesync_archive_cancel">Stop zipping</string>
-    <string name="filesync_archive_damaged">%1$s failed its integrity check, so the ZIP was thrown away.</string>
+    <string name="filesync_archive_damaged">%1$s didn't match the original file, so the ZIP was thrown away.</string>
     <string name="filesync_all_files">All files</string>
     <string name="filesync_tags_here">Tags in this folder</string>
     <string name="filesync_search">Search this folder</string>
@@ -3106,7 +3106,7 @@
     <string name="filesync_cancel_download">Cancel download</string>
     <string name="filesync_download_failed">Couldn't download the file.</string>
     <string name="filesync_too_large_here">This file is too big to download in the browser.</string>
-    <string name="filesync_damaged">This file is damaged, so it wasn't opened.</string>
+    <string name="filesync_damaged">The download didn't match the original file, so it was thrown away. Try again.</string>
     <string name="filesync_folder">Folder</string>
     <string name="filesync_upload">Upload files</string>
     <string name="filesync_new_folder">New folder</string>
