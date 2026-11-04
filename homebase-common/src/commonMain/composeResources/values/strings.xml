@@ -3164,6 +3164,11 @@
     <string name="filesync_shared_with_me">Shared with me</string>
     <string name="filesync_shared_badge">Shared</string>
     <string name="filesync_inherit_failed">Uploaded, but it couldn't be shared like its folder. Share it again from its menu.</string>
+    <string name="filesync_move_check_failed">Couldn't check who can see what you're moving, so nothing was moved.</string>
+    <string name="filesync_move_sharing_failed">Moved, but who it's shared with couldn't be changed to match its new folder.</string>
+    <string name="filesync_move_losing_title">Some people will lose access</string>
+    <string name="filesync_move_losing_body">%1$s will no longer see what you're moving. They see it now because the folder it's in is shared with them.</string>
+    <string name="filesync_move_anyway">Move anyway</string>
     <string name="filesync_you_shared_with">You shared with</string>
     <string name="filesync_expiry_title">Sharing ends after</string>
     <string name="filesync_expiry_day">1 day</string>

@@ -81,6 +81,20 @@ data class FilesyncShareRecipient(val odinId: OdinId, val access: FilesyncAccess
 
 data class FilesyncSharedFile(val node: FilesyncNode, val handle: FilesyncHandle, val access: FilesyncAccess, val expiresAt: Long?)
 
+/**
+ * What a move does to sharing, worked out before it, by the node moved: the people who had it only through the folder
+ * it leaves stop seeing it, and it's shared like the folder it enters.
+ */
+class FilesyncMoveSharing internal constructor(
+    internal val stops: Map<Uuid, List<Pair<Uuid, Uuid>>>,
+    internal val starts: Map<Uuid, List<ShareRequest>>,
+    val losingAccess: List<OdinId>,
+) {
+    companion object {
+        val None = FilesyncMoveSharing(emptyMap(), emptyMap(), emptyList())
+    }
+}
+
 /** "[odinId] has files for you", left on the recipient's Filesync drive. */
 @Serializable
 data class FilesyncMarker(val odinId: String, @Serializable(with = UuidSerializer::class) val driveAlias: Uuid)
@@ -194,7 +208,7 @@ class FilesyncSharing(
     /** Shares a new node like the folder it was made in: the same people, access and end; whether there was any to share. */
     suspend fun inherit(parentId: Uuid, nodeId: Uuid, keyHeader: KeyHeader): Boolean {
         if (parentId == FilesyncProtocol.RootNodeId || !FilesyncSession.signedIn.value) return false
-        return withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) {
+        return withRetryResult(RETRY, TAG) {
             val found = filesyncQuery.queryBatch(
                 FilesyncProtocol.DriveAlias,
                 QueryBatchRequest(
@@ -215,6 +229,64 @@ class FilesyncSharing(
             true
         }.getOrThrow() == true
     }
+
+    /**
+     * How moving [nodes] into [into] changes their sharing, and that of everything below them as [tree] lists it (by
+     * node id, the node's own handle included). A share is taken to come from the folder a node leaves when that folder
+     * is shared with the same person.
+     */
+    suspend fun planMove(nodes: List<FilesyncNode>, into: Uuid, tree: suspend (FilesyncNode) -> Map<Uuid, FilesyncHandle>): FilesyncMoveSharing {
+        if (!FilesyncSession.signedIn.value) return FilesyncMoveSharing.None
+        val folders = liveShares(nodes.mapTo(HashSet()) { it.parentId } + into)
+        // Neither folder shares anything: the move changes no one's access, and big folders aren't walked for it.
+        if (folders.isEmpty()) return FilesyncMoveSharing.None
+        val people = individualCircles()
+        val entering = folders[into].orEmpty()
+        val kept = entering.mapTo(HashSet()) { it.circleId }
+        val trees = nodes.associate { it.nodeId to tree(it) }
+        val rows = liveShares(trees.values.flatMapTo(HashSet()) { it.keys })
+        val stops = mutableMapOf<Uuid, List<Pair<Uuid, Uuid>>>()
+        val starts = mutableMapOf<Uuid, List<ShareRequest>>()
+        for (node in nodes) {
+            val tree = trees.getValue(node.nodeId)
+            val leaving = folders[node.parentId].orEmpty().map { it.circleId }.filter { it !in kept && it in people }.toSet()
+            stops[node.nodeId] = tree.flatMap { (id, handle) -> rows[id].orEmpty().filter { it.circleId in leaving }.map { handle.fileId to it.circleId } }
+            starts[node.nodeId] = tree.flatMap { (id, handle) ->
+                val has = rows[id].orEmpty().mapTo(HashSet()) { it.circleId }
+                entering.filter { it.circleId !in has }.map { row ->
+                    val locked = ShareKeys.lockFileKey(ownCircleKey(row.circleId).key, handle.keyHeader.aesKey.toByteArray(), FilesyncProtocol.DriveAlias, handle.fileId, row.circleId)
+                    ShareRequest(handle.fileId, row.circleId, DrivePermission.combine(row.permissions.values), row.expiresAt, locked)
+                }
+            }
+        }
+        val losing = stops.values.flatten().mapNotNull { people[it.second] }.distinct().sortedBy { it.domainName }
+        return FilesyncMoveSharing(stops, starts, losing)
+    }
+
+    /** Carries out [plan] for the nodes that did move. */
+    suspend fun applyMove(plan: FilesyncMoveSharing, moved: Collection<Uuid>) {
+        moved.flatMap { plan.starts[it].orEmpty() }.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
+            withRetryResult(RETRY, TAG) { filesyncShares.share(FilesyncProtocol.DriveAlias, chunk) }.getOrThrow()
+        }
+        moved.flatMap { plan.stops[it].orEmpty() }.forEach { (fileId, circleId) ->
+            withRetryResult(RETRY, TAG) { filesyncShares.withdraw(FilesyncProtocol.DriveAlias, fileId, circleId) }.getOrThrow()
+        }
+    }
+
+    /** The live shares of each of [nodeIds] that has any. */
+    private suspend fun liveShares(nodeIds: Set<Uuid>): Map<Uuid, List<ShareRow>> =
+        nodeIds.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).flatMap { chunk ->
+            filesyncQuery.queryBatch(
+                FilesyncProtocol.DriveAlias,
+                QueryBatchRequest(
+                    queryParams = FileQueryParams(clientUniqueIdAtLeastOne = chunk),
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = chunk.size, includeShares = true),
+                ),
+            ).searchResults.mapNotNull { file ->
+                val nodeId = file.fileMetadata.appData.uniqueId ?: return@mapNotNull null
+                file.shares?.takeIf { it.isNotEmpty() }?.let { nodeId to it }
+            }
+        }.toMap()
 
     /** The nodes in [folderId] with a live share. */
     suspend fun sharedIn(folderId: Uuid): Set<Uuid> {
@@ -407,6 +479,7 @@ class FilesyncSharing(
 
     companion object {
         private const val PAGE = 1000
+        private val RETRY = RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException })
         private const val ADD_MANY_LIMIT = 500
         private const val TAG = "FilesyncSharing"
         private val filesyncAppId = Uuid.parseHex(filesyncAppRegistration.appId)

@@ -290,13 +290,18 @@ class FilesyncViewModel(
                 val picker = _uiState.value.movePicker?.takeIf { it.canMoveHere } ?: return
                 closeMovePicker()
                 val handles = transfers.handles
-                viewModelScope.launch {
-                    val target = picker.path.last()
+                val target = picker.path.last()
+                sharing.move(picker.nodes, handles, target.nodeId) {
+                    var moved = emptyList<Uuid>()
                     reportWrite(FilesyncUiEvent.Moved(target.name), FilesyncError.MoveFailed, _events::send) {
-                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId })
+                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId }).also { moved = it.moved }
                     }
+                    moved
                 }
             }
+
+            FilesyncUiAction.ConfirmLosingAccess -> sharing.confirmLosingAccess()
+            FilesyncUiAction.DismissLosingAccess -> sharing.dismissLosingAccess()
 
             FilesyncUiAction.MakePrivate -> {
                 val url = privateDriveOptIn.makePrivateUrl(FilesyncPrivateDrive, extendPermissionViewModel.callbackUrl())

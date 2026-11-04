@@ -111,6 +111,9 @@ import id.homebase.resources.filesync_make_private
 import id.homebase.resources.filesync_sign_in_again_body
 import id.homebase.resources.filesync_sign_in_again_title
 import id.homebase.resources.filesync_load_failed
+import id.homebase.resources.filesync_move_anyway
+import id.homebase.resources.filesync_move_losing_body
+import id.homebase.resources.filesync_move_losing_title
 import id.homebase.resources.filesync_more
 import id.homebase.resources.filesync_new_folder
 import id.homebase.resources.filesync_new_folder_name
@@ -222,6 +225,16 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         )
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
+    uiState.sharing.losingAccess?.let { people ->
+        FilesyncConfirmDialog(
+            title = stringResource(MR.string.filesync_move_losing_title),
+            text = stringResource(MR.string.filesync_move_losing_body, people.joinToString { it.domainName }),
+            confirmLabel = stringResource(MR.string.filesync_move_anyway),
+            destructive = true,
+            onConfirm = { viewModel.onAction(FilesyncUiAction.ConfirmLosingAccess) },
+            onDismiss = { viewModel.onAction(FilesyncUiAction.DismissLosingAccess) },
+        )
+    }
     uiState.shareChooser?.let { FilesyncShareSheet(it, onShare = { target -> viewModel.onAction(FilesyncUiAction.ShareTo(target)) }, onDismiss = { viewModel.onAction(FilesyncUiAction.DismissShare) }) }
     if (uiState.sharing.shareWith != null) FilesyncShareWithSheet(uiState.sharing, viewModel::onAction)
     // Wide windows show them in the browser's centre.

@@ -131,6 +131,7 @@ class FilesyncSharingTest {
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call, filesyncSecret).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/share-key/members") || path.endsWith("/shares") -> "{}"
+            "/shares/" in path && request.method == HttpMethod.Delete -> "{}"
             path.endsWith("/circles/with-members") ->
                 """[{"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"${Uuid.parseHex(filesyncAppRegistration.appId)}"},"members":["sam.test"]}]"""
             path.endsWith("/query-batch") -> sharedPages.removeFirst()
@@ -294,6 +295,77 @@ class FilesyncSharingTest {
 
         assertEquals(1, calls.count { it.path.endsWith("/query-batch") }, "the root is never shared")
         assertTrue(calls.none { it.path.endsWith("/shares") })
+    }
+
+    private val oldFolder = Uuid.random()
+    private val newFolder = Uuid.random()
+    private val moved = FilesyncNode(Uuid.random(), oldFolder, false, "emilie.jpg", modifiedMs = null, sizeBytes = 1)
+    private val movedFileId = Uuid.random()
+    private val movedHandle = FilesyncHandle(movedFileId, null, FilesyncProtocol.FileFileType, KeyHeader.newRandom16(), JsonObject(emptyMap()), null)
+
+    private fun folders(old: Boolean, new: Boolean) =
+        """{"searchResults":[${sharedFile("Old", samsCircle.takeIf { old }, "read", uniqueId = oldFolder)}, ${sharedFile("New", samsCircle.takeIf { new }, "read", uniqueId = newFolder, expiresAt = 1_900_000_000_000)}],"hasMoreRows":false}"""
+
+    private fun movedFile(shared: Boolean) =
+        """{"searchResults":[${sharedFile("emilie.jpg", samsCircle.takeIf { shared }, "read", uniqueId = moved.nodeId, fileId = movedFileId)}],"hasMoreRows":false}"""
+
+    private suspend fun planMove() = sharing.planMove(listOf(moved), newFolder) { mapOf(it.nodeId to movedHandle) }
+
+    @Test
+    fun movingOutOfAFolderSharedWithSamStopsSharingItWithHim() = runTest {
+        sharedPages += folders(old = true, new = false)
+        sharedPages += movedFile(shared = true)
+
+        val plan = planMove()
+        assertEquals(listOf(sam), plan.losingAccess)
+
+        sharing.applyMove(plan, emptyList())
+        assertTrue(calls.none { it.request.method == HttpMethod.Delete }, "a node that didn't move keeps its shares")
+
+        sharing.applyMove(plan, listOf(moved.nodeId))
+        assertEquals(listOf("/files/$movedFileId/shares/$samsCircle"), calls.filter { it.request.method == HttpMethod.Delete }.map { it.path.substringAfter(FilesyncProtocol.DriveAlias.toString()) })
+        assertTrue(calls.none { it.path.endsWith("/shares") })
+    }
+
+    @Test
+    fun movingIntoAFolderSharedWithSamSharesItLikeTheFolderWithoutAsking() = runTest {
+        val circleKey = ShareKeys.newCircleKey()
+        storedShareKey = Base64.encode(ShareKeys.lockCircleKey(filesyncAppKey, circleKey, samsCircle))
+        sharedPages += folders(old = false, new = true)
+        sharedPages += movedFile(shared = false)
+
+        val plan = planMove()
+        assertEquals(emptyList(), plan.losingAccess)
+        sharing.applyMove(plan, listOf(moved.nodeId))
+
+        val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
+        assertEquals(movedFileId.toString(), share["fileId"]!!.jsonPrimitive.content)
+        assertEquals("1900000000000", share["expiresAt"]!!.jsonPrimitive.content)
+        val opened = ShareKeys.openFileKey(circleKey, Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content), FilesyncProtocol.DriveAlias, movedFileId, samsCircle)
+        assertContentEquals(movedHandle.keyHeader.aesKey.toByteArray(), opened)
+        assertTrue(calls.none { it.request.method == HttpMethod.Delete })
+    }
+
+    @Test
+    fun movingBetweenTwoFoldersSharedWithSamChangesNothing() = runTest {
+        sharedPages += folders(old = true, new = true)
+        sharedPages += movedFile(shared = true)
+
+        val plan = planMove()
+        sharing.applyMove(plan, listOf(moved.nodeId))
+
+        assertEquals(emptyList(), plan.losingAccess)
+        assertTrue(calls.none { it.path.endsWith("/shares") || it.request.method == HttpMethod.Delete })
+    }
+
+    @Test
+    fun movingBetweenUnsharedFoldersDoesntWalkWhatsMoved() = runTest {
+        sharedPages += folders(old = false, new = false)
+
+        val plan = sharing.planMove(listOf(moved), newFolder) { error("walked") }
+
+        assertEquals(emptyList(), plan.losingAccess)
+        assertEquals(1, calls.count { it.path.endsWith("/query-batch") })
     }
 
     @Test

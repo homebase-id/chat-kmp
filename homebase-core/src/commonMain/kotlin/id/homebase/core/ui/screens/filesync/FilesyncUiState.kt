@@ -167,6 +167,8 @@ data class FilesyncSharingState(
     val recipient: OdinId? = null,
     val recipientFiles: List<FilesyncOutgoingShare>? = null,
     val recipientFilesFailed: Boolean = false,
+    /** Who'd stop seeing what's being moved, asked about before it moves. */
+    val losingAccess: List<OdinId>? = null,
 ) {
     val viewing: Boolean get() = sharer != null || recipient != null
 }
@@ -237,6 +239,8 @@ sealed interface FilesyncUiAction {
     data object ConfirmDelete : FilesyncUiAction
     data object DismissDelete : FilesyncUiAction
     data class AskMove(val nodes: List<FilesyncNode>) : FilesyncUiAction
+    data object ConfirmLosingAccess : FilesyncUiAction
+    data object DismissLosingAccess : FilesyncUiAction
     data class MovePickerOpen(val folder: FilesyncNode) : FilesyncUiAction
     data class MovePickerToCrumb(val index: Int) : FilesyncUiAction
     data object ConfirmMove : FilesyncUiAction
@@ -270,6 +274,7 @@ sealed interface FilesyncDiscussionAction : FilesyncUiAction
 enum class FilesyncError {
     MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
     SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, RecipientNotReady, SharedFilesFailed, InheritFailed,
+    MoveCheckFailed, MoveSharingFailed,
 }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */

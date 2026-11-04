@@ -70,6 +70,7 @@ internal class FilesyncSharingController(
     private var sharedInJob: Job? = null
     private var recipientFilesJob: Job? = null
     private val recipientHandles = mutableMapOf<Uuid, FilesyncHandle>()
+    private var pendingMove: (suspend () -> Unit)? = null
 
     fun start() {
         scope.launch {
@@ -119,7 +120,7 @@ internal class FilesyncSharingController(
         scope.launch {
             var fileHandles = emptyList<FilesyncHandle>()
             try {
-                fileHandles = withDescendants(files)
+                fileHandles = withDescendants(files).values.toList()
                 sharing.share(fileHandles, recipient, access, expiry.expiresAt(Clock.System.now().toEpochMilliseconds()))
                 update { it.copy(sending = false, shareWith = null) }
                 send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
@@ -134,6 +135,58 @@ internal class FilesyncSharingController(
                 send(FilesyncUiEvent.Error(if (e is FilesyncSharingException.RecipientNotReady) FilesyncError.RecipientNotReady else FilesyncError.SharingFailed))
             }
         }
+    }
+
+    /**
+     * Moves [nodes] into [into] with [move], which says which of them moved, and shares those like their new folder;
+     * asks first when someone would lose access. Nothing moves when their sharing can't be read.
+     */
+    fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, into: Uuid, move: suspend () -> List<Uuid>) {
+        scope.launch {
+            val going = nodes.filter { it.parentId != into && it.removedMs == null }
+            val plan = try {
+                if (going.isEmpty()) FilesyncMoveSharing.None
+                else sharing.planMove(going, into) { node -> withDescendants(listOf(node), handles, listFolders) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "reading the sharing of ${going.size} nodes moving to $into failed" }
+                send(FilesyncUiEvent.Error(FilesyncError.MoveCheckFailed))
+                return@launch
+            }
+            val go: suspend () -> Unit = {
+                val moved = move()
+                if (moved.isNotEmpty() && plan !== FilesyncMoveSharing.None) {
+                    try {
+                        sharing.applyMove(plan, moved)
+                        loadSharedIn()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e(e, TAG) { "sharing ${moved.size} moved nodes like $into failed" }
+                        send(FilesyncUiEvent.Error(FilesyncError.MoveSharingFailed))
+                    }
+                }
+            }
+            if (plan.losingAccess.isEmpty()) {
+                go()
+            } else {
+                pendingMove = go
+                update { it.copy(losingAccess = plan.losingAccess) }
+            }
+        }
+    }
+
+    fun confirmLosingAccess() {
+        val go = pendingMove ?: return
+        pendingMove = null
+        update { it.copy(losingAccess = null) }
+        scope.launch { go() }
+    }
+
+    fun dismissLosingAccess() {
+        pendingMove = null
+        update { it.copy(losingAccess = null) }
     }
 
     fun showSharedWith(nodeId: Uuid) {
@@ -328,7 +381,7 @@ internal suspend fun withDescendants(
     nodes: List<FilesyncNode>,
     handles: Map<Uuid, FilesyncHandle>,
     listFolders: suspend (List<Uuid>) -> FilesyncNodes,
-): List<FilesyncHandle> {
+): Map<Uuid, FilesyncHandle> {
     val found = nodes.mapNotNull { node -> handles[node.nodeId]?.let { node.nodeId to it } }.toMap(LinkedHashMap())
     var folders = nodes.filter { it.isFolder }.map { it.nodeId }
     while (folders.isNotEmpty()) {
@@ -336,7 +389,7 @@ internal suspend fun withDescendants(
         folders = below.nodes.values.filter { it.isFolder && it.nodeId !in found }.map { it.nodeId }
         below.handles.forEach { (id, handle) -> found.getOrPut(id) { handle } }
     }
-    return found.values.toList()
+    return found
 }
 
 /** What [parent] holds of [shared]; at the top (null), whatever's shared without the folder it's in. */

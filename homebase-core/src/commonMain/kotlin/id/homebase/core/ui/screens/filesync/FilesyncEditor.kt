@@ -43,7 +43,7 @@ private val ChangedElsewhere = setOf(OdinClientErrorCode.VersionTagMismatch, Odi
  * [skipped]: items another device changed or deleted meanwhile, left as they are. [recovered]: restored where no listing
  * shows them until a computer moves them into Recovered files.
  */
-class FilesyncWriteResult(val done: Int, val skipped: Int, val recovered: Int = 0, val tryAgainSoon: Boolean = false)
+class FilesyncWriteResult(val done: Int, val skipped: Int, val recovered: Int = 0, val tryAgainSoon: Boolean = false, val moved: List<Uuid> = emptyList())
 
 /** Restores and empties Recently deleted exactly as filesync's deleted.rs does, so every desktop agrees with the phone. */
 class FilesyncEditor(
@@ -193,17 +193,17 @@ class FilesyncEditor(
         writeLock.withLock {
             val folderId = folderPath.last()
             val plan = planMove(nodes, handles, folderPath, repository.takenNames(folderId))
-            var moved = 0
+            val moved = mutableListOf<Uuid>()
             var skipped = plan.skipped
             try {
                 for ((node, name) in plan.moves) {
                     val handle = handles.getValue(node.nodeId)
-                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved++ else skipped++
+                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved += node.nodeId else skipped++
                 }
             } finally {
                 if (plan.moves.isNotEmpty()) _changed.tryEmit(Unit)
             }
-            FilesyncWriteResult(moved, skipped)
+            FilesyncWriteResult(moved.size, skipped, moved = moved)
         }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */

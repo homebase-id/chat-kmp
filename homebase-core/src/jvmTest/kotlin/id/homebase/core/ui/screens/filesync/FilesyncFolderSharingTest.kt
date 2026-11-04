@@ -34,8 +34,7 @@ class FilesyncFolderSharingTest {
             FilesyncNodes(below.associateBy { it.nodeId }, below.associate { it.nodeId to handles[it.nodeId]!! })
         }
 
-        assertEquals(listOf(photos, notes, trip, cover, beach).map { handles[it.nodeId] }.toSet(), shared.toSet())
-        assertEquals(5, shared.size)
+        assertEquals(listOf(photos, notes, trip, cover, beach).associate { it.nodeId to handles[it.nodeId] }, shared)
         assertEquals(listOf(listOf(photos.nodeId), listOf(trip.nodeId)), asked)
     }
 
