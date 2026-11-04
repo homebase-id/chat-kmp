@@ -8,9 +8,10 @@
 
   function isTable(input) {
     var raw = typeof input === 'string' ? input : (input && input.url) || String(input);
-    var path;
-    try { path = new URL(raw, document.baseURI).pathname; } catch (e) { return null; }
-    return path.indexOf('/composeResources/') !== -1 && path.slice(-4) === '.cvr' ? new URL(raw, document.baseURI).href : null;
+    var parsed;
+    try { parsed = new URL(raw, document.baseURI); } catch (e) { return null; }
+    var path = parsed.pathname;
+    return path.indexOf('/composeResources/') !== -1 && path.slice(-4) === '.cvr' ? parsed.href : null;
   }
 
   window.fetch = function (input, init) {

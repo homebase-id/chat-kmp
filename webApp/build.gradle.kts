@@ -206,6 +206,7 @@ val generateWebResourcesVersion = tasks.register("generateWebResourcesVersion") 
             digest.update(file.readBytes())
         }
         val version = digest.digest().take(8).joinToString("") { "%02x".format(it) }
+        val packageByModule = HashMap<File, String>()
         val tables = resources.files.mapNotNull { file ->
             val rel = file.relativeTo(root).invariantSeparatorsPath.split("/")
             val srcAt = rel.indexOf("src")
@@ -213,9 +214,11 @@ val generateWebResourcesVersion = tasks.register("generateWebResourcesVersion") 
             if (file.extension != "xml" || rel.getOrNull(srcAt + 2) != "composeResources" ||
                 valuesDir == null || !valuesDir.startsWith("values")) return@mapNotNull null
             val module = File(root, rel.take(srcAt).joinToString("/"))
-            val pkg = Regex("""packageOfResClass\s*=\s*"([^"]+)"""")
-                .find(File(module, "build.gradle.kts").readText())?.groupValues?.get(1)
-                ?: error("No packageOfResClass in ${module.name}/build.gradle.kts")
+            val pkg = packageByModule.getOrPut(module) {
+                Regex("""packageOfResClass\s*=\s*"([^"]+)"""")
+                    .find(File(module, "build.gradle.kts").readText())?.groupValues?.get(1)
+                    ?: error("No packageOfResClass in ${module.name}/build.gradle.kts")
+            }
             "composeResources/$pkg/$valuesDir/${file.nameWithoutExtension}.${rel[srcAt + 1]}.cvr"
         }.sorted()
         val tableLiterals = tables.joinToString(",\n") { "    \"$it\"" }
