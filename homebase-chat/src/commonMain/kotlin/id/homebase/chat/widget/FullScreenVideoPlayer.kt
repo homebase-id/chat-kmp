@@ -130,6 +130,7 @@ fun FullScreenVideoPlayer(
                             seekRequestMs = null,
                             onPositionMs = { /* no-op; bubble has no scrubber */ },
                             modifier = Modifier.fillMaxSize(),
+                            hideWhenPaused = true,
                         )
                         if (!isPlaying) {
                             val localBitmap = localCtx.thumbnailBytes.takeIf { it.isNotEmpty() }?.let { bytes ->
@@ -139,7 +140,7 @@ fun FullScreenVideoPlayer(
                                 androidx.compose.foundation.Image(
                                     bitmap = localBitmap,
                                     contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier.fillMaxSize().testTag("fullScreenVideoPoster"),
                                     contentScale = ContentScale.Fit,
                                 )
                             } else if (payloadIv != null || !data.isEncrypted) {

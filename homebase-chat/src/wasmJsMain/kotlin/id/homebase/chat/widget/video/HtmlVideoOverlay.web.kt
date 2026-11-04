@@ -28,9 +28,15 @@ internal fun createVideoOverlay(muted: Boolean, controls: Boolean): JsAny = js(
         v.style.background = 'black';
         v.style.zIndex = '2147483000';
         v.style.display = 'none';
+        if (!controls) v.style.pointerEvents = 'none';
         document.body.appendChild(v);
         return v;
     }"""
+)
+
+/** Hides the element without changing layout, so the canvas (poster, play button) underneath shows through. */
+internal fun setVideoOverlayHidden(el: JsAny, hidden: Boolean): Unit = js(
+    "{ el.style.visibility = hidden ? 'hidden' : 'visible'; }"
 )
 
 internal fun setVideoOverlaySrc(el: JsAny, url: String): Unit = js(

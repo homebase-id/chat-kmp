@@ -21,7 +21,10 @@ import kotlinx.coroutines.SupervisorJob
 import org.koin.compose.KoinIsolatedContext
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.uuid.Uuid
 
@@ -48,11 +51,15 @@ class FullScreenVideoPlayerTest {
         uploadMessageId = messageId,
     )
 
+    private fun pngBytes(): ByteArray = ByteArrayOutputStream().also {
+        ImageIO.write(BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB), "png", it)
+    }.toByteArray()
+
     private fun putVideo(key: String, trimmed: Boolean) = store.put(
         messageId,
         key,
         LocalAttachmentContext.Video(
-            thumbnailBytes = ByteArray(0),
+            thumbnailBytes = pngBytes(),
             localFilePath = videoFile.absolutePath,
             aspectRatio = 1.78f,
             trimStartMs = if (trimmed) 1_000L else null,
@@ -72,11 +79,14 @@ class FullScreenVideoPlayerTest {
             }
         }
         onAllNodesWithTag("fullScreenVideoPlay").assertCountEquals(0)
+        onAllNodesWithTag("fullScreenVideoPoster", useUnmergedTree = true).assertCountEquals(0)
 
         onNodeWithTag("fullScreenVideoTap").performClick()
         onNodeWithTag("fullScreenVideoPlay").assertExists()
+        onNodeWithTag("fullScreenVideoPoster", useUnmergedTree = true).assertExists()
 
         onNodeWithTag("fullScreenVideoPlay").performClick()
         onAllNodesWithTag("fullScreenVideoPlay").assertCountEquals(0)
+        onAllNodesWithTag("fullScreenVideoPoster", useUnmergedTree = true).assertCountEquals(0)
     }
 }

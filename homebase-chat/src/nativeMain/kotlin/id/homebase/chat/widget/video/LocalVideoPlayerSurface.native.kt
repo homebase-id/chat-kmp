@@ -99,6 +99,7 @@ actual fun TrimmableVideoPlayerSurface(
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
     onFirstFrameRendered: (() -> Unit)?,
+    hideWhenPaused: Boolean,
 ) {
     val onPositionMsState = rememberUpdatedState(onPositionMs)
 
