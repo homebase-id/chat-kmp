@@ -85,6 +85,9 @@ data class FilesyncUiState(
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
 
+    /** The people listed below the root's own nodes, opened like folders; a search or tag filter hides them. */
+    val rootSharers: List<OdinId> get() = if (path.size == 1 && query.isBlank() && tagFilter == null) sharing.sharers else emptyList()
+
     /** The selected nodes in the order shown. */
     val selected: List<FilesyncNode> by lazy(LazyThreadSafetyMode.NONE) {
         if (selecting) visible.filter { it.nodeId in selection.ids } else emptyList()

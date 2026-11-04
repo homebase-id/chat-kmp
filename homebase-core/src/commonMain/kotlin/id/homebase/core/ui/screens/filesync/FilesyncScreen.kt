@@ -405,9 +405,6 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                 BrowserListBody(scope) {
                     // Bottom padding keeps the last row's buttons clear of the upload button.
                     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
-                        if (uiState.path.size == 1 && uiState.sharing.sharers.isNotEmpty()) {
-                            item(key = "sharers") { FilesyncSharersStrip(uiState.sharing.sharers, scope.onAction) }
-                        }
                         if (scope.uploads.isNotEmpty()) {
                             item(key = "uploads") {
                                 UploadStrip(scope.uploads, scope.onAction, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
@@ -421,6 +418,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                         items(folders, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
                         if (files.isNotEmpty()) item(key = "files") { SectionHeader(MR.string.filesync_files) }
                         items(files, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        sharerRows(uiState.rootSharers, scope.onAction)
                     }
                 }
             }
@@ -468,7 +466,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
 internal fun BrowserListBody(scope: FilesyncBrowserScope, content: @Composable () -> Unit) {
     val uiState = scope.uiState
     FilesyncListBody(
-        isEmpty = uiState.visible.isEmpty() && scope.uploads.isEmpty(),
+        isEmpty = uiState.visible.isEmpty() && scope.uploads.isEmpty() && uiState.rootSharers.isEmpty(),
         isLoading = uiState.isLoading,
         loadFailed = uiState.loadFailed,
         failedMessage = MR.string.filesync_load_failed,

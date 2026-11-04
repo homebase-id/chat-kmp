@@ -66,7 +66,7 @@ enum class FilesyncExpiry(val days: Int?) {
     fun expiresAt(nowMs: Long): Long? = days?.let { nowMs + it * DAY_MS }
 
     companion object {
-        val Default = Month
+        val Default = Year
         const val DAY_MS = 24 * 60 * 60 * 1000L
     }
 }

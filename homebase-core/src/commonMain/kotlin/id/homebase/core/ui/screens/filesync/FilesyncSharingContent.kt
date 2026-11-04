@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
@@ -47,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -84,7 +86,6 @@ import id.homebase.resources.filesync_share_send
 import id.homebase.resources.filesync_share_with
 import id.homebase.resources.filesync_shared_by_none
 import id.homebase.resources.filesync_shared_files_failed
-import id.homebase.resources.filesync_shared_files_from
 import id.homebase.resources.filesync_shared_with
 import id.homebase.resources.filesync_shared_with_me
 import id.homebase.resources.filesync_shared_with_none
@@ -265,45 +266,34 @@ internal fun FilesyncSharedWithSection(node: FilesyncNode, sharing: FilesyncShar
     }
 }
 
-/** The people who share files with this identity, at the top of the browser; one opens what they share. */
-@Composable
-internal fun FilesyncSharersStrip(sharers: List<OdinId>, onAction: (FilesyncUiAction) -> Unit) {
+/** Below the root's own nodes: the people who share files with this identity, each opened like a folder. */
+internal fun LazyListScope.sharerRows(sharers: List<OdinId>, onAction: (FilesyncUiAction) -> Unit) {
     if (sharers.isEmpty()) return
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(MR.string.filesync_shared_with_me), style = MaterialTheme.typography.titleSmall)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(sharers, key = { it.domainName }) { sharer ->
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable(role = Role.Button) { onAction(FilesyncUiAction.OpenSharer(sharer)) },
-                ) {
-                    IdentityAvatar(sharer, AvatarOptions(size = 48.dp))
-                    Text(sharer.domainName.substringBefore('.'), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                }
-            }
+    item(key = "sharers") {
+        Column {
+            HorizontalDivider(modifier = Modifier.padding(top = 12.dp, start = 16.dp, end = 16.dp))
+            Text(
+                stringResource(MR.string.filesync_shared_with_me),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+            )
         }
     }
-}
-
-/** The wide sidebar's "Shared files from": each person who shares with this identity; one opens what they share. */
-@Composable
-internal fun ColumnScope.FilesyncSharersSidebar(sharing: FilesyncSharingState, onAction: (FilesyncUiAction) -> Unit) {
-    if (sharing.sharers.isEmpty()) return
-    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp))
-    Text(
-        text = stringResource(MR.string.filesync_shared_files_from),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
-    )
-    sharing.sharers.forEach { sharer ->
-        NavigationDrawerItem(
-            label = { Text(sharer.domainName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            icon = { IdentityAvatar(sharer, AvatarOptions(size = 24.dp)) },
-            selected = sharing.sharer == sharer,
-            onClick = { onAction(FilesyncUiAction.OpenSharer(sharer)) },
-            modifier = Modifier.height(40.dp),
-        )
+    items(sharers, key = { "sharer:${it.domainName}" }) { sharer ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(MaterialTheme.shapes.small)
+                .clickable(role = Role.Button) { onAction(FilesyncUiAction.OpenSharer(sharer)) }
+                .padding(horizontal = 16.dp),
+        ) {
+            IdentityAvatar(sharer, AvatarOptions(size = FilesyncTileSize))
+            Text(sharer.domainName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        }
     }
 }
 

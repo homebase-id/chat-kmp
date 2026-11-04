@@ -127,6 +127,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 enum class FilesyncPlace { Files, Recent, Trash }
 
@@ -207,6 +208,9 @@ private fun Modifier.sharedSidebar(): Modifier {
 
 private const val SIDEBAR_KEY = "filesync-sidebar"
 
+// The crumb of a person's shared files, which no node has.
+private val SharerCrumbId = Uuid.parse("00000000-0000-0000-0000-000000000001")
+
 /** The wide shell on wide windows, a plain screen with [compactTopBar] otherwise; for Recent and Trash. */
 @Composable
 internal fun FilesyncPlaceScaffold(
@@ -262,7 +266,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
     val actions = scope.actions
     val viewing = uiState.sharing.viewing
     FilesyncShell(
-        place = FilesyncPlace.Files.takeUnless { viewing },
+        place = FilesyncPlace.Files.takeUnless { uiState.sharing.recipient != null },
         places = if (viewing) scope.places.closing { scope.onAction(FilesyncUiAction.OpenSharer(null)) } else scope.places,
         snackbarHostState = scope.snackbarHostState,
         modifier = Modifier.onPreviewKeyEvent { event ->
@@ -271,9 +275,11 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             find
         },
         title = {
-            Breadcrumbs(uiState.path, onCrumb = {
+            val sharer = uiState.sharing.sharer
+            Breadcrumbs(if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) else uiState.path, onCrumb = { index ->
+                if (sharer != null && index > 0) return@Breadcrumbs
                 if (viewing) scope.onAction(FilesyncUiAction.OpenSharer(null))
-                scope.onAction(FilesyncUiAction.NavigateToCrumb(it))
+                scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
             })
         },
         actions = actions@{
@@ -313,7 +319,6 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             )
         },
         sidebarExtra = {
-            FilesyncSharersSidebar(uiState.sharing, scope.onAction)
             FilesyncRecipientsSidebar(uiState.sharing, scope.onAction)
             if (!viewing) TagFilters(uiState, scope.onAction)
         },
@@ -398,6 +403,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                                     },
                                 )
                             }
+                            sharerRows(uiState.rootSharers, scope.onAction)
                         }
                     }
                 }
