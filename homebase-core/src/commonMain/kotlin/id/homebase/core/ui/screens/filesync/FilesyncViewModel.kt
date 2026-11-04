@@ -86,7 +86,8 @@ class FilesyncViewModel(
         filesyncSharing,
         sharingSetup,
         handles = { transfers.handles },
-        listFolders = repository::listFolders,
+        // A folder's sharing reaches what's in Recently deleted too, so a restore brings it back as it was.
+        listFolders = { repository.listFolders(it, includeRemoved = true) },
         returnUrl = extendPermissionViewModel::callbackUrl,
         state = { _uiState.value.sharing },
         update = { change -> _uiState.update { it.copy(sharing = change(it.sharing)) } },
@@ -292,9 +293,9 @@ class FilesyncViewModel(
                 val handles = transfers.handles
                 val target = picker.path.last()
                 sharing.move(picker.nodes, target.nodeId) {
-                    var moved = emptyList<Uuid>()
+                    val moved = mutableListOf<Uuid>()
                     reportWrite(FilesyncUiEvent.Moved(target.name), FilesyncError.MoveFailed, _events::send) {
-                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId }).also { moved = it.moved }
+                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId }, moved)
                     }
                     moved
                 }

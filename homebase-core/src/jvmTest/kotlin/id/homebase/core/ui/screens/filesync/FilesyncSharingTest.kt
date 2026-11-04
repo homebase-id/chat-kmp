@@ -133,6 +133,7 @@ class FilesyncSharingTest {
     private val groupCircle = Uuid.random()
     private var unsealed = listOf("sam.test")
     private var refusedByAddMany = emptyList<String>()
+    private var depositedByAddMany = emptyList<String>()
     private var circles = """[{"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"${Uuid.parseHex(filesyncAppRegistration.appId)}"},"members":["sam.test"]}]"""
 
     private val engine = MockEngine { request ->
@@ -150,7 +151,7 @@ class FilesyncSharingTest {
                     else -> "\"$groupCircle\""
                 }
             path.endsWith("/connections/circles/add-many") ->
-                """{"enrolled":1,"deposited":0,"skipped":0,"outcomes":[${refusedByAddMany.joinToString { """{"odinId":"$it","kind":"skipped"}""" }}]}"""
+                """{"enrolled":1,"deposited":0,"skipped":0,"outcomes":[${(refusedByAddMany.map { it to "skipped" } + depositedByAddMany.map { it to "deposited" }).joinToString { (id, kind) -> """{"odinId":"$id","kind":"$kind"}""" }}]}"""
             "/connections/circles/delete" in path || path.endsWith("/connections/circles/revoke") -> "{}"
             path.endsWith("/share-key/unsealed-members") -> unsealed.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
@@ -360,6 +361,10 @@ class FilesyncSharingTest {
         assertTrue(asked.all { q -> q["queryParams"]!!.jsonObject["sharedWith"]!!.jsonArray.map { it.jsonPrimitive.content } == listOf(samsCircle.toString()) })
         assertTrue(asked.all { it["resultOptionsRequest"]!!.jsonObject["includeShares"]!!.jsonPrimitive.content.toBoolean() })
         assertEquals("next", asked[1]["resultOptionsRequest"]!!.jsonObject["cursorState"]!!.jsonPrimitive.content)
+        // Shared folders are listed too, and nothing in Recently deleted.
+        val params = asked.first()["queryParams"]!!.jsonObject
+        assertEquals(setOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), params["fileType"]!!.jsonArray.map { it.jsonPrimitive.int }.toSet())
+        assertEquals(FilesyncStatus.Live.archivalStatus.toSet(), params["archivalStatus"]!!.jsonArray.map { it.jsonPrimitive.int }.toSet())
     }
 
     @Test
@@ -524,6 +529,16 @@ class FilesyncSharingTest {
 
         assertEquals(listOf(sam, merry), e.recipients)
         assertTrue(calls.none { it.path.endsWith("/circles/create") })
+    }
+
+    @Test
+    fun aMemberWhoJoinsAtTheirNextCallKeepsTheGroup() = runTest {
+        depositedByAddMany = listOf("merry.test")
+
+        val group = sharing.createGroup("Hiking", listOf(sam, merry))
+
+        assertEquals(listOf(merry, sam), group.members)
+        assertTrue(calls.none { "/connections/circles/delete" in it.path })
     }
 
     @Test

@@ -360,7 +360,7 @@ fun main() {
             }
         }
 
-        val place by WindowTitle.place.collectAsStateWithLifecycle()
+        val place by WindowTitle.place.collectAsStateWithLifecycle(lifecycleOwner = appLifecycleOwner)
         Window(
             onCloseRequest = hideWindow,
             alwaysOnTop = false,

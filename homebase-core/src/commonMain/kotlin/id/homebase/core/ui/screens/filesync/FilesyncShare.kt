@@ -59,7 +59,8 @@ private val FilesyncShareTarget.icon: ImageVector
 
 /** What to do with [nodes], asked when a file is opened or shared: a sheet on phones, a small dialog on wide layouts. */
 @Composable
-internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onShare: (FilesyncShareTarget) -> Unit, onDismiss: () -> Unit) {
+/** [withPeople] only where sharing with a person is handled: the browser's, not Recent's. */
+internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onShare: (FilesyncShareTarget) -> Unit, onDismiss: () -> Unit, withPeople: Boolean = false) {
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 360.dp) {
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
             Text(
@@ -71,7 +72,7 @@ internal fun FilesyncShareSheet(nodes: List<FilesyncNode>, onShare: (FilesyncSha
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
             )
-            FilesyncShareTarget.offered(nodes).forEach { target ->
+            FilesyncShareTarget.offered(nodes, withPeople).forEach { target ->
                 ListItem(
                     headlineContent = { Text(stringResource(target.label)) },
                     leadingContent = { Icon(target.icon, contentDescription = null) },

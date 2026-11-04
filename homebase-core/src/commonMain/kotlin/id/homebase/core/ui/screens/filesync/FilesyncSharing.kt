@@ -7,7 +7,9 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.RetryConfig
+import id.homebase.api.client.RetryResult
 import id.homebase.api.client.ServerException
+import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.CircleDesignation
 import id.homebase.api.client.connections.CircleGrantOn
@@ -46,6 +48,7 @@ import id.homebase.api.crypto.HashUtil
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.UuidSerializer
+import id.homebase.api.sync.database.EnqueueResult
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.util.compareStringUuId
 import id.homebase.api.youauth.DrivePermission
@@ -276,8 +279,11 @@ class FilesyncSharing(
 
     /** Shares a new node like the folder it was made in: the same people, access and end; whether there was any to share. */
     suspend fun inherit(parentId: Uuid, nodeId: Uuid, keyHeader: KeyHeader): Boolean {
-        if (parentId == FilesyncProtocol.RootNodeId || !FilesyncSession.signedIn.value) return false
-        return withRetryResult(RETRY, TAG) {
+        if (parentId == FilesyncProtocol.RootNodeId) return false
+        // An upload can come before the Filesync screen has ever opened in this run.
+        if (!FilesyncSession.signedIn.value) appCredentials.getActiveCredentials()?.domain?.let { FilesyncSession.restore(it) }
+        if (!FilesyncSession.signedIn.value) return false
+        val result = withRetryResult(RETRY, TAG) {
             val found = filesyncQuery.queryBatch(
                 FilesyncProtocol.DriveAlias,
                 QueryBatchRequest(
@@ -290,7 +296,9 @@ class FilesyncSharing(
             val fileId = found[nodeId]?.fileId ?: error("node $nodeId isn't on the drive")
             filesyncShares.share(FilesyncProtocol.DriveAlias, rows.map { shareRequest(fileId, keyHeader, it) })
             true
-        }.getOrThrow() == true
+        }
+        if ((result as? RetryResult.Failure)?.exception is UnauthorizedException) FilesyncSession.forget()
+        return result.getOrThrow() == true
     }
 
     /**
@@ -383,7 +391,11 @@ class FilesyncSharing(
         val circleId = circleOf(audience) ?: return emptyList()
         val found = mutableListOf<FilesyncSharedFile>()
         filesyncQuery.forEachFilesyncPage(
-            FileQueryParams(fileType = listOf(FilesyncProtocol.FileFileType), sharedWith = listOf(circleId)),
+            FileQueryParams(
+                fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType),
+                sharedWith = listOf(circleId),
+                archivalStatus = FilesyncStatus.Live.archivalStatus,
+            ),
             QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true, includeShares = true),
         ) { page ->
             page.searchResults.filter { it.fileState == FileState.Active }.forEach { file ->
@@ -425,7 +437,7 @@ class FilesyncSharing(
         }
         val found = mutableListOf<Pair<FilesyncNode, FilesyncHandle>>()
         query.forEachFilesyncPage(
-            FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType)),
+            FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), archivalStatus = FilesyncStatus.Live.archivalStatus),
             QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true),
             ownerOdinId = owner,
             externalFileKey = byShare,
@@ -436,10 +448,11 @@ class FilesyncSharing(
         return found
     }
 
-    /** Adds [members] to [circleId]; the ones it refused. */
+    /** Adds [members] to [circleId]; the ones it refused. One deposited joins at their next call, and a later share seals to them. */
     private suspend fun enroll(circleId: Uuid, members: Collection<OdinId>): Set<OdinId> =
         members.chunked(ADD_MANY_LIMIT).flatMapTo(HashSet()) { chunk ->
-            asFilesync.addManyToCircle(circleId.toString(), chunk.map(OdinId::domainName)).outcomes.filter { it.kind != EnrollmentOutcomeKind.Enrolled }.map { it.odinId }
+            asFilesync.addManyToCircle(circleId.toString(), chunk.map(OdinId::domainName)).outcomes
+                .filter { it.kind != EnrollmentOutcomeKind.Enrolled && it.kind != EnrollmentOutcomeKind.Deposited }.map { it.odinId }
         }
 
     private suspend fun shareRequest(fileId: Uuid, keyHeader: KeyHeader, circleId: Uuid, permissions: Int, expiresAt: Long?): ShareRequest {
@@ -486,7 +499,7 @@ class FilesyncSharing(
                 content = OdinSystemSerializer.serialize(FilesyncMarker(self.domainName, FilesyncProtocol.DriveAlias)),
             ),
         ).encryptContent(keyHeader)
-        outbox.tryEnqueue(
+        val queued = outbox.tryEnqueue(
             UploadFileRequest(
                 driveId = SystemDriveConstants.transientTempDrive.alias,
                 keyHeader = keyHeader,
@@ -495,6 +508,7 @@ class FilesyncSharing(
                 sealedTo = point,
             )
         )
+        if (queued is EnqueueResult.Failed) throw queued.cause
     }
 
     /** Each of [recipients]' point to seal to; all who can't receive shared files yet are named together. */

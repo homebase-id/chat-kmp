@@ -1036,7 +1036,7 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
-    single { FilesyncRepository(get(), get(), get(), get(), get()) }
+    single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
     single { CircleShareKeyProvider(get(), get()) }

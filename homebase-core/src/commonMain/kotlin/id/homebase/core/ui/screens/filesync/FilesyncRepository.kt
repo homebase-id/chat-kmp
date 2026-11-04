@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
@@ -51,10 +52,12 @@ class FilesyncRepository(
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val peerFiles: PeerFileByGlobalTransitProvider,
+    private val credentials: CredentialsManager,
 ) {
 
     /** The live nodes of several folders at once. */
-    suspend fun listFolders(folderIds: List<Uuid>): FilesyncNodes = queryChunked(folderIds, listOf(FilesyncStatus.Live)) { copy(groupId = it) }
+    suspend fun listFolders(folderIds: List<Uuid>, includeRemoved: Boolean = false): FilesyncNodes =
+        queryChunked(folderIds, if (includeRemoved) FilesyncStatus.entries else listOf(FilesyncStatus.Live)) { copy(groupId = it) }
 
     /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
@@ -191,10 +194,14 @@ class FilesyncRepository(
             request = QueryBatchRequest(queryParams = params, resultOptionsRequest = options),
         )
 
-    private fun nodesOf(page: QueryBatchResponse): FilesyncNodes {
+    private suspend fun nodesOf(page: QueryBatchResponse): FilesyncNodes {
         val nodes = linkedMapOf<Uuid, FilesyncNode>()
         val handles = mutableMapOf<Uuid, FilesyncHandle>()
+        val self = credentials.getActiveCredentials()?.domain
         page.searchResults.forEach { file ->
+            // Every connection may leave a file here (the sharers circle); only this identity's own are its tree.
+            val sender = file.fileMetadata.senderOdinId
+            if (sender != null && self != null && !sender.domainName.equals(self.domainName, ignoreCase = true)) return@forEach
             val (node, handle) = file.toFilesyncNode() ?: return@forEach
             nodes[node.nodeId] = node
             handles[node.nodeId] = handle

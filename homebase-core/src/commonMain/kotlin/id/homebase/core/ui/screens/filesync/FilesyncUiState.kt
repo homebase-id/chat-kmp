@@ -191,8 +191,9 @@ enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherAp
 
     companion object {
         // A browser can't hand a file to an app; other apps to share with are only on phones.
-        fun offered(nodes: List<FilesyncNode>): List<FilesyncShareTarget> = entries.filter { target ->
+        fun offered(nodes: List<FilesyncNode>, withPeople: Boolean = true): List<FilesyncShareTarget> = entries.filter { target ->
             when (target) {
+                Person -> withPeople
                 Preview -> nodes.singleFile?.let { filePreviewKind(null, it.name, it.sizeBytes) } != null
                 Open -> !isWeb() && nodes.singleFile != null
                 OtherApp -> isMobile()

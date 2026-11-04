@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.youauth.PermissionCheckResult
@@ -10,12 +11,12 @@ import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.config.filesyncAppRegistration
 import io.ktor.client.HttpClient
+import kotlin.time.Clock
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
-import kotlin.uuid.Uuid
 
 /** Turning sharing on: signing in to Filesync too ([FilesyncSession]), and the permission its registration may lack. */
 class FilesyncSharingSetup(
@@ -62,6 +63,7 @@ internal class FilesyncSharingController(
     private val send: suspend (FilesyncUiEvent) -> Unit,
 ) {
     private var awaitingOwner = false
+    private var awaitingSignIn = false
     private var sharedWithJob: Job? = null
     private var sharedFilesJob: Job? = null
     private val sharedHandles = mutableMapOf<Uuid, FilesyncHandle>()
@@ -89,29 +91,36 @@ internal class FilesyncSharingController(
     fun ask(nodes: List<FilesyncNode>) {
         val live = nodes.filter { it.removedMs == null }.takeIf { it.isNotEmpty() } ?: return
         update { it.copy(shareWith = live) }
-        if (state().on) loadOffered() else turnOn()
+        if (state().on) loadOffered()
     }
 
     fun dismiss() = update { it.copy(shareWith = null) }
 
+    // Pressable again while the browser is out: a sign-in or owner's page left unfinished sends nothing back.
     fun turnOn() {
-        if (state().turningOn && !awaitingOwner) return
+        if (state().turningOn && !awaitingOwner && !awaitingSignIn) return
         update { it.copy(turningOn = true) }
         scope.launch {
             if (FilesyncSession.signedIn.value) {
                 finishTurningOn()
                 return@launch
             }
-            val url = guarded { setup.signInUrl { ok -> if (ok) finishTurningOn() else failed(FilesyncError.SharingFailed) } } ?: return@launch failed(FilesyncError.SharingFailed)
+            val url = guarded {
+                setup.signInUrl { ok ->
+                    awaitingSignIn = false
+                    if (ok) finishTurningOn() else failed(FilesyncError.SharingFailed)
+                }
+            } ?: return@launch failed(FilesyncError.SharingFailed)
+            awaitingSignIn = true
             send(FilesyncUiEvent.OpenSignIn(url))
         }
     }
 
-    /** Back from the owner's page: the permission may be granted now. */
+    /** Back from the owner's page: the permission may be granted now; if not, the user turns it on again. */
     fun resumed() {
         if (!awaitingOwner) return
         awaitingOwner = false
-        scope.launch { finishTurningOn() }
+        scope.launch { finishTurningOn(openOwnerPage = false) }
     }
 
     fun share(audience: FilesyncAudience, access: FilesyncAccess, expiry: FilesyncExpiry) = share(access, expiry) { audience }
@@ -293,7 +302,7 @@ internal class FilesyncSharingController(
     /** The shared file's handle, for downloading it from its owner's drive. */
     fun sharedHandle(nodeId: Uuid): FilesyncHandle? = sharedHandles[nodeId]
 
-    private suspend fun finishTurningOn() {
+    private suspend fun finishTurningOn(openOwnerPage: Boolean = true) {
         val permissionsUrl = try {
             setup.missingPermissionsUrl(returnUrl)
         } catch (e: CancellationException) {
@@ -303,6 +312,7 @@ internal class FilesyncSharingController(
             return failed(FilesyncError.SharingFailed)
         }
         if (permissionsUrl != null) {
+            if (!openOwnerPage) return failed(FilesyncError.SharingFailed)
             awaitingOwner = true
             send(FilesyncUiEvent.OpenOwnerConsole(permissionsUrl))
             return
@@ -342,6 +352,7 @@ internal class FilesyncSharingController(
             throw e
         } catch (e: Exception) {
             Logger.e(e, TAG) { "$what failed" }
+            forgetIfRevoked(e)
             send(if (e is FilesyncSharingException.RecipientNotReady) FilesyncUiEvent.NotReady(e.recipients) else FilesyncUiEvent.Error(error))
             null
         }
@@ -354,8 +365,16 @@ internal class FilesyncSharingController(
             throw e
         } catch (e: Exception) {
             Logger.e(e, TAG) { "sharing step failed" }
+            forgetIfRevoked(e)
             null
         }
+
+    // The owner revoked Filesync or its token ran out: sharing is off until the user turns it on and signs in again.
+    private suspend fun forgetIfRevoked(e: Exception) {
+        if (e !is UnauthorizedException) return
+        FilesyncSession.forget()
+        update { it.copy(on = false, turningOn = false) }
+    }
 
     private companion object {
         const val TAG = "FilesyncSharing"

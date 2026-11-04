@@ -293,6 +293,28 @@ class ZkDriveFilesTest {
         assertEquals("""{"name":"plan.pdf"}""", shared.fileMetadata.appData.content)
     }
 
+    @Test
+    fun aSharedFileWhoseKeyWontOpenIsLeftOutNotThePage() = runTest {
+        val owner = Uuid.random()
+        val file = KeyHeader.newRandom16()
+        suspend fun json(fileId: Uuid, name: String) = """
+            {
+              "fileId": "$fileId", "driveId": "$owner", "fileState": "active", "fileSystemType": "standard",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "share", "iv": "${Base64.encode(file.iv)}", "encryptedAesKey": "AAAA" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 7102, "content": "${Base64.encode(file.encryptDataAes(name.encodeToByteArray()))}" } },
+              "serverMetadata": {},
+              "shares": [{ "circleId": "${Uuid.random()}", "permissions": "read", "created": 1, "modified": 1 }]
+            }
+        """
+        val opens = Uuid.random()
+        val byShare = ExternalFileKey { id, _, _ -> if (id == opens) file.aesKey else error("not sealed to this reader yet") }
+        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+
+        val page = queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")},${json(Uuid.random(), "other.pdf")}]}""", SecureByteArray(sharedSecret), byShare)
+
+        assertEquals(listOf("plan.pdf"), page.searchResults.map { it.fileMetadata.appData.content })
+    }
+
     private suspend fun unlockVault() {
         ZkKeyStore.saveAppKey(appKey)
         ZkKeyStore.openDriveKeys(context())

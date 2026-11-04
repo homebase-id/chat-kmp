@@ -33,6 +33,8 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.shares.ShareRow
+import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.FileDecryptionException
 
 /** Drive query provider for querying files from a drive */
 class DriveQueryProvider(
@@ -204,8 +206,15 @@ class DriveQueryProvider(
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
 
-        val files = internal.searchResults.map { serverFileJson ->
-            createServerFileWithSafeMetadata(serverFileJson, secret, externalFileKey)
+        val files = internal.searchResults.mapNotNull { serverFileJson ->
+            try {
+                createServerFileWithSafeMetadata(serverFileJson, secret, externalFileKey)
+            } catch (e: FileDecryptionException) {
+                // A key from outside that won't open (a share not yet sealed to this reader) loses that file, not the page.
+                if (externalFileKey == null) throw e
+                Logger.w(e) { "DriveQueryProvider: left out a file whose outside key didn't open" }
+                null
+            }
         }
 
         return QueryBatchResponse(

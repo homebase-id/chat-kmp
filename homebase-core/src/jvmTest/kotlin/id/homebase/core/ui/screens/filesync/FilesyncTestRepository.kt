@@ -17,5 +17,5 @@ internal fun testFilesyncRepository(http: HttpClient, credentials: CredentialsMa
     val cache = DriveFileProviderCached(http, credentials, fileOps)
     val files = DriveFileProvider(http, credentials, cache)
     val peerFiles = PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cache)
-    return FilesyncRepository(DriveQueryProvider(http, credentials), PayloadDownloadService(files, fileOps), fileOps, files, peerFiles)
+    return FilesyncRepository(DriveQueryProvider(http, credentials), PayloadDownloadService(files, fileOps), fileOps, files, peerFiles, credentials)
 }
