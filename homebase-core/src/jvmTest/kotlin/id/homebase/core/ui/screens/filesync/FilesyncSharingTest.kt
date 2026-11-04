@@ -379,6 +379,23 @@ class FilesyncSharingTest {
     private suspend fun planMove() = sharing.planMove(listOf(moved), newFolder) { mapOf(it.nodeId to movedHandle) }
 
     @Test
+    fun stoppingSharingAFolderWithSamReachesWhatsInsideItSharedWithHim() = runTest {
+        val handle = { FilesyncHandle(Uuid.random(), null, FilesyncProtocol.FileFileType, KeyHeader.newRandom16(), JsonObject(emptyMap()), null) }
+        val folder = Uuid.random() to handle()
+        val inside = Uuid.random() to handle()
+        val othersOnly = Uuid.random() to handle()
+        val unshared = Uuid.random() to handle()
+        sharedPages += """{"searchResults":[${sharedFile("Photos", samsCircle, "read", uniqueId = folder.first, fileId = folder.second.fileId)}, ${sharedFile("a.jpg", samsCircle, "read", uniqueId = inside.first, fileId = inside.second.fileId)}, ${sharedFile("b.jpg", recipientsCircle, "read", uniqueId = othersOnly.first, fileId = othersOnly.second.fileId)}, ${sharedFile("c.jpg", null, "", uniqueId = unshared.first, fileId = unshared.second.fileId)}],"hasMoreRows":false}"""
+
+        sharing.withdraw(mapOf(folder, inside, othersOnly, unshared), toSam)
+
+        assertEquals(
+            setOf("/files/${folder.second.fileId}/shares/$samsCircle", "/files/${inside.second.fileId}/shares/$samsCircle"),
+            calls.filter { it.request.method == HttpMethod.Delete }.map { it.path.substringAfter(FilesyncProtocol.DriveAlias.toString()) }.toSet(),
+        )
+    }
+
+    @Test
     fun movingOutOfAFolderSharedWithSamStopsSharingItWithHim() = runTest {
         sharedPages += folders(old = true, new = false)
         sharedPages += movedFile(shared = true)

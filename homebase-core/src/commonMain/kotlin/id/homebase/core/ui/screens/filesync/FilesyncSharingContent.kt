@@ -332,7 +332,7 @@ internal fun FilesyncSharedWithSection(node: FilesyncNode, sharing: FilesyncShar
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = { onAction(FilesyncUiAction.Unshare(node.nodeId, recipient.audience)) }) {
+                    IconButton(onClick = { onAction(FilesyncUiAction.Unshare(node, recipient.audience)) }) {
                         Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.filesync_unshare, recipient.audience.label))
                     }
                 }

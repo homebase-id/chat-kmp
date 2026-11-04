@@ -202,16 +202,16 @@ internal class FilesyncSharingController(
         if (state().on) loadSharedWith(nodeId)
     }
 
-    fun unshare(nodeId: Uuid, recipient: FilesyncAudience) {
+    fun unshare(node: FilesyncNode, recipient: FilesyncAudience) {
         scope.launch {
             try {
-                sharing.withdraw(handles()[nodeId]?.fileId ?: return@launch, recipient)
-                loadSharedWith(nodeId)
+                sharing.withdraw(withDescendants(listOf(node)), recipient)
+                loadSharedWith(node.nodeId)
                 loadSharedIn()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.e(e, TAG) { "withdrawing $nodeId from $recipient failed" }
+                Logger.e(e, TAG) { "withdrawing ${node.nodeId} from $recipient failed" }
                 send(FilesyncUiEvent.Error(FilesyncError.SharingFailed))
             }
         }
@@ -257,11 +257,11 @@ internal class FilesyncSharingController(
 
     fun stopSharing(nodeId: Uuid) {
         val recipient = state().recipient ?: return
-        val fileId = recipientHandles[nodeId]?.fileId ?: return
+        val node = state().recipientFiles?.firstOrNull { it.node.nodeId == nodeId }?.node ?: return
         scope.launch {
             try {
-                sharing.withdraw(fileId, recipient)
-                update { s -> s.copy(recipientFiles = s.recipientFiles?.filter { it.node.nodeId != nodeId }) }
+                val stopped = sharing.withdraw(withDescendants(listOf(node), recipientHandles, listFolders), recipient)
+                update { s -> s.copy(recipientFiles = s.recipientFiles?.filter { it.node.nodeId !in stopped }) }
                 loadSharedIn()
             } catch (e: CancellationException) {
                 throw e

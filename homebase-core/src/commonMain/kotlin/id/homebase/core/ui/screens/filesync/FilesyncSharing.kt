@@ -258,10 +258,16 @@ class FilesyncSharing(
         }
     }
 
-    suspend fun withdraw(fileId: Uuid, audience: FilesyncAudience) {
+    /** Stops sharing [tree] (node id to handle, a folder's contents included) with [audience] wherever it is; the nodes it stopped. */
+    suspend fun withdraw(tree: Map<Uuid, FilesyncHandle>, audience: FilesyncAudience): Set<Uuid> {
         requireSignedIn()
-        val circleId = circleOf(audience) ?: return
-        filesyncShares.withdraw(FilesyncProtocol.DriveAlias, fileId, circleId)
+        val circleId = circleOf(audience) ?: return emptySet()
+        val rows = liveShares(tree.keys)
+        val shared = tree.filterKeys { id -> rows[id].orEmpty().any { it.circleId == circleId } }
+        shared.values.forEach { handle ->
+            withRetryResult(RETRY, TAG) { filesyncShares.withdraw(FilesyncProtocol.DriveAlias, handle.fileId, circleId) }.getOrThrow()
+        }
+        return shared.keys
     }
 
     /** Shares a new node like the folder it was made in: the same people, access and end; whether there was any to share. */

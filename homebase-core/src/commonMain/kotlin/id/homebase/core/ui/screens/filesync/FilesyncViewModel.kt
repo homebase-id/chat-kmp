@@ -319,7 +319,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.ShowSharedWith -> sharing.showSharedWith(action.nodeId)
 
-            is FilesyncUiAction.Unshare -> sharing.unshare(action.nodeId, action.recipient)
+            is FilesyncUiAction.Unshare -> sharing.unshare(action.node, action.recipient)
 
             FilesyncUiAction.LoadSharers -> sharing.loadSharers()
 

@@ -254,7 +254,7 @@ sealed interface FilesyncUiAction {
     data object SendComment : FilesyncDiscussionAction
     /** The info pane shows [nodeId]: who it's shared with loads. */
     data class ShowSharedWith(val nodeId: Uuid) : FilesyncDiscussionAction
-    data class Unshare(val nodeId: Uuid, val recipient: FilesyncAudience) : FilesyncDiscussionAction
+    data class Unshare(val node: FilesyncNode, val recipient: FilesyncAudience) : FilesyncDiscussionAction
     data object TurnOnSharing : FilesyncUiAction
     data class ShareWithConnection(val nodes: List<FilesyncNode>) : FilesyncUiAction
     data class ShareWith(val audience: FilesyncAudience, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
