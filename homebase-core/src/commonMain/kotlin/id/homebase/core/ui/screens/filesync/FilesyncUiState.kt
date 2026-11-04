@@ -159,6 +159,8 @@ data class FilesyncSharingState(
     val sharerPath: List<FilesyncCrumb> = emptyList(),
     val sharedFiles: List<FilesyncNode>? = null,
     val sharedFilesFailed: Boolean = false,
+    /** The nodes of the folder shown that are shared with anyone now. */
+    val sharedIds: Set<Uuid> = emptySet(),
     /** The people this identity shares files with. */
     val recipients: List<OdinId> = emptyList(),
     /** Whom this identity's shared files are shown for, and those files; null while they load. */
@@ -267,7 +269,7 @@ sealed interface FilesyncDiscussionAction : FilesyncUiAction
 
 enum class FilesyncError {
     MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
-    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, RecipientNotReady, SharedFilesFailed,
+    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, RecipientNotReady, SharedFilesFailed, InheritFailed,
 }
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */

@@ -5,6 +5,8 @@ import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.RetryConfig
+import id.homebase.api.client.ServerException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.CircleDesignation
 import id.homebase.api.client.connections.CircleGrantOn
@@ -32,26 +34,28 @@ import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.client.peer.PeerDriveQueryProvider
+import id.homebase.api.client.withRetryResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.HashUtil
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.UuidSerializer
+import id.homebase.api.util.compareStringUuId
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DrivePermissionSet
 import id.homebase.api.youauth.ZkKeyStore
-import id.homebase.api.util.compareStringUuId
 import id.homebase.core.config.filesyncAppRegistration
 import id.homebase.core.config.filesyncLabeledDrive
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
+import kotlin.time.Clock
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
-import kotlin.time.Clock
-import kotlin.uuid.Uuid
 
 /** What a person may do with a file shared with them. */
 enum class FilesyncAccess(val permissions: List<DrivePermission>) {
@@ -183,6 +187,50 @@ class FilesyncSharing(
         requireSignedIn()
         val circleId = individualCircles().entries.firstOrNull { it.value == recipient }?.key ?: return
         filesyncShares.withdraw(FilesyncProtocol.DriveAlias, fileId, circleId)
+    }
+
+    /** Shares a new node like the folder it was made in: the same people, access and end; whether there was any to share. */
+    suspend fun inherit(parentId: Uuid, nodeId: Uuid, keyHeader: KeyHeader): Boolean {
+        if (parentId == FilesyncProtocol.RootNodeId || !FilesyncSession.signedIn.value) return false
+        return withRetryResult(RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException }), TAG) {
+            val found = filesyncQuery.queryBatch(
+                FilesyncProtocol.DriveAlias,
+                QueryBatchRequest(
+                    queryParams = FileQueryParams(clientUniqueIdAtLeastOne = listOf(parentId, nodeId)),
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = 2, includeShares = true),
+                ),
+            ).searchResults.associateBy { it.fileMetadata.appData.uniqueId }
+            // includeShares returns only live rows.
+            val rows = found[parentId]?.shares.orEmpty().takeIf { it.isNotEmpty() } ?: return@withRetryResult false
+            val fileId = found[nodeId]?.fileId ?: error("node $nodeId isn't on the drive")
+            filesyncShares.share(
+                FilesyncProtocol.DriveAlias,
+                rows.map { row ->
+                    val locked = ShareKeys.lockFileKey(ownCircleKey(row.circleId).key, keyHeader.aesKey.toByteArray(), FilesyncProtocol.DriveAlias, fileId, row.circleId)
+                    ShareRequest(fileId, row.circleId, DrivePermission.combine(row.permissions.values), row.expiresAt, locked)
+                },
+            )
+            true
+        }.getOrThrow() == true
+    }
+
+    /** The nodes in [folderId] with a live share. */
+    suspend fun sharedIn(folderId: Uuid): Set<Uuid> {
+        requireSignedIn()
+        val shared = HashSet<Uuid>()
+        var cursor: String? = null
+        do {
+            val page = filesyncQuery.queryBatch(
+                FilesyncProtocol.DriveAlias,
+                QueryBatchRequest(
+                    queryParams = FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), groupId = listOf(folderId)),
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = PAGE, includeShares = true),
+                ),
+            )
+            page.searchResults.forEach { file -> if (!file.shares.isNullOrEmpty()) file.fileMetadata.appData.uniqueId?.let(shared::add) }
+            cursor = page.cursorState
+        } while (page.hasMoreRows)
+        return shared
     }
 
     /** The people this identity has shared files with: one circle of one each. */
@@ -352,6 +400,7 @@ class FilesyncSharing(
     companion object {
         private const val PAGE = 1000
         private const val ADD_MANY_LIMIT = 500
+        private const val TAG = "FilesyncSharing"
         private val filesyncAppId = Uuid.parseHex(filesyncAppRegistration.appId)
 
         /** Every device derives the same: one marker per sharer and recipient, so a second send is refused as there. */

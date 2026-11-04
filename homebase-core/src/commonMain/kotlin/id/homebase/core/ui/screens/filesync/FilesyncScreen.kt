@@ -415,9 +415,9 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
                         val files = uiState.visible.subList(uiState.totals.folders, uiState.visible.size)
                         if (folders.isNotEmpty()) item(key = "folders") { SectionHeader(MR.string.filesync_folders) }
                         val checked: (FilesyncNode) -> Boolean? = { node -> if (selecting) node.nodeId in uiState.selection.ids else null }
-                        items(folders, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        items(folders, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), it.nodeId in uiState.sharing.sharedIds, scope.actions) { infoFor = it } }
                         if (files.isNotEmpty()) item(key = "files") { SectionHeader(MR.string.filesync_files) }
-                        items(files, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), scope.actions) { infoFor = it } }
+                        items(files, key = { it.nodeId.toString() }) { CompactRow(it, checked(it), uiState.transfer.progressOf(it.nodeId), it.nodeId in uiState.sharing.sharedIds, scope.actions) { infoFor = it } }
                         sharerRows(uiState.rootSharers, scope.onAction)
                     }
                 }
@@ -429,7 +429,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
 /** [checked] is null unless rows are being picked: a long press starts it, and then a tap picks. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, actions: FilesyncBrowserActions, onInfo: (FilesyncNode) -> Unit) {
+private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, shared: Boolean, actions: FilesyncBrowserActions, onInfo: (FilesyncNode) -> Unit) {
     val toggle = { actions.onAction(FilesyncUiAction.Select(node.nodeId, FilesyncSelectMode.Toggle)) }
     FilesyncNodeRow(
         node = node,
@@ -437,6 +437,7 @@ private fun CompactRow(node: FilesyncNode, checked: Boolean?, progress: Float?, 
         modifier = Modifier.combinedClickable(onLongClick = toggle, onClick = { if (checked != null) toggle() else actions.click(node) }),
         selected = checked == true,
         checked = checked,
+        shared = shared,
         trailing = {
             if (checked != null) {
                 // Picking rows: nothing beside them to tap by mistake.

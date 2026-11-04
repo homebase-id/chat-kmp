@@ -485,6 +485,7 @@ class FilesyncViewModel(
                 val folderDeletedMs = current.last().removedMs
                 val nodes = listed.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
                 arrange { state -> state.copy(isLoading = false, path = if (state.path == path) current else state.path).withNodes(nodes) }
+                sharing.loadSharedIn(folderId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -1042,7 +1042,7 @@ val appModule = module {
     single { CircleShareKeyProvider(get(), get()) }
     single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
-    single { FilesyncUploadQueue(get(), get(), get(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }

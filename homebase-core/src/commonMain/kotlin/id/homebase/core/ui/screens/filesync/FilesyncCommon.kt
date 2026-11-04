@@ -1,11 +1,5 @@
 package id.homebase.core.ui.screens.filesync
 
-import id.homebase.resources.filesync_shared
-import id.homebase.resources.filesync_shared_files_failed
-import id.homebase.resources.filesync_recipient_not_ready
-import id.homebase.resources.filesync_sharing_failed
-import id.homebase.chat.widget.preview.FilePreviewDialog
-import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -13,10 +7,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -27,35 +21,36 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TriStateCheckbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -72,6 +67,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import id.homebase.chat.widget.preview.FilePreviewDialog
 import id.homebase.common.util.formatBytes
 import id.homebase.core.filesync.FilesyncRoleFolder
 import id.homebase.core.ui.screens.vault.components.fileKindIcon
@@ -83,50 +79,57 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.filesync_archive_cancel
+import id.homebase.resources.filesync_archive_damaged
+import id.homebase.resources.filesync_archive_listing
+import id.homebase.resources.filesync_archive_progress
 import id.homebase.resources.filesync_cancel_download
 import id.homebase.resources.filesync_changed_elsewhere
-import id.homebase.resources.filesync_restore_try_again
+import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_comment_failed
 import id.homebase.resources.filesync_damaged
 import id.homebase.resources.filesync_day_time
 import id.homebase.resources.filesync_delete_failed
 import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_deleted_forever
+import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_download_failed
-import id.homebase.resources.filesync_too_large_here
 import id.homebase.resources.filesync_executable
-import id.homebase.resources.filesync_not_on_computers
-import id.homebase.resources.time_today
-import id.homebase.resources.time_yesterday
+import id.homebase.resources.filesync_file_count
+import id.homebase.resources.filesync_folder_count
 import id.homebase.resources.filesync_folder_failed
+import id.homebase.resources.filesync_inherit_failed
 import id.homebase.resources.filesync_label
+import id.homebase.resources.filesync_move_failed
+import id.homebase.resources.filesync_moved
+import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.filesync_open_failed
+import id.homebase.resources.filesync_reaction_failed
+import id.homebase.resources.filesync_recipient_not_ready
+import id.homebase.resources.filesync_removed
 import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_failed
-import id.homebase.resources.filesync_reaction_failed
-import id.homebase.resources.filesync_comment_failed
+import id.homebase.resources.filesync_restore_try_again
 import id.homebase.resources.filesync_restored
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
-import id.homebase.resources.filesync_download
+import id.homebase.resources.filesync_role_folder_returns
 import id.homebase.resources.filesync_save_failed
+import id.homebase.resources.filesync_selected
 import id.homebase.resources.filesync_share_failed
+import id.homebase.resources.filesync_shared
+import id.homebase.resources.filesync_shared_badge
+import id.homebase.resources.filesync_shared_files_failed
+import id.homebase.resources.filesync_sharing_failed
 import id.homebase.resources.filesync_too_large
+import id.homebase.resources.filesync_too_large_here
+import id.homebase.resources.filesync_totals
+import id.homebase.resources.filesync_undo
 import id.homebase.resources.filesync_upload_failed
 import id.homebase.resources.sign_in_again_failed
-import id.homebase.resources.filesync_archive_cancel
-import id.homebase.resources.filesync_archive_damaged
-import id.homebase.resources.filesync_archive_listing
-import id.homebase.resources.filesync_archive_progress
-import id.homebase.resources.filesync_clear_selection
-import id.homebase.resources.filesync_move_failed
-import id.homebase.resources.filesync_moved
-import id.homebase.resources.filesync_removed
-import id.homebase.resources.filesync_role_folder_returns
-import id.homebase.resources.filesync_undo
-import id.homebase.resources.filesync_file_count
-import id.homebase.resources.filesync_folder_count
-import id.homebase.resources.filesync_selected
-import id.homebase.resources.filesync_totals
+import id.homebase.resources.storage_full_upload_failed
+import id.homebase.resources.time_today
+import id.homebase.resources.time_yesterday
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -160,6 +163,7 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.SharingFailed -> MR.string.filesync_sharing_failed
     FilesyncError.RecipientNotReady -> MR.string.filesync_recipient_not_ready
     FilesyncError.SharedFilesFailed -> MR.string.filesync_shared_files_failed
+    FilesyncError.InheritFailed -> MR.string.filesync_inherit_failed
 }
 
 internal val FilesyncRowInset = 8.dp
@@ -250,6 +254,7 @@ internal fun FilesyncNodeRow(
     dimDeleted: Boolean = true,
     // A checkbox in the icon's place while picking rows; null shows the icon.
     checked: Boolean? = null,
+    shared: Boolean = false,
     trailing: @Composable () -> Unit = {},
 ) {
     val deleted = dimDeleted && node.removedMs != null
@@ -258,7 +263,7 @@ internal fun FilesyncNodeRow(
     ListItem(
         modifier = if (checked == null) rounded else rounded.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
-        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2) },
+        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2, shared = shared) },
         supportingContent = { if (details.isNotEmpty()) Text(details) },
         leadingContent = {
             if (checked == null) {
@@ -281,6 +286,7 @@ internal fun NodeName(
     // On the name alone, not the badges or the space after it.
     nameModifier: Modifier = Modifier,
     textDecoration: TextDecoration? = null,
+    shared: Boolean = false,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -294,6 +300,14 @@ internal fun NodeName(
             textDecoration = if (deleted) TextDecoration.LineThrough + (textDecoration ?: TextDecoration.None) else textDecoration,
             modifier = Modifier.weight(1f, fill = false).then(nameModifier),
         )
+        if (shared) {
+            Icon(
+                Icons.Outlined.People,
+                contentDescription = stringResource(MR.string.filesync_shared_badge),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
         if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
         if (node.notOnComputers) NameBadge(stringResource(MR.string.filesync_not_on_computers))
         if (node.tags.isNotEmpty()) TagDots(node.tags, ringColor)

@@ -80,10 +80,17 @@ class FilesyncSharingTest {
 
     private val sharedPages = mutableListOf<String>()
 
-    private fun sharedFile(name: String, sharedWith: Uuid, permissions: String): String {
+    private fun sharedFile(
+        name: String,
+        sharedWith: Uuid?,
+        permissions: String,
+        uniqueId: Uuid = Uuid.random(),
+        fileId: Uuid = Uuid.random(),
+        expiresAt: Long? = null,
+    ): String {
         val key = KeyHeader.newRandom16()
         val file = ServerFile(
-            fileId = Uuid.random(),
+            fileId = fileId,
             driveId = FilesyncProtocol.DriveAlias,
             fileState = FileState.Active,
             fileSystemType = FileSystemType.Standard,
@@ -91,7 +98,7 @@ class FilesyncSharingTest {
             fileMetadata = FileMetadata(
                 isEncrypted = true,
                 appData = AppFileMetaData(
-                    uniqueId = Uuid.random(),
+                    uniqueId = uniqueId,
                     groupId = FilesyncProtocol.RootNodeId,
                     fileType = FilesyncProtocol.FileFileType,
                     content = Base64.encode(runBlocking { key.encryptDataAes("""{"v":1,"name":"$name","size":5}""".encodeToByteArray()) }),
@@ -100,7 +107,7 @@ class FilesyncSharingTest {
             ),
             serverMetadata = ServerMetadata(),
         )
-        val shares = """[{"circleId":"$sharedWith","permissions":"$permissions","created":1,"modified":1}]"""
+        val shares = if (sharedWith == null) "[]" else """[{"circleId":"$sharedWith","permissions":"$permissions","expiresAt":${expiresAt ?: "null"},"created":1,"modified":1}]"""
         return OdinSystemSerializer.serialize(file).removeSuffix("}") + ""","shares":$shares}"""
     }
 
@@ -240,6 +247,42 @@ class FilesyncSharingTest {
         assertTrue(asked.all { q -> q["queryParams"]!!.jsonObject["sharedWith"]!!.jsonArray.map { it.jsonPrimitive.content } == listOf(samsCircle.toString()) })
         assertTrue(asked.all { it["resultOptionsRequest"]!!.jsonObject["includeShares"]!!.jsonPrimitive.content.toBoolean() })
         assertEquals("next", asked[1]["resultOptionsRequest"]!!.jsonObject["cursorState"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aNodeMadeInASharedFolderIsSharedLikeIt() = runTest {
+        val folder = Uuid.random()
+        val node = Uuid.random()
+        val newFileId = Uuid.random()
+        val circleKey = ShareKeys.newCircleKey()
+        storedShareKey = Base64.encode(ShareKeys.lockCircleKey(filesyncAppKey, circleKey, samsCircle))
+        sharedPages += """{"searchResults":[${sharedFile("Photos", samsCircle, "readWrite", uniqueId = folder, expiresAt = 1_900_000_000_000)}, ${sharedFile("new.jpg", null, "", uniqueId = node, fileId = newFileId)}],"hasMoreRows":false}"""
+        val key = KeyHeader.newRandom16()
+
+        sharing.inherit(folder, node, key)
+
+        val asked = decrypted(calls.single { it.path.endsWith("/query-batch") }, filesyncSecret).jsonObject
+        assertEquals(setOf(folder.toString(), node.toString()), asked["queryParams"]!!.jsonObject["clientUniqueIdAtLeastOne"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet())
+        val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
+        assertEquals(newFileId.toString(), share["fileId"]!!.jsonPrimitive.content)
+        assertEquals(samsCircle.toString(), share["circleId"]!!.jsonPrimitive.content)
+        assertEquals(1 + 2 + 4 + 8, share["permissions"]!!.jsonPrimitive.int)
+        assertEquals("1900000000000", share["expiresAt"]!!.jsonPrimitive.content)
+        val opened = ShareKeys.openFileKey(circleKey, Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content), FilesyncProtocol.DriveAlias, newFileId, samsCircle)
+        assertContentEquals(key.aesKey.toByteArray(), opened)
+    }
+
+    @Test
+    fun aNodeMadeInAnUnsharedFolderStaysPrivate() = runTest {
+        val folder = Uuid.random()
+        val node = Uuid.random()
+        sharedPages += """{"searchResults":[${sharedFile("Photos", null, "", uniqueId = folder)}, ${sharedFile("new.jpg", null, "", uniqueId = node)}],"hasMoreRows":false}"""
+
+        sharing.inherit(folder, node, KeyHeader.newRandom16())
+        sharing.inherit(FilesyncProtocol.RootNodeId, node, KeyHeader.newRandom16())
+
+        assertEquals(1, calls.count { it.path.endsWith("/query-batch") }, "the root is never shared")
+        assertTrue(calls.none { it.path.endsWith("/shares") })
     }
 
     @Test

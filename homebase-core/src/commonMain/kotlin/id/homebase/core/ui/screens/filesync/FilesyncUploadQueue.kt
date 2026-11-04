@@ -2,11 +2,12 @@
 
 package id.homebase.core.ui.screens.filesync
 
-import id.homebase.api.client.isStorageFull
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.isStorageFull
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
@@ -17,12 +18,13 @@ import id.homebase.core.util.isDesktop
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.size
+import kotlin.concurrent.Volatile
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -32,12 +34,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.concurrent.Volatile
-import kotlin.uuid.Uuid
 
 /** Outside any screen so leaving the Filesync tab doesn't cancel uploads; files go up one at a time. */
 class FilesyncUploadQueue(
@@ -45,6 +46,7 @@ class FilesyncUploadQueue(
     private val uploader: FilesyncUploader,
     private val fileOps: FileOperationsProvider,
     eventBus: EventBus,
+    private val inheritShares: suspend (parentId: Uuid, nodeId: Uuid, keyHeader: KeyHeader) -> Boolean = { _, _, _ -> false },
 ) {
     private val scope = supervisedScope("filesync-upload-queue")
 
@@ -130,8 +132,9 @@ class FilesyncUploadQueue(
                     val taken = repository.takenNames(parentId)
                     FilesyncNames.freeName(requestedName, taken).also { batchTakenKeys[parentId]?.add(FilesyncNames.key(it)) }
                 }
-                uploader.createFolder(parentId, name)
+                val (nodeId, keyHeader) = uploader.createFolder(parentId, name)
                 _changedFolders.emit(parentId)
+                inherit(parentId, nodeId, keyHeader)
             }
         }
     }
@@ -172,11 +175,20 @@ class FilesyncUploadQueue(
             FilesyncNames.freeName(upload.file.name, taken).also { taken += FilesyncNames.key(it) }
         }.also { chosen -> updateUpload(upload.id) { it.copy(name = chosen) } }
 
-        uploader.uploadFile(upload.id, upload.parentId, upload.file.path, name, upload.file.modifiedMs) { fraction ->
+        val keyHeader = uploader.uploadFile(upload.id, upload.parentId, upload.file.path, name, upload.file.modifiedMs) { fraction ->
             updateUpload(upload.id) { it.copy(progress = fraction) }
         }
         finish(upload)
         _changedFolders.emit(upload.parentId)
+        inherit(upload.parentId, upload.id, keyHeader)
+    }
+
+    // Uploaded either way: a share that didn't follow is told, not taken for a failed upload.
+    private suspend fun inherit(parentId: Uuid, nodeId: Uuid, keyHeader: KeyHeader) {
+        var shared = false
+        reporting(FilesyncError.InheritFailed, "sharing $nodeId like its folder") { shared = inheritShares(parentId, nodeId, keyHeader) }
+        // Listed again, so the new node shows as shared.
+        if (shared) _changedFolders.emit(parentId)
     }
 
     private suspend fun reporting(error: FilesyncError, what: String, onFailure: () -> Unit = {}, block: suspend () -> Unit) {

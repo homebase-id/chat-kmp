@@ -66,6 +66,8 @@ internal class FilesyncSharingController(
     private var sharedFilesJob: Job? = null
     private val sharedHandles = mutableMapOf<Uuid, FilesyncHandle>()
     private var sharedNodes = emptyList<FilesyncNode>()
+    private var shownFolder: Uuid? = null
+    private var sharedInJob: Job? = null
     private var recipientFilesJob: Job? = null
     private val recipientHandles = mutableMapOf<Uuid, FilesyncHandle>()
 
@@ -74,6 +76,7 @@ internal class FilesyncSharingController(
             if (guarded { setup.restore() } == true) {
                 update { it.copy(on = true) }
                 loadRecipients()
+                loadSharedIn()
                 // Keeps the circle every connection joins filled with the ones made before it.
                 guarded { sharing.openToMarkers() }
             }
@@ -121,6 +124,7 @@ internal class FilesyncSharingController(
                 update { it.copy(sending = false, shareWith = null) }
                 send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
                 loadRecipients()
+                loadSharedIn()
                 state().sharedWith?.nodeId?.takeIf { id -> files.any { it.nodeId == id } }?.let { loadSharedWith(it) }
             } catch (e: CancellationException) {
                 throw e
@@ -143,6 +147,7 @@ internal class FilesyncSharingController(
             try {
                 sharing.withdraw(handles()[nodeId]?.fileId ?: return@launch, recipient)
                 loadSharedWith(nodeId)
+                loadSharedIn()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -155,6 +160,16 @@ internal class FilesyncSharingController(
     fun loadSharers() {
         scope.launch {
             guarded { sharing.sharers() }?.let { sharers -> update { it.copy(sharers = sharers) } }
+        }
+    }
+
+    /** Marks which of [folderId]'s nodes are shared; with sharing off, remembers it for when it's on. */
+    fun loadSharedIn(folderId: Uuid? = shownFolder) {
+        shownFolder = folderId
+        if (!state().on || folderId == null) return
+        sharedInJob?.cancel()
+        sharedInJob = scope.launch {
+            guarded { sharing.sharedIn(folderId) }?.let { ids -> update { it.copy(sharedIds = ids) } }
         }
     }
 
@@ -187,6 +202,7 @@ internal class FilesyncSharingController(
             try {
                 sharing.withdraw(fileId, recipient)
                 update { s -> s.copy(recipientFiles = s.recipientFiles?.filter { it.node.nodeId != nodeId }) }
+                loadSharedIn()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -268,6 +284,7 @@ internal class FilesyncSharingController(
         update { it.copy(on = true, turningOn = false) }
         loadOffered()
         loadRecipients()
+        loadSharedIn()
         state().sharedWith?.nodeId?.let { loadSharedWith(it) }
     }
 

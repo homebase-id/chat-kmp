@@ -398,6 +398,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                                     actions = actions,
                                     selecting = uiState.selecting,
                                     inGroup = selected && several,
+                                    shared = node.nodeId in uiState.sharing.sharedIds,
                                     onSelect = { mode ->
                                         keysFocus.requestFocus()
                                         actions.onAction(FilesyncUiAction.Select(node.nodeId, mode))
@@ -521,6 +522,7 @@ internal fun TableRow(
     selecting: Boolean = false,
     // One of several selected: its right-click menu is the selection's.
     inGroup: Boolean = false,
+    shared: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -611,6 +613,7 @@ internal fun TableRow(
                 deleted = deleted,
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
                 textDecoration = if (nameHovered) TextDecoration.Underline else null,
+                shared = shared,
                 // The name opens like a link, as in OneDrive and Dropbox; Ctrl/Cmd or Shift on it still picks the row.
                 // A child of the row, so it sees the press first and the row's handler skips what it consumed.
                 nameModifier = Modifier
