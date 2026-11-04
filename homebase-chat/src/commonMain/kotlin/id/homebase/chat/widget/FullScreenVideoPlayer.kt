@@ -30,6 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
@@ -47,6 +50,7 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_play_video
+import id.homebase.resources.cd_pause_video
 import id.homebase.resources.chat_message_video_thumbnail
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
@@ -76,8 +80,6 @@ fun FullScreenVideoPlayer(
     }
     val isLocalPlayback = data.localFilePath != null
 
-    // Pulled up so both the player surface and the paused-thumbnail fallback below
-    // can read trim metadata + thumbnail bytes off the same local context.
     val localVideoContextStore = org.koin.compose.koinInject<LocalAttachmentContextStore>()
     val localCtx = data.uploadMessageId?.let {
         localVideoContextStore.get(it, data.payloadKey) as? LocalAttachmentContext.Video
@@ -112,15 +114,72 @@ fun FullScreenVideoPlayer(
                 if (hasTrim && clipDuration > 0L) {
                     val clipStart = localCtx.trimStartMs ?: 0L
                     val clipEnd = localCtx.trimEndMs ?: clipDuration
-                    TrimmableVideoPlayerSurface(
-                        filePath = localPath,
-                        clipStartMs = clipStart,
-                        clipEndMs = clipEnd,
-                        isPlaying = isPlaying,
-                        seekRequestMs = null,
-                        onPositionMs = { /* no-op; bubble has no scrubber */ },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    val pauseDescription = stringResource(MR.string.cd_pause_video)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("fullScreenVideoTap")
+                            .semantics { contentDescription = pauseDescription }
+                            .clickable(interactionSource = null, indication = null) { isPlaying = !isPlaying },
+                    ) {
+                        TrimmableVideoPlayerSurface(
+                            filePath = localPath,
+                            clipStartMs = clipStart,
+                            clipEndMs = clipEnd,
+                            isPlaying = isPlaying,
+                            seekRequestMs = null,
+                            onPositionMs = { /* no-op; bubble has no scrubber */ },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (!isPlaying) {
+                            val localBitmap = localCtx.thumbnailBytes.takeIf { it.isNotEmpty() }?.let { bytes ->
+                                remember(bytes) { bytes.toImageBitmap() }
+                            }
+                            if (localBitmap != null) {
+                                androidx.compose.foundation.Image(
+                                    bitmap = localBitmap,
+                                    contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            } else if (payloadIv != null || !data.isEncrypted) {
+                                val imageData = remember(
+                                    data.driveId,
+                                    data.fileId,
+                                    data.payloadKey,
+                                    data.payload.lastModified
+                                ) {
+                                    HomebaseImageData.from(
+                                        driveId = data.driveId,
+                                        fileId = data.fileId,
+                                        descriptor = data.payload,
+                                        requestedSize = ImageSize.THUMB_MEDIUM,
+                                        availableThumbSizes = emptyList(),
+                                        isEncrypted = payloadIv != null,
+                                        keyHeader = payloadIv
+                                            ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
+                                            ?: KeyHeader.empty(),
+                                    )
+                                }
+                                HomebaseImage(
+                                    imageData = imageData,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit,
+                                    contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.PlayCircle,
+                                contentDescription = stringResource(MR.string.chat_message_play_video),
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .align(Alignment.Center)
+                                    .testTag("fullScreenVideoPlay")
+                                    .clickable { isPlaying = true },
+                                tint = Color.White.copy(alpha = 0.85f)
+                            )
+                        }
+                    }
                 } else {
                     LocalVideoPlayerSurface(
                         filePath = data.localFilePath,
@@ -156,62 +215,6 @@ fun FullScreenVideoPlayer(
                         fontSize = 12.sp,
                     )
                 }
-            }
-
-            // Thumbnail + play button overlay, hidden once user taps play
-            if (!isPlaying) {
-                // An unencrypted (public) payload carries no IV — that means plaintext, not
-                // "not uploaded yet", so it still has a poster frame worth requesting.
-                if (payloadIv != null || !data.isEncrypted) {
-                    val imageData = remember(
-                        data.driveId,
-                        data.fileId,
-                        data.payloadKey,
-                        data.payload.lastModified
-                    ) {
-                        HomebaseImageData.from(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            descriptor = data.payload,
-                            requestedSize = ImageSize.THUMB_MEDIUM,
-                            // Video payloads never carry server thumbnails; request the measured size.
-                            availableThumbSizes = emptyList(),
-                            isEncrypted = payloadIv != null,
-                            keyHeader = payloadIv
-                                ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
-                                ?: KeyHeader.empty(),
-                        )
-                    }
-                    HomebaseImage(
-                        imageData = imageData,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                    )
-                } else if (isLocalPlayback) {
-                    // Show local thumbnail when paused during local playback
-                    val localBitmap = localCtx?.thumbnailBytes?.let { bytes ->
-                        remember(bytes) { bytes.toImageBitmap() }
-                    }
-                    if (localBitmap != null) {
-                        androidx.compose.foundation.Image(
-                            bitmap = localBitmap,
-                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit,
-                        )
-                    }
-                }
-
-                Icon(
-                    imageVector = Icons.Default.PlayCircle,
-                    contentDescription = stringResource(MR.string.chat_message_play_video),
-                    modifier = Modifier
-                        .size(72.dp)
-                        .align(Alignment.Center)
-                        .clickable { isPlaying = true },
-                    tint = Color.White.copy(alpha = 0.85f)
-                )
             }
 
             if (!nativeVideoControlsOwnTopCorners) topBar(Modifier.align(Alignment.TopStart))
