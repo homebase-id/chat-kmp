@@ -56,9 +56,9 @@ tasks.withType<AbstractCopyTask>().configureEach { duplicatesStrategy = Duplicat
 
 // Headless CLI: no UI, media playback, desktop notifications or PDF rendering runs here. The jar list is proven by trimmedTest + the smoke in README.
 val unusedJarPatterns = listOf(
-    "-desktop-\\d", "^skiko-", "^coil-", "^multiplatform-markdown-renderer", "^reorderable-", "^filekit-", "^vlcj", "^dbus-java",
+    "^(?!runtime-desktop-).*-desktop-\\d", "^skiko-", "^coil-", "^multiplatform-markdown-renderer", "^reorderable-", "^filekit-", "^vlcj", "^dbus-java",
     "^nucleus\\.", "^kmpnotifier-", "^koin-compose", "^image-editor-ui", "^kotlinx-coroutines-swing", "^jbr-api", "^pdfbox", "^fontbox",
-    "^jna-platform", "^sqlite-jdbc", "^sqlite-driver", "^jdbc-driver", "^sqldelight", "^jna-\\d", "^homebase-common-jvm", "^homebase-notifshared",
+    "^jna-platform", "^sqlite-jdbc", "^sqlite-driver", "^jdbc-driver", "^sqldelight", "^jna-\\d", "^homebase-notifshared",
 )
 
 val chatJarName = "homebase-chat-jvm.jar"
