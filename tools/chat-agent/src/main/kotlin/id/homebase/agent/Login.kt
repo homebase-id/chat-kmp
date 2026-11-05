@@ -22,10 +22,6 @@ import id.homebase.api.youauth.YouAuthorizationParams
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeout
 
-// homebase-common (AppConfig.kt) isn't headless; mirror of its circle ids.
-private const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
-private const val AUTO_CONNECTIONS_CIRCLE_ID = "9e22b42952f74d2580e11250b651d343"
-
 private val chatDrive = SystemDriveConstants.chatDrive
 
 private fun chatDriveRequest(permissions: List<DrivePermission>) =
@@ -69,7 +65,6 @@ suspend fun login(identityDomain: String, noBrowser: Boolean = false, callbackPo
             friendlyName = friendlyName,
             drives = listOf(chatDriveRequest(listOf(DrivePermission.Read, DrivePermission.Write, DrivePermission.React))),
             circleDrives = listOf(chatDriveRequest(listOf(DrivePermission.Write, DrivePermission.React))),
-            circles = listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID),
             permissions = agentPermissions.map { it.value },
             returnUrl = redirectUri,
         )
