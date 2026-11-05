@@ -14,6 +14,8 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.initWebSqlJs
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
+import id.homebase.common.util.WindowTitle
+import kotlinx.browser.document
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AppConfig
@@ -125,8 +127,10 @@ fun main() {
             if (link.isAvailable(developerPreferences.photobaseEnabled.value)) notificationService.navigateToApp(link.route)
         }
         WebAppLink.consumePending()?.let(::open)
+        val pageTitle = document.title
         ComposeViewport("ComposeApp") {
             LaunchedEffect(Unit) { bootDone() }
+            LaunchedEffect(Unit) { WindowTitle.place.collect { document.title = WindowTitle.of(it, pageTitle) } }
             App(onNavHostReady = { nav ->
                 WebAppLink.listenForTypedHash(::open)
                 // A custom fragment turns off the library's own hash parsing; WebAppLink does that instead.

@@ -3,6 +3,7 @@ package id.homebase.chat.services.content
 import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
@@ -47,6 +48,7 @@ object MessageContentParser {
             ChatProtocol.ChatCallEventMessageDataType -> parseCallEvent(content)
             ChatProtocol.ChatContactCardMessageDataType -> parseContactCard(content)
             ChatProtocol.ChatViewOnceMessageDataType -> parseViewOnce(content)
+            ChatProtocol.ChatFileShareMessageDataType -> parseFileShare(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
             // as MessageAppData. 0 = plain text/media; 211 = Location, whose
             // descriptor lives on a payload (the header content is still a
@@ -156,6 +158,19 @@ object MessageContentParser {
         MessageContent.Poll(null)
     }
 
+    private fun parseFileShare(content: String): MessageContent.FileShare = try {
+        val descriptor = OdinSystemSerializer.deserialize<FileShareDescriptor>(content)
+        if (descriptor.isValid()) {
+            MessageContent.FileShare(descriptor)
+        } else {
+            Logger.w(tag = TAG) { "FileShare descriptor failed validation" }
+            MessageContent.FileShare(null)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "FileShare parse failed; rendering chip" }
+        MessageContent.FileShare(null)
+    }
+
     private fun parseContactCard(content: String): MessageContent.ContactCard = try {
         val descriptor = OdinSystemSerializer.deserialize<ContactCardDescriptor>(content)
         if (descriptor.isValid()) {
@@ -220,6 +235,10 @@ object MessageContentParser {
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "ViewOnce descriptor must be non-null on send" }
             )
+        is MessageContent.FileShare ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "FileShare descriptor must be non-null on send" }
+            )
         is MessageContent.Location ->
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "Location descriptor must be non-null on send" }
@@ -236,6 +255,7 @@ object MessageContentParser {
         is MessageContent.ContactCard -> ChatProtocol.ChatContactCardMessageDataType
         is MessageContent.CallEvent -> ChatProtocol.ChatCallEventMessageDataType
         is MessageContent.ViewOnce -> ChatProtocol.ChatViewOnceMessageDataType
+        is MessageContent.FileShare -> ChatProtocol.ChatFileShareMessageDataType
         is MessageContent.Location -> ChatProtocol.ChatLocationMessageDataType
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be re-sent")
@@ -260,6 +280,7 @@ object MessageContentParser {
         is MessageContent.CallEvent,
         is MessageContent.ContactCard,
         is MessageContent.ViewOnce,
+        is MessageContent.FileShare,
         is MessageContent.Location -> true
         is MessageContent.Unknown, null -> false
     }

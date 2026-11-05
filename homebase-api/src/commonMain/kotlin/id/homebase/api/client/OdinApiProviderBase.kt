@@ -526,6 +526,24 @@ abstract class OdinApiProviderBase(
     protected inline fun <reified T> deserialize(json: String): T =
         OdinSystemSerializer.deserialize(json)
 
+    /** An encrypted GET of [endpoint] on the caller's own identity; its body, once a failure has thrown. */
+    protected suspend fun getChecked(endpoint: String): String {
+        val creds = requireCreds()
+        val response = encryptedGet(url = apiUrl(creds.domain, endpoint), token = creds.accessToken, secret = creds.secret)
+        throwForFailure(response)
+        return response.body
+    }
+
+    protected suspend fun putChecked(endpoint: String, jsonBody: String) {
+        val creds = requireCreds()
+        throwForFailure(encryptedPutJson(url = apiUrl(creds.domain, endpoint), token = creds.accessToken, jsonBody = jsonBody, secret = creds.secret))
+    }
+
+    protected suspend fun deleteChecked(endpoint: String) {
+        val creds = requireCreds()
+        throwForFailure(encryptedDelete(url = apiUrl(creds.domain, endpoint), token = creds.accessToken, secret = creds.secret))
+    }
+
     protected fun parseProblemOrNull(body: String): ProblemDetails? =
         runCatching { deserialize<ProblemDetails>(body) }.getOrNull()
 

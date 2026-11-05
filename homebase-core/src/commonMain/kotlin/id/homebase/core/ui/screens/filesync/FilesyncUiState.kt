@@ -7,6 +7,7 @@ import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.isWeb
 import io.github.vinceglb.filekit.PlatformFile
+import id.homebase.api.common.OdinId
 import kotlin.uuid.Uuid
 
 /** One step of the breadcrumb trail; [name] is null for the top level, [removedMs] set when it's in Recently deleted. */
@@ -78,8 +79,14 @@ data class FilesyncUiState(
     val movePicker: FilesyncMovePicker? = null,
     /** What Share asks a target for. */
     val shareChooser: List<FilesyncNode>? = null,
+    /** The reactions and comments of the file the info pane shows. */
+    val discussion: FilesyncDiscussion? = null,
+    val sharing: FilesyncSharingState = FilesyncSharingState(),
 ) {
     val selecting: Boolean get() = selection.ids.isNotEmpty()
+
+    /** The people listed below the root's own nodes, opened like folders; a search or tag filter hides them. */
+    val rootSharers: List<OdinId> get() = if (path.size == 1 && query.isBlank() && tagFilter == null) sharing.sharers else emptyList()
 
     /** The selected nodes in the order shown. */
     val selected: List<FilesyncNode> by lazy(LazyThreadSafetyMode.NONE) {
@@ -132,18 +139,61 @@ data class FilesyncUiState(
     }
 }
 
+/** Sharing files with people, and what they share with this identity. */
+@Immutable
+data class FilesyncSharingState(
+    /** Signed in to Filesync as well, which sharing writes as. */
+    val on: Boolean = false,
+    val turningOn: Boolean = false,
+    /** Asks whom to share these files with. */
+    val shareWith: List<FilesyncNode>? = null,
+    val offered: List<FilesyncAccess> = emptyList(),
+    val sending: Boolean = false,
+    /** Who the file the info pane shows is shared with; null until loaded. */
+    val sharedWith: FilesyncSharedWith? = null,
+    /** The people who have files for this identity. */
+    val sharers: List<OdinId> = emptyList(),
+    /** Whose shared files are shown. */
+    val sharer: OdinId? = null,
+    /** The folder of theirs shown, below what they share at the top. */
+    val sharerPath: List<FilesyncCrumb> = emptyList(),
+    /** Null while they load. */
+    val sharedFiles: List<FilesyncNode>? = null,
+    val sharedFilesFailed: Boolean = false,
+    /** The nodes of the folder shown that are shared with anyone now. */
+    val sharedIds: Set<Uuid> = emptySet(),
+    /** The groups and people this identity shares files with. */
+    val recipients: List<FilesyncAudience> = emptyList(),
+    /** Whom this identity's shared files are shown for. */
+    val recipient: FilesyncAudience? = null,
+    /** Null while they load. */
+    val recipientFiles: List<FilesyncOutgoingShare>? = null,
+    val recipientFilesFailed: Boolean = false,
+    /** Who'd stop seeing what's being moved, asked about before it moves. */
+    val losingAccess: List<OdinId>? = null,
+) {
+    val viewing: Boolean get() = sharer != null || recipient != null
+}
+
+@Immutable
+data class FilesyncOutgoingShare(val node: FilesyncNode, val access: FilesyncAccess, val expiresAt: Long?)
+
+@Immutable
+data class FilesyncSharedWith(val nodeId: Uuid, val recipients: List<FilesyncShareRecipient>? = null)
+
 /** A downloaded file shown in the app: [path] is its copy in the cache, thrown away when the preview closes. */
 data class FilesyncPreviewFile(val path: String, val name: String, val kind: FilePreviewKind)
 
 enum class FilesyncBulkAction { Download, Share, Move, Delete, Restore }
 
 /** What the file dialog offers: where a file, or a ZIP of several, goes. */
-enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherApp;
+enum class FilesyncShareTarget { Download, Preview, Open, Chat, WebDrop, OtherApp, Person;
 
     companion object {
         // A browser can't hand a file to an app; other apps to share with are only on phones.
-        fun offered(nodes: List<FilesyncNode>): List<FilesyncShareTarget> = entries.filter { target ->
+        fun offered(nodes: List<FilesyncNode>, withPeople: Boolean = true): List<FilesyncShareTarget> = entries.filter { target ->
             when (target) {
+                Person -> withPeople
                 Preview -> nodes.singleFile?.let { filePreviewKind(null, it.name, it.sizeBytes) } != null
                 Open -> !isWeb() && nodes.singleFile != null
                 OtherApp -> isMobile()
@@ -192,18 +242,51 @@ sealed interface FilesyncUiAction {
     data object ConfirmDelete : FilesyncUiAction
     data object DismissDelete : FilesyncUiAction
     data class AskMove(val nodes: List<FilesyncNode>) : FilesyncUiAction
+    data object ConfirmLosingAccess : FilesyncUiAction
+    data object DismissLosingAccess : FilesyncUiAction
     data class MovePickerOpen(val folder: FilesyncNode) : FilesyncUiAction
     data class MovePickerToCrumb(val index: Int) : FilesyncUiAction
     data object ConfirmMove : FilesyncUiAction
     data object DismissMove : FilesyncUiAction
     data object MakePrivate : FilesyncUiAction
     data object SignInAgain : FilesyncUiAction
+    /** The info pane shows [nodeId]: its reactions and comments load once. */
+    data class ShowDiscussion(val nodeId: Uuid) : FilesyncDiscussionAction
+    /** Adds [emoji] as one of the user's reactions, or takes it away if it is one. */
+    data class ToggleReaction(val emoji: String) : FilesyncDiscussionAction
+    data object SendComment : FilesyncDiscussionAction
+    /** The info pane shows [nodeId]: who it's shared with loads. */
+    data class ShowSharedWith(val nodeId: Uuid) : FilesyncDiscussionAction
+    data class Unshare(val node: FilesyncNode, val recipient: FilesyncAudience) : FilesyncDiscussionAction
+    data object TurnOnSharing : FilesyncUiAction
+    data class ShareWithConnection(val nodes: List<FilesyncNode>) : FilesyncUiAction
+    data class ShareWith(val audience: FilesyncAudience, val access: FilesyncAccess, val expiry: FilesyncExpiry, val note: String) : FilesyncUiAction
+    data class ShareWithNewGroup(val name: String, val members: List<OdinId>, val access: FilesyncAccess, val expiry: FilesyncExpiry, val note: String) : FilesyncUiAction
+
+    /** A share's chat message was opened: [sharer]'s files, or this identity's own share with [circleId] when null. */
+    data class OpenFromChat(val sharer: OdinId?, val circleId: Uuid) : FilesyncUiAction
+    data object DismissShareWith : FilesyncUiAction
+    data class OpenSharer(val sharer: OdinId) : FilesyncUiAction
+    data object CloseShareView : FilesyncUiAction
+    data class OpenSharedFolder(val path: List<FilesyncCrumb>) : FilesyncUiAction
+    data class OpenRecipient(val recipient: FilesyncAudience) : FilesyncUiAction
+    data class SetGroupMembers(val group: FilesyncAudience.Group, val members: List<OdinId>) : FilesyncUiAction
+    data class StopSharing(val nodeId: Uuid) : FilesyncUiAction
+    data class ChangeExpiry(val nodeId: Uuid, val expiry: FilesyncExpiry) : FilesyncUiAction
+    data class SaveShared(val node: FilesyncNode) : FilesyncUiAction
 }
 
-enum class FilesyncError { MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed, SignInAgainFailed }
+/** What the info pane does in place: the phone's info sheet stays open for these. */
+sealed interface FilesyncDiscussionAction : FilesyncUiAction
+
+enum class FilesyncError {
+    MoveFailed, DownloadFailed, Damaged, UploadFailed, TooLarge, TooLargeHere, StorageFull, FolderFailed, RestoreFailed, DeleteFailed,
+    SignInAgainFailed, ReactionFailed, CommentFailed, SharingFailed, InheritFailed,
+    MoveCheckFailed, MoveSharingFailed,
+}
 
 /** What a finished restore or delete tells the user; [ChangedElsewhere] when some items were skipped. */
-enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon }
+enum class FilesyncNotice { Restored, RestoredToRecovered, DeletedForever, ChangedElsewhere, TryAgainSoon, Shared }
 
 sealed interface FilesyncUiEvent {
     data class OpenFile(val path: String) : FilesyncUiEvent
@@ -215,6 +298,19 @@ sealed interface FilesyncUiEvent {
     data class OpenSignIn(val url: String) : FilesyncUiEvent
     data class OpenOwnerConsole(val url: String) : FilesyncUiEvent
     data class Error(val error: FilesyncError) : FilesyncUiEvent
+    /** [recipients] couldn't be added to the circle shared with. */
+    data class NotAdded(val recipients: List<OdinId>) : FilesyncUiEvent
+    /** [owner] shared files with this identity but hasn't reviewed it, so they can't be opened yet. */
+    data class NotReviewedBy(val owner: OdinId) : FilesyncUiEvent
+
+    /** [owner] shared files with this identity before it had a Filesync drive; their app hasn't sealed the key here yet. */
+    data class NotSealedYet(val owner: OdinId) : FilesyncUiEvent
+
+    /** Shared, but [recipients] haven't set up Filesync: they get the key once they have, the next time this app is online ([FilesyncShareUpkeep]). */
+    data class Waiting(val recipients: List<OdinId>) : FilesyncUiEvent
+
+    /** Shared, but the chat message telling [recipients] didn't go out. */
+    data class NotTold(val recipients: List<OdinId>) : FilesyncUiEvent
     data class Notice(val notice: FilesyncNotice) : FilesyncUiEvent
     /** [name] failed its hash check, so the ZIP holding it was thrown away. */
     data class ArchiveDamaged(val name: String) : FilesyncUiEvent

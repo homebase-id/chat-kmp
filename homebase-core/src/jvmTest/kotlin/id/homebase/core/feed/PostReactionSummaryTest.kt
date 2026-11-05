@@ -156,9 +156,10 @@ class PostReactionSummaryTest {
         service(MockEngine { respond(body, HttpStatusCode.OK) })
 
     private fun summaryEngine(vararg counts: Pair<String, Int>) = MockEngine {
-        val body = counts.joinToString(",") { (raw, n) -> "${JsonPrimitive(raw)}: $n" }
+        // The server's shape: a list of counts, each naming its reaction (GetReactionCountsResponse)
+        val body = counts.joinToString(",") { (raw, n) -> """{ "reactionContent": ${JsonPrimitive(raw)}, "count": $n }""" }
         respond(
-            """{ "reactions": { $body }, "total": ${counts.sumOf { it.second }} }""",
+            """{ "reactions": [ $body ], "total": ${counts.sumOf { it.second }} }""",
             HttpStatusCode.OK,
         )
     }
