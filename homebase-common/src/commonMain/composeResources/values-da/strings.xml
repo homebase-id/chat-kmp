@@ -1647,7 +1647,13 @@
     <string name="contactbook_empty_body">Inviter en ven, eller tilføj en, du allerede kender.</string>
     <string name="contactbook_empty_invite">Inviter en ven</string>
     <string name="contactbook_empty_share_card">Del mit kort</string>
-    <string name="contactbook_invite_message">Forbind med mig på Homebase: %1$s</string>
+    <string name="contactbook_invite_message">Jeg er på Homebase. Opret en konto på %1$s, og tilføj mig derefter som kontakt: %2$s</string>
+    <string name="contactbook_invite_body">Send dette til dem, du gerne vil forbindes med på Homebase.</string>
+    <string name="contactbook_invite_copy">Kopiér besked</string>
+    <string name="contactbook_invite_copied">Kopieret</string>
+    <string name="contactbook_invite_email">E-mail</string>
+    <string name="contactbook_invite_email_failed">Kunne ikke åbne en e-mailapp. Kopiér beskeden i stedet.</string>
+    <string name="contactbook_invite_email_subject">Kom med på Homebase</string>
     <string name="contactbook_empty_new">Tilføj en kontakt</string>
 
     <string name="contactbook_detail_message">Besked</string>

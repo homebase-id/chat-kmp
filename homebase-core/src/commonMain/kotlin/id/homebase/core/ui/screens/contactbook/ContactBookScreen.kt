@@ -71,10 +71,8 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
-import id.homebase.core.clipboard.rememberCopyToClipboard
-import id.homebase.core.ui.screens.card.cardOrigin
-import id.homebase.core.util.getUriHandler
-import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.auth.login.CREATE_ACCOUNT_URL
+import id.homebase.core.ui.screens.contactbook.components.InviteFriendSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_invite_message
@@ -109,10 +107,9 @@ fun ContactBookScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
-    val uriHandler = getUriHandler()
+    var showInviteSheet by rememberSaveable { mutableStateOf(false) }
     val inviteMessage = uiState.ownerSession?.let {
-        stringResource(MR.string.contactbook_invite_message, cardOrigin(it.odinId.domainName))
+        stringResource(MR.string.contactbook_invite_message, CREATE_ACCOUNT_URL, it.odinId.domainName)
     }
 
     LaunchedEffect(Unit) {
@@ -344,12 +341,7 @@ fun ContactBookScreen(
                         uiState = uiState,
                         onAction = viewModel::onAction,
                         listState = knownListState,
-                        onInviteClick = inviteMessage?.let { message ->
-                            {
-                                // Desktop and web have no share sheet: shareText there is silent or a no-op.
-                                if (isDesktopOrWeb()) copyToClipboard(message) else uriHandler.shareText(message)
-                            }
-                        },
+                        onInviteClick = { showInviteSheet = true }.takeIf { inviteMessage != null },
                         onShareCardClick = onShareCard,
                     )
                     ContactTab.NEW -> ContactBookContent(
@@ -425,6 +417,10 @@ fun ContactBookScreen(
                 viewModel.onAction(ContactBookUiAction.CircleDeleteConfirmed(members.circleId))
             },
         )
+    }
+
+    if (showInviteSheet && inviteMessage != null) {
+        InviteFriendSheet(message = inviteMessage, onDismiss = { showInviteSheet = false })
     }
 
     // Compose-a-new-request sheet, opened by the FAB while the Requests pill is active.
