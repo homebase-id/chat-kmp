@@ -306,7 +306,7 @@ sealed interface FilesyncUiEvent {
     /** [owner] shared files with this identity before it had a Filesync drive; their app hasn't sealed the key here yet. */
     data class NotSealedYet(val owner: OdinId) : FilesyncUiEvent
 
-    /** Shared, but [recipients] haven't set up Filesync: they get the key once they have, the next time sharing starts here. */
+    /** Shared, but [recipients] haven't set up Filesync: they get the key once they have, the next time this app is online ([FilesyncShareUpkeep]). */
     data class Waiting(val recipients: List<OdinId>) : FilesyncUiEvent
 
     /** Shared, but the chat message telling [recipients] didn't go out. */

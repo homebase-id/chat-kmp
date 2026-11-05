@@ -168,6 +168,7 @@ import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
 import id.homebase.core.ui.screens.filesync.FilesyncSharing
 import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
+import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
 import id.homebase.core.ui.screens.filesync.FilesyncSession
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
@@ -753,6 +754,7 @@ val appModule = module {
                 get<MomentGroupService>().start()
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
+                get<FilesyncShareUpkeep>().start()
 
                 get<FeedTimelineService>().reset()
                 get<PostCommentsService>().reset()
@@ -1043,6 +1045,7 @@ val appModule = module {
     single { CircleShareKeyProvider(get(), get()) }
     single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
     single { FilesyncShareMessages(get(), get()) }
+    single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit) }
     single { FilesyncEditor(get(), get(), get()) }

@@ -87,10 +87,6 @@ internal class FilesyncSharingController(
                 update { it.copy(on = true) }
                 loadRecipients()
                 loadSharedIn()
-                // An Edit share that expired since leaves its drive Write behind until this.
-                guarded { sharing.syncEditors() }
-                // Whoever set up Filesync since they were shared with gets the key now.
-                guarded { sharing.sealPending() }
             }
         }
         loadSharers()

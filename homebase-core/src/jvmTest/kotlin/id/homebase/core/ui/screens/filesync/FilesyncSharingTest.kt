@@ -58,6 +58,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -343,6 +344,19 @@ class FilesyncSharingTest {
         assertEquals(FilesyncShared(samsCircle, waiting = listOf(sam)), sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null))
         assertEquals(1, calls.count { it.path.endsWith("/shares") })
         assertTrue(calls.none { it.path.endsWith("/share-key/members") })
+    }
+
+    @Test
+    fun comingOnlineSealsToWhoeverIsReadyThenWaitsBeforeAskingAgain() = runTest {
+        val upkeep = FilesyncShareUpkeep(sharing, appCredentials, MutableStateFlow(true), backgroundScope)
+        sharedPages += """{"searchResults":[],"hasMoreRows":false}"""
+
+        upkeep.upkeep()
+        assertEquals(listOf("sam.test"), decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject["members"]!!.jsonArray.map { it.jsonObject["odinId"]!!.jsonPrimitive.content })
+
+        calls.clear()
+        upkeep.upkeep()
+        assertTrue(calls.isEmpty(), "a phone back in the foreground a minute later asks nothing")
     }
 
     @Test

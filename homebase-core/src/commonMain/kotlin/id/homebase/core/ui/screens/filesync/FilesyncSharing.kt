@@ -175,7 +175,7 @@ class FilesyncSharing(
 
     /**
      * Shares the [files] with [audience]: the circle it went to, and the members without a Filesync drive yet, whose key
-     * [sealPending] seals once they have one. Telling its members is the caller's.
+     * [sealPending] seals once they have one ([FilesyncShareUpkeep]). Telling its members is the caller's.
      */
     suspend fun share(files: List<FilesyncHandle>, audience: FilesyncAudience, access: FilesyncAccess, expiresAt: Long?): FilesyncShared {
         requireSignedIn()
