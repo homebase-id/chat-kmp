@@ -98,6 +98,24 @@ class AgentUiTest {
         assertTrue(fake.edits.isEmpty())
     }
 
+    @Test
+    fun aSmallTreeRidesInlineAndTheAppDecodesItFromTheHeader() {
+        val tree = """{"root":"r","nodes":[{"id":"r","type":"text","markdown":"Hello"}]}""".encodeToByteArray()
+        val (header, payload) = placeTree(cardDescriptor("Hello", "Hi", 0), tree)
+        assertEquals(null, payload)
+        val parsed = MessageContentParser.parse(218, typedHeader(MessageContent.AgentUi(header)).header) as MessageContent.AgentUi
+        assertTrue(parsed.inlineTree is id.homebase.chat.agentui.AgentUiTreeResult.Valid)
+    }
+
+    @Test
+    fun aTreeOverTheHeaderBudgetGoesToThePayloadWithABareHeader() {
+        val texts = (0 until 40).joinToString(",") { """{"id":"t$it","type":"text","markdown":"${"w".repeat(140)}"}""" }
+        val tree = """{"root":"r","nodes":[{"id":"r","type":"column","children":[${(0 until 40).joinToString(",") { "\"t$it\"" }}]},$texts]}""".encodeToByteArray()
+        val (header, payload) = placeTree(cardDescriptor("Report", null, 0), tree)
+        assertTrue(payload.contentEquals(tree))
+        assertEquals(null, header.tree)
+    }
+
     private fun cfg(): AgentConfig {
         val allow = Allowlist(setOf(grp), null, Kind.BOT)
         allow.learn(listOf(ConversationInfo(grp, "room", listOf(bot, op, rando))))

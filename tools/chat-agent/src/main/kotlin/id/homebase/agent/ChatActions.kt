@@ -190,9 +190,12 @@ suspend fun editAgentUiCard(session: Session, allowlist: Allowlist, conversation
     val recipients = conversationRecipients(conversationFor(session, allowlist, conversationId), session.identity)
     val fileOps = JvmFileOperationsProvider()
     val aesKey = file.keyHeader.aesKey
-    val plain = PayloadBundle(listOf(agentUiPayload(tree, fileOps)), emptyList(), emptyList())
+    val (header, payload) = placeTree(descriptor, tree)
+    val plain = PayloadBundle(listOfNotNull(payload?.let { agentUiPayload(it, fileOps) }), emptyList(), emptyList())
+    val hadPayload = metadata.payloads.orEmpty().any { it.key == ChatProtocol.PAYLOAD_KEY_AGENT_UI }
+    val toDelete = if (payload == null && hadPayload) listOf(PayloadDeleteKey(ChatProtocol.PAYLOAD_KEY_AGENT_UI)) else null
     try {
-        val encrypted = payloadEncryptor(fileOps).encryptBundle(message.id, plain, aesKey, CoroutineScope(currentCoroutineContext()))
+        val encrypted = if (plain.payloads.isEmpty()) emptyList() else payloadEncryptor(fileOps).encryptBundle(message.id, plain, aesKey, CoroutineScope(currentCoroutineContext())).payloads
         val keyHeader = KeyHeader(KeyHeader.newRandom16().iv, aesKey)
         val update = UploadFileMetadata(
             allowDistribution = recipients.isNotEmpty(),
@@ -204,7 +207,7 @@ suspend fun editAgentUiCard(session: Session, allowlist: Allowlist, conversation
                 fileType = ChatProtocol.MessageFileType,
                 dataType = ChatProtocol.ChatAgentUiMessageDataType,
                 userDate = metadata.appData.userDate ?: message.userDate,
-                content = typedHeader(MessageContent.AgentUi(descriptor)).header,
+                content = typedHeader(MessageContent.AgentUi(header)).header,
                 previewThumbnail = metadata.appData.previewThumbnail,
             ),
         )
@@ -217,10 +220,10 @@ suspend fun editAgentUiCard(session: Session, allowlist: Allowlist, conversation
                     transferIv = KeyHeader.newRandom16().iv,
                     locale = UpdateLocale.Local,
                     recipients = recipients,
-                    manifest = UpdateManifest.build(payloads = encrypted.payloads),
+                    manifest = UpdateManifest.build(payloads = encrypted, toDeletePayloads = toDelete),
                 ),
                 metadata = update.encryptContent(keyHeader),
-                payloads = encrypted.payloads,
+                payloads = encrypted,
             ),
         )
         requireNotNull(result) { "card edit was rejected (the message changed meanwhile)" }

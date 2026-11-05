@@ -1,6 +1,7 @@
 package id.homebase.agent
 
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.agentui.AgentUiActionDescriptor
@@ -14,7 +15,10 @@ import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.upload.PayloadBundle
 import java.io.File
 import kotlin.uuid.Uuid
+import id.homebase.api.client.KeyHeader
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -84,6 +88,10 @@ suspend fun toolEditUi(backend: AgentBackend, args: JsonObject?): ToolReply = gu
     ToolReply("edited agent card ${message.id.toString().take(ID_PREFIX)}, now rev ${next.rev}")
 }
 
+/** The header carrying [tree] inline when the encrypted descriptor fits; otherwise the bare header and the tree for the `agent_ui` payload. */
+fun placeTree(descriptor: AgentUiDescriptor, tree: ByteArray): Pair<AgentUiDescriptor, ByteArray?> =
+    descriptor.withInlineTree(Json.parseToJsonElement(tree.decodeToString()).jsonObject)?.let { it to null } ?: (descriptor to tree)
+
 suspend fun agentUiPayload(tree: ByteArray, fileOps: FileOperationsProvider): PayloadFile =
     PayloadFile(
         key = ChatProtocol.PAYLOAD_KEY_AGENT_UI,
@@ -91,8 +99,9 @@ suspend fun agentUiPayload(tree: ByteArray, fileOps: FileOperationsProvider): Pa
         contentType = "application/json",
     )
 
-suspend fun agentUiBundle(tree: ByteArray, images: List<OutFile>, fileOps: FileOperationsProvider): StagedBundle {
+suspend fun agentUiBundle(tree: ByteArray?, images: List<OutFile>, fileOps: FileOperationsProvider): StagedBundle {
     val staged = if (images.isEmpty()) StagedBundle(PayloadBundle(emptyList(), emptyList(), emptyList())) else buildOutgoingBundle(images, fileOps)
+    if (tree == null) return staged
     return try {
         staged.plus(agentUiPayload(tree, fileOps))
     } catch (e: Throwable) {
@@ -131,8 +140,12 @@ fun checkCardAction(action: ChatMsg, known: List<ChatMsg>, isOwn: (ChatMsg) -> B
     return CardActionCheck.Accepted(action.withFullText(text))
 }
 
-suspend fun sendAgentUiCard(session: Session, allowlist: Allowlist, conversationId: Uuid, descriptor: AgentUiDescriptor, tree: ByteArray, images: List<OutFile>): Uuid =
-    sendToConversation(session, allowlist, conversationId, "", typed = MessageContent.AgentUi(descriptor), media = { _, ops -> agentUiBundle(tree, images, ops) })
+suspend fun sendAgentUiCard(session: Session, allowlist: Allowlist, conversationId: Uuid, descriptor: AgentUiDescriptor, tree: ByteArray, images: List<OutFile>): Uuid {
+    val (header, payload) = placeTree(descriptor, tree)
+    val media: (suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle)? =
+        if (payload == null && images.isEmpty()) null else { _, ops -> agentUiBundle(payload, images, ops) }
+    return sendToConversation(session, allowlist, conversationId, "", typed = MessageContent.AgentUi(header), media = media)
+}
 
 suspend fun sendUiCommand(profile: String, conversation: Uuid?, treeFile: String?, fallback: String?, title: String?, images: String?) {
     val backend = SessionBackend(profile).also { it.load() }
