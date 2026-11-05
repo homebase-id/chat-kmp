@@ -134,8 +134,8 @@ class PhotobaseConfigFileTest {
         assertTrue(uploads.isEmpty())
         assertEquals(versionTag, request.metadata.versionTag)
         assertEquals(SecurityGroupType.Owner.value, request.metadata.accessControlList?.requiredSecurityGroup)
-        assertTrue(request.keyHeader.aesKey.unsafeBytes.all { it == 1.toByte() }, "same file, same key")
-        assertTrue("7200000" in plaintext(request.metadata, request.keyHeader))
+        assertTrue(request.keyHeader!!.aesKey.unsafeBytes.all { it == 1.toByte() }, "same file, same key")
+        assertTrue("7200000" in plaintext(request.metadata, request.keyHeader!!))
     }
 
     @Test
@@ -145,7 +145,7 @@ class PhotobaseConfigFileTest {
         configFile.update { it.copy(pushIntervalMs = 7_200_000) }
 
         val request = updates.single()
-        val saved = plaintext(request.metadata, request.keyHeader)
+        val saved = plaintext(request.metadata, request.keyHeader!!)
         assertTrue(""""fromTheFuture":{"a":1}""" in saved, saved)
         assertTrue("7200000" in saved, saved)
     }
@@ -169,6 +169,6 @@ class PhotobaseConfigFileTest {
         configFile.update { it.copy(pushIntervalMs = 7_200_000) }
 
         val request = updates.single()
-        assertEquals(7_200_000, OdinSystemSerializer.deserialize<PhotobaseConfig>(plaintext(request.metadata, request.keyHeader)).pushIntervalMs)
+        assertEquals(7_200_000, OdinSystemSerializer.deserialize<PhotobaseConfig>(plaintext(request.metadata, request.keyHeader!!)).pushIntervalMs)
     }
 }
