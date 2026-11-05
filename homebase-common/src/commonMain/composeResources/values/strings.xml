@@ -3265,6 +3265,11 @@
     <string name="photobase_home_subtitle">Your backed-up photos and videos</string>
     <string name="settings_photobase_icon_desc">Show Photobase in the navigation bar</string>
     <string name="photobase_gallery_refresh">Refresh</string>
+    <string name="photobase_status_all_backed_up">All photos backed up</string>
+    <string name="photobase_indicator_working">Backing up. Open backup status.</string>
+    <string name="photobase_indicator_up_to_date">All photos backed up. Open backup status.</string>
+    <string name="photobase_indicator_paused">Backup paused. Open backup status.</string>
+    <string name="photobase_indicator_attention">Backup needs attention. Open backup status.</string>
     <string name="photobase_gallery_empty">Nothing backed up yet.</string>
     <string name="photobase_gallery_load_failed">Couldn't load your photos. Check your connection and try again.</string>
     <string name="photobase_gallery_retry">Try again</string>

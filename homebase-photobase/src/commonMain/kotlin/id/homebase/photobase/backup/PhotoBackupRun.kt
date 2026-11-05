@@ -10,6 +10,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +58,14 @@ class PhotoBackupRun(
     /** The OS took the time back: stop now, leaving every row where a later run can pick it up. */
     fun cancelActive() {
         activeJob?.cancel(CancellationException("backup run expired"))
+    }
+
+    /** Keeps the counts live, including results that land with no run going. At most one refresh a second: a run ticks per row. */
+    suspend fun followLedger() {
+        ledger.changes.collect {
+            refreshStatus()
+            delay(STATUS_REFRESH_GAP)
+        }
     }
 
     suspend fun refreshStatus() {
@@ -365,6 +374,7 @@ class PhotoBackupRun(
         private const val PREPARE_PARALLELISM = 2
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
+        private val STATUS_REFRESH_GAP: Duration = 1.seconds
 
         val WAKE_BUDGET: Duration = 25.seconds
         val WORKER_BUDGET: Duration = 9.minutes

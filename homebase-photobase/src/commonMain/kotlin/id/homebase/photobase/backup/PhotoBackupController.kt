@@ -29,6 +29,10 @@ class PhotoBackupController(
 
     private var wokenInBackgroundSinceForeground = false
 
+    init {
+        run?.let { scope.launch { it.followLedger() } }
+    }
+
     val isSupported: Boolean get() = run != null
 
     val status: StateFlow<BackupStatus>? get() = run?.status

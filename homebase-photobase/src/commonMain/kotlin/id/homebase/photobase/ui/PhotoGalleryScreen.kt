@@ -54,6 +54,7 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.photobase.backup.BackupStatus
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
@@ -73,7 +74,13 @@ private const val LOAD_MORE_WHEN_WITHIN = 30
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun PhotoGalleryScreen(viewModel: PhotoGalleryViewModel, onOpenBackupSettings: (() -> Unit)?) {
+fun PhotoGalleryScreen(
+    viewModel: PhotoGalleryViewModel,
+    onOpenBackupSettings: (() -> Unit)?,
+    backupStatus: BackupStatus? = null,
+    backupEnabled: Boolean = false,
+    onOpenBackupStatus: () -> Unit = {},
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val onAction = viewModel::onAction
     val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
@@ -94,7 +101,7 @@ fun PhotoGalleryScreen(viewModel: PhotoGalleryViewModel, onOpenBackupSettings: (
                     data = viewer,
                     onDismiss = { onAction(PhotoGalleryUiAction.CloseViewer) },
                 )
-                else -> GalleryGrid(uiState, onAction, onOpenBackupSettings)
+                else -> GalleryGrid(uiState, onAction, onOpenBackupSettings, backupStatus, backupEnabled, onOpenBackupStatus)
             }
         }
     }
@@ -105,12 +112,16 @@ private fun GalleryGrid(
     uiState: PhotoGalleryUiState,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
+    backupStatus: BackupStatus?,
+    backupEnabled: Boolean,
+    onOpenBackupStatus: () -> Unit,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.photobase_label)) },
                 actions = {
+                    backupStatus?.let { BackupIndicatorButton(it, backupEnabled, onOpenBackupStatus) }
                     IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isLoading) {
                         Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
                     }

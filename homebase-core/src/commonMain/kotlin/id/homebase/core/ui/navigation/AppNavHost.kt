@@ -2331,9 +2331,14 @@ fun AppNavHost(
                             tab<Route.Photobase>(tabRoot) {
                                 if (isAuthenticated) {
                                     PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
+                                        val photoBackup = koinInject<PhotoBackupController>()
+                                        val backupSettings by photoBackup.settings.collectAsStateWithLifecycle()
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
                                             onOpenBackupSettings = openPhotoBackup,
+                                            backupStatus = photoBackup.status?.collectAsStateWithLifecycle()?.value,
+                                            backupEnabled = backupSettings.enabled,
+                                            onOpenBackupStatus = { navController.navigate(Route.PhotoBackupStatus) },
                                         )
                                     }
                                 }

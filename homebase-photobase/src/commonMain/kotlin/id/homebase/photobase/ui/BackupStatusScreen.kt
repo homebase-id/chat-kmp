@@ -38,6 +38,7 @@ import id.homebase.resources.photobase_status_pending
 import id.homebase.resources.photobase_status_retry
 import id.homebase.resources.photobase_status_running
 import id.homebase.resources.photobase_status_title
+import id.homebase.resources.photobase_status_all_backed_up
 import id.homebase.resources.photobase_status_up_to_date
 import id.homebase.resources.photobase_status_uploading
 import kotlin.time.Instant
@@ -117,5 +118,6 @@ internal fun backupStatusSummary(status: BackupStatus): String = when {
             BackupPauseReason.StorageFull -> MR.string.photobase_status_paused_storage
         },
     )
+    status.isAllBackedUp -> stringResource(MR.string.photobase_status_all_backed_up)
     else -> stringResource(MR.string.photobase_status_up_to_date)
 }

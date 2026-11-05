@@ -32,6 +32,27 @@ data class BackupStatus(
 
     val progress: Float
         get() = if (totalCount == 0L) 1f else backedUpCount.toFloat() / totalCount
+
+    /** As of the last library check, which is as much as this device can know. */
+    val isAllBackedUp: Boolean
+        get() = pendingCount == 0L && uploadingCount == 0L && failedCount == 0L &&
+            (backedUpCount > 0 || lastSuccessMs != null)
+}
+
+enum class BackupIndicator { Working, UpToDate, Paused, NeedsAttention }
+
+/** What the gallery header shows; null shows nothing. */
+fun backupIndicatorOf(status: BackupStatus, backupEnabled: Boolean): BackupIndicator? = when {
+    !backupEnabled -> null
+    status.pauseReason == BackupPauseReason.StorageFull || status.pauseReason == BackupPauseReason.NoLibraryAccess ->
+        BackupIndicator.NeedsAttention
+    status.isRunning || status.uploadingCount > 0 -> BackupIndicator.Working
+    status.failedCount > 0 -> BackupIndicator.NeedsAttention
+    status.pauseReason == BackupPauseReason.BackupOff || status.pauseReason == BackupPauseReason.SignedOut -> null
+    status.pauseReason != null -> BackupIndicator.Paused
+    status.isAllBackedUp -> BackupIndicator.UpToDate
+    status.pendingCount > 0 -> BackupIndicator.Paused
+    else -> null
 }
 
 data class DeviceState(
