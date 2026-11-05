@@ -74,6 +74,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -209,6 +210,7 @@ fun SentMessageBubble(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
+    onOpenFileShare: ((share: FileShareDescriptor, sharer: OdinId?) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
     onCopyImage: ((payloadKey: String) -> Unit)? = null,
@@ -432,6 +434,7 @@ fun SentMessageBubble(
                         isCurrentSearchResult = isCurrentSearchResult,
                         chainCap = chainCap,
                         onSaveContactCard = onSaveContactCard,
+                        onOpenFileShare = onOpenFileShare,
                         onMessageIdentity = onMessageIdentity,
                     )
                     AnimatedReactionPill(
@@ -561,6 +564,7 @@ fun ReceivedMessageBubble(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
+    onOpenFileShare: ((share: FileShareDescriptor, sharer: OdinId?) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
     onCopyImage: ((payloadKey: String) -> Unit)? = null,
@@ -711,6 +715,7 @@ fun ReceivedMessageBubble(
                             isCurrentSearchResult = isCurrentSearchResult,
                             chainCap = chainCap,
                             onSaveContactCard = onSaveContactCard,
+                            onOpenFileShare = onOpenFileShare,
                             onMessageIdentity = onMessageIdentity,
                         )
                         AnimatedReactionPill(

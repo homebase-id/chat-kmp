@@ -3,6 +3,7 @@ package id.homebase.api.client.drives
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileMetadata
+import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
@@ -23,7 +24,9 @@ data class HomebaseFile(
     val fileMetadata: FileMetadata,
     val serverMetadata: ServerMetadata,
     val priority: Int = 0,
-    val fileByteCount: Long = 0
+    val fileByteCount: Long = 0,
+    /** With includeShares: the file's live share rows; for a reader, the share they read it through. */
+    val shares: List<ShareRow>? = null,
 ) {
 
 

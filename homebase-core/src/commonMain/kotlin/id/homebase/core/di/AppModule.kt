@@ -173,6 +173,12 @@ import id.homebase.core.ui.screens.openedfile.OpenedFileViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncEditor
 import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncDiscussions
+import id.homebase.api.client.connections.CircleShareKeyProvider
+import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
+import id.homebase.core.ui.screens.filesync.FilesyncSharing
+import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
+import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
@@ -772,6 +778,7 @@ val appModule = module {
                 get<MomentGroupService>().start()
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
+                get<FilesyncShareUpkeep>().start()
 
                 get<FeedTimelineService>().reset()
                 get<PostCommentsService>().reset()
@@ -1058,9 +1065,15 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { photoBackupController() }
-    single { FilesyncRepository(get(), get(), get(), get()) }
+    single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
-    single { FilesyncUploadQueue(get(), get(), get(), get()) }
+    single { FilesyncDiscussions(get(), get(), get(), get()) }
+    single { CircleShareKeyProvider(get(), get()) }
+    single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
+    single { FilesyncShareMessages(get(), get()) }
+    single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
+    single { FilesyncSharingSetup(get(), get(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
@@ -1487,6 +1500,10 @@ val appModule = module {
             extendPermissionViewModel = get(FilesyncPermissionQualifier),
             webDropShareFlowState = get(),
             privateDriveOptIn = get(),
+            discussions = get(),
+            filesyncSharing = get(),
+            sharingSetup = get(),
+            shareMessages = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }

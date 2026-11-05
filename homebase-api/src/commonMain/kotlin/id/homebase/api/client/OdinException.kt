@@ -84,6 +84,12 @@ enum class OdinClientErrorCode(val value: Int) {
     CannotDeleteBuiltInCircle(3020),
     CircleSlugTaken(3021),
     ContactNotReviewed(3022),
+    CircleShareKeyAlreadySet(3023),
+    CircleShareKeyNotSet(3024),
+    NotACircleMember(3025),
+    InvalidShareKey(3026),
+    CircleShareKeyChanged(3027),
+    NotReviewedByOwner(3028),
 
     // Drive management errors 40xx
     CannotAllowAnonymousReadsOnOwnerOnlyDrive(4001),

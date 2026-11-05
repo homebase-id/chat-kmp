@@ -570,7 +570,7 @@ private val filesyncDrive = TargetDriveAccessRequest(
     type = filesyncLabeledDrive.drive.type.toString(),
     name = filesyncLabeledDrive.label,
     description = "Files synced with your computers by Homebase Filesync",
-    permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    permissions = listOf(DrivePermission.Read, DrivePermission.Write, DrivePermission.React, DrivePermission.Comment),
     driveSlug = FilesyncProtocol.DriveSlug,
     driveTypeSlug = FilesyncProtocol.DriveTypeSlug,
     sharingModel = DriveSharingModel.SelectiveShare,
@@ -592,7 +592,12 @@ val filesyncAppRegistration = AppRegistrationParams(
             description = "People who can see the files you share through Homebase Filesync",
             emoji = "📁",
             drives = listOf(
-                filesyncDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),
+                // No Write: drive Write lets a member add files anywhere, whatever their share rows say.
+                filesyncDrive.copy(
+                    permissions = listOf(DrivePermission.Read, DrivePermission.React, DrivePermission.Comment),
+                    driveTypeSlug = null,
+                    grantOnly = true,
+                ),
             ),
         )
     ),

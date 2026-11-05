@@ -33,7 +33,7 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. ViewOnce is 216 and CallEvent is 217;
+     * off `appData.dataType` to choose a renderer. ViewOnce is 216, CallEvent 217 and FileShare 218;
      * pick the next free integer when adding one.
      */
     const val ChatEventMessageDataType = 210
@@ -91,6 +91,9 @@ object ChatProtocol {
      * payload under [PAYLOAD_KEY_MESSAGE_WEB]`0`. See [id.homebase.chat.viewonce.ViewOnceDescriptor].
      */
     const val ChatViewOnceMessageDataType = TombstoneRetention.VIEW_ONCE_DATA_TYPE
+
+    /** Files shared from the sender's Filesync drive; see [id.homebase.chat.fileshare.FileShareDescriptor]. */
+    const val ChatFileShareMessageDataType = 218
 
     const val MessageFileType = 7878
 

@@ -39,8 +39,12 @@ class FilesyncUploader internal constructor(
         clock: Clock = Clock.System,
     ) : this({ request, progress -> driveUploadProvider.uploadFile(request, onProgress = progress) }, fileOperationsProvider, clock)
 
-    suspend fun createFolder(parentId: Uuid, name: String) {
-        create(Uuid.random(), parentId, FilesyncProtocol.FolderFileType, FilesyncNodeContent(v = CONTENT_VERSION, name = name), KeyHeader.newRandom16())
+    /** The new folder's node id and key. */
+    suspend fun createFolder(parentId: Uuid, name: String): Pair<Uuid, KeyHeader> {
+        val nodeId = Uuid.random()
+        val keyHeader = KeyHeader.newRandom16()
+        create(nodeId, parentId, FilesyncProtocol.FolderFileType, FilesyncNodeContent(v = CONTENT_VERSION, name = name), keyHeader)
+        return nodeId to keyHeader
     }
 
     suspend fun uploadFile(
@@ -50,9 +54,9 @@ class FilesyncUploader internal constructor(
         name: String,
         modifiedMs: Long?,
         onProgress: (Float) -> Unit,
-    ) {
+    ): KeyHeader {
         val mtime = modifiedMs ?: clock.now().toEpochMilliseconds()
-        try {
+        return try {
             uploadOnce(nodeId, parentId, sourcePath, name, mtime, onProgress)
         } catch (e: ClientException) {
             // A hash rejection means the bytes changed under us or a bug: start over once from the source, never resend blindly.
@@ -69,7 +73,7 @@ class FilesyncUploader internal constructor(
         name: String,
         mtime: Long,
         onProgress: (Float) -> Unit,
-    ) {
+    ): KeyHeader {
         val keyHeader = KeyHeader.newRandom16()
         val encryptedPath = fileOperationsProvider.createUploadTempPath("fs_up_", ".bin")
         try {
@@ -84,6 +88,7 @@ class FilesyncUploader internal constructor(
                 hash = hashed.hash,
             )
             create(nodeId, parentId, FilesyncProtocol.FileFileType, content, keyHeader, payload, onProgress)
+            return keyHeader
         } finally {
             runCatching { fileOperationsProvider.deleteTempFile(encryptedPath) }
         }

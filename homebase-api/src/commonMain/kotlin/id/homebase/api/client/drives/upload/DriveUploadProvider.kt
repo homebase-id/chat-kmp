@@ -62,6 +62,9 @@ data class UploadFileRequest(
     val thumbnails: List<ThumbnailFile> = emptyList(),
     val transitOptions: TransitOptions? = null,
     val fileSystemType: FileSystemType? = null,
+    val withCommentedFileKey: Boolean = false,
+    /** A recipient drive's write-only public point, `0x04 ‖ x ‖ y`, to seal the key header to. */
+    val sealedTo: ByteArray? = null,
     /** The file's uniqueId is its content, so a 4105 means it's already there: sent, nothing to convert to an update. */
     val existingFileIsSuccess: Boolean = false,
 )
@@ -156,7 +159,7 @@ class DriveUploadProvider(
 
         val transferIv = ByteArrayUtil.getRndByteArray(16)
         val sharedSecretEncryptedDescriptor = buildSharedSecretEncryptedUploadDescriptor(
-            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv),
+            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv, request.withCommentedFileKey, request.sealedTo),
             request.metadata,
             sharedSecret,
             transferIv = transferIv,
@@ -412,7 +415,7 @@ class DriveUploadProvider(
         val queryParams =
             buildMap {
                 if (fileSystemType != null) {
-                    put("xsft", fileSystemType.toString())
+                    put("xfst", fileSystemType.toString())
                 }
             }
 
