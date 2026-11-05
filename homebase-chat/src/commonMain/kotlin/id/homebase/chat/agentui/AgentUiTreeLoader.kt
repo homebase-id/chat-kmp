@@ -92,7 +92,7 @@ class AgentUiTreeLoader(
         if (message.isDeleted) return null
         val content = message.messageContent as? MessageContent.AgentUi ?: return null
         if (content.descriptor == null || content.inlineTree != null) return null
-        val payload = message.payloads?.firstOrNull { it.key == ChatProtocol.PAYLOAD_KEY_AGENT_UI } ?: return null
+        val payload = message.agentUiTreePayload() ?: return null
         val iv = payload.iv?.bytes ?: return null
         return Request(
             Key(message.fileId, payload.lastModified, Base64.encode(iv), agentUiImageKeys(message.payloads)),
@@ -106,3 +106,5 @@ class AgentUiTreeLoader(
         const val MAX_TREES = 200
     }
 }
+
+internal fun MessageUiModel.agentUiTreePayload() = payloads?.firstOrNull { it.key == ChatProtocol.PAYLOAD_KEY_AGENT_UI }

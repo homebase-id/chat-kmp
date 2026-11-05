@@ -3,6 +3,7 @@ package id.homebase.chat.agentui
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.codePointCount
 import id.homebase.api.util.truncateToCodePoints
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import kotlinx.serialization.builtins.MapSerializer
@@ -92,10 +93,6 @@ data class AgentUiTree(
     /** Default value of every input node (toggle "true"/"false", text, select option id), by node id. */
     val inputs: Map<String, String>,
 ) {
-    fun nodeCount(): Int = count(root)
-
-    fun depth(): Int = depth(root)
-
     /** The acting node's own value plus every `include`d input node; ids that are not inputs are ignored. */
     fun collectValues(action: AgentUiNodeAction, actingNodeId: String, current: Map<String, String>): Map<String, String> {
         val out = LinkedHashMap<String, String>()
@@ -113,9 +110,14 @@ data class AgentUiTree(
             Json.encodeToString(MapSerializer(String.serializer(), String.serializer()), values).encodeToByteArray().size <=
                 AgentUiActionDescriptor.MAX_VALUES_BYTES
         }
-        var text = candidate
-        while (text.isNotEmpty() && !fits(text)) text = text.truncateToCodePoints(text.codePointCount() - 1)
-        return text
+        if (fits(candidate)) return candidate
+        var lo = 0
+        var hi = candidate.codePointCount() - 1
+        while (lo < hi) {
+            val mid = (lo + hi + 1) / 2
+            if (fits(candidate.truncateToCodePoints(mid))) lo = mid else hi = mid - 1
+        }
+        return candidate.truncateToCodePoints(lo)
     }
 
     private fun actionsTouching(nodeId: String): List<Pair<AgentUiNodeAction, String>> {
@@ -135,18 +137,13 @@ data class AgentUiTree(
         return out
     }
 
-    private fun count(n: AgentUiNode): Int = 1 + (n.children()?.sumOf { count(it) } ?: 0)
-
-    private fun depth(n: AgentUiNode): Int = 1 + (n.children()?.maxOfOrNull { depth(it) } ?: 0)
-
     companion object {
-        private val json = Json
-
         fun decode(bytes: ByteArray, availableImageKeys: Set<String>): AgentUiTreeResult {
             if (bytes.size > AgentUiLimits.MAX_BYTES) return AgentUiTreeResult.Invalid("payload too large")
-            if (jsonNestingExceeds(bytes, AgentUiLimits.MAX_JSON_NESTING)) return AgentUiTreeResult.Invalid("json nested too deeply")
+            val text = bytes.decodeToString()
+            if (jsonNestingExceeds(text, AgentUiLimits.MAX_JSON_NESTING)) return AgentUiTreeResult.Invalid("json nested too deeply")
             val element = try {
-                json.parseToJsonElement(bytes.decodeToString())
+                Json.parseToJsonElement(text)
             } catch (e: Exception) {
                 return AgentUiTreeResult.Invalid("not json")
             }
@@ -160,25 +157,22 @@ data class AgentUiTree(
             AgentUiTreeResult.Invalid("decode failed")
         }
 
-        internal fun jsonNestingExceeds(text: String, max: Int): Boolean = jsonNestingExceeds(text.encodeToByteArray(), max)
-
         // Iterative so a hostile payload cannot overflow the stack, which is small on wasm.
-        private fun jsonNestingExceeds(bytes: ByteArray, max: Int): Boolean {
+        internal fun jsonNestingExceeds(text: String, max: Int): Boolean {
             var depth = 0
             var inString = false
             var escaped = false
-            for (b in bytes) {
-                val c = b.toInt()
+            for (c in text) {
                 if (inString) {
                     when {
                         escaped -> escaped = false
-                        c == '\\'.code -> escaped = true
-                        c == '"'.code -> inString = false
+                        c == '\\' -> escaped = true
+                        c == '"' -> inString = false
                     }
                 } else when (c) {
-                    '"'.code -> inString = true
-                    '{'.code, '['.code -> if (++depth > max) return true
-                    '}'.code, ']'.code -> if (depth > 0) depth--
+                    '"' -> inString = true
+                    '{', '[' -> if (++depth > max) return true
+                    '}', ']' -> if (depth > 0) depth--
                 }
             }
             return false
@@ -349,7 +343,7 @@ data class AgentUiTree(
     }
 }
 
-private fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
+internal fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
     is AgentUiNode.Column -> children
     is AgentUiNode.Row -> children
     is AgentUiNode.Card -> children
@@ -358,7 +352,7 @@ private fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
 }
 
 class AgentUiInputState(defaults: Map<String, String> = emptyMap()) {
-    private val values = androidx.compose.runtime.mutableStateMapOf<String, String>().apply { putAll(defaults) }
+    private val values = mutableStateMapOf<String, String>().apply { putAll(defaults) }
     private var baseline: Map<String, String> = defaults
 
     operator fun get(id: String): String? = values[id]

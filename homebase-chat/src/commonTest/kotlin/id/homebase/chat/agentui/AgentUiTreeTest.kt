@@ -1,6 +1,7 @@
 package id.homebase.chat.agentui
 
 import id.homebase.chat.agentui.AgentUiFixtures.tree
+import id.homebase.chat.agentui.AgentUiFixtures.valid
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -10,12 +11,6 @@ import kotlin.test.assertTrue
 class AgentUiTreeTest {
     private fun decode(bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys) =
         AgentUiTree.decode(bytes, keys)
-
-    private fun valid(bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys): AgentUiTree {
-        val r = decode(bytes, keys)
-        assertIs<AgentUiTreeResult.Valid>(r, (r as? AgentUiTreeResult.Invalid)?.reason)
-        return r.tree
-    }
 
     private fun invalid(bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys) {
         assertIs<AgentUiTreeResult.Invalid>(decode(bytes, keys))

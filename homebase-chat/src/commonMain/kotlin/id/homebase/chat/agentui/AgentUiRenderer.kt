@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,7 +75,7 @@ import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
-import id.homebase.resources.chat_agent_ui_image_unavailable
+import id.homebase.resources.chat_image_unavailable
 import org.jetbrains.compose.resources.stringResource
 
 data class AgentUiActionRequest(val actionId: String, val label: String, val values: Map<String, String>)
@@ -89,8 +90,7 @@ private class Env(
     val pending: Set<String>,
     val onAction: (AgentUiActionRequest) -> Unit,
 ) {
-    fun usable(action: AgentUiNodeAction?, needsAction: Boolean = false): Boolean =
-        enabled && (if (action == null) !needsAction else action.id !in pending)
+    fun usable(action: AgentUiNodeAction?): Boolean = enabled && action?.id !in pending
 
     fun fire(action: AgentUiNodeAction, nodeId: String, label: String) {
         onAction(AgentUiActionRequest(action.id, label, tree.collectValues(action, nodeId, inputs.snapshot())))
@@ -165,7 +165,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             },
         )
         is AgentUiNode.Image -> ImageView(node, env, modifier)
-        is AgentUiNode.Chip -> ChipView(node, modifier)
+        is AgentUiNode.Chip -> AgentChip(node.label, node.selected, modifier)
         is AgentUiNode.Divider -> HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
         is AgentUiNode.ListNode -> when (node.direction) {
             ListDirection.Vertical -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -218,11 +218,6 @@ private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
             CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.padding(16.dp))
         }
     }
-}
-
-@Composable
-private fun ChipView(node: AgentUiNode.Chip, modifier: Modifier) {
-    AgentChip(node.label, node.selected, modifier)
 }
 
 /** One chip for display chips and select options; the selected shape rounds to a pill. */
@@ -290,7 +285,7 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
             modifier = frame,
             contentDescription = node.alt,
             contentScale = ContentScale.Crop,
-            error = { AltBox(node.alt, Modifier, stringResource(MR.string.chat_agent_ui_image_unavailable)) },
+            error = { AltBox(node.alt, Modifier, stringResource(MR.string.chat_image_unavailable)) },
         )
     }
 }
@@ -346,15 +341,15 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
-    val busy = node.action?.id?.let { it in env.pending } == true
-    val enabled = env.usable(node.action, needsAction = true)
+    val busy = node.action?.id in env.pending
+    val enabled = node.action != null && env.usable(node.action)
     val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
     val shapes = ButtonDefaults.shapes()
     val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
     val label: @Composable () -> Unit = {
         if (busy) {
             LoadingIndicator(Modifier.size(ButtonDefaults.IconSize + 6.dp), color = LocalContentColor.current)
-            Box(Modifier.width(ButtonDefaults.IconSpacing))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         }
         Text(node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }

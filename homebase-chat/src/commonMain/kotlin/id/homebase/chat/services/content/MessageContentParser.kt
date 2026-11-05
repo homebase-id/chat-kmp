@@ -200,7 +200,7 @@ object MessageContentParser {
         val descriptor = if (AgentUiTree.jsonNestingExceeds(content, AgentUiLimits.MAX_JSON_NESTING + 1)) null
         else OdinSystemSerializer.deserialize<AgentUiDescriptor>(content)
         if (descriptor != null && descriptor.isValid()) {
-            MessageContent.AgentUi(descriptor, descriptor.tree?.let { AgentUiTree.decodeParsed(it, agentUiImageKeys(payloads)) })
+            MessageContent.AgentUi(descriptor.copy(tree = null), descriptor.tree?.let { AgentUiTree.decodeParsed(it, agentUiImageKeys(payloads)) })
         } else {
             Logger.w(tag = TAG) { "AgentUi descriptor failed validation" }
             MessageContent.AgentUi(null)
