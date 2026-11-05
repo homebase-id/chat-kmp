@@ -260,7 +260,7 @@ internal fun CardOptionsPanel(
             // The picked tool names itself in the group below, so the control stands alone here.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val option = options.firstOrNull { it.name == shown }
-                if (option == null) CardStyleRow(styles, overrides, enabled, onStyle, custom = custom)
+                if (option == null) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
                 else OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
             }
         }
