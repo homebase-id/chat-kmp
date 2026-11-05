@@ -64,7 +64,7 @@ class BackupOutboxResults(
                 settled(event.uniqueId)
             }
             is BackendEvent.OutboxEvent.ItemFailed -> if (event.driveId == photosDriveId) {
-                ledger.onOutboxRetrying(event.uniqueId, null)
+                ledger.onOutboxRetrying(event.uniqueId)
                 settled(event.uniqueId)
             }
             is BackendEvent.OutboxEvent.OutboxItemDropped -> if (event.driveId == photosDriveId) {

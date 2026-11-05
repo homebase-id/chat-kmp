@@ -83,8 +83,4 @@ class DeviceBackupWrapper(
     suspend fun saveCheckpoints(values: Map<String, String>) {
         databaseManager.withWriteTransaction { values.forEach { (key, value) -> checkpoints.upsert(key, value) } }
     }
-
-    suspend fun deleteCheckpoint(key: String) {
-        databaseManager.withWriteValue { checkpoints.deleteKey(key) }
-    }
 }

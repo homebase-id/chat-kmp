@@ -27,8 +27,7 @@ class AndroidDeviceChangeSource(private val context: Context) : DeviceChangeSour
 
     override suspend fun changes(checkpoint: Map<String, String>, albumIds: Set<String>, wantCurrentIds: Boolean): DeviceChanges =
         withContext(Dispatchers.IO) {
-            val inserted = mutableListOf<DeviceAsset>()
-            val updated = mutableListOf<DeviceAsset>()
+            val assets = mutableListOf<DeviceAsset>()
             val next = mutableMapOf<String, String>()
             var isFull = false
             for (volume in volumes()) {
@@ -40,13 +39,13 @@ class AndroidDeviceChangeSource(private val context: Context) : DeviceChangeSour
                 for (kind in Kind.entries) {
                     query(volume, kind, albumIds, sinceGeneration) { asset, added, modified ->
                         highest = maxOf(highest, added, modified)
-                        if (sinceGeneration != null && added <= sinceGeneration) updated += asset else inserted += asset
+                        assets += asset
                     }
                 }
                 if (version != null) next[volume] = "$version$SEPARATOR$highest"
             }
             val currentIds = if (wantCurrentIds || isFull) allIds(albumIds) else null
-            DeviceChanges(inserted, updated, emptyList(), next, isFull, currentIds)
+            DeviceChanges(assets, emptyList(), next, currentIds)
         }
 
     override suspend fun export(assetId: String, mediaType: BackupMediaType): ExportedAsset = withContext(Dispatchers.IO) {
@@ -76,7 +75,7 @@ class AndroidDeviceChangeSource(private val context: Context) : DeviceChangeSour
                 }
             }
         }
-        found.map { (id, name) -> DeviceAlbum(id, name, isDefault = name.equals(CAMERA_BUCKET, ignoreCase = true)) }
+        found.map { (id, name) -> DeviceAlbum(id, name) }
     }
 
     private fun volumes(): Set<String> =

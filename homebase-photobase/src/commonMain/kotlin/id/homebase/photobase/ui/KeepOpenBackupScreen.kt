@@ -52,7 +52,7 @@ fun KeepOpenBackupScreen(viewModel: BackupSettingsViewModel, onDone: () -> Unit)
             )
             LinearProgressIndicator(progress = { status.progress }, modifier = Modifier.fillMaxWidth())
             Text(
-                text = stringResource(MR.string.photobase_keep_open_progress, status.backedUpCount.toString(), (status.backedUpCount + status.pendingCount + status.uploadingCount).toString()),
+                text = stringResource(MR.string.photobase_keep_open_progress, status.backedUpCount.toString(), status.totalCount.toString()),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.inverseOnSurface,
             )

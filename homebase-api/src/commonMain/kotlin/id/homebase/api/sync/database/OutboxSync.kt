@@ -242,11 +242,9 @@ class OutboxSync(
 
 //            val outboxRecord = databaseManager.outbox.checkout()
             val outboxRecord = checkoutMutex.withLock {
-                val record = if (bulkInFlight.value >= MAX_BULK_SENDING) {
-                    databaseManager.outbox.checkoutBelowPriority(OUTBOX_BULK_PRIORITY)
-                } else {
-                    databaseManager.outbox.checkout()
-                }
+                val record = databaseManager.outbox.checkout(
+                    belowPriority = if (bulkInFlight.value >= MAX_BULK_SENDING) OUTBOX_BULK_PRIORITY else Long.MAX_VALUE,
+                )
                 if (record != null && record.priority >= OUTBOX_BULK_PRIORITY) bulkInFlight.incrementAndGet()
                 record
             }

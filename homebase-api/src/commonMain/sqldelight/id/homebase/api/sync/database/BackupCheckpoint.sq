@@ -11,8 +11,5 @@ INSERT OR REPLACE INTO BackupCheckpoint(checkpointKey, checkpointValue) VALUES (
 selectAll:
 SELECT * FROM BackupCheckpoint;
 
-deleteKey:
-DELETE FROM BackupCheckpoint WHERE checkpointKey = ?;
-
 deleteAll:
 DELETE FROM BackupCheckpoint;

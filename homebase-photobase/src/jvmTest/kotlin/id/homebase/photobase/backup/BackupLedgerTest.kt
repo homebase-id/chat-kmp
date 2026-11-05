@@ -37,7 +37,7 @@ class BackupLedgerTest {
         ledger.markHashed("a", "ff", Uuid.random())
         ledger.markDone("a")
 
-        ledger.apply(DeviceChanges(emptyList(), listOf(asset("a", modifiedAtMs = 2000)), emptyList(), emptyMap(), false, null), null)
+        ledger.apply(DeviceChanges(listOf(asset("a", modifiedAtMs = 2000)), emptyList(), emptyMap(), null), null)
 
         val row = ledger.row("a")!!
         assertEquals(BackupState.New.code, row.state)
@@ -49,7 +49,7 @@ class BackupLedgerTest {
     fun anAssetTheOsSaysIsGoneIsDeletedOnDevice() = runTest {
         ledger.apply(fullListing(asset("a")), null)
 
-        ledger.apply(DeviceChanges(emptyList(), emptyList(), listOf("a"), emptyMap(), false, null), null)
+        ledger.apply(DeviceChanges(emptyList(), listOf("a"), emptyMap(), null), null)
 
         assertEquals(BackupState.DeletedOnDevice.code, stateOf("a"))
     }
@@ -58,7 +58,7 @@ class BackupLedgerTest {
     fun deletionsAreFoundByDiffingAgainstTheCurrentIds() = runTest {
         ledger.apply(fullListing(asset("a"), asset("b")), null)
 
-        ledger.apply(DeviceChanges(emptyList(), emptyList(), emptyList(), emptyMap(), false, setOf("b")), null)
+        ledger.apply(DeviceChanges(emptyList(), emptyList(), emptyMap(), setOf("b")), null)
 
         assertEquals(BackupState.DeletedOnDevice.code, stateOf("a"))
         assertEquals(BackupState.New.code, stateOf("b"))
@@ -68,7 +68,7 @@ class BackupLedgerTest {
     fun aDeltaWithoutCurrentIdsDeletesNothing() = runTest {
         ledger.apply(fullListing(asset("a")), null)
 
-        ledger.apply(DeviceChanges(emptyList(), emptyList(), emptyList(), emptyMap(), false, null), null)
+        ledger.apply(DeviceChanges(emptyList(), emptyList(), emptyMap(), null), null)
 
         assertEquals(BackupState.New.code, stateOf("a"))
     }
@@ -76,7 +76,7 @@ class BackupLedgerTest {
     @Test
     fun anAssetBackOnTheDeviceIsBackedUpAgain() = runTest {
         ledger.apply(fullListing(asset("a")), null)
-        ledger.apply(DeviceChanges(emptyList(), emptyList(), listOf("a"), emptyMap(), false, null), null)
+        ledger.apply(DeviceChanges(emptyList(), listOf("a"), emptyMap(), null), null)
 
         ledger.apply(fullListing(asset("a")), null)
 

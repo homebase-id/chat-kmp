@@ -27,14 +27,9 @@ class OutboxWrapper(
         }
     }
 
-    suspend fun checkout(): Outbox?
-    {
-        return databaseManager.withWriteValue { delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds).executeAsOneOrNull() }
-    }
-
-    suspend fun checkoutBelowPriority(priority: Long): Outbox? {
+    suspend fun checkout(belowPriority: Long = Long.MAX_VALUE): Outbox? {
         return databaseManager.withWriteValue {
-            delegate.checkoutBelowPriority(getUniqueId(), UnixTimeUtc.now().milliseconds, priority).executeAsOneOrNull()
+            delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds, belowPriority).executeAsOneOrNull()
         }
     }
 

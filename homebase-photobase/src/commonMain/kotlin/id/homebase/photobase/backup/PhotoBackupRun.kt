@@ -99,7 +99,7 @@ class PhotoBackupRun(
     }
 
     private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome {
-        val interactive = request.trigger == BackupTrigger.Foreground || request.trigger == BackupTrigger.UserRequested
+        val interactive = request.isInteractive
         Logger.i(tag = TAG) { "start trigger=${request.trigger} budget=${request.budget.remaining}" }
 
         if (!auth.awaitSignedIn()) return paused(BackupPauseReason.SignedOut)
@@ -127,7 +127,7 @@ class PhotoBackupRun(
         val includeVideos = backupVideosAllowed(current, deviceState, interactive)
         val newestFirst = ledger.isInitialBackupDone()
         val finished = withTimeoutOrNull(request.budget.remaining) {
-            pipeline(request, uploader, includeVideos, newestFirst, interactive)
+            pipeline(request, uploader, includeVideos, newestFirst)
             true
         } ?: false
         uploader.kick()
@@ -167,7 +167,6 @@ class PhotoBackupRun(
         uploader: BackupUploader,
         includeVideos: Boolean,
         newestFirst: Boolean,
-        interactive: Boolean,
     ) = coroutineScope {
         val hashing = launch { hashStage(request, includeVideos, newestFirst) }
         val toPrepare = Channel<Pair<DeviceBackupAsset, Uuid>>()
@@ -322,7 +321,6 @@ class PhotoBackupRun(
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
 
-        val FOREGROUND_BUDGET: Duration? = null
         val WAKE_BUDGET: Duration = 25.seconds
         val WORKER_BUDGET: Duration = 9.minutes
     }

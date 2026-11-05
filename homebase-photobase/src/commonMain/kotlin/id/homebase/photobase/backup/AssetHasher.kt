@@ -18,7 +18,7 @@ class HashedAsset(val contentDigests: List<ByteArray>) {
     }
 }
 
-/** Pass 1 of §3.2: plaintext BLAKE3 of the original bytes, before anything is encrypted or written. */
+/** Plaintext BLAKE3 of the original bytes, before anything is encrypted or written. */
 class AssetHasher(
     private val source: DeviceChangeSource,
     private val fileOps: FileOperationsProvider,

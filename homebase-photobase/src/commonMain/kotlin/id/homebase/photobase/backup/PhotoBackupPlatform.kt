@@ -20,7 +20,7 @@ class PhotoBackupPlatform(
     /** Null: everything goes through the Outbox. */
     val uploader: ((BackgroundUploaderContext) -> BackupUploader)? = null,
     /** Starts delivering results from uploads that outlive the process. */
-    val listenForUploadResults: ((BackupLedger, FileOperationsProvider, CoroutineScope, suspend () -> Unit) -> Unit)? = null,
+    val listenForUploadResults: ((BackupLedger, FileOperationsProvider, CoroutineScope) -> Unit)? = null,
 )
 
 /** Null on desktop and web, which show the gallery only. */

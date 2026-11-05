@@ -23,7 +23,7 @@ INSERT INTO Outbox(driveId, uniqueId, dependencyUniqueId, priority, lastAttempt,
 VALUES (?,?, ?, ?, ?, ?, ?, ?,?, ?, ?);
 
 
--- Checkout for sending
+-- Checkout for sending. :belowPriority leaves bulk rows queued while their upload slots are taken (OutboxSync)
 checkout:
 UPDATE Outbox
 SET checkOutStamp=:checkOutStamp
@@ -33,29 +33,7 @@ WHERE checkOutStamp IS NULL AND
     FROM Outbox AS o
     WHERE o.checkOutStamp IS NULL
         AND o.nextRunTime <= :now
-        AND ((o.dependencyUniqueId IS NULL)
-            OR (NOT EXISTS (
-                  SELECT 1
-                  FROM Outbox AS ib
-                  WHERE ib.uniqueId = o.dependencyUniqueId)
-        )
-    )
-    ORDER BY o.priority ASC, o.nextRunTime ASC
-    LIMIT 1
-)
-RETURNING rowId, driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
-
--- The same checkout, leaving bulk rows queued: their upload slots are taken (OutboxSync)
-checkoutBelowPriority:
-UPDATE Outbox
-SET checkOutStamp=:checkOutStamp
-WHERE checkOutStamp IS NULL AND
-    rowId = (
-    SELECT rowId
-    FROM Outbox AS o
-    WHERE o.checkOutStamp IS NULL
-        AND o.nextRunTime <= :now
-        AND o.priority < :priority
+        AND o.priority < :belowPriority
         AND ((o.dependencyUniqueId IS NULL)
             OR (NOT EXISTS (
                   SELECT 1

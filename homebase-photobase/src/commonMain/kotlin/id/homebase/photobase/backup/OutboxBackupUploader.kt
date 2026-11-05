@@ -100,7 +100,7 @@ class OutboxBackupUploader(
                 uniqueId,
                 PhotobaseProtocol.VideoDataType,
                 row.createdAt,
-                PhotoContent(name = exported.fileName.truncateToCodePoints(MAX_NAME_CODE_POINTS)),
+                PhotoContent(name = exported.fileName.truncateToCodePoints(MAX_PHOTO_NAME_CODE_POINTS)),
             ),
             priority = OUTBOX_BULK_PRIORITY,
             sendNow = false,
@@ -119,6 +119,5 @@ class OutboxBackupUploader(
 
     private companion object {
         const val BULK_STREAMS = 2
-        const val MAX_NAME_CODE_POINTS = 200
     }
 }

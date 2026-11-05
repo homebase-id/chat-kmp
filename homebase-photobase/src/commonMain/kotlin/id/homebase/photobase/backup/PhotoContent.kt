@@ -6,6 +6,8 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.serialization.Serializable
 
+internal const val MAX_PHOTO_NAME_CODE_POINTS = 200
+
 /**
  * The header content of a photo file, encrypted with it. The capture date rides in `userDate`, the
  * id in `uniqueId`. The tiny preview lives here rather than in the plaintext previewThumbnail

@@ -20,16 +20,14 @@ data class DeviceAsset(
 )
 
 data class DeviceChanges(
-    val inserted: List<DeviceAsset>,
-    val updated: List<DeviceAsset>,
+    val assets: List<DeviceAsset>,
     val deletedIds: List<String>,
     val newCheckpoint: Map<String, String>,
-    val isFull: Boolean,
     /** Every asset id on the device in scope; null when this pass didn't list them. The ledger diffs against it. */
     val currentIds: Set<String>?,
 )
 
-data class DeviceAlbum(val id: String, val name: String, val isDefault: Boolean)
+data class DeviceAlbum(val id: String, val name: String)
 
 enum class ExportedPartRole { Primary, PairedVideo }
 
@@ -54,8 +52,8 @@ class AssetPermanentlyUnavailableException(val reason: String) : Exception(reaso
  *
  * Contract for every implementation:
  * - [changes] given an empty or invalid [checkpoint] (expired token, new MediaStore version) lists
- *   everything in scope and returns `isFull = true`. It never throws for a stale checkpoint.
- * - An asset edited on the device comes back in `updated`, with a new `modifiedAtMs`.
+ *   everything in scope. It never throws for a stale checkpoint.
+ * - An asset edited on the device comes back in `assets`, with a new `modifiedAtMs`.
  * - When [wantCurrentIds] is true, `currentIds` is the complete id set in scope, so deletions can
  *   be found even where the OS's own delta doesn't report them. It can be expensive; short budgets
  *   don't ask for it.

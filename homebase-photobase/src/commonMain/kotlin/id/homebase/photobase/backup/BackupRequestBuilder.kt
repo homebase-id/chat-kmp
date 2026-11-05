@@ -38,7 +38,7 @@ class BackupRequestBuilder(
         try {
             for ((index, part) in exported.parts.withIndex()) {
                 val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
-                payloads += PayloadFile(key = keyFor(part.role, mediaType), filePath = encryptedPath, contentType = part.contentType, isPreEncrypted = true)
+                payloads += PayloadFile(key = keyFor(part.role), filePath = encryptedPath, contentType = part.contentType, isPreEncrypted = true)
                 val hashed = fileOps.encryptWithPayloadHash(part.path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
                 val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
                 if (digest == null || !digest.contentEquals(digests[index])) return null
@@ -53,7 +53,7 @@ class BackupRequestBuilder(
                 if (mediaType == BackupMediaType.LivePhoto) PhotobaseProtocol.LivePhotoDataType else PhotobaseProtocol.ImageDataType,
                 captureTimeMs(exif, row.createdAt),
                 PhotoContent(
-                    name = exported.fileName.truncateToCodePoints(MAX_NAME_CODE_POINTS),
+                    name = exported.fileName.truncateToCodePoints(MAX_PHOTO_NAME_CODE_POINTS),
                     latitude = exif?.latitude,
                     longitude = exif?.longitude,
                     altitude = exif?.altitudeMeters,
@@ -80,11 +80,8 @@ class BackupRequestBuilder(
         }
     }
 
-    private fun keyFor(role: ExportedPartRole, mediaType: BackupMediaType) = when {
-        role == ExportedPartRole.PairedVideo -> PhotobaseProtocol.LivePhotoVideoPayloadKey
-        mediaType == BackupMediaType.Video -> PhotobaseProtocol.VideoPayloadKey
-        else -> PhotobaseProtocol.ImagePayloadKey
-    }
+    private fun keyFor(role: ExportedPartRole) =
+        if (role == ExportedPartRole.PairedVideo) PhotobaseProtocol.LivePhotoVideoPayloadKey else PhotobaseProtocol.ImagePayloadKey
 
     private class PreparedImage(val width: Int, val height: Int, val tiny: EmbeddedThumb?, val thumbnails: List<ThumbnailFile>)
 
@@ -108,7 +105,6 @@ class BackupRequestBuilder(
 
     private companion object {
         const val TAG = "BackupRequestBuilder"
-        const val MAX_NAME_CODE_POINTS = 200
     }
 }
 

@@ -1,13 +1,10 @@
 package id.homebase.photobase.ui
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -17,7 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
+import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
@@ -83,11 +80,7 @@ private fun IntervalDialog(current: Long, onDismiss: () -> Unit, onChoose: (Long
             Column {
                 for (choice in PUSH_INTERVAL_CHOICES) {
                     val ms = choice.inWholeMilliseconds
-                    ListItem(
-                        modifier = Modifier.selectable(selected = ms == current, role = Role.RadioButton) { onChoose(ms) },
-                        headlineContent = { Text(intervalLabel(ms)) },
-                        leadingContent = { RadioButton(selected = ms == current, onClick = null) },
-                    )
+                    SettingsOptionRow(label = intervalLabel(ms), selected = ms == current, onClick = { onChoose(ms) })
                 }
             }
         },

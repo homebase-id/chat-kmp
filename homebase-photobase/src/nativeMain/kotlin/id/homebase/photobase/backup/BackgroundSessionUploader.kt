@@ -38,7 +38,7 @@ class BackgroundSessionUploader(
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
             val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
-            val bodyPath = bodyPathFor(uniqueId)
+            val bodyPath = bodyPath(fileOps, uniqueId)
             val prepared = try {
                 uploadProvider.writeUploadBody(request, bodyPath)
             } catch (e: Throwable) {
@@ -68,8 +68,6 @@ class BackgroundSessionUploader(
 
     override suspend fun kick() = outbox.kick()
 
-    private fun bodyPathFor(uniqueId: Uuid) = bodyPath(fileOps, uniqueId)
-
     private companion object {
         const val SESSION_BATCH = 50
     }
@@ -83,7 +81,6 @@ fun listenForBackgroundUploadResults(
     ledger: BackupLedger,
     fileOps: FileOperationsProvider,
     scope: CoroutineScope,
-    onSettled: suspend () -> Unit,
 ) {
     BackgroundUploadResults.setHandler { result ->
         scope.launch {
@@ -95,7 +92,6 @@ fun listenForBackgroundUploadResults(
                 ledger.onOutboxDropped(uniqueId, result.error ?: "upload refused: ${result.status}")
             }
             runCatching { fileOps.deleteTempFile(bodyPath(fileOps, uniqueId)) }
-            onSettled()
         }
     }
 }

@@ -56,16 +56,13 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
             val newToken = encode(library.currentChangeToken)
             val delta = if (albumIds.isEmpty()) checkpoint[TOKEN_KEY]?.let(::decode)?.let(::deltaSince) else null
             if (delta != null) {
-                val inserted = assets(delta.inserted - delta.deleted)
-                val updated = assets(delta.updated - delta.deleted - delta.inserted)
                 DeviceChanges(
-                    inserted, updated, delta.deleted.toList(), mapOf(TOKEN_KEY to newToken),
-                    isFull = false,
+                    assets((delta.inserted + delta.updated) - delta.deleted), delta.deleted.toList(), mapOf(TOKEN_KEY to newToken),
                     currentIds = if (wantCurrentIds) listAll(albumIds).mapTo(mutableSetOf()) { it.id } else null,
                 )
             } else {
                 val all = listAll(albumIds)
-                DeviceChanges(all, emptyList(), emptyList(), mapOf(TOKEN_KEY to newToken), isFull = true, currentIds = all.mapTo(mutableSetOf()) { it.id })
+                DeviceChanges(all, emptyList(), mapOf(TOKEN_KEY to newToken), currentIds = all.mapTo(mutableSetOf()) { it.id })
             }
         }
 
@@ -102,7 +99,7 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
         buildList {
             for (index in 0 until albums.count.toInt()) {
                 val album = albums.objectAtIndex(index.toULong()) as PHAssetCollection
-                add(DeviceAlbum(album.localIdentifier, album.localizedTitle.orEmpty(), isDefault = false))
+                add(DeviceAlbum(album.localIdentifier, album.localizedTitle.orEmpty()))
             }
         }
     }

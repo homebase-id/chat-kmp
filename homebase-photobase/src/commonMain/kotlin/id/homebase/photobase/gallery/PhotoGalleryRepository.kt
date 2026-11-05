@@ -14,6 +14,8 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.backup.PhotoContent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 data class PhotoGalleryItem(
@@ -38,27 +40,28 @@ class PhotoGalleryRepository(
     private val queryProvider: DriveQueryProvider,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGalleryPageSource {
-    override suspend fun page(cursor: String?): PhotoGalleryPage {
-        val response = queryProvider.queryBatch(
-            photosDriveId,
-            QueryBatchRequest(
-                queryParams = FileQueryParams(
-                    fileType = listOf(PhotobaseProtocol.PhotoFileType),
-                    fileState = listOf(FileState.Active),
+    // Parsing and decrypting a page of headers doesn't belong on the view model's Main.
+    override suspend fun page(cursor: String?): PhotoGalleryPage = withContext(Dispatchers.Default) {
+            val response = queryProvider.queryBatch(
+                photosDriveId,
+                QueryBatchRequest(
+                    queryParams = FileQueryParams(
+                        fileType = listOf(PhotobaseProtocol.PhotoFileType),
+                        fileState = listOf(FileState.Active),
+                    ),
+                    resultOptionsRequest = QueryBatchResultOptionsRequest(
+                        cursorState = cursor,
+                        maxRecords = PAGE_SIZE,
+                        includeMetadataHeader = true,
+                        ordering = QueryBatchSortOrder.NewestFirst,
+                        sorting = QueryBatchSortField.UserDate,
+                    ),
                 ),
-                resultOptionsRequest = QueryBatchResultOptionsRequest(
-                    cursorState = cursor,
-                    maxRecords = PAGE_SIZE,
-                    includeMetadataHeader = true,
-                    ordering = QueryBatchSortOrder.NewestFirst,
-                    sorting = QueryBatchSortField.UserDate,
-                ),
-            ),
-        )
-        return PhotoGalleryPage(
-            items = response.searchResults.mapNotNull { it.toGalleryItem() },
-            nextCursor = response.cursorState?.takeIf { response.hasMoreRows && it != cursor },
-        )
+            )
+            PhotoGalleryPage(
+                items = response.searchResults.mapNotNull { it.toGalleryItem() },
+                nextCursor = response.cursorState?.takeIf { response.hasMoreRows && it != cursor },
+            )
     }
 
     private companion object {

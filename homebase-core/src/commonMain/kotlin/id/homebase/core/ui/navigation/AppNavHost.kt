@@ -708,6 +708,8 @@ fun AppNavHost(
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
     val openPhotobase: () -> Unit = { navController.openApp(Route.Photobase, tabRoutes) }
+    val openPhotoBackup: (() -> Unit)? = { navController.navigate(Route.PhotoBackupSettings) }
+        .takeIf { koinInject<PhotoBackupController>().isSupported }
     // Read only by the Filesync screen's own view model, the one "Show" opens.
     var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
@@ -1795,7 +1797,7 @@ fun AppNavHost(
                                                     navController.navigate(Route.EmailModeSwitch)
                                                 },
                                                 onOpenContacts = openContactBook,
-                                                onOpenPhotoBackup = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { koinInject<PhotoBackupController>().isSupported },
+                                                onOpenPhotoBackup = openPhotoBackup,
                                                 onNavigateToCropper = { requestId ->
                                                     navController.navigate(
                                                         Route.Crop(
@@ -2326,10 +2328,9 @@ fun AppNavHost(
                             tab<Route.Photobase>(tabRoot) {
                                 if (isAuthenticated) {
                                     PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
-                                        val backupSupported = koinInject<PhotoBackupController>().isSupported
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
-                                            onOpenBackupSettings = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { backupSupported },
+                                            onOpenBackupSettings = openPhotoBackup,
                                         )
                                     }
                                 }
@@ -2615,7 +2616,7 @@ fun AppNavHost(
                                         ),
                                         photobaseViewModel = koinViewModel(),
                                         onBack = { navController.popBackStack() },
-                                        onOpenPhotoBackup = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { koinInject<PhotoBackupController>().isSupported },
+                                        onOpenPhotoBackup = openPhotoBackup,
                                     )
                                 }
                             }

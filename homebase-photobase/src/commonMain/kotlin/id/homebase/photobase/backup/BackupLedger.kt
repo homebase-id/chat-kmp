@@ -50,7 +50,7 @@ class BackupLedger(
         val gone = changes.deletedIds.toSet() + changes.currentIds?.let {
             store.selectAllIdsExcept(BackupState.DeletedOnDevice.code).toSet() - it
         }.orEmpty()
-        val listedAssets = changes.inserted + changes.updated
+        val listedAssets = changes.assets
         // A full listing can be a whole library, so one read beats a read per asset.
         val existing = if (listedAssets.size > SINGLE_READ_LIMIT) {
             store.selectAll().associateBy { it.deviceAssetId }
@@ -157,8 +157,8 @@ class BackupLedger(
         changed()
     }
 
-    suspend fun onOutboxRetrying(uniqueId: Uuid, reason: String?) {
-        store.setStateOfUnique(uniqueId.toString(), IN_OUTBOX, BackupState.Queued.code, reason, 0, 0)
+    suspend fun onOutboxRetrying(uniqueId: Uuid) {
+        store.setStateOfUnique(uniqueId.toString(), IN_OUTBOX, BackupState.Queued.code, null, 0, 0)
         changed()
     }
 

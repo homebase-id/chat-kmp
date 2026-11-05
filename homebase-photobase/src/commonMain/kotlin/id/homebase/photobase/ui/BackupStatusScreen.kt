@@ -7,15 +7,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -23,8 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.photobase.backup.BackupPauseReason
 import id.homebase.photobase.backup.BackupStatus
+import id.homebase.core.widget.SettingsTopBar
+import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
-import id.homebase.resources.menu_back
 import id.homebase.resources.photobase_status_backed_up
 import id.homebase.resources.photobase_status_failures
 import id.homebase.resources.photobase_status_last_success
@@ -45,8 +41,6 @@ import id.homebase.resources.photobase_status_title
 import id.homebase.resources.photobase_status_up_to_date
 import id.homebase.resources.photobase_status_uploading
 import kotlin.time.Instant
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -55,14 +49,7 @@ fun BackupStatusScreen(viewModel: BackupSettingsViewModel, onBack: () -> Unit) {
     val status = uiState.status
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.photobase_status_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.string.menu_back))
-                    }
-                },
-            )
+            SettingsTopBar(title = stringResource(MR.string.photobase_status_title), onBack = onBack)
         },
     ) { innerPadding ->
         Column(
@@ -78,7 +65,7 @@ fun BackupStatusScreen(viewModel: BackupSettingsViewModel, onBack: () -> Unit) {
                 supportingContent = {
                     Text(
                         status.lastSuccessMs?.let {
-                            Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.currentSystemDefault()).toString().replace('T', ' ')
+                            formatTimestamp(Instant.fromEpochMilliseconds(it))
                         } ?: stringResource(MR.string.photobase_status_never),
                     )
                 },

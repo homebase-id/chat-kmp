@@ -24,4 +24,8 @@ data class BackupRunRequest(
     val findDeletions: Boolean,
     /** Ignore the checkpoint this once: after an iOS background launch deltas can miss assets. */
     val forceFullScan: Boolean = false,
-)
+) {
+    /** The user has the app open. */
+    val isInteractive: Boolean
+        get() = trigger == BackupTrigger.Foreground || trigger == BackupTrigger.UserRequested
+}

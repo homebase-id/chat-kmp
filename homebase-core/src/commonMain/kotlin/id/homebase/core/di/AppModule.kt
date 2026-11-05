@@ -187,7 +187,6 @@ import id.homebase.photobase.backup.BackgroundUploaderContext
 import id.homebase.photobase.backup.BackupLedger
 import id.homebase.photobase.backup.BackupRequestBuilder
 import id.homebase.photobase.backup.BackupRunRequest
-import id.homebase.photobase.backup.BackupTrigger
 import id.homebase.photobase.backup.BackupUploader
 import id.homebase.photobase.backup.BackupOutboxResults
 import id.homebase.photobase.backup.BackupPushSchedule
@@ -1601,14 +1600,13 @@ private fun Scope.photoBackupController(): PhotoBackupController {
     val settings = BackupSettingsStore(get())
     val results = BackupOutboxResults(ledger, get(), PhotobaseProtocol.DriveAlias, scope)
     val platform = createPhotoBackupPlatform(get())
-    platform?.listenForUploadResults?.invoke(ledger, get(), scope) { }
+    platform?.listenForUploadResults?.invoke(ledger, get(), scope)
     val run = platform?.let {
         val hasher = AssetHasher(it.source, get())
         val requests = BackupRequestBuilder(get())
         val outbox = OutboxBackupUploader(get(), it.source, hasher, requests, get(), get(), scope)
         val uploaderFor: (BackupRunRequest) -> BackupUploader = { request ->
-            val inBackground = request.trigger !in setOf(BackupTrigger.Foreground, BackupTrigger.UserRequested)
-            it.uploader?.invoke(BackgroundUploaderContext(outbox, requests, it.source, get(), get(), inBackground)) ?: outbox
+            it.uploader?.invoke(BackgroundUploaderContext(outbox, requests, it.source, get(), get(), !request.isInteractive)) ?: outbox
         }
         val storageQuota = get<StorageQuota>()
         PhotoBackupRun(

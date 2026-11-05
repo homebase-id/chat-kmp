@@ -24,11 +24,9 @@ internal fun asset(id: String, createdAtMs: Long = 1000, modifiedAtMs: Long = 10
     DeviceAsset(id, mediaType, createdAtMs, modifiedAtMs, sizeBytes = 10)
 
 internal fun fullListing(vararg assets: DeviceAsset, checkpoint: Map<String, String> = mapOf("volume" to "1")) = DeviceChanges(
-    inserted = assets.toList(),
-    updated = emptyList(),
+    assets = assets.toList(),
     deletedIds = emptyList(),
     newCheckpoint = checkpoint,
-    isFull = true,
     currentIds = assets.mapTo(mutableSetOf()) { it.id },
 )
 

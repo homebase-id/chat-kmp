@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
 data class BackupSettingsUiState(
-    val isSupported: Boolean = false,
     val settings: BackupSettings = BackupSettings(),
     val status: BackupStatus = BackupStatus(),
     val albums: List<DeviceAlbum> = emptyList(),
@@ -40,7 +39,7 @@ class BackupSettingsViewModel(
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
-        BackupSettingsUiState(isSupported = controller.isSupported, batteryGuidance = controller.batteryGuidance()),
+        BackupSettingsUiState(batteryGuidance = controller.batteryGuidance()),
     )
     val uiState: StateFlow<BackupSettingsUiState> = _uiState.asStateFlow()
 

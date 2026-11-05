@@ -29,30 +29,24 @@ class BackupPushSchedule(
     /** Creates or corrects the schedule if the server's isn't what [settings] asks for. Costs one list() when it's fine. */
     suspend fun ensure(settings: BackupSettings) {
         if (!settings.enabled) return
-        val existing = try {
-            provider.list()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Only a hint is lost: the next foreground run checks again.
-            Logger.w(tag = TAG, throwable = e) { "could not list scheduled pushes" }
-            return
-        }
+        val existing = listOrNull() ?: return
         if (needsScheduling(existing, settings)) schedule(settings)
     }
 
     /** For a change made where backup may be off, like desktop: never creates a schedule no phone asked for. */
     suspend fun correctIfScheduled(settings: BackupSettings) {
-        val existing = try {
-            provider.list()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Only a hint is lost: a phone's next foreground run reads the file and corrects it.
-            Logger.w(tag = TAG, throwable = e) { "could not list scheduled pushes" }
-            return
-        }
+        val existing = listOrNull() ?: return
         if (existing.any { it.isOurs() } && needsScheduling(existing, settings)) schedule(settings)
+    }
+
+    // Null only loses a hint: a foreground run checks again.
+    private suspend fun listOrNull(): List<ScheduledPushNotificationEntry>? = try {
+        provider.list()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "could not list scheduled pushes" }
+        null
     }
 
     suspend fun schedule(settings: BackupSettings) {

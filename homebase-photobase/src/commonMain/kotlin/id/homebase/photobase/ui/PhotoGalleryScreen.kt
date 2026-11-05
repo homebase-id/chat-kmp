@@ -55,7 +55,10 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.photobase.gallery.PhotoGalleryItem
+import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
 import id.homebase.resources.photobase_backup_title
 import id.homebase.resources.photobase_gallery_empty
 import id.homebase.resources.photobase_gallery_load_failed
@@ -184,7 +187,7 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
         for (day in uiState.days) {
             item(key = "day-${day.date}", span = { GridItemSpan(maxLineSpan) }, contentType = "day") {
                 Text(
-                    text = day.date.toString(),
+                    text = formatMomentDate(day.date.atStartOfDayIn(TimeZone.currentSystemDefault())),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                 )

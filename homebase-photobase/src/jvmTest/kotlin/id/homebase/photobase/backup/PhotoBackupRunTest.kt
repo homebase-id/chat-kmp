@@ -317,7 +317,7 @@ class PhotoBackupRunTest {
         assertEquals(listOf("old", "new"), uploader.handedOff)
 
         uploader.handedOff.clear()
-        source.next = DeviceChanges(listOf(asset("older", createdAtMs = 3), asset("newest", createdAtMs = 4)), emptyList(), emptyList(), emptyMap(), false, null)
+        source.next = DeviceChanges(listOf(asset("older", createdAtMs = 3), asset("newest", createdAtMs = 4)), emptyList(), emptyMap(), null)
         run.run(request())
         advanceUntilIdle()
         assertEquals(listOf("newest", "older"), uploader.handedOff)
