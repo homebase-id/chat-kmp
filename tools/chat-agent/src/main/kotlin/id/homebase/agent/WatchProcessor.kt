@@ -228,7 +228,7 @@ class WatchProcessor(
         }
     }
 
-    private suspend fun preparePrompt(sorted: List<ChatMsg>, conversation: Uuid, fetched: List<ChatMsg>, tier: Tier, awayMode: Boolean, mode: Cue = Cue.ADDRESSED, retain: Boolean = false): Prepared {
+    private suspend fun preparePrompt(sorted: List<ChatMsg>, conversation: Uuid, fetched: List<ChatMsg>, tier: Tier, awayMode: Boolean, mode: Cue = Cue.ADDRESSED, retain: Boolean = false, canJoin: Boolean = false): Prepared {
         val members = allow.info(conversation)?.members
         val noteToSelf = isNoteToSelf(conversation)
         val shared = tier == Tier.OPERATOR && config.operatorContext == OperatorContext.ALL && !trust.fullyTrusted(members, noteToSelf, conversation)
@@ -250,7 +250,7 @@ class WatchProcessor(
             ?.joinToString("\n") { "the owner is replying to your notice: ${it.oneLine(NOTICE_CONTEXT_CODEPOINTS)}" }
         val head = listOfNotNull(header(conversation), NOTIFY_PROMPT_LINE.takeIf { tier == Tier.OPERATOR && notifier != null }).joinToString("\n").ifEmpty { null }
         val ctx = listOfNotNull(context(conversation), noticeLine).joinToString("\n").ifEmpty { null }
-        return Prepared(buildPrompt(fullTriggers, fullPast, awayMode, head, ctx, attachments = attachments, omittedParents = omitted, discussion = discussion, discussionHeading = heading, timed = shared, historyLimit = if (tier == Tier.LOCKED) config.lockedHistory else HISTORY_LIMIT, unprompted = mode != Cue.ADDRESSED, followUp = mode == Cue.FOLLOWUP), attachments)
+        return Prepared(buildPrompt(fullTriggers, fullPast, awayMode, head, ctx, attachments = attachments, omittedParents = omitted, discussion = discussion, discussionHeading = heading, timed = shared, historyLimit = if (tier == Tier.LOCKED) config.lockedHistory else HISTORY_LIMIT, unprompted = mode != Cue.ADDRESSED, followUp = mode == Cue.FOLLOWUP, canJoin = canJoin), attachments)
     }
 
     private suspend fun submitJob(
@@ -422,6 +422,11 @@ class WatchProcessor(
         }
         if (mode == Cue.LISTEN && clock() - (lastListen[conversation] ?: Long.MIN_VALUE / 2) < config.listenCooldownMs) return done(sorted, "skip: listen cooldown")
         val authors = sorted.map { it.author.toString() }.toSet()
+        // in a room of operators only, the cheap locked brain only triages and a JOIN hands the messages to the operator brain
+        val members = allow.info(conversation)?.members
+        val canJoin = mode == Cue.LISTEN && jobs != null && trust.fullyTrusted(members, isNoteToSelf(conversation), conversation) &&
+            trust.tier(members, isNoteToSelf(conversation), sorted.map { it.sender }.toSet(), conversation) == Tier.OPERATOR
+        var join = false
         mutex.withLock {
             if (!limiter.allows(authors)) return done(sorted, "skip: rate limited")
             limiter.record(authors)
@@ -429,7 +434,7 @@ class WatchProcessor(
             var toolSent = false
             val outcome = try {
                 val awayMode = away.on && allow.delegate && !isNoteToSelf(conversation)
-                val prepared = preparePrompt(sorted, conversation, takeHistory(conversation), tier, awayMode, mode, retain = true)
+                val prepared = preparePrompt(sorted, conversation, takeHistory(conversation), tier, awayMode, mode, retain = true, canJoin = canJoin)
                 val lease = leaseFor?.invoke(conversation, tier, effectiveSender(sorted.last()))
                 try {
                     brain(prepared.prompt, tier, prepared.attachments, lease, null)
@@ -441,6 +446,11 @@ class WatchProcessor(
                 throw e
             } catch (e: Exception) {
                 BrainOutcome.Failed(e.message ?: e.toString())
+            }
+            if (canJoin && (outcome as? BrainOutcome.Output)?.stdout?.trim() == JOIN_REPLY) {
+                log("listen: joining in $conversation")
+                join = true
+                return@withLock
             }
             if (tier == Tier.LOCKED && toolSent && outcome is BrainOutcome.Output) return done(sorted, "silent")
             val files = (outcome as? BrainOutcome.Output)?.files.orEmpty()
@@ -478,5 +488,6 @@ class WatchProcessor(
                 done(sorted, if (failed) "failed" else "replied")
             }
         }
+        if (join) runTier(sorted, Tier.OPERATOR, results)
     }
 }

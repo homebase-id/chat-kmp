@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 const val BRAIN_TIMEOUT_MS = 120_000L
 const val NO_REPLY = "NO_REPLY"
 const val PASS_REPLY = "PASS"
+const val JOIN_REPLY = "JOIN"
 private val PASS_PATTERN = Regex("PASS[\\p{P}\\s]*", RegexOption.IGNORE_CASE)
 
 fun isPass(reply: String) = PASS_PATTERN.matches(reply.trim())

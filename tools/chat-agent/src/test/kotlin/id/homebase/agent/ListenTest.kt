@@ -6,7 +6,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 class ListenTest {
     private val self = OdinId("bot.example.com")
@@ -165,5 +170,45 @@ class ListenTest {
         val h = harness(listen = emptySet(), kind = Kind.DELEGATE, history = listOf(ownerLine))
         assertEquals("skip: no trigger", h.handle(msg(op, "replying to owner", conversation = other, raw = replyTo(ownerLine))))
         assertEquals(0, h.brainRuns)
+    }
+
+    private fun operatorRoom(triage: String): Pair<TestHarness, CopyOnWriteArrayList<String>> {
+        val op2 = OdinId("op2.example.com")
+        val allow = Allowlist(setOf(room), null, Kind.BOT)
+        allow.learn(listOf(ConversationInfo(room, "room", listOf(self, op, op2))))
+        val config = AgentConfig(allowlist = allow, operators = setOf(op, op2), operatorBrain = "full", listenRooms = setOf(room), followUpMs = 0)
+        val work = CopyOnWriteArrayList<String>()
+        val h = TestHarness(
+            config, identity = self.toString(),
+            jobs = JobRunner(CoroutineScope(Dispatchers.Default), JobLedger(null, 5), prefix = ""),
+            brainFn = { p, t, _ -> if (t == Tier.OPERATOR) { work += p; BrainOutcome.Output("done") } else BrainOutcome.Output(triage) },
+        )
+        return h to work
+    }
+
+    @Test
+    fun operatorsOnlyRoomTriagesThenHandsJoinToTheOperatorBrain() = runBlocking<Unit> {
+        val (h, work) = operatorRoom("JOIN")
+        h.handleAll(listOf(msg(op, "can someone draft the friday post?")))
+        assertTrue("output exactly JOIN" in h.prompts.first())
+        withTimeout(5_000) { while (work.isEmpty()) delay(20) }
+        assertTrue(work.single().contains("draft the friday post"))
+        assertFalse(h.replies.contains("JOIN"))
+    }
+
+    @Test
+    fun operatorsOnlyRoomPassStaysSilent() = runBlocking<Unit> {
+        val (h, work) = operatorRoom("PASS")
+        h.handleAll(listOf(msg(op, "lol")))
+        assertEquals(listOf(Tier.LOCKED), h.tiers)
+        assertTrue(work.isEmpty() && h.replies.isEmpty())
+    }
+
+    @Test
+    fun mixedRoomNeverOffersJoin() = runBlocking<Unit> {
+        val h = harness(outcome = BrainOutcome.Output("JOIN"))
+        h.handleAll(listOf(msg(op, "draft something")))
+        assertFalse("output exactly JOIN" in h.prompts.single())
+        assertEquals(listOf(Tier.LOCKED), h.tiers)
     }
 }

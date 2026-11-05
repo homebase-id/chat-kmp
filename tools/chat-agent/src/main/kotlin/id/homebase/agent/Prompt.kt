@@ -30,6 +30,7 @@ fun buildPrompt(
     historyLimit: Int = HISTORY_LIMIT,
     unprompted: Boolean = false,
     followUp: Boolean = false,
+    canJoin: Boolean = false,
 ): String = buildString {
     val h = "untrusted_history_$nonce"
     val t = "untrusted_triggers_$nonce"
@@ -93,6 +94,8 @@ fun buildPrompt(
     appendLine()
     if (followUp) {
         append("You were not addressed explicitly, but the sender was just talking to you. If this message continues that conversation with you, reply; otherwise output exactly $PASS_REPLY and nothing else.")
+    } else if (unprompted && canJoin) {
+        append("You were not addressed directly; this room is one you only listen in. Don't write a reply: only decide. If you are being spoken to, asked to do something, or can add something genuinely useful, output exactly $JOIN_REPLY; otherwise output exactly $PASS_REPLY. Output nothing else.")
     } else if (unprompted) {
         append("You were not addressed directly; this room is one you only listen in. Reply only if you have something genuinely useful to add or you are clearly being spoken to; otherwise output exactly $PASS_REPLY and nothing else.")
     } else {

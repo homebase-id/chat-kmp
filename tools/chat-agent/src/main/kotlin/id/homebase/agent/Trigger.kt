@@ -195,7 +195,7 @@ fun tierBanner(config: AgentConfig): List<String> = buildList {
     }
     if (config.notifyOwner != null && config.operatorBrain != null) add("owner notifications: on for ${config.notifyOwner} (notify_owner tool, job results, escalation to a call after ${config.ownerCallAfterMs / 60_000}m without a reply, at most ${config.maxOwnerCallsPerDay} calls/day, quiet hours ${config.ownerQuietHours?.let { "${it.start}-${it.end}" } ?: "none"}, urgent overrides quiet=${config.urgentOverridesQuiet}); text stays inside Homebase")
     if (config.listenRooms.isNotEmpty()) {
-        add("WARNING: listenRooms: the locked brain reads every message in ${config.listenRooms.joinToString(", ")} and may reply without being tagged (at most once per ${config.listenCooldownMs / 1000}s per room, PASS stays silent); unprompted runs never get the operator tier")
+        add("WARNING: listenRooms: the locked brain reads every message in ${config.listenRooms.joinToString(", ")} and may reply without being tagged (at most once per ${config.listenCooldownMs / 1000}s per room, PASS stays silent); in a room of operators only it just triages and JOIN hands the message to the operator brain, elsewhere unprompted runs never get the operator tier")
         config.listenRooms.filterNot { config.allowlist.allowsConversation(it) }.forEach { add("WARNING: listenRooms $it is not on allowConversations, ignored") }
     }
     if (config.operatorBrain != null) add(
