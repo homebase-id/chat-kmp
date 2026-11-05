@@ -1071,6 +1071,7 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { photoBackupController() }
+    single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
