@@ -86,7 +86,9 @@ fun backupPauseReason(settings: BackupSettings, state: DeviceState, interactive:
     else -> null
 }
 
+fun networkAllowsVideos(settings: BackupSettings, state: DeviceState): Boolean =
+    state.isUnmetered || settings.videosOnCellular
+
 fun backupVideosAllowed(settings: BackupSettings, state: DeviceState, interactive: Boolean): Boolean {
-    val networkOk = state.isUnmetered || settings.videosOnCellular
-    return networkOk && (interactive || state.isCharging)
+    return networkAllowsVideos(settings, state) && (interactive || state.isCharging)
 }

@@ -306,6 +306,26 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun losingTheNetworkVideosNeedStopsTheVideoAndCarriesOnWithPhotos() = runTest {
+        settings = settings.copy(wifiOnly = false, videosOnCellular = false)
+        hashGates["clip"] = CompletableDeferred()
+        hashGates["photo"] = CompletableDeferred()
+        source.next = fullListing(asset("photo"), asset("clip", mediaType = BackupMediaType.Video))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        val outcome = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        probe.state = probe.state.copy(isUnmetered = false)
+        advanceTimeBy(6.seconds)
+        hashGates.getValue("photo").complete(Unit)
+
+        outcome.await()
+        assertEquals(listOf("photo"), uploader.handedOff)
+        assertEquals(BackupState.New.code, state("clip"))
+    }
+
+    @Test
     fun aShortWindowSkipsAPhotoNotOnThePhoneWithoutCountingAFailure() = runTest {
         source.onlyInCloud += "cloud"
         source.next = fullListing(asset("cloud"), asset("local"))

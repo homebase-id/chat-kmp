@@ -107,7 +107,7 @@ class PhotoBackupRun(
         val started = TimeSource.Monotonic.markNow()
         return try {
             val context = if (request.mayDownloadFromCloud) timings else timings + NoCloudDownloads
-            withContext(context) { stoppingWhenWifiIsLost { runLocked(request) } }
+            withContext(context) { followingTheNetwork { runLocked(request) } }
         } finally {
             hasher.forgetAll()
             Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
@@ -117,28 +117,51 @@ class PhotoBackupRun(
         }
     }
 
-    /** Wi-Fi only holds for the whole run, not just its start. A download or send already under way can't be recalled. */
-    private suspend fun stoppingWhenWifiIsLost(run: suspend () -> BackupRunOutcome): BackupRunOutcome = coroutineScope {
+    /**
+     * The network settings hold for the whole run, not just its start. Losing Wi-Fi under Wi-Fi only pauses it.
+     * Losing what videos need starts it over, which leaves videos out and carries on with photos. An Outbox send
+     * already under way isn't recalled.
+     */
+    private suspend fun followingTheNetwork(run: suspend () -> BackupRunOutcome): BackupRunOutcome {
+        while (true) {
+            runUntilNetworkChange(run)?.let { return it }
+        }
+    }
+
+    /** Null: run it again. */
+    private suspend fun runUntilNetworkChange(run: suspend () -> BackupRunOutcome): BackupRunOutcome? = coroutineScope {
         val running = async { run() }
-        val wifiLost = async { awaitWifiLost() }
+        val change = async { awaitNetworkChange() }
         select {
             running.onAwait { outcome ->
-                wifiLost.cancel()
+                change.cancel()
                 outcome
             }
-            wifiLost.onAwait {
+            change.onAwait { lost ->
                 running.cancelAndJoin()
-                scheduler.rearm(settings())
-                paused(BackupPauseReason.WaitingForWifi)
+                when (lost) {
+                    LostNetwork.Wifi -> {
+                        scheduler.rearm(settings())
+                        paused(BackupPauseReason.WaitingForWifi)
+                    }
+                    LostNetwork.Videos -> null
+                }
             }
         }
     }
 
-    private suspend fun awaitWifiLost() {
-        do {
-            delay(WIFI_RECHECK)
-        } while (backupPauseReason(settings(), probe.state(), interactive = true) != BackupPauseReason.WaitingForWifi)
+    private suspend fun awaitNetworkChange(): LostNetwork {
+        val videosWereAllowed = networkAllowsVideos(settings(), probe.state())
+        while (true) {
+            delay(NETWORK_RECHECK)
+            val current = settings()
+            val state = probe.state()
+            if (backupPauseReason(current, state, interactive = true) == BackupPauseReason.WaitingForWifi) return LostNetwork.Wifi
+            if (videosWereAllowed && !networkAllowsVideos(current, state)) return LostNetwork.Videos
+        }
     }
+
+    private enum class LostNetwork { Wifi, Videos }
 
     private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome = coroutineScope {
         val interactive = request.isInteractive
@@ -402,7 +425,7 @@ class PhotoBackupRun(
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
-        private val WIFI_RECHECK: Duration = 5.seconds
+        private val NETWORK_RECHECK: Duration = 5.seconds
 
         val WAKE_BUDGET: Duration = 25.seconds
         val WORKER_BUDGET: Duration = 9.minutes
