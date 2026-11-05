@@ -3,7 +3,6 @@ package id.homebase.photobase.backup
 import android.app.job.JobParameters
 import android.app.job.JobService
 import android.os.Build
-import androidx.annotation.RequiresApi
 import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
@@ -14,14 +13,16 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 
 /** "Back up now" on API 34+: a user-initiated data transfer job, which outlasts WorkManager's 10 minutes. */
-@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class PhotoBackupJobService : JobService(), KoinComponent {
     private val scope = supervisedScope("photo-backup-job", ioDispatcher)
     private var job: Job? = null
 
     override fun onStartJob(params: JobParameters): Boolean {
         job = scope.launch {
-            setNotification(params, BACKUP_NOTIFICATION_ID, backupNotification(this@PhotoBackupJobService), JOB_END_NOTIFICATION_POLICY_REMOVE)
+            // Only ever scheduled on API 34+; the check is for the manifest, which lint reads alone.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                setNotification(params, BACKUP_NOTIFICATION_ID, backupNotification(this@PhotoBackupJobService), JOB_END_NOTIFICATION_POLICY_REMOVE)
+            }
             var failed = false
             try {
                 get<PhotoBackupController>().runFromBackground(
