@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -13,12 +14,16 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -31,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.util.truncateToCodePoints
@@ -170,18 +176,7 @@ fun AgentUiBubble(
         }
     }
 
-    Column(
-        modifier
-            .widthIn(max = 360.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .then(
-                if (onLongClick != null) Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) }
-                else Modifier
-            )
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick) {
         if (ready != null) {
             val pending = remember(sentActions, ready.rev) { sentActions.filter { it.first == ready.rev }.mapTo(HashSet()) { it.second } }
             AgentUiTreeView(
@@ -199,12 +194,40 @@ fun AgentUiBubble(
             }
         }
         if (failed) {
-            Text(
-                stringResource(MR.string.chat_agent_ui_action_failed),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.error,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                Text(
+                    stringResource(MR.string.chat_agent_ui_action_failed),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
+    }
+}
+
+@Composable
+fun AgentUiFrame(
+    tone: Tone,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val container = agentUiContainerColor(tone)
+    CompositionLocalProvider(LocalContentColor provides contentColorFor(container)) {
+        Column(
+            modifier
+                .widthIn(max = 360.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(container)
+                .then(
+                    if (onLongClick != null) Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) }
+                    else Modifier
+                )
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
     }
 }
 
@@ -240,7 +263,7 @@ fun AgentUiActionBubble(
 }
 
 @Composable
-private fun UnparseableChip(icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
+private fun UnparseableChip(icon: ImageVector, modifier: Modifier) {
     Row(
         modifier
             .clip(RoundedCornerShape(16.dp))
@@ -248,12 +271,12 @@ private fun UnparseableChip(icon: androidx.compose.ui.graphics.vector.ImageVecto
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(8.dp))
         Text(
             stringResource(MR.string.chat_agent_ui_unparseable),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

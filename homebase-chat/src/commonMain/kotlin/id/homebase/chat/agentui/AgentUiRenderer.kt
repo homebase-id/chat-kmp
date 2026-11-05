@@ -2,6 +2,7 @@
 
 package id.homebase.chat.agentui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,21 +12,28 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -45,7 +54,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -90,7 +98,21 @@ fun AgentUiTreeView(
     modifier: Modifier = Modifier,
 ) {
     val env = Env(tree, inputs, imageData, enabled, pendingActionIds, onAction)
-    Box(modifier) { NodeView(tree.root, env) }
+    val root = tree.root
+    Box(modifier) {
+        if (root is AgentUiNode.Card) CardBody(root.children, env, Arrangement.spacedBy(12.dp)) else NodeView(root, env)
+    }
+}
+
+/** The frame draws a root card itself, so the card's tone becomes the frame's colour. */
+val AgentUiTree.frameTone: Tone get() = (root as? AgentUiNode.Card)?.tone ?: Tone.Default
+
+@Composable
+fun agentUiContainerColor(tone: Tone, nested: Boolean = false): Color = when (tone) {
+    Tone.Default -> if (nested) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerHigh
+    Tone.Primary -> MaterialTheme.colorScheme.primaryContainer
+    Tone.Secondary -> MaterialTheme.colorScheme.secondaryContainer
+    Tone.Error -> MaterialTheme.colorScheme.errorContainer
 }
 
 private fun Spacing.dp(): Dp = when (this) {
@@ -132,14 +154,8 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             },
         )
         is AgentUiNode.Image -> ImageView(node, env, modifier)
-        is AgentUiNode.Chip -> Surface(
-            modifier = modifier.semantics(mergeDescendants = true) { selected = node.selected },
-            shape = MaterialTheme.shapes.small,
-            color = if (node.selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-        ) {
-            Text(node.label, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
-        }
-        is AgentUiNode.Divider -> HorizontalDivider(modifier)
+        is AgentUiNode.Chip -> ChipView(node, modifier)
+        is AgentUiNode.Divider -> HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
         is AgentUiNode.ListNode -> when (node.direction) {
             ListDirection.Vertical -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Children(node.children, env)
@@ -149,8 +165,8 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             }
         }
         is AgentUiNode.Table -> TableView(node, modifier)
-        is AgentUiNode.Progress -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            node.label?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+        is AgentUiNode.Progress -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            node.label?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (node.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             else LinearProgressIndicator(progress = { node.value }, modifier = Modifier.fillMaxWidth())
         }
@@ -170,21 +186,46 @@ private fun Children(children: List<AgentUiNode>, env: Env) {
 }
 
 @Composable
+private fun CardBody(children: List<AgentUiNode>, env: Env, spacing: Arrangement.Vertical, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = spacing) { Children(children, env) }
+}
+
+@Composable
 private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
-    val container = when (node.tone) {
-        Tone.Default -> MaterialTheme.colorScheme.surfaceContainerHighest
-        Tone.Primary -> MaterialTheme.colorScheme.primaryContainer
-        Tone.Secondary -> MaterialTheme.colorScheme.secondaryContainer
-        Tone.Error -> MaterialTheme.colorScheme.errorContainer
+    val container = agentUiContainerColor(node.tone, nested = true)
+    Card(
+        modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = container, contentColor = contentColorFor(container)),
+    ) {
+        CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.padding(16.dp))
     }
-    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = container)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Children(node.children, env) }
+}
+
+@Composable
+private fun ChipView(node: AgentUiNode.Chip, modifier: Modifier) {
+    val selected = node.selected
+    Surface(
+        modifier = modifier.semantics(mergeDescendants = true) { this.selected = selected },
+        shape = MaterialTheme.shapes.small,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            Modifier.heightIn(min = 32.dp).padding(start = if (selected) 8.dp else 16.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (selected) Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize))
+            Text(node.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
 @Composable
 private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = MaterialTheme.shapes.large
     val frame = modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape)
     val data = env.imageData(node.payloadKey)
     if (data == null) {
@@ -202,8 +243,9 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
 
 @Composable
 private fun AltBox(alt: String, modifier: Modifier, note: String? = null) {
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainer), contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Outlined.BrokenImage, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(alt, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
             note?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
@@ -212,15 +254,17 @@ private fun AltBox(alt: String, modifier: Modifier, note: String? = null) {
 
 @Composable
 private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val divider = MaterialTheme.colorScheme.outlineVariant
+    Column(modifier.fillMaxWidth()) {
         if (node.header.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (cell in node.header) Text(cell, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                for (cell in node.header) Text(cell, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            HorizontalDivider()
+            HorizontalDivider(color = divider)
         }
-        for (row in node.rows) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        node.rows.forEachIndexed { i, row ->
+            if (i > 0) HorizontalDivider(color = divider)
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 for (cell in row) Text(cell, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -230,21 +274,26 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
     val enabled = env.usable(node.action, needsAction = true)
+    val busy = node.action?.id?.let { it in env.pending } == true
     val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
-    val label: @Composable () -> Unit = { Text(node.label) }
+    val label: @Composable () -> Unit = {
+        if (busy) {
+            CircularProgressIndicator(Modifier.size(ButtonDefaults.IconSize), color = LocalContentColor.current, strokeWidth = 2.dp)
+            Box(Modifier.width(ButtonDefaults.IconSpacing))
+        }
+        Text(node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
     when (node.style) {
         ButtonStyle.Filled -> Button(onClick, modifier, enabled = enabled) { label() }
         ButtonStyle.Tonal -> FilledTonalButton(onClick, modifier, enabled = enabled) { label() }
         ButtonStyle.Outlined -> OutlinedButton(onClick, modifier, enabled = enabled) { label() }
         ButtonStyle.Text -> TextButton(onClick, modifier, enabled = enabled) { label() }
-        ButtonStyle.Destructive -> Button(
+        ButtonStyle.Destructive -> OutlinedButton(
             onClick,
             modifier,
             enabled = enabled,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error,
-                contentColor = MaterialTheme.colorScheme.onError,
-            ),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            border = BorderStroke(1.dp, if (enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant),
         ) { label() }
     }
 }
@@ -264,7 +313,7 @@ private fun ToggleView(node: AgentUiNode.Toggle, env: Env, modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(node.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text(node.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
@@ -292,7 +341,7 @@ private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
     val enabled = env.usable(node.action)
     val current = env.inputs[node.id] ?: node.value
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(node.label, style = MaterialTheme.typography.labelMedium)
+        Text(node.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (option in node.options) key(option.id) {
                 FilterChip(
@@ -303,6 +352,9 @@ private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
                     },
                     enabled = enabled,
                     label = { Text(option.label) },
+                    leadingIcon = if (current == option.id) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                    } else null,
                 )
             }
         }

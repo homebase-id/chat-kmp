@@ -1,50 +1,99 @@
 package id.homebase.chat.agentui
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.runComposeUiTest
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
+import id.homebase.core.ui.theme.HomebaseTheme
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalLayoutApi::class)
 class AgentUiReferenceScreenshotTest {
-    private fun capture(dark: Boolean, name: String) = runComposeUiTest {
-        val tree = AgentUiFixtures.decodeDraftPostCard()
+    private val outDir = File("../build/polish-shots").apply { mkdirs() }
+
+    private val formJson = """
+        {"root":"form","nodes":[
+          {"id":"form","type":"column","spacing":"medium","children":["title","job","stats","notify","note","channel","send","warn"]},
+          {"id":"title","type":"text","style":"title","markdown":"Weekly campaign"},
+          {"id":"job","type":"progress","value":0.6,"label":"Rendering slides, 3 of 5"},
+          {"id":"stats","type":"table","header":["Channel","Reach","Clicks"],"rows":[["X","12.4k","310"],["LinkedIn","8.1k","522"]]},
+          {"id":"notify","type":"toggle","label":"Notify the team","value":true},
+          {"id":"note","type":"textInput","label":"Note for the agent","value":"Lead with the team photo"},
+          {"id":"channel","type":"select","label":"Post first on","value":"li","options":[{"id":"x","label":"X"},{"id":"li","label":"LinkedIn"},{"id":"ig","label":"Instagram"}]},
+          {"id":"send","type":"button","label":"Send","style":"filled","action":{"id":"send","include":["notify","note","channel"]}},
+          {"id":"warn","type":"card","tone":"error","children":["warn_t"]},
+          {"id":"warn_t","type":"text","style":"caption","markdown":"Instagram needs a square image."}
+        ]}
+    """.trimIndent()
+
+    private fun decodeForm(): AgentUiTree =
+        (AgentUiTree.decode(formJson.encodeToByteArray(), emptySet()) as AgentUiTreeResult.Valid).tree
+
+    @Composable
+    private fun Card(tree: AgentUiTree, pending: Set<String> = emptySet()) {
+        AgentUiFrame(tree.frameTone) {
+            val inputs = remember { AgentUiInputState(tree.inputs) }
+            AgentUiTreeView(tree, inputs, { null }, true, pending, {})
+        }
+    }
+
+    private fun ComposeUiTest.show(dark: Boolean) {
+        val draft = AgentUiFixtures.decodeDraftPostCard()
+        val form = decodeForm()
         setContent {
-            MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    Box(Modifier.testTag("card").width(360.dp).padding(12.dp)) {
-                        val inputs = remember { AgentUiInputState(tree.inputs) }
-                        AgentUiTreeView(tree, inputs, { null }, true, emptySet(), {})
+            HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
+                Surface(Modifier.fillMaxSize()) {
+                    FlowRow(
+                        Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Card(draft, pending = setOf("approve"))
+                        Column { Card(form) }
                     }
                 }
             }
         }
+        mainClock.advanceTimeBy(600)
         onNodeWithText("Approve").assertExists()
-        onNodeWithText("LinkedIn").assertExists()
-        val image = onNodeWithTag("card").captureToImage()
-        assertTrue(image.width > 0 && image.height > 0)
-        val out = File("build/agent-ui-screenshots").apply { mkdirs() }
-        ImageIO.write(image.toAwtImage(), "png", File(out, "$name.png"))
+        onNodeWithText("Rendering slides, 3 of 5").assertExists()
     }
 
-    @Test fun reference_card_light() = capture(dark = false, name = "draft-post-light")
+    private fun ComposeUiTest.save(name: String) {
+        val image = onAllNodes(isRoot())[0].captureToImage().toAwtImage()
+        assertTrue(image.width > 0 && image.height > 0)
+        ImageIO.write(image, "png", File(outDir, "$name.png"))
+    }
 
-    @Test fun reference_card_dark() = capture(dark = true, name = "draft-post-dark")
+    @Test
+    fun referenceCardsRenderAtPhoneAndWideWidthsInBothThemes() {
+        for (dark in listOf(false, true)) {
+            val theme = if (dark) "dark" else "light"
+            runDesktopComposeUiTest(411, 1500) {
+                show(dark)
+                save("agent-ui-phone-$theme")
+            }
+            runDesktopComposeUiTest(1000, 900) {
+                show(dark)
+                save("agent-ui-wide-$theme")
+            }
+        }
+    }
 }
