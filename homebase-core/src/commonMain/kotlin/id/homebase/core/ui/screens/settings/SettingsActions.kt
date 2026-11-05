@@ -31,6 +31,5 @@ data class AppsSettingsActions(
     val onLocation: () -> Unit,
     val onContactBookSettings: () -> Unit,
     val onCallsSettings: () -> Unit,
-    /** Null where photo backup doesn't exist: desktop and web. */
-    val onPhotoBackup: (() -> Unit)? = null,
+    val onPhotobaseSettings: () -> Unit,
 )

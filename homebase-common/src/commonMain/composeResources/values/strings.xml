@@ -3224,6 +3224,8 @@
     <string name="photobase_backup_only_new_desc">Skip what's already on this phone.</string>
     <string name="photobase_backup_interval">Background check</string>
     <string name="photobase_backup_interval_desc">Asks your phones to back up every %1$s. A hint only: your phone decides when it can run.</string>
+    <string name="photobase_backup_interval_load_failed">Couldn't reach your Photos drive. Check your connection and that Photobase is set up, then tap to try again.</string>
+    <string name="photobase_backup_interval_save_failed">Couldn't save that change. Tap to try again.</string>
     <string name="photobase_backup_dialog_cancel">Cancel</string>
     <string name="photobase_backup_dialog_done">Done</string>
     <string name="photobase_backup_guidance">For the most reliable backup: don't swipe the app away, keep background refresh on, and for the first backup plug in and keep the app open.</string>

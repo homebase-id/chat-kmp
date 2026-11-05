@@ -21,7 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -48,10 +47,6 @@ import id.homebase.resources.photobase_backup_dialog_done
 import id.homebase.resources.photobase_backup_enable
 import id.homebase.resources.photobase_backup_enable_desc
 import id.homebase.resources.photobase_backup_guidance
-import id.homebase.resources.photobase_backup_interval
-import id.homebase.resources.photobase_backup_interval_desc
-import id.homebase.resources.photobase_backup_interval_hours
-import id.homebase.resources.photobase_backup_interval_minutes
 import id.homebase.resources.photobase_backup_now
 import id.homebase.resources.photobase_backup_only_new
 import id.homebase.resources.photobase_backup_only_new_desc
@@ -65,10 +60,7 @@ import id.homebase.resources.photobase_library_limited
 import id.homebase.resources.photobase_library_none
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.minutes
 
-private val PUSH_INTERVAL_CHOICES = listOf(30.minutes, 1.hours, 2.hours, 4.hours, 8.hours, 24.hours)
 
 @Composable
 fun BackupSettingsScreen(
@@ -81,7 +73,6 @@ fun BackupSettingsScreen(
     val settings = uiState.settings
     val onAction = viewModel::onAction
     var showAlbums by remember { mutableStateOf(false) }
-    var showInterval by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -161,11 +152,6 @@ fun BackupSettingsScreen(
                 checked = settings.onlyNewFromMs != null,
                 onChange = { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
             )
-            ListItem(
-                modifier = Modifier.clickable { showInterval = true },
-                headlineContent = { Text(stringResource(MR.string.photobase_backup_interval)) },
-                supportingContent = { Text(stringResource(MR.string.photobase_backup_interval_desc, intervalLabel(settings.pushIntervalMs))) },
-            )
             extraSections()
             HorizontalDivider()
             Text(
@@ -184,16 +170,6 @@ fun BackupSettingsScreen(
             onConfirm = {
                 onAction(BackupSettingsUiAction.SetAlbums(it))
                 showAlbums = false
-            },
-        )
-    }
-    if (showInterval) {
-        IntervalDialog(
-            current = settings.pushIntervalMs,
-            onDismiss = { showInterval = false },
-            onChoose = {
-                onAction(BackupSettingsUiAction.SetPushInterval(it))
-                showInterval = false
             },
         )
     }
@@ -224,39 +200,6 @@ private fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Un
         headlineContent = { Text(title) },
         supportingContent = supporting?.let { { Text(it) } },
         trailingContent = { Switch(checked = checked, onCheckedChange = null) },
-    )
-}
-
-@Composable
-private fun intervalLabel(intervalMs: Long): String {
-    val minutes = intervalMs / 60_000
-    return if (minutes < 60) {
-        pluralStringResource(MR.plurals.photobase_backup_interval_minutes, minutes.toInt(), minutes.toInt())
-    } else {
-        pluralStringResource(MR.plurals.photobase_backup_interval_hours, (minutes / 60).toInt(), (minutes / 60).toInt())
-    }
-}
-
-@Composable
-private fun IntervalDialog(current: Long, onDismiss: () -> Unit, onChoose: (Long) -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.string.photobase_backup_interval)) },
-        text = {
-            Column {
-                for (choice in PUSH_INTERVAL_CHOICES) {
-                    val ms = choice.inWholeMilliseconds
-                    ListItem(
-                        modifier = Modifier.selectable(selected = ms == current, role = Role.RadioButton) { onChoose(ms) },
-                        headlineContent = { Text(intervalLabel(ms)) },
-                        leadingContent = { RadioButton(selected = ms == current, onClick = null) },
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.photobase_backup_dialog_cancel)) }
-        },
     )
 }
 

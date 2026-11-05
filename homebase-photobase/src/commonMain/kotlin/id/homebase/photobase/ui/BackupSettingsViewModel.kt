@@ -27,7 +27,6 @@ sealed interface BackupSettingsUiAction {
     data class SetChargingOnly(val chargingOnly: Boolean) : BackupSettingsUiAction
     data class SetOnlyNewFromNow(val onlyNew: Boolean) : BackupSettingsUiAction
     data class SetAlbums(val albumIds: Set<String>) : BackupSettingsUiAction
-    data class SetPushInterval(val intervalMs: Long) : BackupSettingsUiAction
     data object LoadAlbums : BackupSettingsUiAction
     data object BackUpNow : BackupSettingsUiAction
     data object RetryFailures : BackupSettingsUiAction
@@ -63,7 +62,6 @@ class BackupSettingsViewModel(
                 it.copy(onlyNewFromMs = if (action.onlyNew) clock.now().toEpochMilliseconds() else null)
             }
             is BackupSettingsUiAction.SetAlbums -> controller.update { it.copy(albumIds = action.albumIds) }
-            is BackupSettingsUiAction.SetPushInterval -> controller.update { it.copy(pushIntervalMs = action.intervalMs) }
             BackupSettingsUiAction.LoadAlbums -> viewModelScope.launch {
                 val albums = controller.albums()
                 _uiState.update { it.copy(albums = albums) }

@@ -216,6 +216,7 @@ import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsCategory
 import id.homebase.core.ui.screens.settings.AppsSettingsActions
 import id.homebase.core.ui.screens.settings.AppsSettingsScreen
+import id.homebase.core.ui.screens.settings.PhotobaseSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsPaneRequest
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
 import id.homebase.core.ui.screens.settings.SettingsPaneHost
@@ -1793,6 +1794,7 @@ fun AppNavHost(
                                                     navController.navigate(Route.EmailModeSwitch)
                                                 },
                                                 onOpenContacts = openContactBook,
+                                                onOpenPhotoBackup = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { koinInject<PhotoBackupController>().isSupported },
                                                 onNavigateToCropper = { requestId ->
                                                     navController.navigate(
                                                         Route.Crop(
@@ -2591,8 +2593,21 @@ fun AppNavHost(
                                             onLocation = openLocation,
                                             onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
                                             onCallsSettings = { navController.navigate(Route.CallsSettings) },
-                                            onPhotoBackup = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { koinInject<PhotoBackupController>().isSupported },
+                                            onPhotobaseSettings = { navController.navigate(Route.PhotobaseSettings) },
                                         ),
+                                    )
+                                }
+                            }
+
+                            composable<Route.PhotobaseSettings> { entry ->
+                                if (isAuthenticated) {
+                                    PhotobaseSettingsScreen(
+                                        viewModel = koinViewModel(
+                                            viewModelStoreOwner = rememberSettingsOwner(navController, entry),
+                                        ),
+                                        photobaseViewModel = koinViewModel(),
+                                        onBack = { navController.popBackStack() },
+                                        onOpenPhotoBackup = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { koinInject<PhotoBackupController>().isSupported },
                                     )
                                 }
                             }

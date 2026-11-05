@@ -193,6 +193,8 @@ import id.homebase.photobase.backup.PhotoBackupRun
 import id.homebase.photobase.backup.ServerBackupDedupe
 import id.homebase.photobase.backup.createPhotoBackupPlatform
 import id.homebase.photobase.ui.BackupSettingsViewModel
+import id.homebase.photobase.PhotobaseConfigFile
+import id.homebase.photobase.ui.PhotobaseSettingsViewModel
 import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
@@ -1436,6 +1438,7 @@ val appModule = module {
     }
     viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
     viewModel { BackupSettingsViewModel(get()) }
+    viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel { PhotoGalleryViewModel(get<PhotoGalleryRepository>()) }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
@@ -1619,7 +1622,14 @@ private fun Scope.photoBackupController(): PhotoBackupController {
             },
         )
     }
-    return PhotoBackupController(run, platform?.source, settings, BackupPushSchedule(get(), get(), now), results, scheduler, scope)
+    val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
+    val fileUploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
+    val configFile = PhotobaseConfigFile(
+        getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
+        uploadFile = { request -> fileUploader.uploadFile(request) },
+        updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
+    )
+    return PhotoBackupController(run, platform?.source, settings, BackupPushSchedule(get(), get(), now), configFile, results, scheduler, scope)
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds

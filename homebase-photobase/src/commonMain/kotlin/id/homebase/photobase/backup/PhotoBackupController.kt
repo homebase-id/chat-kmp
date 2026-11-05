@@ -1,8 +1,11 @@
 package id.homebase.photobase.backup
 
 import co.touchlab.kermit.Logger
+import id.homebase.photobase.PhotobaseConfigFile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -12,6 +15,7 @@ class PhotoBackupController(
     private val source: DeviceChangeSource?,
     private val settingsStore: BackupSettingsStore,
     private val pushSchedule: BackupPushSchedule,
+    private val configFile: PhotobaseConfigFile,
     private val results: BackupOutboxResults,
     private val scheduler: BackupScheduler,
     private val scope: CoroutineScope,
@@ -36,7 +40,7 @@ class PhotoBackupController(
         val fullScan = wokenInBackgroundSinceForeground
         wokenInBackgroundSinceForeground = false
         foregroundJob = scope.launch {
-            pushSchedule.ensure(settings)
+            pushSchedule.ensure(adoptSharedInterval())
             run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), findDeletions = true, forceFullScan = fullScan))
         }
     }
@@ -84,11 +88,40 @@ class PhotoBackupController(
                     foregroundJob?.cancel()
                 }
                 !before.enabled && after.enabled -> {
-                    pushSchedule.schedule(after)
+                    pushSchedule.schedule(adoptSharedInterval())
                     backUpNow()
                 }
-                after.enabled && before.pushIntervalMs != after.pushIntervalMs -> pushSchedule.schedule(after)
             }
+        }
+    }
+
+    /** Throws when the server can't be asked: the caller says so rather than showing a stale value as current. */
+    suspend fun loadPushInterval() {
+        configFile.read()?.pushIntervalMs?.let { adopt(it) }
+    }
+
+    /** Off the caller's scope: leaving the page must not abandon a save between the file and the schedule. */
+    suspend fun setPushInterval(intervalMs: Long) = scope.async {
+        val clamped = intervalMs.coerceAtLeast(BackupSettings.MIN_PUSH_INTERVAL.inWholeMilliseconds)
+        configFile.update { it.copy(pushIntervalMs = clamped) }
+        adopt(clamped)
+        pushSchedule.correctIfScheduled(settingsStore.settings.value)
+    }.await()
+
+    private suspend fun adoptSharedInterval(): BackupSettings {
+        try {
+            loadPushInterval()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "could not read the shared interval; keeping this device's" }
+        }
+        return settingsStore.settings.value
+    }
+
+    private suspend fun adopt(intervalMs: Long) {
+        if (settingsStore.settings.value.pushIntervalMs != intervalMs) {
+            settingsStore.update { it.copy(pushIntervalMs = intervalMs) }
         }
     }
 

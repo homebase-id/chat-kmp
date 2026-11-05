@@ -44,6 +44,7 @@ class AppsSettingsScreenTest {
         onLocation = { fired += "location" },
         onContactBookSettings = { fired += "contactBook" },
         onCallsSettings = { fired += "calls" },
+        onPhotobaseSettings = { fired += "photobase" },
     )
 
     private fun ComposeUiTest.apps() = setContent {
@@ -55,11 +56,11 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun allNineRowsAreThereInOrder() = runComposeUiTest {
+    fun allTenRowsAreThereInOrder() = runComposeUiTest {
         apps()
         assertEquals(
             listOf(
-                "feedSettingsButton", "momentsSettingsButton", "vaultSettingsButton", "filesyncSettingsButton",
+                "feedSettingsButton", "momentsSettingsButton", "vaultSettingsButton", "filesyncSettingsButton", "photobaseSettingsButton",
                 "emailSettingsButton", "webDropButton", "locationSettingsButton", "contactBookSettingsButton",
                 "callsSettingsButton",
             ),
@@ -119,13 +120,14 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun theNineNavigationRowsCallTheirActions() = runComposeUiTest {
+    fun theTenNavigationRowsCallTheirActions() = runComposeUiTest {
         apps()
         listOf(
             "feedSettingsButton" to "feed",
             "momentsSettingsButton" to "moments",
             "vaultSettingsButton" to "vault",
             "filesyncSettingsButton" to "filesync",
+            "photobaseSettingsButton" to "photobase",
             "emailSettingsButton" to "email",
             "webDropButton" to "webdrop",
             "locationSettingsButton" to "location",
@@ -135,7 +137,7 @@ class AppsSettingsScreenTest {
             tap(tag)
             assertEquals(route, fired.last(), tag)
         }
-        assertEquals(9, fired.size)
+        assertEquals(10, fired.size)
     }
 
     @Test

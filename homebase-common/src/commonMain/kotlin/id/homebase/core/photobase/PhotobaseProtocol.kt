@@ -15,6 +15,10 @@ object PhotobaseProtocol {
 
     const val PhotoFileType = 7201
 
+    /** The identity's one Photobase configuration file, shared by all its devices. */
+    const val ConfigFileType = 7202
+    val ConfigUniqueId: Uuid = Uuid.parse("94741947-6cc6-43d9-8bfa-776f011cf7bf")
+
     const val ImageDataType = 1
     const val VideoDataType = 2
     const val LivePhotoDataType = 3

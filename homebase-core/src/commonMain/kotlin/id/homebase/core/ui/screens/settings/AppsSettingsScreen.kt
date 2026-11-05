@@ -54,10 +54,8 @@ import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_section_apps
 import androidx.compose.material.icons.outlined.PhotoLibrary
-import id.homebase.resources.photobase_backup_enable_desc
-import id.homebase.resources.photobase_backup_title
+import id.homebase.resources.photobase_home_subtitle
 import id.homebase.resources.photobase_label
-import id.homebase.resources.settings_photobase_icon_desc
 import id.homebase.resources.settings_vault_desc
 import id.homebase.resources.vault_settings_section
 import id.homebase.resources.webdrop_home_subtitle
@@ -69,6 +67,7 @@ internal val AppsSettingsRowTags = listOf(
     "momentsSettingsButton",
     "vaultSettingsButton",
     "filesyncSettingsButton",
+    "photobaseSettingsButton",
     "emailSettingsButton",
     "webDropButton",
     "locationSettingsButton",
@@ -142,6 +141,14 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         action = SettingsRowAction.Navigate(actions.onFilesyncSettings),
                     )
                     SettingsRow(
+                        modifier = Modifier.testTag("photobaseSettingsButton"),
+                        icon = Icons.Outlined.PhotoLibrary,
+                        title = stringResource(MR.string.photobase_label),
+                        supportingText = stringResource(MR.string.photobase_home_subtitle),
+                        containerColor = rowColor,
+                        action = SettingsRowAction.Navigate(actions.onPhotobaseSettings),
+                    )
+                    SettingsRow(
                         modifier = Modifier.testTag("emailSettingsButton"),
                         icon = Icons.Outlined.MailOutline,
                         title = stringResource(MR.string.email_settings_section),
@@ -181,23 +188,13 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         containerColor = rowColor,
                         action = SettingsRowAction.Navigate(actions.onCallsSettings),
                     )
-                    actions.onPhotoBackup?.let { onPhotoBackup ->
-                        SettingsRow(
-                            modifier = Modifier.testTag("photoBackupSettingsButton"),
-                            icon = Icons.Outlined.PhotoLibrary,
-                            title = stringResource(MR.string.photobase_backup_title),
-                            supportingText = stringResource(MR.string.photobase_backup_enable_desc),
-                            containerColor = rowColor,
-                            action = SettingsRowAction.Navigate(onPhotoBackup),
-                        )
-                    }
                 }
             }
         }
     }
 }
 
-private val AppsContentMaxWidth = 640.dp
+internal val AppsContentMaxWidth = 640.dp
 
 // The heading's top inset centres the first one on the pane sidebar's first row.
 @Composable

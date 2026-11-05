@@ -172,6 +172,10 @@ sealed class Route {
     data object Photobase : Route()
 
     @Serializable
+    @SerialName("photobase-settings")
+    data object PhotobaseSettings : Route()
+
+    @Serializable
     @SerialName("photo-backup-settings")
     data object PhotoBackupSettings : Route()
 
