@@ -9,6 +9,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.photobase.PhotobaseProtocol
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -36,6 +37,7 @@ class PhotoBackupRunTest {
     private val probe = FakeProbe()
     private var settings = BackupSettings(enabled = true)
     private var hashTime: Duration = Duration.ZERO
+    private val hashGates = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val existing = mutableSetOf<Uuid>()
     private val dedupeCalls = mutableListOf<List<Uuid>>()
     private var dedupeFailure: Exception? = null
@@ -48,6 +50,7 @@ class PhotoBackupRunTest {
     private inner class Bytes : FileOperationsProvider by NoFiles {
         override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> = flow {
             delay(hashTime)
+            hashGates[path]?.await()
             emit(path.encodeToByteArray())
         }
     }
@@ -102,6 +105,24 @@ class PhotoBackupRunTest {
         assertEquals(3, ledger.counts().done)
         assertEquals(0, ledger.counts().pending)
         assertTrue(ledger.isInitialBackupDone())
+    }
+
+    @Test
+    fun aFinishedHashReachesUploadWhileAnotherIsStillHashing() = runTest {
+        // The slow hash ends only once the fast photo reaches upload, so waiting for hashing can't pass.
+        val slowHash = CompletableDeferred<Unit>()
+        hashGates["slow"] = slowHash
+        source.next = fullListing(asset("fast"), asset("slow"))
+        val uploader = uploader()
+        uploader.result = {
+            slowHash.complete(Unit)
+            HandOffResult.Queued
+        }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+
+        assertEquals(setOf("fast", "slow"), uploader.handedOff.toSet())
     }
 
     @Test

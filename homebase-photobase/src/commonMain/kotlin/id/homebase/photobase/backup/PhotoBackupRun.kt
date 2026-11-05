@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
@@ -228,14 +229,17 @@ class PhotoBackupRun(
     ) {
         val checked = mutableSetOf<String>()
         while (!request.budget.isExpired) {
+            // Read before the query: a hash landing just after it must not look like the last word.
+            val hashingDone = hashing.isCompleted
             val seen = ledger.changes.value
             val batch = ledger.due(BackupState.Hashed, includeVideos, DEDUPE_BATCH + checked.size, newestFirst)
                 .filter { it.deviceAssetId !in checked }
             if (batch.isEmpty()) {
-                if (hashing.isCompleted) return
+                if (hashingDone) return
                 coroutineScope {
                     val waiter = launch { ledger.changes.first { it != seen } }
-                    launch { hashing.join(); waiter.cancel() }
+                    select { waiter.onJoin {}; hashing.onJoin {} }
+                    waiter.cancel()
                 }
                 continue
             }
