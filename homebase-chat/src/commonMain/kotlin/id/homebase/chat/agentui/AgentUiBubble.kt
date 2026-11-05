@@ -220,16 +220,16 @@ fun AgentUiFrame(
                 .agentUiFrameWidth()
                 .clip(RoundedCornerShape(24.dp))
                 .background(container)
-                .then(
-                    if (onLongClick != null) Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) }
-                    else Modifier
-                )
+                .onLongPress(onLongClick)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content,
         )
     }
 }
+
+private fun Modifier.onLongPress(onLongClick: (() -> Unit)?): Modifier =
+    if (onLongClick != null) pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) } else this
 
 /** Caps the card at a readable bubble width that grows on wide windows. */
 private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constraints ->
@@ -256,10 +256,7 @@ fun AgentUiActionBubble(
         modifier
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.secondaryContainer)
-            .then(
-                if (onLongClick != null) Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) }
-                else Modifier
-            )
+            .onLongPress(onLongClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
