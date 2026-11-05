@@ -442,8 +442,8 @@ class WatchProcessor(
         if (quiet.isNotEmpty() && addressed.isEmpty()) {
             val now = clock()
             val continuing = now - (lastSpoke[conversation] ?: Long.MIN_VALUE / 2) < config.followUpMs
-            // operators continuing a conversation with the bot in an operators-only room: no triage, it is for the bot
-            if (continuing && jobs != null && trust.fullyTrusted(members, isNoteToSelf(conversation), conversation) && quiet.all(::isOperator)) {
+            // operators continuing a conversation with the bot: no triage, it is for the bot
+            if (continuing && jobs != null && quiet.all(::isOperator)) {
                 listenWait.remove(conversation)
                 return runTier(quiet, Tier.OPERATOR, results)
             }
@@ -477,9 +477,9 @@ class WatchProcessor(
         }
         if (mode == Cue.LISTEN && clock() - (lastListen[conversation] ?: Long.MIN_VALUE / 2) < config.listenCooldownMs) return done(sorted, "skip: listen cooldown")
         val authors = sorted.map { it.author.toString() }.toSet()
-        // in a room of operators only, the cheap locked brain only triages and a JOIN hands the messages to the operator brain
+        // operators wrote it: the cheap locked brain only triages and a JOIN hands it to the operator brain, which sees operator history only
         val members = allow.info(conversation)?.members
-        val canJoin = mode == Cue.LISTEN && jobs != null && trust.fullyTrusted(members, isNoteToSelf(conversation), conversation) &&
+        val canJoin = mode == Cue.LISTEN && jobs != null &&
             trust.tier(members, isNoteToSelf(conversation), sorted.map { it.sender }.toSet(), conversation) == Tier.OPERATOR
         var join = false
         mutex.withLock {
