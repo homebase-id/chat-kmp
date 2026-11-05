@@ -172,11 +172,11 @@ class ListenTest {
         assertEquals(0, h.brainRuns)
     }
 
-    private fun operatorRoom(triage: String): Pair<TestHarness, CopyOnWriteArrayList<String>> {
+    private fun operatorRoom(triage: String, followUpMs: Long = 0): Pair<TestHarness, CopyOnWriteArrayList<String>> {
         val op2 = OdinId("op2.example.com")
         val allow = Allowlist(setOf(room), null, Kind.BOT)
         allow.learn(listOf(ConversationInfo(room, "room", listOf(self, op, op2))))
-        val config = AgentConfig(allowlist = allow, operators = setOf(op, op2), operatorBrain = "full", listenRooms = setOf(room), listenQuietMs = 0, followUpMs = 0)
+        val config = AgentConfig(allowlist = allow, operators = setOf(op, op2), operatorBrain = "full", listenRooms = setOf(room), listenQuietMs = 0, followUpMs = followUpMs)
         val work = CopyOnWriteArrayList<String>()
         val h = TestHarness(
             config, identity = self.toString(),
@@ -255,5 +255,14 @@ class ListenTest {
         h.now += 30_000
         h.handle(msg(rando, "can you make it shorter"))
         assertEquals(1, h.brainRuns)
+    }
+
+    @Test
+    fun operatorContinuingInAnOperatorsOnlyRoomSkipsTriage() = runBlocking<Unit> {
+        val (h, work) = operatorRoom("PASS", followUpMs = 180_000)
+        h.handle(msg(self, "here are the facts"))
+        h.handleAll(listOf(msg(op, "dump the facts.md here then")))
+        withTimeout(5_000) { while (work.isEmpty()) delay(20) }
+        assertTrue(h.tiers.none { it == Tier.LOCKED })
     }
 }

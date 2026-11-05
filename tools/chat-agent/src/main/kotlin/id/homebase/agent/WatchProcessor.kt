@@ -440,13 +440,18 @@ class WatchProcessor(
         }
         if (addressed.isNotEmpty()) listenWait.remove(conversation)
         if (quiet.isNotEmpty() && addressed.isEmpty()) {
+            val now = clock()
+            val continuing = now - (lastSpoke[conversation] ?: Long.MIN_VALUE / 2) < config.followUpMs
+            // operators continuing a conversation with the bot in an operators-only room: no triage, it is for the bot
+            if (continuing && jobs != null && trust.fullyTrusted(members, isNoteToSelf(conversation), conversation) && quiet.all(::isOperator)) {
+                listenWait.remove(conversation)
+                return runTier(quiet, Tier.OPERATOR, results)
+            }
             if (config.listenQuietMs > 0) {
                 // named mid-sentence, or the bot spoke here within followUp: no wait, triage now
-                val now = clock()
-                val urgent = quiet.any { namesBot(it.text) } || now - (lastSpoke[conversation] ?: Long.MIN_VALUE / 2) < config.followUpMs
-                if (urgent) listenWait[conversation] = now
+                if (continuing || quiet.any { namesBot(it.text) }) listenWait[conversation] = now
                 else if (quiet.any { it.id !in pending }) listenWait[conversation] = now + config.listenQuietMs
-                if (clock() < (listenWait[conversation] ?: 0L)) {
+                if (now < (listenWait[conversation] ?: 0L)) {
                     quiet.forEach { pending[it.id] = it; results[it.id] = "waiting" }
                     return
                 }
