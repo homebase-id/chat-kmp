@@ -2,12 +2,20 @@ FROM mcr.microsoft.com/playwright:v1.49.1-noble
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-21-jre-headless ffmpeg imagemagick python3 python3-pip python3-venv \
-        git git-lfs jq curl ca-certificates fonts-noto-color-emoji \
+        git git-lfs jq curl ca-certificates fonts-noto-color-emoji sudo \
     && rm -rf /var/lib/apt/lists/*
+
+# The operator brain runs as "brain": it owns /home/agent and /workspace but cannot read /data (approvals, publish credentials).
+ARG AGENT_UID=1002
+RUN groupadd -g 2000 brain \
+    && useradd -u 2000 -g brain -d /home/agent -M -s /bin/bash brain \
+    && useradd -u ${AGENT_UID} -G brain -d /data/home -M -s /bin/sh agent \
+    && printf 'Defaults:agent !use_pty\nagent ALL=(brain) NOPASSWD:SETENV: ALL\n' > /etc/sudoers.d/agent \
+    && chmod 440 /etc/sudoers.d/agent
 
 COPY chat-agent /opt/chat-agent
 
-ENV HOME=/home/agent \
+ENV HOME=/data/home \
     CHAT_AGENT_HOME=/data \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \

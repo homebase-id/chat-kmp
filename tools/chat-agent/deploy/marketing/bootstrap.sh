@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Inside the container, once (and again to upgrade): installs claude, the browser MCP and skills into the persistent HOME.
+# As the brain user, once (and again to upgrade): podman exec -u brain -e HOME=/home/agent -w /home/agent marketing-agent bash bootstrap.sh
+# Installs claude, the browser MCP and skills into the persistent HOME, and clones the workspace repo (needs the deploy key in ~/.ssh).
 set -euo pipefail
 
 command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash
@@ -14,6 +15,8 @@ if [ -d "$KWP/.git" ]; then git -C "$KWP" pull -q; else git clone -q --depth 1 h
 mkdir -p ~/.claude/skills
 cp -r "$KWP"/marketing/skills/. ~/.claude/skills/
 
+[ -d /workspace/.git ] || git clone -q git@github.com:homebase-id/marketing-assets.git /workspace
+(cd /workspace/render && npm ci --silent)
 mkdir -p /workspace/out
 claude --version
 claude mcp list

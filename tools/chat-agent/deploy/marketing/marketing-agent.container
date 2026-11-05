@@ -8,6 +8,7 @@ Wants=network-online.target
 Image=localhost/marketing-agent:latest
 ContainerName=marketing-agent
 UserNS=keep-id
+GroupAdd=2000
 Network=pasta:-4
 DNS=1.1.1.1
 DNS=9.9.9.9
