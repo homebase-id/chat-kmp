@@ -32,12 +32,15 @@ import androidx.compose.ui.Modifier
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.calls.settings.CallsSettingsScreen
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
+import id.homebase.core.ui.screens.feed.settings.FeedSettingsScreen
+import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
 import id.homebase.core.ui.screens.media.MediaSettingsScreen
@@ -267,21 +270,25 @@ private fun CategoryPage(
             appsPage = appsPage,
             root = {
                 AppsSettingsScreen(
-                    viewModel = koinViewModel(),
                     actions = AppsSettingsActions(
                         onBack = onDismiss,
+                        onFeedSettings = { onSelectAppsPage(AppsPage.Feed) },
                         onMomentsSettings = { onSelectAppsPage(AppsPage.Moments) },
                         onVaultSettings = { onSelectAppsPage(AppsPage.Vault) },
+                        onFilesyncSettings = { onSelectAppsPage(AppsPage.Filesync) },
                         onEmailSettings = { onSelectAppsPage(AppsPage.Email) },
                         onOpenWebDrop = actions.onOpenWebDrop,
                         onLocation = actions.onLocation,
                         onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
+                        onCallsSettings = { onSelectAppsPage(AppsPage.Calls) },
                     ),
                 )
             },
             page = { shown ->
                 val back = { onSelectAppsPage(null) }
                 when (shown) {
+                    AppsPage.Feed -> FeedSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
+
                     AppsPage.Moments -> MomentsSettingsScreen(
                         viewModel = koinViewModel(),
                         onBackClick = back,
@@ -293,6 +300,8 @@ private fun CategoryPage(
                         onBackClick = back,
                         onOpenVault = actions.onOpenVault,
                     )
+
+                    AppsPage.Filesync -> FilesyncSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
 
                     AppsPage.Email -> EmailSettingsScreen(
                         viewModel = koinViewModel(),
@@ -307,6 +316,8 @@ private fun CategoryPage(
                         onBackClick = back,
                         onOpenContacts = actions.onOpenContacts,
                     )
+
+                    AppsPage.Calls -> CallsSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
                 }
             },
         )

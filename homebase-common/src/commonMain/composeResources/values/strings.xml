@@ -1690,6 +1690,7 @@
     <string name="settings_appearance_theme">Theme: %1$s</string>
     <string name="settings_moments_desc">Photos, clips and notes</string>
     <string name="settings_vault_desc">Encrypted document storage</string>
+    <string name="settings_feed_desc">Posts from the people you follow</string>
     <string name="settings_location_desc">Private location history</string>
     <string name="settings_contactbook_desc">Your address book and circles</string>
     <string name="settings_storage_desc">Caches, database and media</string>
@@ -1730,7 +1731,6 @@
     <string name="calls_kind_video">Video</string>
     <string name="nav_apps">Apps</string>
     <string name="settings_apps_desc">Feed, Vault, Email and more</string>
-    <string name="settings_apps_section_features">Features</string>
     <string name="settings_apps_section_pages">App settings</string>
     <string name="owner_status_connected">Connected</string>
     <string name="owner_status_connecting">Connecting</string>

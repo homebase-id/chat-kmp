@@ -72,11 +72,11 @@ class AppsEverywhereScreenshotTest {
         onAccount = {}, onHelp = {}, onProfileEdit = {}, onProfileAvatarEdit = {}, onProfileCard = {},
     )
     private val appsActions = AppsSettingsActions(
-        onBack = {}, onMomentsSettings = {}, onVaultSettings = {}, onEmailSettings = {},
-        onOpenWebDrop = {}, onLocation = {}, onContactBookSettings = {},
+        onBack = {}, onFeedSettings = {}, onMomentsSettings = {}, onVaultSettings = {}, onFilesyncSettings = {},
+        onEmailSettings = {}, onOpenWebDrop = {}, onLocation = {}, onContactBookSettings = {}, onCallsSettings = {},
     )
 
-    private val state = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK, ownerSession = owner, useNativeFeed = true, filesyncIconVisible = true)
+    private val state = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK, ownerSession = owner)
 
     private fun shot(name: String, width: Int, height: Int, content: @Composable () -> Unit) {
         for (dark in listOf(false, true)) {
@@ -134,7 +134,7 @@ class AppsEverywhereScreenshotTest {
     @Test
     fun phone() {
         shot("phone-settings", 412, 900) { SettingsUi(uiState = state, onAction = {}, actions = hubActions) }
-        shot("phone-apps", 412, 900) { AppsSettingsUi(state, {}, appsActions) }
+        shot("phone-apps", 412, 900) { AppsSettingsScreen(appsActions) }
         shot("phone-bottom-bar", 412, 120) { BottomBar(TopLevelRoute.Apps) }
         shot("phone-bottom-bar-chats", 412, 120) { BottomBar(TopLevelRoute.Chat) }
     }
@@ -156,7 +156,7 @@ class AppsEverywhereScreenshotTest {
                                 SettingsSidebar(selected = SettingsCategory.Apps, onSelect = {})
                                 VerticalDivider()
                                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                                    ProvideSettingsChrome(embedded = true) { AppsSettingsUi(state, {}, appsActions) }
+                                    ProvideSettingsChrome(embedded = true) { AppsSettingsScreen(appsActions) }
                                 }
                             }
                         }
@@ -165,7 +165,7 @@ class AppsEverywhereScreenshotTest {
                 }
             }
         }
-        shot("wide-apps-page", 1100, 760) { AppsSettingsUi(state, {}, appsActions) }
+        shot("wide-apps-page", 1100, 760) { AppsSettingsScreen(appsActions) }
         val states = listOf(
             OwnerAvatarState(connectionStatus = AppConnectionStatus.Connected),
             OwnerAvatarState(connectionStatus = AppConnectionStatus.Connected, driveIsSyncing = true),

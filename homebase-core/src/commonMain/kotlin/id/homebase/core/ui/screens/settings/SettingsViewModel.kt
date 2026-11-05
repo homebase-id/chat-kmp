@@ -1,8 +1,6 @@
 package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
-import id.homebase.core.calling.CallsPreferences
-import id.homebase.core.filesync.FilesyncPreferences
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
@@ -38,8 +36,6 @@ class SettingsViewModel(
     private val contactInfo: ContactInfoGateway,
     private val driveFileProviderCached: DriveFileProviderCached,
     private val webPushService: WebPushService,
-    private val filesyncPreferences: FilesyncPreferences,
-    private val callsPreferences: CallsPreferences,
 ) : ViewModel() {
 
     private companion object {
@@ -48,7 +44,6 @@ class SettingsViewModel(
 
     private val _uiState = MutableStateFlow(
         SettingsUiState(
-            useNativeFeed = userPreferences.useNativeFeed,
             appVersion = platformInfo.versionName,
             hasPushRegistration = !isDesktop(),
         ),
@@ -74,16 +69,6 @@ class SettingsViewModel(
         viewModelScope.launch {
             userPreferences.preferenceState.collect { prefs ->
                 _uiState.update { it.copy(theme = prefs.theme) }
-            }
-        }
-        viewModelScope.launch {
-            filesyncPreferences.iconVisible.collect { visible ->
-                _uiState.update { it.copy(filesyncIconVisible = visible) }
-            }
-        }
-        viewModelScope.launch {
-            callsPreferences.enabled.collect { enabled ->
-                _uiState.update { it.copy(callsEnabled = enabled) }
             }
         }
     }
@@ -159,17 +144,6 @@ class SettingsViewModel(
             SettingsUiAction.DeleteAccount -> {
                 _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
             }
-
-            is SettingsUiAction.SetUseNativeFeed -> {
-                userPreferences.useNativeFeed = action.enabled
-                _uiState.update { it.copy(useNativeFeed = action.enabled) }
-            }
-
-            is SettingsUiAction.SetFilesyncIconVisible ->
-                viewModelScope.launch { filesyncPreferences.setIconVisible(action.visible) }
-
-            is SettingsUiAction.SetCallsEnabled ->
-                viewModelScope.launch { callsPreferences.setEnabled(action.enabled) }
         }
     }
 
