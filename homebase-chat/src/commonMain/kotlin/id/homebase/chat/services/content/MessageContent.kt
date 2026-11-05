@@ -2,6 +2,7 @@ package id.homebase.chat.services.content
 
 import id.homebase.chat.agentui.AgentUiActionDescriptor
 import id.homebase.chat.agentui.AgentUiDescriptor
+import id.homebase.chat.agentui.AgentUiTreeResult
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.contactcard.ContactCardDescriptor
@@ -208,10 +209,10 @@ sealed interface MessageContent {
     }
 
     /**
-     * An agent-composed interactive card; the tree rides in the `agent_ui` payload (AGENT_UI.md).
-     * [descriptor] follows the [Event.descriptor] nullability contract.
+     * An agent-composed interactive card (AGENT_UI.md). [descriptor] follows the [Event.descriptor]
+     * nullability contract. [inlineTree] is the decoded header tree; null when the tree rides in the payload.
      */
-    data class AgentUi(val descriptor: AgentUiDescriptor?) : MessageContent {
+    data class AgentUi(val descriptor: AgentUiDescriptor?, val inlineTree: AgentUiTreeResult? = null) : MessageContent {
         override val actions: ActionPolicy = ActionPolicy(
             allowEdit = false,            // only the agent edits, through its own tool
             allowReply = true,            // people talk back about the card

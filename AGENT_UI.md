@@ -35,11 +35,24 @@ Re-check against A2UI when bumping `schemaVersion`.
   fails, and copied by "Copy".
 - `title`: optional, at most 80 code points (conversation list, pins).
 - `rev`: integer, 0 or more. The agent bumps it on every edit.
+- `tree`: optional, the whole tree object from section 2, inline. Present only when the descriptor
+  with it still fits the header (below). When present the receiver renders it from the header and
+  ignores any `agent_ui` payload.
 - No id, author or timestamp: the envelope has them. An invalid header renders the "please update"
   chip (`AgentUi(null)`); the message is never dropped. `schemaVersion` other than 1 is invalid.
 - Push notification text is the generic "Agent card", never the content.
 
-### 2. Tree payload
+### 2. Tree: inline or payload
+
+The server caps `appData.content` at `MaxHeaderContentBytes` = 7000 bytes after encryption, which
+is base64 of AES-CBC with PKCS7 padding: `4 * ceil((16 * (floor(n / 16) + 1)) / 3)` for `n` plaintext
+bytes. That allows at most 5247 bytes of descriptor JSON. The agent minifies the tree, puts it in
+`tree`, and keeps it there when `AgentUiDescriptor.withInlineTree` says the whole descriptor fits;
+otherwise the header has no `tree` and the tree goes in the payload. With a typical 100-byte
+fallback and title that leaves about 5.1 KB of tree, which holds every showcase card except long
+reports and big tables. The inline tree is decoded once, off the main thread, when the message is
+mapped (`MessageContentParser`), and rides on `MessageContent.AgentUi.inlineTree`, so the card has its
+full height on the first frame and does no fetch.
 
 Payload key `agent_ui` (`ChatProtocol.PAYLOAD_KEY_AGENT_UI`; the server requires `^[a-z0-9_]{8,10}$`),
 contentType `application/json`, encrypted with the message key.
@@ -50,11 +63,23 @@ contentType `application/json`, encrypted with the message key.
 
 Every node may carry `fallback`. An unknown `type` renders its `fallback` (nothing if absent).
 
+A payload tree is fetched when the message is surfaced (`ChatMessageStream.onMessagesSurfaced`, for
+every conversation, open or not), not when the bubble is composed. `AgentUiTreeLoader` dedups
+in-flight fetches and keeps the last 200 decoded trees in memory, keyed by file, payload
+`lastModified` and iv; the bytes stay in the drive payload cache. A card scrolled away and back, or
+warmed before the chat opens, has its full height on the first frame. Until a payload tree is ready
+the card shows the fallback in a fixed-minimum-height placeholder, so it grows once and does not
+start from a one-line bubble.
+
 ### 3. Images
 
 Separate payloads `chat_web0` to `chat_web9`. `{ "type":"image", "payloadKey":"chat_web0", "alt":"..." }`.
 `alt` is required. A key that is not an image payload of this message, or a missing `alt`, renders
 the alt/fallback text. Remote URLs are not a thing.
+
+The bubble shows the payload's embedded `previewThumbnail` at once and then loads the
+`THUMB_MEDIUM` server thumbnail, never the full image; the agent uploads standard thumbnail sizes
+with each image. The image box has a fixed 16:9 ratio, so loading never changes the card height.
 
 ### 4. Node catalog
 
@@ -85,6 +110,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 
 | Limit | Value | Over the limit |
 |---|---|---|
+| inline: whole descriptor, encrypted | 7000 bytes (5247 plaintext) | sent as payload instead |
 | payload bytes (checked before parsing) | 64 KB | tree invalid |
 | JSON nesting | 8 | tree invalid |
 | nodes in the list | 200 | tree invalid |
@@ -117,9 +143,11 @@ is pure, common and never throws, so the agent can use it to validate before sen
 
 ### 7. Edit semantics
 
-The agent re-uploads the `agent_ui` payload and bumps `rev` in the header (an update). Receivers
-re-fetch when the payload's `lastModified` or iv changes; the fetch is cache-addressed by
-`lastModified`. Typed text survives an edit unless that input's default changed.
+The agent bumps `rev` in the header (an update) and sends the new tree the same way as a new card:
+inline if it fits, and then deletes any old `agent_ui` payload; otherwise it uploads the payload and
+leaves `tree` out of the header. Receivers re-render from the new header, or re-fetch when the
+payload's `lastModified` or iv changes (both are in the loader key, and the fetch is cache-addressed
+by `lastModified`). Typed text survives an edit unless that input's default changed.
 
 An action whose `rev` is older than the card's is stale: the agent must reject it. After a terminal
 action (for example Approve posts something) the agent must edit the card to remove the buttons.
@@ -158,5 +186,6 @@ BiDi and zero-width characters are clamped by length only and render as content.
 ## Known gaps
 
 - Text input in the message list: verify the IME does not cover the field on Android, and focus on web.
-- Pending-action state is per composition: scrolling the card away and back re-enables a sent action
-  until the agent edits the card (the agent rejects stale/duplicate by `rev`).
+- Pending-action and typed text are saved with the list item (`rememberSaveable`), so they survive
+  scrolling away and back, but not leaving the chat; the agent still rejects stale or duplicate
+  actions by `rev`.

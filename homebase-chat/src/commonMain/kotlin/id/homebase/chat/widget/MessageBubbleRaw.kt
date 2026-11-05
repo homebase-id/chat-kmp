@@ -392,7 +392,7 @@ fun MessageBubbleRaw(
         }
         is MessageContent.AgentUi -> {
             AgentUiBubble(
-                descriptor = content.descriptor,
+                content = content,
                 message = message,
                 displayOnly = displayOnly,
                 sentByYou = sentByYou,

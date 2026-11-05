@@ -4,6 +4,10 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.agentui.AgentUiActionDescriptor
 import id.homebase.chat.agentui.AgentUiDescriptor
+import id.homebase.chat.agentui.AgentUiLimits
+import id.homebase.chat.agentui.AgentUiTree
+import id.homebase.chat.agentui.agentUiImageKeys
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
@@ -39,7 +43,8 @@ object MessageContentParser {
 
     private const val TAG = "MessageContentParser"
 
-    fun parse(dataType: Int?, content: String?): MessageContent? {
+    /** [payloads] are the message's payload descriptors; only kinds whose header refers to them read it. */
+    fun parse(dataType: Int?, content: String?, payloads: List<PayloadDescriptor>? = null): MessageContent? {
         if (dataType == null || content.isNullOrBlank()) return null
         return when (dataType) {
             ChatProtocol.ChatEventMessageDataType -> parseEvent(content)
@@ -49,7 +54,7 @@ object MessageContentParser {
             ChatProtocol.ChatCallEventMessageDataType -> parseCallEvent(content)
             ChatProtocol.ChatContactCardMessageDataType -> parseContactCard(content)
             ChatProtocol.ChatViewOnceMessageDataType -> parseViewOnce(content)
-            ChatProtocol.ChatAgentUiMessageDataType -> parseAgentUi(content)
+            ChatProtocol.ChatAgentUiMessageDataType -> parseAgentUi(content, payloads)
             ChatProtocol.ChatAgentUiActionMessageDataType -> parseAgentUiAction(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
             // as MessageAppData. 0 = plain text/media; 211 = Location, whose
@@ -190,10 +195,12 @@ object MessageContentParser {
         MessageContent.ViewOnce(null)
     }
 
-    private fun parseAgentUi(content: String): MessageContent.AgentUi = try {
-        val descriptor = OdinSystemSerializer.deserialize<AgentUiDescriptor>(content)
-        if (descriptor.isValid()) {
-            MessageContent.AgentUi(descriptor)
+    private fun parseAgentUi(content: String, payloads: List<PayloadDescriptor>?): MessageContent.AgentUi = try {
+        // The header is parsed whole, so a hostile inline tree must not nest deep enough to blow the parser's stack.
+        val descriptor = if (AgentUiTree.jsonNestingExceeds(content, AgentUiLimits.MAX_JSON_NESTING + 1)) null
+        else OdinSystemSerializer.deserialize<AgentUiDescriptor>(content)
+        if (descriptor != null && descriptor.isValid()) {
+            MessageContent.AgentUi(descriptor, descriptor.tree?.let { AgentUiTree.decodeParsed(it, agentUiImageKeys(payloads)) })
         } else {
             Logger.w(tag = TAG) { "AgentUi descriptor failed validation" }
             MessageContent.AgentUi(null)
