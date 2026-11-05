@@ -1,5 +1,6 @@
 package id.homebase.chat.agentui
 
+import id.homebase.chat.widget.UnparseableTypedChip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,9 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.layout
 import co.touchlab.kermit.Logger
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.util.truncateToCodePoints
@@ -93,7 +91,7 @@ fun AgentUiBubble(
 ) {
     val descriptor = content.descriptor
     if (descriptor == null) {
-        UnparseableChip(Icons.Default.SmartToy, modifier)
+        UnparseableTypedChip(Icons.Default.SmartToy, stringResource(MR.string.chat_agent_ui_unparseable), modifier)
         return
     }
 
@@ -259,45 +257,21 @@ fun AgentUiActionBubble(
     onLongClick: (() -> Unit)? = null,
 ) {
     if (descriptor == null) {
-        UnparseableChip(Icons.Default.TouchApp, modifier)
+        UnparseableTypedChip(Icons.Default.TouchApp, stringResource(MR.string.chat_agent_ui_unparseable), modifier)
         return
     }
     val text = if (sentByYou) stringResource(MR.string.chat_agent_ui_action_you, descriptor.label)
     else stringResource(MR.string.chat_agent_ui_action_other, authorName, descriptor.label)
-    IconTextChip(
-        Icons.Default.TouchApp,
-        text,
-        MaterialTheme.colorScheme.secondaryContainer,
-        MaterialTheme.colorScheme.onSecondaryContainer,
-        verticalPadding = 8.dp,
-        modifier = modifier,
-        onLongClick = onLongClick,
-    )
-}
-
-@Composable
-private fun UnparseableChip(icon: ImageVector, modifier: Modifier) {
-    IconTextChip(
-        icon,
-        stringResource(MR.string.chat_agent_ui_unparseable),
-        MaterialTheme.colorScheme.surfaceContainerHigh,
-        MaterialTheme.colorScheme.onSurfaceVariant,
-        verticalPadding = 10.dp,
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun IconTextChip(icon: ImageVector, text: String, container: Color, onContainer: Color, verticalPadding: Dp, modifier: Modifier, onLongClick: (() -> Unit)? = null) {
+    val onContainer = MaterialTheme.colorScheme.onSecondaryContainer
     Row(
         modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(container)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
             .onLongPress(onLongClick)
-            .padding(horizontal = 14.dp, vertical = verticalPadding),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = onContainer)
+        Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(18.dp), tint = onContainer)
         Spacer(Modifier.width(8.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = onContainer)
     }
