@@ -222,6 +222,8 @@ class SessionBackend(private val profile: String, private val scope: Uuid? = nul
 
     private suspend fun open(): Session = session ?: openSession(profile).also { session = it }
 
+    override val self: OdinId? get() = session?.identity
+
     override val allowlist: Allowlist
         get() = cachedAllowlist ?: error("allowlist not loaded")
 
