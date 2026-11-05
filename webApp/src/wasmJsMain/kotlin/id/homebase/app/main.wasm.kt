@@ -13,6 +13,8 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.initWebSqlJs
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
+import id.homebase.common.util.WindowTitle
+import kotlinx.browser.document
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AppConfig
@@ -120,8 +122,10 @@ fun main() {
         GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
         val notificationService = GlobalContext.get().get<NotificationService>()
         WebAppLink.consumePending()?.let { notificationService.navigateToApp(it.route) }
+        val pageTitle = document.title
         ComposeViewport("ComposeApp") {
             LaunchedEffect(Unit) { bootDone() }
+            LaunchedEffect(Unit) { WindowTitle.place.collect { document.title = WindowTitle.of(it, pageTitle) } }
             App(onNavHostReady = { nav ->
                 WebAppLink.listenForTypedHash { notificationService.navigateToApp(it.route) }
                 // A custom fragment turns off the library's own hash parsing; WebAppLink does that instead.

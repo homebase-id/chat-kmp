@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <plurals name="filesync_expires_in_days">
+        <item quantity="one">Expires in %1$d day</item>
+        <item quantity="other">Expires in %1$d days</item>
+    </plurals>
     <plurals name="chat_group_selected_members">
         <item quantity="one">%1$d member</item>
         <item quantity="other">%1$d members</item>
@@ -99,5 +103,9 @@
     <plurals name="photobase_backup_interval_hours">
         <item quantity="one">%1$d hour</item>
         <item quantity="other">%1$d hours</item>
+    </plurals>
+    <plurals name="contactbook_requests_banner_more">
+        <item quantity="one">You have connection requests from %1$s and %2$d more</item>
+        <item quantity="other">You have connection requests from %1$s and %2$d more</item>
     </plurals>
 </resources>

@@ -208,7 +208,7 @@ data class RedactedCircleDefinition(
 @Serializable
 data class DriveGrantRequest(val permissionedDrive: PermissionedDrive)
 
-/** `grantOn` and `designation` are left to the server defaults: None and Personal. */
+/** The same [slug] returns the same circle; one of another [designation] or [grantOn] is refused. */
 @Serializable
 data class CreateAppCircleRequest(
     val name: String,
@@ -217,6 +217,8 @@ data class CreateAppCircleRequest(
     val emoji: String? = null,
     val driveGrants: List<DriveGrantRequest> = emptyList(),
     val permissions: PermissionSet = PermissionSet(),
+    val designation: CircleDesignation = CircleDesignation.Personal,
+    val grantOn: CircleGrantOn = CircleGrantOn.None,
 )
 
 /**
@@ -266,6 +268,10 @@ enum class CircleDesignation {
     /** Vendor and institution grants — write-only in practice. */
     @SerialName("vendor")
     Vendor,
+
+    /** One person, for sharing with them alone: grants nothing and takes one member. */
+    @SerialName("individual")
+    Individual,
 }
 
 @Serializable

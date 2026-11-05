@@ -17,9 +17,9 @@ class FilesyncAppRegistrationTest {
                 "appId" to "03ae1a49cdae483f9da7fedc0e8f20b9",
                 "n" to "Homebase Filesync",
                 "as" to "filesync",
-                "d" to """[{"a":"cfceb937-b868-496b-91cb-3402f18320f8","t":"5da48122-e946-487a-8b9d-589642f3c91d","n":"Filesync","d":"Files synced with your computers by Homebase Filesync","p":3,"ds":"filesync","ts":"filesync","sm":"selectiveShare"}]""",
+                "d" to """[{"a":"cfceb937-b868-496b-91cb-3402f18320f8","t":"5da48122-e946-487a-8b9d-589642f3c91d","n":"Filesync","d":"Files synced with your computers by Homebase Filesync","p":15,"ds":"filesync","ts":"filesync","sm":"selectiveShare"}]""",
                 "cd" to "[]",
-                "ac" to """[{"s":"filesync","n":"Filesync","d":"People who can see the files you share through Homebase Filesync","e":"📁","g":[{"a":"cfceb937-b868-496b-91cb-3402f18320f8","t":"5da48122-e946-487a-8b9d-589642f3c91d","p":1}]}]""",
+                "ac" to """[{"s":"filesync","n":"Filesync","d":"People who can see the files you share through Homebase Filesync","e":"📁","g":[{"a":"cfceb937-b868-496b-91cb-3402f18320f8","t":"5da48122-e946-487a-8b9d-589642f3c91d","p":13}]}]""",
                 "return" to "https://frodo.example.com/apps/chat/permission-callback",
                 "cancel" to "https://frodo.example.com/apps/chat/permission-callback?status=canceled",
             ),
@@ -30,7 +30,7 @@ class FilesyncAppRegistrationTest {
     @Test
     fun chatOnlyAsksForAccessToTheDrive() {
         assertEquals(
-            """[{"a":"cfceb937-b868-496b-91cb-3402f18320f8","t":"5da48122-e946-487a-8b9d-589642f3c91d","p":3,"ts":"filesync"}]""",
+            """[{"a":"cfceb937-b868-496b-91cb-3402f18320f8","t":"5da48122-e946-487a-8b9d-589642f3c91d","p":15,"ts":"filesync"}]""",
             TargetDriveAccessRequest.encodeList(filesyncTargetDriveAccessRequest),
         )
     }

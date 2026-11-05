@@ -27,7 +27,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -79,6 +81,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+import id.homebase.resources.filesync_info_added_by
 
 internal val FilesyncSortKey.label: StringResource
     get() = when (this) {
@@ -112,9 +115,14 @@ internal fun kindLabel(node: FilesyncNode): String = stringResource(
 internal fun FilesyncInfoContent(
     node: FilesyncNode,
     where: List<String>,
+    discussion: FilesyncDiscussion?,
+    commentDraft: TextFieldState,
+    sharing: FilesyncSharingState,
     onAction: (FilesyncUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val discussed = !node.isFolder && node.removedMs == null
+    if (discussed) LaunchedEffect(node.nodeId) { onAction(FilesyncUiAction.ShowDiscussion(node.nodeId)) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             FileTypeTile(node, size = 56.dp)
@@ -161,6 +169,7 @@ internal fun FilesyncInfoContent(
             node.modifiedMs?.let { InfoRow(MR.string.filesync_info_modified, formatDayTime(it)) }
             node.createdMs?.let { InfoRow(MR.string.filesync_info_created, formatDayTime(it)) }
             node.addedMs.takeIf { it > 0 }?.let { InfoRow(MR.string.filesync_info_added, formatDayTime(it)) }
+            node.addedBy?.let { InfoRow(MR.string.filesync_info_added_by, it.domainName) }
             node.uploadedMs?.let { InfoRow(MR.string.filesync_info_uploaded, formatDayTime(it)) }
             node.removedMs?.let { InfoRow(MR.string.filesync_deleted, formatDayTime(it)) }
             InfoRow(MR.string.filesync_info_where, where.joinToString(" › "))
@@ -170,6 +179,15 @@ internal fun FilesyncInfoContent(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Fact(Icons.Outlined.Lock, stringResource(MR.string.filesync_info_encrypted))
             node.hashAlgorithm?.let { Fact(Icons.Outlined.VerifiedUser, stringResource(MR.string.filesync_info_checked, it.displayName)) }
+        }
+
+        if (node.removedMs == null) {
+            HorizontalDivider()
+            FilesyncSharedWithSection(node, sharing, onAction)
+        }
+        if (discussed) {
+            HorizontalDivider()
+            FilesyncDiscussionContent(node, discussion, commentDraft, onAction)
         }
     }
 }

@@ -24,6 +24,19 @@ enum class DrivePermission(val value: Int) {
             return entries.filter { (combinedValue and it.value) == it.value }
         }
 
+        /** The server's comma-separated names; it writes a value with a name of its own by that name (15 as readWrite). */
+        fun fromNames(names: String): List<DrivePermission> =
+            names.split(",").map { it.trim().lowercase() }.flatMap { name ->
+                combinedNames[name] ?: listOfNotNull(entries.find { it.name.lowercase() == name })
+            }.distinct()
+
+        private val combinedNames = mapOf(
+            "readwrite" to entries,
+            "all" to entries,
+            "writereactionsandcomments" to listOf(React, Comment),
+            "reactandwrite" to listOf(Write, React),
+        )
+
         /** Combine multiple permissions into a single integer value. */
         fun combine(permissions: List<DrivePermission>): Int {
             return permissions.sumOf { it.value }
@@ -44,14 +57,7 @@ object DrivePermissionsSerializer : KSerializer<DrivePermissionSet> {
     override fun deserialize(decoder: Decoder): DrivePermissionSet {
         val raw = decoder.decodeString()
 
-        val values = raw
-            .split(",")
-            .map { it.trim().lowercase() }
-            .mapNotNull { v ->
-                DrivePermission.entries.find { it.name.lowercase() == v }
-            }
-
-        return DrivePermissionSet(values)
+        return DrivePermissionSet(DrivePermission.fromNames(raw))
     }
 
     override fun serialize(encoder: Encoder, value: DrivePermissionSet) {

@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
@@ -11,16 +13,20 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadDownloadService
+import id.homebase.api.client.drives.files.wholePercentFractions
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
+import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.filesync.FilesyncProtocol
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.flow
 
 /** Nodes with what writing or downloading each one needs. */
 class FilesyncNodes(val nodes: Map<Uuid, FilesyncNode>, val handles: Map<Uuid, FilesyncHandle>) {
@@ -45,10 +51,13 @@ class FilesyncRepository(
     private val payloadDownloadService: PayloadDownloadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val peerFiles: PeerFileByGlobalTransitProvider,
+    private val credentials: CredentialsManager,
 ) {
 
     /** The live nodes of several folders at once. */
-    suspend fun listFolders(folderIds: List<Uuid>): FilesyncNodes = queryChunked(folderIds, listOf(FilesyncStatus.Live)) { copy(groupId = it) }
+    suspend fun listFolders(folderIds: List<Uuid>, includeRemoved: Boolean = false): FilesyncNodes =
+        queryChunked(folderIds, if (includeRemoved) FilesyncStatus.entries else listOf(FilesyncStatus.Live)) { copy(groupId = it) }
 
     /** A folder's nodes, unsorted; a node in Recently deleted keeps its groupId, so it lists only when [includeRemoved]. */
     suspend fun listFolder(folderId: Uuid, includeRemoved: Boolean = false): FilesyncNodes =
@@ -176,15 +185,8 @@ class FilesyncRepository(
         return all to readAtMs
     }
 
-    /** Reads every page while [onPage] asks for the next. */
-    private suspend fun forEachPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest, onPage: (QueryBatchResponse) -> Boolean) {
-        var cursor: String? = null
-        do {
-            val page = queryPage(params, options.copy(cursorState = cursor))
-            val more = onPage(page)
-            cursor = page.cursorState?.takeIf { more && page.hasMoreRows && it != cursor }
-        } while (cursor != null)
-    }
+    private suspend fun forEachPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest, onPage: suspend (QueryBatchResponse) -> Boolean) =
+        driveQueryProvider.forEachFilesyncPage(params, options, onPage = onPage)
 
     private suspend fun queryPage(params: FileQueryParams, options: QueryBatchResultOptionsRequest): QueryBatchResponse =
         driveQueryProvider.queryBatch(
@@ -192,11 +194,12 @@ class FilesyncRepository(
             request = QueryBatchRequest(queryParams = params, resultOptionsRequest = options),
         )
 
-    private fun nodesOf(page: QueryBatchResponse): FilesyncNodes {
+    private suspend fun nodesOf(page: QueryBatchResponse): FilesyncNodes {
         val nodes = linkedMapOf<Uuid, FilesyncNode>()
         val handles = mutableMapOf<Uuid, FilesyncHandle>()
+        val self = credentials.getActiveCredentials()?.domain
         page.searchResults.forEach { file ->
-            val (node, handle) = file.toFilesyncNode() ?: return@forEach
+            val (node, handle) = file.toFilesyncNode(addedByOtherThan = self) ?: return@forEach
             nodes[node.nodeId] = node
             handles[node.nodeId] = handle
         }
@@ -215,6 +218,39 @@ class FilesyncRepository(
             consume = consume,
         )
         if (!found) throw IllegalStateException("payload of ${payload.fileId} is gone")
+    }
+
+    /** As [streamPayload], for a file [owner] shares with this identity, read from their drive. */
+    suspend fun streamSharedPayload(
+        owner: OdinId,
+        globalTransitId: Uuid,
+        payload: FilesyncPayload,
+        total: Long?,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ) {
+        val size = total ?: throw IllegalStateException("${payload.fileId} shared by $owner has no size")
+        val fractions = onProgress?.let(::wholePercentFractions)
+        val found = payloadDownloadService.streamVerified(payload.payloadKey, payload.hash, consume) { hashed ->
+            var any = size == 0L
+            hashed(flow {
+                var offset = 0L
+                while (offset < size) {
+                    val slice = peerFiles.getPayloadChunkOverPeerByGlobalTransitId(
+                        owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, offset, SHARED_CHUNK_BYTES,
+                    )?.bytes ?: break
+                    if (slice.isEmpty()) break
+                    any = true
+                    // The last chunk decrypts with the cipher's padding still on it: the node's size is where the file ends.
+                    val kept = if (offset + slice.size > size) slice.copyOf((size - offset).toInt()) else slice
+                    emit(kept)
+                    offset += kept.size
+                    fractions?.invoke(offset.toFloat() / size)
+                }
+            })
+            any
+        }
+        if (!found) throw IllegalStateException("payload of ${payload.fileId} shared by $owner is gone")
     }
 
     /**
@@ -259,7 +295,29 @@ class FilesyncRepository(
         const val PAGE_SIZE = 1000
         const val MAX_NAME_BYTES = 255
         const val RECENT_LIMIT = 100
+        const val SHARED_CHUNK_BYTES = 4L * 1024 * 1024
     }
 }
 
 private fun HomebaseFile.fileVersionTag() = fileMetadata.versionTag?.let { FileVersionTag(fileId, it) }
+
+/** Reads every page of [params] on the Filesync drive while [onPage] asks for the next; a cursor the server repeats ends it. */
+internal suspend fun DriveQueryProvider.forEachFilesyncPage(
+    params: FileQueryParams,
+    options: QueryBatchResultOptionsRequest,
+    ownerOdinId: OdinId? = null,
+    externalFileKey: ExternalFileKey? = null,
+    onPage: suspend (QueryBatchResponse) -> Boolean,
+) {
+    var cursor: String? = null
+    do {
+        val page = queryBatch(
+            FilesyncProtocol.DriveAlias,
+            QueryBatchRequest(queryParams = params, resultOptionsRequest = options.copy(cursorState = cursor)),
+            ownerOdinId = ownerOdinId,
+            externalFileKey = externalFileKey,
+        )
+        val more = onPage(page)
+        cursor = page.cursorState?.takeIf { more && page.hasMoreRows && it != cursor }
+    } while (cursor != null)
+}

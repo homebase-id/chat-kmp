@@ -17,5 +17,13 @@ enum class EncryptionType {
 
     /** Locked with a zero-knowledge drive's key, which the server can't open. */
     @SerialName("zkDrive")
-    ZkDrive
+    ZkDrive,
+
+    /** A comment on a SelectiveShare drive: its own IV and no key, encrypted with the key of the file it comments on. */
+    @SerialName("fileKey")
+    FileKey,
+
+    /** A file shared with the reader: the file's own IV, and its key locked with the reader's share's circle key. */
+    @SerialName("share")
+    Share,
 }

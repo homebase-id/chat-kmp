@@ -31,7 +31,10 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 
 private const val TAG = "FilesyncViewModel"
 private const val ARCHIVE_FALLBACK_NAME = "Filesync"
@@ -45,6 +48,10 @@ class FilesyncViewModel(
     val extendPermissionViewModel: ExtendPermissionViewModel,
     private val webDropShareFlowState: WebDropShareFlowState,
     private val privateDriveOptIn: PrivateDriveOptIn,
+    private val discussions: FilesyncDiscussions,
+    filesyncSharing: FilesyncSharing,
+    sharingSetup: FilesyncSharingSetup,
+    shareMessages: FilesyncShareMessages,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -58,6 +65,8 @@ class FilesyncViewModel(
     val uploads: StateFlow<List<FilesyncUpload>> = uploadQueue.uploads
 
     val search = TextFieldState()
+
+    val commentDraft = TextFieldState()
 
     // Buffered so a download that finishes while the screen is away is still handed off on return.
     private val _events = Channel<FilesyncUiEvent>(Channel.BUFFERED)
@@ -73,10 +82,29 @@ class FilesyncViewModel(
         webDropShareFlowState = webDropShareFlowState,
     )
 
+    private val sharing = FilesyncSharingController(
+        viewModelScope,
+        filesyncSharing,
+        sharingSetup,
+        handles = { transfers.handles },
+        // A folder's sharing reaches what's in Recently deleted too, so a restore brings it back as it was.
+        listFolders = { repository.listFolders(it, includeRemoved = true) },
+        returnUrl = extendPermissionViewModel::callbackUrl,
+        tell = shareMessages::send,
+        state = { _uiState.value.sharing },
+        update = { change -> _uiState.update { it.copy(sharing = change(it.sharing)) } },
+        send = _events::send,
+    )
+
     private var setupPaused = false
+
+    private var discussionJob: Job? = null
+    // In the order asked: a quick add-then-remove must reach the server in that order.
+    private val reactionWrites = Mutex()
 
     init {
         addCloseable(extendPermissionViewModel)
+        sharing.start()
         viewModelScope.launch {
             snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
         }
@@ -146,9 +174,12 @@ class FilesyncViewModel(
                 extendPermissionViewModel.dismissDialog()
             }
 
-            FilesyncUiAction.Resumed -> if (setupPaused) {
-                setupPaused = false
-                onAction(FilesyncUiAction.SetupClicked)
+            FilesyncUiAction.Resumed -> {
+                sharing.resumed()
+                if (setupPaused) {
+                    setupPaused = false
+                    onAction(FilesyncUiAction.SetupClicked)
+                }
             }
 
             FilesyncUiAction.SetupLeft -> setupPaused = false
@@ -188,7 +219,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.ShareTo -> {
                 val nodes = _uiState.getAndUpdate { it.copy(shareChooser = null) }.shareChooser ?: return
-                transfers.send(nodes, zipName(nodes), action.target)
+                if (action.target == FilesyncShareTarget.Person) sharing.ask(nodes) else transfers.send(nodes, zipName(nodes), action.target)
             }
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
@@ -202,6 +233,12 @@ class FilesyncViewModel(
             }
 
             is FilesyncUiAction.SaveHandedOff -> repository.discard(action.path)
+
+            is FilesyncUiAction.ShowDiscussion -> showDiscussion(action.nodeId)
+
+            is FilesyncUiAction.ToggleReaction -> toggleReaction(action.emoji)
+
+            FilesyncUiAction.SendComment -> sendComment()
 
             is FilesyncUiAction.FilesPicked -> uploadQueue.add(_uiState.value.path.last().nodeId, action.files)
 
@@ -256,17 +293,54 @@ class FilesyncViewModel(
                 val picker = _uiState.value.movePicker?.takeIf { it.canMoveHere } ?: return
                 closeMovePicker()
                 val handles = transfers.handles
-                viewModelScope.launch {
-                    val target = picker.path.last()
+                val target = picker.path.last()
+                sharing.move(picker.nodes, target.nodeId) {
+                    val moved = mutableListOf<Uuid>()
                     reportWrite(FilesyncUiEvent.Moved(target.name), FilesyncError.MoveFailed, _events::send) {
-                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId })
+                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId }, moved)
                     }
+                    moved
                 }
             }
+
+            FilesyncUiAction.ConfirmLosingAccess -> sharing.confirmLosingAccess()
+            FilesyncUiAction.DismissLosingAccess -> sharing.dismissLosingAccess()
 
             FilesyncUiAction.MakePrivate -> {
                 val url = privateDriveOptIn.makePrivateUrl(FilesyncPrivateDrive, extendPermissionViewModel.callbackUrl())
                 if (url != null) _events.trySend(FilesyncUiEvent.OpenOwnerConsole(url))
+            }
+
+            FilesyncUiAction.TurnOnSharing -> sharing.turnOn()
+
+            is FilesyncUiAction.ShareWithConnection -> sharing.ask(action.nodes)
+
+            is FilesyncUiAction.ShareWith -> sharing.share(action.audience, action.access, action.expiry, action.note)
+            is FilesyncUiAction.ShareWithNewGroup -> sharing.shareWithNewGroup(action.name, action.members, action.access, action.expiry, action.note)
+            is FilesyncUiAction.OpenFromChat -> action.sharer?.let(sharing::openFromChat) ?: sharing.openOwnShare(action.circleId)
+
+            FilesyncUiAction.DismissShareWith -> sharing.dismiss()
+
+            is FilesyncUiAction.ShowSharedWith -> sharing.showSharedWith(action.nodeId)
+
+            is FilesyncUiAction.Unshare -> sharing.unshare(action.node, action.recipient)
+
+
+            is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
+            FilesyncUiAction.CloseShareView -> sharing.closeShareView()
+
+            is FilesyncUiAction.OpenSharedFolder -> sharing.openSharedFolder(action.path)
+
+            is FilesyncUiAction.OpenRecipient -> sharing.openRecipient(action.recipient)
+            is FilesyncUiAction.SetGroupMembers -> sharing.setGroupMembers(action.group, action.members)
+
+            is FilesyncUiAction.StopSharing -> sharing.stopSharing(action.nodeId)
+
+            is FilesyncUiAction.ChangeExpiry -> sharing.changeExpiry(action.nodeId, action.expiry)
+
+            is FilesyncUiAction.SaveShared -> {
+                val owner = _uiState.value.sharing.sharer ?: return
+                sharing.sharedHandle(action.node.nodeId)?.let { transfers.sendShared(action.node, it, owner, FilesyncShareTarget.Download) }
             }
 
             FilesyncUiAction.SignInAgain -> viewModelScope.launch {
@@ -325,6 +399,71 @@ class FilesyncViewModel(
 
     private fun arrange(change: (FilesyncUiState) -> FilesyncUiState) = _uiState.update { change(it).arrange() }
 
+    private fun showDiscussion(nodeId: Uuid) {
+        val shown = _uiState.value.discussion
+        if (shown?.nodeId == nodeId && !shown.failed) return
+        if (shown?.nodeId != nodeId) commentDraft.clearText()
+        discussionJob?.cancel()
+        _uiState.update { it.copy(discussion = FilesyncDiscussion(nodeId)) }
+        val handle = transfers.handles[nodeId]
+        discussionJob = viewModelScope.launch {
+            val loaded = try {
+                discussions.load(nodeId, checkNotNull(handle) { "no handle for $nodeId" })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "loading the reactions and comments of $nodeId failed" }
+                FilesyncDiscussion(nodeId, loading = false, failed = true)
+            }
+            updateDiscussion(nodeId) { loaded }
+        }
+    }
+
+    private fun toggleReaction(emoji: String) {
+        val (shown, handle) = readyDiscussion() ?: return
+        val adding = emoji !in shown.mine
+        if (adding && !shown.canAddReaction) return
+        updateDiscussion(shown.nodeId) { it.toggled(emoji) }
+        viewModelScope.launch {
+            try {
+                reactionWrites.withLock { if (adding) discussions.react(handle, emoji) else discussions.unreact(handle, emoji) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "${if (adding) "adding" else "removing"} a reaction on ${shown.nodeId} failed" }
+                updateDiscussion(shown.nodeId) { it.toggled(emoji) }
+                _events.send(FilesyncUiEvent.Error(FilesyncError.ReactionFailed))
+            }
+        }
+    }
+
+    private fun sendComment() {
+        val (shown, handle) = readyDiscussion()?.takeIf { !it.first.sending } ?: return
+        val body = commentDraft.text.toString().trim().takeIf { it.isNotEmpty() } ?: return
+        updateDiscussion(shown.nodeId) { it.copy(sending = true) }
+        viewModelScope.launch {
+            val added = try {
+                discussions.comment(handle, body)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "commenting on ${shown.nodeId} failed" }
+                _events.send(FilesyncUiEvent.Error(FilesyncError.CommentFailed))
+                null
+            }
+            if (added != null && commentDraft.text.toString().trim() == body) commentDraft.clearText()
+            updateDiscussion(shown.nodeId) { it.copy(sending = false, comments = it.comments + listOfNotNull(added)) }
+        }
+    }
+
+    private fun readyDiscussion(): Pair<FilesyncDiscussion, FilesyncHandle>? {
+        val shown = _uiState.value.discussion?.takeIf { it.ready } ?: return null
+        return transfers.handles[shown.nodeId]?.let { shown to it }
+    }
+
+    private fun updateDiscussion(nodeId: Uuid, change: (FilesyncDiscussion) -> FilesyncDiscussion) =
+        _uiState.update { s -> s.discussion?.takeIf { it.nodeId == nodeId }?.let { s.copy(discussion = change(it)) } ?: s }
+
     private fun loadCurrentFolder() {
         val path = _uiState.value.path
         val folderId = path.last().nodeId
@@ -357,6 +496,7 @@ class FilesyncViewModel(
                 val folderDeletedMs = current.last().removedMs
                 val nodes = listed.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
                 arrange { state -> state.copy(isLoading = false, path = if (state.path == path) current else state.path).withNodes(nodes) }
+                sharing.loadSharedIn(folderId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

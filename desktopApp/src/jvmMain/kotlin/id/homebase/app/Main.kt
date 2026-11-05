@@ -3,6 +3,7 @@ package id.homebase.app
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.CompositionLocalProvider
+import id.homebase.common.util.WindowTitle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -359,10 +360,11 @@ fun main() {
             }
         }
 
+        val place by WindowTitle.place.collectAsStateWithLifecycle(lifecycleOwner = appLifecycleOwner)
         Window(
             onCloseRequest = hideWindow,
             alwaysOnTop = false,
-            title = appName,
+            title = WindowTitle.of(place, appName),
             icon = icon,
             state = state,
             visible = isWindowVisible

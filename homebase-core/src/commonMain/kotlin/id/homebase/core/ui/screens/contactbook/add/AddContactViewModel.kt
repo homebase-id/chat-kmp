@@ -327,7 +327,7 @@ class AddContactViewModel(
             ?: return
         viewModelScope.launch {
             val id = try {
-                conversationService.createConversation(listOf(odinId), "", null).conversationId
+                conversationService.oneOnOneConversationId(odinId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

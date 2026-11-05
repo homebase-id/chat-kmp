@@ -68,6 +68,8 @@ fun ContactBookContent(
     /** New tab: unreviewed connections and incoming requests, the set awaiting a decision. */
     showNew: Boolean = false,
     listState: LazyListState,
+    onInviteClick: (() -> Unit)? = null,
+    onShareCardClick: (() -> Unit)? = null,
 ) {
     // Follow filters and badges, from the same lists the Following screen uses
     val followGraph = koinInject<FollowGraph>()
@@ -132,6 +134,8 @@ fun ContactBookContent(
                         CenterText(stringResource(MR.string.contactbook_blocked_filter_empty))
 
                     else -> ContactBookEmptyState(
+                        onInviteClick = onInviteClick,
+                        onShareCardClick = onShareCardClick,
                         onAddClick = { onAction(ContactBookUiAction.AddClicked) },
                     )
                 }
