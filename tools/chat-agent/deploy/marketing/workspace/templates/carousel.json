@@ -1,0 +1,19 @@
+{
+  "date": "<YYYY-MM-DD>",
+  "topic": "<topic from playbook/topics.md>",
+  "format": "carousel",
+  "channels": ["instagram", "linkedin"],
+  "title": "<document title shown on LinkedIn>",
+  "kicker": "<short label>",
+  "text": "<Hook under 125 characters>\n\n<Body>",
+  "alt": "<What the carousel shows>",
+  "sources": ["<facts.md#anchor or primary source URL>"],
+  "slides": [
+    {"layout": "cover", "title": "<cover title with a **highlight**>", "sub": "<one line of context>", "photo": "../../brand/photos/<file>.jpg"},
+    {"layout": "points", "title": "<action title>", "points": [{"head": "<short head>", "body": "<one or two sentences>"}]},
+    {"layout": "compare", "title": "<action title>", "left": {"head": "<today>", "items": ["<item>"]}, "right": {"head": "<with homebase>", "items": ["<item>"]}},
+    {"layout": "end", "title": "<closing line>", "sub": "<one line>", "cta": "homebase.id"}
+  ],
+  "approved_by": null,
+  "buffer": {"post_ids": [], "due_at": null}
+}

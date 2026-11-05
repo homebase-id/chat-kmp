@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-05",
+  "topic": "Render check",
+  "format": "carousel",
+  "channels": ["instagram", "linkedin"],
+  "title": "Your messages, your server",
+  "kicker": "Render check",
+  "text": "This is a render check, not a real post.\n\nIt exercises every layout so a broken font or overflow shows up before anything real is built.",
+  "alt": "Five slides in the Homebase colors testing each layout.",
+  "sources": ["render check"],
+  "slides": [
+    {"layout": "cover", "title": "your messages, **your server**", "sub": "A render check of every layout."},
+    {"layout": "stat", "title": "one number per slide", "value": "42", "label": "a label for the number", "source": "render check"},
+    {"layout": "points", "title": "points read top to bottom", "points": [{"head": "First point", "body": "One or two sentences."}, {"head": "Second point", "body": "Another short sentence."}]},
+    {"layout": "compare", "title": "a side by side comparison", "left": {"head": "Today", "items": ["One", "Two"]}, "right": {"head": "With Homebase", "items": ["One", "Two"]}},
+    {"layout": "end", "title": "the closing slide", "sub": "One line.", "cta": "homebase.id"}
+  ],
+  "approved_by": null,
+  "buffer": {"post_ids": [], "due_at": null}
+}
