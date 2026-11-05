@@ -394,6 +394,7 @@ class MomentsWideScreenshotTest {
         assertEquals(range.start + MomentsLayoutSpec.FeedPaneResizeStep, stored.last())
     }
 
+    @Test
     fun crossingTheWideBreakpointKeepsTheScrolledFeed() = runDesktopComposeUiTest(1000, 800) {
         val width = mutableStateOf(411.dp)
         showLive(mutableStateOf(moments), MomentsViewMode.Timeline, dark = false, width = width)
