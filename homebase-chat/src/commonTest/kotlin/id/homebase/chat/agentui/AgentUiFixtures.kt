@@ -1,5 +1,7 @@
 package id.homebase.chat.agentui
 
+import kotlin.test.assertIs
+
 object AgentUiFixtures {
     val imageKeys = setOf("chat_web0", "chat_web1")
 
@@ -24,8 +26,13 @@ object AgentUiFixtures {
 
     fun draftPostCardBytes(): ByteArray = draftPostCardJson().encodeToByteArray()
 
-    fun decodeDraftPostCard(): AgentUiTree =
-        (AgentUiTree.decode(draftPostCardBytes(), imageKeys) as AgentUiTreeResult.Valid).tree
+    fun decodeDraftPostCard(): AgentUiTree = valid(draftPostCardBytes())
+
+    fun valid(bytes: ByteArray, keys: Set<String> = imageKeys): AgentUiTree {
+        val r = AgentUiTree.decode(bytes, keys)
+        assertIs<AgentUiTreeResult.Valid>(r, (r as? AgentUiTreeResult.Invalid)?.reason)
+        return r.tree
+    }
 
     fun tree(vararg nodes: String, root: String = "root"): ByteArray =
         """{"root":"$root","nodes":[${nodes.joinToString(",")}]}""".encodeToByteArray()

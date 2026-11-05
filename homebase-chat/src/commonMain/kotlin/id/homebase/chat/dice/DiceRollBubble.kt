@@ -1,6 +1,6 @@
 package id.homebase.chat.dice
 
-import androidx.compose.foundation.background
+import id.homebase.chat.widget.UnparseableTypedChip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,27 +64,7 @@ fun DiceRollBubble(
     val contentColor = MaterialTheme.colorScheme.onSurface
 
     if (descriptor == null || !descriptor.isValid()) {
-        val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(containerColor)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Casino,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stringResource(MR.string.chat_dice_unparseable),
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-            )
-        }
+        UnparseableTypedChip(Icons.Filled.Casino, stringResource(MR.string.chat_dice_unparseable), modifier, contentColor = contentColor)
         return
     }
 

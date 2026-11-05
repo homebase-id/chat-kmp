@@ -1,6 +1,7 @@
 package id.homebase.chat.agentui
 
 import id.homebase.chat.agentui.AgentUiFixtures.tree
+import id.homebase.chat.agentui.AgentUiFixtures.valid
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -10,12 +11,6 @@ import kotlin.test.assertTrue
 class AgentUiTreeTest {
     private fun decode(bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys) =
         AgentUiTree.decode(bytes, keys)
-
-    private fun valid(bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys): AgentUiTree {
-        val r = decode(bytes, keys)
-        assertIs<AgentUiTreeResult.Valid>(r, (r as? AgentUiTreeResult.Invalid)?.reason)
-        return r.tree
-    }
 
     private fun invalid(bytes: ByteArray, keys: Set<String> = AgentUiFixtures.imageKeys) {
         assertIs<AgentUiTreeResult.Invalid>(decode(bytes, keys))
@@ -173,7 +168,7 @@ class AgentUiTreeTest {
         val inc = (1..40).joinToString(",") { "\"n$it\"" } + ",5,\"\""
         val t = valid(tree("""{"id":"root","type":"button","label":"Go","action":{"id":"go","include":[$inc]}}"""))
         val a = assertIs<AgentUiNode.Button>(t.root).action!!
-        assertEquals(20, a.include.size)
+        assertEquals(AgentUiLimits.MAX_VALUES - 1, a.include.size)
     }
 
     @Test fun table_and_options_are_clamped() {
@@ -266,5 +261,40 @@ class AgentUiTreeTest {
         val d = AgentUiActionDescriptor(target = kotlin.uuid.Uuid.random(), rev = 1, actionId = "x".repeat(64), label = label, values = values)
         assertTrue(a.isNotEmpty() && a.length < emoji.length)
         assertTrue(d.isValid())
+    }
+
+    @Test fun an_action_never_collects_more_values_than_a_reply_may_carry() {
+        val others = (0 until AgentUiLimits.MAX_VALUES + 5).map { "t$it" }
+        val inputs = others.map { """{"id":"$it","type":"toggle","label":"$it"}""" }
+        val select = """{"id":"pick","type":"select","label":"Pick","options":[{"id":"a"}],"action":{"id":"go","include":[${others.joinToString(",") { "\"$it\"" }}]}}"""
+        val t = valid(tree(col("root", *(others + "pick").toTypedArray()), *inputs.toTypedArray(), select))
+        val action = assertIs<AgentUiNode.Select>((t.root as AgentUiNode.Column).children.last()).action!!
+        assertEquals(AgentUiLimits.MAX_VALUES, t.collectValues(action, "pick", emptyMap()).size)
+    }
+
+    private fun budgetTree(prefill: String) = valid(
+        tree(
+            """{"id":"root","type":"column","children":["a","b","go"]}""",
+            """{"id":"a","type":"textInput","label":"a","value":"$prefill","maxLength":1000}""",
+            """{"id":"b","type":"textInput","label":"b","value":"keep","maxLength":1000}""",
+            """{"id":"go","type":"button","label":"Go","action":{"id":"send","include":["a","b"]}}""",
+        ),
+    )
+
+    @Test fun typing_into_a_field_never_erases_it_when_other_defaults_fill_the_budget() {
+        val t = budgetTree("\u4E2D".repeat(1000))
+        assertEquals(listOf("send"), t.overBudgetActions())
+        assertEquals("keep", t.fitText("b", "keepx", t.inputs))
+        assertEquals("kee", t.fitText("b", "kee", t.inputs))
+        assertEquals("keep", t.fitText("b", "xkeep", t.inputs))
+    }
+
+    @Test fun a_paste_is_cut_to_what_the_budget_has_left() {
+        val t = budgetTree("\u4E2D".repeat(800))
+        assertTrue(t.overBudgetActions().isEmpty())
+        val pasted = t.fitText("b", "keep" + "y".repeat(1000), t.inputs)
+        assertTrue(pasted.startsWith("keep") && pasted.length in 5 until 1004, "got ${pasted.length}")
+        val go = (t.root as AgentUiNode.Column).children.last() as AgentUiNode.Button
+        assertTrue(AgentUiActionDescriptor.valuesFit(t.collectValues(go.action!!, "go", t.inputs + ("b" to pasted))))
     }
 }

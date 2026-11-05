@@ -75,6 +75,7 @@ import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.viewonce.ViewOnceActions
 import id.homebase.chat.agentui.AgentUiTreeLoader
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.chat.viewonce.ViewOncePayloadLoader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.services.ChatMessageSenderService
@@ -959,9 +960,11 @@ val appModule = module {
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
     single {
-        val actions = get<ChatMessageActionService>()
+        val cache = get<DriveFileProviderCached>()
         AgentUiTreeLoader(
-            fetch = { fileId, keyHeader, lastModified -> actions.getPayloadBytesAt(fileId, ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, lastModified) },
+            fetch = { fileId, keyHeader, lastModified ->
+                cache.getPayloadBytesDecrypted(chatTargetDrive.alias, fileId, ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, lastModified = lastModified)?.bytes
+            },
             scope = get(),
             events = get(),
         )

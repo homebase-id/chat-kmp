@@ -11,6 +11,10 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
+private fun nodeCount(n: AgentUiNode): Int = 1 + (n.children()?.sumOf { nodeCount(it) } ?: 0)
+
+private fun depth(n: AgentUiNode): Int = 1 + (n.children()?.maxOfOrNull { depth(it) } ?: 0)
+
 @OptIn(ExperimentalTestApi::class)
 class AgentUiTreePropertyTest {
     private val types = listOf(
@@ -84,8 +88,8 @@ class AgentUiTreePropertyTest {
             val result = AgentUiTree.decode(randomTree(r), imageKeys)
             if (result is AgentUiTreeResult.Valid) {
                 valid++
-                assertTrue(result.tree.nodeCount() <= AgentUiLimits.MAX_NODES)
-                assertTrue(result.tree.depth() <= AgentUiLimits.MAX_DEPTH)
+                assertTrue(nodeCount(result.tree.root) <= AgentUiLimits.MAX_NODES)
+                assertTrue(depth(result.tree.root) <= AgentUiLimits.MAX_DEPTH)
             }
         }
         assertTrue(valid > 50, "generator should produce a healthy share of valid trees, got $valid")

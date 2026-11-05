@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +54,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,10 +77,16 @@ import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
-import id.homebase.resources.chat_agent_ui_image_unavailable
+import id.homebase.resources.chat_image_unavailable
 import org.jetbrains.compose.resources.stringResource
 
-data class AgentUiActionRequest(val actionId: String, val label: String, val values: Map<String, String>)
+/** [rollback] restores the inputs this action changed locally if the send fails. */
+data class AgentUiActionRequest(
+    val actionId: String,
+    val label: String,
+    val values: Map<String, String>,
+    val rollback: Map<String, String> = emptyMap(),
+)
 
 private val ListItemWidth = 260.dp
 
@@ -89,11 +98,10 @@ private class Env(
     val pending: Set<String>,
     val onAction: (AgentUiActionRequest) -> Unit,
 ) {
-    fun usable(action: AgentUiNodeAction?, needsAction: Boolean = false): Boolean =
-        enabled && (if (action == null) !needsAction else action.id !in pending)
+    fun usable(action: AgentUiNodeAction?): Boolean = enabled && action?.id !in pending
 
-    fun fire(action: AgentUiNodeAction, nodeId: String, label: String) {
-        onAction(AgentUiActionRequest(action.id, label, tree.collectValues(action, nodeId, inputs.snapshot())))
+    fun fire(action: AgentUiNodeAction, nodeId: String, label: String, rollback: Map<String, String> = emptyMap()) {
+        onAction(AgentUiActionRequest(action.id, label, tree.collectValues(action, nodeId, inputs.snapshot()), rollback))
     }
 }
 
@@ -108,7 +116,12 @@ fun AgentUiTreeView(
     onAction: (AgentUiActionRequest) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val env = Env(tree, inputs, imageData, enabled, pendingActionIds, onAction)
+    val currentImageData by rememberUpdatedState(imageData)
+    val currentOnAction by rememberUpdatedState(onAction)
+    // Remembered so an unchanged card skips recomposing its nodes when the bubble around it recomposes.
+    val env = remember(tree, inputs, enabled, pendingActionIds) {
+        Env(tree, inputs, { currentImageData(it) }, enabled, pendingActionIds) { currentOnAction(it) }
+    }
     val root = tree.root
     Box(modifier) {
         if (root is AgentUiNode.Card) CardBody(root.children, env, Arrangement.spacedBy(12.dp)) else NodeView(root, env)
@@ -165,7 +178,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             },
         )
         is AgentUiNode.Image -> ImageView(node, env, modifier)
-        is AgentUiNode.Chip -> ChipView(node, modifier)
+        is AgentUiNode.Chip -> AgentChip(node.label, node.selected, modifier)
         is AgentUiNode.Divider -> HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
         is AgentUiNode.ListNode -> when (node.direction) {
             ListDirection.Vertical -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -218,11 +231,6 @@ private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
             CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.padding(16.dp))
         }
     }
-}
-
-@Composable
-private fun ChipView(node: AgentUiNode.Chip, modifier: Modifier) {
-    AgentChip(node.label, node.selected, modifier)
 }
 
 /** One chip for display chips and select options; the selected shape rounds to a pill. */
@@ -290,7 +298,7 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
             modifier = frame,
             contentDescription = node.alt,
             contentScale = ContentScale.Crop,
-            error = { AltBox(node.alt, Modifier, stringResource(MR.string.chat_agent_ui_image_unavailable)) },
+            error = { AltBox(node.alt, Modifier, stringResource(MR.string.chat_image_unavailable)) },
         )
     }
 }
@@ -320,7 +328,7 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
     @Composable
     fun TableRow(cells: List<String>, style: TextStyle, color: Color) {
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            cells.forEachIndexed { c, cell ->
+            List(columns) { cells.getOrElse(it) { "" } }.forEachIndexed { c, cell ->
                 val isNumber = numeric.getOrElse(c) { false }
                 Text(
                     cell,
@@ -346,15 +354,15 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
-    val busy = node.action?.id?.let { it in env.pending } == true
-    val enabled = env.usable(node.action, needsAction = true)
+    val busy = node.action?.id in env.pending
+    val enabled = node.action != null && env.usable(node.action)
     val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
     val shapes = ButtonDefaults.shapes()
     val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
     val label: @Composable () -> Unit = {
         if (busy) {
             LoadingIndicator(Modifier.size(ButtonDefaults.IconSize + 6.dp), color = LocalContentColor.current)
-            Box(Modifier.width(ButtonDefaults.IconSpacing))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         }
         Text(node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -385,7 +393,7 @@ private fun ToggleView(node: AgentUiNode.Toggle, env: Env, modifier: Modifier) {
             .fillMaxWidth()
             .toggleable(value = checked, enabled = enabled, role = Role.Switch) {
                 env.inputs[node.id] = it.toString()
-                node.action?.let { a -> env.fire(a, node.id, node.label) }
+                node.action?.let { a -> env.fire(a, node.id, node.label, mapOf(node.id to checked.toString())) }
             }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -426,7 +434,7 @@ private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
             for (option in node.options) key(option.id) {
                 AgentChip(option.label, current == option.id, enabled = enabled) {
                     env.inputs[node.id] = option.id
-                    node.action?.let { env.fire(it, node.id, option.label) }
+                    node.action?.let { env.fire(it, node.id, option.label, mapOf(node.id to current)) }
                 }
             }
         }

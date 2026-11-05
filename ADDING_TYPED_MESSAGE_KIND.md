@@ -522,12 +522,8 @@ Three kinds do:
 A kind whose content is usually small but can outgrow the header (AgentUi) can carry it either
 way: an optional field in the descriptor when the encrypted descriptor still fits
 `MaxHeaderContentBytes`, a payload otherwise. Check the encrypted size, not the plaintext
-(`AgentUiDescriptor.encryptedHeaderBytes`). Decode the inline form in `MessageContentParser` so it
-runs once in the mapper, off the main thread. For the payload form, start the fetch from
-`ChatMessageStream.onMessagesSurfaced` and keep the decoded result in a small loader keyed by file,
-`lastModified` and iv (`AgentUiTreeLoader`); the bytes already live in the drive payload cache, so do
-not add a second byte cache. The bubble reads the loader synchronously first, so a warmed message has
-its full height on the first frame.
+(`HomebaseProtocol.fitsHeaderContent`, which `ChatMessageSizer` uses too). The bytes already live in the drive payload cache, so do
+not add a second byte cache; AGENT_UI.md §2 describes how AgentUi loads and holds decoded trees.
 
 For a kind whose media must stay private, as ViewOnce's does:
 

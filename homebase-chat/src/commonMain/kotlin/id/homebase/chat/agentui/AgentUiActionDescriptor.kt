@@ -37,5 +37,9 @@ data class AgentUiActionDescriptor(
         const val MAX_LABEL_CP = 200
         const val MAX_BYTES = 4096
         const val MAX_VALUES_BYTES = MAX_BYTES - 1300
+
+        /** The values budget: the app clamps typing to it and the agent refuses trees whose defaults exceed it. */
+        fun valuesFit(values: Map<String, String>): Boolean =
+            OdinSystemSerializer.serialize(values).encodeToByteArray().size <= MAX_VALUES_BYTES
     }
 }

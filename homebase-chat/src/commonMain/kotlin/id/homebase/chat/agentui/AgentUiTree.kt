@@ -3,10 +3,10 @@ package id.homebase.chat.agentui
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.codePointCount
 import id.homebase.api.util.truncateToCodePoints
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -92,10 +92,6 @@ data class AgentUiTree(
     /** Default value of every input node (toggle "true"/"false", text, select option id), by node id. */
     val inputs: Map<String, String>,
 ) {
-    fun nodeCount(): Int = count(root)
-
-    fun depth(): Int = depth(root)
-
     /** The acting node's own value plus every `include`d input node; ids that are not inputs are ignored. */
     fun collectValues(action: AgentUiNodeAction, actingNodeId: String, current: Map<String, String>): Map<String, String> {
         val out = LinkedHashMap<String, String>()
@@ -105,29 +101,41 @@ data class AgentUiTree(
         return out
     }
 
-    /** Longest prefix of [candidate] that keeps every action touching [nodeId] inside the action byte budget. */
+    /**
+     * [candidate] when every action touching [nodeId] still fits its reply. Otherwise the edit is clamped,
+     * never below what the field already holds: a shrinking edit is kept, an append is cut to fit, and any
+     * other growing edit is refused. So defaults that already fill the budget can never erase the field.
+     */
     fun fitText(nodeId: String, candidate: String, current: Map<String, String>): String {
         val actions = actionsTouching(nodeId)
-        fun fits(text: String) = actions.all { (a, actor) ->
-            val values = collectValues(a, actor, current + (nodeId to text))
-            Json.encodeToString(MapSerializer(String.serializer(), String.serializer()), values).encodeToByteArray().size <=
-                AgentUiActionDescriptor.MAX_VALUES_BYTES
+        fun fits(text: String) = actions.all { (a, actor) -> AgentUiActionDescriptor.valuesFit(collectValues(a, actor, current + (nodeId to text))) }
+        val before = current[nodeId] ?: inputs[nodeId].orEmpty()
+        if (fits(candidate) || jsonBytes(candidate) <= jsonBytes(before)) return candidate
+        if (!candidate.startsWith(before)) return before
+        var lo = before.codePointCount()
+        var hi = candidate.codePointCount() - 1
+        while (lo < hi) {
+            val mid = (lo + hi + 1) / 2
+            if (fits(candidate.truncateToCodePoints(mid))) lo = mid else hi = mid - 1
         }
-        var text = candidate
-        while (text.isNotEmpty() && !fits(text)) text = text.truncateToCodePoints(text.codePointCount() - 1)
-        return text
+        return candidate.truncateToCodePoints(lo)
+    }
+
+    /** Ids of actions whose default values already overflow the reply, so a person could never send them; the agent refuses such a tree. */
+    fun overBudgetActions(): List<String> {
+        val out = ArrayList<String>()
+        fun walk(n: AgentUiNode) {
+            n.action()?.let { a -> if (!AgentUiActionDescriptor.valuesFit(collectValues(a, n.id, inputs))) out += a.id }
+            n.children()?.forEach(::walk)
+        }
+        walk(root)
+        return out
     }
 
     private fun actionsTouching(nodeId: String): List<Pair<AgentUiNodeAction, String>> {
         val out = ArrayList<Pair<AgentUiNodeAction, String>>()
         fun walk(n: AgentUiNode) {
-            val a = when (n) {
-                is AgentUiNode.Button -> n.action
-                is AgentUiNode.Toggle -> n.action
-                is AgentUiNode.TextInput -> n.action
-                is AgentUiNode.Select -> n.action
-                else -> null
-            }
+            val a = n.action()
             if (a != null && (n.id == nodeId || nodeId in a.include)) out += a to n.id
             n.children()?.forEach(::walk)
         }
@@ -135,54 +143,42 @@ data class AgentUiTree(
         return out
     }
 
-    private fun count(n: AgentUiNode): Int = 1 + (n.children()?.sumOf { count(it) } ?: 0)
-
-    private fun depth(n: AgentUiNode): Int = 1 + (n.children()?.maxOfOrNull { depth(it) } ?: 0)
-
     companion object {
-        private val json = Json
-
         fun decode(bytes: ByteArray, availableImageKeys: Set<String>): AgentUiTreeResult {
             if (bytes.size > AgentUiLimits.MAX_BYTES) return AgentUiTreeResult.Invalid("payload too large")
-            if (jsonNestingExceeds(bytes, AgentUiLimits.MAX_JSON_NESTING)) return AgentUiTreeResult.Invalid("json nested too deeply")
             val element = try {
-                json.parseToJsonElement(bytes.decodeToString())
+                Json.parseToJsonElement(bytes.decodeToString())
             } catch (e: Exception) {
                 return AgentUiTreeResult.Invalid("not json")
             }
             return decodeParsed(element, availableImageKeys)
         }
 
-        /** For a tree already parsed out of the header; the caller has run [jsonNestingExceeds] on the raw text. */
+        // kotlinx refuses input nested too deep to parse safely; this tighter bound keeps every later walk of the tree shallow.
         internal fun decodeParsed(element: JsonElement, availableImageKeys: Set<String>): AgentUiTreeResult = try {
-            Decoder(availableImageKeys).decode(element)
+            if (element.nestingExceeds(AgentUiLimits.MAX_JSON_NESTING)) AgentUiTreeResult.Invalid("json nested too deeply")
+            else Decoder(availableImageKeys).decode(element)
         } catch (e: Exception) {
             AgentUiTreeResult.Invalid("decode failed")
         }
 
-        internal fun jsonNestingExceeds(text: String, max: Int): Boolean = jsonNestingExceeds(text.encodeToByteArray(), max)
-
-        // Iterative so a hostile payload cannot overflow the stack, which is small on wasm.
-        private fun jsonNestingExceeds(bytes: ByteArray, max: Int): Boolean {
-            var depth = 0
-            var inString = false
-            var escaped = false
-            for (b in bytes) {
-                val c = b.toInt()
-                if (inString) {
-                    when {
-                        escaped -> escaped = false
-                        c == '\\'.code -> escaped = true
-                        c == '"'.code -> inString = false
-                    }
-                } else when (c) {
-                    '"'.code -> inString = true
-                    '{'.code, '['.code -> if (++depth > max) return true
-                    '}'.code, ']'.code -> if (depth > 0) depth--
+        private fun JsonElement.nestingExceeds(max: Int): Boolean {
+            val stack = ArrayDeque<Pair<JsonElement, Int>>()
+            stack.addLast(this to 1)
+            while (stack.isNotEmpty()) {
+                val (e, depth) = stack.removeLast()
+                val children = when (e) {
+                    is JsonObject -> e.values
+                    is JsonArray -> e
+                    else -> continue
                 }
+                if (depth > max) return true
+                children.forEach { stack.addLast(it to depth + 1) }
             }
             return false
         }
+
+        private fun jsonBytes(s: String): Int = OdinSystemSerializer.serialize(s).encodeToByteArray().size
     }
 
     private class Decoder(private val imageKeys: Set<String>) {
@@ -299,7 +295,8 @@ data class AgentUiTree(
             val include = (o["include"] as? JsonArray).orEmpty()
                 .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.takeIf { s -> s.isNotBlank() && s.length <= AgentUiLimits.MAX_ID_LENGTH } }
                 .distinct()
-                .take(AgentUiLimits.MAX_VALUES)
+                // The acting node's own value is always sent too, so the reply holds at most MAX_VALUES.
+                .take(AgentUiLimits.MAX_VALUES - 1)
             return AgentUiNodeAction(id, include)
         }
 
@@ -349,7 +346,15 @@ data class AgentUiTree(
     }
 }
 
-private fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
+private fun AgentUiNode.action(): AgentUiNodeAction? = when (this) {
+    is AgentUiNode.Button -> action
+    is AgentUiNode.Toggle -> action
+    is AgentUiNode.TextInput -> action
+    is AgentUiNode.Select -> action
+    else -> null
+}
+
+internal fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
     is AgentUiNode.Column -> children
     is AgentUiNode.Row -> children
     is AgentUiNode.Card -> children
@@ -358,7 +363,7 @@ private fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
 }
 
 class AgentUiInputState(defaults: Map<String, String> = emptyMap()) {
-    private val values = androidx.compose.runtime.mutableStateMapOf<String, String>().apply { putAll(defaults) }
+    private val values = mutableStateMapOf<String, String>().apply { putAll(defaults) }
     private var baseline: Map<String, String> = defaults
 
     operator fun get(id: String): String? = values[id]

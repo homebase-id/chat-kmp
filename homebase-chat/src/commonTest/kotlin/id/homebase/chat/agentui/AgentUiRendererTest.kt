@@ -13,15 +13,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.chat.agentui.AgentUiFixtures.tree
+import id.homebase.chat.agentui.AgentUiFixtures.valid
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 @OptIn(ExperimentalTestApi::class)
 class AgentUiRendererTest {
-    private fun decode(bytes: ByteArray) =
-        (AgentUiTree.decode(bytes, AgentUiFixtures.imageKeys) as AgentUiTreeResult.Valid).tree
-
     private fun androidx.compose.ui.test.ComposeUiTest.show(
         tree: AgentUiTree,
         enabled: Boolean = true,
@@ -64,7 +62,7 @@ class AgentUiRendererTest {
     }
 
     @Test fun form_values_include_only_the_listed_inputs() = runComposeUiTest {
-        val t = decode(
+        val t = valid(
             tree(
                 """{"id":"root","type":"column","children":["tg","ti","other","go"]}""",
                 """{"id":"tg","type":"toggle","label":"Notify team","value":false}""",
@@ -82,7 +80,7 @@ class AgentUiRendererTest {
     }
 
     @Test fun select_with_action_fires_with_the_option_id() = runComposeUiTest {
-        val t = decode(
+        val t = valid(
             tree(
                 """{"id":"root","type":"select","label":"Pick one","options":[{"id":"a","label":"Alpha"},{"id":"b","label":"Beta"}],"action":{"id":"picked"}}""",
             ),
@@ -95,7 +93,7 @@ class AgentUiRendererTest {
     }
 
     @Test fun toggle_with_action_fires_on_change() = runComposeUiTest {
-        val t = decode(tree("""{"id":"root","type":"toggle","label":"Auto post","value":false,"action":{"id":"auto"}}"""))
+        val t = valid(tree("""{"id":"root","type":"toggle","label":"Auto post","value":false,"action":{"id":"auto"}}"""))
         val seen = mutableListOf<AgentUiActionRequest>()
         show(t, onAction = { seen += it })
         onNodeWithText("Auto post").performClick()
@@ -117,12 +115,12 @@ class AgentUiRendererTest {
     }
 
     @Test fun unknown_node_shows_its_fallback() = runComposeUiTest {
-        show(decode(tree("""{"id":"root","type":"hologram","fallback":"A hologram goes here"}""")))
+        show(valid(tree("""{"id":"root","type":"hologram","fallback":"A hologram goes here"}""")))
         onNodeWithText("A hologram goes here").assertExists()
     }
 
     @Test fun all_node_kinds_render() = runComposeUiTest {
-        val t = decode(
+        val t = valid(
             tree(
                 """{"id":"root","type":"column","spacing":"medium","children":["t","d","tb","pg","pi","l"]}""",
                 """{"id":"t","type":"text","style":"title","tone":"primary","markdown":"Title here"}""",
@@ -143,7 +141,7 @@ class AgentUiRendererTest {
     }
 
     @Test fun new_tree_re_renders() = runComposeUiTest {
-        var current by mutableStateOf(decode(tree("""{"id":"root","type":"text","markdown":"Draft"}""")))
+        var current by mutableStateOf(valid(tree("""{"id":"root","type":"text","markdown":"Draft"}""")))
         setContent {
             MaterialTheme {
                 val inputs = remember { AgentUiInputState(emptyMap()) }
@@ -151,7 +149,7 @@ class AgentUiRendererTest {
             }
         }
         onNodeWithText("Draft").assertExists()
-        current = decode(tree("""{"id":"root","type":"text","markdown":"Posted"}"""))
+        current = valid(tree("""{"id":"root","type":"text","markdown":"Posted"}"""))
         waitForIdle()
         onNodeWithText("Posted").assertExists()
         assertIs<AgentUiNode.Text>(current.root)

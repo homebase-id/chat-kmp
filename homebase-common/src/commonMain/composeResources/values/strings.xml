@@ -996,7 +996,6 @@
     <string name="chat_agent_ui_action_failed">Couldn't send that action. Try again.</string>
     <string name="chat_agent_ui_action_you">You chose %1$s</string>
     <string name="chat_agent_ui_action_other">%1$s chose %2$s</string>
-    <string name="chat_agent_ui_image_unavailable">Image unavailable</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
     <string name="chat_contact_unparseable">Unable to display this contact. Please update the app.</string>

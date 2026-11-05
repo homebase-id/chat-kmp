@@ -1,7 +1,8 @@
 package id.homebase.chat.agentui
 
+import id.homebase.chat.widget.UnparseableTypedChip
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -36,16 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import co.touchlab.kermit.Logger
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
@@ -73,7 +71,7 @@ internal sealed interface TreeLoad {
 internal fun firstFrameTree(content: MessageContent.AgentUi, rev: Int, message: MessageUiModel, loader: AgentUiTreeLoader): TreeLoad =
     content.inlineTree.toLoad(rev)
         ?: loader.cached(message).toLoad(rev)
-        ?: if (message.payloads?.firstOrNull { it.key == ChatProtocol.PAYLOAD_KEY_AGENT_UI }?.iv == null) TreeLoad.Failed else TreeLoad.Loading
+        ?: if (message.agentUiTreePayload()?.iv == null) TreeLoad.Failed else TreeLoad.Loading
 
 private fun AgentUiTreeResult?.toLoad(rev: Int): TreeLoad? = when (this) {
     is AgentUiTreeResult.Valid -> TreeLoad.Ready(tree, rev)
@@ -93,11 +91,11 @@ fun AgentUiBubble(
 ) {
     val descriptor = content.descriptor
     if (descriptor == null) {
-        UnparseableChip(Icons.Default.SmartToy, modifier)
+        UnparseableTypedChip(Icons.Default.SmartToy, stringResource(MR.string.chat_agent_ui_unparseable), modifier)
         return
     }
 
-    val treePayload = message.payloads?.firstOrNull { it.key == ChatProtocol.PAYLOAD_KEY_AGENT_UI }
+    val treePayload = message.agentUiTreePayload()
     val aesKey = message.keyHeader.aesKey
     val images = remember(message.fileId, message.payloads) {
         val keys = agentUiImageKeys(message.payloads)
@@ -117,14 +115,14 @@ fun AgentUiBubble(
 
     // The inline tree and a tree already in the loader are there on the first frame, so the card is
     // measured at its full height when it scrolls into view. Only a payload tree not loaded yet starts as Loading.
-    val firstFrame = firstFrameTree(content, descriptor.rev, message, loader)
-    val load: State<TreeLoad> = produceState(
-        firstFrame,
-        content.inlineTree, message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys,
-    ) {
-        value = content.inlineTree.toLoad(descriptor.rev)
-            ?: (if (treePayload?.iv == null) null else loader.load(message)).toLoad(descriptor.rev)
-            ?: TreeLoad.Failed
+    val loadKeys = arrayOf<Any?>(content.inlineTree, message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys)
+    val firstFrame = remember(*loadKeys) { firstFrameTree(content, descriptor.rev, message, loader) }
+    val load: State<TreeLoad> = produceState(firstFrame, *loadKeys) {
+        content.inlineTree.toLoad(descriptor.rev)?.let { value = it; return@produceState }
+        val results = loader.results(message) ?: run { value = TreeLoad.Failed; return@produceState }
+        launch { if (loader.load(message) == null && value == TreeLoad.Loading) value = TreeLoad.Failed }
+        // A failed fetch shows the fallback, but a later warm that succeeds still replaces it.
+        results.collect { value = it.toLoad(descriptor.rev) ?: TreeLoad.Failed }
     }
 
     val ready = load.value as? TreeLoad.Ready
@@ -139,14 +137,13 @@ fun AgentUiBubble(
     }
 
     // Saved with the list item, so a sent action stays pending after the card scrolls away and back.
-    var sentActions by rememberSaveable(message.id) { mutableStateOf(emptyList<String>()) }
+    var sentActions by rememberSaveable(message.id, ready?.rev) { mutableStateOf(emptyList<String>()) }
     var failed by rememberSaveable(message.id) { mutableStateOf(false) }
 
     val onAction: (AgentUiActionRequest) -> Unit = { req ->
         val rev = ready?.rev
-        val mark = rev?.let { sentMark(it, req.actionId) }
-        if (rev != null && mark != null && mark !in sentActions) {
-            sentActions = sentActions + mark
+        if (rev != null && req.actionId !in sentActions) {
+            sentActions = sentActions + req.actionId
             failed = false
             scope.launch {
                 val action = AgentUiActionDescriptor(
@@ -172,22 +169,22 @@ fun AgentUiBubble(
                     false
                 }
                 if (!ok) {
-                    sentActions = sentActions - mark
+                    sentActions = sentActions - req.actionId
+                    req.rollback.forEach { (id, v) -> inputs[id] = v }
                     failed = true
                 }
             }
         }
     }
 
-    AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick) {
+    AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick.takeUnless { displayOnly }) {
         if (ready != null) {
-            val pending = remember(sentActions, ready.rev) { sentActions.filter { it.startsWith("${ready.rev}:") }.mapTo(HashSet()) { it.substringAfter(':') } }
             AgentUiTreeView(
                 tree = ready.tree,
                 inputs = inputs,
                 imageData = { images[it] },
                 enabled = !displayOnly && !sentByYou,
-                pendingActionIds = pending,
+                pendingActionIds = remember(sentActions) { sentActions.toSet() },
                 onAction = onAction,
             )
         } else if (load.value == TreeLoad.Loading) {
@@ -215,8 +212,6 @@ fun AgentUiBubble(
     }
 }
 
-private fun sentMark(rev: Int, actionId: String) = "$rev:$actionId"
-
 // A payload card holds this height while its tree loads; shorter than most cards, so it grows once and never shrinks.
 private val LoadingPlaceholderHeight = 160.dp
 
@@ -242,8 +237,9 @@ fun AgentUiFrame(
     }
 }
 
+// Null off-stream (action-menu preview): any pointer handler there eats the tap the scrim needs to dismiss.
 private fun Modifier.onLongPress(onLongClick: (() -> Unit)?): Modifier =
-    if (onLongClick != null) pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) } else this
+    if (onLongClick != null) combinedClickable(onClick = {}, onLongClick = onLongClick) else this
 
 /** Caps the card at a readable bubble width that grows on wide windows. */
 private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constraints ->
@@ -261,11 +257,12 @@ fun AgentUiActionBubble(
     onLongClick: (() -> Unit)? = null,
 ) {
     if (descriptor == null) {
-        UnparseableChip(Icons.Default.TouchApp, modifier)
+        UnparseableTypedChip(Icons.Default.TouchApp, stringResource(MR.string.chat_agent_ui_unparseable), modifier)
         return
     }
     val text = if (sentByYou) stringResource(MR.string.chat_agent_ui_action_you, descriptor.label)
     else stringResource(MR.string.chat_agent_ui_action_other, authorName, descriptor.label)
+    val onContainer = MaterialTheme.colorScheme.onSecondaryContainer
     Row(
         modifier
             .clip(RoundedCornerShape(16.dp))
@@ -274,27 +271,8 @@ fun AgentUiActionBubble(
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(18.dp), tint = onContainer)
         Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-    }
-}
-
-@Composable
-private fun UnparseableChip(icon: ImageVector, modifier: Modifier) {
-    Row(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            stringResource(MR.string.chat_agent_ui_unparseable),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = onContainer)
     }
 }

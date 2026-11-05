@@ -572,12 +572,6 @@ class ChatMessageActionService(
         return response?.bytes
     }
 
-    suspend fun getPayloadBytesAt(
-        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader, lastModified: Long?
-    ): ByteArray? = fileProvider.getPayloadBytesDecryptedAt(
-        chatTargetDrive.alias, fileId, payloadKey, keyHeader, lastModified
-    )?.bytes
-
     /** Decrypts the image [payload] of [fileId] onto the system clipboard; false (logged) on failure. */
     suspend fun copyImagePayloadToClipboard(fileId: Uuid, payload: PayloadDescriptor, messageKeyHeader: KeyHeader): Boolean =
         try {

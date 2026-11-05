@@ -17,6 +17,7 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -30,6 +31,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -68,12 +70,6 @@ class AgentUiInlineTreeTest {
     private fun TestScope.loader(fetches: MutableList<Uuid>, bytes: () -> ByteArray? = { AgentUiFixtures.draftPostCardBytes() }) =
         AgentUiTreeLoader(fetch = { id, _, _ -> fetches += id; bytes() }, scope = this, decodeDispatcher = StandardTestDispatcher(testScheduler))
 
-    @Test fun encrypted_header_size_matches_aes_cbc_base64() {
-        assertEquals(24, AgentUiDescriptor.encryptedHeaderBytes(""))
-        assertEquals(7000, AgentUiDescriptor.encryptedHeaderBytes("x".repeat(5247)))
-        assertEquals(7020, AgentUiDescriptor.encryptedHeaderBytes("x".repeat(5248)))
-    }
-
     @Test fun small_tree_rides_inline_and_decodes_with_the_header() {
         val d = assertNotNull(AgentUiDescriptor(fallback = "Draft post").withInlineTree(draft))
         val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(218, header(d), images))
@@ -95,7 +91,7 @@ class AgentUiInlineTreeTest {
         val d = AgentUiDescriptor(fallback = "Report")
         assertNull(d.withInlineTree(big))
         assertNotNull(d.withInlineTree(draft)).let {
-            assert(AgentUiDescriptor.encryptedHeaderBytes(header(it)) <= HomebaseProtocol.MaxHeaderContentBytes)
+            assertTrue(HomebaseProtocol.fitsHeaderContent(header(it)))
         }
     }
 
@@ -105,9 +101,11 @@ class AgentUiInlineTreeTest {
         assertEquals(false, header(AgentUiDescriptor(fallback = "x")).contains("tree"))
     }
 
-    @Test fun a_deeply_nested_header_is_unparseable() {
-        val deep = """{"schemaVersion":1,"fallback":"x","tree":""" + "[".repeat(200) + "]".repeat(200) + "}"
-        assertNull(assertIs<MessageContent.AgentUi>(MessageContentParser.parse(218, deep, null)).descriptor)
+    @Test fun a_deeply_nested_inline_tree_shows_the_fallback() {
+        val deep = """{"schemaVersion":1,"fallback":"x","tree":""" + "[".repeat(5000) + "]".repeat(5000) + "}"
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(218, deep, null))
+        assertEquals("x", assertNotNull(content.descriptor).fallback)
+        assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
     }
 
     @Test fun inline_card_is_ready_on_the_first_frame_and_never_fetches() = runTest {
@@ -159,6 +157,44 @@ class AgentUiInlineTreeTest {
         assertEquals(2, fetches.size)
     }
 
+    @Test fun a_tree_warmed_after_a_failed_load_reaches_the_results_flow() = runTest {
+        var fail = true
+        var now = 0L
+        val loader = AgentUiTreeLoader(
+            fetch = { _, _, _ -> if (fail) null else AgentUiFixtures.draftPostCardBytes() },
+            scope = this,
+            nowMs = { now },
+        )
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        val seen = async { assertNotNull(loader.results(m)).first() }
+        assertNull(loader.load(m))
+        fail = false
+        now = 31_000
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        assertIs<AgentUiTreeResult.Valid>(seen.await())
+    }
+
+    @Test fun a_fetch_in_flight_when_the_session_ends_does_not_repopulate_the_cache() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val loader = AgentUiTreeLoader(fetch = { _, _, _ -> gate.await(); AgentUiFixtures.draftPostCardBytes() }, scope = this)
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        loader.clear()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertNull(loader.cached(m))
+    }
+
+    @Test fun an_inline_tree_that_is_not_an_object_keeps_the_descriptor() {
+        val content = assertIs<MessageContent.AgentUi>(
+            MessageContentParser.parse(218, """{"fallback":"Draft post","tree":[]}""", null)
+        )
+        assertNotNull(content.descriptor)
+        assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
+    }
+
     @Test fun an_edit_that_replaces_the_payload_refetches() = runTest {
         val fetches = mutableListOf<Uuid>()
         val loader = loader(fetches)
@@ -168,6 +204,25 @@ class AgentUiInlineTreeTest {
         assertNull(loader.cached(edited))
         loader.load(edited)
         assertEquals(2, fetches.size)
+        assertNull(loader.cached(m))
+    }
+
+    @Test fun warming_backs_off_after_a_failed_fetch() = runTest {
+        val fetches = mutableListOf<Uuid>()
+        var now = 0L
+        val loader = AgentUiTreeLoader(fetch = { id, _, _ -> fetches += id; null }, scope = this, nowMs = { now })
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        assertEquals(1, fetches.size)
+        now = 31_000
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        assertEquals(2, fetches.size)
+        assertNull(loader.load(m))
+        assertEquals(3, fetches.size)
     }
 
     @Test fun an_edit_from_inline_to_payload_loads_the_payload() = runTest {
