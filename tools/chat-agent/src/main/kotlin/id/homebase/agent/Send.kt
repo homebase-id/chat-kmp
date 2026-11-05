@@ -44,15 +44,15 @@ fun buildMessage(text: String, replyPreview: ReplyPreview? = null, allowBlank: B
     val full = OdinSystemSerializer.serialize(data)
     if (ChatMessageSizer.shouldEmbedInHeader(full)) return BuiltMessage(full, null)
     val header = OdinSystemSerializer.serialize(data.copy(message = JsonPrimitive(ChatMessageSizer.preview(data.getMessage()))))
-    val size = header.encodeToByteArray().size
-    require(size <= HomebaseProtocol.MaxHeaderContentBytes) { "message preview too large: $size bytes serialized, limit is ${HomebaseProtocol.MaxHeaderContentBytes}" }
+    val size = HomebaseProtocol.encryptedHeaderContentBytes(header)
+    require(HomebaseProtocol.fitsHeaderContent(header)) { "message preview too large: $size bytes encrypted, limit is ${HomebaseProtocol.MaxHeaderContentBytes}" }
     return BuiltMessage(header, ChatMessageSizer.payloadBytes(data))
 }
 
 fun typedHeader(content: MessageContent): BuiltMessage {
     val header = MessageContentParser.serialize(content)
-    val size = header.encodeToByteArray().size
-    require(size <= HomebaseProtocol.MaxHeaderContentBytes) { "message too large: $size bytes, limit is ${HomebaseProtocol.MaxHeaderContentBytes}" }
+    val size = HomebaseProtocol.encryptedHeaderContentBytes(header)
+    require(HomebaseProtocol.fitsHeaderContent(header)) { "message too large: $size bytes encrypted, limit is ${HomebaseProtocol.MaxHeaderContentBytes}" }
     return BuiltMessage(header, null)
 }
 

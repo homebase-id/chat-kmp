@@ -57,6 +57,19 @@ class AgentUiTest {
     )
 
     @Test
+    fun sendUiRefusesATreeWhosePrefilledInputsCouldNeverBeSent() = runBlocking {
+        val fake = Fake()
+        val long = "\u4E2D".repeat(1000)
+        val overfull = """{"root":"r","nodes":[{"id":"r","type":"column","children":["a","go"]},""" +
+            """{"id":"a","type":"textInput","label":"a","value":"$long"},""" +
+            """{"id":"go","type":"button","label":"Go","action":{"id":"post","include":["a"]}}]}"""
+        val reply = toolSendUi(fake, args("tree" to overfull, "fallback" to "x"))
+        assertTrue(reply.isError)
+        assertTrue(reply.text.contains("action post"), reply.text)
+        assertTrue(fake.sent.isEmpty())
+    }
+
+    @Test
     fun sendUiRefusesAnInvalidTreeWithTheDecodeReason() = runBlocking {
         val fake = Fake()
         val dup = toolSendUi(fake, args("tree" to """{"root":"a","nodes":[{"id":"a","type":"text"},{"id":"a","type":"text"}]}""", "fallback" to "x"))

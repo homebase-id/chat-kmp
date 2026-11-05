@@ -36,6 +36,10 @@ fun ChatMsg.agentUiAction(): AgentUiActionDescriptor? =
 fun requireValidTree(tree: ByteArray, imageKeys: Set<String>) {
     val result = AgentUiTree.decode(tree, imageKeys)
     if (result is AgentUiTreeResult.Invalid) throw IllegalArgumentException("tree is invalid: ${result.reason}")
+    val overflowing = (result as AgentUiTreeResult.Valid).tree.overBudgetActions()
+    require(overflowing.isEmpty()) {
+        "tree is invalid: the default values of action ${overflowing.joinToString()} exceed ${AgentUiActionDescriptor.MAX_VALUES_BYTES} bytes, so it could never be sent; shorten the prefilled inputs it includes"
+    }
 }
 
 fun cardDescriptor(fallback: String?, title: String?, rev: Int): AgentUiDescriptor {
