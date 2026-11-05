@@ -32,6 +32,13 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -206,6 +213,7 @@ class MomentsWideScreenshotTest {
         dark: Boolean,
         onDetail: (Uuid) -> Unit = {},
         width: State<Dp>? = null,
+        onFeedPaneWidthChange: (Dp) -> Unit = {},
     ) = setContent {
         val items = source.value
         HomebaseTheme(darkTheme = dark, followsSystemTheme = false) {
@@ -222,6 +230,7 @@ class MomentsWideScreenshotTest {
                     onAddReaction = { _, _ -> },
                     onDeleteFailedMoment = {},
                     onDismissUpload = {},
+                    onFeedPaneWidthChange = onFeedPaneWidthChange,
                     detailPane = { id ->
                         onDetail(id)
                         val moment = items.first { it.id == id }
@@ -355,7 +364,36 @@ class MomentsWideScreenshotTest {
         assertEquals(moments.first().id, shown.last())
     }
 
-    
+    @Test
+    fun theDividerResizesTheFeedPaneBetweenItsMinimums() = runDesktopComposeUiTest(1440, 800) {
+        val stored = mutableListOf<Dp>()
+        showLive(mutableStateOf(moments), MomentsViewMode.Timeline, dark = false, onFeedPaneWidthChange = { stored += it })
+        waitForIdle()
+        val divider = onNode(hasContentDescription("Resize the feed and moment panes"))
+        fun dividerLeft() = divider.fetchSemanticsNode().boundsInRoot.left
+        val range = MomentsLayoutSpec.feedPaneWidthRange(1440.dp)
+        val start = dividerLeft()
+        assertEquals(MomentsLayoutSpec.feedPaneWidth(1440.dp).value, start, 1f)
+
+        divider.performTouchInput { swipeRight(startX = centerX, endX = centerX + 2000f) }
+        waitForIdle()
+        assertEquals(range.endInclusive.value, dividerLeft(), 1f)
+        assertEquals(range.endInclusive, stored.single())
+        save("pane-resized-widest-light")
+
+        divider.performTouchInput { swipeLeft(startX = centerX, endX = centerX - 2000f) }
+        waitForIdle()
+        assertEquals(range.start.value, dividerLeft(), 1f)
+        assertEquals(range.start, stored.last())
+        save("pane-resized-narrowest-light")
+
+        divider.requestFocus()
+        divider.performKeyInput { pressKey(Key.DirectionRight) }
+        waitForIdle()
+        assertEquals((range.start + MomentsLayoutSpec.FeedPaneResizeStep).value, dividerLeft(), 1f)
+        assertEquals(range.start + MomentsLayoutSpec.FeedPaneResizeStep, stored.last())
+    }
+
     fun crossingTheWideBreakpointKeepsTheScrolledFeed() = runDesktopComposeUiTest(1000, 800) {
         val width = mutableStateOf(411.dp)
         showLive(mutableStateOf(moments), MomentsViewMode.Timeline, dark = false, width = width)

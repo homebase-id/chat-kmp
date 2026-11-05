@@ -13,8 +13,9 @@ internal object MomentsLayoutSpec {
     val AlbumHorizontalPadding = 16.dp
     val FeedBottomPadding = 112.dp
     val DetailPaneMargin = 24.dp
-    // The feed cards' own 16dp inset makes up the rest of the 24dp pane spacing.
-    val DetailPaneGutter = 8.dp
+    // Holds the resize divider; the feed cards' own 16dp inset sits on its other side.
+    val DetailPaneGutter = 16.dp
+    val FeedPaneResizeStep = 24.dp
     val DetailStageInset = 12.dp
     val DockedCommentsRailWidth = CommentsRailWidth
     val MinDetailMediaWidth = 300.dp
@@ -23,15 +24,27 @@ internal object MomentsLayoutSpec {
     val FeedPaneMaxWidth = 480.dp
     val DetailPaneMinWidth = FeedPaneMinWidth + DockedCommentsRailWidth + MinDetailMediaWidth
 
+    // How far the divider may squeeze either pane once the split is showing.
+    val FeedPaneDragMinWidth = 280.dp
+    val DetailPaneDragMinWidth = 460.dp
+    val DockedRailMinWidth = 240.dp
+    const val DockedRailWidthFraction = 0.45f
+
     fun showsDetailPane(availableWidth: Dp): Boolean = availableWidth >= DetailPaneMinWidth
 
     fun feedColumnInset(feedWidth: Dp): Dp = ((feedWidth - FeedMaxWidth) / 2).coerceAtLeast(0.dp)
 
     fun dockedRailWidth(detailWidth: Dp): Dp =
-        minOf(DockedCommentsRailWidth, detailWidth - DetailStageInset - MinDetailMediaWidth)
+        ((detailWidth - DetailStageInset) * DockedRailWidthFraction)
+            .coerceIn(DockedRailMinWidth, DockedCommentsRailWidth)
 
-    fun feedPaneWidth(availableWidth: Dp): Dp =
-        (availableWidth * FeedPaneWidthFraction).coerceIn(FeedPaneMinWidth, FeedPaneMaxWidth)
+    fun feedPaneWidthRange(availableWidth: Dp): ClosedRange<Dp> =
+        FeedPaneDragMinWidth..maxOf(FeedPaneDragMinWidth, availableWidth - DetailPaneDragMinWidth)
+
+    /** [preferred] is the user's dragged width; without one the pane follows the window. */
+    fun feedPaneWidth(availableWidth: Dp, preferred: Dp? = null): Dp =
+        (preferred ?: (availableWidth * FeedPaneWidthFraction).coerceIn(FeedPaneMinWidth, FeedPaneMaxWidth))
+            .coerceIn(feedPaneWidthRange(availableWidth))
 
     fun resolveSelection(current: Uuid?, newestFirstIds: List<Uuid>): Uuid? =
         if (current != null && current in newestFirstIds) current else newestFirstIds.firstOrNull()
