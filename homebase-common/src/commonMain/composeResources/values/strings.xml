@@ -994,6 +994,17 @@
     <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
+    <string name="chat_file_share_you_one">You shared 1 file · %1$s</string>
+    <string name="chat_file_share_you_many">You shared %1$d files · %2$s</string>
+    <string name="chat_file_share_by_one">%1$s shared 1 file · %2$s</string>
+    <string name="chat_file_share_by_many">%1$s shared %2$d files · %3$s</string>
+    <string name="chat_file_share_can_view">Can view</string>
+    <string name="chat_file_share_can_edit">Can view and edit</string>
+    <string name="chat_file_share_until">%1$s until %2$s</string>
+    <string name="chat_file_share_group">Shared with the group %1$s</string>
+    <string name="chat_file_share_open">Open</string>
+    <string name="chat_file_share_actions">Message actions</string>
+    <string name="chat_file_share_unparseable">Unable to display these shared files. Please update the app.</string>
     <string name="chat_contact_unparseable">Unable to display this contact. Please update the app.</string>
     <string name="chat_contact_share">Contact</string>
     <string name="chat_contact_share_title">Send a contact</string>
@@ -3162,6 +3173,9 @@
     <string name="filesync_share_send">Share</string>
     <string name="filesync_shared">Shared.</string>
     <string name="filesync_sharing_failed">Couldn't share. Try again.</string>
+    <string name="filesync_recipient_not_reviewed">%1$s needs to review your connection before you can share files with them.</string>
+    <string name="filesync_share_not_told">Shared, but the chat message to %1$s didn't go out, so they won't find the files yet.</string>
+    <string name="filesync_share_note">Message (optional)</string>
     <string name="filesync_recipient_not_ready">%1$s can't receive shared files yet: they need to turn on sharing in Filesync first.</string>
     <string name="filesync_sharing_title">Turn on sharing</string>
     <string name="filesync_sharing_body">Sharing signs this device in to Filesync as well, so it can share your files and others can tell you what they share with you. Your browser opens to confirm.</string>

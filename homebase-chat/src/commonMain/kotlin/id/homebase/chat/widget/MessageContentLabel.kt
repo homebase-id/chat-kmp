@@ -26,6 +26,8 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.viewonce.kindLabel
 import id.homebase.chat.viewonce.ViewOnceIcon
 import id.homebase.chat.viewonce.ViewOnceOpenedIcon
+import id.homebase.core.ui.assets.Filesync
+import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
@@ -68,6 +70,7 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.ContactCard -> ContentLabel(messageContent.displayLabel, Icons.Outlined.ContactPage)
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
     is MessageContent.ViewOnce -> null
+    is MessageContent.FileShare -> ContentLabel(messageContent.displayLabel, HomebaseIcons.Filesync)
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }

@@ -260,8 +260,11 @@ sealed interface FilesyncUiAction {
     data class Unshare(val node: FilesyncNode, val recipient: FilesyncAudience) : FilesyncDiscussionAction
     data object TurnOnSharing : FilesyncUiAction
     data class ShareWithConnection(val nodes: List<FilesyncNode>) : FilesyncUiAction
-    data class ShareWith(val audience: FilesyncAudience, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
-    data class ShareWithNewGroup(val name: String, val members: List<OdinId>, val access: FilesyncAccess, val expiry: FilesyncExpiry) : FilesyncUiAction
+    data class ShareWith(val audience: FilesyncAudience, val access: FilesyncAccess, val expiry: FilesyncExpiry, val note: String) : FilesyncUiAction
+    data class ShareWithNewGroup(val name: String, val members: List<OdinId>, val access: FilesyncAccess, val expiry: FilesyncExpiry, val note: String) : FilesyncUiAction
+
+    /** A share's chat message was opened: [sharer]'s files, or this identity's own share with [circleId] when null. */
+    data class OpenFromChat(val sharer: OdinId?, val circleId: Uuid) : FilesyncUiAction
     data object DismissShareWith : FilesyncUiAction
     data class OpenSharer(val sharer: OdinId) : FilesyncUiAction
     data object CloseShareView : FilesyncUiAction
@@ -297,6 +300,10 @@ sealed interface FilesyncUiEvent {
     data class Error(val error: FilesyncError) : FilesyncUiEvent
     /** [recipients] can't receive shared files until they turn sharing on. */
     data class NotReady(val recipients: List<OdinId>) : FilesyncUiEvent
+    data class NotReviewed(val recipients: List<OdinId>) : FilesyncUiEvent
+
+    /** Shared, but the chat message telling [recipients] didn't go out. */
+    data class NotTold(val recipients: List<OdinId>) : FilesyncUiEvent
     data class Notice(val notice: FilesyncNotice) : FilesyncUiEvent
     /** [name] failed its hash check, so the ZIP holding it was thrown away. */
     data class ArchiveDamaged(val name: String) : FilesyncUiEvent

@@ -692,6 +692,7 @@ fun AppNavHost(
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
     // Read only by the Filesync screen's own view model, the one "Show" opens.
     var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
+    var filesyncShareToOpen by remember { mutableStateOf<FilesyncUiAction.OpenFromChat?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
     val filesyncPlaces = remember(navController) {
         FilesyncPlaces(
@@ -1511,6 +1512,12 @@ fun AppNavHost(
                                                 pendingContactCard = card
                                                 pendingContactCardSaved = alreadySaved
                                             },
+                                            onOpenFileShare = { sharer, circleId ->
+                                                Uuid.parseOrNull(circleId)?.let {
+                                                    filesyncShareToOpen = FilesyncUiAction.OpenFromChat(sharer, it)
+                                                    openFilesync()
+                                                }
+                                            },
                                             newConversationPane = { onDismiss, onConversationOpened ->
                                                 NewConversationPaneHost(
                                                     onDismiss = onDismiss,
@@ -2309,6 +2316,10 @@ fun AppNavHost(
                                         LaunchedEffect(filesyncFolderToShow) {
                                             filesyncFolderToShow?.let { filesyncViewModel.onAction(FilesyncUiAction.OpenFolder(it)) }
                                             filesyncFolderToShow = null
+                                        }
+                                        LaunchedEffect(filesyncShareToOpen) {
+                                            filesyncShareToOpen?.let(filesyncViewModel::onAction)
+                                            filesyncShareToOpen = null
                                         }
                                         FilesyncScreen(
                                             viewModel = filesyncViewModel,

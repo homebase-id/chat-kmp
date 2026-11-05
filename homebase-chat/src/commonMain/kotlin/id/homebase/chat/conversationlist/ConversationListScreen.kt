@@ -194,6 +194,7 @@ fun ConversationListScreen(
     onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
     onComposerVisibilityChanged: (Boolean) -> Unit = {},
     onSaveContactCard: (card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit = { _, _ -> },
+    onOpenFileShare: (sharer: OdinId?, circleId: String) -> Unit = { _, _ -> },
     /** Hosts the new-conversation flow inside the list pane on an expanded window instead of
      *  pushing [onNavigateToNewConversation]. Null keeps the full-screen route on every width. */
     newConversationPane: (@Composable (
@@ -347,6 +348,8 @@ fun ConversationListScreen(
 
                 is ConversationListUiEvent.NavigateToSaveContactCard ->
                     onSaveContactCard(event.descriptor, event.alreadySaved)
+
+                is ConversationListUiEvent.NavigateToFileShare -> onOpenFileShare(event.sharer, event.circleId)
             }
         }
     }

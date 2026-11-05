@@ -94,6 +94,7 @@ import id.homebase.resources.filesync_share_access_edit
 import id.homebase.resources.filesync_share_access_view
 import id.homebase.resources.filesync_share_groups
 import id.homebase.resources.filesync_share_no_people
+import id.homebase.resources.filesync_share_note
 import id.homebase.resources.filesync_share_people
 import id.homebase.resources.filesync_share_person
 import id.homebase.resources.filesync_share_search
@@ -194,6 +195,7 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
     var newGroupInstead by rememberSaveable { mutableStateOf(false) }
     var access by rememberSaveable { mutableStateOf(FilesyncAccess.View) }
     var expiry by rememberSaveable { mutableStateOf(FilesyncExpiry.Default) }
+    var note by rememberSaveable { mutableStateOf("") }
     val query = search.text.toString().trim()
     val groups = remember(sharing.recipients, query) {
         sharing.recipients.filterIsInstance<FilesyncAudience.Group>().filter { group ->
@@ -280,14 +282,21 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
             FilterChip(selected = expiry == option, onClick = { expiry = option }, label = { Text(stringResource(option.choice)) })
         }
     }
+    OutlinedTextField(
+        value = note,
+        onValueChange = { note = it },
+        label = { Text(stringResource(MR.string.filesync_share_note)) },
+        maxLines = 4,
+        modifier = Modifier.fillMaxWidth(),
+    )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = { onAction(FilesyncUiAction.DismissShareWith) }) { Text(stringResource(MR.string.cancel)) }
         Button(
             enabled = (audience != null || (makesGroup && groupName.isNotBlank())) && access in sharing.offered && !sharing.sending,
             onClick = {
                 when {
-                    audience != null -> onAction(FilesyncUiAction.ShareWith(audience, access, expiry))
-                    makesGroup -> onAction(FilesyncUiAction.ShareWithNewGroup(groupName.trim(), chosenPeople.map(::OdinId), access, expiry))
+                    audience != null -> onAction(FilesyncUiAction.ShareWith(audience, access, expiry, note))
+                    makesGroup -> onAction(FilesyncUiAction.ShareWithNewGroup(groupName.trim(), chosenPeople.map(::OdinId), access, expiry, note))
                 }
             },
         ) {

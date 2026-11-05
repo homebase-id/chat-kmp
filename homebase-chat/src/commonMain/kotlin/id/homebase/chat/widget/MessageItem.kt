@@ -10,6 +10,7 @@ import id.homebase.core.util.supportsTouchGestures
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -150,6 +151,12 @@ fun MessageItem(
             onUiAction(ConversationListUiAction.SaveContactCard(descriptor, alreadySaved))
         }
     }
+    // Routed out because Filesync lives in :homebase-core.
+    val onOpenFileShare = remember(message.id) {
+        { share: FileShareDescriptor, sharer: OdinId? ->
+            onUiAction(ConversationListUiAction.OpenFileShare(sharer, share.circleId))
+        }
+    }
     val onMessageIdentity = remember(message.id) {
         { odinId: String ->
             onUiAction(ConversationListUiAction.MessageIdentity(odinId))
@@ -226,6 +233,7 @@ fun MessageItem(
                 isCurrentSearchResult = isCurrentSearchResult,
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
+                onOpenFileShare = onOpenFileShare,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
                 onCopyImage = onCopyImage,
@@ -289,6 +297,7 @@ fun MessageItem(
                 isCurrentSearchResult = isCurrentSearchResult,
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
+                onOpenFileShare = onOpenFileShare,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
                 onCopyImage = onCopyImage,

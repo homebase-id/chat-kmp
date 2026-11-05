@@ -108,6 +108,8 @@ import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.filesync_open_failed
 import id.homebase.resources.filesync_reaction_failed
 import id.homebase.resources.filesync_recipient_not_ready
+import id.homebase.resources.filesync_recipient_not_reviewed
+import id.homebase.resources.filesync_share_not_told
 import id.homebase.resources.filesync_removed
 import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_failed
@@ -244,6 +246,12 @@ internal fun FilesyncEventsEffect(
                 }
                 is FilesyncUiEvent.NotReady -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_recipient_not_ready, event.recipients.joinToString { it.domainName }))
+                }
+                is FilesyncUiEvent.NotReviewed -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_recipient_not_reviewed, event.recipients.joinToString { it.domainName }))
+                }
+                is FilesyncUiEvent.NotTold -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_share_not_told, event.recipients.joinToString { it.domainName }))
                 }
             }
         }

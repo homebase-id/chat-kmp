@@ -167,6 +167,7 @@ import id.homebase.core.ui.screens.filesync.FilesyncDiscussions
 import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
 import id.homebase.core.ui.screens.filesync.FilesyncSharing
+import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
 import id.homebase.core.ui.screens.filesync.FilesyncSession
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
@@ -1041,6 +1042,7 @@ val appModule = module {
     single { FilesyncDiscussions(get(), get(), get(), get()) }
     single { CircleShareKeyProvider(get(), get()) }
     single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
+    single { FilesyncShareMessages(get(), get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit) }
     single { FilesyncEditor(get(), get(), get()) }
@@ -1459,6 +1461,7 @@ val appModule = module {
             discussions = get(),
             filesyncSharing = get(),
             sharingSetup = get(),
+            shareMessages = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }

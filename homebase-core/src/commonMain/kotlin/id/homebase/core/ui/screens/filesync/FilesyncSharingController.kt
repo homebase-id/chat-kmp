@@ -4,12 +4,15 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.api.youauth.PermissionCheckResult
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.config.filesyncAppRegistration
+import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -17,6 +20,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 /** Turning sharing on: signing in to Filesync too ([FilesyncSession]), and the permission its registration may lack. */
 class FilesyncSharingSetup(
@@ -58,6 +63,8 @@ internal class FilesyncSharingController(
     private val handles: () -> Map<Uuid, FilesyncHandle>,
     private val listFolders: suspend (List<Uuid>) -> FilesyncNodes,
     private val returnUrl: () -> String,
+    /** Tells the people a share reaches about it; the ones it couldn't. */
+    private val tell: suspend (List<OdinId>, FileShareDescriptor) -> List<OdinId>,
     private val state: () -> FilesyncSharingState,
     private val update: ((FilesyncSharingState) -> FilesyncSharingState) -> Unit,
     private val send: suspend (FilesyncUiEvent) -> Unit,
@@ -80,8 +87,6 @@ internal class FilesyncSharingController(
                 update { it.copy(on = true) }
                 loadRecipients()
                 loadSharedIn()
-                // Keeps the circle every connection joins filled with the ones made before it.
-                guarded { sharing.openToMarkers() }
                 // An Edit share that expired since leaves its drive Write behind until this.
                 guarded { sharing.syncEditors() }
             }
@@ -125,21 +130,26 @@ internal class FilesyncSharingController(
         scope.launch { finishTurningOn(openOwnerPage = false) }
     }
 
-    fun share(audience: FilesyncAudience, access: FilesyncAccess, expiry: FilesyncExpiry) = share(access, expiry) { audience }
+    fun share(audience: FilesyncAudience, access: FilesyncAccess, expiry: FilesyncExpiry, note: String) = share(access, expiry, note) { audience }
 
-    fun shareWithNewGroup(name: String, members: List<OdinId>, access: FilesyncAccess, expiry: FilesyncExpiry) =
-        share(access, expiry) { sharing.createGroup(name, members) }
+    fun shareWithNewGroup(name: String, members: List<OdinId>, access: FilesyncAccess, expiry: FilesyncExpiry, note: String) =
+        share(access, expiry, note) { sharing.createGroup(name, members) }
 
-    private fun share(access: FilesyncAccess, expiry: FilesyncExpiry, audience: suspend () -> FilesyncAudience) {
+    private fun share(access: FilesyncAccess, expiry: FilesyncExpiry, note: String, audience: suspend () -> FilesyncAudience) {
         val files = state().shareWith ?: return
         update { it.copy(sending = true) }
         scope.launch {
+            val expiresAt = expiry.expiresAt(Clock.System.now().toEpochMilliseconds())
             val shared = attempt("sharing ${files.size} nodes") {
-                sharing.share(withDescendants(files).values.toList(), audience(), access, expiry.expiresAt(Clock.System.now().toEpochMilliseconds()))
-            } != null
-            update { if (shared) it.copy(sending = false, shareWith = null) else it.copy(sending = false) }
-            if (!shared) return@launch
+                val tree = withDescendants(files)
+                val to = audience()
+                val circleId = sharing.share(tree.values.toList(), to, access, expiresAt)
+                to to describe(files, tree.values, circleId, to, access, expiresAt, note)
+            }
+            update { if (shared != null) it.copy(sending = false, shareWith = null) else it.copy(sending = false) }
+            val (to, description) = shared ?: return@launch
             send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
+            tell(to.members, description).takeIf { it.isNotEmpty() }?.let { send(FilesyncUiEvent.NotTold(it)) }
             // Sharing as View may have replaced someone's Edit.
             syncEditors()
             loadRecipients()
@@ -226,14 +236,41 @@ internal class FilesyncSharingController(
 
     fun setGroupMembers(group: FilesyncAudience.Group, members: List<OdinId>) {
         scope.launch {
-            attempt("changing ${group.circleId}'s members") { sharing.setGroupMembers(group, members) }
+            val added = attempt("changing ${group.circleId}'s members") { sharing.setGroupMembers(group, members) }
             syncEditors()
+            if (!added.isNullOrEmpty()) tellAboutGroup(group, added)
             // Read back, so a change that only partly went through shows as it is.
             val recipients = guarded { sharing.audiences() } ?: return@launch
             update { s ->
                 val shown = (s.recipient as? FilesyncAudience.Group)?.takeIf { it.circleId == group.circleId }
                 s.copy(recipients = recipients, recipient = shown?.let { recipients.firstOrNull { r -> r is FilesyncAudience.Group && r.circleId == group.circleId } ?: it } ?: s.recipient)
             }
+        }
+    }
+
+    // A new member sees everything shared with the group, so they're told what that is.
+    private suspend fun tellAboutGroup(group: FilesyncAudience.Group, added: List<OdinId>) {
+        val shared = guarded { sharing.sharedWithAudience(group) }?.takeIf { it.isNotEmpty() } ?: return
+        val ids = shared.mapTo(HashSet()) { it.node.nodeId }
+        val top = shared.map { it.node }.filter { it.parentId !in ids }
+        val access = if (shared.all { it.access == FilesyncAccess.Edit }) FilesyncAccess.Edit else FilesyncAccess.View
+        val description = describe(top, shared.map { it.handle }, group.circleId, group, access, expiresAt = null, note = "")
+        tell(added, description).takeIf { it.isNotEmpty() }?.let { send(FilesyncUiEvent.NotTold(it)) }
+    }
+
+    /** Opened from a chat message: keeps [sharer] among the sharers, then shows their files. */
+    fun openFromChat(sharer: OdinId) {
+        scope.launch {
+            guarded { sharing.keepSharer(sharer) }
+            loadSharers()
+            openSharer(sharer)
+        }
+    }
+
+    /** Opened from this identity's own chat message: shows what the share's circle is given. */
+    fun openOwnShare(circleId: Uuid) {
+        scope.launch {
+            guarded { sharing.audienceOf(circleId) }?.let(::openRecipient)
         }
     }
 
@@ -327,7 +364,6 @@ internal class FilesyncSharingController(
             send(FilesyncUiEvent.OpenOwnerConsole(permissionsUrl))
             return
         }
-        if (guarded { sharing.openToMarkers() } == null) return failed(FilesyncError.SharingFailed)
         update { it.copy(on = true, turningOn = false) }
         loadOffered()
         loadRecipients()
@@ -367,7 +403,13 @@ internal class FilesyncSharingController(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "$what failed" }
             forgetIfRevoked(e)
-            send(if (e is FilesyncSharingException.RecipientNotReady) FilesyncUiEvent.NotReady(e.recipients) else FilesyncUiEvent.Error(error))
+            send(
+                when (e) {
+                    is FilesyncSharingException.RecipientNotReady -> FilesyncUiEvent.NotReady(e.recipients)
+                    is FilesyncSharingException.RecipientNotReviewed -> FilesyncUiEvent.NotReviewed(e.recipients)
+                    else -> FilesyncUiEvent.Error(error)
+                }
+            )
             null
         }
 
@@ -415,4 +457,29 @@ internal suspend fun withDescendants(
 internal fun sharedLevel(shared: List<FilesyncNode>, parent: Uuid?): List<FilesyncNode> {
     val folders = shared.filter { it.isFolder }.mapTo(HashSet()) { it.nodeId }
     return shared.filter { if (parent == null) it.parentId !in folders else it.parentId == parent }
+}
+
+/** What a share's chat message says: its top folder, or first file, and how much it holds. */
+internal fun describe(
+    top: List<FilesyncNode>,
+    tree: Collection<FilesyncHandle>,
+    circleId: Uuid,
+    audience: FilesyncAudience,
+    access: FilesyncAccess,
+    expiresAt: Long?,
+    note: String,
+): FileShareDescriptor {
+    val first = top.sortedWith(compareBy<FilesyncNode> { !it.isFolder }.thenBy { it.name.lowercase() }).first()
+    val files = tree.filter { it.fileType == FilesyncProtocol.FileFileType }
+    return FileShareDescriptor(
+        circleId = circleId.toString(),
+        title = first.name.truncateToCodePoints(FileShareDescriptor.MAX_TITLE_CODEPOINTS),
+        titleIsFolder = first.isFolder,
+        files = files.size,
+        bytes = files.sumOf { it.content["size"]?.jsonPrimitive?.longOrNull ?: 0L },
+        access = if (access == FilesyncAccess.Edit) FileShareDescriptor.ACCESS_EDIT else FileShareDescriptor.ACCESS_VIEW,
+        group = (audience as? FilesyncAudience.Group)?.name?.truncateToCodePoints(FileShareDescriptor.MAX_GROUP_CODEPOINTS),
+        note = note.trim().ifEmpty { null }?.truncateToCodePoints(FileShareDescriptor.MAX_NOTE_CODEPOINTS),
+        expiresAt = expiresAt,
+    )
 }

@@ -130,6 +130,7 @@ class FilesyncSharingTest {
     private var samReady = true
     private var notReady = emptySet<String>()
     private var samGrantsWrite = true
+    private var samReviewed = true
     private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
     private val groupCircle = Uuid.random()
@@ -144,6 +145,7 @@ class FilesyncSharingTest {
         val body = when {
             path.endsWith("/apps/filesync/drives/filesync/public-key") ->
                 if (!samGrantsWrite) return@MockEngine respond("""{"title":"Write access is required"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
+                else if (!samReviewed) return@MockEngine respond("""{"title":"Not reviewed","errorCode":"contactNotReviewed"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
                 else if (samReady && notReady.none { "/peer/$it/" in path }) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
                 else return@MockEngine respond("""{"title":"no such drive","errorCode":"invalidRequest"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
             path.endsWith("/connections/circles/create") ->
@@ -174,42 +176,12 @@ class FilesyncSharingTest {
     private val http = HttpClient(engine)
     private val upload = DriveUploadProvider(http, appCredentials, NoFiles)
 
-    // Refuses the first n outbox inserts, as a full or broken database would.
-    private class OutboxRefusingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
-        var refuse = 0
-        override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
-            if (refuse > 0 && sql.contains("INSERT INTO Outbox")) {
-                refuse--
-                throw IllegalStateException("outbox insert refused")
-            }
-            return delegate.execute(identifier, sql, parameters, binders)
-        }
-    }
-
-    private val driver = OutboxRefusingDriver(newInMemoryJdbcDriver())
-    private val database = DatabaseManager({ driver })
-    private val outbox = OutboxSync(
-        database,
-        object : OutboxUploader {
-            override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("the test delivers markers itself")
-        },
-        EventBus(),
-    )
     private val sharing = FilesyncSharing(
         http, appCredentials,
         ConnectionNetworkProvider(http, appCredentials), CircleShareKeyProvider(http, appCredentials),
         PeerDriveQueryProvider(http, appCredentials), DriveQueryProvider(http, appCredentials),
-        outbox,
+        upload,
     )
-
-    /** Sends each queued marker as the outbox's DriveOutboxUploader does. */
-    private suspend fun deliverMarkers() {
-        while (true) {
-            val row = database.outbox.checkout() ?: return
-            upload.uploadFile(OutboxSerializer.decode<UploadFileRequest>(row))
-            database.outbox.deleteByRowId(row.rowId)
-        }
-    }
 
     @BeforeTest
     fun signIn() = runBlocking {
@@ -221,13 +193,13 @@ class FilesyncSharingTest {
     fun signOut() = runBlocking { FilesyncSession.credentials.removeAllCredentials() }
 
     @Test
-    fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndLeavesHimAMarker() = runTest {
-        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
-        deliverMarkers()
+    fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndWritesNothingOnHisDrive() = runTest {
+        assertEquals(samsCircle, sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null))
 
-        // Circles, their keys and shares are written as Filesync; the public key and the marker as the app
+        // Circles, their keys and shares are written as Filesync; the public key is read as the app
         assertTrue(calls.filter { "/connections/" in it.path || it.path.endsWith("/shares") }.all { it.asFilesync })
-        assertTrue(calls.filter { it.path.endsWith("/public-key") || it.path.endsWith("/files") }.none { it.asFilesync })
+        assertTrue(calls.filter { it.path.endsWith("/public-key") }.none { it.asFilesync })
+        assertTrue(calls.none { it.path.endsWith("/files") }, "Sam's app keeps his marker, once he opens the chat message")
 
         val individual = calls.map { decryptedOrNull(it) }.single { it?.jsonObject?.get("designation")?.jsonPrimitive?.content == "individual" }!!.jsonObject
         assertEquals(FilesyncSharing.individualSlug(sam), individual["slug"]!!.jsonPrimitive.content)
@@ -242,37 +214,8 @@ class FilesyncSharingTest {
         assertEquals(1 + 4 + 8, share["permissions"]!!.jsonPrimitive.int)
         val lockedFileKey = Base64.decode(share["lockedFileKey"]!!.jsonPrimitive.content)
         assertContentEquals(file.keyHeader.aesKey.toByteArray(), ShareKeys.openFileKey(circleKey, lockedFileKey, FilesyncProtocol.DriveAlias, file.fileId, samsCircle))
-
-        val marker = calls.single { it.path.endsWith("/files") }
-        assertEquals("/api/v2/drives/${SystemDriveConstants.transientTempDrive.alias}/files", marker.path)
-        val parts = multipart(marker.body, marker.request)
-        val instructions = Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject
-        val transit = instructions["transitOptions"]!!.jsonObject
-        assertEquals(listOf("sam.test"), transit["recipients"]!!.jsonArray.map { it.jsonPrimitive.content })
-        assertEquals(true, transit["isTransient"]!!.jsonPrimitive.content.toBoolean())
-        val transferIv = Base64.decode(instructions["transferIv"]!!.jsonPrimitive.content)
-        val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), appSecret, transferIv).decodeToString()).jsonObject
-        val header = descriptor["encryptedKeyHeader"]!!.jsonObject
-        assertEquals("sealed", header["type"]!!.jsonPrimitive.content)
-        val opened = ZkSeal.open(Base64.decode(header["encryptedAesKey"]!!.jsonPrimitive.content), samsPrivateKey)
-        val appData = descriptor["fileMetadata"]!!.jsonObject["appData"]!!.jsonObject
-        assertEquals(FilesyncSharing.markerId(frodo, sam).toString(), appData["uniqueId"]!!.jsonPrimitive.content)
-        assertEquals(FilesyncProtocol.MarkerFileType, appData["fileType"]!!.jsonPrimitive.int)
-        val content = KeyHeader(opened.copyOf(16), SecureByteArray(opened.copyOfRange(16, 32))).decrypt(Base64.decode(appData["content"]!!.jsonPrimitive.content))
-        assertEquals("frodo.test", Json.parseToJsonElement(content.decodeToString()).jsonObject["odinId"]!!.jsonPrimitive.content)
     }
 
-    @Test
-    fun aMarkerThatCantBeQueuedNeitherFailsTheShareNorSkipsTheOtherMembers() = runTest {
-        unsealed = listOf("sam.test", "merry.test")
-        driver.refuse = 1
-
-        sharing.share(listOf(file), FilesyncAudience.Group(groupCircle, "Hiking", listOf(merry, sam)), FilesyncAccess.View, expiresAt = null)
-        deliverMarkers()
-
-        assertEquals(1, calls.count { it.path.endsWith("/shares") })
-        assertEquals(1, calls.count { it.path.endsWith("/files") })
-    }
 
     private val hiking get() = FilesyncAudience.Group(groupCircle, "Hiking", listOf(sam))
     private val pippin = OdinId("pippin.test")
@@ -282,18 +225,15 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun addingToAGroupLetsTheNewMemberInAndLeavesThemAMarker() = runTest {
+    fun addingToAGroupLetsTheNewMemberInAndNamesThemForTelling() = runTest {
         unsealed = listOf("merry.test")
 
-        sharing.setGroupMembers(hiking, listOf(sam, merry))
-        deliverMarkers()
+        assertEquals(listOf(merry), sharing.setGroupMembers(hiking, listOf(sam, merry)))
 
         val added = calls.filter { it.path.endsWith("/add-many") }.map { it.addedTo() }
         assertEquals(listOf(recipientsCircle.toString() to listOf("merry.test"), groupCircle.toString() to listOf("merry.test")), added)
         val sealed = decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject["members"]!!.jsonArray
         assertEquals(listOf("merry.test"), sealed.map { it.jsonObject["odinId"]!!.jsonPrimitive.content })
-        val marker = Json.parseToJsonElement(multipart(calls.single { it.path.endsWith("/files") }.body, calls.single { it.path.endsWith("/files") }.request).getValue("instructions").decodeToString()).jsonObject
-        assertEquals("merry.test", marker["transitOptions"]!!.jsonObject["recipients"]!!.jsonArray.single().jsonPrimitive.content)
         assertTrue(calls.none { it.path.endsWith("/revoke") })
     }
 
@@ -395,7 +335,16 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun someoneWhoseSharersCircleDoesntHoldUsYetCantBeSharedWith() = runTest {
+    fun someoneWhoHasntReviewedUsIsNamedAsSuch() = runTest {
+        samReviewed = false
+
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotReviewed> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
+        assertEquals(listOf(sam), e.recipients)
+        assertTrue(calls.none { it.path.endsWith("/shares") })
+    }
+
+    @Test
+    fun someoneWhoseDriveRefusesUsCantBeSharedWith() = runTest {
         samGrantsWrite = false
 
         assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
@@ -420,6 +369,58 @@ class FilesyncSharingTest {
         val params = asked.first()["queryParams"]!!.jsonObject
         assertEquals(setOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), params["fileType"]!!.jsonArray.map { it.jsonPrimitive.int }.toSet())
         assertEquals(FilesyncStatus.Live.archivalStatus.toSet(), params["archivalStatus"]!!.jsonArray.map { it.jsonPrimitive.int }.toSet())
+    }
+
+    private fun marker(names: String, sender: OdinId?): String {
+        val key = KeyHeader.newRandom16()
+        return OdinSystemSerializer.serialize(
+            ServerFile(
+                fileId = Uuid.random(),
+                driveId = FilesyncProtocol.DriveAlias,
+                fileState = FileState.Active,
+                fileSystemType = FileSystemType.Standard,
+                sharedSecretEncryptedKeyHeader = runBlocking { EncryptedKeyHeader.encryptKeyHeaderAes(key, ByteArray(16) { 9 }, SecureByteArray(appSecret)) },
+                fileMetadata = FileMetadata(
+                    isEncrypted = true,
+                    senderOdinId = sender,
+                    appData = AppFileMetaData(
+                        uniqueId = Uuid.random(),
+                        fileType = FilesyncProtocol.MarkerFileType,
+                        content = Base64.encode(runBlocking { key.encryptDataAes("""{"odinId":"$names","driveAlias":"${FilesyncProtocol.DriveAlias}"}""".encodeToByteArray()) }),
+                    ),
+                ),
+                serverMetadata = ServerMetadata(),
+            )
+        )
+    }
+
+    @Test
+    fun theSharersAreTheMarkersKeptHereAndOnesLeftByOthersOnlyWhenTheyNameTheirSender() = runTest {
+        sharedPages += """{"searchResults":[${marker("merry.test", frodo)}, ${marker("sam.test", sam)}, ${marker("pippin.test", sam)}, ${marker("gandalf.test", null)}],"hasMoreRows":false}"""
+
+        assertEquals(listOf(merry, sam, OdinId("gandalf.test")), sharing.sharers())
+    }
+
+    @Test
+    fun openingAShareKeepsItsSharerOnThisDriveOnce() = runTest {
+        sharedPages += """{"searchResults":[],"hasMoreRows":false}"""
+        sharing.keepSharer(sam)
+
+        val kept = calls.single { it.path.endsWith("/files") }
+        assertEquals("/api/v2/drives/${FilesyncProtocol.DriveAlias}/files", kept.path)
+        assertTrue(!kept.asFilesync)
+        val parts = multipart(kept.body, kept.request)
+        val instructions = Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject
+        val transferIv = Base64.decode(instructions["transferIv"]!!.jsonPrimitive.content)
+        val descriptor = Json.parseToJsonElement(AesCbc.decrypt(parts.getValue("metadata"), appSecret, transferIv).decodeToString()).jsonObject
+        val appData = descriptor["fileMetadata"]!!.jsonObject["appData"]!!.jsonObject
+        assertEquals(FilesyncSharing.markerId(sam, frodo).toString(), appData["uniqueId"]!!.jsonPrimitive.content)
+        assertEquals(FilesyncProtocol.MarkerFileType, appData["fileType"]!!.jsonPrimitive.int)
+
+        calls.clear()
+        sharedPages += """{"searchResults":[${marker("sam.test", frodo)}],"hasMoreRows":false}"""
+        sharing.keepSharer(sam)
+        assertTrue(calls.none { it.path.endsWith("/files") })
     }
 
     @Test
@@ -608,22 +609,16 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun sharingWithAGroupWritesOneRowForItsCircleAndLeavesEveryMemberAMarker() = runTest {
+    fun sharingWithAGroupWritesOneRowForItsCircleAndSealsItsKeyToEveryMember() = runTest {
         unsealed = listOf("sam.test", "merry.test")
 
         sharing.share(listOf(file), FilesyncAudience.Group(groupCircle, "Hiking", listOf(merry, sam)), FilesyncAccess.View, expiresAt = null)
-        deliverMarkers()
 
         val share = decrypted(calls.single { it.path.endsWith("/shares") }, filesyncSecret).jsonObject["shares"]!!.jsonArray.single().jsonObject
         assertEquals(groupCircle.toString(), share["circleId"]!!.jsonPrimitive.content)
         val members = decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject["members"]!!.jsonArray
         assertEquals(setOf("sam.test", "merry.test"), members.map { it.jsonObject["odinId"]!!.jsonPrimitive.content }.toSet())
         assertTrue(calls.none { decryptedOrNull(it)?.jsonObject?.get("designation")?.jsonPrimitive?.content == "individual" }, "no individual circle for a group")
-        val markers = calls.filter { it.path.endsWith("/files") }.map { marker ->
-            val instructions = Json.parseToJsonElement(multipart(marker.body, marker.request).getValue("instructions").decodeToString()).jsonObject
-            instructions["transitOptions"]!!.jsonObject["recipients"]!!.jsonArray.single().jsonPrimitive.content
-        }
-        assertEquals(setOf("sam.test", "merry.test"), markers.toSet())
     }
 
     @Test

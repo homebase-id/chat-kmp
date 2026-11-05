@@ -51,6 +51,7 @@ class FilesyncViewModel(
     private val discussions: FilesyncDiscussions,
     filesyncSharing: FilesyncSharing,
     sharingSetup: FilesyncSharingSetup,
+    shareMessages: FilesyncShareMessages,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -89,6 +90,7 @@ class FilesyncViewModel(
         // A folder's sharing reaches what's in Recently deleted too, so a restore brings it back as it was.
         listFolders = { repository.listFolders(it, includeRemoved = true) },
         returnUrl = extendPermissionViewModel::callbackUrl,
+        tell = shareMessages::send,
         state = { _uiState.value.sharing },
         update = { change -> _uiState.update { it.copy(sharing = change(it.sharing)) } },
         send = _events::send,
@@ -313,8 +315,9 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.ShareWithConnection -> sharing.ask(action.nodes)
 
-            is FilesyncUiAction.ShareWith -> sharing.share(action.audience, action.access, action.expiry)
-            is FilesyncUiAction.ShareWithNewGroup -> sharing.shareWithNewGroup(action.name, action.members, action.access, action.expiry)
+            is FilesyncUiAction.ShareWith -> sharing.share(action.audience, action.access, action.expiry, action.note)
+            is FilesyncUiAction.ShareWithNewGroup -> sharing.shareWithNewGroup(action.name, action.members, action.access, action.expiry, action.note)
+            is FilesyncUiAction.OpenFromChat -> action.sharer?.let(sharing::openFromChat) ?: sharing.openOwnShare(action.circleId)
 
             FilesyncUiAction.DismissShareWith -> sharing.dismiss()
 

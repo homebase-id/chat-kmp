@@ -1701,6 +1701,9 @@ class ConversationListViewModel(
             is ConversationListUiAction.RemoveStickerFromMessage ->
                 stickerHandler.handleRemoveStickerFromMessage(action)
 
+            is ConversationListUiAction.OpenFileShare ->
+                sendEvent(ConversationListUiEvent.NavigateToFileShare(action.sharer, action.circleId))
+
             is ConversationListUiAction.SaveContactCard -> {
                 sendEvent(
                     ConversationListUiEvent.NavigateToSaveContactCard(
