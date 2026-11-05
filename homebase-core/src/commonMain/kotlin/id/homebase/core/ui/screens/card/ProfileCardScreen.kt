@@ -3,8 +3,6 @@
 package id.homebase.core.ui.screens.card
 
 import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
-import kotlinx.coroutines.flow.filterIsInstance
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.heightIn
@@ -239,20 +237,8 @@ fun ProfileCardScreen(
     onChangeDesign: () -> Unit,
 ) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
-    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openEditor = true) }
-    val onEditState by rememberUpdatedState(onEdit)
-    LaunchedEffect(viewModel) {
-        viewModel.events.filterIsInstance<ProfileCardEvent.OpenContentEditor>().collect { onEditState() }
-    }
-    IntroViewerSwitch(
-        viewModel = viewModel,
-        onBack = onBack,
-        onNewCircle = newCircle,
-        onOpenCard = { audience ->
-            viewModel.onCardChosen(audience)
-            onEdit()
-        },
-    ) { onClose ->
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = true) }
+    IntroViewerSwitch(viewModel = viewModel, onBack = onBack, onNewCircle = newCircle) { onClose ->
         ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
     }
 }
@@ -262,7 +248,6 @@ internal fun IntroViewerSwitch(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
     onNewCircle: (() -> Unit)? = null,
-    onOpenCard: (CardAudience) -> Unit = viewModel::onCardOpened,
     viewer: @Composable (onClose: () -> Unit) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -283,7 +268,7 @@ internal fun IntroViewerSwitch(
                 tiles = tiles,
                 host = host,
                 revision = revision,
-                onOpen = onOpenCard,
+                onOpen = viewModel::onCardOpened,
                 onClose = onBack,
                 onRetry = viewModel::onRetry,
                 onCapture = viewModel::captureIntroTiles,
@@ -344,7 +329,7 @@ private fun ProfileCardViewer(
                 ProfileCardEvent.ShareFailed -> launch { snackbarHostState.showSnackbar(errShare) }
                 ProfileCardEvent.ResetFailed -> launch { snackbarHostState.showSnackbar(errReset) }
                 ProfileCardEvent.CircleCardsUnsupported -> launch { snackbarHostState.showSnackbar(errCircleUnsupported) }
-                ProfileCardEvent.OpenContentEditor, ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported, ProfileCardEvent.ImportUndoExpired, is ProfileCardEvent.AudienceChanged -> Unit
+                ProfileCardEvent.DesignSaved, ProfileCardEvent.DesignSaveFailed, ProfileCardEvent.ContentSaveFailed, is ProfileCardEvent.ContentImported, ProfileCardEvent.ImportUndoExpired, is ProfileCardEvent.AudienceChanged -> Unit
             }
         }
     }

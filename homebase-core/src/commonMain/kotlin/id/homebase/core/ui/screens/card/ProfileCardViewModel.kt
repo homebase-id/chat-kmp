@@ -153,7 +153,6 @@ sealed interface ProfileCardEvent {
     data object DesignSaveFailed : ProfileCardEvent
     data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
-    data object OpenContentEditor : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
@@ -426,13 +425,6 @@ class ProfileCardViewModel(
         _uiState.update { it.copy(viewing = true) }
     }
 
-    fun onCardChosen(audience: CardAudience) {
-        val state = _uiState.value
-        val card = state.cards.firstOrNull { it.audience.isSameAs(audience) }
-        if (state.isExporting || card == null) return
-        selectAudience(card.audience)
-    }
-
     fun onIntroReturned() {
         _uiState.update { it.copy(viewing = false) }
     }
@@ -662,14 +654,14 @@ class ProfileCardViewModel(
     fun onCirclesChanged() = load(force = true)
 
     /** Reloads so the new circle's card exists, then lands on it; every circle gets a card, borrowing the public design until saved. */
-    fun onCircleCreated(id: String, openEditor: Boolean) {
+    fun onCircleCreated(id: String, openCard: Boolean) {
         viewModelScope.launch {
             load(force = true)
             loadJob?.join()
             val card = _uiState.value.cards.firstOrNull { it.audience.isSameAs(CardAudience.Circle(id, "")) }
                 ?: return@launch
             selectAudience(card.audience)
-            if (openEditor) _events.tryEmit(ProfileCardEvent.OpenContentEditor)
+            if (openCard) _uiState.update { it.copy(viewing = true) }
         }
     }
 

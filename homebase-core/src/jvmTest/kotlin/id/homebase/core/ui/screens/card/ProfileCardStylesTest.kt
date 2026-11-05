@@ -11,9 +11,11 @@ class ProfileCardStylesTest {
     private val designs = listOf(CardDesign.POSTER, CardDesign.BOARD, CardDesign.COLLAGE, CardDesign.DOSSIER, CardDesign.LINKS)
 
     @Test
-    fun theCatalogueHasFiveToTenStyles() {
-        assertTrue(CARD_STYLES.size in 5..10)
-        assertEquals(CARD_STYLES.size, CARD_STYLES.map { it.id }.toSet().size)
+    fun everyDesignHasOneStylePerOwnScheme() {
+        for (design in designs) {
+            val schemes = CardDesignSpecs.of(design)!!.schemes.map { it.id }
+            assertEquals(schemes, cardStylesFor(design).map { it.id }, design)
+        }
     }
 
     @Test
@@ -36,13 +38,14 @@ class ProfileCardStylesTest {
     fun posterOnlyGetsItsDarkGrounds() {
         val poster = CardDesignSpecs.of(CardDesign.POSTER)!!.schemes.map { it.ground }
         assertTrue(cardStylesFor(CardDesign.POSTER).all { it.ground in poster })
-        assertFalse(cardStylesFor(CardDesign.POSTER).any { it.id == "editorial" })
+        assertTrue(cardStylesFor(CardDesign.POSTER).all { it.accent == null })
     }
 
     @Test
     fun aStyleThatHasNoSchemeInTheDesignIsHidden() {
-        assertTrue(cardStylesFor(CardDesign.POSTER).none { it.id == "terminal" })
-        assertTrue(cardStylesFor(CardDesign.DOSSIER).any { it.id == "terminal" })
+        val board = CardDesignSpecs.of(CardDesign.BOARD)!!
+        val withoutForest = board.copy(schemes = board.schemes.filter { it.id != "forest" })
+        assertTrue(cardStylesFor(withoutForest).none { it.id == "forest" })
         assertTrue(cardStylesFor("zine").isEmpty())
     }
 

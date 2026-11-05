@@ -95,6 +95,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Style
+import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -170,6 +171,8 @@ import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
 import id.homebase.resources.profile_card_option_block_style
 import id.homebase.resources.profile_card_tool_style
+import id.homebase.resources.profile_card_tool_presets
+import id.homebase.resources.profile_card_option_presets
 import id.homebase.resources.profile_card_presentation_bare
 import id.homebase.resources.profile_card_presentation_boxed
 import id.homebase.resources.profile_card_presentation_row
@@ -230,23 +233,23 @@ internal fun CardOptionsPanel(
     gap: Dp,
     hasLinks: Boolean,
     modifier: Modifier = Modifier,
+    styles: List<ResolvedCardStyle> = emptyList(),
+    custom: ResolvedCardStyle? = null,
     onStyle: (ResolvedCardStyle) -> Unit = {},
-    wrapStyles: Boolean = false,
-    onStyleRows: (Int) -> Unit = {},
 ) {
-    val styles = remember(design) { cardStylesFor(design) }
-    val custom = remember(styles, overrides, design) { customStyle(styles, overrides, design) }
     val spec = CardDesignSpecs.of(design)
     val orderable = spec?.reorderable(hasLinks).orEmpty()
     val options = CardOption.entries.filter { spec != null && it in spec.options && (it != CardOption.BLOCK_ORDER || orderable.size > 1) }
-    var picked by rememberSaveable(design) { mutableStateOf(options.firstOrNull()?.name.orEmpty()) }
-    val current = options.firstOrNull { it.name == picked } ?: options.firstOrNull() ?: return
+    val tools = remember(options, styles.isEmpty()) {
+        listOfNotNull(PRESETS_TOOL.takeIf { styles.isNotEmpty() }) + options.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }
+    }
+    var picked by rememberSaveable(design) { mutableStateOf(tools.firstOrNull()?.key.orEmpty()) }
+    val current = tools.firstOrNull { it.key == picked } ?: tools.firstOrNull() ?: return
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
-        if (styles.isNotEmpty()) CardStyleRow(styles, overrides, enabled, onStyle, custom = custom, wrap = wrapStyles, onRows = onStyleRows)
         AnimatedContent(
-            targetState = current.name,
+            targetState = current.key,
             transitionSpec = {
                 (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
                     .togetherWith(fadeOut(motion.fastEffectsSpec()))
@@ -254,16 +257,17 @@ internal fun CardOptionsPanel(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
         ) { shown ->
-            val option = options.firstOrNull { it.name == shown } ?: current
-            // The picked tool names itself in the group below, so the control stands alone here; under styles it sits with them.
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = if (styles.isEmpty()) Alignment.Center else Alignment.TopCenter) {
-                OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
+            // The picked tool names itself in the group below, so the control stands alone here.
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                val option = options.firstOrNull { it.name == shown }
+                if (option == null) CardStyleRow(styles, overrides, enabled, onStyle, custom = custom)
+                else OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
             }
         }
         OptionToolbar(
-            options = options,
+            tools = tools,
             current = current,
-            onPick = { picked = it.name },
+            onPick = { picked = it.key },
             modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = TOOLBAR_SIDE_INSET),
         )
     }
@@ -338,16 +342,16 @@ private fun OptionControl(
 // When every tool fits it sits still and whole, naming the picked one, with what room is left around that label; otherwise the row scrolls.
 @Composable
 private fun OptionToolbar(
-    options: List<CardOption>,
-    current: CardOption,
-    onPick: (CardOption) -> Unit,
+    tools: List<PanelTool>,
+    current: PanelTool,
+    onPick: (PanelTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val count = options.size
-    val labels = options.map { stringResource(toolLabel(it)) }
-    val descriptions = options.map { stringResource(optionLabel(it)) }
-    val icons = options.map(::optionIcon)
-    val pickedIndex = options.indexOf(current)
+    val count = tools.size
+    val labels = tools.map { stringResource(it.label) }
+    val descriptions = tools.map { stringResource(it.description) }
+    val icons = tools.map { it.icon }
+    val pickedIndex = tools.indexOf(current)
     val measurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelMedium
     val density = LocalDensity.current
@@ -364,7 +368,7 @@ private fun OptionToolbar(
                     description = descriptions[index],
                     selected = index == pickedIndex,
                     shapes = connectedButtonShapes(index, count),
-                    onClick = { onPick(options[index]) },
+                    onClick = { onPick(tools[index]) },
                     padding = padding,
                 )
             }
@@ -812,6 +816,10 @@ private fun List<String>.swap(a: Int, b: Int): List<String> {
     return moved
 }
 
+private data class PanelTool(val key: String, val icon: ImageVector, val label: StringResource, val description: StringResource)
+
+private val PRESETS_TOOL = PanelTool("presets", Icons.Outlined.Layers, MR.string.profile_card_tool_presets, MR.string.profile_card_option_presets)
+
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
     CardOption.ACCENT -> MR.string.profile_card_option_accent
@@ -881,7 +889,7 @@ private fun blockLabel(kind: String): StringResource = when (kind) {
     else -> MR.string.profile_card_block_chat
 }
 
-private fun schemeLabel(id: String): StringResource = when (id) {
+internal fun schemeLabel(id: String): StringResource = when (id) {
     "wine" -> MR.string.profile_card_colours_wine
     "pine" -> MR.string.profile_card_colours_pine
     "cobalt" -> MR.string.profile_card_colours_cobalt

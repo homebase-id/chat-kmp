@@ -372,10 +372,6 @@ class ProfileCardEditorShotsTest {
             heightDp = REDMI_H,
             act = tool("Content style"),
         ),
-        Shot("p20-card-first", polishBase, mode = EditorMode.Card, widthDp = REDMI_W, heightDp = REDMI_H),
-        Shot("p21-card-first-font-scale", polishBase, mode = EditorMode.Card, widthDp = REDMI_W, heightDp = REDMI_H, fontScale = 1.6f),
-        Shot("p22-card-first-wide", polishBase, mode = EditorMode.Card, widthDp = 900, heightDp = 820),
-        Shot("p23-card-first-rtl", polishBase, mode = EditorMode.Card, widthDp = REDMI_W, heightDp = REDMI_H, rtl = true),
         polishCustomise("p24-styles-board", schemed),
         polishCustomise("p25-styles-poster", base.copy(previewDesign = CardDesign.POSTER)),
         polishCustomise("p26-styles-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[3], CardDesign.BOARD))),
@@ -599,7 +595,7 @@ class ProfileCardEditorShotsTest {
         }
     }
 
-    private fun cardFirst(state: ProfileCardUiState, step: EditorStep, mode: EditorMode, onAdd: () -> Unit = {}, onCustomise: () -> Unit = {}, onStyle: (ResolvedCardStyle) -> Unit = {}, check: ComposeUiTest.() -> Unit) {
+    private fun customiseStep(state: ProfileCardUiState, step: EditorStep, mode: EditorMode, onStyle: (ResolvedCardStyle) -> Unit = {}, check: ComposeUiTest.() -> Unit) {
         runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
             setContent {
                 CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
@@ -615,8 +611,6 @@ class ProfileCardEditorShotsTest {
                                 onOption = { _, _ -> },
                                 onBlockOrder = {},
                                 onSave = {},
-                                onAddContent = onAdd,
-                                onCustomiseDesign = onCustomise,
                                 onStyle = onStyle,
                                 snackbarHostState = remember { SnackbarHostState() },
                             ) { Box(Modifier.fillMaxSize()) }
@@ -630,47 +624,14 @@ class ProfileCardEditorShotsTest {
     }
 
     @Test
-    fun theCardFirstViewOffersAddContentAndCustomiseDesignAsEqualChoices() {
-        var added = 0
-        var customised = 0
-        cardFirst(polishBase, EditorStep.Design, EditorMode.Card, { added++ }, { customised++ }) {
-            onNodeWithText("Add content").assertExists()
-            onNodeWithText("Customise design").assertExists()
-            assertEquals(0, added + customised)
-            onNodeWithText("Add content").performClick()
-            assertEquals(1, added)
-            onNodeWithText("Customise design").performClick()
-            assertEquals(1, customised)
-            onAllNodesWithText("Choose a design").assertCountEquals(0)
-        }
-    }
-
-    @Test
-    fun theCardFirstChoicesAreAbsentFromTheOtherModes() {
-        for (mode in listOf(EditorMode.Content, EditorMode.Design)) {
-            cardFirst(polishBase, EditorStep.Design, mode) {
-                onAllNodesWithText("Customise design").assertCountEquals(0)
-            }
-        }
-    }
-
-    @Test
     fun theCustomiseStepListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
         val applied = mutableListOf<ResolvedCardStyle>()
-        cardFirst(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
-            for (name in listOf("Nocturne", "Ember", "Woodland", "Harbour", "Sunset")) onNodeWithText(name).assertExists()
-            for (name in listOf("Editorial", "Blossom", "Terminal")) onAllNodesWithText(name).assertCountEquals(0)
-            onNodeWithText("Ember").performClick()
-            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "ember" }), applied)
+        customiseStep(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
+            for (name in listOf("Midnight", "Wine", "Pine", "Cobalt", "Rust")) onNodeWithText(name).assertExists()
+            for (name in listOf("Forest", "Sage", "Paper")) onAllNodesWithText(name).assertCountEquals(0)
+            onNodeWithText("Wine").performClick()
+            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "wine" }), applied)
         }
-    }
-
-    @Test
-    fun openingModeIsCardFirstUnlessTheDesignPickerIsAskedFor() {
-        assertEquals(EditorMode.Card, openingMode(cardsEnabled = true, openDesign = false))
-        assertEquals(EditorMode.Design, openingMode(cardsEnabled = true, openDesign = true))
-        assertEquals(EditorMode.Content, openingMode(cardsEnabled = false, openDesign = false))
-        assertEquals(EditorMode.Content, openingMode(cardsEnabled = false, openDesign = true))
     }
 
     @Test

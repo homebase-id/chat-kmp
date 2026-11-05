@@ -895,21 +895,6 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun introChoosingACardSelectsItWithoutOpeningTheViewer() = runTest(dispatcher) {
-        val host = FakeHost()
-        val friends = CardAudience.Circle(FRIENDS_CIRCLE_ID, "Friends")
-        val vm = viewModel(
-            host,
-            FakeSource(profile + publicCardAttribute + circleCardAttribute(FRIENDS_CIRCLE_ID, "Friends", CardDesign.DOSSIER, 0, CardOverrides.EMPTY)),
-        )
-
-        vm.onCardChosen(friends)
-
-        assertFalse(vm.uiState.value.viewing)
-        assertEquals(friends, vm.uiState.value.selectedAudience)
-    }
-
-    @Test
     fun introTilesAreStillsOfEachRealCardAndTheHostGoesBackToTheViewedCard() = runTest(dispatcher) {
         val host = FakeHost()
         host.onRender = { host.send(CardEvent.Ready(layout = it.design, ms = 1)) }
@@ -1394,7 +1379,7 @@ class ProfileCardViewModelTest {
     )
 
     @Test
-    fun aCircleMadeInThisAppGetsACardAndIsSelectedOnceCreated() = runTest(dispatcher) {
+    fun aCircleMadeInThisAppGetsACardAndOpensOnTheCardNotTheEditor() = runTest(dispatcher) {
         val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
         val (vm, source, _) = circleVm(store)
         val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
@@ -1402,29 +1387,29 @@ class ProfileCardViewModelTest {
         backgroundScope.launch { vm.events.collect { events += it } }
 
         source.circleList = source.circleList + made
-        vm.onCircleCreated(made.id, openEditor = true)
+        vm.onCircleCreated(made.id, openCard = true)
         advanceUntilIdle()
 
         val audience = CardAudience.Circle(made.id, "Climbing")
         assertTrue(vm.uiState.value.cards.any { it.audience == audience })
         assertEquals(audience, vm.uiState.value.selectedAudience)
-        assertTrue(ProfileCardEvent.OpenContentEditor in events)
+        assertTrue(vm.uiState.value.viewing)
         assertTrue(store.writes.isEmpty())
     }
 
     @Test
-    fun creatingFromTheSwitcherSelectsTheNewCardWithoutOpeningTheEditor() = runTest(dispatcher) {
+    fun creatingFromTheSwitcherSelectsTheNewCardWithoutLeavingTheEditor() = runTest(dispatcher) {
         val (vm, source, _) = circleVm(FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute)))
         val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
         val events = mutableListOf<ProfileCardEvent>()
         backgroundScope.launch { vm.events.collect { events += it } }
 
         source.circleList = source.circleList + made
-        vm.onCircleCreated(made.id, openEditor = false)
+        vm.onCircleCreated(made.id, openCard = false)
         advanceUntilIdle()
 
         assertEquals(CardAudience.Circle(made.id, "Climbing"), vm.uiState.value.selectedAudience)
-        assertTrue(events.none { it == ProfileCardEvent.OpenContentEditor })
+        assertFalse(vm.uiState.value.viewing)
     }
 
     @Test
@@ -2020,7 +2005,7 @@ class ProfileCardViewModelTest {
     @Test
     fun applyingAStyleIsOneUnsavedPreviewEditThatRenders() = runTest(dispatcher) {
         val (vm, host, store) = boardVm()
-        val style = cardStylesFor(CardDesign.BOARD).first { it.id == "terminal" }
+        val style = cardStylesFor(CardDesign.BOARD).first { it.id == "charcoal" }
 
         vm.onStyleSelected(style)
 

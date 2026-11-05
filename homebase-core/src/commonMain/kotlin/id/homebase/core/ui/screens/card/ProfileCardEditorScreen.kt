@@ -2,7 +2,6 @@
 
 package id.homebase.core.ui.screens.card
 
-import androidx.compose.runtime.mutableIntStateOf
 import id.homebase.resources.storage_full_upload_failed
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.rememberScrollState
@@ -41,7 +40,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -78,11 +76,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.ui.graphics.vector.ImageVector
-import id.homebase.resources.profile_card_first_add_content
-import id.homebase.resources.profile_card_first_customise
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
@@ -130,6 +123,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material.icons.outlined.Public
@@ -182,10 +177,6 @@ import id.homebase.resources.profile_card_audience_public
 import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
-private val CARD_FIRST_HEIGHT = ButtonDefaults.MediumContainerHeight
-private val CARD_FIRST_GAP = 12.dp
-private val CARD_FIRST_INSET = 16.dp
-private val CARD_FIRST_SIDE = 16.dp
 private val COMPACT_HEIGHT = 760.dp
 private val COMPACT_TILE_WIDTH = 88.dp
 private val COMPACT_TILE_CORNER = 16.dp
@@ -215,6 +206,7 @@ private val CAPTION_LINE = 20.dp
 // The card keeps at least the rest of the height, so the controls never shrink it out of being the hero.
 private const val PANEL_MAX_SHARE = 0.55f
 private const val HERO_PULSE_SCALE = 0.97f
+private val WIDE_CHIP_GAP = 12.dp
 private const val DISABLED_TILE_ALPHA = 0.38f
 private const val UNSELECTED_TILE_SCALE = 0.92f
 private const val LARGE_TILE_GROWTH = 1.25f
@@ -249,7 +241,7 @@ fun ProfileCardEditorScreen(
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
     val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
-    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openEditor = false) }
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = false) }
     LaunchedEffect(viewModel) {
         if (cardsEnabled) viewModel.startHost()
         viewModel.onContentEditorShown()
@@ -265,9 +257,8 @@ fun ProfileCardEditorScreen(
         viewModel.onPreviewDiscarded()
         onBack()
     }
-    var mode by rememberSaveable { mutableStateOf(openingMode(cardsEnabled, openDesign)) }
+    var mode by rememberSaveable { mutableStateOf(if (openDesign && cardsEnabled) EditorMode.Design else EditorMode.Content) }
     var step by rememberSaveable { mutableStateOf(EditorStep.Design) }
-    var customiseFromCard by rememberSaveable { mutableStateOf(false) }
     var designOpened by remember { mutableStateOf(false) }
     LaunchedEffect(mode) {
         if (mode == EditorMode.Design) {
@@ -278,20 +269,18 @@ fun ProfileCardEditorScreen(
         }
     }
     var confirmDiscard by remember { mutableStateOf(false) }
-    val backToCard = {
+    val backToContent = {
         viewModel.onPreviewDiscarded()
         step = EditorStep.Design
-        customiseFromCard = false
-        mode = EditorMode.Card
+        mode = EditorMode.Content
     }
-    val closeDesign = if (openDesign) leave else backToCard
+    val closeDesign = if (openDesign) leave else backToContent
     val requestBack = {
-        when (editorBack(mode, step, customiseFromCard, cardsEnabled, uiState.hasUnsavedChanges && !uiState.isSavingDesign)) {
-            EditorBack.Leave -> leave()
-            EditorBack.ToCard -> mode = EditorMode.Card
-            EditorBack.ToDesignStep -> step = EditorStep.Design
-            EditorBack.ConfirmDiscard -> confirmDiscard = true
-            EditorBack.CloseDesign -> closeDesign()
+        when {
+            mode == EditorMode.Content -> leave()
+            step == EditorStep.Customise -> step = EditorStep.Design
+            uiState.hasUnsavedChanges && !uiState.isSavingDesign -> confirmDiscard = true
+            else -> closeDesign()
         }
     }
     @Suppress("DEPRECATION") BackHandler { requestBack() }
@@ -303,7 +292,6 @@ fun ProfileCardEditorScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is ProfileCardEvent.OpenLink -> uriHandler.openUrl(event.url)
-                ProfileCardEvent.OpenContentEditor -> Unit
                 ProfileCardEvent.DesignSaved -> onBack()
                 ProfileCardEvent.DesignSaveFailed -> launch { snackbarHostState.showSnackbar(errSave) }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
@@ -378,18 +366,12 @@ fun ProfileCardEditorScreen(
             uiState = uiState,
             mode = mode,
             step = step,
-            onStep = { step = it; customiseFromCard = false },
+            onStep = { step = it },
             onBack = requestBack,
-            onAddContent = { mode = EditorMode.Content },
-            onCustomiseDesign = {
-                step = EditorStep.Customise
-                customiseFromCard = true
-                mode = EditorMode.Design
-            },
-            onStyle = viewModel::onStyleSelected,
             onSelect = viewModel::onDesignPicked,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
+            onStyle = viewModel::onStyleSelected,
             onSave = viewModel::onSaveDesign,
             photo = photoUi,
             showCard = cardsEnabled,
@@ -502,10 +484,8 @@ internal fun ProfileCardEditorContent(
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    mode: EditorMode = EditorMode.Design,
-    onAddContent: () -> Unit = {},
-    onCustomiseDesign: () -> Unit = {},
     onStyle: (ResolvedCardStyle) -> Unit = {},
+    mode: EditorMode = EditorMode.Design,
     photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
     showCard: Boolean = true,
     host: CardHost? = null,
@@ -540,6 +520,8 @@ internal fun ProfileCardEditorContent(
             var previewOpen by rememberSaveable { mutableStateOf(false) }
             val previewing = previewOpen && contentOpen && showCard
             @Suppress("DEPRECATION") BackHandler(enabled = previewing) { previewOpen = false }
+            val density = LocalDensity.current
+            var wideCard by remember { mutableStateOf(IntSize.Zero) }
             val panelMaxHeight = maxHeight * PANEL_MAX_SHARE
             // A content change lands on the card, so the card answers it with a brief pulse.
             val heroPulse = remember { Animatable(1f) }
@@ -564,8 +546,6 @@ internal fun ProfileCardEditorContent(
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
                     onStyle = onStyle,
-                    onAddContent = onAddContent,
-                    onCustomiseDesign = onCustomiseDesign,
                     showCardsButton = showCard,
                     onContentAudience = onContentAudience,
                     onContentEdit = onContentEdit,
@@ -621,7 +601,7 @@ internal fun ProfileCardEditorContent(
             ) {
                 EditorTopBar(
                     audience = uiState.selectedAudience,
-                    showsChip = true,
+                    showsChip = !wide,
                     readOnly = uiState.isCircleReadOnly,
                     unsaved = uiState.isUnsavedCard,
                     onBack = onBack,
@@ -688,7 +668,7 @@ internal fun ProfileCardEditorContent(
                         }
                     }
                 } else if (wide) {
-                    // Two columns that start and end on the same lines; card-first's two buttons sit level with the card's middle.
+                    // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -698,13 +678,30 @@ internal fun ProfileCardEditorContent(
                         horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.Top,
                     ) {
-                        CardPreviewFrame(
-                            keepProportions = true,
-                            alignment = Alignment.TopCenter,
+                        Column(
                             modifier = Modifier.weight(1f, fill = false).fillMaxHeight(),
-                        ) { preview(cardWidth) }
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(WIDE_CHIP_GAP),
+                        ) {
+                            val chipDescription = stringResource(MR.string.profile_card_audience_editing, audienceLabel(uiState.selectedAudience))
+                            AudienceChip(
+                                audience = uiState.selectedAudience,
+                                locked = uiState.isCircleReadOnly,
+                                unsaved = uiState.isUnsavedCard,
+                                elevated = false,
+                                modifier = Modifier
+                                    .widthIn(max = with(density) { wideCard.width.toDp() }.takeIf { it > 0.dp } ?: Dp.Unspecified)
+                                    .clearAndSetSemantics { contentDescription = chipDescription },
+                            )
+                            CardPreviewFrame(
+                                keepProportions = true,
+                                alignment = Alignment.TopCenter,
+                                onCardSize = { wideCard = it },
+                                modifier = Modifier.weight(1f),
+                            ) { preview(cardWidth) }
+                        }
                         panel(
-                            Modifier.width(widePanelWidth).then(if (mode == EditorMode.Card) Modifier.align(Alignment.CenterVertically) else Modifier),
+                            Modifier.width(widePanelWidth),
                             MaterialTheme.shapes.extraLargeIncreased,
                         )
                     }
@@ -756,6 +753,7 @@ private fun CardPreviewFrame(
     modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center,
     fadeInto: (() -> Color)? = null,
+    onCardSize: ((IntSize) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = MaterialTheme.shapes.extraLargeIncreased
@@ -767,6 +765,7 @@ private fun CardPreviewFrame(
                     if (keepProportions) Modifier.aspectRatio(CARD_THUMB_ASPECT, matchHeightConstraintsFirst = true)
                     else Modifier.fillMaxSize(),
                 )
+                .then(if (onCardSize != null) Modifier.onSizeChanged(onCardSize) else Modifier)
                 .clip(shape)
                 // Sets the card off the page when its own colour is close to the backdrop's.
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
@@ -778,7 +777,7 @@ private fun CardPreviewFrame(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(PREVIEW_FADE_HEIGHT * LocalDensity.current.fontScale.coerceAtLeast(1f))
+                        .height(PREVIEW_FADE_HEIGHT)
                         .drawBehind {
                             val color = fadeInto()
                             drawRect(Brush.verticalGradient(listOf(color.copy(alpha = 0f), color)))
@@ -873,8 +872,6 @@ private fun EditorPanel(
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
     onStyle: (ResolvedCardStyle) -> Unit,
-    onAddContent: () -> Unit,
-    onCustomiseDesign: () -> Unit,
     showCardsButton: Boolean,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
@@ -897,19 +894,15 @@ private fun EditorPanel(
     val isSaving = uiState.isSavingDesign
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
-    val styleCount = remember(design, uiState.overrides) {
-        cardStylesFor(design).let { styles -> if (styles.isEmpty()) 0 else styles.size + if (customStyle(styles, uiState.overrides, design) != null) 1 else 0 }
-    }
-    val wrapStyles = metrics == PanelMetrics.Wide
-    var styleRows by remember { mutableIntStateOf(1) }
-    val styleRow = if (styleCount == 0) 0.dp else styleRowHeight(fontScale, rows = styleRows) + metrics.gap
-    val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT + styleRow
+    val styles = remember(design) { cardStylesFor(design) }
+    val custom = remember(styles, uiState.overrides, design) { customStyle(styles, uiState.overrides, design) }
+    val control = if (styles.isEmpty()) CHIP_HEIGHT * grow else maxOf(CHIP_HEIGHT * grow, styleRowHeight(fontScale))
+    val optionsNeeded = CAPTION_LINE * fontScale + control + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
     val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
-    // The card-first choices sit on the page itself; a sheet behind two buttons is a surface with nothing to hold.
     Surface(
-        color = if (mode == EditorMode.Card) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = shape,
         modifier = modifier,
     ) {
@@ -920,17 +913,8 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
-            if (mode != EditorMode.Design && uiState.cards.isEmpty()) {
+            if (mode == EditorMode.Content && uiState.cards.isEmpty()) {
                 ContentLoading(failed = uiState.loadFailed, onRetry = onRetry)
-                return@Column
-            }
-            if (mode == EditorMode.Card) {
-                CardFirstChoices(
-                    enabled = !uiState.loadFailed,
-                    onAddContent = onAddContent,
-                    onCustomiseDesign = onCustomiseDesign,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = CARD_FIRST_INSET),
-                )
                 return@Column
             }
             if (mode == EditorMode.Content) {
@@ -989,9 +973,9 @@ private fun EditorPanel(
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
+                        styles = styles,
+                        custom = custom,
                         onStyle = onStyle,
-                        wrapStyles = wrapStyles,
-                        onStyleRows = { styleRows = it },
                         gap = metrics.gap,
                         hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                         modifier = Modifier.fillMaxSize(),
@@ -999,53 +983,6 @@ private fun EditorPanel(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CardFirstChoices(
-    enabled: Boolean,
-    onAddContent: () -> Unit,
-    onCustomiseDesign: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val addLabel = stringResource(MR.string.profile_card_first_add_content)
-    val customiseLabel = stringResource(MR.string.profile_card_first_customise)
-    val measurer = rememberTextMeasurer()
-    val labelStyle = ButtonDefaults.textStyleFor(ButtonDefaults.MinHeight)
-    val density = LocalDensity.current
-    val widestLabel = remember(addLabel, customiseLabel, labelStyle, density) {
-        with(density) { maxOf(measurer.measure(addLabel, labelStyle).size.width, measurer.measure(customiseLabel, labelStyle).size.width).toDp() }
-    }
-    // Side by side while both labels fit whole; otherwise stacked rather than either being cut.
-    BoxWithConstraints(modifier) {
-        val buttonNeeds = CARD_FIRST_SIDE * 2 + ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight) + ButtonDefaults.iconSpacingFor(ButtonDefaults.MinHeight) + widestLabel
-        if (buttonNeeds * 2 + CARD_FIRST_GAP <= maxWidth) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(CARD_FIRST_GAP)) {
-                CardFirstButton(Icons.Outlined.Edit, addLabel, enabled, onAddContent, Modifier.weight(1f))
-                CardFirstButton(Icons.Outlined.Palette, customiseLabel, enabled, onCustomiseDesign, Modifier.weight(1f))
-            }
-        } else {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(CARD_FIRST_GAP)) {
-                CardFirstButton(Icons.Outlined.Edit, addLabel, enabled, onAddContent, Modifier.fillMaxWidth())
-                CardFirstButton(Icons.Outlined.Palette, customiseLabel, enabled, onCustomiseDesign, Modifier.fillMaxWidth())
-            }
-        }
-    }
-}
-
-@Composable
-private fun CardFirstButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    FilledTonalButton(
-        onClick = onClick,
-        enabled = enabled,
-        shapes = ButtonDefaults.shapes(),
-        contentPadding = PaddingValues(horizontal = CARD_FIRST_SIDE),
-        modifier = modifier.heightIn(min = CARD_FIRST_HEIGHT),
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight)))
-        Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(ButtonDefaults.MinHeight)))
-        Text(label, style = ButtonDefaults.textStyleFor(ButtonDefaults.MinHeight), maxLines = 1, softWrap = false)
     }
 }
 
@@ -1385,23 +1322,7 @@ private fun DesignTile(
 
 internal enum class EditorStep { Design, Customise }
 
-internal enum class EditorMode { Card, Content, Design }
-
-internal enum class EditorBack { Leave, ToCard, ToDesignStep, ConfirmDiscard, CloseDesign }
-
-internal fun editorBack(mode: EditorMode, step: EditorStep, customiseFromCard: Boolean, cardsEnabled: Boolean, discardable: Boolean): EditorBack = when {
-    mode == EditorMode.Content -> if (cardsEnabled) EditorBack.ToCard else EditorBack.Leave
-    mode == EditorMode.Card -> EditorBack.Leave
-    step == EditorStep.Customise && !customiseFromCard -> EditorBack.ToDesignStep
-    discardable -> EditorBack.ConfirmDiscard
-    else -> EditorBack.CloseDesign
-}
-
-internal fun openingMode(cardsEnabled: Boolean, openDesign: Boolean): EditorMode = when {
-    !cardsEnabled -> EditorMode.Content
-    openDesign -> EditorMode.Design
-    else -> EditorMode.Card
-}
+internal enum class EditorMode { Content, Design }
 
 @Composable
 private fun DiscardDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {
