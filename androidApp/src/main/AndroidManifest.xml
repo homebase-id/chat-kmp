@@ -64,9 +64,8 @@
     <!-- Photo backup: without it Android redacts GPS from the photos it reads. -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
-    <!-- "Back up now": a user-initiated data transfer on API 34+, a dataSync foreground worker below. -->
+    <!-- "Back up now": a user-initiated data transfer on API 34+, a foreground worker below. -->
     <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:name=".MainApplication"
@@ -148,11 +147,6 @@
             android:name="id.homebase.photobase.backup.PhotoLibraryWatchJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
-
-        <service
-            android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync"
-            tools:node="merge" />
 
         <service
             android:name=".DriveFcmService"

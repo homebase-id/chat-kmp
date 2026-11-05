@@ -1,8 +1,6 @@
 package id.homebase.photobase.backup
 
 import android.content.Context
-import android.content.pm.ServiceInfo
-import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
@@ -39,11 +37,8 @@ class PhotoBackupWorker(appContext: Context, params: WorkerParameters) : Corouti
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         val notification = backupNotification(applicationContext)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(BACKUP_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            ForegroundInfo(BACKUP_NOTIFICATION_ID, notification)
-        }
+        // Untyped, so no dataSync declaration on Play: only scheduled below API 34, which allows it.
+        return ForegroundInfo(BACKUP_NOTIFICATION_ID, notification)
     }
 
     companion object {
