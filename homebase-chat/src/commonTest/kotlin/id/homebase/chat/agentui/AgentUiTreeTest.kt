@@ -246,4 +246,25 @@ class AgentUiTreeTest {
         assertEquals("x2", state["a"])
         assertNull(state["b"])
     }
+
+    @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+    @Test fun full_length_non_bmp_input_is_fitted_so_its_action_stays_sendable() {
+        val t = valid(
+            tree(
+                """{"id":"root","type":"column","children":["a","b","go"]}""",
+                """{"id":"a","type":"textInput","label":"a","maxLength":1000}""",
+                """{"id":"b","type":"textInput","label":"b","maxLength":1000}""",
+                """{"id":"go","type":"button","label":"Go","action":{"id":"send","include":["a","b"]}}""",
+            ),
+        )
+        val emoji = "\uD83D\uDE00".repeat(1000)
+        val a = t.fitText("a", emoji, t.inputs)
+        val b = t.fitText("b", emoji, t.inputs + ("a" to a))
+        val go = (assertIs<AgentUiNode.Column>(t.root).children.last() as AgentUiNode.Button).action!!
+        val values = t.collectValues(go, "go", t.inputs + ("a" to a) + ("b" to b))
+        val label = "\uD83D\uDE00".repeat(200)
+        val d = AgentUiActionDescriptor(target = kotlin.uuid.Uuid.random(), rev = 1, actionId = "x".repeat(64), label = label, values = values)
+        assertTrue(a.isNotEmpty() && a.length < emoji.length)
+        assertTrue(d.isValid())
+    }
 }

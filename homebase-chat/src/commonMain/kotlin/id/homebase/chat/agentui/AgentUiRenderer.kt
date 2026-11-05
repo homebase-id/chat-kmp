@@ -402,7 +402,9 @@ private fun TextInputView(node: AgentUiNode.TextInput, env: Env, modifier: Modif
     val send = !node.multiline && node.action != null
     OutlinedTextField(
         value = env.inputs[node.id] ?: node.value,
-        onValueChange = { env.inputs[node.id] = it.truncateToCodePoints(node.maxLength) },
+        onValueChange = {
+            env.inputs[node.id] = env.tree.fitText(node.id, it.truncateToCodePoints(node.maxLength), env.inputs.snapshot())
+        },
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         label = { Text(node.label) },

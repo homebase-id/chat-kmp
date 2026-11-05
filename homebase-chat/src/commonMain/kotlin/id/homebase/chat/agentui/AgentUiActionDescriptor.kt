@@ -36,5 +36,6 @@ data class AgentUiActionDescriptor(
     companion object {
         const val MAX_LABEL_CP = 200
         const val MAX_BYTES = 4096
+        const val MAX_VALUES_BYTES = MAX_BYTES - 1300
     }
 }

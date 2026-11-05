@@ -1,6 +1,9 @@
 package id.homebase.chat.agentui
 
+import id.homebase.api.util.codePointCount
 import id.homebase.api.util.truncateToCodePoints
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -92,6 +95,36 @@ data class AgentUiTree(
         for (id in action.include + actingNodeId) {
             if (id in inputs) out[id] = current[id] ?: inputs.getValue(id)
         }
+        return out
+    }
+
+    /** Longest prefix of [candidate] that keeps every action touching [nodeId] inside the action byte budget. */
+    fun fitText(nodeId: String, candidate: String, current: Map<String, String>): String {
+        val actions = actionsTouching(nodeId)
+        fun fits(text: String) = actions.all { (a, actor) ->
+            val values = collectValues(a, actor, current + (nodeId to text))
+            Json.encodeToString(MapSerializer(String.serializer(), String.serializer()), values).encodeToByteArray().size <=
+                AgentUiActionDescriptor.MAX_VALUES_BYTES
+        }
+        var text = candidate
+        while (text.isNotEmpty() && !fits(text)) text = text.truncateToCodePoints(text.codePointCount() - 1)
+        return text
+    }
+
+    private fun actionsTouching(nodeId: String): List<Pair<AgentUiNodeAction, String>> {
+        val out = ArrayList<Pair<AgentUiNodeAction, String>>()
+        fun walk(n: AgentUiNode) {
+            val a = when (n) {
+                is AgentUiNode.Button -> n.action
+                is AgentUiNode.Toggle -> n.action
+                is AgentUiNode.TextInput -> n.action
+                is AgentUiNode.Select -> n.action
+                else -> null
+            }
+            if (a != null && (n.id == nodeId || nodeId in a.include)) out += a to n.id
+            n.children()?.forEach(::walk)
+        }
+        walk(root)
         return out
     }
 
