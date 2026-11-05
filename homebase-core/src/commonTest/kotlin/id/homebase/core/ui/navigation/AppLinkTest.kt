@@ -25,6 +25,12 @@ class AppLinkTest {
     }
 
     @Test
+    fun fromSlug_hidesPhotobaseWhileItIsDark() {
+        assertEquals(AppLink.Photobase, AppLink.fromSlug("#photobase", photobaseAvailable = true))
+        assertNull(AppLink.fromSlug("#photobase", photobaseAvailable = false))
+    }
+
+    @Test
     fun fromSlug_rejectsUnknownAndFullRouteNames() {
         assertNull(AppLink.fromSlug(""))
         assertNull(AppLink.fromSlug("#"))

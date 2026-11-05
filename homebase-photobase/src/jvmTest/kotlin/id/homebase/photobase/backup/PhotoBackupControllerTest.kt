@@ -205,10 +205,18 @@ class PhotoBackupControllerTest {
     @Test
     fun aProcessStartReArms() = runTest {
         val controller = controller()
+        settingsStore.update { it.copy(enabled = true) }
 
         controller.onProcessStart()
 
         assertEquals(1, triggers.armed.size)
+    }
+
+    @Test
+    fun aProcessStartLeavesTriggersAloneWhenBackupIsOff() = runTest {
+        controller().onProcessStart()
+
+        assertTrue(triggers.armed.isEmpty())
     }
 }
 

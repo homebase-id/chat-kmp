@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.settings
 
+import chat_kmp.homebase_common.BuildConfig
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -283,7 +284,7 @@ private fun CategoryPage(
                         onLocation = actions.onLocation,
                         onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
                         onCallsSettings = { onSelectAppsPage(AppsPage.Calls) },
-                        onPhotobaseSettings = { onSelectAppsPage(AppsPage.Photobase) },
+                        onPhotobaseSettings = { onSelectAppsPage(AppsPage.Photobase) }.takeIf { BuildConfig.PHOTOBASE_ENABLED },
                     ),
                 )
             },

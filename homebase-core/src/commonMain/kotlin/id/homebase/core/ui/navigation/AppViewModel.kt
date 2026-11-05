@@ -1,6 +1,6 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.photobase.backup.PhotoBackupController
+import id.homebase.photobase.backup.PhotoBackupEntry
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -58,7 +58,7 @@ class AppViewModel(
     // identity's draft for the life of the process. Resolved on demand instead — the share
     // hand-off below only happens while logged in.
     private val identitySession: IdentitySessionScope,
-    private val photoBackup: PhotoBackupController,
+    private val photoBackup: PhotoBackupEntry,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()

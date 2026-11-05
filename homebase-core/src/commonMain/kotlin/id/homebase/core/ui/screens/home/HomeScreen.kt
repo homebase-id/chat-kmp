@@ -86,7 +86,7 @@ fun HomeScreen(
     onNavigateToVault: () -> Unit,
     onNavigateToWebDrop: () -> Unit,
     onNavigateToFilesync: () -> Unit,
-    onNavigateToPhotobase: () -> Unit,
+    onNavigateToPhotobase: (() -> Unit)?,
     onNavigateToMoments: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToContacts: () -> Unit,
@@ -162,7 +162,7 @@ fun HomeUi(
     onNavigateToVault: () -> Unit = {},
     onNavigateToWebDrop: () -> Unit = {},
     onNavigateToFilesync: () -> Unit = {},
-    onNavigateToPhotobase: () -> Unit = {},
+    onNavigateToPhotobase: (() -> Unit)? = null,
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
@@ -219,14 +219,16 @@ fun HomeUi(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            FeatureCard(
-                icon = Icons.Outlined.PhotoLibrary,
-                label = stringResource(MR.string.photobase_label),
-                subtitle = stringResource(MR.string.photobase_home_subtitle),
-                onClick = onNavigateToPhotobase,
-            )
+            onNavigateToPhotobase?.let { onClick ->
+                FeatureCard(
+                    icon = Icons.Outlined.PhotoLibrary,
+                    label = stringResource(MR.string.photobase_label),
+                    subtitle = stringResource(MR.string.photobase_home_subtitle),
+                    onClick = onClick,
+                )
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             FeatureCard(
                 icon = Icons.Outlined.AutoAwesome,

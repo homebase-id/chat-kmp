@@ -140,14 +140,16 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         containerColor = rowColor,
                         action = SettingsRowAction.Navigate(actions.onFilesyncSettings),
                     )
-                    SettingsRow(
-                        modifier = Modifier.testTag("photobaseSettingsButton"),
-                        icon = Icons.Outlined.PhotoLibrary,
-                        title = stringResource(MR.string.photobase_label),
-                        supportingText = stringResource(MR.string.photobase_home_subtitle),
-                        containerColor = rowColor,
-                        action = SettingsRowAction.Navigate(actions.onPhotobaseSettings),
-                    )
+                    actions.onPhotobaseSettings?.let { onPhotobaseSettings ->
+                        SettingsRow(
+                            modifier = Modifier.testTag("photobaseSettingsButton"),
+                            icon = Icons.Outlined.PhotoLibrary,
+                            title = stringResource(MR.string.photobase_label),
+                            supportingText = stringResource(MR.string.photobase_home_subtitle),
+                            containerColor = rowColor,
+                            action = SettingsRowAction.Navigate(onPhotobaseSettings),
+                        )
+                    }
                     SettingsRow(
                         modifier = Modifier.testTag("emailSettingsButton"),
                         icon = Icons.Outlined.MailOutline,

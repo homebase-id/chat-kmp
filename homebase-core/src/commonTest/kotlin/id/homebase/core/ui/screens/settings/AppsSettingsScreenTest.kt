@@ -47,8 +47,14 @@ class AppsSettingsScreenTest {
         onPhotobaseSettings = { fired += "photobase" },
     )
 
-    private fun ComposeUiTest.apps() = setContent {
-        MaterialTheme { AppsSettingsScreen(actions) }
+    private fun ComposeUiTest.apps(screenActions: AppsSettingsActions = actions) = setContent {
+        MaterialTheme { AppsSettingsScreen(screenActions) }
+    }
+
+    @Test
+    fun aDarkPhotobaseHasNoRow() = runComposeUiTest {
+        apps(actions.copy(onPhotobaseSettings = null))
+        onNodeWithTag("photobaseSettingsButton").assertDoesNotExist()
     }
 
     private fun ComposeUiTest.tap(tag: String) {

@@ -193,7 +193,9 @@ import id.homebase.photobase.backup.BackupPushSchedule
 import id.homebase.photobase.backup.BackupSettingsStore
 import id.homebase.photobase.backup.HashedExports
 import id.homebase.photobase.backup.OutboxBackupUploader
+import chat_kmp.homebase_common.BuildConfig
 import id.homebase.photobase.backup.PhotoBackupController
+import id.homebase.photobase.backup.PhotoBackupEntry
 import id.homebase.photobase.backup.PhotoBackupRun
 import id.homebase.photobase.backup.ServerBackupDedupe
 import id.homebase.photobase.backup.createPhotoBackupPlatform
@@ -642,7 +644,7 @@ val appModule = module {
             httpClient = get(),
             driveFileProviderCached = get(),
             contactInfo = get(),
-            beforeLogout = { get<PhotoBackupController>().onBeforeLogout() },
+            beforeLogout = { get<PhotoBackupEntry>().onBeforeLogout() },
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -841,7 +843,7 @@ val appModule = module {
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
                 get<FilesyncPreferences>().reset()
-                get<PhotoBackupController>().onPostAuthenticated()
+                get<PhotoBackupEntry>().onPostAuthenticated()
                 get<PhotobasePreferences>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
@@ -1069,7 +1071,8 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { photoBackupController() }
-    single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining -> get<PhotoBackupController>().onWake(remaining) } }
+    single { PhotoBackupEntry(BuildConfig.PHOTOBASE_ENABLED) { get<PhotoBackupController>() } }
+    single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining -> get<PhotoBackupEntry>().onWake(remaining) } }
     single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }
     single { FilesyncRepository(get(), get(), get(), get()) }

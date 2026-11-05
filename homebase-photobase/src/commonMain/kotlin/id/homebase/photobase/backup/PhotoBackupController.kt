@@ -89,7 +89,8 @@ class PhotoBackupController(
 
     /** Re-arms what a process death can lose. */
     fun onProcessStart() {
-        triggers?.rearm(settingsStore.settings.value)
+        val settings = settingsStore.settings.value
+        if (settings.enabled) triggers?.rearm(settings)
     }
 
     fun batteryGuidance(): BatteryGuidance? = triggers?.batteryGuidance()

@@ -57,8 +57,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
       // Both have to happen before this method returns: a relaunch for finished uploads delivers
       // them to this session, and iOS kills an app registering background tasks any later.
-      BackgroundUploadBridgeImpl.shared.start()
-      PhotoBackupBackgroundTasksKt.registerPhotoBackupBackgroundTasks()
+      if PhotoBackupBackgroundTasksKt.isPhotobaseEnabled() {
+          BackgroundUploadBridgeImpl.shared.start()
+          PhotoBackupBackgroundTasksKt.registerPhotoBackupBackgroundTasks()
+      }
 
       // Set delegate for handling notification actions
       UNUserNotificationCenter.current().delegate = self

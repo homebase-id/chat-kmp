@@ -31,5 +31,5 @@ data class AppsSettingsActions(
     val onLocation: () -> Unit,
     val onContactBookSettings: () -> Unit,
     val onCallsSettings: () -> Unit,
-    val onPhotobaseSettings: () -> Unit,
+    val onPhotobaseSettings: (() -> Unit)?,
 )

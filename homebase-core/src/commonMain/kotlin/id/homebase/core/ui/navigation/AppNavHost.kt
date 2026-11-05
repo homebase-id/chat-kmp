@@ -238,6 +238,7 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
+import chat_kmp.homebase_common.BuildConfig
 import id.homebase.photobase.backup.PhotoBackupController
 import id.homebase.photobase.ui.BackupSettingsScreen
 import id.homebase.photobase.ui.BackupStatusScreen
@@ -465,7 +466,7 @@ fun AppNavHost(
             momentsVisible = momentsIconVisible,
             vaultVisible = vaultIconVisible,
             filesyncVisible = filesyncIconVisible,
-            photobaseVisible = photobaseIconVisible,
+            photobaseVisible = BuildConfig.PHOTOBASE_ENABLED && photobaseIconVisible,
             locationVisible = locationIconVisible,
             contactBookVisible = contactBookIconVisible,
             emailVisible = emailIconVisible && serverSupportsMail == true,
@@ -709,7 +710,7 @@ fun AppNavHost(
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
     val openPhotobase: () -> Unit = { navController.openApp(Route.Photobase, tabRoutes) }
     val openPhotoBackup: (() -> Unit)? = { navController.navigate(Route.PhotoBackupSettings) }
-        .takeIf { koinInject<PhotoBackupController>().isSupported }
+        .takeIf { BuildConfig.PHOTOBASE_ENABLED && koinInject<PhotoBackupController>().isSupported }
     // Read only by the Filesync screen's own view model, the one "Show" opens.
     var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
@@ -1134,7 +1135,7 @@ fun AppNavHost(
                                         onNavigateToVault = openVault,
                                         onNavigateToWebDrop = openWebDrop,
                                         onNavigateToFilesync = openFilesync,
-                                        onNavigateToPhotobase = openPhotobase,
+                                        onNavigateToPhotobase = openPhotobase.takeIf { BuildConfig.PHOTOBASE_ENABLED },
                                         onNavigateToMoments = openMoments,
                                         onNavigateToLocation = openLocation,
                                         onNavigateToContacts = openContactBook,
@@ -2602,7 +2603,7 @@ fun AppNavHost(
                                             onLocation = openLocation,
                                             onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
                                             onCallsSettings = { navController.navigate(Route.CallsSettings) },
-                                            onPhotobaseSettings = { navController.navigate(Route.PhotobaseSettings) },
+                                            onPhotobaseSettings = { navController.navigate(Route.PhotobaseSettings) }.takeIf { BuildConfig.PHOTOBASE_ENABLED },
                                         ),
                                     )
                                 }
