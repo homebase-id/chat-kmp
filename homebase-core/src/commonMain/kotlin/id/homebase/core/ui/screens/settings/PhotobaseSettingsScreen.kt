@@ -28,8 +28,6 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.photobase.ui.BackupSettingsSection
 import id.homebase.photobase.ui.PhotobaseCheckingScreen
 import id.homebase.photobase.ui.PhotobaseOnboardingScreen
-import id.homebase.photobase.ui.PhotobaseSettingsUiAction
-import id.homebase.photobase.ui.PhotobaseSettingsUiState
 import id.homebase.photobase.ui.PhotobaseSettingsViewModel
 import id.homebase.photobase.ui.PhotobaseSetupUiAction
 import id.homebase.photobase.ui.PhotobaseSetupViewModel
@@ -49,17 +47,26 @@ internal fun PhotobaseSettingsScreen(
     // Null where photo backup doesn't exist: desktop and web.
     backup: PhotoBackupLinks?,
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     if (backup == null) {
-        PhotobaseSettingsPage(viewModel, onBack, null)
+        PhotobaseSettingsUi(uiState, viewModel::onAction, onBack, intervalRow = null, backupSection = null)
     } else {
         PhotobaseSetupGate(onDismiss = onBack) {
-            PhotobaseSettingsPage(viewModel, onBack) {
-                BackupSettingsSection(
-                    viewModel = koinViewModel(),
-                    onOpenStatus = backup.onOpenStatus,
-                    onOpenKeepOpen = backup.onOpenKeepOpen,
-                )
-            }
+            val photobaseViewModel: PhotobaseSettingsViewModel = koinViewModel()
+            val photobaseUiState by photobaseViewModel.uiState.collectAsStateWithLifecycle()
+            PhotobaseSettingsUi(
+                uiState = uiState,
+                onAction = viewModel::onAction,
+                onBack = onBack,
+                intervalRow = { PushIntervalRow(photobaseUiState, photobaseViewModel::onAction) },
+                backupSection = {
+                    BackupSettingsSection(
+                        viewModel = koinViewModel(),
+                        onOpenStatus = backup.onOpenStatus,
+                        onOpenKeepOpen = backup.onOpenKeepOpen,
+                    )
+                },
+            )
         }
     }
 }
@@ -84,24 +91,11 @@ internal fun PhotobaseSetupGate(onDismiss: () -> Unit, installed: @Composable ()
 }
 
 @Composable
-private fun PhotobaseSettingsPage(
-    viewModel: SettingsViewModel,
-    onBack: () -> Unit,
-    backupSection: (@Composable () -> Unit)?,
-) {
-    val photobaseViewModel: PhotobaseSettingsViewModel = koinViewModel()
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val photobaseUiState by photobaseViewModel.uiState.collectAsStateWithLifecycle()
-    PhotobaseSettingsUi(uiState, viewModel::onAction, photobaseUiState, photobaseViewModel::onAction, onBack, backupSection)
-}
-
-@Composable
 internal fun PhotobaseSettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
-    photobaseUiState: PhotobaseSettingsUiState,
-    onPhotobaseAction: (PhotobaseSettingsUiAction) -> Unit,
     onBack: () -> Unit,
+    intervalRow: (@Composable () -> Unit)?,
     backupSection: (@Composable () -> Unit)?,
 ) {
     Scaffold(
@@ -134,7 +128,7 @@ internal fun PhotobaseSettingsUi(
                         onCheckedChange = { onAction(SettingsUiAction.SetPhotobaseIconVisible(it)) },
                     ),
                 )
-                PushIntervalRow(photobaseUiState, onPhotobaseAction)
+                intervalRow?.invoke()
             }
             backupSection?.let { section ->
                 Column(modifier = Modifier.widthIn(max = AppsContentMaxWidth).fillMaxWidth()) { section() }

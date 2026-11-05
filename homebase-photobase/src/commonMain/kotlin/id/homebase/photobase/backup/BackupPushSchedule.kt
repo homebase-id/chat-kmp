@@ -33,7 +33,7 @@ class BackupPushSchedule(
         if (needsScheduling(existing, settings)) schedule(settings)
     }
 
-    /** For a change made where backup may be off, like desktop: never creates a schedule no phone asked for. */
+    /** For a change made on a phone with backup off: never creates a schedule no phone asked for. */
     suspend fun correctIfScheduled(settings: BackupSettings) {
         val existing = listOrNull() ?: return
         if (existing.any { it.isOurs() } && needsScheduling(existing, settings)) schedule(settings)

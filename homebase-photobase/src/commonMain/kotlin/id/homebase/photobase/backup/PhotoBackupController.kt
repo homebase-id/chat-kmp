@@ -75,6 +75,10 @@ class PhotoBackupController(
 
     suspend fun runFromBackground(request: BackupRunRequest): BackupRunOutcome? {
         wokenInBackgroundSinceForeground = true
+        // Another phone turning backup off or logging out cancels the identity's one schedule.
+        if (settingsStore.settings.value.enabled && request.trigger.restoresPushSchedule) {
+            scope.launch { pushSchedule.ensure(adoptSharedInterval()) }
+        }
         return run?.run(request)
     }
 

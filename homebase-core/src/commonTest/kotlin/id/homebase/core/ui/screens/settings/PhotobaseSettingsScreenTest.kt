@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.settings
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
@@ -15,6 +14,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import id.homebase.photobase.ui.PhotobaseSettingsUiState
+import id.homebase.photobase.ui.PushIntervalRow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -23,10 +23,16 @@ import kotlin.test.assertTrue
 class PhotobaseSettingsScreenTest {
     private fun ComposeUiTest.page(
         onAction: (SettingsUiAction) -> Unit = {},
-        backupSection: (@Composable () -> Unit)? = null,
+        backupExists: Boolean = false,
     ) = setContent {
         MaterialTheme {
-            PhotobaseSettingsUi(SettingsUiState(), onAction, PhotobaseSettingsUiState(), {}, {}, backupSection)
+            PhotobaseSettingsUi(
+                uiState = SettingsUiState(),
+                onAction = onAction,
+                onBack = {},
+                intervalRow = if (backupExists) ({ PushIntervalRow(PhotobaseSettingsUiState(), {}) }) else null,
+                backupSection = if (backupExists) ({ Box(Modifier.testTag(BACKUP_TAG).size(10.dp)) }) else null,
+            )
         }
     }
 
@@ -39,14 +45,16 @@ class PhotobaseSettingsScreenTest {
     }
 
     @Test
-    fun theIntervalRowIsThereWithoutBackup() = runComposeUiTest {
+    fun onlyTheIconToggleShowsWhereBackupDoesNotExist() = runComposeUiTest {
         page()
-        onNodeWithTag("photobasePushIntervalRow").assertExists()
+        onNodeWithTag("photobaseIconToggle").assertExists()
+        onNodeWithTag("photobasePushIntervalRow").assertDoesNotExist()
+        onNodeWithTag(BACKUP_TAG).assertDoesNotExist()
     }
 
     @Test
     fun backupSitsUnderTheIntervalRowUnderTheIconToggle() = runComposeUiTest {
-        page(backupSection = { Box(Modifier.testTag(BACKUP_TAG).size(10.dp)) })
+        page(backupExists = true)
         val icon = onNodeWithTag("photobaseIconToggle").getUnclippedBoundsInRoot().top
         val interval = onNodeWithTag("photobasePushIntervalRow").getUnclippedBoundsInRoot().top
         val backup = onNodeWithTag(BACKUP_TAG).getUnclippedBoundsInRoot().top

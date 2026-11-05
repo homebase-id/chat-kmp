@@ -73,6 +73,7 @@ class PhotoBackupControllerTest {
 
     private val configUploads = mutableListOf<UploadFileRequest>()
     private var configSaveFailure: Exception? = null
+    private var configReads = 0
     private lateinit var settingsStore: BackupSettingsStore
 
     private fun TestScope.controller(scope: CoroutineScope = backgroundScope): PhotoBackupController {
@@ -99,7 +100,10 @@ class PhotoBackupControllerTest {
             OutboxSync(db, Offline, eventBus, backgroundScope).also { it.setOnline(false) },
         ) { 1_000 }
         val configFile = PhotobaseConfigFile(
-            getFileHeaderByUid = { _, _ -> null },
+            getFileHeaderByUid = { _, _ ->
+                configReads++
+                null
+            },
             uploadFile = { request ->
                 configSaveFailure?.let { throw it }
                 configUploads += request
@@ -144,6 +148,38 @@ class PhotoBackupControllerTest {
         runCurrent()
         assertEquals(id.homebase.api.client.notifications.ScheduledPushOutboxUploader.CancelPush, pushRow()!!.uploadType)
         assertFalse(triggers.armed.last().enabled)
+    }
+
+    private suspend fun TestScope.scheduleChecksDuring(controller: PhotoBackupController, trigger: BackupTrigger): Int {
+        configReads = 0
+        controller.runFromBackground(BackupRunRequest(trigger, BackupBudget(null), findDeletions = false))
+        runCurrent()
+        return configReads
+    }
+
+    @Test
+    fun aBackgroundRunChecksTheScheduleAnotherPhoneMayHaveCancelled() = runTest {
+        val controller = controller()
+        enable(controller)
+
+        assertEquals(1, scheduleChecksDuring(controller, BackupTrigger.Periodic))
+        assertEquals(1, scheduleChecksDuring(controller, BackupTrigger.BackgroundRefresh))
+    }
+
+    @Test
+    fun aPushOrNewPhotoDoesNotCheckTheSchedule() = runTest {
+        val controller = controller()
+        enable(controller)
+
+        assertEquals(0, scheduleChecksDuring(controller, BackupTrigger.Push))
+        assertEquals(0, scheduleChecksDuring(controller, BackupTrigger.MediaChanged))
+    }
+
+    @Test
+    fun aBackgroundRunLeavesTheScheduleAloneWhenBackupIsOff() = runTest {
+        val controller = controller()
+
+        assertEquals(0, scheduleChecksDuring(controller, BackupTrigger.Periodic))
     }
 
     @Test

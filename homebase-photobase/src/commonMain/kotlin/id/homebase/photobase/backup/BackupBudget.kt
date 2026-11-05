@@ -15,7 +15,12 @@ class BackupBudget(limit: Duration?, timeSource: TimeSource.WithComparableMarks 
         get() = remaining <= Duration.ZERO
 }
 
-enum class BackupTrigger { Foreground, UserRequested, MediaChanged, Periodic, Overnight, Push, BackgroundRefresh, BackgroundProcessing }
+enum class BackupTrigger {
+    Foreground, UserRequested, MediaChanged, Periodic, Overnight, Push, BackgroundRefresh, BackgroundProcessing;
+
+    /** A push proves the schedule exists, and new photos can arrive too often to ask the server each time. */
+    val restoresPushSchedule: Boolean get() = this != Push && this != MediaChanged
+}
 
 data class BackupRunRequest(
     val trigger: BackupTrigger,
