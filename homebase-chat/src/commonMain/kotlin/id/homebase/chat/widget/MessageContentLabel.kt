@@ -10,6 +10,8 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
@@ -68,6 +70,8 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.ContactCard -> ContentLabel(messageContent.displayLabel, Icons.Outlined.ContactPage)
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
     is MessageContent.ViewOnce -> null
+    is MessageContent.AgentUi -> ContentLabel(messageContent.displayLabel, Icons.Default.SmartToy)
+    is MessageContent.AgentUiAction -> ContentLabel(messageContent.displayLabel, Icons.Default.TouchApp)
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }

@@ -206,6 +206,17 @@ public class DriveFileProvider(
         )
     }
 
+    /** Full-payload read whose cache entry is addressed by [lastModified], so a rewritten payload is never served stale. */
+    suspend fun getPayloadBytesDecryptedAt(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        lastModified: Long?,
+    ): BytesResponse? = driveCache.getPayloadBytesDecrypted(
+        driveId, fileId, key, keyHeader, lastModified = lastModified
+    )
+
     /**
      * Fetch + decrypt a payload using the per-payload key header the server returns on the GET
      * (`SharedSecretEncryptedHeader64`) — the authoritative, race-free (key, IV) for that exact

@@ -46,7 +46,7 @@ class ConversationOverviewViewOnceTest {
         val plain = imageMessage(null)
         val viewOnce = imageMessage(MessageContent.ViewOnce(ViewOnceDescriptor(ViewOnceDescriptor.KIND_IMAGE)))
         val unparseable = imageMessage(MessageContent.ViewOnce(null))
-        val unknown = imageMessage(MessageContent.Unknown(218))
+        val unknown = imageMessage(MessageContent.Unknown(999))
 
         val overview = collectConversationOverview(
             BatchResult(
@@ -57,5 +57,25 @@ class ConversationOverviewViewOnceTest {
         )
 
         assertEquals(listOf(plain.id), overview.media.map { it.messageId })
+    }
+
+    @Test
+    fun `agent card payloads never reach shared media or files`() {
+        val card = imageMessage(
+            MessageContent.AgentUi(id.homebase.chat.agentui.AgentUiDescriptor(fallback = "Draft post")),
+        )
+        val unparseable = imageMessage(MessageContent.AgentUi(null))
+        val plain = imageMessage(null)
+
+        val overview = collectConversationOverview(
+            BatchResult(
+                records = listOf(card, unparseable, plain),
+                hasMoreRows = false,
+                cursor = QueryBatchCursor(),
+            )
+        )
+
+        assertEquals(listOf(plain.id), overview.media.map { it.messageId })
+        assertEquals(emptyList(), overview.files)
     }
 }
