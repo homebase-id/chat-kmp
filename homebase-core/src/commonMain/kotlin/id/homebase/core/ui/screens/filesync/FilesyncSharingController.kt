@@ -82,6 +82,8 @@ internal class FilesyncSharingController(
                 loadSharedIn()
                 // Keeps the circle every connection joins filled with the ones made before it.
                 guarded { sharing.openToMarkers() }
+                // An Edit share that expired since leaves its drive Write behind until this.
+                guarded { sharing.syncEditors() }
             }
         }
         loadSharers()
@@ -138,6 +140,8 @@ internal class FilesyncSharingController(
             update { if (shared) it.copy(sending = false, shareWith = null) else it.copy(sending = false) }
             if (!shared) return@launch
             send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
+            // Sharing as View may have replaced someone's Edit.
+            syncEditors()
             loadRecipients()
             loadSharedIn()
             state().sharedWith?.nodeId?.takeIf { id -> files.any { it.nodeId == id } }?.let { loadSharedWith(it) }
@@ -157,7 +161,10 @@ internal class FilesyncSharingController(
             val go: suspend () -> Unit = {
                 val moved = move()
                 if (moved.isNotEmpty() && plan !== FilesyncMoveSharing.None) {
-                    attempt("sharing ${moved.size} moved nodes like $into", FilesyncError.MoveSharingFailed) { sharing.applyMove(plan, moved) }?.let { loadSharedIn() }
+                    attempt("sharing ${moved.size} moved nodes like $into", FilesyncError.MoveSharingFailed) { sharing.applyMove(plan, moved) }?.let {
+                        syncEditors()
+                        loadSharedIn()
+                    }
                 }
             }
             if (plan.losingAccess.isEmpty()) {
@@ -190,6 +197,7 @@ internal class FilesyncSharingController(
     fun unshare(node: FilesyncNode, recipient: FilesyncAudience) {
         scope.launch {
             attempt("withdrawing ${node.nodeId} from $recipient") { sharing.withdraw(withDescendants(listOf(node)), recipient) } ?: return@launch
+            syncEditors()
             loadSharedWith(node.nodeId)
             loadSharedIn()
         }
@@ -219,6 +227,7 @@ internal class FilesyncSharingController(
     fun setGroupMembers(group: FilesyncAudience.Group, members: List<OdinId>) {
         scope.launch {
             attempt("changing ${group.circleId}'s members") { sharing.setGroupMembers(group, members) }
+            syncEditors()
             // Read back, so a change that only partly went through shows as it is.
             val recipients = guarded { sharing.audiences() } ?: return@launch
             update { s ->
@@ -250,6 +259,7 @@ internal class FilesyncSharingController(
         scope.launch {
             val stopped = attempt("withdrawing $nodeId from $recipient") { sharing.withdraw(withDescendants(listOf(node), recipientHandles, listFolders), recipient) } ?: return@launch
             update { s -> s.copy(recipientFiles = s.recipientFiles?.filter { it.node.nodeId !in stopped }) }
+            syncEditors()
             loadSharedIn()
         }
     }
@@ -323,6 +333,10 @@ internal class FilesyncSharingController(
         loadRecipients()
         loadSharedIn()
         state().sharedWith?.nodeId?.let { loadSharedWith(it) }
+    }
+
+    private fun syncEditors() {
+        scope.launch { guarded { sharing.syncEditors() } }
     }
 
     private fun loadOffered() {

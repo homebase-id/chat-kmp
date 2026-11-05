@@ -22,6 +22,9 @@ object FilesyncProtocol {
     /** The circle every connection joins, so any of them may leave a marker. */
     const val SharersCircleSlug = "filesync-shr"
 
+    /** The circle granting drive Write, joined only by people a live Edit share reaches. */
+    const val EditorsCircleSlug = "filesync-edit"
+
     /** Never stored: a node whose groupId is this is at the top level. */
     val RootNodeId: Uuid = Uuid.parse("2a1c0d55-8ad3-417e-a5d7-42c3d0baba0e")
 

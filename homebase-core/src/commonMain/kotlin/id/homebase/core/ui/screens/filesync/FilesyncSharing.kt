@@ -14,6 +14,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.CircleDesignation
 import id.homebase.api.client.connections.CircleGrantOn
 import id.homebase.api.client.connections.CircleShareKeyProvider
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.CreateAppCircleRequest
 import id.homebase.api.client.connections.DriveGrantRequest
@@ -158,6 +159,7 @@ class FilesyncSharing(
     private val ownKeys = mutableMapOf<Uuid, OwnCircleKey>()
     private val memberKeys = mutableMapOf<Pair<OdinId, Uuid>, ByteArray>()
     private val keys = Mutex()
+    private val editing = Mutex()
     private var openedToMarkersAs: OdinId? = null
 
     /** Lets every connection leave this identity a marker: a circle all connections join, granting Write on the drive alone. */
@@ -178,9 +180,9 @@ class FilesyncSharing(
         openedToMarkersAs = self
     }
 
-    /** What sharing may offer: whatever the circle every recipient joins grants on the drive. */
+    /** What sharing may offer: whatever the circle every recipient joins grants on the drive, and Write from the editors circle. */
     suspend fun offeredAccess(): List<FilesyncAccess> {
-        val granted = recipientsCircleGrant()
+        val granted = recipientsCircleGrant() + DrivePermission.Write
         return FilesyncAccess.entries.filter { granted.containsAll(it.permissions) }
     }
 
@@ -205,12 +207,43 @@ class FilesyncSharing(
         files.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
             filesyncShares.share(FilesyncProtocol.DriveAlias, chunk.map { shareRequest(it.fileId, it.keyHeader, circleId, permissions, expiresAt) })
         }
+        // After the rows, so a concurrent syncEditors that read them before can't take the members out again.
+        if (access == FilesyncAccess.Edit) editing.withLock { enroll(editorsCircle(), members) }
         leaveMarkers(self, points)
     }
 
     /**
+     * Puts in the editors circle exactly the people a live Edit share reaches, on their own or through a group: drive
+     * Write is what lets them change a file, and it also lets them add files anywhere on the drive.
+     */
+    suspend fun syncEditors() = editing.withLock {
+        requireSignedIn()
+        val circles = filesyncCircles()
+        val audiences = audiencesOf(circles)
+        val editingCircles = HashSet<Uuid>()
+        if (audiences.isNotEmpty()) {
+            filesyncQuery.forEachFilesyncPage(
+                FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), sharedWith = audiences.keys.toList()),
+                QueryBatchResultOptionsRequest(maxRecords = PAGE, includeShares = true),
+            ) { page ->
+                // includeShares returns only live rows.
+                page.searchResults.forEach { file ->
+                    file.shares.orEmpty().filter { it.circleId in audiences && it.access() == FilesyncAccess.Edit }.mapTo(editingCircles) { it.circleId }
+                }
+                editingCircles.size < audiences.size
+            }
+        }
+        val editors = editingCircles.flatMapTo(HashSet()) { audiences.getValue(it).members }
+        val current = circles.firstOrNull { it.circle.slug == FilesyncProtocol.EditorsCircleSlug }?.members.orEmpty().toSet()
+        if (editors == current) return@withLock
+        val circleId = editorsCircle()
+        enroll(circleId, editors - current)
+        (current - editors).forEach { asFilesync.removeFromCircle(circleId, it) }
+    }
+
+    /**
      * Makes a group called [name] of [members], each of whom must be able to receive shared files: a circle of the
-     * app's granting the drive what the circle every recipient joins grants, so a share with it may be View or Edit.
+     * app's granting the drive what the circle every recipient joins grants. Edit's Write comes from the editors circle.
      */
     suspend fun createGroup(name: String, members: List<OdinId>): FilesyncAudience.Group {
         requireSignedIn()
@@ -568,6 +601,15 @@ class FilesyncSharing(
         )
     )
 
+    private suspend fun editorsCircle(): Uuid = asFilesync.createCircle(
+        CreateAppCircleRequest(
+            name = "Filesync editors",
+            slug = FilesyncProtocol.EditorsCircleSlug,
+            description = "People who can change files you share with them through Homebase Filesync, and add files to your Filesync drive",
+            driveGrants = listOf(DriveGrantRequest(PermissionedDrive(filesyncLabeledDrive.drive, DrivePermissionSet(listOf(DrivePermission.Write))))),
+        )
+    )
+
     private fun recipientsDriveGrants() =
         recipientsDeclared.drives.map { DriveGrantRequest(PermissionedDrive(filesyncLabeledDrive.drive, DrivePermissionSet(it.permissions))) }
 
@@ -579,10 +621,14 @@ class FilesyncSharing(
             .filter { compareStringUuId(it.drive?.alias.orEmpty(), FilesyncProtocol.DriveAlias.toString()) }
             .flatMap { DrivePermission.fromNames(it.permission.orEmpty()) }
 
+    private suspend fun filesyncCircles(): List<CircleWithMembers> =
+        connections.getCirclesWithMembers(withIndividual = true).filter { it.circle.appId == filesyncAppId }
+
+    private suspend fun audienceCircles(): Map<Uuid, FilesyncAudience> = audiencesOf(filesyncCircles())
+
     /** The app's circles that files are shared with: each person's own, and the groups not disabled. */
-    private suspend fun audienceCircles(): Map<Uuid, FilesyncAudience> =
-        connections.getCirclesWithMembers(withIndividual = true)
-            .filter { it.circle.appId == filesyncAppId }
+    private fun audiencesOf(circles: List<CircleWithMembers>): Map<Uuid, FilesyncAudience> =
+        circles
             .mapNotNull { c ->
                 val id = Uuid.parse(c.circle.id)
                 when {
@@ -615,7 +661,7 @@ class FilesyncSharing(
         private const val ADD_MANY_LIMIT = 500
         private const val PARALLEL = 8
         private val recipientsDeclared = filesyncAppRegistration.circles.single { it.slug == FilesyncProtocol.CircleSlug }
-        // The recipients and sharers circles' slugs never look like this; nothing else of Filesync's may.
+        // The recipients, sharers and editors circles' slugs never look like this; nothing else of Filesync's may.
         private val GROUP_SLUG = Regex("g[0-9a-f]{13}")
         private const val TAG = "FilesyncSharing"
         private val filesyncAppId = Uuid.parseHex(filesyncAppRegistration.appId)

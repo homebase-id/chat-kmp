@@ -36,6 +36,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DrivePermissionsSerializer
 import id.homebase.core.config.filesyncAppRegistration
 import id.homebase.core.feed.newInMemoryJdbcDriver
@@ -77,6 +78,7 @@ class FilesyncSharingTest {
     private val filesyncAppKey = ByteArray(16) { 3 }
     private val recipientsCircle = Uuid.random()
     private val samsCircle = Uuid.random()
+    private val editorsCircle = Uuid.random()
     private val file = FilesyncHandle(Uuid.random(), null, FilesyncProtocol.FileFileType, KeyHeader.newRandom16(), JsonObject(emptyMap()), null)
 
     // Sam's Filesync drive's write-only key: the pair odin-core's ClientLockedKeyHeaderVectorTests uses
@@ -148,6 +150,7 @@ class FilesyncSharingTest {
                 when (decrypted(call, filesyncSecret).jsonObject["slug"]!!.jsonPrimitive.content) {
                     FilesyncProtocol.CircleSlug -> "\"$recipientsCircle\""
                     FilesyncSharing.individualSlug(sam) -> "\"$samsCircle\""
+                    FilesyncProtocol.EditorsCircleSlug -> "\"$editorsCircle\""
                     else -> "\"$groupCircle\""
                 }
             path.endsWith("/connections/circles/add-many") ->
@@ -321,6 +324,58 @@ class FilesyncSharingTest {
         sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null)
 
         assertEquals(1, calls.count { it.path.endsWith("/share-key") && it.request.method == HttpMethod.Put })
+    }
+
+    @Test
+    fun anEditShareLetsSamWriteThroughTheEditorsCircleAndAViewShareDoesnt() = runTest {
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
+        assertTrue(calls.filter { it.path.endsWith("/add-many") }.none { it.addedTo().first == editorsCircle.toString() })
+
+        sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null)
+
+        assertEquals(editorsCircle.toString() to listOf("sam.test"), calls.filter { it.path.endsWith("/add-many") }.last().addedTo())
+        val created = calls.filter { it.path.endsWith("/circles/create") }.map { decrypted(it, filesyncSecret).jsonObject }
+            .single { it["slug"]!!.jsonPrimitive.content == FilesyncProtocol.EditorsCircleSlug }
+        val granted = created["driveGrants"]!!.jsonArray.single().jsonObject["permissionedDrive"]!!.jsonObject["permission"]!!
+        assertEquals(setOf(DrivePermission.Write), Json.decodeFromJsonElement(DrivePermissionsSerializer, granted).values.toSet())
+        assertTrue(created["grantOn"].let { it == null || it.jsonPrimitive.content == "none" })
+    }
+
+    private fun editorsAre(vararg members: String) {
+        circles = """[
+            {"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"$appId"},"members":["sam.test"]},
+            {"circle":{"id":"$groupCircle","name":"Hiking","slug":"g0123456789abc","appId":"$appId"},"members":["merry.test","sam.test"]},
+            {"circle":{"id":"$editorsCircle","name":"Filesync editors","slug":"${FilesyncProtocol.EditorsCircleSlug}","appId":"$appId"},"members":[${members.joinToString { "\"$it\"" }}]}
+        ]"""
+    }
+
+    @Test
+    fun theEditorsAreThePeopleALiveEditShareReachesThroughAGroupToo() = runTest {
+        editorsAre("sam.test", "pippin.test")
+        sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "read")}],"cursorState":"next","hasMoreRows":true}"""
+        sharedPages += """{"searchResults":[${sharedFile("map.png", groupCircle, "readWrite")}],"hasMoreRows":false}"""
+
+        sharing.syncEditors()
+
+        val asked = decrypted(calls.first { it.path.endsWith("/query-batch") }, filesyncSecret).jsonObject["queryParams"]!!.jsonObject
+        assertEquals(setOf(samsCircle.toString(), groupCircle.toString()), asked["sharedWith"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet())
+        assertEquals(listOf(editorsCircle.toString() to listOf("merry.test")), calls.filter { it.path.endsWith("/add-many") }.map { it.addedTo() })
+        val revoked = calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject }
+        assertEquals(listOf(editorsCircle.toString() to "pippin.test"), revoked.map { it["circleId"]!!.jsonPrimitive.content to it["odinId"]!!.jsonPrimitive.content })
+    }
+
+    @Test
+    fun withNoEditSharesLeftTheEditorsCircleEmptiesAndNoneIsMadeWhenThereWasNone() = runTest {
+        editorsAre("sam.test")
+        sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "read")}],"hasMoreRows":false}"""
+        sharing.syncEditors()
+        assertEquals(listOf("sam.test"), calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject["odinId"]!!.jsonPrimitive.content })
+
+        calls.clear()
+        editorsAre()
+        sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "read")}],"hasMoreRows":false}"""
+        sharing.syncEditors()
+        assertTrue(calls.none { it.path.endsWith("/circles/create") || it.path.endsWith("/add-many") || it.path.endsWith("/revoke") })
     }
 
     @Test
@@ -515,6 +570,7 @@ class FilesyncSharingTest {
         val declared = filesyncAppRegistration.circles.single { it.slug == FilesyncProtocol.CircleSlug }.drives.single().permissions
         val granted = created["driveGrants"]!!.jsonArray.single().jsonObject["permissionedDrive"]!!.jsonObject["permission"]!!
         assertEquals(declared.toSet(), Json.decodeFromJsonElement(DrivePermissionsSerializer, granted).values.toSet())
+        assertTrue(DrivePermission.Write !in declared, "Write would let every member add files anywhere on the drive")
         assertTrue(created["grantOn"].let { it == null || it.jsonPrimitive.content == "none" })
         val added = decrypted(calls.single { it.path.endsWith("/add-many") }, filesyncSecret).jsonObject
         assertEquals(groupCircle.toString(), added["circleId"]!!.jsonPrimitive.content)
