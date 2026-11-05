@@ -167,6 +167,12 @@ class FilesyncSharing(
     private val keys = Mutex()
     private val editing = Mutex()
 
+    /** Drops every circle key held in memory, at logout. */
+    suspend fun forgetKeys() = keys.withLock {
+        ownKeys.clear()
+        memberKeys.clear()
+    }
+
     /** What sharing may offer: whatever the circle every recipient joins grants on the drive, and Write from the editors circle. */
     suspend fun offeredAccess(): List<FilesyncAccess> {
         val granted = recipientsCircleGrant() + DrivePermission.Write

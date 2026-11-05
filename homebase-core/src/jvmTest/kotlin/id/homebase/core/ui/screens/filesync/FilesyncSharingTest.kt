@@ -132,6 +132,7 @@ class FilesyncSharingTest {
     private var notReady = emptySet<String>()
     private var samGrantsWrite = true
     private var samHasFilesync = true
+    private var frodoReviewedUs = true
     private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
     private val groupCircle = Uuid.random()
@@ -159,6 +160,9 @@ class FilesyncSharingTest {
             path.endsWith("/connections/circles/add-many") ->
                 """{"enrolled":1,"deposited":0,"skipped":0,"outcomes":[${(refusedByAddMany.map { it to "skipped" } + depositedByAddMany.map { it to "deposited" }).joinToString { (id, kind) -> """{"odinId":"$id","kind":"$kind"}""" }}]}"""
             "/connections/circles/delete" in path || path.endsWith("/connections/circles/revoke") -> "{}"
+            "/peer/" in path && path.endsWith("/share-key") ->
+                if (frodoReviewedUs) """{"sealedKey":null}"""
+                else return@MockEngine respond("""{"title":"Not reviewed","errorCode":"notReviewedByOwner"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
             path.endsWith("/share-key/unsealed-members") -> unsealed.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call, filesyncSecret).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
@@ -451,6 +455,42 @@ class FilesyncSharingTest {
         sharedPages += """{"searchResults":[${marker("sam.test", frodo)}],"hasMoreRows":false}"""
         sharing.keepSharer(sam)
         assertTrue(calls.none { it.path.endsWith("/files") })
+    }
+
+    // A file of Frodo's shared with us through [circleId], its key locked with the circle's.
+    private fun fromFrodo(circleId: Uuid) = """
+        {
+          "fileId": "${Uuid.random()}", "driveId": "${FilesyncProtocol.DriveAlias}", "fileState": "active", "fileSystemType": "standard",
+          "sharedSecretEncryptedKeyHeader": { "encryptionVersion": 1, "type": "share", "iv": "${Base64.encode(ByteArray(16))}", "encryptedAesKey": "AAAA" },
+          "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": ${FilesyncProtocol.FileFileType}, "content": "AAAA" } },
+          "serverMetadata": {},
+          "shares": [{ "circleId": "$circleId", "permissions": "read", "created": 1, "modified": 1 }]
+        }
+    """
+
+    @Test
+    fun filesFromAnOwnerWhoHasntReviewedUsSaySoInsteadOfLookingEmpty() = runTest {
+        frodoReviewedUs = false
+        sharedPages += """{"searchResults":[${fromFrodo(samsCircle)}],"hasMoreRows":false}"""
+
+        val e = assertFailsWith<FilesyncSharingException.NotReviewedByOwner> { sharing.sharedBy(frodo) }
+        assertEquals(frodo, e.owner)
+    }
+
+    @Test
+    fun filesWhoseKeyTheOwnerHasntSealedHereYetSaySo() = runTest {
+        sharedPages += """{"searchResults":[${fromFrodo(samsCircle)}],"hasMoreRows":false}"""
+
+        assertFailsWith<FilesyncSharingException.NotSealedYet> { sharing.sharedBy(frodo) }
+    }
+
+    @Test
+    fun loggingOutForgetsTheCircleKeys() = runTest {
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
+        sharing.forgetKeys()
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
+
+        assertEquals(2, calls.count { "/connections/circles/" in it.path && it.path.endsWith("/share-key") && it.request.method == HttpMethod.Get })
     }
 
     @Test

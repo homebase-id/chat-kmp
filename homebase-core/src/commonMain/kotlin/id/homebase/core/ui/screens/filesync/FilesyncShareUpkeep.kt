@@ -31,6 +31,11 @@ class FilesyncShareUpkeep(
         scope.launch { online.filter { it }.collect { upkeep() } }
     }
 
+    /** At logout: the next identity's first time online isn't skipped as too soon. */
+    fun reset() {
+        lastRun = null
+    }
+
     internal suspend fun upkeep() {
         // A phone comes back online on every return to the foreground.
         if (lastRun?.let { it.elapsedNow() < MIN_INTERVAL } == true) return
