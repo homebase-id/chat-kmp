@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SmartToy
@@ -36,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
@@ -217,7 +217,7 @@ fun AgentUiFrame(
     CompositionLocalProvider(LocalContentColor provides contentColorFor(container)) {
         Column(
             modifier
-                .widthIn(max = 360.dp)
+                .agentUiFrameWidth()
                 .clip(RoundedCornerShape(24.dp))
                 .background(container)
                 .then(
@@ -229,6 +229,13 @@ fun AgentUiFrame(
             content = content,
         )
     }
+}
+
+/** Caps the card at a readable bubble width that grows on wide windows. */
+private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constraints ->
+    val cap = (if (constraints.maxWidth >= 600.dp.roundToPx()) 520.dp else 360.dp).roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = minOf(constraints.minWidth, cap), maxWidth = minOf(constraints.maxWidth, cap)))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
 
 @Composable

@@ -5,7 +5,8 @@ object AgentUiFixtures {
 
     fun draftPostCardJson(): String = """
         {"root":"card","nodes":[
-          {"id":"card","type":"card","tone":"default","children":["pics","caption","chips","actions"]},
+          {"id":"card","type":"card","tone":"default","children":["head","pics","caption","chips","actions"]},
+          {"id":"head","type":"text","style":"title","markdown":"Draft post"},
           {"id":"pics","type":"list","direction":"horizontal","children":["img0","img1"]},
           {"id":"img0","type":"image","payloadKey":"chat_web0","alt":"Slide one: the spring launch"},
           {"id":"img1","type":"image","payloadKey":"chat_web1","alt":"Slide two: the team"},

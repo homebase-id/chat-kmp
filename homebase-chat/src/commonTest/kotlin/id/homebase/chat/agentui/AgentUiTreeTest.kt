@@ -27,11 +27,11 @@ class AgentUiTreeTest {
     @Test fun reference_card_decodes() {
         val t = AgentUiFixtures.decodeDraftPostCard()
         val card = assertIs<AgentUiNode.Card>(t.root)
-        assertEquals(4, card.children.size)
-        val list = assertIs<AgentUiNode.ListNode>(card.children[0])
+        assertEquals(5, card.children.size)
+        val list = assertIs<AgentUiNode.ListNode>(card.children[1])
         assertEquals(ListDirection.Horizontal, list.direction)
         assertTrue(list.children.all { it is AgentUiNode.Image })
-        val actions = assertIs<AgentUiNode.Row>(card.children[3])
+        val actions = assertIs<AgentUiNode.Row>(card.children[4])
         val buttons = actions.children.map { assertIs<AgentUiNode.Button>(it) }
         assertEquals(listOf("approve", "edit", "discard"), buttons.map { it.action?.id })
         assertEquals(ButtonStyle.Destructive, buttons[2].style)

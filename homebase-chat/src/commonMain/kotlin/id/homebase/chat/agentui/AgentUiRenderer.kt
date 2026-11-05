@@ -1,7 +1,8 @@
-@file:OptIn(ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package id.homebase.chat.agentui
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -12,29 +13,34 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,16 +51,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -198,29 +209,72 @@ private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = container, contentColor = contentColorFor(container)),
     ) {
-        CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.padding(16.dp))
+        if (node.tone == Tone.Error) {
+            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(20.dp))
+                CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.weight(1f))
+            }
+        } else {
+            CardBody(node.children, env, Arrangement.spacedBy(8.dp), Modifier.padding(16.dp))
+        }
     }
 }
 
 @Composable
 private fun ChipView(node: AgentUiNode.Chip, modifier: Modifier) {
-    val selected = node.selected
-    Surface(
-        modifier = modifier.semantics(mergeDescendants = true) { this.selected = selected },
-        shape = MaterialTheme.shapes.small,
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
+    AgentChip(node.label, node.selected, modifier)
+}
+
+/** One chip for display chips and select options; the selected shape rounds to a pill. */
+@Composable
+private fun AgentChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+) {
+    val corner by animateDpAsState(if (selected) ChipHeight / 2 else 8.dp)
+    val shape = RoundedCornerShape(corner)
+    val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
+    val content = (if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+        .let { if (enabled) it else it.copy(alpha = 0.38f) }
+    val border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    val body: @Composable () -> Unit = {
         Row(
-            Modifier.heightIn(min = 32.dp).padding(start = if (selected) 8.dp else 16.dp, end = 16.dp),
+            // At least the touch-target width, so a short label is not centred inside a wider target.
+            Modifier.height(ChipHeight).widthIn(min = 48.dp).padding(start = if (selected) 8.dp else 16.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         ) {
             if (selected) Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize))
-            Text(node.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+    if (onClick == null) {
+        Surface(modifier.semantics(mergeDescendants = true) { this.selected = selected }, shape = shape, color = container, contentColor = content, border = border, content = body)
+    } else {
+        Surface(
+            selected = selected,
+            onClick = onClick,
+            modifier = modifier.trimTouchTarget(ChipHeight).semantics { role = Role.RadioButton },
+            enabled = enabled,
+            shape = shape,
+            color = container,
+            contentColor = content,
+            border = border,
+            content = body,
+        )
+    }
+}
+
+private val ChipHeight = 32.dp
+
+/** Lays out a control at its visual height; its 48dp touch target bleeds into the surrounding gap. */
+private fun Modifier.trimTouchTarget(visualHeight: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val trim = ((placeable.height - visualHeight.roundToPx()) / 2).coerceAtLeast(0)
+    layout(placeable.width, placeable.height - 2 * trim) { placeable.place(0, -trim) }
 }
 
 @Composable
@@ -243,57 +297,81 @@ private fun ImageView(node: AgentUiNode.Image, env: Env, modifier: Modifier) {
 
 @Composable
 private fun AltBox(alt: String, modifier: Modifier, note: String? = null) {
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Outlined.BrokenImage, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(alt, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
-            note?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    val onColor = MaterialTheme.colorScheme.onSecondaryContainer
+    Box(modifier.background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.TopStart) {
+        Column(Modifier.fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Outlined.BrokenImage, contentDescription = null, tint = onColor)
+            Text(alt, style = MaterialTheme.typography.bodyMedium, color = onColor, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            note?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = onColor) }
         }
     }
 }
 
+private val NumericCell = Regex("""[-+]?[$€£]?\d[\d.,\s]*[kKmMbB%]?""")
+
 @Composable
 private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
     val divider = MaterialTheme.colorScheme.outlineVariant
+    val columns = maxOf(node.header.size, node.rows.maxOfOrNull { it.size } ?: 0)
+    val numeric = List(columns) { c ->
+        val cells = node.rows.mapNotNull { it.getOrNull(c)?.trim()?.takeIf(String::isNotEmpty) }
+        cells.isNotEmpty() && cells.all(NumericCell::matches)
+    }
+    @Composable
+    fun TableRow(cells: List<String>, style: TextStyle, color: Color) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            cells.forEachIndexed { c, cell ->
+                val isNumber = numeric.getOrElse(c) { false }
+                Text(
+                    cell,
+                    Modifier.weight(if (isNumber) 1f else 2f),
+                    style = style,
+                    color = color,
+                    textAlign = if (isNumber) TextAlign.End else TextAlign.Start,
+                )
+            }
+        }
+    }
     Column(modifier.fillMaxWidth()) {
         if (node.header.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                for (cell in node.header) Text(cell, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            TableRow(node.header, MaterialTheme.typography.labelLarge, MaterialTheme.colorScheme.onSurfaceVariant)
             HorizontalDivider(color = divider)
         }
         node.rows.forEachIndexed { i, row ->
             if (i > 0) HorizontalDivider(color = divider)
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                for (cell in row) Text(cell, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            }
+            TableRow(row, MaterialTheme.typography.bodyMedium, LocalContentColor.current)
         }
     }
 }
 
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
-    val enabled = env.usable(node.action, needsAction = true)
     val busy = node.action?.id?.let { it in env.pending } == true
+    val enabled = env.usable(node.action, needsAction = true)
     val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
+    val shapes = ButtonDefaults.shapes()
+    val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
     val label: @Composable () -> Unit = {
         if (busy) {
-            CircularProgressIndicator(Modifier.size(ButtonDefaults.IconSize), color = LocalContentColor.current, strokeWidth = 2.dp)
+            LoadingIndicator(Modifier.size(ButtonDefaults.IconSize + 6.dp), color = LocalContentColor.current)
             Box(Modifier.width(ButtonDefaults.IconSpacing))
         }
         Text(node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+    // A sent action stays disabled, but keeps its colours so it reads as in progress, not unavailable.
+    fun ButtonColors.busyAware() = if (busy) copy(disabledContainerColor = containerColor, disabledContentColor = contentColor) else this
     when (node.style) {
-        ButtonStyle.Filled -> Button(onClick, modifier, enabled = enabled) { label() }
-        ButtonStyle.Tonal -> FilledTonalButton(onClick, modifier, enabled = enabled) { label() }
-        ButtonStyle.Outlined -> OutlinedButton(onClick, modifier, enabled = enabled) { label() }
-        ButtonStyle.Text -> TextButton(onClick, modifier, enabled = enabled) { label() }
+        ButtonStyle.Filled -> Button(onClick, shapes, m, enabled, ButtonDefaults.buttonColors().busyAware()) { label() }
+        ButtonStyle.Tonal -> FilledTonalButton(onClick, shapes, m, enabled, ButtonDefaults.filledTonalButtonColors().busyAware()) { label() }
+        ButtonStyle.Outlined -> OutlinedButton(onClick, shapes, m, enabled, ButtonDefaults.outlinedButtonColors().busyAware()) { label() }
+        ButtonStyle.Text -> TextButton(onClick, shapes, m, enabled, ButtonDefaults.textButtonColors().busyAware()) { label() }
         ButtonStyle.Destructive -> OutlinedButton(
             onClick,
-            modifier,
-            enabled = enabled,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            border = BorderStroke(1.dp, if (enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant),
+            shapes,
+            m,
+            enabled,
+            ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error).busyAware(),
+            border = BorderStroke(1.dp, if (enabled || busy) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant),
         ) { label() }
     }
 }
@@ -313,7 +391,7 @@ private fun ToggleView(node: AgentUiNode.Toggle, env: Env, modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(node.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Text(node.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
@@ -340,22 +418,14 @@ private fun TextInputView(node: AgentUiNode.TextInput, env: Env, modifier: Modif
 private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
     val enabled = env.usable(node.action)
     val current = env.inputs[node.id] ?: node.value
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(node.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             for (option in node.options) key(option.id) {
-                FilterChip(
-                    selected = current == option.id,
-                    onClick = {
-                        env.inputs[node.id] = option.id
-                        node.action?.let { env.fire(it, node.id, option.label) }
-                    },
-                    enabled = enabled,
-                    label = { Text(option.label) },
-                    leadingIcon = if (current == option.id) {
-                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
-                    } else null,
-                )
+                AgentChip(option.label, current == option.id, enabled = enabled) {
+                    env.inputs[node.id] = option.id
+                    node.action?.let { env.fire(it, node.id, option.label) }
+                }
             }
         }
     }
