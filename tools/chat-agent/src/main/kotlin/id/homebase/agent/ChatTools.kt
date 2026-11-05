@@ -2,6 +2,7 @@ package id.homebase.agent
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
+import id.homebase.chat.agentui.AgentUiDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.groodle.GroodleVote
 import id.homebase.api.file.JvmFileOperationsProvider
@@ -38,12 +39,12 @@ const val MCP_SERVER_NAME = "chat"
 const val LOCKED_TOOL_CALL_CAP = 5
 private const val LEASE_GRACE_MS = 60_000L
 private const val UNTRUSTED_TAG = "untrusted_chat"
-private val SENDING_TOOLS = setOf("send_message", "send_file", "request_approval", VOICE_REPLY_TOOL, NOTIFY_TOOL) + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
+private val SENDING_TOOLS = setOf("send_message", "send_file", "request_approval", VOICE_REPLY_TOOL, NOTIFY_TOOL, SEND_UI_TOOL) + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
 private val LEASE_KEY = AttributeKey<ToolRun>("chat-agent-run")
 
 private val READ_TOOLS = setOf("read_messages", "search_messages", "get_conversation")
 private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact", "vote_poll", "vote_groodle") + TYPED_SEND_TOOLS
-private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES + APPROVAL_TOOL_NAMES + NOTIFY_TOOL
+private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + AGENT_UI_TOOLS + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES + APPROVAL_TOOL_NAMES + NOTIFY_TOOL
 
 fun chatToolNames(tier: Tier, voice: Boolean = false): Set<String> =
     if (tier == Tier.OPERATOR) OPERATOR_TOOLS.let { if (voice) it + VOICE_REPLY_TOOL else it } else LOCKED_TOOLS
@@ -212,6 +213,12 @@ class WatcherBackend(
 
     override suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor) =
         sendToConversation(session, allowlist, conversationId, "", typed = MessageContent.ViewOnce(descriptor), media = staged)
+
+    override suspend fun sendAgentUi(conversationId: Uuid, descriptor: AgentUiDescriptor, tree: ByteArray, images: List<OutFile>) =
+        sendAgentUiCard(session, allowlist, conversationId, descriptor, tree, images)
+
+    override suspend fun editAgentUi(conversationId: Uuid, message: ChatMsg, descriptor: AgentUiDescriptor, tree: ByteArray) =
+        editAgentUiCard(session, allowlist, conversationId, message, descriptor, tree)
 
     override fun visible(messages: List<ChatMsg>, conversationId: Uuid) = visibleTo(messages)
 

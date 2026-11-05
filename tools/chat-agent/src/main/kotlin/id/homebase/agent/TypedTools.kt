@@ -72,7 +72,7 @@ fun fitDisclosed(disclose: (String) -> String, text: String, limit: Int): String
     return disclose(text.truncateToCodePoints(limit - overhead)).trim()
 }
 
-private fun listArg(args: JsonObject?, name: String): List<String> =
+internal fun listArg(args: JsonObject?, name: String): List<String> =
     args?.get(name)?.let { raw -> requireNotNull(raw as? JsonArray) { "$name must be a list" }.map { it.jsonPrimitive.content } }.orEmpty()
 
 private fun numberArg(args: JsonObject?, name: String): Double {

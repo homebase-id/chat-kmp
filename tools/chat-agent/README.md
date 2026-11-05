@@ -186,6 +186,8 @@ A failed run is retried once on the next poll, then `failed: ...` is sent (prefi
     watch            # websocket doorbell + poll (see Transport)
     call --to <odinId> --say <text>   # place the owner call by hand (operators only, needs calls=on); prints the outcome
     mcp              # stdio MCP server: list_conversations, read_messages, send_message, send_file
+    send-ui --conversation <id> --tree <file.json> --fallback <text> [--title <t>] [--images a.png,b.png]   # send a card by hand, prints its id
+    edit-ui --conversation <id> --message <id> --tree <file.json> [--fallback <text>] [--title <t>]         # replace a card's tree, bumps rev
 
 ## Transport
 
@@ -532,11 +534,22 @@ app renders them as its own:
 | `send_video` | `path`, `caption`, `replyToId` | `.mp4` up to 5 MB from `mcpFilesDir`; real video message with thumbnail and duration |
 | `send_voice` | `path`, `caption`, `replyToId` | audio file (m4a, mp3, wav, ogg, aac, opus, up to 10 MB) from `mcpFilesDir` as a voice note |
 | `send_view_once` | `path`, `caption` | one image (png, jpeg, gif) or one `.mp4` (up to 5 MB, needs ffmpeg and ffprobe) from `mcpFilesDir` as a view-once message; operator tier only |
+| `send_ui` | `tree`, `fallback` (max 1000 chars), `title` (max 80), `images` (up to 10 files from `mcpFilesDir`, payload keys `chat_web0..9` in order) | an interactive card (dataType 218, `AGENT_UI.md`); the tree is validated with the app's `AgentUiTree.decode` and refused with its reason; returns the message id; refused where the AI disclosure is required; operator tier only |
+| `edit_ui` | `messageId`, `tree`, `fallback`, `title` | replaces one of this identity's cards: re-uploads the `agent_ui` payload and bumps `rev`, so older actions go stale; operator tier only |
 
 On a disclosed send (the `me` profile outside note-to-self) the "AI assistant" disclosure goes into a field recipients
 always see, and your own text gives way to it: the poll question, the event title, the location caption, the contact's
 organization line (a card has no other free text, so saving the contact keeps that line), and the caption of a video or
 voice note. A vote carries no text, so it shows only as the owner's vote, like `react`.
+
+### Card actions
+
+A tap on a card comes back as a dataType 219 message, and the watcher hands it to the brain as an addressed trigger (no
+nickname needed, in any room) at the actor's tier: an operator's tap runs the operator brain. The trigger names the actor,
+the card (id, title) and its `actionId` and `rev`, and puts the label and values inside an `<untrusted_chat_...>` block.
+Rejected without a run: the bot's own actions, actions on a message that is not this bot's card or is not in the recent
+history window, actions older than the card's `rev`, and a repeat of an earlier action by the same person with the same
+`rev`, `actionId` and values. After a terminal action (Approve, Discard) call `edit_ui` to take the buttons off.
 
 ### View-once media
 

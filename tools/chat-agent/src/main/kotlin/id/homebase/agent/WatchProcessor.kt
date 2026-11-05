@@ -84,9 +84,10 @@ class WatchProcessor(
     suspend fun handleAll(msgs: List<ChatMsg>): Map<Uuid, String> {
         val results = LinkedHashMap<Uuid, String>()
         val eligible = ArrayList<ChatMsg>()
-        val batch = (pending.values + msgs).distinctBy { it.id }
         cues.clear()
         fetched.clear()
+        val raw = (pending.values + msgs).distinctBy { it.id }
+        val batch = raw.mapNotNull { resolveCardAction(it, raw, results) }
         resolveReplies(batch)
         for (msg in batch) {
             if (msg.id in seen && msg.id !in pending) { results[msg.id] = "seen"; continue }
@@ -117,20 +118,36 @@ class WatchProcessor(
             if (isBotNoise(msg) || !allow.allowsConversation(msg.conversationId)) continue
             if (cue(msg) == Cue.ADDRESSED) continue
             val parentId = replyParentId(msg.rawContent) ?: continue
-            val parent = batch.firstOrNull { it.id == parentId }
-                ?: (fetched[msg.conversationId] ?: try {
-                    history(msg.conversationId).also { fetched[msg.conversationId] = it }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    emptyList()
-                }).firstOrNull { it.id == parentId }
+            val parent = batch.firstOrNull { it.id == parentId } ?: recent(msg.conversationId).firstOrNull { it.id == parentId }
             when {
                 parent == null -> log("${msg.id} reply parent $parentId not found in the recent window, not treated as addressed")
                 isOwn(parent) -> cues[msg.id] = Cue.ADDRESSED
             }
         }
     }
+
+    private suspend fun recent(conversation: Uuid) = fetched[conversation] ?: try {
+        history(conversation).also { fetched[conversation] = it }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private suspend fun resolveCardAction(msg: ChatMsg, batch: List<ChatMsg>, results: MutableMap<Uuid, String>): ChatMsg? {
+        if (!isCardAction(msg) || msg.expanded || (msg.id in seen && msg.id !in pending) || msg.id in store) return msg
+        if (!allow.allowsConversation(msg.conversationId)) return msg
+        return when (val check = checkCardAction(msg, batch + recent(msg.conversationId), ::isOwn, identity)) {
+            is CardActionCheck.Accepted -> check.trigger
+            is CardActionCheck.Rejected -> {
+                store.add(msg.id)
+                finish(msg.id, check.reason, results)
+                null
+            }
+        }
+    }
+
+    private fun isCardAction(msg: ChatMsg) = msg.dataType == ChatProtocol.ChatAgentUiActionMessageDataType
 
     private suspend fun takeHistory(conversation: Uuid) = fetched.remove(conversation) ?: history(conversation)
 
@@ -397,7 +414,7 @@ class WatchProcessor(
 
     private fun cue(msg: ChatMsg) = cues.getOrPut(msg.id) {
         when {
-            mentioned(msg) -> Cue.ADDRESSED
+            isCardAction(msg) || mentioned(msg) -> Cue.ADDRESSED
             config.bot && followUpOpen(msg) -> Cue.FOLLOWUP
             config.bot && msg.conversationId in config.listenRooms && !isBotNoise(msg) && !isChatter(msg.text) -> Cue.LISTEN
             else -> Cue.NONE

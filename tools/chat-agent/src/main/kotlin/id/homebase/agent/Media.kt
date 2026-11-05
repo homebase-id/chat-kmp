@@ -135,6 +135,12 @@ private fun typedLabel(dataType: Int?, rawContent: String?, reactions: ReactionS
             "${d.lat},${d.lon}" + listOfNotNull(d.caption, d.address).firstOrNull { it.isNotBlank() }?.let { " ${it.oneLine(NAME_CODEPOINTS)}" }.orEmpty() + liveShareLabel(d.liveShareUntilMs)
         } ?: content.displayLabel)
         is MessageContent.CallEvent -> "call" to content.displayLabel
+        is MessageContent.AgentUi -> "card" to (content.descriptor?.let { d ->
+            listOfNotNull(d.title?.takeIf { it.isNotBlank() }?.oneLine(NAME_CODEPOINTS), d.fallback.oneLine(TYPED_LABEL_CODEPOINTS), "rev ${d.rev}").joinToString(" | ")
+        } ?: content.displayLabel)
+        is MessageContent.AgentUiAction -> "card action" to (content.descriptor?.let { d ->
+            "${d.label.oneLine(NAME_CODEPOINTS)} (${d.actionId}) on ${d.target.toString().take(ID_PREFIX)} rev ${d.rev}"
+        } ?: content.displayLabel)
         is MessageContent.ViewOnce -> return viewOnceLabel(content.descriptor, payloads, reactions, ctx)
         is MessageContent.Unknown -> return "[unsupported message kind ${content.dataType}]"
     }

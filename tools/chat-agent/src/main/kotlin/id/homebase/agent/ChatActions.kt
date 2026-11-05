@@ -21,7 +21,13 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.agentui.AgentUiDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.upload.PayloadBundle
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import id.homebase.chat.groodle.GroodleVote
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.poll.PollVote
@@ -172,6 +178,55 @@ suspend fun editOwnMessage(session: Session, allowlist: Allowlist, conversationI
         ),
     )
     requireNotNull(result) { "edit was rejected (the message changed meanwhile)" }
+}
+
+suspend fun editAgentUiCard(session: Session, allowlist: Allowlist, conversationId: Uuid, message: ChatMsg, descriptor: AgentUiDescriptor, tree: ByteArray) {
+    allowlist.requireSend(conversationId)
+    require(message.dataType == ChatProtocol.ChatAgentUiMessageDataType) { "only agent cards can be edited with edit_ui" }
+    val file = messageFile(session, conversationId, message.id)
+    val metadata = file.fileMetadata
+    require(metadata.senderOdinId == null || metadata.senderOdinId == session.identity) { "you can only edit your own cards" }
+    val versionTag = metadata.versionTag ?: error("message has no version tag")
+    val recipients = conversationRecipients(conversationFor(session, allowlist, conversationId), session.identity)
+    val fileOps = JvmFileOperationsProvider()
+    val aesKey = file.keyHeader.aesKey
+    val plain = PayloadBundle(listOf(agentUiPayload(tree, fileOps)), emptyList(), emptyList())
+    try {
+        val encrypted = payloadEncryptor(fileOps).encryptBundle(message.id, plain, aesKey, CoroutineScope(currentCoroutineContext()))
+        val keyHeader = KeyHeader(KeyHeader.newRandom16().iv, aesKey)
+        val update = UploadFileMetadata(
+            allowDistribution = recipients.isNotEmpty(),
+            isEncrypted = true,
+            versionTag = versionTag,
+            appData = UploadAppFileMetaData(
+                uniqueId = message.id,
+                groupId = conversationId,
+                fileType = ChatProtocol.MessageFileType,
+                dataType = ChatProtocol.ChatAgentUiMessageDataType,
+                userDate = metadata.appData.userDate ?: message.userDate,
+                content = typedHeader(MessageContent.AgentUi(descriptor)).header,
+                previewThumbnail = metadata.appData.previewThumbnail,
+            ),
+        )
+        val result = DriveUploadProvider(session.http, session.credentials, fileOps).updateFileByUniqueId(
+            UpdateFileByUniqueIdRequest(
+                driveId = chatDrive,
+                uniqueId = message.id,
+                keyHeader = keyHeader,
+                instructions = FileUpdateInstructionSet(
+                    transferIv = KeyHeader.newRandom16().iv,
+                    locale = UpdateLocale.Local,
+                    recipients = recipients,
+                    manifest = UpdateManifest.build(payloads = encrypted.payloads),
+                ),
+                metadata = update.encryptContent(keyHeader),
+                payloads = encrypted.payloads,
+            ),
+        )
+        requireNotNull(result) { "card edit was rejected (the message changed meanwhile)" }
+    } finally {
+        plain.payloads.forEach { runCatching { File(it.filePath).delete() } }
+    }
 }
 
 // reactToMessage rejects '_' codes, and this one is not an emoji

@@ -142,7 +142,7 @@ suspend fun outgoingBundle(text: String, files: List<OutFile>, fileOps: JvmFileO
     return StagedBundle(buildLinkPreviewBundle(preview, fileOps))
 }
 
-private fun payloadEncryptor(fileOps: JvmFileOperationsProvider) =
+internal fun payloadEncryptor(fileOps: JvmFileOperationsProvider) =
     PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
 
 suspend fun sendToConversation(

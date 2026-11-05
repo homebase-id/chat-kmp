@@ -7,9 +7,9 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 
 private const val USAGE =
-    "usage: chat-agent login --profile <p> [--identity <domain>] [--no-browser] [--callback-port <n>] | read --profile <p> [--conversation <id>] [--limit <n>] [--full <message id prefix>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | call --profile <p> --to <odinId> --say <text> | brain-test --profile <p>  (global: --verbose, --version)"
+    "usage: chat-agent login --profile <p> [--identity <domain>] [--no-browser] [--callback-port <n>] | read --profile <p> [--conversation <id>] [--limit <n>] [--full <message id prefix>] | conversations --profile <p> | send --profile <p> [--conversation <id>] [--file <path>] [text] | watch --profile <p> | mcp --profile <p> [--conversation <id>] [--read-only] | call --profile <p> --to <odinId> --say <text> | send-ui --profile <p> --conversation <id> --tree <file.json> --fallback <text> [--title <t>] [--images <a.png,b.png>] | edit-ui --profile <p> --conversation <id> --message <id> --tree <file.json> [--fallback <text>] [--title <t>] | brain-test --profile <p>  (global: --verbose, --version)"
 
-private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--file", "--callback-port", "--full", "--to", "--say")
+private val VALUE_FLAGS = setOf("--profile", "--conversation", "--limit", "--identity", "--file", "--callback-port", "--full", "--to", "--say", "--tree", "--fallback", "--title", "--images", "--message")
 private const val VERBOSE = "--verbose"
 private const val READ_ONLY = "--read-only"
 private const val ATTACH_LATEST = "--attach-latest-image"
@@ -42,7 +42,7 @@ fun main(args: Array<String>) {
     val sendText = positional.drop(1).joinToString(" ")
     Logger.setMinSeverity(if (verbose) Severity.Verbose else Severity.Warn)
     val profile = options["--profile"]
-    if (command !in setOf("login", "read", "conversations", "send", "watch", "call", "mcp", "brain-test", "tools-check") || profile == null) {
+    if (command !in setOf("login", "read", "conversations", "send", "watch", "call", "mcp", "brain-test", "tools-check", "send-ui", "edit-ui") || profile == null) {
         System.err.println(USAGE)
         exitProcess(2)
     }
@@ -62,6 +62,8 @@ fun main(args: Array<String>) {
                 "tools-check" -> if (sendText.startsWith("typed")) toolsCheckTyped(profile, sendText.removePrefix("typed").trim().ifEmpty { null }) else toolsCheck(profile)
                 "mcp" -> mcp(profile, options["--conversation"]?.let { Uuid.parse(it) }, readOnly)
                 "conversations" -> conversations(profile)
+                "send-ui" -> sendUiCommand(profile, options["--conversation"]?.let { Uuid.parse(it) }, options["--tree"], options["--fallback"], options["--title"], options["--images"])
+                "edit-ui" -> editUiCommand(profile, options["--conversation"]?.let { Uuid.parse(it) }, options["--message"], options["--tree"], options["--fallback"], options["--title"])
                 else -> read(
                     profile,
                     options["--limit"]?.toIntOrNull() ?: 20,

@@ -2,6 +2,7 @@ package id.homebase.agent
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
+import id.homebase.chat.agentui.AgentUiDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.groodle.GroodleVote
 import id.homebase.api.file.JvmFileOperationsProvider
@@ -78,6 +79,8 @@ interface AgentBackend {
     suspend fun sendVoice(conversationId: Uuid, voice: OutVoice, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending voice notes is not supported")
     suspend fun speak(text: String): OutVoice = error("voice is not configured")
     suspend fun sendViewOnce(conversationId: Uuid, staged: suspend (KeyHeader, JvmFileOperationsProvider) -> StagedBundle, descriptor: ViewOnceDescriptor): Uuid = error("sending view-once media is not supported")
+    suspend fun sendAgentUi(conversationId: Uuid, descriptor: AgentUiDescriptor, tree: ByteArray, images: List<OutFile>): Uuid = error("agent cards are not supported")
+    suspend fun editAgentUi(conversationId: Uuid, message: ChatMsg, descriptor: AgentUiDescriptor, tree: ByteArray): Unit = error("agent cards are not supported")
 }
 
 val DEFAULT_FFMPEG by lazy { Ffmpeg() }
@@ -245,6 +248,12 @@ class SessionBackend(private val profile: String, private val scope: Uuid? = nul
 
     override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: ReplyPreview?) =
         sendToConversation(open(), allowlist, conversationId, caption, replyTo, files = listOf(file))
+
+    override suspend fun sendAgentUi(conversationId: Uuid, descriptor: AgentUiDescriptor, tree: ByteArray, images: List<OutFile>) =
+        sendAgentUiCard(open(), allowlist, conversationId, descriptor, tree, images)
+
+    override suspend fun editAgentUi(conversationId: Uuid, message: ChatMsg, descriptor: AgentUiDescriptor, tree: ByteArray) =
+        editAgentUiCard(open(), allowlist, conversationId, message, descriptor, tree)
 }
 
 class ToolDef(
@@ -317,7 +326,7 @@ private val BASE_TOOLS: List<ToolDef> = listOf(
     ToolDef("delete_message", "Delete one of your own messages for everyone.", buildJsonObject { put("messageId", MESSAGE_PROP) }, listOf("messageId"), stdio = false, write = true) { b, a -> toolDeleteMessage(b, a) },
 )
 
-val CHAT_TOOLS: List<ToolDef> = BASE_TOOLS + typedTools() + scheduleTools() + approvalTools() + notifyTools()
+val CHAT_TOOLS: List<ToolDef> = BASE_TOOLS + typedTools() + agentUiTools() + scheduleTools() + approvalTools() + notifyTools()
 
 fun isValidReaction(emoji: String) = emoji.isNotBlank() && emoji.length <= 8 && !emoji.startsWith("_")
 
