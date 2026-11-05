@@ -115,10 +115,14 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides(palette = CardPalette(accent = "#F26B5B"), socials = "bar", type = CardTypeface(display = "newsreader")),
     )
 
-    private val schemed = base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45").with(CardOption.ACCENT, "#F2B84B"))
+    private val boardForest = CardDesignSpecs.of(CardDesign.BOARD)!!.schemes.first { it.id == "forest" }
+    private val schemed = base.copy(
+        previewDesign = CardDesign.BOARD,
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, boardForest.ground).with(CardOption.ACCENT, boardForest.accents.first()),
+    )
     private val collageSchemed = base.copy(
         previewDesign = CardDesign.COLLAGE,
-        previewOverrides = CardOverrides().with(CardOption.COLOURS, "#DDE5D3"),
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, CardDesignSpecs.of(CardDesign.COLLAGE)!!.schemes.first { it.id == "mist" }.ground),
     )
     private val dossierSchemed = base.copy(
         previewDesign = CardDesign.DOSSIER,
@@ -372,15 +376,34 @@ class ProfileCardEditorShotsTest {
             heightDp = REDMI_H,
             act = tool("Content style"),
         ),
+        polishCustomise("p24-styles-board", schemed),
+        polishCustomise("p25-styles-poster", base.copy(previewDesign = CardDesign.POSTER)),
+        polishCustomise("p26-styles-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[3], CardDesign.BOARD))),
+        Shot("p27-styles-font-scale", base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, fontScale = 1.6f),
+        Shot("p28-styles-wide", schemed, EditorStep.Customise, widthDp = 900, heightDp = 820),
+        Shot("p29-styles-small-order", base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
+        Shot("p30-styles-wide-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[2], CardDesign.BOARD)), EditorStep.Customise, widthDp = 1200, heightDp = 820),
         polishCustomise("p09-accent-dark-scheme", schemed, tool("Accent colour")),
         polishCustomise("p10-accent-light-scheme", collageSchemed, tool("Accent colour")),
         polishCustomise("p11-accent-default-scheme", base, tool("Accent colour")),
         polishCustomise(
             "p12-accent-saved-off-palette",
-            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45").with(CardOption.ACCENT, "#123456")),
+            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.COLOURS, boardForest.ground).with(CardOption.ACCENT, "#123456")),
             tool("Accent colour"),
         ),
         polishCustomise("p13-colours-row", schemed),
+        polishCustomise("p31-styles-bare-default", base.copy(previewDesign = CardDesign.COLLAGE)),
+        polishCustomise("p32-styles-friends-template-sage", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = cardTemplateFor(friendsCard)!!.overrides)),
+        polishCustomise("p34-styles-public-template-mint", base.copy(previewDesign = CardDesign.LINKS, previewOverrides = PUBLIC_CARD_TEMPLATE.overrides)),
+        polishCustomise(
+            "p35-styles-default-keeps-fonts",
+            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.DISPLAY_FONT, "caveat").with(CardOption.PORTRAIT_SHAPE, "ellipse").prunedFor(CardDesign.BOARD)),
+        ),
+    ) + CardDesign.all.flatMap { design ->
+        listOf(1f, 1.6f).map { scale ->
+            Shot("p33-styles-$design-360-x$scale", base.copy(previewDesign = design), EditorStep.Customise, widthDp = 360, heightDp = 720, fontScale = scale)
+        }
+    } + listOf(
         polishCustomise("p14-colours-saved-off-design", base.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45"))),
     )
 
@@ -585,6 +608,45 @@ class ProfileCardEditorShotsTest {
                     assertEquals(1, saved)
                 }
             }
+        }
+    }
+
+    private fun customiseStep(state: ProfileCardUiState, step: EditorStep, mode: EditorMode, onStyle: (ResolvedCardStyle) -> Unit = {}, check: ComposeUiTest.() -> Unit) {
+        runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
+            setContent {
+                CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+                    HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                        CardExpressiveTheme {
+                            ProfileCardEditorContent(
+                                uiState = state,
+                                mode = mode,
+                                step = step,
+                                onStep = {},
+                                onBack = {},
+                                onSelect = {},
+                                onOption = { _, _ -> },
+                                onBlockOrder = {},
+                                onSave = {},
+                                onStyle = onStyle,
+                                snackbarHostState = remember { SnackbarHostState() },
+                            ) { Box(Modifier.fillMaxSize()) }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            check()
+        }
+    }
+
+    @Test
+    fun theCustomiseStepListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
+        val applied = mutableListOf<ResolvedCardStyle>()
+        customiseStep(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
+            for (name in listOf("Default", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum")) onNodeWithText(name).assertExists()
+            for (name in listOf("Forest", "Sage", "Paper", "Purple")) onAllNodesWithText(name).assertCountEquals(0)
+            onNodeWithText("Wine").performClick()
+            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "wine" }), applied)
         }
     }
 
