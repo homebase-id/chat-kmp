@@ -14,6 +14,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -134,7 +136,7 @@ class PhotoBackupRunTest {
         val (run, _) = newRun(uploader)
 
         val going = launch { run.run(request()) }
-        advanceUntilIdle()
+        advanceTimeBy(1.seconds)
 
         assertEquals(BackupState.Hashed.code, state("a"))
         assertTrue(dedupeCalls.isEmpty())
@@ -154,7 +156,7 @@ class PhotoBackupRunTest {
         val (run, _) = newRun(uploader)
 
         val going = launch { assertEquals(BackupRunOutcome.Paused, run.run(request())) }
-        advanceUntilIdle()
+        advanceTimeBy(1.seconds)
         signedIn.complete(false)
         going.join()
 
@@ -267,6 +269,40 @@ class PhotoBackupRunTest {
         assertEquals(BackupState.Skipped.code, state("a"))
         assertEquals("asset gone", ledger.row("a")!!.lastError)
         assertEquals(BackupState.Done.code, state("b"))
+    }
+
+    @Test
+    fun losingWifiStopsTheRunAndLeavesTheRestForLater() = runTest {
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val (run, _) = newRun(uploader())
+
+        val outcome = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        assertFalse(outcome.isCompleted)
+        probe.state = probe.state.copy(isUnmetered = false)
+        advanceTimeBy(6.seconds)
+
+        assertEquals(BackupRunOutcome.Paused, outcome.await())
+        assertEquals(BackupPauseReason.WaitingForWifi, run.status.value.pauseReason)
+        assertEquals(BackupState.New.code, state("slow"))
+    }
+
+    @Test
+    fun losingWifiDoesNotStopARunThatMayUseMobileData() = runTest {
+        settings = settings.copy(wifiOnly = false)
+        hashGates["slow"] = CompletableDeferred()
+        source.next = fullListing(asset("slow"))
+        val (run, _) = newRun(uploader())
+
+        val outcome = async { run.run(request()) }
+        advanceTimeBy(1.seconds)
+        probe.state = probe.state.copy(isUnmetered = false)
+        advanceTimeBy(6.seconds)
+
+        assertFalse(outcome.isCompleted)
+        hashGates.getValue("slow").complete(Unit)
+        assertEquals(BackupRunOutcome.Finished, outcome.await())
     }
 
     @Test

@@ -106,7 +106,7 @@ class PhotoBackupRun(
         val timings = BackupTimings()
         val started = TimeSource.Monotonic.markNow()
         return try {
-            withContext(timings) { runLocked(request) }
+            withContext(timings) { stoppingWhenWifiIsLost { runLocked(request) } }
         } finally {
             hasher.forgetAll()
             Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
@@ -114,6 +114,29 @@ class PhotoBackupRun(
             _status.update { it.copy(isRunning = false) }
             mutex.unlock()
         }
+    }
+
+    /** Wi-Fi only holds for the whole run, not just its start. A download or send already under way can't be recalled. */
+    private suspend fun stoppingWhenWifiIsLost(run: suspend () -> BackupRunOutcome): BackupRunOutcome = coroutineScope {
+        val running = async { run() }
+        val wifiLost = async { awaitWifiLost() }
+        select {
+            running.onAwait { outcome ->
+                wifiLost.cancel()
+                outcome
+            }
+            wifiLost.onAwait {
+                running.cancelAndJoin()
+                scheduler.rearm(settings())
+                paused(BackupPauseReason.WaitingForWifi)
+            }
+        }
+    }
+
+    private suspend fun awaitWifiLost() {
+        do {
+            delay(WIFI_RECHECK)
+        } while (backupPauseReason(settings(), probe.state(), interactive = true) != BackupPauseReason.WaitingForWifi)
     }
 
     private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome = coroutineScope {
@@ -375,6 +398,7 @@ class PhotoBackupRun(
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
+        private val WIFI_RECHECK: Duration = 5.seconds
 
         val WAKE_BUDGET: Duration = 25.seconds
         val WORKER_BUDGET: Duration = 9.minutes
