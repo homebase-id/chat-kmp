@@ -1002,8 +1002,6 @@
     <string name="chat_file_share_can_edit">Can view and edit</string>
     <string name="chat_file_share_until">%1$s until %2$s</string>
     <string name="chat_file_share_group">Shared with the group %1$s</string>
-    <string name="chat_file_share_open">Open</string>
-    <string name="chat_file_share_actions">Message actions</string>
     <string name="chat_file_share_unparseable">Unable to display these shared files. Please update the app.</string>
     <string name="chat_contact_unparseable">Unable to display this contact. Please update the app.</string>
     <string name="chat_contact_share">Contact</string>
@@ -3176,11 +3174,11 @@
     <string name="filesync_not_reviewed_by">%1$s hasn't reviewed your connection yet, so the files they shared can't be opened until they do.</string>
     <string name="filesync_share_not_told">Shared, but the chat message to %1$s didn't go out, so they won't find the files yet.</string>
     <string name="filesync_share_note">Message (optional)</string>
-    <string name="filesync_recipient_not_ready">Couldn't share with %1$s. Check that you're connected.</string>
+    <string name="filesync_recipient_not_added">Couldn't share with %1$s. Check that you're connected.</string>
     <string name="filesync_share_waiting">Shared. %1$s hasn't set up Filesync yet: once they have, they can open the files the next time your Homebase app is online.</string>
     <string name="filesync_not_sealed_yet">%1$s's app hasn't finished sharing with you yet. It will the next time their Homebase app is online.</string>
     <string name="filesync_sharing_title">Turn on sharing</string>
-    <string name="filesync_sharing_body">Sharing signs this device in to Filesync as well, so it can share your files and others can tell you what they share with you. Your browser opens to confirm.</string>
+    <string name="filesync_sharing_body">Sharing signs this device in to Filesync as well, so it can share your files. Your browser opens to confirm.</string>
     <string name="filesync_sharing_turn_on">Turn on sharing</string>
     <string name="filesync_shared_with">Shared with</string>
     <string name="filesync_shared_with_none">Not shared with anyone.</string>

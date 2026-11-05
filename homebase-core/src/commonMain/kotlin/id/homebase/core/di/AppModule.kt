@@ -614,11 +614,13 @@ val appModule = module {
             driveFileProviderCached = get(),
             contactInfo = get(),
             clearPlatformCaches = {
+                runCatching { FilesyncSession.forget() }
+                    .onFailure { Logger.w(tag = "YouAuthFlowManager", throwable = it) { "forgetting the Filesync sign-in failed" } }
+                // On their own: a failed sign-out above mustn't leave the circle keys for the next identity.
                 runCatching {
-                    FilesyncSession.forget()
                     get<FilesyncSharing>().forgetKeys()
                     get<FilesyncShareUpkeep>().reset()
-                }.onFailure { Logger.w(tag = "YouAuthFlowManager", throwable = it) { "forgetting the Filesync sign-in failed" } }
+                }.onFailure { Logger.w(tag = "YouAuthFlowManager", throwable = it) { "forgetting Filesync's circle keys failed" } }
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
                 // the role the standalone safeDeleteRecursively("coil3_disk_cache") line

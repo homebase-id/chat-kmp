@@ -690,9 +690,8 @@ fun AppNavHost(
     val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
-    // Read only by the Filesync screen's own view model, the one "Show" opens.
-    var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
-    var filesyncShareToOpen by remember { mutableStateOf<FilesyncUiAction.OpenFromChat?>(null) }
+    // For the Filesync screen's own view model once it's open: a folder "Show" picked, or a share opened from chat.
+    var filesyncToDo by remember { mutableStateOf<FilesyncUiAction?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
     val filesyncPlaces = remember(navController) {
         FilesyncPlaces(
@@ -1513,10 +1512,8 @@ fun AppNavHost(
                                                 pendingContactCardSaved = alreadySaved
                                             },
                                             onOpenFileShare = { sharer, circleId ->
-                                                Uuid.parseOrNull(circleId)?.let {
-                                                    filesyncShareToOpen = FilesyncUiAction.OpenFromChat(sharer, it)
-                                                    openFilesync()
-                                                }
+                                                filesyncToDo = FilesyncUiAction.OpenFromChat(sharer, circleId)
+                                                openFilesync()
                                             },
                                             newConversationPane = { onDismiss, onConversationOpened ->
                                                 NewConversationPaneHost(
@@ -2313,13 +2310,9 @@ fun AppNavHost(
                             tab<Route.Filesync>(tabRoot) {
                                 if (isAuthenticated) {
                                     FilesyncSetupGate(onDismiss = { navController.popBackStack() }) { filesyncViewModel ->
-                                        LaunchedEffect(filesyncFolderToShow) {
-                                            filesyncFolderToShow?.let { filesyncViewModel.onAction(FilesyncUiAction.OpenFolder(it)) }
-                                            filesyncFolderToShow = null
-                                        }
-                                        LaunchedEffect(filesyncShareToOpen) {
-                                            filesyncShareToOpen?.let(filesyncViewModel::onAction)
-                                            filesyncShareToOpen = null
+                                        LaunchedEffect(filesyncToDo) {
+                                            filesyncToDo?.let(filesyncViewModel::onAction)
+                                            filesyncToDo = null
                                         }
                                         FilesyncScreen(
                                             viewModel = filesyncViewModel,
@@ -2350,7 +2343,7 @@ fun AppNavHost(
                                     onSignIn = { navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } } },
                                     onSetUpFilesync = { navController.navigate(Route.FilesyncSetup) { launchSingleTop = true } },
                                     onShowInFilesync = { path ->
-                                        filesyncFolderToShow = path
+                                        filesyncToDo = FilesyncUiAction.OpenFolder(path)
                                         openFilesync()
                                     },
                                 )

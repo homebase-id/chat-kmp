@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.api.common.OdinId
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -107,7 +108,7 @@ import id.homebase.resources.filesync_moved
 import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.filesync_open_failed
 import id.homebase.resources.filesync_reaction_failed
-import id.homebase.resources.filesync_recipient_not_ready
+import id.homebase.resources.filesync_recipient_not_added
 import id.homebase.resources.filesync_not_reviewed_by
 import id.homebase.resources.filesync_not_sealed_yet
 import id.homebase.resources.filesync_share_waiting
@@ -197,6 +198,9 @@ internal fun FilesyncEventsEffect(
     fun show(message: StringResource) {
         scope.launch { snackbarHostState.showSnackbar(getString(message)) }
     }
+    fun showAbout(message: StringResource, people: List<OdinId>) {
+        scope.launch { snackbarHostState.showSnackbar(getString(message, people.joinToString { it.domainName })) }
+    }
     var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
     preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onHandedOff) }
     LaunchedEffect(events) {
@@ -246,21 +250,11 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
                 }
-                is FilesyncUiEvent.NotReady -> scope.launch {
-                    snackbarHostState.showSnackbar(getString(MR.string.filesync_recipient_not_ready, event.recipients.joinToString { it.domainName }))
-                }
-                is FilesyncUiEvent.NotSealedYet -> scope.launch {
-                    snackbarHostState.showSnackbar(getString(MR.string.filesync_not_sealed_yet, event.owner.domainName))
-                }
-                is FilesyncUiEvent.Waiting -> scope.launch {
-                    snackbarHostState.showSnackbar(getString(MR.string.filesync_share_waiting, event.recipients.joinToString { it.domainName }))
-                }
-                is FilesyncUiEvent.NotReviewedBy -> scope.launch {
-                    snackbarHostState.showSnackbar(getString(MR.string.filesync_not_reviewed_by, event.owner.domainName))
-                }
-                is FilesyncUiEvent.NotTold -> scope.launch {
-                    snackbarHostState.showSnackbar(getString(MR.string.filesync_share_not_told, event.recipients.joinToString { it.domainName }))
-                }
+                is FilesyncUiEvent.NotAdded -> showAbout(MR.string.filesync_recipient_not_added, event.recipients)
+                is FilesyncUiEvent.NotSealedYet -> showAbout(MR.string.filesync_not_sealed_yet, listOf(event.owner))
+                is FilesyncUiEvent.Waiting -> showAbout(MR.string.filesync_share_waiting, event.recipients)
+                is FilesyncUiEvent.NotReviewedBy -> showAbout(MR.string.filesync_not_reviewed_by, listOf(event.owner))
+                is FilesyncUiEvent.NotTold -> showAbout(MR.string.filesync_share_not_told, event.recipients)
             }
         }
     }

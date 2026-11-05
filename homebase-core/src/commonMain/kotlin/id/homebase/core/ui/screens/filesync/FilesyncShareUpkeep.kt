@@ -39,9 +39,8 @@ class FilesyncShareUpkeep(
     internal suspend fun upkeep() {
         // A phone comes back online on every return to the foreground.
         if (lastRun?.let { it.elapsedNow() < MIN_INTERVAL } == true) return
-        if (!FilesyncSession.signedIn.value) credentials.getActiveCredentials()?.domain?.let { FilesyncSession.restore(it) }
         // Sharing was never turned on here.
-        if (!FilesyncSession.signedIn.value) return
+        if (!FilesyncSession.restoreFor(credentials)) return
         lastRun = TimeSource.Monotonic.markNow()
         try {
             sharing.sealPending()

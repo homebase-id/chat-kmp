@@ -1,8 +1,5 @@
 package id.homebase.core.ui.screens.filesync
 
-import app.cash.sqldelight.db.QueryResult
-import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlPreparedStatement
 import id.homebase.api.client.CryptoHelper
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
@@ -20,26 +17,17 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
-import id.homebase.api.client.drives.upload.UploadFileRequest
-import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.crypto.ShareKeys
-import id.homebase.api.crypto.ZkSeal
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.serialization.OutboxSerializer
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.Outbox
-import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DrivePermissionsSerializer
 import id.homebase.core.config.filesyncAppRegistration
-import id.homebase.core.feed.newInMemoryJdbcDriver
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -268,7 +256,7 @@ class FilesyncSharingTest {
     fun someoneTheGroupRefusesIsNamed() = runTest {
         refusedByAddMany = listOf("pippin.test")
 
-        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.setGroupMembers(hiking, listOf(sam, pippin)) }
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotAdded> { sharing.setGroupMembers(hiking, listOf(sam, pippin)) }
 
         assertEquals(listOf(pippin), e.recipients)
     }
@@ -669,7 +657,7 @@ class FilesyncSharingTest {
     fun aGroupSomeoneCouldntJoinIsDeletedAgain() = runTest {
         refusedByAddMany = listOf("merry.test")
 
-        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.createGroup("Hiking", listOf(sam, merry)) }
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotAdded> { sharing.createGroup("Hiking", listOf(sam, merry)) }
 
         assertEquals(listOf(merry), e.recipients)
         assertEquals(1, calls.count { "/connections/circles/delete" in it.path })

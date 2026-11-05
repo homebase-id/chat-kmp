@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,18 +41,18 @@ import id.homebase.core.ui.assets.Filesync
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.MR
-import id.homebase.resources.chat_file_share_actions
+import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_file_share_by_many
 import id.homebase.resources.chat_file_share_by_one
 import id.homebase.resources.chat_file_share_can_edit
 import id.homebase.resources.chat_file_share_can_view
 import id.homebase.resources.chat_file_share_group
-import id.homebase.resources.chat_file_share_open
 import id.homebase.resources.chat_file_share_unparseable
 import id.homebase.resources.chat_file_share_until
 import id.homebase.resources.chat_file_share_you_many
 import id.homebase.resources.chat_file_share_you_one
 import id.homebase.resources.filesync_label
+import id.homebase.resources.filesync_open
 import kotlin.time.Instant
 import org.jetbrains.compose.resources.stringResource
 
@@ -73,7 +74,7 @@ fun FileShareBubble(
         UnparseableFileShareBubble(modifier, footer)
         return
     }
-    val size = formatBytes(descriptor.bytes)
+    val size = remember(descriptor.bytes) { formatBytes(descriptor.bytes) }
     val shared = when {
         sharer == null && descriptor.files == 1 -> stringResource(MR.string.chat_file_share_you_one, size)
         sharer == null -> stringResource(MR.string.chat_file_share_you_many, descriptor.files, size)
@@ -81,8 +82,9 @@ fun FileShareBubble(
         else -> stringResource(MR.string.chat_file_share_by_many, sharer, descriptor.files, size)
     }
     val access = stringResource(if (descriptor.canEdit) MR.string.chat_file_share_can_edit else MR.string.chat_file_share_can_view)
-    val terms = descriptor.expiresAt?.let { stringResource(MR.string.chat_file_share_until, access, formatMediumDate(Instant.fromEpochMilliseconds(it))) } ?: access
-    val openLabel = stringResource(MR.string.chat_file_share_open)
+    val until = remember(descriptor.expiresAt) { descriptor.expiresAt?.let { formatMediumDate(Instant.fromEpochMilliseconds(it)) } }
+    val terms = until?.let { stringResource(MR.string.chat_file_share_until, access, it) } ?: access
+    val openLabel = stringResource(MR.string.filesync_open)
     Surface(
         modifier = modifier.widthIn(min = 240.dp, max = 320.dp),
         shape = MaterialTheme.shapes.large,
@@ -97,7 +99,7 @@ fun FileShareBubble(
                             onClick = onOpen,
                             onClickLabel = openLabel,
                             onLongClick = onLongClick,
-                            onLongClickLabel = stringResource(MR.string.chat_file_share_actions),
+                            onLongClickLabel = stringResource(MR.string.chat_message_options),
                         )
                     } else it
                 },

@@ -154,7 +154,8 @@ fun MessageItem(
     // Routed out because Filesync lives in :homebase-core.
     val onOpenFileShare = remember(message.id) {
         { share: FileShareDescriptor, sharer: OdinId? ->
-            onUiAction(ConversationListUiAction.OpenFileShare(sharer, share.circleId))
+            val circleId = share.circle()
+            if (circleId != null) onUiAction(ConversationListUiAction.OpenFileShare(sharer, circleId))
         }
     }
     val onMessageIdentity = remember(message.id) {

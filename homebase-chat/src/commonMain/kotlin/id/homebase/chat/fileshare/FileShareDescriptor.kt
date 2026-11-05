@@ -24,7 +24,7 @@ data class FileShareDescriptor(
 ) {
     val canEdit: Boolean get() = access == ACCESS_EDIT
 
-    fun circle(): Uuid? = runCatching { Uuid.parse(circleId) }.getOrNull()
+    fun circle(): Uuid? = Uuid.parseOrNull(circleId)
 
     fun summaryLine(): String = if (files == 1 && !titleIsFolder) title else "$title · $files files"
 

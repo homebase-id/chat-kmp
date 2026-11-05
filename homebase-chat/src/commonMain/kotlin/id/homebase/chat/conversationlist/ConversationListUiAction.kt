@@ -478,7 +478,7 @@ sealed interface ConversationListUiAction {
     ) : ConversationListUiAction
 
     /** Open shared files in Filesync, which lives in :homebase-core; [sharer] null for a share this identity made. */
-    data class OpenFileShare(val sharer: OdinId?, val circleId: String) : ConversationListUiAction
+    data class OpenFileShare(val sharer: OdinId?, val circleId: Uuid) : ConversationListUiAction
 
     /** Open (creating if needed) the 1:1 conversation with the identity on a shared contact card. */
     data class MessageIdentity(val odinId: String) : ConversationListUiAction

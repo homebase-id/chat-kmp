@@ -20,8 +20,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 
 /** Turning sharing on: signing in to Filesync too ([FilesyncSession]), and the permission its registration may lack. */
 class FilesyncSharingSetup(
@@ -31,7 +29,7 @@ class FilesyncSharingSetup(
 ) {
     suspend fun identity(): OdinId? = appCredentials.getActiveCredentials()?.domain
 
-    suspend fun restore(): Boolean = identity()?.let { FilesyncSession.restore(it) } ?: false
+    suspend fun restore(): Boolean = FilesyncSession.restoreFor(appCredentials)
 
     suspend fun signInUrl(onDone: suspend (Boolean) -> Unit): String =
         FilesyncSession.signInUrl(flow, checkNotNull(identity()) { "signed out" }, onDone)
@@ -148,8 +146,8 @@ internal class FilesyncSharingController(
             val (to, made, description) = shared ?: return@launch
             send(if (made.waiting.isEmpty()) FilesyncUiEvent.Notice(FilesyncNotice.Shared) else FilesyncUiEvent.Waiting(made.waiting))
             tell(to.members, description).takeIf { it.isNotEmpty() }?.let { send(FilesyncUiEvent.NotTold(it)) }
-            // Sharing as View may have replaced someone's Edit.
-            syncEditors()
+            // Sharing as View may have replaced someone's Edit; an Edit share already added its people.
+            if (access != FilesyncAccess.Edit) syncEditors()
             loadRecipients()
             loadSharedIn()
             state().sharedWith?.nodeId?.takeIf { id -> files.any { it.nodeId == id } }?.let { loadSharedWith(it) }
@@ -250,8 +248,7 @@ internal class FilesyncSharingController(
     // A new member sees everything shared with the group, so they're told what that is.
     private suspend fun tellAboutGroup(group: FilesyncAudience.Group, added: List<OdinId>) {
         val shared = guarded { sharing.sharedWithAudience(group) }?.takeIf { it.isNotEmpty() } ?: return
-        val ids = shared.mapTo(HashSet()) { it.node.nodeId }
-        val top = shared.map { it.node }.filter { it.parentId !in ids }
+        val top = sharedLevel(shared.map { it.node }, parent = null)
         val access = if (shared.all { it.access == FilesyncAccess.Edit }) FilesyncAccess.Edit else FilesyncAccess.View
         val description = describe(top, shared.map { it.handle }, group.circleId, group, access, expiresAt = null, note = "")
         tell(added, description).takeIf { it.isNotEmpty() }?.let { send(FilesyncUiEvent.NotTold(it)) }
@@ -259,10 +256,11 @@ internal class FilesyncSharingController(
 
     /** Opened from a chat message: keeps [sharer] among the sharers, then shows their files. */
     fun openFromChat(sharer: OdinId) {
+        openSharer(sharer)
+        if (sharer in state().sharers) return
         scope.launch {
             guarded { sharing.keepSharer(sharer) }
             loadSharers()
-            openSharer(sharer)
         }
     }
 
@@ -414,7 +412,7 @@ internal class FilesyncSharingController(
             forgetIfRevoked(e)
             send(
                 when (e) {
-                    is FilesyncSharingException.RecipientNotReady -> FilesyncUiEvent.NotReady(e.recipients)
+                    is FilesyncSharingException.RecipientNotAdded -> FilesyncUiEvent.NotAdded(e.recipients)
                     else -> FilesyncUiEvent.Error(error)
                 }
             )
@@ -477,14 +475,15 @@ internal fun describe(
     expiresAt: Long?,
     note: String,
 ): FileShareDescriptor {
-    val first = top.sortedWith(compareBy<FilesyncNode> { !it.isFolder }.thenBy { it.name.lowercase() }).first()
+    // As the browser lists them: folders first, then by name.
+    val first = top.arranged(FilesyncSort()).first()
     val files = tree.filter { it.fileType == FilesyncProtocol.FileFileType }
     return FileShareDescriptor(
         circleId = circleId.toString(),
         title = first.name.truncateToCodePoints(FileShareDescriptor.MAX_TITLE_CODEPOINTS),
         titleIsFolder = first.isFolder,
         files = files.size,
-        bytes = files.sumOf { it.content["size"]?.jsonPrimitive?.longOrNull ?: 0L },
+        bytes = files.sumOf { it.sizeBytes ?: 0L },
         access = if (access == FilesyncAccess.Edit) FileShareDescriptor.ACCESS_EDIT else FileShareDescriptor.ACCESS_VIEW,
         group = (audience as? FilesyncAudience.Group)?.name?.truncateToCodePoints(FileShareDescriptor.MAX_GROUP_CODEPOINTS),
         note = note.trim().ifEmpty { null }?.truncateToCodePoints(FileShareDescriptor.MAX_NOTE_CODEPOINTS),

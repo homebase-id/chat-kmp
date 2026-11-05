@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import kotlin.uuid.Uuid
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.data.MessageUiModel
@@ -54,7 +55,7 @@ sealed interface ConversationListUiEvent {
     /** Open the location setup screen (from the "set up location" prompt before a live share). */
     data object NavigateToLocationSetup : ConversationListUiEvent
 
-    data class NavigateToFileShare(val sharer: OdinId?, val circleId: String) : ConversationListUiEvent
+    data class NavigateToFileShare(val sharer: OdinId?, val circleId: Uuid) : ConversationListUiEvent
 
     /** Hand a received contact card to the contact editor in :homebase-core. */
     data class NavigateToSaveContactCard(

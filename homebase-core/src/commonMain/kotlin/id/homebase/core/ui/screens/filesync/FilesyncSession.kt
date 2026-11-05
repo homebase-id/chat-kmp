@@ -36,6 +36,10 @@ object FilesyncSession {
     var appKey: ByteArray? = null
         private set
 
+    /** [restore]s the identity [app] is signed in as; whether Filesync is signed in now. */
+    suspend fun restoreFor(app: CredentialsManager): Boolean =
+        app.getActiveCredentials()?.domain?.let { restore(it) } ?: false
+
     /** Loads the stored sign-in when it is [identity]'s; a stored one of another identity is forgotten. */
     suspend fun restore(identity: OdinId): Boolean {
         if (_signedIn.value) return true
@@ -75,8 +79,8 @@ object FilesyncSession {
 
     /**
      * The browser URL that signs [identity] in to Filesync; [onDone] hears whether it worked. It asks for
-     * ReadConnections, which the circle every connection joins needs; an installed Filesync gets it only through
-     * the owner's app page ([sharingPermissions]).
+     * ReadConnections, which sharing needs; an installed Filesync gets it only through the
+     * owner's app page ([sharingPermissions]).
      */
     suspend fun signInUrl(flow: YouAuthFlowManager, identity: OdinId, onDone: suspend (Boolean) -> Unit): String =
         flow.authorize(

@@ -298,8 +298,8 @@ sealed interface FilesyncUiEvent {
     data class OpenSignIn(val url: String) : FilesyncUiEvent
     data class OpenOwnerConsole(val url: String) : FilesyncUiEvent
     data class Error(val error: FilesyncError) : FilesyncUiEvent
-    /** [recipients] can't receive shared files until they turn sharing on. */
-    data class NotReady(val recipients: List<OdinId>) : FilesyncUiEvent
+    /** [recipients] couldn't be added to the circle shared with. */
+    data class NotAdded(val recipients: List<OdinId>) : FilesyncUiEvent
     /** [owner] shared files with this identity but hasn't reviewed it, so they can't be opened yet. */
     data class NotReviewedBy(val owner: OdinId) : FilesyncUiEvent
 
