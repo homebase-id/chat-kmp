@@ -42,7 +42,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 
-private const val CREATE_ACCOUNT_URL = "https://homebase.id/app-create-account"
+const val CREATE_ACCOUNT_URL = "https://homebase.id/app-create-account"
 
 class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
