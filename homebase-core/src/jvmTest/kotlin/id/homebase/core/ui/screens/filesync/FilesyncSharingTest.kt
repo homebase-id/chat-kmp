@@ -194,7 +194,7 @@ class FilesyncSharingTest {
 
     @Test
     fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndWritesNothingOnHisDrive() = runTest {
-        assertEquals(samsCircle, sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null))
+        assertEquals(FilesyncShared(samsCircle, waiting = emptyList()), sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null))
 
         // Circles, their keys and shares are written as Filesync; the public key is read as the app
         assertTrue(calls.filter { "/connections/" in it.path || it.path.endsWith("/shares") }.all { it.asFilesync })
@@ -248,14 +248,24 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun addingSomeoneNotReadyStillAddsTheRestAndNamesThem() = runTest {
-        unsealed = listOf("merry.test")
+    fun someoneAddedWithoutFilesyncJoinsAndOnlyTheReadyAreSealedTo() = runTest {
+        unsealed = listOf("merry.test", "pippin.test")
         notReady = setOf("pippin.test")
 
-        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.setGroupMembers(hiking, listOf(sam, merry, pippin)) }
+        assertEquals(listOf(merry, pippin), sharing.setGroupMembers(hiking, listOf(sam, merry, pippin)))
+
+        assertTrue(calls.filter { it.path.endsWith("/add-many") }.all { it.addedTo().second == listOf("merry.test", "pippin.test") })
+        val sealed = decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject["members"]!!.jsonArray
+        assertEquals(listOf("merry.test"), sealed.map { it.jsonObject["odinId"]!!.jsonPrimitive.content })
+    }
+
+    @Test
+    fun someoneTheGroupRefusesIsNamed() = runTest {
+        refusedByAddMany = listOf("pippin.test")
+
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.setGroupMembers(hiking, listOf(sam, pippin)) }
 
         assertEquals(listOf(pippin), e.recipients)
-        assertTrue(calls.filter { it.path.endsWith("/add-many") }.all { it.addedTo().second == listOf("merry.test") })
     }
 
     @Test
@@ -327,28 +337,34 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun someoneWhoHasntTurnedSharingOnCantBeSharedWith() = runTest {
-        samReady = false
-
-        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
-        assertTrue(calls.none { it.path.endsWith("/shares") })
-    }
-
-    @Test
-    fun someoneWithoutAFilesyncDriveCantBeSharedWith() = runTest {
+    fun someoneWithoutAFilesyncDriveIsSharedWithAndWaitsForTheKey() = runTest {
         samHasFilesync = false
 
-        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
-        assertEquals(listOf(sam), e.recipients)
-        assertTrue(calls.none { it.path.endsWith("/shares") })
+        assertEquals(FilesyncShared(samsCircle, waiting = listOf(sam)), sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null))
+        assertEquals(1, calls.count { it.path.endsWith("/shares") })
+        assertTrue(calls.none { it.path.endsWith("/share-key/members") })
     }
 
     @Test
-    fun someoneWhoseDriveRefusesUsCantBeSharedWith() = runTest {
+    fun anOlderServersRefusalsAlsoMeanNoDriveYet() = runTest {
+        samReady = false
+        assertEquals(listOf(sam), sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null).waiting)
+        samReady = true
         samGrantsWrite = false
+        assertEquals(listOf(sam), sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null).waiting)
+    }
 
-        assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
-        assertTrue(calls.none { it.path.endsWith("/shares") })
+    @Test
+    fun onceSamHasADriveTheKeyIsSealedToHimNextTime() = runTest {
+        samHasFilesync = false
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
+        assertTrue(calls.none { it.path.endsWith("/share-key/members") })
+
+        samHasFilesync = true
+        sharing.sealPending()
+
+        val sealed = decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject
+        assertEquals(listOf("sam.test"), sealed["members"]!!.jsonArray.map { it.jsonObject["odinId"]!!.jsonPrimitive.content })
     }
 
     @Test
@@ -579,13 +595,10 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun noGroupIsMadeWhileAMemberCantReceiveSharedFiles() = runTest {
+    fun aGroupIsMadeEvenWithMembersWhoHaventSetUpFilesync() = runTest {
         samReady = false
 
-        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.createGroup("Hiking", listOf(sam, merry)) }
-
-        assertEquals(listOf(sam, merry), e.recipients)
-        assertTrue(calls.none { it.path.endsWith("/circles/create") })
+        assertEquals(listOf(merry, sam), sharing.createGroup("Hiking", listOf(sam, merry)).members)
     }
 
     @Test

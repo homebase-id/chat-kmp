@@ -109,6 +109,8 @@ import id.homebase.resources.filesync_open_failed
 import id.homebase.resources.filesync_reaction_failed
 import id.homebase.resources.filesync_recipient_not_ready
 import id.homebase.resources.filesync_not_reviewed_by
+import id.homebase.resources.filesync_not_sealed_yet
+import id.homebase.resources.filesync_share_waiting
 import id.homebase.resources.filesync_share_not_told
 import id.homebase.resources.filesync_removed
 import id.homebase.resources.filesync_restore
@@ -246,6 +248,12 @@ internal fun FilesyncEventsEffect(
                 }
                 is FilesyncUiEvent.NotReady -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_recipient_not_ready, event.recipients.joinToString { it.domainName }))
+                }
+                is FilesyncUiEvent.NotSealedYet -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_not_sealed_yet, event.owner.domainName))
+                }
+                is FilesyncUiEvent.Waiting -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_share_waiting, event.recipients.joinToString { it.domainName }))
                 }
                 is FilesyncUiEvent.NotReviewedBy -> scope.launch {
                     snackbarHostState.showSnackbar(getString(MR.string.filesync_not_reviewed_by, event.owner.domainName))

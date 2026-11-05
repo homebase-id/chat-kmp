@@ -89,6 +89,8 @@ internal class FilesyncSharingController(
                 loadSharedIn()
                 // An Edit share that expired since leaves its drive Write behind until this.
                 guarded { sharing.syncEditors() }
+                // Whoever set up Filesync since they were shared with gets the key now.
+                guarded { sharing.sealPending() }
             }
         }
         loadSharers()
@@ -143,12 +145,12 @@ internal class FilesyncSharingController(
             val shared = attempt("sharing ${files.size} nodes") {
                 val tree = withDescendants(files)
                 val to = audience()
-                val circleId = sharing.share(tree.values.toList(), to, access, expiresAt)
-                to to describe(files, tree.values, circleId, to, access, expiresAt, note)
+                val made = sharing.share(tree.values.toList(), to, access, expiresAt)
+                Triple(to, made, describe(files, tree.values, made.circleId, to, access, expiresAt, note))
             }
             update { if (shared != null) it.copy(sending = false, shareWith = null) else it.copy(sending = false) }
-            val (to, description) = shared ?: return@launch
-            send(FilesyncUiEvent.Notice(FilesyncNotice.Shared))
+            val (to, made, description) = shared ?: return@launch
+            send(if (made.waiting.isEmpty()) FilesyncUiEvent.Notice(FilesyncNotice.Shared) else FilesyncUiEvent.Waiting(made.waiting))
             tell(to.members, description).takeIf { it.isNotEmpty() }?.let { send(FilesyncUiEvent.NotTold(it)) }
             // Sharing as View may have replaced someone's Edit.
             syncEditors()
@@ -324,6 +326,9 @@ internal class FilesyncSharingController(
                     sharing.sharedBy(sharer)
                 } catch (e: FilesyncSharingException.NotReviewedByOwner) {
                     send(FilesyncUiEvent.NotReviewedBy(e.owner))
+                    null
+                } catch (e: FilesyncSharingException.NotSealedYet) {
+                    send(FilesyncUiEvent.NotSealedYet(e.owner))
                     null
                 }
             }
