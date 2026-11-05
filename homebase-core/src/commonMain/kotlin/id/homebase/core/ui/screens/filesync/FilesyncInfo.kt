@@ -27,7 +27,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -112,9 +114,13 @@ internal fun kindLabel(node: FilesyncNode): String = stringResource(
 internal fun FilesyncInfoContent(
     node: FilesyncNode,
     where: List<String>,
+    discussion: FilesyncDiscussion?,
+    commentDraft: TextFieldState,
     onAction: (FilesyncUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val discussed = !node.isFolder && node.removedMs == null
+    if (discussed) LaunchedEffect(node.nodeId) { onAction(FilesyncUiAction.ShowDiscussion(node.nodeId)) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             FileTypeTile(node, size = 56.dp)
@@ -170,6 +176,11 @@ internal fun FilesyncInfoContent(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Fact(Icons.Outlined.Lock, stringResource(MR.string.filesync_info_encrypted))
             node.hashAlgorithm?.let { Fact(Icons.Outlined.VerifiedUser, stringResource(MR.string.filesync_info_checked, it.displayName)) }
+        }
+
+        if (discussed) {
+            HorizontalDivider()
+            FilesyncDiscussionContent(node, discussion, commentDraft, onAction)
         }
     }
 }

@@ -157,6 +157,7 @@ internal class FilesyncBrowserScope(
     val uiState: FilesyncUiState,
     val uploads: List<FilesyncUpload>,
     val search: TextFieldState,
+    val commentDraft: TextFieldState,
     val snackbarHostState: SnackbarHostState,
     val actions: FilesyncBrowserActions,
     val onUpload: () -> Unit,
@@ -242,6 +243,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         uiState = uiState,
         uploads = uploads.filter { it.parentId == currentFolder },
         search = viewModel.search,
+        commentDraft = viewModel.commentDraft,
         snackbarHostState = snackbarHostState,
         actions = actions,
         onUpload = { filePicker.launch() },
@@ -279,8 +281,10 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
             FilesyncInfoContent(
                 node = node,
                 where = crumbNames(uiState.path),
+                discussion = uiState.discussion,
+                commentDraft = scope.commentDraft,
                 onAction = {
-                    dismiss()
+                    if (it !is FilesyncDiscussionAction) dismiss()
                     scope.onAction(it)
                 },
                 modifier = Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),

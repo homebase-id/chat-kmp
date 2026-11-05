@@ -85,6 +85,7 @@ class DriveQueryProvider(
         // (fileType 801), which the backend routes by the X-ODIN-FILE-SYSTEM-TYPE header, not the
         // request body — the FileQueryParams.fileSystemType field alone is ignored for routing.
         fileSystemType: FileSystemType? = null,
+        commentedFileKey: SecureByteArray? = null,
     ): QueryBatchResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -114,7 +115,7 @@ class DriveQueryProvider(
 
         throwForFailure(apiResponse)
 
-        return mapQueryBatchResponse(apiResponse.body, creds.secret)
+        return mapQueryBatchResponse(apiResponse.body, creds.secret, commentedFileKey)
     }
 
     /**
@@ -186,21 +187,23 @@ class DriveQueryProvider(
     internal suspend fun mapQueryBatchResponse(
         body: String,
         secret: SecureByteArray,
+        commentedFileKey: SecureByteArray? = null,
     ): QueryBatchResponse {
         val internal = deserialize<QueryBatchResponseInternalRaw>(body)
-        return mapQueryBatchResponseInternal(internal, secret)
+        return mapQueryBatchResponseInternal(internal, secret, commentedFileKey)
     }
 
     private suspend fun mapQueryBatchResponseInternal(
         internal: QueryBatchResponseInternalRaw,
         secret: SecureByteArray,
+        commentedFileKey: SecureByteArray?,
     ): QueryBatchResponse {
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
 
         val files = internal.searchResults.map { serverFileJson ->
-            createServerFileWithSafeMetadata(serverFileJson, secret)
+            createServerFileWithSafeMetadata(serverFileJson, secret, commentedFileKey)
         }
 
         return QueryBatchResponse(
@@ -214,7 +217,11 @@ class DriveQueryProvider(
         )
     }
 
-    private suspend fun createServerFileWithSafeMetadata(serverFileJson: JsonObject, secret: SecureByteArray): HomebaseFile {
+    private suspend fun createServerFileWithSafeMetadata(
+        serverFileJson: JsonObject,
+        secret: SecureByteArray,
+        commentedFileKey: SecureByteArray? = null,
+    ): HomebaseFile {
         // First deserialize ServerFile with FileMetadata as JsonObject
         val serverFileWithRawMetadata = try {
             OdinSystemSerializer.json.decodeFromString<ServerFileWithRawMetadata>(serverFileJson.toString())
@@ -242,7 +249,7 @@ class DriveQueryProvider(
             fileByteCount = serverFileWithRawMetadata.fileByteCount
         )
         
-        return serverFile.asHomebaseFile(secret)
+        return serverFile.asHomebaseFile(secret, commentedFileKey)
     }
     
     private fun createBadFileMetadata(fileMetadataJson: JsonObject): FileMetadata {

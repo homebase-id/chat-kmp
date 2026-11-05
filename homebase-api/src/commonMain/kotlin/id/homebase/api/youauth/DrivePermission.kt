@@ -47,12 +47,20 @@ object DrivePermissionsSerializer : KSerializer<DrivePermissionSet> {
         val values = raw
             .split(",")
             .map { it.trim().lowercase() }
-            .mapNotNull { v ->
-                DrivePermission.entries.find { it.name.lowercase() == v }
+            .flatMap { v ->
+                combinedNames[v] ?: listOfNotNull(DrivePermission.entries.find { it.name.lowercase() == v })
             }
+            .distinct()
 
         return DrivePermissionSet(values)
     }
+
+    // The server writes a value with a name of its own by that name: 15 as readWrite, 12 as writeReactionsAndComments.
+    private val combinedNames = mapOf(
+        "readwrite" to DrivePermission.entries,
+        "all" to DrivePermission.entries,
+        "writereactionsandcomments" to listOf(DrivePermission.React, DrivePermission.Comment),
+    )
 
     override fun serialize(encoder: Encoder, value: DrivePermissionSet) {
         val joined = value.values.joinToString(", ") { it.name.lowercase() }

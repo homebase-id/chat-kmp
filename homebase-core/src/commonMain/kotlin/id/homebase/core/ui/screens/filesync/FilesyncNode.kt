@@ -80,6 +80,8 @@ class FilesyncHandle(
     val content: JsonObject,
     val payload: FilesyncPayload?,
     version: Int = CONTENT_VERSION,
+    /** What the file's comments are grouped by. */
+    val globalTransitId: Uuid? = null,
 ) {
     val fileVersionTag: FileVersionTag? get() = versionTag?.let { FileVersionTag(fileId, it) }
 
@@ -155,7 +157,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         updatedMs = fileMetadata.updated.milliseconds,
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
-    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v)
+    return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v, fileMetadata.globalTransitId)
 }
 
 /** A time in Unix ms as filesync writes it: an int, or a finite float rounded; anything else is none. */

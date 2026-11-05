@@ -98,6 +98,8 @@ import id.homebase.resources.filesync_label
 import id.homebase.resources.filesync_open_failed
 import id.homebase.resources.filesync_restore
 import id.homebase.resources.filesync_restore_failed
+import id.homebase.resources.filesync_reaction_failed
+import id.homebase.resources.filesync_comment_failed
 import id.homebase.resources.filesync_restored
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
@@ -149,6 +151,8 @@ internal fun FilesyncError.message(): StringResource = when (this) {
     FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
     FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
     FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
+    FilesyncError.ReactionFailed -> MR.string.filesync_reaction_failed
+    FilesyncError.CommentFailed -> MR.string.filesync_comment_failed
 }
 
 internal val FilesyncRowInset = 8.dp

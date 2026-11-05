@@ -3149,6 +3149,14 @@
     <string name="filesync_restored">Restored</string>
     <string name="filesync_restored_to_recovered">Restored. Items whose folder was deleted for good will appear in Recovered files once one of your computers syncs.</string>
     <string name="filesync_restore_failed">Couldn't restore it.</string>
+    <string name="filesync_reactions">Reactions</string>
+    <string name="filesync_reactions_limit">You can leave up to %1$d reactions on a file.</string>
+    <string name="filesync_reaction_failed">Couldn't change your reaction.</string>
+    <string name="filesync_comments">Comments</string>
+    <string name="filesync_comments_none">No comments yet.</string>
+    <string name="filesync_comment_hint">Add a comment</string>
+    <string name="filesync_comment_failed">Couldn't post your comment.</string>
+    <string name="filesync_discussion_failed">Couldn't load reactions and comments.</string>
     <string name="filesync_changed_elsewhere">Some items changed on another device, so they were left as they are.</string>
     <string name="filesync_restore_try_again">Some items couldn't be restored yet. Try again in a minute.</string>
     <string name="filesync_delete_forever">Delete forever</string>

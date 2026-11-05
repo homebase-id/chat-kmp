@@ -163,6 +163,7 @@ import id.homebase.core.ui.screens.openedfile.OpenedFileViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncEditor
 import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncDiscussions
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
@@ -1031,6 +1032,7 @@ val appModule = module {
     single { FilesyncPreferences(get()) }
     single { FilesyncRepository(get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
+    single { FilesyncDiscussions(get(), get(), get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
@@ -1445,6 +1447,7 @@ val appModule = module {
             extendPermissionViewModel = get(FilesyncPermissionQualifier),
             webDropShareFlowState = get(),
             privateDriveOptIn = get(),
+            discussions = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
