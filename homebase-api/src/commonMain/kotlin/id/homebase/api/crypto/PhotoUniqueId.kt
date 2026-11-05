@@ -1,9 +1,9 @@
-package id.homebase.photobase.backup
+package id.homebase.api.crypto
 
-import id.homebase.api.crypto.Blake3Hasher
 import kotlin.uuid.Uuid
 
 /**
+ * Here, not in homebase-photobase, because only this module's tests can link and run on iOS.
  * Never change this scheme: a different result re-uploads every backed-up asset.
  * A Live Photo passes the still's digest, then the paired video's.
  */

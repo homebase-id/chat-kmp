@@ -3,6 +3,7 @@ package id.homebase.photobase.backup
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.Blake3Hasher
+import id.homebase.api.crypto.PhotoUniqueId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.photobase.PhotobaseProtocol

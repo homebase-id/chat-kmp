@@ -1,6 +1,7 @@
 package id.homebase.photobase.backup
 
 import id.homebase.api.crypto.Blake3Hasher
+import id.homebase.api.crypto.PhotoUniqueId
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onEach

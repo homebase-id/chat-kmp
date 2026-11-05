@@ -1,4 +1,4 @@
-package id.homebase.photobase.backup
+package id.homebase.api.crypto
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
