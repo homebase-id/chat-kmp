@@ -47,7 +47,13 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.MutableStateFlow
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -157,7 +163,7 @@ class FilesyncSharingTest {
             path.endsWith("/share-key/members") || path.endsWith("/shares") -> "{}"
             "/shares/" in path && request.method == HttpMethod.Delete -> "{}"
             path.endsWith("/circles/with-members") -> circles
-            path.endsWith("/query-batch") -> sharedPages.removeFirst()
+            path.endsWith("/query-batch") -> sharedPages.removeFirstOrNull() ?: """{"searchResults":[],"hasMoreRows":false}"""
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
             else -> error("unexpected ${request.method} $path")
         }
@@ -176,6 +182,18 @@ class FilesyncSharingTest {
         upload,
     )
 
+    // Never the machine's real secure storage: a dev app's Filesync sign-in lives there.
+    private val stored = mutableMapOf<String, String>()
+
+    @BeforeTest
+    fun keepTheSignInInMemory() {
+        FilesyncSession.store = object : FilesyncSession.Store {
+            override fun get(key: String) = stored[key]
+            override fun put(key: String, value: String) { stored[key] = value }
+            override fun remove(key: String) { stored.remove(key) }
+        }
+    }
+
     @BeforeTest
     fun signIn() = runBlocking {
         appCredentials.setActiveCredentials(ApiCredentials.create(frodo, "app-token", SecureByteArray(appSecret)))
@@ -189,8 +207,8 @@ class FilesyncSharingTest {
     fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndWritesNothingOnHisDrive() = runTest {
         assertEquals(FilesyncShared(samsCircle, waiting = emptyList()), sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null))
 
-        // Circles, their keys and shares are written as Filesync; the public key is read as the app
-        assertTrue(calls.filter { "/connections/" in it.path || it.path.endsWith("/shares") }.all { it.asFilesync })
+        // Circles, their keys and shares are written as Filesync; the public key and the circle list are read as the app
+        assertTrue(calls.filter { ("/connections/" in it.path && !it.path.endsWith("/with-members")) || it.path.endsWith("/shares") }.all { it.asFilesync })
         assertTrue(calls.filter { it.path.endsWith("/public-key") }.none { it.asFilesync })
         assertTrue(calls.none { it.path.endsWith("/files") }, "Sam's app keeps his marker, once he opens the chat message")
 
@@ -340,7 +358,7 @@ class FilesyncSharingTest {
 
     @Test
     fun comingOnlineSealsToWhoeverIsReadyThenWaitsBeforeAskingAgain() = runTest {
-        val upkeep = FilesyncShareUpkeep(sharing, appCredentials, MutableStateFlow(true), backgroundScope)
+        val upkeep = FilesyncShareUpkeep(sharing, appCredentials, MutableStateFlow(true), EventBus(), backgroundScope)
         sharedPages += """{"searchResults":[],"hasMoreRows":false}"""
 
         upkeep.upkeep()
@@ -473,9 +491,14 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun loggingOutForgetsTheCircleKeys() = runTest {
+    fun loggingOutSignsFilesyncOutAndForgetsTheCircleKeys() = runTest {
+        val events = EventBus()
+        FilesyncShareUpkeep(sharing, appCredentials, MutableStateFlow(false), events, backgroundScope)
         sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
-        sharing.forgetKeys()
+
+        events.emit(BackendEvent.SessionEnded)
+        withContext(Dispatchers.Default) { withTimeout(5_000) { while (FilesyncSession.signedIn.value) delay(10) } }
+        signIn()
         sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
 
         assertEquals(2, calls.count { "/connections/circles/" in it.path && it.path.endsWith("/share-key") && it.request.method == HttpMethod.Get })
@@ -557,6 +580,19 @@ class FilesyncSharingTest {
             setOf("/files/${folder.second.fileId}/shares/$samsCircle", "/files/${inside.second.fileId}/shares/$samsCircle"),
             calls.filter { it.request.method == HttpMethod.Delete }.map { it.path.substringAfter(FilesyncProtocol.DriveAlias.toString()) }.toSet(),
         )
+    }
+
+    @Test
+    fun stoppingSamsLastEditShareTakesHisWriteAwayThere() = runTest {
+        editorsAre("sam.test")
+        val handle = FilesyncHandle(Uuid.random(), null, FilesyncProtocol.FileFileType, KeyHeader.newRandom16(), JsonObject(emptyMap()), null)
+        val node = Uuid.random()
+        sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "readWrite", uniqueId = node, fileId = handle.fileId)}],"hasMoreRows":false}"""
+
+        sharing.withdraw(mapOf(node to handle), toSam)
+
+        val revoked = calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject }
+        assertEquals(listOf(editorsCircle.toString() to "sam.test"), revoked.map { it["circleId"]!!.jsonPrimitive.content to it["odinId"]!!.jsonPrimitive.content })
     }
 
     @Test

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.KeyHeader
@@ -168,10 +169,13 @@ class FilesyncSharing(
     private val keys = Mutex()
     private val editing = Mutex()
 
-    /** Drops every circle key held in memory, at logout. */
-    suspend fun forgetKeys() = keys.withLock {
-        ownKeys.clear()
-        memberKeys.clear()
+    /** Signs this device out of Filesync and drops every circle key that sign-in unlocked: at logout, or once refused. */
+    suspend fun signOut() {
+        FilesyncSession.forget()
+        keys.withLock {
+            ownKeys.clear()
+            memberKeys.clear()
+        }
     }
 
     /** What sharing may offer: whatever the circle every recipient joins grants on the drive, and Write from the editors circle. */
@@ -205,6 +209,8 @@ class FilesyncSharing(
         }
         // After the rows, so a concurrent syncEditors that read them before can't take the members out again.
         if (access == FilesyncAccess.Edit) editing.withLock { enroll(editorsCircle(), members) }
+        // Sharing as View may have replaced someone's Edit.
+        else editorsMayHaveChanged()
         return FilesyncShared(circleId, waiting = members.filter { it !in points })
     }
 
@@ -221,7 +227,8 @@ class FilesyncSharing(
 
     /**
      * Puts in the editors circle exactly the people a live Edit share reaches, on their own or through a group: drive
-     * Write is what lets them change a file, and it also lets them add files anywhere on the drive.
+     * Write is what lets them change a file, and it also lets them add files anywhere on the drive. Every change here
+     * that can end an Edit share runs it; [FilesyncShareUpkeep] runs it for the ones that expire.
      */
     suspend fun syncEditors() = editing.withLock {
         requireSignedIn()
@@ -276,6 +283,7 @@ class FilesyncSharing(
         val joined = added.filter { it !in refused }
         sealCircleKey(group.circleId, readyPoints(joined))
         group.members.filter { it !in members }.forEach { asFilesync.removeFromCircle(group.circleId, it) }
+        editorsMayHaveChanged()
 
         if (refused.isNotEmpty()) throw FilesyncSharingException.RecipientNotAdded(refused.toList())
         return joined
@@ -312,6 +320,7 @@ class FilesyncSharing(
         val rows = liveShares(tree.keys)
         val shared = tree.filterKeys { id -> rows[id].orEmpty().any { it.circleId == circleId } }
         withdrawAll(shared.values.map { it.fileId to circleId })
+        if (shared.isNotEmpty()) editorsMayHaveChanged()
         return shared.keys
     }
 
@@ -334,7 +343,7 @@ class FilesyncSharing(
             filesyncShares.share(FilesyncProtocol.DriveAlias, rows.map { shareRequest(fileId, keyHeader, it) })
             true
         }
-        if ((result as? RetryResult.Failure)?.exception is UnauthorizedException) FilesyncSession.forget()
+        if ((result as? RetryResult.Failure)?.exception is UnauthorizedException) signOut()
         return result.getOrThrow() == true
     }
 
@@ -374,6 +383,7 @@ class FilesyncSharing(
             withRetryResult(RETRY, TAG) { filesyncShares.share(FilesyncProtocol.DriveAlias, chunk) }.getOrThrow()
         }
         withdrawAll(moved.flatMap { plan.stops[it].orEmpty() })
+        if (moved.any { !plan.starts[it].isNullOrEmpty() || !plan.stops[it].isNullOrEmpty() }) editorsMayHaveChanged()
     }
 
     // One DELETE per row, a few at a time.
@@ -382,6 +392,17 @@ class FilesyncSharing(
             chunk.map { (fileId, circleId) ->
                 async { withRetryResult(RETRY, TAG) { filesyncShares.withdraw(FilesyncProtocol.DriveAlias, fileId, circleId) }.getOrThrow() }
             }.awaitAll()
+        }
+    }
+
+    // The change itself is done; a failure here is caught up by the next upkeep.
+    private suspend fun editorsMayHaveChanged() {
+        try {
+            syncEditors()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e, TAG) { "editors not brought up to date" }
         }
     }
 

@@ -668,11 +668,7 @@ internal class MessageActionsHandler(
 
     /** The chat [recipient] stands for; a contact's 1:1 chat is created when it has none. */
     internal suspend fun conversationIdFor(recipient: RecipientModel): Uuid = when (recipient) {
-        is RecipientModel.Contact -> conversationService.createConversation(
-            recipients = listOf(recipient.contact.odinId),
-            title = "",
-            payloadBundle = null,
-        ).conversationId
+        is RecipientModel.Contact -> conversationService.oneOnOneConversationId(recipient.contact.odinId)
         is RecipientModel.Conversation -> recipient.conversation.conversation.id
     }
 

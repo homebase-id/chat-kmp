@@ -18,7 +18,7 @@ class FilesyncShareMessages(
     suspend fun send(members: List<OdinId>, share: FileShareDescriptor): List<OdinId> =
         members.filter { member ->
             try {
-                val conversationId = conversations.createConversation(listOf(member), title = "", payloadBundle = null).conversationId
+                val conversationId = conversations.oneOnOneConversationId(member)
                 sender.sendNewTypedMessage(Uuid.random(), conversationId, MessageContent.FileShare(share), previousMessageUniqueId = null)
                 false
             } catch (e: CancellationException) {

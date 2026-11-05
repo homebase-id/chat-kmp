@@ -169,7 +169,6 @@ import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
 import id.homebase.core.ui.screens.filesync.FilesyncSharing
 import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
 import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
-import id.homebase.core.ui.screens.filesync.FilesyncSession
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
@@ -614,13 +613,6 @@ val appModule = module {
             driveFileProviderCached = get(),
             contactInfo = get(),
             clearPlatformCaches = {
-                runCatching { FilesyncSession.forget() }
-                    .onFailure { Logger.w(tag = "YouAuthFlowManager", throwable = it) { "forgetting the Filesync sign-in failed" } }
-                // On their own: a failed sign-out above mustn't leave the circle keys for the next identity.
-                runCatching {
-                    get<FilesyncSharing>().forgetKeys()
-                    get<FilesyncShareUpkeep>().reset()
-                }.onFailure { Logger.w(tag = "YouAuthFlowManager", throwable = it) { "forgetting Filesync's circle keys failed" } }
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
                 // the role the standalone safeDeleteRecursively("coil3_disk_cache") line
@@ -1050,7 +1042,7 @@ val appModule = module {
     single { CircleShareKeyProvider(get(), get()) }
     single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
     single { FilesyncShareMessages(get(), get()) }
-    single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get()) }
+    single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit) }
     single { FilesyncEditor(get(), get(), get()) }

@@ -623,7 +623,7 @@ class ContactDetailViewModel(
         val domain = odinId ?: return
         viewModelScope.launch {
             val id = try {
-                conversationService.createConversation(listOf(OdinId(domain)), "", null).conversationId
+                conversationService.oneOnOneConversationId(OdinId(domain))
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e
             } catch (e: Exception) {

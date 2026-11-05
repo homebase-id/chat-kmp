@@ -1111,7 +1111,7 @@ class ConversationListViewModel(
         val identity = runCatching { OdinId(odinId.trim()) }.getOrNull() ?: return
         viewModelScope.launch {
             val conversationId = try {
-                conversationService.createConversation(listOf(identity), "", null).conversationId
+                conversationService.oneOnOneConversationId(identity)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

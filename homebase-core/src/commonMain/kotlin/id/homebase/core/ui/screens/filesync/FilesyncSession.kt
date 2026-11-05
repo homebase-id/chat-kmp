@@ -26,6 +26,19 @@ object FilesyncSession {
     private const val SHARED_SECRET = "filesync_session_shared_secret"
     private const val APP_KEY = "filesync_session_app_key"
 
+    /** Where the sign-in is kept between runs; tests keep it in memory. */
+    internal interface Store {
+        fun get(key: String): String?
+        fun put(key: String, value: String)
+        fun remove(key: String)
+    }
+
+    internal var store: Store = object : Store {
+        override fun get(key: String) = SecureStorage.get(key)
+        override fun put(key: String, value: String) = SecureStorage.put(key, value)
+        override fun remove(key: String) = SecureStorage.remove(key)
+    }
+
     /** Filesync's token, for the providers that write as Filesync. */
     val credentials = CredentialsManager()
 
@@ -43,24 +56,24 @@ object FilesyncSession {
     /** Loads the stored sign-in when it is [identity]'s; a stored one of another identity is forgotten. */
     suspend fun restore(identity: OdinId): Boolean {
         if (_signedIn.value) return true
-        val stored = SecureStorage.get(IDENTITY) ?: return false
+        val stored = store.get(IDENTITY) ?: return false
         if (!stored.equals(identity.domainName, ignoreCase = true)) {
             forget()
             return false
         }
-        val token = SecureStorage.get(TOKEN) ?: return false
-        val secret = SecureStorage.get(SHARED_SECRET)?.let(Base64::decode) ?: return false
-        val key = SecureStorage.get(APP_KEY)?.let(Base64::decode) ?: return false
+        val token = store.get(TOKEN) ?: return false
+        val secret = store.get(SHARED_SECRET)?.let(Base64::decode) ?: return false
+        val key = store.get(APP_KEY)?.let(Base64::decode) ?: return false
         use(ApiCredentials.create(identity, token, SecureByteArray(secret)), key)
         return true
     }
 
     internal suspend fun save(result: AuthResult) {
         val key = checkNotNull(result.zkAppKey) { "Filesync's sign-in brought no app key" }
-        SecureStorage.put(IDENTITY, result.identity.domainName)
-        SecureStorage.put(TOKEN, result.clientAuthToken)
-        SecureStorage.put(SHARED_SECRET, result.sharedSecret)
-        SecureStorage.put(APP_KEY, Base64.encode(key))
+        store.put(IDENTITY, result.identity.domainName)
+        store.put(TOKEN, result.clientAuthToken)
+        store.put(SHARED_SECRET, result.sharedSecret)
+        store.put(APP_KEY, Base64.encode(key))
         use(ApiCredentials.create(result.identity, result.clientAuthToken, SecureByteArray(Base64.decode(result.sharedSecret))), key)
     }
 
@@ -71,7 +84,7 @@ object FilesyncSession {
     }
 
     suspend fun forget() {
-        listOf(IDENTITY, TOKEN, SHARED_SECRET, APP_KEY).forEach(SecureStorage::remove)
+        listOf(IDENTITY, TOKEN, SHARED_SECRET, APP_KEY).forEach(store::remove)
         credentials.removeAllCredentials()
         appKey = null
         _signedIn.value = false
