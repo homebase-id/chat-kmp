@@ -81,7 +81,7 @@ class PhotoBackupControllerTest {
             settings = { store.settings.value },
             ledger = ledger,
             source = source,
-            hasher = AssetHasher(source, NoFileOps),
+            hasher = AssetHasher(HashedExports(source, NoFileOps), NoFileOps),
             dedupe = { emptySet() },
             uploaderFor = { uploader },
             results = results,

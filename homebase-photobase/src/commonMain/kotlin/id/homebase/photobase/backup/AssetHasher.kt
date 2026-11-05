@@ -20,17 +20,24 @@ class HashedAsset(val contentDigests: List<ByteArray>) {
 
 /** Plaintext BLAKE3 of the original bytes, before anything is encrypted or written. */
 class AssetHasher(
-    private val source: DeviceChangeSource,
+    private val exports: HashedExports,
     private val fileOps: FileOperationsProvider,
 ) {
     suspend fun hash(assetId: String, mediaType: BackupMediaType): HashedAsset {
-        val exported = source.export(assetId, mediaType)
+        val exported = exports.export(assetId, mediaType)
         try {
-            return HashedAsset(exported.parts.map { digest(it.path) })
-        } finally {
+            val hashed = timed(BackupStage.Hash) { HashedAsset(exported.parts.map { digest(it.path) }) }
+            exports.keep(assetId, mediaType, exported)
+            return hashed
+        } catch (e: Throwable) {
             exported.deleteTemporaryParts(fileOps)
+            throw e
         }
     }
+
+    suspend fun forget(assetId: String) = exports.forget(assetId)
+
+    suspend fun forgetAll() = exports.forgetAll()
 
     suspend fun digest(path: String): ByteArray {
         val hasher = Blake3Hasher()

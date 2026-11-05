@@ -66,7 +66,7 @@ class OutboxBackupUploader(
         val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
         var queued = false
         try {
-            when (val enqueue = outboxSync.tryEnqueue(request, priority = OUTBOX_BULK_PRIORITY, sendNow = false)) {
+            when (val enqueue = timed(BackupStage.Enqueue) { outboxSync.tryEnqueue(request, priority = OUTBOX_BULK_PRIORITY, sendNow = false) }) {
                 EnqueueResult.Enqueued -> queued = true
                 EnqueueResult.AlreadyQueued -> Unit
                 EnqueueResult.WouldStrandCreate -> throw BackupEnqueueFailedException("refused by the Outbox")

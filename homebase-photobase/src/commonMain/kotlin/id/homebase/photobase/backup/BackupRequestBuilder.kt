@@ -39,15 +39,18 @@ class BackupRequestBuilder(
             for ((index, part) in exported.parts.withIndex()) {
                 val encryptedPath = fileOps.createOutboxStagingPath("photo", ".encrypted")
                 payloads += PayloadFile(key = keyFor(part.role), filePath = encryptedPath, contentType = part.contentType, isPreEncrypted = true)
-                val hashed = fileOps.encryptWithPayloadHash(part.path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
+                val hashed = timed(BackupStage.Encrypt) {
+                    fileOps.encryptWithPayloadHash(part.path, encryptedPath, keyHeader.aesKey, PayloadHashAlgorithm.Blake3)
+                }
                 val digest = hashed.hash.plaintextContentHash(KeyHeader(hashed.iv, keyHeader.aesKey))
                 if (digest == null || !digest.contentEquals(digests[index])) return null
                 payloads[index] = payloads[index].copy(iv = hashed.iv, hash = hashed.hash)
             }
             val primaryKey = KeyHeader(payloads.first().iv!!, keyHeader.aesKey)
             val imageBytes = fileOps.readFileBytes(exported.parts.first().path)
-            val prepared = prepareImage(imageBytes, payloads.first().key)
-            val exif = readExifSoftly(imageBytes)
+            val (prepared, exif) = timed(BackupStage.Thumbnails) {
+                prepareImage(imageBytes, payloads.first().key) to readExifSoftly(imageBytes)
+            }
             val metadata = photoMetadata(
                 uniqueId,
                 if (mediaType == BackupMediaType.LivePhoto) PhotobaseProtocol.LivePhotoDataType else PhotobaseProtocol.ImageDataType,

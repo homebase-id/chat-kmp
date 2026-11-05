@@ -40,14 +40,16 @@ class BackgroundSessionUploader(
             val request = requests.build(row, uniqueId, mediaType, exported) ?: return HandOffResult.ChangedUnderUs
             val bodyPath = bodyPath(fileOps, uniqueId)
             val prepared = try {
-                uploadProvider.writeUploadBody(request, bodyPath)
+                timed(BackupStage.UploadBody) { uploadProvider.writeUploadBody(request, bodyPath) }
             } catch (e: Throwable) {
                 runCatching { fileOps.deleteTempFile(bodyPath) }
                 throw e
             } finally {
                 request.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
             }
-            val taskId = bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath)
+            val taskId = timed(BackupStage.Enqueue) {
+                bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath)
+            }
             if (taskId == null) {
                 runCatching { fileOps.deleteTempFile(bodyPath) }
                 throw BackupEnqueueFailedException("the background session refused the upload")

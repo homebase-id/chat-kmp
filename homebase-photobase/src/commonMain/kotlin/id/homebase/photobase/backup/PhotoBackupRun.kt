@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -17,10 +19,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 enum class BackupRunOutcome { AlreadyRunning, Paused, Finished, OutOfTime }
@@ -89,49 +93,76 @@ class PhotoBackupRun(
         }
         activeJob = currentCoroutineContext()[Job]
         _status.update { it.copy(isRunning = true) }
+        val timings = BackupTimings()
+        val started = TimeSource.Monotonic.markNow()
         return try {
-            runLocked(request)
+            withContext(timings) { runLocked(request) }
         } finally {
+            hasher.forgetAll()
+            Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
             activeJob = null
             _status.update { it.copy(isRunning = false) }
             mutex.unlock()
         }
     }
 
-    private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome {
+    private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome = coroutineScope {
         val interactive = request.isInteractive
         Logger.i(tag = TAG) { "start trigger=${request.trigger} budget=${request.budget.remaining}" }
 
-        if (!auth.awaitSignedIn()) return paused(BackupPauseReason.SignedOut)
+        // Finding and hashing photos are local, so a slow login restore mustn't hold them up in a short wake.
+        val signedIn = async { timed(BackupStage.Login) { auth.awaitSignedIn() } }
         val current = settings()
-        scheduler.rearm(current)
-        if (!current.enabled) return paused(BackupPauseReason.BackupOff)
-        if (probe.libraryAccess() == LibraryAccess.None) return paused(BackupPauseReason.NoLibraryAccess)
         val deviceState = probe.state()
-        backupPauseReason(current, deviceState, interactive)?.let { return paused(it) }
-        if (isStorageFull(interactive)) return paused(BackupPauseReason.StorageFull)
+        val localPause = when {
+            !current.enabled -> BackupPauseReason.BackupOff
+            probe.libraryAccess() == LibraryAccess.None -> BackupPauseReason.NoLibraryAccess
+            else -> backupPauseReason(current, deviceState, interactive)
+                ?: BackupPauseReason.StorageFull.takeIf { isStorageFull(false) }
+        }
+        if (localPause != null) {
+            if (!signedIn.await()) return@coroutineScope paused(BackupPauseReason.SignedOut)
+            scheduler.rearm(current)
+            return@coroutineScope paused(localPause)
+        }
+
+        // Limited access can grow without the change counters saying so, and a new album scope brings in old assets.
+        val fullScan = request.forceFullScan || probe.libraryAccess() == LibraryAccess.Limited
+        timed(BackupStage.Scan) {
+            val changes = source.changes(ledger.deviceCheckpoint(current.albumIds, fullScan), current.albumIds, request.findDeletions || fullScan)
+            ledger.apply(changes, current.onlyNewFromMs)
+            ledger.saveDeviceCheckpoint(changes.newCheckpoint, current.albumIds)
+        }
+        if (interactive) ledger.requeueFailed()
+
+        val includeVideos = backupVideosAllowed(current, deviceState, interactive)
+        val newestFirst = ledger.isInitialBackupDone()
+        val hashing = launch {
+            withTimeoutOrNull(request.budget.remaining) { hashStage(request, includeVideos, newestFirst) }
+        }
+
+        if (!signedIn.await()) {
+            hashing.cancelAndJoin()
+            return@coroutineScope paused(BackupPauseReason.SignedOut)
+        }
+        scheduler.rearm(current)
+        if (isStorageFull(interactive)) {
+            hashing.cancelAndJoin()
+            return@coroutineScope paused(BackupPauseReason.StorageFull)
+        }
         _status.update { it.copy(pauseReason = null) }
 
         results.start()
-        // Limited access can grow without the change counters saying so, and a new album scope brings in old assets.
-        val fullScan = request.forceFullScan || probe.libraryAccess() == LibraryAccess.Limited
-        val changes = source.changes(ledger.deviceCheckpoint(current.albumIds, fullScan), current.albumIds, request.findDeletions || fullScan)
-        ledger.apply(changes, current.onlyNewFromMs)
-        ledger.saveDeviceCheckpoint(changes.newCheckpoint, current.albumIds)
-
-        if (interactive) ledger.requeueFailed()
         val uploader = uploaderFor(request)
         reconcileHandedOff(uploader)
         refreshStatus()
 
-        val includeVideos = backupVideosAllowed(current, deviceState, interactive)
-        val newestFirst = ledger.isInitialBackupDone()
         val finished = withTimeoutOrNull(request.budget.remaining) {
-            pipeline(request, uploader, includeVideos, newestFirst)
+            pipeline(request, uploader, includeVideos, newestFirst, hashing)
             true
         } ?: false
         uploader.kick()
-        val settled = awaitUploadsSettled(request.budget)
+        val settled = timed(BackupStage.Settle) { awaitUploadsSettled(request.budget) }
 
         val counts = ledger.counts()
         if (finished && settled && counts.pending == 0L) {
@@ -142,7 +173,7 @@ class PhotoBackupRun(
         refreshStatus()
         val outcome = if (request.budget.isExpired) BackupRunOutcome.OutOfTime else BackupRunOutcome.Finished
         Logger.i(tag = TAG) { "end trigger=${request.trigger} outcome=$outcome counts=$counts" }
-        return outcome
+        outcome
     }
 
     private suspend fun paused(reason: BackupPauseReason): BackupRunOutcome {
@@ -167,8 +198,8 @@ class PhotoBackupRun(
         uploader: BackupUploader,
         includeVideos: Boolean,
         newestFirst: Boolean,
+        hashing: Job,
     ) = coroutineScope {
-        val hashing = launch { hashStage(request, includeVideos, newestFirst) }
         val toPrepare = Channel<Pair<DeviceBackupAsset, Uuid>>()
         launch {
             try {
@@ -180,7 +211,7 @@ class PhotoBackupRun(
         repeat(PREPARE_PARALLELISM) {
             launch {
                 for ((row, uniqueId) in toPrepare) {
-                    if (request.budget.isExpired || !awaitUploadRoom(uploader) || isStorageFull(false)) {
+                    if (request.budget.isExpired || !timed(BackupStage.WaitForRoom) { awaitUploadRoom(uploader) } || isStorageFull(false)) {
                         toPrepare.cancel()
                         return@launch
                     }
@@ -188,6 +219,7 @@ class PhotoBackupRun(
                 }
             }
         }
+        hashing.join()
     }
 
     private suspend fun hashStage(request: BackupRunRequest, includeVideos: Boolean, newestFirst: Boolean) {
@@ -245,7 +277,7 @@ class PhotoBackupRun(
             checked += batch.map { it.deviceAssetId }
             val ids = batch.associateWith { Uuid.parse(it.uniqueId!!) }
             val existing = try {
-                dedupe.existing(ids.values.toList())
+                timed(BackupStage.ServerCheck) { dedupe.existing(ids.values.toList()) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -255,14 +287,19 @@ class PhotoBackupRun(
                 continue
             }
             for ((row, uniqueId) in ids) {
-                if (uniqueId in existing) ledger.markDone(row.deviceAssetId) else toPrepare.send(row to uniqueId)
+                if (uniqueId in existing) {
+                    ledger.markDone(row.deviceAssetId)
+                    hasher.forget(row.deviceAssetId)
+                } else {
+                    toPrepare.send(row to uniqueId)
+                }
             }
         }
     }
 
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid, uploader: BackupUploader) {
         guarded(row) {
-            when (val handedOff = uploader.handOff(row, uniqueId)) {
+            when (val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }) {
                 HandOffResult.Queued -> {
                     ledger.markQueued(row.deviceAssetId)
                     results.onHandedOff(uniqueId)

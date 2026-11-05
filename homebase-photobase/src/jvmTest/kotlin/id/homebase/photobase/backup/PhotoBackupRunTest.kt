@@ -42,6 +42,7 @@ class PhotoBackupRunTest {
     private val dedupeCalls = mutableListOf<List<Uuid>>()
     private var dedupeFailure: Exception? = null
     private var storageFull = false
+    private var signedIn = CompletableDeferred(true)
 
     @AfterTest
     fun close() = db.close()
@@ -67,7 +68,7 @@ class PhotoBackupRunTest {
             settings = { settings },
             ledger = ledger,
             source = source,
-            hasher = AssetHasher(source, Bytes()),
+            hasher = Bytes().let { AssetHasher(HashedExports(source, it), it) },
             dedupe = { ids ->
                 dedupeCalls += ids
                 dedupeFailure?.let { throw it }
@@ -76,7 +77,7 @@ class PhotoBackupRunTest {
             uploaderFor = { uploader },
             results = results,
             probe = probe,
-            auth = { true },
+            auth = { signedIn.await() },
             scheduler = { },
             isStorageFull = { storageFull },
         )
@@ -123,6 +124,43 @@ class PhotoBackupRunTest {
         run.run(request())
 
         assertEquals(setOf("fast", "slow"), uploader.handedOff.toSet())
+    }
+
+    @Test
+    fun photosAreHashedWhileTheLoginIsStillLoading() = runTest {
+        signedIn = CompletableDeferred()
+        source.next = fullListing(asset("a"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        val going = launch { run.run(request()) }
+        advanceUntilIdle()
+
+        assertEquals(BackupState.Hashed.code, state("a"))
+        assertTrue(dedupeCalls.isEmpty())
+        assertTrue(uploader.handedOff.isEmpty())
+
+        signedIn.complete(true)
+        going.join()
+
+        assertEquals(listOf("a"), uploader.handedOff)
+    }
+
+    @Test
+    fun aSignedOutRunNeverReachesTheServer() = runTest {
+        signedIn = CompletableDeferred()
+        source.next = fullListing(asset("a"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        val going = launch { assertEquals(BackupRunOutcome.Paused, run.run(request())) }
+        advanceUntilIdle()
+        signedIn.complete(false)
+        going.join()
+
+        assertEquals(BackupPauseReason.SignedOut, run.status.value.pauseReason)
+        assertTrue(dedupeCalls.isEmpty())
+        assertTrue(uploader.handedOff.isEmpty())
     }
 
     @Test
@@ -423,7 +461,7 @@ class PhotoBackupRunTest {
     }
 }
 
-private object NoFiles : FileOperationsProvider {
+internal object NoFiles : FileOperationsProvider {
     override fun openFileInput(path: String): InputProvider = error("not used")
     override suspend fun readFileBytes(path: String): ByteArray = error("not used")
     override fun deleteTempFile(path: String): Boolean = true

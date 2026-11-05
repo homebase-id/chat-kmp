@@ -82,7 +82,7 @@ class OutboxBackupUploaderTest {
         val creds = CredentialsManager()
         val seeder = PayloadCacheSeeder(DriveFileProvider(http, creds, DriveFileProviderCached(http, creds, fileOps)), fileOps)
         val service = UploadService(encryptor, outbox, writer, seeder)
-        return OutboxBackupUploader(fileOps, source, AssetHasher(source, fileOps), BackupRequestBuilder(fileOps), outbox, service, this)
+        return OutboxBackupUploader(fileOps, source, AssetHasher(HashedExports(source, fileOps), fileOps), BackupRequestBuilder(fileOps), outbox, service, this)
     }
 
     private suspend fun queuedRequest(uniqueId: Uuid): Pair<Outbox, UploadFileRequest> {
