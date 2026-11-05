@@ -20,7 +20,7 @@ import kotlinx.coroutines.runBlocking
 
 class GapsTest {
     private val author = OdinId("alice.example.com")
-    private val thumb = EmbeddedThumb(10, 10, "image/jpeg", "abc")
+    private val thumb = EmbeddedThumb(10, 10, "image/jpeg", id.homebase.api.serialization.Base64Bytes("abc".encodeToByteArray()))
 
     private fun parent(
         text: String = "hello",

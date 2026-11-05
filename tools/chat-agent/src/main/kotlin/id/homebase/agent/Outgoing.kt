@@ -1,5 +1,6 @@
 package id.homebase.agent
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -26,7 +27,6 @@ import java.nio.file.LinkOption
 import javax.imageio.IIOImage
 import javax.imageio.ImageIO
 import javax.imageio.ImageWriteParam
-import kotlin.io.encoding.Base64
 
 const val MAX_OUT_FILES = 4
 const val MAX_OUT_BYTES = 10L * 1024 * 1024
@@ -222,7 +222,7 @@ fun prepareImage(bytes: ByteArray, decoded: DecodedImage): PreparedImage {
 }
 
 fun tinyThumb(src: BufferedImage): EmbeddedThumb? =
-    encodeThumb(src, TINY_DIMENSION, 76, HomebaseProtocol.MaxEmbeddedThumbBytes)?.let { EmbeddedThumb(it.width, it.height, it.contentType, Base64.encode(it.bytes)) }
+    encodeThumb(src, TINY_DIMENSION, 76, HomebaseProtocol.MaxEmbeddedThumbBytes)?.let { EmbeddedThumb(it.width, it.height, it.contentType, Base64Bytes(it.bytes)) }
 
 class ImageThumbs(val preview: EmbeddedThumb?, val thumbnails: List<ThumbnailFile>)
 
@@ -247,6 +247,8 @@ class StagedBundle(val bundle: PayloadBundle, private val dir: File? = null, val
     }
 
     fun withoutThumbnails() = StagedBundle(bundle.withoutThumbnails(), dir, preEncrypted)
+
+    fun plus(payload: PayloadFile) = StagedBundle(bundle.copy(payloads = bundle.payloads + payload), dir, preEncrypted)
 }
 
 // Not built here (the app does): webp thumbs, PDF page previews.
