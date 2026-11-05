@@ -102,7 +102,6 @@ import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_media
 import id.homebase.resources.settings_media_desc
 import id.homebase.resources.settings_moments_desc
-import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_status_checking
 import id.homebase.resources.settings_notifications_status_allowed
