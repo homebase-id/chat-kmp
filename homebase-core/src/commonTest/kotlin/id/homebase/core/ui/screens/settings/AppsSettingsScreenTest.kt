@@ -65,7 +65,8 @@ class AppsSettingsScreenTest {
             ),
             AppsSettingsRowTags,
         )
-        val tops = AppsSettingsRowTags.map { onNodeWithTag(it).assertExists().fetchSemanticsNode().boundsInRoot.top }
+        // positionInRoot: the list now runs past the test window, where boundsInRoot clips to 0.
+        val tops = AppsSettingsRowTags.map { onNodeWithTag(it).assertExists().fetchSemanticsNode().positionInRoot.y }
         assertEquals(tops.sorted(), tops)
     }
 
