@@ -2,7 +2,7 @@ package id.homebase.core.ui.screens.card
 
 /**
  * A preset: one of a design's schemes with its first accent. Presets set colours only; the layout fields are filled only on the custom tile.
- * The [isDefault] one is the first scheme, drawn as the card's built-in look; applying it clears the colours and accent, as the others only set those.
+ * The [isDefault] one is the design's built-in look (odin-js presets.ts), ahead of the schemes; applying it clears the colours and accent.
  */
 internal data class ResolvedCardStyle(
     val id: String,
@@ -22,15 +22,11 @@ internal fun cardStylesFor(design: String): List<ResolvedCardStyle> =
 
 internal fun cardStylesFor(spec: CardDesignSpec): List<ResolvedCardStyle> {
     if (CardOption.COLOURS !in spec.options) return emptyList()
-    return spec.schemes.mapIndexed { i, scheme ->
-        if (i == 0) {
-            ResolvedCardStyle(scheme.id, argbToHex(CardDesign.baseArgb(spec.design)), argbToHex(CardDesign.inkArgb(spec.design)), accent = null, isDefault = true)
-        } else {
-            ResolvedCardStyle(scheme.id, scheme.ground, scheme.ink, scheme.accents.firstOrNull()?.takeIf { CardOption.ACCENT in spec.options })
-        }
+    val default = ResolvedCardStyle(DEFAULT_STYLE_ID, argbToHex(CardDesign.baseArgb(spec.design)), argbToHex(CardDesign.inkArgb(spec.design)), accent = null, isDefault = true)
+    return listOf(default) + spec.schemes.map { scheme ->
+        ResolvedCardStyle(scheme.id, scheme.ground, scheme.ink, scheme.accents.firstOrNull()?.takeIf { CardOption.ACCENT in spec.options })
     }
 }
-
 
 private fun ResolvedCardStyle.values(): List<Pair<CardOption, String?>> = listOf(
     CardOption.ACCENT to accent,
@@ -49,24 +45,23 @@ internal fun CardOverrides.withStyle(style: ResolvedCardStyle, design: String): 
     }.prunedFor(design)
 }
 
-// A template's palette is the design's first scheme, so an untouched templated card is still Default.
+// A scheme with no accent picked is still that preset: audience templates and cards saved from them carry none.
 internal fun ResolvedCardStyle.matches(overrides: CardOverrides): Boolean {
-    val colours = overrides.valueOf(CardOption.COLOURS)
-    if (isDefault) {
-        return (colours == null || colours.equals(ground, ignoreCase = true)) &&
-            overrides.valueOf(CardOption.ACCENT) == null
-    }
-    return colours.equals(ground, ignoreCase = true) &&
-        values().all { (option, value) -> value == null || overrides.valueOf(option).equals(value, ignoreCase = true) }
+    val accent = overrides.valueOf(CardOption.ACCENT)
+    if (isDefault) return overrides.valueOf(CardOption.COLOURS) == null && accent == null
+    return overrides.valueOf(CardOption.COLOURS).equals(ground, ignoreCase = true) &&
+        (accent == null || accent.equals(this.accent, ignoreCase = true)) &&
+        values().all { (option, value) -> option == CardOption.ACCENT || value == null || overrides.valueOf(option).equals(value, ignoreCase = true) }
 }
 
-/** The card's own colours as a tile, when they are set but no style in [styles] matches them, so the row shows why none is chosen. */
+/** The card's own colours as a tile, when a colour or accent is set but no style in [styles] matches them, so the row shows why none is chosen. */
 internal fun customStyle(styles: List<ResolvedCardStyle>, overrides: CardOverrides, design: String): ResolvedCardStyle? {
-    val ground = overrides.valueOf(CardOption.COLOURS) ?: return null
+    val ground = overrides.valueOf(CardOption.COLOURS)
+    if (ground == null && overrides.valueOf(CardOption.ACCENT) == null) return null
     if (styles.any { it.matches(overrides) }) return null
     return ResolvedCardStyle(
         id = CUSTOM_STYLE_ID,
-        ground = ground,
+        ground = ground ?: argbToHex(CardDesign.baseArgb(design)),
         ink = overrides.palette?.ink ?: argbToHex(CardDesign.inkArgb(design)),
         accent = overrides.valueOf(CardOption.ACCENT),
         display = overrides.valueOf(CardOption.DISPLAY_FONT),

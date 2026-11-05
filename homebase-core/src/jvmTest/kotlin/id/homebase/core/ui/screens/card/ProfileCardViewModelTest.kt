@@ -2005,7 +2005,7 @@ class ProfileCardViewModelTest {
     @Test
     fun applyingAStyleIsOneUnsavedPreviewEditThatRenders() = runTest(dispatcher) {
         val (vm, host, store) = boardVm()
-        val style = cardStylesFor(CardDesign.BOARD).first { it.id == "graphite" }
+        val style = cardStylesFor(CardDesign.BOARD).first { it.id == "charcoal" }
 
         vm.onStyleSelected(style)
 
@@ -2049,7 +2049,7 @@ class ProfileCardViewModelTest {
     fun savePassesTheDesignAndOverridesToTheCardWrite() = runTest(dispatcher) {
         val (vm, _, store) = boardVm()
         vm.onDesignSelected(CardDesign.DOSSIER)
-        vm.onOptionSelected(CardOption.ACCENT, "#9473CA")
+        vm.onOptionSelected(CardOption.ACCENT, "#8B7CF6")
         vm.onOptionSelected(CardOption.PORTRAIT_SHAPE, "rounded")
         vm.onBlockOrderChanged(listOf("moments", "chat", "links"))
 
@@ -2059,10 +2059,10 @@ class ProfileCardViewModelTest {
         val written = store.writes.single().data
         assertEquals(JsonPrimitive("dossier"), written["design"])
         val overrides = CardOverrides.fromJson(written["overrides"]!!.jsonObject)
-        assertEquals("#9473CA", overrides.palette?.accent)
+        assertEquals("#8B7CF6", overrides.palette?.accent)
         assertEquals("rounded", overrides.portraits?.first()?.shape)
         assertEquals(listOf("moments", "posts", "chat", "links"), overrides.blocks?.map { it.kind })
-        assertEquals("#9473CA", vm.uiState.value.savedOverrides.palette?.accent)
+        assertEquals("#8B7CF6", vm.uiState.value.savedOverrides.palette?.accent)
         assertNull(vm.uiState.value.previewOverrides)
         assertFalse(vm.uiState.value.hasUnsavedChanges)
     }

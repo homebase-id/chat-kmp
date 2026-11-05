@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.card
 import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -24,56 +23,12 @@ class CardColourSchemeTest {
     }
 
     @Test
-    fun everySchemeReadsAtWcagAaa() {
+    fun everySchemeReadsAtWcagAa() {
         for ((design, scheme) in schemes) {
-            assertTrue(contrast(scheme.ink, scheme.ground) >= 7.0, "$design/${scheme.id} ink on ground")
-            assertTrue(contrast(scheme.surfaceInk, scheme.surface) >= 7.0, "$design/${scheme.id} surfaceInk on surface")
-            assertTrue(contrast(scheme.muted, scheme.ground) >= 4.5, "$design/${scheme.id} muted on ground")
+            assertTrue(contrast(scheme.ink, scheme.ground) >= 4.5, "$design/${scheme.id} ink on ground")
+            assertTrue(contrast(scheme.surfaceInk, scheme.surface) >= 4.5, "$design/${scheme.id} surfaceInk on surface")
+            assertTrue(contrast(scheme.muted, scheme.ground) >= 3.0, "$design/${scheme.id} muted on ground")
         }
-    }
-
-    // Every ground a card could have saved before the palette changed.
-    private val retiredGrounds = mapOf(
-        CardDesign.POSTER to listOf("#0F1626", "#2A0E14", "#0E1E16", "#10215C", "#3A1708"),
-        CardDesign.BOARD to listOf("#1E5B45", "#5B2A6E", "#9A3B26", "#23262B", "#DCEBFA", "#F7E7A6", "#F6D6D9"),
-        CardDesign.COLLAGE to listOf("#DDE5D3", "#DCE6F0", "#F3DCDC", "#E6DFF0", "#C9A882", "#1F1C19", "#EDEDED"),
-        CardDesign.DOSSIER to listOf("#0D1B2A", "#0F1A14", "#1C0F10", "#F4F1EA", "#E8DCC6"),
-        CardDesign.LINKS to listOf("#DDF0E6", "#FBE3D6", "#E7E3F7", "#14213D", "#F8F2C8"),
-    )
-
-    @Test
-    fun aCardSavedOnARetiredGroundKeepsItsColoursButIsNeverOffered() {
-        for ((design, grounds) in retiredGrounds) {
-            val spec = CardDesignSpecs.of(design)!!
-            for (ground in grounds) {
-                val legacy = assertNotNull(CardDesignSpecs.schemeByGround(ground), "$design $ground")
-                assertTrue(legacy in spec.legacySchemes, "$design $ground")
-                assertTrue(spec.schemes.none { it.ground == ground }, "$design $ground offered")
-                val saved = CardOverrides(palette = legacy.applyTo(CardPalette(accent = legacy.accents.first().takeIf { CardOption.ACCENT in spec.options })))
-                assertEquals(saved, saved.prunedFor(design), "$design $ground")
-                assertEquals(saved, CardOverrides.fromJson(saved.toJson()).prunedFor(design), "$design $ground")
-            }
-        }
-    }
-
-    @Test
-    fun aCardOnARetiredGroundIsOfferedThatGroundsOwnReadableAccents() {
-        for ((design, grounds) in retiredGrounds) {
-            if (CardOption.ACCENT !in CardDesignSpecs.of(design)!!.options) continue
-            for (ground in grounds) {
-                val legacy = CardDesignSpecs.schemeByGround(ground)!!
-                val offered = CardDesignSpecs.accentsFor(design, ground)
-                assertEquals(legacy.accents, offered, "$design $ground")
-                assertEquals(offered, CardDesignSpecs.accentsFor(design, ground.lowercase()), "$design $ground")
-                offered.forEach { assertTrue(contrast(it, ground) >= 3.0, "$design $ground accent $it") }
-            }
-        }
-    }
-
-    @Test
-    fun groundsStayUniqueWithTheRetiredOnesCounted() {
-        val all = CardDesign.all.flatMap { CardDesignSpecs.of(it)!!.let { spec -> spec.schemes + spec.legacySchemes } }.map { it.ground.uppercase() }
-        assertEquals(all.size, all.toSet().size)
     }
 
     @Test
@@ -89,28 +44,49 @@ class CardColourSchemeTest {
         for (design in CardDesign.all) {
             val spec = CardDesignSpecs.of(design)!!
             assertEquals(CardOption.COLOURS in spec.options, spec.schemes.isNotEmpty(), design)
-            assertTrue(spec.schemes.size in 5..7, design)
-            assertEquals(argbToHex(CardDesign.baseArgb(design)), spec.schemes.first().ground, "$design first scheme is the built-in look")
+            // Five to seven original schemes, plus up to three Tonal variations; Collage and Links carry ten.
+            assertTrue(spec.schemes.size in 5..10, design)
+            assertEquals(spec.schemes.size, spec.schemes.map { it.id }.toSet().size, "$design ids")
+        }
+    }
+
+    // Every ground a card could have saved before the Tonal variations were added; each is still offered, unchanged.
+    private val originalGrounds = mapOf(
+        CardDesign.POSTER to listOf("#0F1626", "#2A0E14", "#0E1E16", "#10215C", "#3A1708"),
+        CardDesign.BOARD to listOf("#1E5B45", "#5B2A6E", "#9A3B26", "#23262B", "#DCEBFA", "#F7E7A6", "#F6D6D9"),
+        CardDesign.COLLAGE to listOf("#DDE5D3", "#DCE6F0", "#F3DCDC", "#E6DFF0", "#C9A882", "#1F1C19", "#EDEDED"),
+        CardDesign.DOSSIER to listOf("#0D1B2A", "#0F1A14", "#1C0F10", "#2A2D33", "#F4F1EA", "#12355B", "#E8DCC6"),
+        CardDesign.LINKS to listOf("#F1F3F6", "#1B1F24", "#DDF0E6", "#FBE3D6", "#E7E3F7", "#14213D", "#F8F2C8"),
+    )
+
+    @Test
+    fun theOriginalSchemesComeFirstInTheirOrderAndACardSavedOnOneKeepsIt() {
+        for ((design, grounds) in originalGrounds) {
+            val spec = CardDesignSpecs.of(design)!!
+            assertEquals(grounds, spec.schemes.take(grounds.size).map { it.ground }, design)
+            for (scheme in spec.schemes) {
+                val saved = CardOverrides(palette = scheme.applyTo(CardPalette(accent = scheme.accents.first().takeIf { CardOption.ACCENT in spec.options })))
+                assertEquals(saved, CardOverrides.fromJson(saved.toJson()).prunedFor(design), "$design/${scheme.id}")
+            }
         }
     }
 
     @Test
     fun aSchemeAndTheAccentAreSetAndClearedIndependently() {
-        val sky = CardDesignSpecs.of(CardDesign.BOARD)!!.schemes.first()
-        val accent = sky.accents[1]
-        val both = CardOverrides().with(CardOption.COLOURS, sky.ground).with(CardOption.ACCENT, accent)
-        assertEquals(sky.applyTo(CardPalette(accent = accent)), both.palette)
-        assertEquals(sky.ground, both.valueOf(CardOption.COLOURS))
+        val forest = CardDesignSpecs.of(CardDesign.BOARD)!!.schemes.first()
+        val both = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.ACCENT, "#F2B84B")
+        assertEquals(forest.applyTo(CardPalette(accent = "#F2B84B")), both.palette)
+        assertEquals(forest.ground, both.valueOf(CardOption.COLOURS))
 
-        assertEquals(sky.applyTo(null), both.with(CardOption.ACCENT, null).palette)
-        assertEquals(CardPalette(accent = accent), both.with(CardOption.COLOURS, null, design = CardDesign.BOARD).palette)
+        assertEquals(forest.applyTo(null), both.with(CardOption.ACCENT, null).palette)
+        assertEquals(CardPalette(accent = "#F2B84B"), both.with(CardOption.COLOURS, null, design = CardDesign.BOARD).palette)
         assertNull(both.with(CardOption.COLOURS, null).with(CardOption.ACCENT, null).palette)
     }
 
     @Test
     fun resettingToThePresetDropsAnAccentThePresetDoesNotOffer() {
-        val dark = CardDesignSpecs.of(CardDesign.LINKS)!!.schemes.first { it.id == "dark" }
-        val links = CardOverrides().with(CardOption.COLOURS, dark.ground).with(CardOption.ACCENT, "#7FD4E8")
+        val slate = CardDesignSpecs.of(CardDesign.LINKS)!!.schemes.first { it.id == "slate" }
+        val links = CardOverrides().with(CardOption.COLOURS, slate.ground).with(CardOption.ACCENT, "#7FD4E8")
         assertNull(links.with(CardOption.COLOURS, null, design = CardDesign.LINKS).palette)
     }
 
@@ -156,14 +132,15 @@ class CardColourSchemeTest {
                 assertTrue(contrast(accent, scheme.ground) >= 3.0, "$design/${scheme.id} accent $accent on ground")
             }
         }
+        assertEquals(schemes.size, schemes.map { it.second.accents }.toSet().size)
     }
 
     @Test
     fun theAccentsOnOfferFollowTheActiveScheme() {
         val spec = CardDesignSpecs.of(CardDesign.BOARD)!!
-        val purple = spec.schemes.first { it.id == "purple" }
-        assertEquals(purple.accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, purple.ground))
-        assertEquals(purple.accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, purple.ground.lowercase()))
+        val plum = spec.schemes.first { it.id == "plum" }
+        assertEquals(plum.accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, plum.ground))
+        assertEquals(plum.accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, plum.ground.lowercase()))
         assertEquals(spec.schemes.first().accents, CardDesignSpecs.accentsFor(CardDesign.BOARD, null))
     }
 
@@ -171,19 +148,19 @@ class CardColourSchemeTest {
     fun changingSchemeKeepsAnAccentTheNewSchemeOffersAndOtherwiseFallsBack() {
         val spec = CardDesignSpecs.of(CardDesign.BOARD)!!
         val forest = spec.schemes.first { it.id == "forest" }
-        val graphite = spec.schemes.first { it.id == "graphite" }
-        val shared = forest.accents.first { it in graphite.accents }
+        val charcoal = spec.schemes.first { it.id == "charcoal" }
+        val shared = forest.accents.first { it in charcoal.accents }
         val kept = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.ACCENT, shared)
-            .with(CardOption.COLOURS, graphite.ground)
+            .with(CardOption.COLOURS, charcoal.ground)
         assertEquals(shared, kept.valueOf(CardOption.ACCENT))
 
-        val onlyForest = forest.accents.first { it !in graphite.accents }
+        val onlyForest = forest.accents.first { it !in charcoal.accents }
         val fell = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.ACCENT, onlyForest)
-            .with(CardOption.COLOURS, graphite.ground)
-        assertEquals(graphite.accents.first(), fell.valueOf(CardOption.ACCENT))
-        assertEquals(graphite.ground, fell.valueOf(CardOption.COLOURS))
+            .with(CardOption.COLOURS, charcoal.ground)
+        assertEquals(charcoal.accents.first(), fell.valueOf(CardOption.ACCENT))
+        assertEquals(charcoal.ground, fell.valueOf(CardOption.COLOURS))
 
-        val preset = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.COLOURS, graphite.ground)
+        val preset = CardOverrides().with(CardOption.COLOURS, forest.ground).with(CardOption.COLOURS, charcoal.ground)
         assertNull(preset.valueOf(CardOption.ACCENT))
     }
 

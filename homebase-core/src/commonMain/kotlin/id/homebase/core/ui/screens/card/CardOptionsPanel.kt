@@ -34,17 +34,39 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.LineHeightStyle
 import id.homebase.resources.profile_card_colours_blue
 import id.homebase.resources.profile_card_colours_blueprint
+import id.homebase.resources.profile_card_colours_blush
+import id.homebase.resources.profile_card_colours_butter
+import id.homebase.resources.profile_card_colours_charcoal
+import id.homebase.resources.profile_card_colours_cloud
 import id.homebase.resources.profile_card_colours_cobalt
-import id.homebase.resources.profile_card_colours_dark
+import id.homebase.resources.profile_card_colours_forest
 import id.homebase.resources.profile_card_colours_graphite
-import id.homebase.resources.profile_card_colours_green
-import id.homebase.resources.profile_card_colours_light
+import id.homebase.resources.profile_card_colours_ink
+import id.homebase.resources.profile_card_colours_kraft
+import id.homebase.resources.profile_card_colours_lavender
+import id.homebase.resources.profile_card_colours_lemon
+import id.homebase.resources.profile_card_colours_lilac
+import id.homebase.resources.profile_card_colours_midnight
+import id.homebase.resources.profile_card_colours_mint
 import id.homebase.resources.profile_card_colours_mist
+import id.homebase.resources.profile_card_colours_mono
+import id.homebase.resources.profile_card_colours_moss
+import id.homebase.resources.profile_card_colours_navy
 import id.homebase.resources.profile_card_colours_night
+import id.homebase.resources.profile_card_colours_oxblood
 import id.homebase.resources.profile_card_colours_paper
+import id.homebase.resources.profile_card_colours_peach
+import id.homebase.resources.profile_card_colours_pine
 import id.homebase.resources.profile_card_colours_plum
 import id.homebase.resources.profile_card_colours_purple
+import id.homebase.resources.profile_card_colours_rose
+import id.homebase.resources.profile_card_colours_rust
+import id.homebase.resources.profile_card_colours_sage
+import id.homebase.resources.profile_card_colours_sand
+import id.homebase.resources.profile_card_colours_sky
 import id.homebase.resources.profile_card_colours_slate
+import id.homebase.resources.profile_card_colours_terracotta
+import id.homebase.resources.profile_card_colours_wine
 import id.homebase.resources.profile_card_tool_accent
 import id.homebase.resources.profile_card_tool_heading
 import id.homebase.resources.profile_card_tool_body
@@ -523,12 +545,10 @@ private fun SchemeRow(design: String, palette: CardPalette?, enabled: Boolean, o
     val schemes = CardDesignSpecs.of(design)?.schemes.orEmpty()
     val selected = palette?.ground
     val saved = selected?.takeIf { ground -> schemes.none { it.ground.equals(ground, ignoreCase = true) } }
-    // The first scheme is the built-in look, so it is the Default swatch rather than a second one like it.
-    val default = schemes.firstOrNull()?.ground
     ScrollableChoiceRow(modifier = Modifier.fillMaxWidth(), contentPadding = SWATCH_ROW_INSET, horizontalArrangement = Arrangement.Center) {
         Swatch(
             fill = Color(CardDesign.baseArgb(design)),
-            selected = selected == null || selected.equals(default, ignoreCase = true),
+            selected = selected == null,
             enabled = enabled,
             description = stringResource(MR.string.profile_card_option_default),
             onClick = { onSelect(null) },
@@ -543,7 +563,7 @@ private fun SchemeRow(design: String, palette: CardPalette?, enabled: Boolean, o
                 onClick = {},
             ) { InkDot(Color(palette.ink?.let(::hexToArgb) ?: CardDesign.inkArgb(design))) }
         }
-        schemes.drop(1).forEach { scheme ->
+        schemes.forEach { scheme ->
             Swatch(
                 fill = Color(hexToArgb(scheme.ground)),
                 selected = scheme.ground.equals(selected, ignoreCase = true),
@@ -563,7 +583,7 @@ private fun InkDot(ink: Color, size: Dp = INK_DOT_SIZE, edge: Color = Color.Tran
 // Accents are curated per ground and vanish on the app's own surface, so each is shown on the scheme it is meant for.
 @Composable
 private fun SwatchRow(design: String, colours: String?, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    val scheme = CardDesignSpecs.of(design)?.schemes?.firstOrNull { it.ground.equals(colours, ignoreCase = true) }
+    val scheme = CardDesignSpecs.schemeFor(design, colours)
     val ground = Color(scheme?.let { hexToArgb(it.ground) } ?: CardDesign.baseArgb(design))
     val ink = Color(scheme?.let { hexToArgb(it.ink) } ?: CardDesign.inkArgb(design))
     val accents = CardDesignSpecs.accentsFor(design, colours)
@@ -871,21 +891,40 @@ private fun blockLabel(kind: String): StringResource = when (kind) {
     else -> MR.string.profile_card_block_chat
 }
 
-// A design's first scheme is its built-in look, named Default wherever it shows.
 internal fun schemeLabel(id: String): StringResource = when (id) {
-    "green" -> MR.string.profile_card_colours_green
+    "wine" -> MR.string.profile_card_colours_wine
+    "pine" -> MR.string.profile_card_colours_pine
     "cobalt" -> MR.string.profile_card_colours_cobalt
+    "rust" -> MR.string.profile_card_colours_rust
     "slate" -> MR.string.profile_card_colours_slate
     "plum" -> MR.string.profile_card_colours_plum
-    "forest" -> MR.string.profile_card_colours_green
+    "forest" -> MR.string.profile_card_colours_forest
+    "terracotta" -> MR.string.profile_card_colours_terracotta
+    "charcoal" -> MR.string.profile_card_colours_charcoal
+    "sky" -> MR.string.profile_card_colours_sky
+    "butter" -> MR.string.profile_card_colours_butter
+    "blush" -> MR.string.profile_card_colours_blush
     "purple" -> MR.string.profile_card_colours_purple
-    "graphite" -> MR.string.profile_card_colours_graphite
-    "light" -> MR.string.profile_card_colours_light
+    "sage" -> MR.string.profile_card_colours_sage
     "mist" -> MR.string.profile_card_colours_mist
-    "blue" -> MR.string.profile_card_colours_blue
+    "rose" -> MR.string.profile_card_colours_rose
+    "lilac" -> MR.string.profile_card_colours_lilac
+    "kraft" -> MR.string.profile_card_colours_kraft
     "night" -> MR.string.profile_card_colours_night
-    "blueprint" -> MR.string.profile_card_colours_blueprint
+    "mono" -> MR.string.profile_card_colours_mono
+    "blue" -> MR.string.profile_card_colours_blue
+    "ink" -> MR.string.profile_card_colours_ink
+    "moss" -> MR.string.profile_card_colours_moss
+    "oxblood" -> MR.string.profile_card_colours_oxblood
+    "graphite" -> MR.string.profile_card_colours_graphite
     "paper" -> MR.string.profile_card_colours_paper
-    "dark" -> MR.string.profile_card_colours_dark
-    else -> MR.string.profile_card_option_default
+    "blueprint" -> MR.string.profile_card_colours_blueprint
+    "sand" -> MR.string.profile_card_colours_sand
+    "cloud" -> MR.string.profile_card_colours_cloud
+    "mint" -> MR.string.profile_card_colours_mint
+    "peach" -> MR.string.profile_card_colours_peach
+    "lavender" -> MR.string.profile_card_colours_lavender
+    "navy" -> MR.string.profile_card_colours_navy
+    "lemon" -> MR.string.profile_card_colours_lemon
+    else -> MR.string.profile_card_colours_midnight
 }

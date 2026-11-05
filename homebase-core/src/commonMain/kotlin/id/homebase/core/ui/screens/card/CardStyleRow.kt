@@ -49,6 +49,7 @@ private val STYLE_LABEL_LINE = 16.dp
 private val STYLE_SPACING = 8.dp
 private val STYLE_ROW_INSET = 12.dp
 internal const val CUSTOM_STYLE_ID = "custom"
+internal const val DEFAULT_STYLE_ID = "default"
 
 internal fun styleRowHeight(fontScale: Float): Dp =
     (STYLE_RING_GAP * 2 + STYLE_THUMB_HEIGHT + STYLE_LABEL_GAP + STYLE_LABEL_LINE * fontScale)

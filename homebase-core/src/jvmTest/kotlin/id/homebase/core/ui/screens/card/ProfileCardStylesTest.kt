@@ -28,24 +28,28 @@ class ProfileCardStylesTest {
     }
 
     @Test
-    fun everyDesignHasOneStylePerOwnSchemeAndTheFirstIsDefault() {
+    fun defaultComesFirstThenOneStylePerSchemeInOrder() {
         for (design in designs) {
             val schemes = CardDesignSpecs.of(design)!!.schemes.map { it.id }
             val styles = cardStylesFor(design)
-            assertEquals(schemes, styles.map { it.id }, design)
+            assertEquals(listOf(DEFAULT_STYLE_ID) + schemes, styles.map { it.id }, design)
             assertEquals(listOf(true) + List(styles.size - 1) { false }, styles.map { it.isDefault }, design)
         }
     }
 
+    // The odin-js presets.ts look each page draws with no colours set; the tile's accent is left to the thumbnail's copy of it.
     @Test
-    fun theDefaultTileIsTheBuiltInLookAndItsSchemeIsThatLookToo() {
+    fun theDefaultTileIsTheBuiltInLook() {
+        val presets = mapOf(
+            CardDesign.POSTER to ("#14120F" to "#F4F0EA"),
+            CardDesign.BOARD to ("#1F4E8C" to "#FFFFFF"),
+            CardDesign.COLLAGE to ("#F3EADB" to "#3A2E22"),
+            CardDesign.DOSSIER to ("#0E1013" to "#E9ECF1"),
+            CardDesign.LINKS to ("#F1F3F6" to "#1B1F24"),
+        )
         for (design in designs) {
-            val scheme = CardDesignSpecs.of(design)!!.schemes.first()
             val style = default(design)
-            assertEquals(argbToHex(CardDesign.baseArgb(design)), style.ground, design)
-            assertEquals(argbToHex(CardDesign.inkArgb(design)), style.ink, design)
-            assertEquals(scheme.ground, style.ground, design)
-            assertEquals(scheme.ink, style.ink, design)
+            assertEquals(presets.getValue(design), style.ground to style.ink, design)
             assertNull(style.accent, design)
         }
     }
@@ -56,8 +60,9 @@ class ProfileCardStylesTest {
             val spec = CardDesignSpecs.of(design)!!
             val styles = cardStylesFor(design)
             assertTrue(styles.size >= 5, "$design offers ${styles.size}")
-            for (style in styles) {
-                val scheme = spec.schemes.single { it.ground == style.ground }
+            for (style in styles.filterNot { it.isDefault }) {
+                val scheme = spec.schemes.single { it.id == style.id }
+                assertEquals(scheme.ground, style.ground)
                 assertEquals(scheme.ink, style.ink)
                 val accent = if (style.isDefault || CardOption.ACCENT !in spec.options) null else scheme.accents.first()
                 assertEquals(accent, style.accent, "$design ${style.id}")
@@ -68,7 +73,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun posterOnlyGetsItsDarkGrounds() {
-        val poster = CardDesignSpecs.of(CardDesign.POSTER)!!.schemes.map { it.ground }
+        val poster = CardDesignSpecs.of(CardDesign.POSTER)!!.schemes.map { it.ground } + argbToHex(CardDesign.baseArgb(CardDesign.POSTER))
         assertTrue(cardStylesFor(CardDesign.POSTER).all { it.ground in poster })
         assertTrue(cardStylesFor(CardDesign.POSTER).all { it.accent == null })
     }
@@ -137,17 +142,56 @@ class ProfileCardStylesTest {
     }
 
     @Test
-    fun anUntouchedFriendsCardSelectsDefault() = assertSelects(default(CardDesign.COLLAGE).id, cardTemplateFor(CardAudience.Circle(FRIENDS_CIRCLE_ID, ""))!!)
+    fun anUntouchedFriendsCardSelectsSage() = assertSelects("sage", cardTemplateFor(CardAudience.Circle(FRIENDS_CIRCLE_ID, ""))!!)
 
     @Test
-    fun anUntouchedFamilyCardSelectsDefault() = assertSelects(default(CardDesign.POSTER).id, cardTemplateFor(CardAudience.Circle(FAMILY_CIRCLE_ID, ""))!!)
+    fun anUntouchedFamilyCardSelectsWine() = assertSelects("wine", cardTemplateFor(CardAudience.Circle(FAMILY_CIRCLE_ID, ""))!!)
 
     @Test
-    fun anUntouchedWorkCardSelectsDefault() = assertSelects(default(CardDesign.LINKS).id, cardTemplateFor(CardAudience.Circle(WORK_CIRCLE_ID, ""))!!)
+    fun anUntouchedWorkCardSelectsCloud() = assertSelects("cloud", cardTemplateFor(CardAudience.Circle(WORK_CIRCLE_ID, ""))!!)
 
-    // Public is Links like Work but on its own ground, so a fresh account's intro shows four different cards.
     @Test
-    fun anUntouchedPublicCardSelectsItsBluePreset() = assertSelects("blue", cardTemplateFor(CardAudience.Public)!!)
+    fun anUntouchedPublicCardSelectsMint() = assertSelects("mint", cardTemplateFor(CardAudience.Public)!!)
+
+    // What a templated card stores on its first edit, read back from the server.
+    @Test
+    fun aCardSavedWithItsTemplatesPaletteStillSelectsThatScheme() {
+        val audiences = listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID, WORK_CIRCLE_ID).map { CardAudience.Circle(it, "") } + CardAudience.Public
+        for (audience in audiences) {
+            val template = cardTemplateFor(audience)!!
+            val stored = CardOverrides.fromJson(template.overrides.toJson()).prunedFor(template.design)
+            assertSelects(CardDesignSpecs.schemeByGround(template.overrides.palette!!.ground)!!.id, template.copy(overrides = stored))
+        }
+    }
+
+    @Test
+    fun theAccentToolOffersTheCurrentSchemesOwnAccents() {
+        for (design in designs) {
+            val spec = CardDesignSpecs.of(design)!!
+            for (scheme in spec.schemes) assertEquals(scheme.accents, CardDesignSpecs.accentsFor(design, scheme.ground), "$design/${scheme.id}")
+        }
+        for (audience in listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID, WORK_CIRCLE_ID).map { CardAudience.Circle(it, "") } + CardAudience.Public) {
+            val template = cardTemplateFor(audience)!!
+            val ground = template.overrides.palette!!.ground
+            assertEquals(CardDesignSpecs.schemeByGround(ground)!!.accents, CardDesignSpecs.accentsFor(template.design, ground), audience.toString())
+        }
+    }
+
+    @Test
+    fun anAccentPickedAfterDefaultLeavesCustomSelected() {
+        for (design in designs.filter { CardOption.ACCENT in CardDesignSpecs.of(it)!!.options }) {
+            val styles = cardStylesFor(design)
+            val accent = CardDesignSpecs.accentsFor(design, null).first()
+            val edited = CardOverrides().withStyle(default(design), design).with(CardOption.ACCENT, accent).prunedFor(design)
+            assertTrue(styles.none { it.matches(edited) }, design)
+            val custom = customStyle(styles, edited, design)!!
+            assertEquals(CUSTOM_STYLE_ID, custom.id, design)
+            assertEquals(default(design).ground, custom.ground, design)
+            assertEquals(default(design).ink, custom.ink, design)
+            assertEquals(accent, custom.accent, design)
+            assertTrue(default(design).matches(edited.with(CardOption.ACCENT, null)), design)
+        }
+    }
 
     @Test
     fun theAppliedStyleIsTheOnlyOneSelected() {
@@ -187,7 +231,7 @@ class ProfileCardStylesTest {
     fun changingTheColoursOrAccentDeselectsAColourStyle() {
         val style = cardStylesFor(CardDesign.BOARD)[1]
         val applied = CardOverrides().withStyle(style, CardDesign.BOARD)
-        assertFalse(style.matches(applied.with(CardOption.ACCENT, null)))
+        assertTrue(style.matches(applied.with(CardOption.ACCENT, null)))
         assertFalse(style.matches(applied.with(CardOption.ACCENT, CardDesignSpecs.of(CardDesign.BOARD)!!.schemes[1].accents.last())))
         assertFalse(style.matches(applied.with(CardOption.COLOURS, null, design = CardDesign.BOARD)))
         assertTrue(style.matches(applied.with(CardOption.DISPLAY_FONT, "caveat")))
@@ -205,11 +249,10 @@ class ProfileCardStylesTest {
     }
 
     @Test
-    fun aCardOnARetiredGroundShowsAsCustom() {
-        val legacy = CardDesignSpecs.of(CardDesign.COLLAGE)!!.legacySchemes.first()
-        val saved = CardOverrides(palette = legacy.applyTo(null))
-        val styles = cardStylesFor(CardDesign.COLLAGE)
-        assertEquals(legacy.ground, customStyle(styles, saved, CardDesign.COLLAGE)?.ground)
+    fun aCardOnAnAccentOutsideItsSchemeShowsAsCustom() {
+        val sage = CardDesignSpecs.of(CardDesign.COLLAGE)!!.schemes.first()
+        val saved = CardOverrides(palette = sage.applyTo(CardPalette(accent = "#123456")))
+        assertEquals(sage.ground, customStyle(cardStylesFor(CardDesign.COLLAGE), saved, CardDesign.COLLAGE)?.ground)
     }
 
     @Test

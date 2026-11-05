@@ -393,8 +393,8 @@ class ProfileCardEditorShotsTest {
         ),
         polishCustomise("p13-colours-row", schemed),
         polishCustomise("p31-styles-bare-default", base.copy(previewDesign = CardDesign.COLLAGE)),
-        polishCustomise("p32-styles-friends-template-default", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = cardTemplateFor(friendsCard)!!.overrides)),
-        polishCustomise("p34-styles-public-template-blue", base.copy(previewDesign = CardDesign.LINKS, previewOverrides = PUBLIC_CARD_TEMPLATE.overrides)),
+        polishCustomise("p32-styles-friends-template-sage", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = cardTemplateFor(friendsCard)!!.overrides)),
+        polishCustomise("p34-styles-public-template-mint", base.copy(previewDesign = CardDesign.LINKS, previewOverrides = PUBLIC_CARD_TEMPLATE.overrides)),
         polishCustomise(
             "p35-styles-default-keeps-fonts",
             base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.DISPLAY_FONT, "caveat").with(CardOption.PORTRAIT_SHAPE, "ellipse").prunedFor(CardDesign.BOARD)),
@@ -643,10 +643,10 @@ class ProfileCardEditorShotsTest {
     fun theCustomiseStepListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
         val applied = mutableListOf<ResolvedCardStyle>()
         customiseStep(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
-            for (name in listOf("Default", "Green", "Cobalt", "Slate", "Plum")) onNodeWithText(name).assertExists()
-            for (name in listOf("Purple", "Mist", "Paper")) onAllNodesWithText(name).assertCountEquals(0)
-            onNodeWithText("Cobalt").performClick()
-            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "cobalt" }), applied)
+            for (name in listOf("Default", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum")) onNodeWithText(name).assertExists()
+            for (name in listOf("Forest", "Sage", "Paper", "Purple")) onAllNodesWithText(name).assertCountEquals(0)
+            onNodeWithText("Wine").performClick()
+            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "wine" }), applied)
         }
     }
 

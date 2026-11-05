@@ -25,11 +25,11 @@ class ProfileCardStyleRowTest {
     private val outDir: File? = System.getenv("CARD_SHOTS_DIR")?.let(::File)?.also { it.mkdirs() }
 
     private val labels = mapOf(
-        CardDesign.POSTER to listOf("Default", "Green", "Cobalt", "Slate", "Plum"),
-        CardDesign.BOARD to listOf("Default", "Green", "Purple", "Graphite", "Light"),
-        CardDesign.COLLAGE to listOf("Default", "Mist", "Blue", "Slate", "Night"),
-        CardDesign.DOSSIER to listOf("Default", "Graphite", "Blueprint", "Plum", "Paper"),
-        CardDesign.LINKS to listOf("Default", "Blue", "Cobalt", "Plum", "Dark"),
+        CardDesign.POSTER to listOf("Default", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum"),
+        CardDesign.BOARD to listOf("Default", "Forest", "Plum", "Terracotta", "Charcoal", "Sky", "Butter", "Blush", "Purple"),
+        CardDesign.COLLAGE to listOf("Default", "Sage", "Mist", "Rose", "Lilac", "Kraft", "Night", "Mono", "Blue", "Slate", "Ink"),
+        CardDesign.DOSSIER to listOf("Default", "Ink", "Moss", "Oxblood", "Graphite", "Paper", "Blueprint", "Sand", "Plum", "Mist"),
+        CardDesign.LINKS to listOf("Default", "Cloud", "Slate", "Mint", "Peach", "Lavender", "Navy", "Lemon", "Blue", "Cobalt", "Plum"),
     )
 
     private fun row(design: String, fontScale: Float, dark: Boolean, check: (still: Boolean) -> Unit) =
@@ -54,15 +54,15 @@ class ProfileCardStyleRowTest {
             check(still)
         }
 
+    // Eight to eleven tiles outgrow 360dp, so the row scrolls rather than squeezing a name.
     @Test
-    fun everyDesignsFiveTilesSitInOneStillRowAt360dp() {
+    fun everyDesignsTilesAreDefaultThenItsSchemesInOneScrollingRowAt360dp() {
         for (design in CardDesign.all) for (dark in listOf(false, true)) {
-            assertEquals(5, cardStylesFor(design).size, design)
-            row(design, 1f, dark) { still -> assertTrue(still, "$design scrolls at 360dp") }
+            assertEquals(labels.getValue(design).size, cardStylesFor(design).size, design)
+            row(design, 1f, dark) { still -> assertTrue(!still, "$design should scroll at 360dp") }
         }
     }
 
-    // At 1.6 the names outgrow five 60dp tiles, so the row scrolls instead of cutting a name.
     @Test
     fun atLargeTextNoNameIsCut() {
         for (design in CardDesign.all) for (dark in listOf(false, true)) row(design, 1.6f, dark) {}
