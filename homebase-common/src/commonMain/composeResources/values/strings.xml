@@ -2024,6 +2024,7 @@
     <string name="contactbook_tab_known">Contacts</string>
     <string name="contactbook_tab_new">New</string>
     <string name="contactbook_tab_circles">Circles</string>
+    <string name="contactbook_requests_banner_one">You have a connection request from %1$s</string>
     <string name="contactbook_connected">Connected</string>
     <string name="contactbook_filter_circles">Circles</string>
     <string name="contactbook_new_empty">Nothing waiting on you.</string>
@@ -2140,7 +2141,16 @@
     <string name="contactbook_action_settings">Contact settings</string>
 
     <string name="contactbook_empty_title">No contacts yet</string>
-    <string name="contactbook_empty_body">Add a contact by hand.</string>
+    <string name="contactbook_empty_body">Invite a friend, or add someone you already know.</string>
+    <string name="contactbook_empty_invite">Invite a friend</string>
+    <string name="contactbook_empty_share_card">Share my card</string>
+    <string name="contactbook_invite_message">I'm on Homebase. Create an account at %1$s, then add me as a contact: %2$s</string>
+    <string name="contactbook_invite_body">Send this to anyone you'd like to connect with on Homebase.</string>
+    <string name="contactbook_invite_copy">Copy message</string>
+    <string name="contactbook_invite_copied">Copied</string>
+    <string name="contactbook_invite_email">Email</string>
+    <string name="contactbook_invite_email_failed">Couldn't open an email app. Copy the message instead.</string>
+    <string name="contactbook_invite_email_subject">Join me on Homebase</string>
     <string name="contactbook_empty_new">Add a contact</string>
 
     <string name="contactbook_detail_message">Message</string>

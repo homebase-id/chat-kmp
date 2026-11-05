@@ -195,6 +195,7 @@ data class ContactBookUiState(
     val requestDirections: Map<String, RequestDirection> = emptyMap(),
     /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
+    val newestIncomingRequestOdinId: String? = null,
     /** Circles the review sheet offers, in its three groups. */
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Circles tab. */
