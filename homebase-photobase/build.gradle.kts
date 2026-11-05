@@ -28,7 +28,7 @@ kotlin {
             version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
         }
         minSdk = libs.versions.android.minSdk.get().toInt()
-        withHostTest {}
+        withHostTest { isIncludeAndroidResources = true }
     }
 
     jvm()
@@ -77,6 +77,12 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+        }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.robolectric)
+            implementation(libs.androidx.test.core)
+            implementation(libs.androidx.work.testing)
         }
         jvmTest.dependencies {
             implementation(libs.ktor.client.mock)

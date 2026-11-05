@@ -16,7 +16,6 @@ import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -33,15 +32,17 @@ import kotlin.time.toJavaDuration
 
 class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
     private val workManager get() = WorkManager.getInstance(context)
+    private val jobScheduler get() = context.getSystemService(JobScheduler::class.java)
 
     override fun rearm(settings: BackupSettings) {
         if (!settings.enabled) {
             ALL_WORK.forEach(workManager::cancelUniqueWork)
-            context.getSystemService(JobScheduler::class.java).cancel(USER_INITIATED_JOB_ID)
+            jobScheduler.cancel(USER_INITIATED_JOB_ID)
+            jobScheduler.cancel(LIBRARY_WATCH_JOB_ID)
             return
         }
-        // Content triggers fire once and don't survive every process death: every run and every process start re-arms this one.
-        workManager.enqueueUniqueWork(MEDIA_CHANGED_WORK, ExistingWorkPolicy.KEEP, mediaChangedRequest(settings))
+        // Not persistable, so every run and process start re-arms it. Replacing a pending one would forget what it has seen.
+        if (jobScheduler.getPendingJob(LIBRARY_WATCH_JOB_ID) == null) watchLibrary()
         val periodic = PeriodicWorkRequestBuilder<PhotoBackupWorker>(SAFETY_NET_PERIOD.toJavaDuration())
             .setConstraints(constraints(settings))
             .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.Periodic.name))
@@ -59,6 +60,16 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
             .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.Overnight.name))
             .build()
         workManager.enqueueUniquePeriodicWork(OVERNIGHT_WORK, ExistingPeriodicWorkPolicy.UPDATE, overnight)
+    }
+
+    /** The watch fires once, so it's armed again first. Appended: a run already going has scanned past this photo. */
+    fun onLibraryChanged(settings: BackupSettings) {
+        watchLibrary()
+        val request = OneTimeWorkRequestBuilder<PhotoBackupWorker>()
+            .setConstraints(constraints(settings))
+            .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.MediaChanged.name))
+            .build()
+        workManager.enqueueUniqueWork(MEDIA_CHANGED_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     override suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit) {
@@ -80,7 +91,7 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
                 .setUserInitiated(true)
                 .setRequiredNetwork(network)
                 .build()
-            val scheduled = context.getSystemService(JobScheduler::class.java).schedule(job)
+            val scheduled = jobScheduler.schedule(job)
             if (scheduled != JobScheduler.RESULT_SUCCESS) Logger.w(tag = TAG) { "user-initiated job refused: $scheduled" }
             return scheduled == JobScheduler.RESULT_SUCCESS
         }
@@ -105,25 +116,21 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
         )
     }
 
-    private fun mediaChangedRequest(settings: BackupSettings): OneTimeWorkRequest {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(networkType(settings))
-            .setRequiresCharging(settings.chargingOnly)
-            .setRequiresBatteryNotLow(true)
-            .setTriggerContentUpdateDelay(MEDIA_UPDATE_DELAY.toJavaDuration())
-            .setTriggerContentMaxDelay(MEDIA_MAX_DELAY.toJavaDuration())
+    // Its own job, apart from the run: WorkManager's KEEP treats a running trigger as already armed, so it could never re-arm itself.
+    private fun watchLibrary() {
+        val job = JobInfo.Builder(LIBRARY_WATCH_JOB_ID, ComponentName(context, PhotoLibraryWatchJobService::class.java))
+            .setTriggerContentUpdateDelay(MEDIA_UPDATE_DELAY.inWholeMilliseconds)
+            .setTriggerContentMaxDelay(MEDIA_MAX_DELAY.inWholeMilliseconds)
         for (uri in listOf(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             MediaStore.Images.Media.INTERNAL_CONTENT_URI,
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
             MediaStore.Video.Media.INTERNAL_CONTENT_URI,
         )) {
-            constraints.addContentUriTrigger(uri, true)
+            job.addTriggerContentUri(JobInfo.TriggerContentUri(uri, JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS))
         }
-        return OneTimeWorkRequestBuilder<PhotoBackupWorker>()
-            .setConstraints(constraints.build())
-            .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.MediaChanged.name))
-            .build()
+        val scheduled = jobScheduler.schedule(job.build())
+        if (scheduled != JobScheduler.RESULT_SUCCESS) Logger.w(tag = TAG) { "library watch refused: $scheduled" }
     }
 
     private fun constraints(settings: BackupSettings) = Constraints.Builder()
@@ -135,8 +142,9 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
     // Declining from app code would wake the phone just to say no.
     private fun networkType(settings: BackupSettings) = if (settings.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
 
-    private companion object {
+    internal companion object {
         const val TAG = "AndroidBackupTriggers"
+        const val LIBRARY_WATCH_JOB_ID = 72012
         const val MEDIA_CHANGED_WORK = "photobase-media-changed"
         const val PERIODIC_WORK = "photobase-periodic"
         const val OVERNIGHT_WORK = "photobase-overnight"
