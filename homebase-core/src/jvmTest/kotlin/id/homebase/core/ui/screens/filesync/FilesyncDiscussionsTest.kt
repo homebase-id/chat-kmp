@@ -11,19 +11,16 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpRequestData
-import io.ktor.client.request.forms.InputProvider
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -163,25 +160,5 @@ class FilesyncDiscussionsTest {
               "appData": { "uniqueId": "${Uuid.random()}", "fileType": 801, "groupId": "$globalTransitId", "content": "$content" } },
             "serverMetadata": {}
         }"""
-    }
-
-    // Byte for byte: ISO-8859-1 maps every byte to one char and back.
-    private fun multipart(body: ByteArray, request: HttpRequestData): Map<String, ByteArray> {
-        val boundary = request.body.contentType!!.parameter("boundary")!!
-        return String(body, Charsets.ISO_8859_1).split("--$boundary").mapNotNull { part ->
-            val name = Regex("name=\"([^\"]+)\"").find(part.substringBefore("\r\n\r\n"))?.groupValues?.get(1) ?: return@mapNotNull null
-            name to part.substringAfter("\r\n\r\n").removeSuffix("\r\n").toByteArray(Charsets.ISO_8859_1)
-        }.toMap()
-    }
-
-    private object NoFiles : FileOperationsProvider {
-        override fun getCacheDirectory() = ""
-        override fun openFileInput(path: String): InputProvider = error("not used")
-        override suspend fun readFileBytes(path: String): ByteArray = error("not used")
-        override fun deleteTempFile(path: String) = false
-        override fun getFileSize(path: String) = 0L
-        override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("not used")
-        override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("not used")
-        override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("not used")
     }
 }

@@ -63,6 +63,8 @@ data class UploadFileRequest(
     val transitOptions: TransitOptions? = null,
     val fileSystemType: FileSystemType? = null,
     val withCommentedFileKey: Boolean = false,
+    /** A recipient drive's write-only public point, `0x04 ‖ x ‖ y`, to seal the key header to. */
+    val sealedTo: ByteArray? = null,
 )
 
 @Serializable
@@ -155,7 +157,7 @@ class DriveUploadProvider(
 
         val transferIv = ByteArrayUtil.getRndByteArray(16)
         val sharedSecretEncryptedDescriptor = buildSharedSecretEncryptedUploadDescriptor(
-            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv, request.withCommentedFileKey),
+            lockKeyHeader(request.keyHeader, request.driveId, sharedSecret, transferIv, request.withCommentedFileKey, request.sealedTo),
             request.metadata,
             sharedSecret,
             transferIv = transferIv,

@@ -49,6 +49,9 @@ class FilesyncViewModel(
     private val webDropShareFlowState: WebDropShareFlowState,
     private val privateDriveOptIn: PrivateDriveOptIn,
     private val discussions: FilesyncDiscussions,
+    filesyncSharing: FilesyncSharing,
+    sharingSetup: FilesyncSharingSetup,
+    shareMessages: FilesyncShareMessages,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -79,6 +82,20 @@ class FilesyncViewModel(
         webDropShareFlowState = webDropShareFlowState,
     )
 
+    private val sharing = FilesyncSharingController(
+        viewModelScope,
+        filesyncSharing,
+        sharingSetup,
+        handles = { transfers.handles },
+        // A folder's sharing reaches what's in Recently deleted too, so a restore brings it back as it was.
+        listFolders = { repository.listFolders(it, includeRemoved = true) },
+        returnUrl = extendPermissionViewModel::callbackUrl,
+        tell = shareMessages::send,
+        state = { _uiState.value.sharing },
+        update = { change -> _uiState.update { it.copy(sharing = change(it.sharing)) } },
+        send = _events::send,
+    )
+
     private var setupPaused = false
 
     private var discussionJob: Job? = null
@@ -87,6 +104,7 @@ class FilesyncViewModel(
 
     init {
         addCloseable(extendPermissionViewModel)
+        sharing.start()
         viewModelScope.launch {
             snapshotFlow { search.text.toString() }.collect { text -> arrange { it.copy(query = text) } }
         }
@@ -156,9 +174,12 @@ class FilesyncViewModel(
                 extendPermissionViewModel.dismissDialog()
             }
 
-            FilesyncUiAction.Resumed -> if (setupPaused) {
-                setupPaused = false
-                onAction(FilesyncUiAction.SetupClicked)
+            FilesyncUiAction.Resumed -> {
+                sharing.resumed()
+                if (setupPaused) {
+                    setupPaused = false
+                    onAction(FilesyncUiAction.SetupClicked)
+                }
             }
 
             FilesyncUiAction.SetupLeft -> setupPaused = false
@@ -198,7 +219,7 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.ShareTo -> {
                 val nodes = _uiState.getAndUpdate { it.copy(shareChooser = null) }.shareChooser ?: return
-                transfers.send(nodes, zipName(nodes), action.target)
+                if (action.target == FilesyncShareTarget.Person) sharing.ask(nodes) else transfers.send(nodes, zipName(nodes), action.target)
             }
 
             FilesyncUiAction.CancelTransfer -> transfers.cancel()
@@ -272,17 +293,54 @@ class FilesyncViewModel(
                 val picker = _uiState.value.movePicker?.takeIf { it.canMoveHere } ?: return
                 closeMovePicker()
                 val handles = transfers.handles
-                viewModelScope.launch {
-                    val target = picker.path.last()
+                val target = picker.path.last()
+                sharing.move(picker.nodes, target.nodeId) {
+                    val moved = mutableListOf<Uuid>()
                     reportWrite(FilesyncUiEvent.Moved(target.name), FilesyncError.MoveFailed, _events::send) {
-                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId })
+                        editor.move(picker.nodes, handles, picker.path.map { it.nodeId }, moved)
                     }
+                    moved
                 }
             }
+
+            FilesyncUiAction.ConfirmLosingAccess -> sharing.confirmLosingAccess()
+            FilesyncUiAction.DismissLosingAccess -> sharing.dismissLosingAccess()
 
             FilesyncUiAction.MakePrivate -> {
                 val url = privateDriveOptIn.makePrivateUrl(FilesyncPrivateDrive, extendPermissionViewModel.callbackUrl())
                 if (url != null) _events.trySend(FilesyncUiEvent.OpenOwnerConsole(url))
+            }
+
+            FilesyncUiAction.TurnOnSharing -> sharing.turnOn()
+
+            is FilesyncUiAction.ShareWithConnection -> sharing.ask(action.nodes)
+
+            is FilesyncUiAction.ShareWith -> sharing.share(action.audience, action.access, action.expiry, action.note)
+            is FilesyncUiAction.ShareWithNewGroup -> sharing.shareWithNewGroup(action.name, action.members, action.access, action.expiry, action.note)
+            is FilesyncUiAction.OpenFromChat -> action.sharer?.let(sharing::openFromChat) ?: sharing.openOwnShare(action.circleId)
+
+            FilesyncUiAction.DismissShareWith -> sharing.dismiss()
+
+            is FilesyncUiAction.ShowSharedWith -> sharing.showSharedWith(action.nodeId)
+
+            is FilesyncUiAction.Unshare -> sharing.unshare(action.node, action.recipient)
+
+
+            is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
+            FilesyncUiAction.CloseShareView -> sharing.closeShareView()
+
+            is FilesyncUiAction.OpenSharedFolder -> sharing.openSharedFolder(action.path)
+
+            is FilesyncUiAction.OpenRecipient -> sharing.openRecipient(action.recipient)
+            is FilesyncUiAction.SetGroupMembers -> sharing.setGroupMembers(action.group, action.members)
+
+            is FilesyncUiAction.StopSharing -> sharing.stopSharing(action.nodeId)
+
+            is FilesyncUiAction.ChangeExpiry -> sharing.changeExpiry(action.nodeId, action.expiry)
+
+            is FilesyncUiAction.SaveShared -> {
+                val owner = _uiState.value.sharing.sharer ?: return
+                sharing.sharedHandle(action.node.nodeId)?.let { transfers.sendShared(action.node, it, owner, FilesyncShareTarget.Download) }
             }
 
             FilesyncUiAction.SignInAgain -> viewModelScope.launch {
@@ -438,6 +496,7 @@ class FilesyncViewModel(
                 val folderDeletedMs = current.last().removedMs
                 val nodes = listed.values.filter { folderDeletedMs == null || it.removed || !FilesyncTrash.wentWith(it, folderDeletedMs) }
                 arrange { state -> state.copy(isLoading = false, path = if (state.path == path) current else state.path).withNodes(nodes) }
+                sharing.loadSharedIn(folderId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

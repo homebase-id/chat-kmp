@@ -17,6 +17,7 @@ import id.homebase.api.client.drives.files.ValidationUtil
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.common.SecureByteArray
@@ -31,6 +32,9 @@ import kotlin.uuid.Uuid
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.client.drives.shares.ShareRow
+import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.FileDecryptionException
 
 /** Drive query provider for querying files from a drive */
 class DriveQueryProvider(
@@ -85,7 +89,7 @@ class DriveQueryProvider(
         // (fileType 801), which the backend routes by the X-ODIN-FILE-SYSTEM-TYPE header, not the
         // request body — the FileQueryParams.fileSystemType field alone is ignored for routing.
         fileSystemType: FileSystemType? = null,
-        commentedFileKey: SecureByteArray? = null,
+        externalFileKey: ExternalFileKey? = null,
     ): QueryBatchResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -115,7 +119,7 @@ class DriveQueryProvider(
 
         throwForFailure(apiResponse)
 
-        return mapQueryBatchResponse(apiResponse.body, creds.secret, commentedFileKey)
+        return mapQueryBatchResponse(apiResponse.body, creds.secret, externalFileKey)
     }
 
     /**
@@ -187,23 +191,28 @@ class DriveQueryProvider(
     internal suspend fun mapQueryBatchResponse(
         body: String,
         secret: SecureByteArray,
-        commentedFileKey: SecureByteArray? = null,
+        externalFileKey: ExternalFileKey? = null,
     ): QueryBatchResponse {
         val internal = deserialize<QueryBatchResponseInternalRaw>(body)
-        return mapQueryBatchResponseInternal(internal, secret, commentedFileKey)
+        return mapQueryBatchResponseInternal(internal, secret, externalFileKey)
     }
 
     private suspend fun mapQueryBatchResponseInternal(
         internal: QueryBatchResponseInternalRaw,
         secret: SecureByteArray,
-        commentedFileKey: SecureByteArray?,
+        externalFileKey: ExternalFileKey?,
     ): QueryBatchResponse {
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
 
-        val files = internal.searchResults.map { serverFileJson ->
-            createServerFileWithSafeMetadata(serverFileJson, secret, commentedFileKey)
+        val files = internal.searchResults.mapNotNull { serverFileJson ->
+            try {
+                createServerFileWithSafeMetadata(serverFileJson, secret, externalFileKey)
+            } catch (e: FileDecryptionException.Withheld) {
+                // A share not yet open to this reader loses that file, not the page; the key's owner knows why.
+                null
+            }
         }
 
         return QueryBatchResponse(
@@ -220,7 +229,7 @@ class DriveQueryProvider(
     private suspend fun createServerFileWithSafeMetadata(
         serverFileJson: JsonObject,
         secret: SecureByteArray,
-        commentedFileKey: SecureByteArray? = null,
+        externalFileKey: ExternalFileKey? = null,
     ): HomebaseFile {
         // First deserialize ServerFile with FileMetadata as JsonObject
         val serverFileWithRawMetadata = try {
@@ -246,10 +255,11 @@ class DriveQueryProvider(
             fileMetadata = fileMetadata,
             serverMetadata = serverFileWithRawMetadata.serverMetadata ?: ServerMetadata(),
             priority = serverFileWithRawMetadata.priority,
-            fileByteCount = serverFileWithRawMetadata.fileByteCount
+            fileByteCount = serverFileWithRawMetadata.fileByteCount,
+            shares = serverFileWithRawMetadata.shares,
         )
         
-        return serverFile.asHomebaseFile(secret, commentedFileKey)
+        return serverFile.asHomebaseFile(secret, externalFileKey)
     }
     
     private fun createBadFileMetadata(fileMetadataJson: JsonObject): FileMetadata {
@@ -297,7 +307,8 @@ data class ServerFileWithRawMetadata(
     // createServerFileWithSafeMetadata substitutes an empty ServerMetadata() downstream.
     val serverMetadata: ServerMetadata? = null,
     val priority: Int = 0,
-    val fileByteCount: Long = 0
+    val fileByteCount: Long = 0,
+    val shares: List<ShareRow>? = null,
 )
 
 //@Serializable

@@ -102,7 +102,7 @@ import id.homebase.core.ui.navigation.LocalSharedTransitionScope
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
-import id.homebase.resources.filesync_all_files
+import id.homebase.resources.filesync_root
 import id.homebase.resources.filesync_file_count
 import id.homebase.resources.filesync_folder_count
 import id.homebase.resources.filesync_info_hint
@@ -127,10 +127,17 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.input.key.isAltPressed
+import id.homebase.common.util.WindowTitleEffect
 
 enum class FilesyncPlace { Files, Recent, Trash }
 
-class FilesyncPlaces(val onFiles: () -> Unit, val onRecent: () -> Unit, val onTrash: () -> Unit)
+class FilesyncPlaces(val onFiles: () -> Unit, val onRecent: () -> Unit, val onTrash: () -> Unit) {
+    /** The same places, each first running [close]. */
+    fun closing(close: () -> Unit) = FilesyncPlaces({ close(); onFiles() }, { close(); onRecent() }, { close(); onTrash() })
+}
 
 private val ModifiedWidth = 150.dp
 private val SizeWidth = 84.dp
@@ -146,7 +153,7 @@ private val ModifiedFrom = 520.dp
 
 @Composable
 internal fun FilesyncShell(
-    place: FilesyncPlace,
+    place: FilesyncPlace?,
     places: FilesyncPlaces,
     snackbarHostState: SnackbarHostState,
     title: @Composable RowScope.() -> Unit,
@@ -170,7 +177,7 @@ internal fun FilesyncShell(
             Row(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.fillMaxHeight().sharedSidebar()) {
                     Column(modifier = Modifier.width(216.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(12.dp)) {
-                        SidebarItem(MR.string.filesync_all_files, Icons.Outlined.Folder, place == FilesyncPlace.Files, places.onFiles)
+                        SidebarItem(MR.string.filesync_root, Icons.Outlined.Folder, place == FilesyncPlace.Files, places.onFiles)
                         SidebarItem(MR.string.filesync_recent, Icons.Outlined.History, place == FilesyncPlace.Recent, places.onRecent)
                         SidebarItem(MR.string.filesync_trash, Icons.Outlined.Delete, place == FilesyncPlace.Trash, places.onTrash)
                         sidebarExtra()
@@ -204,6 +211,9 @@ private fun Modifier.sharedSidebar(): Modifier {
 
 private const val SIDEBAR_KEY = "filesync-sidebar"
 
+// The crumb of a person's shared files, which no node has.
+private val SharerCrumbId = Uuid.parse("00000000-0000-0000-0000-000000000001")
+
 /** The wide shell on wide windows, a plain screen with [compactTopBar] otherwise; for Recent and Trash. */
 @Composable
 internal fun FilesyncPlaceScaffold(
@@ -215,6 +225,7 @@ internal fun FilesyncPlaceScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    WindowTitleEffect(title)
     if (isExpandedLayout()) {
         FilesyncShell(
             place = place,
@@ -257,20 +268,22 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         if (keyMoves > 0) listState.bringIntoView(uiState.visibleIds.indexOf(uiState.selection.focus))
     }
     val actions = scope.actions
+    val viewing = uiState.sharing.viewing
     FilesyncShell(
-        place = FilesyncPlace.Files,
-        places = scope.places,
+        // Only at the top: deeper, the breadcrumb says where you are.
+        place = FilesyncPlace.Files.takeIf { !viewing && uiState.path.size == 1 },
+        places = if (viewing) scope.places.closing { scope.onAction(FilesyncUiAction.CloseShareView) } else scope.places,
         snackbarHostState = scope.snackbarHostState,
         modifier = Modifier.onPreviewKeyEvent { event ->
             val find = event.type == KeyEventType.KeyDown && event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed)
             if (find) searchFocus.requestFocus()
             find
         },
-        title = { Breadcrumbs(uiState.path, onCrumb = { scope.onAction(FilesyncUiAction.NavigateToCrumb(it)) }) },
-        actions = {
+        title = title@{
+            if (viewing) return@title
             MinimalSearchTextField(
                 // Esc clears the search; unhandled, desktop and web turn it into Back and leave the folder.
-                modifier = Modifier.width(260.dp).focusRequester(searchFocus).onPreviewKeyEvent { event ->
+                modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth().focusRequester(searchFocus).onPreviewKeyEvent { event ->
                     val escape = event.type == KeyEventType.KeyDown && event.key == Key.Escape
                     if (escape) {
                         scope.search.clearText()
@@ -281,6 +294,9 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 textFieldState = scope.search,
                 placeHolderText = stringResource(MR.string.filesync_search),
             )
+        },
+        actions = actions@{
+            if (viewing) return@actions
             if (!scope.currentRemoved) {
                 OutlinedButton(onClick = scope.onNewFolder) {
                     Icon(Icons.Outlined.CreateNewFolder, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -302,13 +318,16 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 places = null,
             )
         },
-        sidebarExtra = { TagFilters(uiState, scope.onAction) },
-        // Always there, empty until a row is selected: a pane that opened on the first press of a
-        // double-click would move the row out from under the second.
-        pane = {
+        sidebarExtra = {
+            FilesyncRecipientsSidebar(uiState.sharing, scope.onAction)
+            if (!viewing) TagFilters(uiState, scope.onAction)
+        },
+        // In the browser, always there and empty until a row is selected: a pane that opened on the first
+        // press of a double-click would move the row out from under the second.
+        pane = if (viewing) null else { ->
             val selected = uiState.selected
             if (selected.size == 1) {
-                FilesyncInfoContent(selected.single(), crumbNames(uiState.path), uiState.discussion, scope.commentDraft, scope.onAction)
+                FilesyncInfoContent(selected.single(), crumbNames(uiState.path), uiState.discussion, scope.commentDraft, uiState.sharing, scope.onAction)
             } else if (selected.isNotEmpty()) {
                 FilesyncSelectionContent(uiState, scope.onAction)
             } else {
@@ -320,71 +339,91 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             }
         },
     ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .focusRequester(keysFocus)
-                // After the focused child, so Enter on a focused button presses it.
-                .onKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-                    val one = uiState.selectedOne
-                    when {
-                        event.key == Key.DirectionDown || event.key == Key.DirectionUp -> {
-                            actions.onAction(FilesyncUiAction.MoveSelection(if (event.key == Key.DirectionDown) 1 else -1, extend = event.isShiftPressed))
-                            keyMoves++
+        Column(modifier = Modifier.fillMaxSize()) {
+            val sharer = uiState.sharing.sharer
+            val sharerPath = uiState.sharing.sharerPath
+            Breadcrumbs(
+                if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) + sharerPath else uiState.path,
+                onCrumb = { index ->
+                    if (sharer != null && index > 0) return@Breadcrumbs scope.onAction(FilesyncUiAction.OpenSharedFolder(sharerPath.take(index - 1)))
+                    if (viewing) scope.onAction(FilesyncUiAction.CloseShareView)
+                    scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
+                },
+                heading = true,
+            )
+            if (viewing) {
+                FilesyncShareView(uiState.sharing, uiState.transfer, scope.onAction)
+                return@Column
+            }
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusRequester(keysFocus)
+                    // After the focused child, so Enter on a focused button presses it.
+                    .onKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                        val one = uiState.selectedOne
+                        when {
+                            event.key == Key.DirectionUp && (event.isAltPressed || event.isMetaPressed) -> actions.onAction(FilesyncUiAction.NavigateUp)
+                            event.key == Key.DirectionDown || event.key == Key.DirectionUp -> {
+                                actions.onAction(FilesyncUiAction.MoveSelection(if (event.key == Key.DirectionDown) 1 else -1, extend = event.isShiftPressed))
+                                keyMoves++
+                            }
+                            event.key == Key.A && (event.isCtrlPressed || event.isMetaPressed) -> actions.onAction(FilesyncUiAction.SelectAll)
+                            // Without a single selection Enter belongs to whichever button has focus.
+                            (event.key == Key.Enter || event.key == Key.NumPadEnter) && one != null -> actions.click(one)
+                            event.key == Key.Backspace -> actions.onAction(FilesyncUiAction.NavigateUp)
+                            event.key == Key.Delete && FilesyncBulkAction.Delete in uiState.bulkActions -> actions.onAction(FilesyncUiAction.Bulk(FilesyncBulkAction.Delete))
+                            event.key == Key.Escape && uiState.selecting -> actions.onAction(FilesyncUiAction.ClearSelection)
+                            event.key == Key.F5 -> actions.onAction(FilesyncUiAction.Refresh)
+                            else -> return@onKeyEvent false
                         }
-                        event.key == Key.A && (event.isCtrlPressed || event.isMetaPressed) -> actions.onAction(FilesyncUiAction.SelectAll)
-                        // Without a single selection Enter belongs to whichever button has focus.
-                        (event.key == Key.Enter || event.key == Key.NumPadEnter) && one != null -> actions.click(one)
-                        event.key == Key.Backspace -> actions.onAction(FilesyncUiAction.NavigateUp)
-                        event.key == Key.Delete && FilesyncBulkAction.Delete in uiState.bulkActions -> actions.onAction(FilesyncUiAction.Bulk(FilesyncBulkAction.Delete))
-                        event.key == Key.Escape && uiState.selecting -> actions.onAction(FilesyncUiAction.ClearSelection)
-                        event.key == Key.F5 -> actions.onAction(FilesyncUiAction.Refresh)
-                        else -> return@onKeyEvent false
+                        true
                     }
-                    true
-                }
-                .focusable()
-                .browserDropTarget(scope),
-        ) {
-            val columns = TableColumns(modified = maxWidth >= ModifiedFrom, kind = maxWidth >= KindFrom)
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (scope.uploads.isNotEmpty()) {
-                    UploadStrip(
-                        scope.uploads,
-                        scope.onAction,
-                        Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                    )
-                }
-                FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
-                if (scope.currentRemoved) DeletedFolderBanner(scope)
-                uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
-                TableHeader(uiState.sort, uiState.selected.size, uiState.visible.size, columns, scope.onAction)
-                Box(modifier = Modifier.weight(1f)) {
-                    BrowserListBody(scope) {
-                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = FilesyncRowInset, vertical = 4.dp)) {
-                            val several = uiState.selected.size > 1
-                            items(uiState.visible, key = { it.nodeId.toString() }) { node ->
-                                val selected = node.nodeId in uiState.selection.ids
-                                TableRow(
-                                    node = node,
-                                    selected = selected,
-                                    progress = uiState.transfer.progressOf(node.nodeId),
-                                    columns = columns,
-                                    actions = actions,
-                                    selecting = uiState.selecting,
-                                    inGroup = selected && several,
-                                    onSelect = { mode ->
-                                        keysFocus.requestFocus()
-                                        actions.onAction(FilesyncUiAction.Select(node.nodeId, mode))
-                                    },
-                                )
+                    .focusable()
+                    .browserDropTarget(scope),
+            ) {
+                val columns = TableColumns(modified = maxWidth >= ModifiedFrom, kind = maxWidth >= KindFrom)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (scope.uploads.isNotEmpty()) {
+                        UploadStrip(
+                            scope.uploads,
+                            scope.onAction,
+                            Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                        )
+                    }
+                    FilesyncPrivateDriveBanners(uiState.privateDrive, scope.signIn, scope.actions)
+                    if (scope.currentRemoved) DeletedFolderBanner(scope)
+                    uiState.transfer?.takeIf { it.isZip }?.let { FilesyncArchiveBar(it, onCancel = { scope.onAction(FilesyncUiAction.CancelTransfer) }) }
+                    TableHeader(uiState.sort, uiState.selected.size, uiState.visible.size, columns, scope.onAction)
+                    Box(modifier = Modifier.weight(1f)) {
+                        BrowserListBody(scope) {
+                            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = FilesyncRowInset, vertical = 4.dp)) {
+                                val several = uiState.selected.size > 1
+                                items(uiState.visible, key = { it.nodeId.toString() }) { node ->
+                                    val selected = node.nodeId in uiState.selection.ids
+                                    TableRow(
+                                        node = node,
+                                        selected = selected,
+                                        progress = uiState.transfer.progressOf(node.nodeId),
+                                        columns = columns,
+                                        actions = actions,
+                                        selecting = uiState.selecting,
+                                        inGroup = selected && several,
+                                        shared = node.nodeId in uiState.sharing.sharedIds,
+                                        onSelect = { mode ->
+                                            keysFocus.requestFocus()
+                                            actions.onAction(FilesyncUiAction.Select(node.nodeId, mode))
+                                        },
+                                    )
+                                }
+                                sharerRows(uiState.rootSharers, scope.onAction)
                             }
                         }
                     }
+                    HorizontalDivider()
+                    Footer(uiState)
                 }
-                HorizontalDivider()
-                Footer(uiState)
             }
         }
     }
@@ -496,6 +535,7 @@ internal fun TableRow(
     selecting: Boolean = false,
     // One of several selected: its right-click menu is the selection's.
     inGroup: Boolean = false,
+    shared: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -586,6 +626,7 @@ internal fun TableRow(
                 deleted = deleted,
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
                 textDecoration = if (nameHovered) TextDecoration.Underline else null,
+                shared = shared,
                 // The name opens like a link, as in OneDrive and Dropbox; Ctrl/Cmd or Shift on it still picks the row.
                 // A child of the row, so it sees the press first and the row's handler skips what it consumed.
                 nameModifier = Modifier

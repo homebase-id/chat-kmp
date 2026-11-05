@@ -36,16 +36,17 @@ object AesGcm {
      * @param data The plaintext data to encrypt
      * @param key The AES encryption key (16 or 32 bytes; see overload above for AES-192 note)
      * @param iv The initialization vector/nonce (typically 12 bytes for GCM)
+     * @param aad Bound to the ciphertext without being in it; decrypting needs the same
      * @return The ciphertext with authentication tag appended
      */
-    suspend fun encrypt(data: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+    suspend fun encrypt(data: ByteArray, key: ByteArray, iv: ByteArray, aad: ByteArray? = null): ByteArray {
         require(data.isNotEmpty()) { "Data cannot be empty" }
         require(key.isNotEmpty()) { "Key cannot be empty" }
         require(iv.isNotEmpty()) { "IV cannot be empty" }
 
         val aesKey = aes.keyDecoder().decodeFromByteArray(AES.Key.Format.RAW, key)
         val cipher = aesKey.cipher()
-        return cipher.encryptWithIv(iv, data)
+        return cipher.encryptWithIv(iv, data, aad)
     }
 
     /**
@@ -83,16 +84,17 @@ object AesGcm {
      * @param cipherText The ciphertext with authentication tag
      * @param key The AES decryption key
      * @param iv The initialization vector/nonce used during encryption
+     * @param aad What it was encrypted with
      * @return The decrypted plaintext
      * @throws Exception if authentication fails
      */
-    suspend fun decrypt(cipherText: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+    suspend fun decrypt(cipherText: ByteArray, key: ByteArray, iv: ByteArray, aad: ByteArray? = null): ByteArray {
         require(cipherText.isNotEmpty()) { "CipherText cannot be empty" }
         require(key.isNotEmpty()) { "Key cannot be empty" }
         require(iv.isNotEmpty()) { "IV cannot be empty" }
 
         val aesKey = aes.keyDecoder().decodeFromByteArray(AES.Key.Format.RAW, key)
         val cipher = aesKey.cipher()
-        return cipher.decryptWithIv(iv, cipherText)
+        return cipher.decryptWithIv(iv, cipherText, aad)
     }
 }

@@ -55,6 +55,11 @@ class ZkKeysTest {
     }
 
     @Test
+    fun aTruncatedSealIsRefusedAsOne() = runTest {
+        assertFailsWith<ZkOpenException> { ZkSeal.open(ByteArray(10), b64(sealPrivateKey)) }
+    }
+
+    @Test
     fun theSharedLockVectorOpens() = runTest {
         val secondPasswordKey = b64("+pL3zwkIcDcDpYKkLbVc4A==")
         val locked = b64("ICEiIyQlJicoKSorjWGICGzIuJPS3SPnEBWvlaM3EZ0jd9msGp8vJrhDYXA=")

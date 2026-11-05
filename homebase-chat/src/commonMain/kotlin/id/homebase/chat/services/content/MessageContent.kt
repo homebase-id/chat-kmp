@@ -3,6 +3,7 @@ package id.homebase.chat.services.content
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
@@ -205,6 +206,22 @@ sealed interface MessageContent {
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_VIEW_ONCE_LABEL
     }
 
+    /** Files the sender shared from their Filesync drive. [descriptor] follows the [Event.descriptor] nullability contract. */
+    data class FileShare(val descriptor: FileShareDescriptor?) : MessageContent {
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,            // it describes a share made in Filesync, not text
+            allowReply = true,            // "thanks, got them"
+            allowForward = false,         // the share reaches only the people it was made with
+            allowShare = false,
+            allowInlineReactions = true,
+            allowReactionDetails = true,  // reactions are on, so who-reacted must be too
+        )
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_FILE_SHARE_LABEL
+
+        // File and folder names stay off the push provider.
+        override val notificationLabel: String get() = UNPARSEABLE_FILE_SHARE_LABEL
+    }
+
     /**
      * A typed message whose [dataType] this client doesn't recognize — typically
      * a newer kind (poll, doodle, …) sent from a more up-to-date peer. The
@@ -231,6 +248,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
         const val UNPARSEABLE_VIEW_ONCE_LABEL = "Media"
+        const val UNPARSEABLE_FILE_SHARE_LABEL = "Shared files"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 

@@ -121,15 +121,23 @@ class PayloadDownloadService(
         hash: PayloadHash,
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean = streamVerified(keyHeader, hash, consume) { hashed ->
+        // Per network chunk otherwise: thousands of UI updates for a large file.
+        driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress?.let(::wholePercentFractions), hashed)
+    }
+
+    /** As above, for a payload [source] streams from elsewhere, such as another identity's drive; false when it's gone. */
+    suspend fun streamVerified(
+        keyHeader: KeyHeader,
+        hash: PayloadHash,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+        source: suspend (consume: suspend (Flow<ByteArray>) -> Unit) -> Boolean,
     ): Boolean {
         val algorithm = hash.knownAlgorithm ?: throw PayloadDamagedException("unknown algorithm ${hash.algorithm}")
         val expected = hash.plaintextContentHash(keyHeader)
             ?: throw PayloadDamagedException("unreadable ${hash.algorithm} hash")
         val hasher = algorithm.newHasher()
-        // Per network chunk otherwise: thousands of UI updates for a large file.
-        val found = driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress?.let(::wholePercentFractions)) {
-            consume(it.hashedBy(hasher))
-        }
+        val found = source { consume(it.hashedBy(hasher)) }
         if (!found) return false
         if (!hasher.digest().contentEquals(expected)) throw PayloadDamagedException("${hash.algorithm} mismatch")
         return true

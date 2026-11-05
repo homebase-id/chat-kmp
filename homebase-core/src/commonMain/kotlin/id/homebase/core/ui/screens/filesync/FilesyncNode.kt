@@ -25,6 +25,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlin.math.roundToLong
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 /** A Finder tag; [colour] is Finder's 1 grey … 7 orange, or null for none. */
 @Immutable
@@ -46,6 +47,8 @@ data class FilesyncNode(
     val uploadedMs: Long? = null,
     val hashAlgorithm: PayloadHashAlgorithm? = null,
     val updatedMs: Long = 0,
+    /** Who put it here, when that isn't the drive's owner: a connection or a group member. */
+    val addedBy: OdinId? = null,
 ) {
     // Once per node: search and sorting compare these on every keystroke, and neither is free on the web.
     internal val nameKey: String = FilesyncNames.key(name)
@@ -108,7 +111,8 @@ internal const val CONTENT_VERSION = 1
 
 private const val TAG = "FilesyncNode"
 
-internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? {
+/** [addedByOtherThan] is the drive's owner: a node another identity sent says so ([FilesyncNode.addedBy]). */
+internal fun HomebaseFile.toFilesyncNode(addedByOtherThan: OdinId? = null): Pair<FilesyncNode, FilesyncHandle>? {
     val appData = fileMetadata.appData
     val isFolder = when (appData.fileType) {
         FilesyncProtocol.FolderFileType -> true
@@ -155,6 +159,7 @@ internal fun HomebaseFile.toFilesyncNode(): Pair<FilesyncNode, FilesyncHandle>? 
         uploadedMs = descriptor?.lastModified,
         hashAlgorithm = payload?.hash?.knownAlgorithm,
         updatedMs = fileMetadata.updated.milliseconds,
+        addedBy = fileMetadata.senderOdinId?.takeIf { addedByOtherThan != null && !it.domainName.equals(addedByOtherThan.domainName, ignoreCase = true) },
     )
     val fileType = if (isFolder) FilesyncProtocol.FolderFileType else FilesyncProtocol.FileFileType
     return node to FilesyncHandle(fileId, fileMetadata.versionTag, fileType, keyHeader, raw, payload, content.v, fileMetadata.globalTransitId)

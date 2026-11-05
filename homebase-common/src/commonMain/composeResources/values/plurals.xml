@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <plurals name="filesync_expires_in_days">
+        <item quantity="one">Expires in %1$d day</item>
+        <item quantity="other">Expires in %1$d days</item>
+    </plurals>
     <plurals name="chat_group_selected_members">
         <item quantity="one">%1$d member</item>
         <item quantity="other">%1$d members</item>

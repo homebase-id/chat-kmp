@@ -189,21 +189,21 @@ class FilesyncEditor(
     }
 
     /** Moves [nodes] into the last folder of [folderPath] as [planMove] plans it; one changed since stays where it is. */
-    suspend fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, folderPath: List<Uuid>): FilesyncWriteResult =
+    /** [moved] gets each node as it moves, so a move that fails partway still says which did. */
+    suspend fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, folderPath: List<Uuid>, moved: MutableList<Uuid> = mutableListOf()): FilesyncWriteResult =
         writeLock.withLock {
             val folderId = folderPath.last()
             val plan = planMove(nodes, handles, folderPath, repository.takenNames(folderId))
-            var moved = 0
             var skipped = plan.skipped
             try {
                 for ((node, name) in plan.moves) {
                     val handle = handles.getValue(node.nodeId)
-                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved++ else skipped++
+                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved += node.nodeId else skipped++
                 }
             } finally {
                 if (plan.moves.isNotEmpty()) _changed.tryEmit(Unit)
             }
-            FilesyncWriteResult(moved, skipped)
+            FilesyncWriteResult(moved.size, skipped)
         }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */

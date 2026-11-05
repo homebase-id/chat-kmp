@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives
 
+import kotlin.coroutines.cancellation.CancellationException
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
@@ -9,6 +10,7 @@ import id.homebase.api.crypto.EncryptionType
 import id.homebase.api.crypto.ZkSeal
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.serialization.UuidSerializer
 import io.ktor.utils.io.charsets.Charsets
 import io.ktor.utils.io.core.toByteArray
@@ -30,9 +32,11 @@ data class ServerFile(
     val fileMetadata: FileMetadata,
     val serverMetadata: ServerMetadata,
     val priority: Int = 0,
-    val fileByteCount: Long = 0
+    val fileByteCount: Long = 0,
+    /** For a reader a file is shared with, the share they read it through. */
+    val shares: List<ShareRow>? = null,
 ) {
-    suspend fun asHomebaseFile(sharedSecret: SecureByteArray, commentedFileKey: SecureByteArray? = null): HomebaseFile {
+    suspend fun asHomebaseFile(sharedSecret: SecureByteArray, externalFileKey: ExternalFileKey? = null): HomebaseFile {
         val resolvedKeyHeader: KeyHeader
         var resolvedMetadata: FileMetadata
         var serverFileIsEncrypted: Boolean = false
@@ -46,7 +50,13 @@ data class ServerFile(
             }
 
             resolvedKeyHeader = try {
-                sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret, commentedFileKey)
+                sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret, externalFileKey?.let { key -> { locked -> key.open(fileId, shares.orEmpty(), locked) } })
+            } catch (e: FileDecryptionException.Withheld) {
+                throw e
+            } catch (e: CancellationException) {
+                // Only an outside key suspends on the network; any other path keeps reporting as it did.
+                if (externalFileKey != null) throw e
+                throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             } catch (e: Throwable) {
                 throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             }
@@ -73,22 +83,39 @@ data class ServerFile(
             fileMetadata = resolvedMetadata,
             serverMetadata = serverMetadata,
             priority = priority,
-            fileByteCount = fileByteCount
+            fileByteCount = fileByteCount,
+            shares = shares,
         )
     }
 }
 
 /**
  * Opens a key header as the server returns it: locked with the shared secret, or on a zero-knowledge drive with
- * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write), or [commentedFileKey].
+ * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write), or with a key from
+ * outside: a comment's file's, or a shared file's, given the key [external] unlocks.
  */
-suspend fun EncryptedKeyHeader.open(driveId: Uuid, sharedSecret: SecureByteArray, commentedFileKey: SecureByteArray? = null): KeyHeader =
+suspend fun EncryptedKeyHeader.open(
+    driveId: Uuid,
+    sharedSecret: SecureByteArray,
+    external: (suspend (lockedFileKey: ByteArray) -> SecureByteArray?)? = null,
+): KeyHeader =
     when (type) {
         EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
         EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
         EncryptionType.Sealed -> openSealed(driveId)
-        EncryptionType.FileKey -> KeyHeader(iv, (commentedFileKey ?: throw FileDecryptionException.NoFileKey()).toByteArray().toSecureByteArray())
+        EncryptionType.FileKey, EncryptionType.Share -> {
+            val key = (external ?: throw FileDecryptionException.NoFileKey())(encryptedAesKey) ?: throw FileDecryptionException.Withheld()
+            KeyHeader(iv, key.toByteArray().toSecureByteArray())
+        }
     }
+
+/**
+ * The key a key header doesn't carry: a comment's file's, or a shared file's, unlocked from its [shares]' row. Null
+ * when this reader can't open it yet: the file is left out of the page ([FileDecryptionException.Withheld]).
+ */
+fun interface ExternalFileKey {
+    suspend fun open(fileId: Uuid, shares: List<ShareRow>, lockedFileKey: ByteArray): SecureByteArray?
+}
 
 // The sealed value is the file's IV then its AES key, as odin-js openClientLockedKeyHeader reads it.
 private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
@@ -100,7 +127,7 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
 /**
  * Locks [keyHeader] for an upload to [driveId]: with the shared secret under [transferIv], which the server
  * re-locks with the drive key; or on a zero-knowledge drive with its key under the file's own IV, stored as sent;
- * or, [withCommentedFileKey], as the IV alone.
+ * or, [withCommentedFileKey], as the IV alone; or [sealedTo] another drive's write-only public key (a deposit).
  */
 suspend fun lockKeyHeader(
     keyHeader: KeyHeader?,
@@ -108,9 +135,13 @@ suspend fun lockKeyHeader(
     sharedSecret: ByteArray,
     transferIv: ByteArray,
     withCommentedFileKey: Boolean = false,
+    sealedTo: ByteArray? = null,
 ): EncryptedKeyHeader =
     if (keyHeader != null && withCommentedFileKey) {
         EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.FileKey, iv = keyHeader.iv, encryptedAesKey = ByteArray(0))
+    } else if (keyHeader != null && sealedTo != null) {
+        val sealed = ZkSeal.seal(keyHeader.iv + keyHeader.aesKey.toByteArray(), sealedTo)
+        EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Sealed, iv = keyHeader.iv, encryptedAesKey = sealed)
     } else if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
         EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader, keyHeader.iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
     } else {
@@ -225,5 +256,9 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
         FileDecryptionException("The key header is sealed to the drive's write-only key")
 
     class NoFileKey :
-        FileDecryptionException("A comment encrypted with its file's key, read without that key")
+        FileDecryptionException("A key header whose key comes from outside, read without it")
+
+    /** The outside key isn't this reader's to use yet ([ExternalFileKey] gave none). */
+    class Withheld :
+        FileDecryptionException("The file's outside key isn't open to this reader yet")
 }

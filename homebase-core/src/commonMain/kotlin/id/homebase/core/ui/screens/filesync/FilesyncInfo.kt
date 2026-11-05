@@ -81,6 +81,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+import id.homebase.resources.filesync_info_added_by
 
 internal val FilesyncSortKey.label: StringResource
     get() = when (this) {
@@ -116,6 +117,7 @@ internal fun FilesyncInfoContent(
     where: List<String>,
     discussion: FilesyncDiscussion?,
     commentDraft: TextFieldState,
+    sharing: FilesyncSharingState,
     onAction: (FilesyncUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -167,6 +169,7 @@ internal fun FilesyncInfoContent(
             node.modifiedMs?.let { InfoRow(MR.string.filesync_info_modified, formatDayTime(it)) }
             node.createdMs?.let { InfoRow(MR.string.filesync_info_created, formatDayTime(it)) }
             node.addedMs.takeIf { it > 0 }?.let { InfoRow(MR.string.filesync_info_added, formatDayTime(it)) }
+            node.addedBy?.let { InfoRow(MR.string.filesync_info_added_by, it.domainName) }
             node.uploadedMs?.let { InfoRow(MR.string.filesync_info_uploaded, formatDayTime(it)) }
             node.removedMs?.let { InfoRow(MR.string.filesync_deleted, formatDayTime(it)) }
             InfoRow(MR.string.filesync_info_where, where.joinToString(" › "))
@@ -178,6 +181,10 @@ internal fun FilesyncInfoContent(
             node.hashAlgorithm?.let { Fact(Icons.Outlined.VerifiedUser, stringResource(MR.string.filesync_info_checked, it.displayName)) }
         }
 
+        if (node.removedMs == null) {
+            HorizontalDivider()
+            FilesyncSharedWithSection(node, sharing, onAction)
+        }
         if (discussed) {
             HorizontalDivider()
             FilesyncDiscussionContent(node, discussion, commentDraft, onAction)
