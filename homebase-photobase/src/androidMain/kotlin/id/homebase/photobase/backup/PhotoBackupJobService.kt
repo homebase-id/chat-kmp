@@ -62,6 +62,7 @@ class PhotoBackupJobService : JobService(), KoinComponent {
 
     /** The system's timeout included: nothing is lost, every row stays where a later run picks it up. */
     override fun onStopJob(params: JobParameters): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Logger.i(tag = TAG) { "stopped by the OS: reason=${params.stopReason}" }
         job?.cancel()
         return true
     }

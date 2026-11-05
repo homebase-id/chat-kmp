@@ -1,5 +1,6 @@
 package id.homebase.photobase.ui
 
+import id.homebase.resources.photobase_status_paused_background_refresh
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -118,6 +119,7 @@ internal fun backupStatusSummary(status: BackupStatus): String = when {
             BackupPauseReason.StorageFull -> MR.string.photobase_status_paused_storage
         },
     )
+    status.backgroundRefreshOff -> stringResource(MR.string.photobase_status_paused_background_refresh)
     status.isAllBackedUp -> stringResource(MR.string.photobase_status_all_backed_up)
     else -> stringResource(MR.string.photobase_status_up_to_date)
 }

@@ -49,4 +49,10 @@ fun interface BackupAuth {
 /** Arms and cancels the platform's triggers. A run re-arms them when it starts and when it ends. */
 fun interface BackupScheduler {
     fun rearm(settings: BackupSettings)
+
+    /** A run got past its checks and did its work. */
+    fun onBackupRan() {}
+
+    /** Paused runs have kept backup from running for a day, on a platform that needs a run to say so. */
+    suspend fun alertBackupStuck() {}
 }

@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import android.os.Build
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -28,6 +29,7 @@ class PhotoBackupWorker(appContext: Context, params: WorkerParameters) : Corouti
             get<PhotoBackupController>().runFromBackground(request)
             Result.success()
         } catch (e: CancellationException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Logger.i(tag = TAG) { "$trigger stopped by the OS: reason=$stopReason" }
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "backup run failed; $trigger will retry" }

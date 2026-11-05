@@ -39,10 +39,14 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
             ALL_WORK.forEach(workManager::cancelUniqueWork)
             jobScheduler.cancel(USER_INITIATED_JOB_ID)
             jobScheduler.cancel(LIBRARY_WATCH_JOB_ID)
+            cancelBackupStuckNotification(context)
             return
         }
         // Not persistable, so every run and process start re-arms it. Replacing a pending one would forget what it has seen.
         if (jobScheduler.getPendingJob(LIBRARY_WATCH_JOB_ID) == null) watchLibrary()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+            Logger.i(tag = TAG) { "library watch pending reasons=${jobScheduler.getPendingJobReasons(LIBRARY_WATCH_JOB_ID).toList()}" }
+        }
         val periodic = PeriodicWorkRequestBuilder<PhotoBackupWorker>(SAFETY_NET_PERIOD.toJavaDuration())
             .setConstraints(constraints(settings))
             .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.Periodic.name))
@@ -61,6 +65,10 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
             .build()
         workManager.enqueueUniquePeriodicWork(OVERNIGHT_WORK, ExistingPeriodicWorkPolicy.UPDATE, overnight)
     }
+
+    override fun onBackupRan() = cancelBackupStuckNotification(context)
+
+    override suspend fun alertBackupStuck() = postBackupStuckNotification(context)
 
     /** The watch fires once, so it's armed again first. Appended: a run already going has scanned past this photo. */
     fun onLibraryChanged(settings: BackupSettings) {

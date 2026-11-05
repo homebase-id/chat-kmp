@@ -1,5 +1,17 @@
 package id.homebase.photobase.backup
 
+import platform.darwin.NSObject
+import platform.UserNotifications.UNUserNotificationCenter
+import platform.UserNotifications.UNTimeIntervalNotificationTrigger
+import platform.UserNotifications.UNNotificationRequest
+import platform.UserNotifications.UNMutableNotificationContent
+import platform.MetricKit.MXMetricPayload
+import platform.MetricKit.MXMetricManagerSubscriberProtocol
+import platform.MetricKit.MXMetricManager
+import org.jetbrains.compose.resources.getString
+import id.homebase.resources.photobase_stuck_title
+import id.homebase.resources.photobase_stuck_body
+import id.homebase.resources.MR
 import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
@@ -48,8 +60,28 @@ private fun submit(request: BGTaskRequest) = memScoped {
     }
 }
 
+/** Why iOS ended the app in the background, delivered about daily. */
+private class BackupExitReporter : NSObject(), MXMetricManagerSubscriberProtocol {
+    override fun didReceiveMetricPayloads(payloads: List<*>) {
+        payloads.filterIsInstance<MXMetricPayload>().forEach { payload ->
+            val exits = payload.applicationExitMetrics?.backgroundExitData ?: return@forEach
+            Logger.i(tag = "BackupExits") {
+                "normal=${exits.cumulativeNormalAppExitCount} " +
+                    "taskTimeout=${exits.cumulativeBackgroundTaskAssertionTimeoutExitCount} " +
+                    "memoryLimit=${exits.cumulativeMemoryResourceLimitExitCount} " +
+                    "memoryPressure=${exits.cumulativeMemoryPressureExitCount} " +
+                    "cpuLimit=${exits.cumulativeCPUResourceLimitExitCount} " +
+                    "watchdog=${exits.cumulativeAppWatchdogExitCount} " +
+                    "lockedFile=${exits.cumulativeSuspendedWithLockedFileExitCount} " +
+                    "crash=${exits.cumulativeAbnormalExitCount + exits.cumulativeBadAccessExitCount + exits.cumulativeIllegalInstructionExitCount}"
+            }
+        }
+    }
+}
+
 class IosBackupTriggers : BackupTriggers {
     private val scope = supervisedScope("photo-backup-ios", ioDispatcher)
+    private val exitReporter = BackupExitReporter().also { MXMetricManager.sharedManager.addSubscriber(it) }
 
     override val rescansAfterBackgroundWake: Boolean get() = true
 
@@ -59,9 +91,33 @@ class IosBackupTriggers : BackupTriggers {
             scheduler.cancelTaskRequestWithIdentifier(backupRefreshTaskId)
             scheduler.cancelTaskRequestWithIdentifier(backupProcessingTaskId)
             BackgroundUploadBridgeHolder.bridge?.cancelAll()
+            UNUserNotificationCenter.currentNotificationCenter().removePendingNotificationRequestsWithIdentifiers(listOf(STUCK_ALERT_ID))
             return
         }
         submitBackupTasks()
+        armStuckAlertIfMissing()
+    }
+
+    /** Works even after a force-quit: it only fires if no run has pushed it back. */
+    override fun onBackupRan() {
+        scope.launch { scheduleStuckAlert() }
+    }
+
+    private fun armStuckAlertIfMissing() {
+        UNUserNotificationCenter.currentNotificationCenter().getPendingNotificationRequestsWithCompletionHandler { requests ->
+            val armed = requests.orEmpty().any { (it as? UNNotificationRequest)?.identifier == STUCK_ALERT_ID }
+            if (!armed) scope.launch { scheduleStuckAlert() }
+        }
+    }
+
+    private suspend fun scheduleStuckAlert() {
+        val content = UNMutableNotificationContent().apply {
+            setTitle(getString(MR.string.photobase_stuck_title))
+            setBody(getString(MR.string.photobase_stuck_body))
+        }
+        val trigger = UNTimeIntervalNotificationTrigger.triggerWithTimeInterval(BackupLedger.STUCK_AFTER.inWholeSeconds.toDouble(), repeats = false)
+        UNUserNotificationCenter.currentNotificationCenter()
+            .addNotificationRequest(UNNotificationRequest.requestWithIdentifier(STUCK_ALERT_ID, content, trigger), null)
     }
 
     override suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit) {
@@ -93,6 +149,7 @@ class IosBackupTriggers : BackupTriggers {
 
     private companion object {
         const val TAG = "IosBackupTriggers"
+        const val STUCK_ALERT_ID = "photo-backup-stuck"
         const val CONTINUED_TASK_NAME = "photo-backup"
         const val CONTINUED_TASK_TITLE = "Backing up photos"
     }

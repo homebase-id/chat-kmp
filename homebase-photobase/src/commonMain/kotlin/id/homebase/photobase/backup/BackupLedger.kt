@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.DeviceBackupWrapper
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,6 +106,24 @@ class BackupLedger(
 
     suspend fun markSucceeded() = store.saveCheckpoints(mapOf(LAST_SUCCESS_KEY to nowMs().toString()))
 
+    suspend fun markRan() = store.saveCheckpoints(mapOf(LAST_RAN_KEY to nowMs().toString()))
+
+    /** At most once per [STUCK_AFTER]. The first answer only starts the clock, for a backup that has never run. */
+    suspend fun takeStuckAlert(): Boolean {
+        val stored = store.checkpoints()
+        val now = nowMs()
+        val lastRan = stored[LAST_RAN_KEY]?.toLongOrNull()
+        if (lastRan == null) {
+            markRan()
+            return false
+        }
+        val lastAlert = stored[LAST_STUCK_ALERT_KEY]?.toLongOrNull() ?: 0
+        val stuck = STUCK_AFTER.inWholeMilliseconds
+        if (now - lastRan < stuck || now - lastAlert < stuck) return false
+        store.saveCheckpoints(mapOf(LAST_STUCK_ALERT_KEY to now.toString()))
+        return true
+    }
+
     suspend fun due(state: BackupState, includeVideos: Boolean, limit: Int, newestFirst: Boolean): List<DeviceBackupAsset> =
         store.selectDue(state.code, nowMs(), includeVideos, limit.toLong(), newestFirst)
 
@@ -163,6 +182,9 @@ class BackupLedger(
     }
 
     suspend fun onOutboxCompleted(uniqueId: Uuid) {
+        store.selectByUnique(uniqueId.toString()).forEach {
+            Logger.i(tag = "BackupLag") { "lagMs=${nowMs() - it.createdAt} mediaType=${it.mediaType}" }
+        }
         store.setStateOfUnique(uniqueId.toString(), IN_OUTBOX, BackupState.Done.code, null, 0, 0)
         changed()
     }
@@ -222,6 +244,9 @@ class BackupLedger(
         private const val INITIAL_DONE_KEY = "${OWN_KEY_PREFIX}initialBackupDone"
         private const val SCOPE_KEY = "${OWN_KEY_PREFIX}albumScope"
         private const val LAST_SUCCESS_KEY = "${OWN_KEY_PREFIX}lastSuccessMs"
+        private const val LAST_RAN_KEY = "${OWN_KEY_PREFIX}lastRanMs"
+        private const val LAST_STUCK_ALERT_KEY = "${OWN_KEY_PREFIX}lastStuckAlertMs"
+        val STUCK_AFTER: Duration = 24.hours
         private val FIRST_RETRY: Duration = 1.minutes
         private val LONGEST_RETRY: Duration = 6.hours
         private val IN_OUTBOX = listOf(BackupState.Queued.code, BackupState.Uploading.code)

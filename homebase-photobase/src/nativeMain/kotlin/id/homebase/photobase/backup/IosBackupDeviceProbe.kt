@@ -1,5 +1,9 @@
 package id.homebase.photobase.backup
 
+import platform.UIKit.UIBackgroundRefreshStatus
+import platform.UIKit.UIApplication
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.isLowPowerModeEnabled
@@ -42,6 +46,10 @@ class IosBackupDeviceProbe : BackupDeviceProbe {
         PHAuthorizationStatusAuthorized -> LibraryAccess.Full
         PHAuthorizationStatusLimited -> LibraryAccess.Limited
         else -> LibraryAccess.None
+    }
+
+    override suspend fun isBackgroundRefreshOff(): Boolean = withContext(Dispatchers.Main) {
+        UIApplication.sharedApplication.backgroundRefreshStatus != UIBackgroundRefreshStatus.UIBackgroundRefreshStatusAvailable
     }
 
     // A monitor reports the current path once as soon as it starts.

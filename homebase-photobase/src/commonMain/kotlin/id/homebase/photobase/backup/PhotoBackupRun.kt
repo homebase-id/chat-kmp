@@ -73,6 +73,7 @@ class PhotoBackupRun(
         val failures = ledger.failures(MAX_FAILURES_SHOWN)
         val lastSuccess = ledger.lastSuccessMs()
         val access = probe.libraryAccess()
+        val refreshOff = settings().enabled && probe.isBackgroundRefreshOff()
         _status.update {
             it.copy(
                 pendingCount = counts.pending + counts.inOutbox,
@@ -84,6 +85,7 @@ class PhotoBackupRun(
                 failures = failures,
                 lastSuccessMs = lastSuccess,
                 libraryAccess = access,
+                backgroundRefreshOff = refreshOff,
             )
         }
     }
@@ -109,7 +111,9 @@ class PhotoBackupRun(
         val started = TimeSource.Monotonic.markNow()
         return try {
             val context = if (request.mayDownloadFromCloud) timings else timings + NoCloudDownloads
-            withContext(context) { followingTheNetwork { runLocked(request) } }
+            val outcome = withContext(context) { followingTheNetwork { runLocked(request) } }
+            noteForStuckAlert(request, outcome)
+            outcome
         } finally {
             hasher.forgetAll()
             Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
@@ -124,6 +128,17 @@ class PhotoBackupRun(
      * Losing what videos need starts it over, which leaves videos out and carries on with photos. An Outbox send
      * already under way isn't recalled.
      */
+    private suspend fun noteForStuckAlert(request: BackupRunRequest, outcome: BackupRunOutcome) {
+        if (outcome != BackupRunOutcome.Paused) {
+            ledger.markRan()
+            scheduler.onBackupRan()
+            return
+        }
+        val reason = _status.value.pauseReason
+        if (request.isInteractive || reason == BackupPauseReason.BackupOff || reason == BackupPauseReason.SignedOut) return
+        if (ledger.counts().pending > 0 && ledger.takeStuckAlert()) scheduler.alertBackupStuck()
+    }
+
     private suspend fun followingTheNetwork(run: suspend () -> BackupRunOutcome): BackupRunOutcome {
         while (true) {
             runUntilNetworkChange(run)?.let { return it }

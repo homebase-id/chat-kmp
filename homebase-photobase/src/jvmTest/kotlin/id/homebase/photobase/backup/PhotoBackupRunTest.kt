@@ -45,6 +45,8 @@ class PhotoBackupRunTest {
     private var dedupeFailure: Exception? = null
     private var storageFull = false
     private var signedIn = CompletableDeferred(true)
+    private var backupRans = 0
+    private var stuckAlerts = 0
 
     @AfterTest
     fun close() = db.close()
@@ -80,7 +82,11 @@ class PhotoBackupRunTest {
             results = results,
             probe = probe,
             auth = { signedIn.await() },
-            scheduler = { },
+            scheduler = object : BackupScheduler {
+                override fun rearm(settings: BackupSettings) = Unit
+                override fun onBackupRan() { backupRans++ }
+                override suspend fun alertBackupStuck() { stuckAlerts++ }
+            },
             isStorageFull = { storageFull },
         )
         return run to results
@@ -353,6 +359,50 @@ class PhotoBackupRunTest {
         run.run(request(trigger = BackupTrigger.BackgroundProcessing))
 
         assertEquals(listOf("cloud"), uploader.handedOff)
+    }
+
+    @Test
+    fun aDayOfPausedRunsAlertsOncePerDay() = runTest {
+        ledger.apply(fullListing(asset("a")), null)
+        ledger.markRan()
+        probe.state = probe.state.copy(isUnmetered = false)
+        val (run, _) = newRun(uploader())
+        val hour = 60 * 60 * 1000L
+
+        now += 23 * hour
+        run.run(request())
+        assertEquals(0, stuckAlerts)
+
+        now += 2 * hour
+        run.run(request())
+        run.run(request())
+        assertEquals(1, stuckAlerts)
+
+        now += 24 * hour
+        run.run(request())
+        assertEquals(2, stuckAlerts)
+    }
+
+    @Test
+    fun aPausedRunStartsTheClockWhenBackupHasNeverRun() = runTest {
+        ledger.apply(fullListing(asset("a")), null)
+        probe.state = probe.state.copy(isUnmetered = false)
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+
+        assertEquals(0, stuckAlerts)
+        assertEquals(0, backupRans)
+    }
+
+    @Test
+    fun aRunThatDidItsWorkCountsAsRan() = runTest {
+        source.next = fullListing(asset("a"))
+        val (run, _) = newRun(uploader())
+
+        run.run(request())
+
+        assertEquals(1, backupRans)
     }
 
     @Test

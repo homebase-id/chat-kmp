@@ -3244,6 +3244,9 @@
     <string name="photobase_status_paused_network">Paused: no network</string>
     <string name="photobase_status_paused_wifi">Paused: waiting for Wi-Fi</string>
     <string name="photobase_status_paused_charging">Paused: waiting for the charger</string>
+    <string name="photobase_status_paused_background_refresh">Paused: turn on Background App Refresh</string>
+    <string name="photobase_stuck_title">Photo backup has stopped</string>
+    <string name="photobase_stuck_body">Nothing has backed up for a day. Open Homebase to continue.</string>
     <string name="photobase_status_paused_battery">Paused: low battery</string>
     <string name="photobase_status_paused_low_power">Paused: Low Power Mode</string>
     <string name="photobase_status_paused_storage">Paused: your Homebase storage is full</string>

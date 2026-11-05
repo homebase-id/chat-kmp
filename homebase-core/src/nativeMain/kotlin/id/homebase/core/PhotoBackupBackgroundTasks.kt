@@ -80,6 +80,7 @@ private fun handle(task: BGTask, request: BackupRunRequest) {
         }
     }
     task.expirationHandler = {
+        Logger.i(tag = "PhotoBackupTasks") { "${request.trigger} expired: iOS ended the task" }
         job.cancel()
         complete(false)
     }

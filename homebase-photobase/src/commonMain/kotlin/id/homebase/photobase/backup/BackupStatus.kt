@@ -28,6 +28,7 @@ data class BackupStatus(
     val failures: List<BackupFailure> = emptyList(),
     val failedCount: Long = 0,
     val libraryAccess: LibraryAccess = LibraryAccess.None,
+    val backgroundRefreshOff: Boolean = false,
 ) {
     val totalCount: Long
         get() = backedUpCount + pendingCount + uploadingCount
@@ -75,6 +76,9 @@ interface BackupDeviceProbe {
     suspend fun state(): DeviceState
 
     fun libraryAccess(): LibraryAccess
+
+    /** True when the OS won't launch the app in the background for backup. */
+    suspend fun isBackgroundRefreshOff(): Boolean = false
 }
 
 /** [interactive]: the user has the app open, which lifts the battery conditions but not Wi-Fi only. */
