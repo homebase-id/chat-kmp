@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +29,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -36,12 +38,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
+import co.touchlab.kermit.Logger
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
@@ -54,7 +56,6 @@ import id.homebase.resources.chat_agent_ui_action_other
 import id.homebase.resources.chat_agent_ui_action_you
 import id.homebase.resources.chat_agent_ui_unparseable
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,22 +64,34 @@ import org.koin.compose.koinInject
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-private sealed interface TreeLoad {
+internal sealed interface TreeLoad {
     data object Loading : TreeLoad
     data object Failed : TreeLoad
     data class Ready(val tree: AgentUiTree, val rev: Int) : TreeLoad
 }
 
+internal fun firstFrameTree(content: MessageContent.AgentUi, rev: Int, message: MessageUiModel, loader: AgentUiTreeLoader): TreeLoad =
+    content.inlineTree.toLoad(rev)
+        ?: loader.cached(message).toLoad(rev)
+        ?: if (message.payloads?.firstOrNull { it.key == ChatProtocol.PAYLOAD_KEY_AGENT_UI }?.iv == null) TreeLoad.Failed else TreeLoad.Loading
+
+private fun AgentUiTreeResult?.toLoad(rev: Int): TreeLoad? = when (this) {
+    is AgentUiTreeResult.Valid -> TreeLoad.Ready(tree, rev)
+    is AgentUiTreeResult.Invalid -> TreeLoad.Failed
+    null -> null
+}
+
 @OptIn(ExperimentalUuidApi::class)
 @Composable
 fun AgentUiBubble(
-    descriptor: AgentUiDescriptor?,
+    content: MessageContent.AgentUi,
     message: MessageUiModel,
     displayOnly: Boolean,
     sentByYou: Boolean,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
 ) {
+    val descriptor = content.descriptor
     if (descriptor == null) {
         UnparseableChip(Icons.Default.SmartToy, modifier)
         return
@@ -87,62 +100,52 @@ fun AgentUiBubble(
     val treePayload = message.payloads?.firstOrNull { it.key == ChatProtocol.PAYLOAD_KEY_AGENT_UI }
     val aesKey = message.keyHeader.aesKey
     val images = remember(message.fileId, message.payloads) {
-        message.payloads.orEmpty()
-            .filter { it.isImage() && AgentUiLimits.IMAGE_KEY.matches(it.key) && it.iv != null }
-            .associate { p ->
-                p.key to HomebaseImageData(
-                    driveId = chatTargetDrive.alias,
-                    fileId = message.fileId,
-                    payloadKey = p.key,
-                    previewThumbnail = p.previewThumbnail?.toEmbeddedThumb(),
-                    requestedSize = ImageSize.THUMB_MEDIUM,
-                    isEncrypted = true,
-                    lastModified = p.lastModified,
-                    payloadContentType = p.contentType,
-                    keyHeader = KeyHeader(p.iv!!.bytes, aesKey),
-                    loadFullPayload = true,
-                )
-            }
+        val keys = agentUiImageKeys(message.payloads)
+        message.payloads.orEmpty().filter { it.key in keys }.associate { p ->
+            p.key to HomebaseImageData.from(
+                driveId = chatTargetDrive.alias,
+                fileId = message.fileId,
+                descriptor = p,
+                keyHeader = KeyHeader(p.iv!!.bytes, aesKey),
+                requestedSize = ImageSize.THUMB_MEDIUM,
+            )
+        }
     }
-    val actionService: ChatMessageActionService = koinInject()
+    val loader: AgentUiTreeLoader = koinInject()
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
 
-    val load: State<TreeLoad> = produceState<TreeLoad>(
-        TreeLoad.Loading,
-        message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys,
+    // The inline tree and a tree already in the loader are there on the first frame, so the card is
+    // measured at its full height when it scrolls into view. Only a payload tree not loaded yet starts as Loading.
+    val firstFrame = firstFrameTree(content, descriptor.rev, message, loader)
+    val load: State<TreeLoad> = produceState(
+        firstFrame,
+        content.inlineTree, message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys,
     ) {
-        val iv = treePayload?.iv?.bytes
-        if (treePayload == null || iv == null) {
-            value = TreeLoad.Failed
-            return@produceState
-        }
-        val bytes = try {
-            actionService.getPayloadBytesAt(message.fileId, ChatProtocol.PAYLOAD_KEY_AGENT_UI, KeyHeader(iv, aesKey), treePayload.lastModified)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
-        }
-        value = if (bytes == null) {
-            TreeLoad.Failed
-        } else when (val r = withContext(Dispatchers.Default) { AgentUiTree.decode(bytes, images.keys) }) {
-            is AgentUiTreeResult.Valid -> TreeLoad.Ready(r.tree, descriptor.rev)
-            is AgentUiTreeResult.Invalid -> TreeLoad.Failed
+        value = content.inlineTree.toLoad(descriptor.rev)
+            ?: (if (treePayload?.iv == null) null else loader.load(message)).toLoad(descriptor.rev)
+            ?: TreeLoad.Failed
+    }
+
+    val ready = load.value as? TreeLoad.Ready
+    val inputs = rememberSaveable(message.id, saver = AgentUiInputState.Saver) { AgentUiInputState(ready?.tree?.inputs.orEmpty()) }
+    LaunchedEffect(ready?.tree) { ready?.let { inputs.reconcile(it.tree.inputs) } }
+    LaunchedEffect(message.id, ready != null) {
+        if (ready != null) {
+            Logger.d(tag = "AgentUi") {
+                "ready id=${message.id} source=${if (content.inlineTree != null) "inline" else "payload"} firstFrame=${firstFrame is TreeLoad.Ready}"
+            }
         }
     }
 
-    val inputs = remember(message.id) { AgentUiInputState() }
-    val ready = load.value as? TreeLoad.Ready
-    LaunchedEffect(ready?.tree) { ready?.let { inputs.reconcile(it.tree.inputs) } }
-
-    var sentActions by remember(message.id) { mutableStateOf(emptySet<Pair<Int, String>>()) }
-    var failed by remember(message.id) { mutableStateOf(false) }
+    // Saved with the list item, so a sent action stays pending after the card scrolls away and back.
+    var sentActions by rememberSaveable(message.id) { mutableStateOf(emptyList<String>()) }
+    var failed by rememberSaveable(message.id) { mutableStateOf(false) }
 
     val onAction: (AgentUiActionRequest) -> Unit = { req ->
         val rev = ready?.rev
-        if (rev != null && (rev to req.actionId) !in sentActions) {
-            val mark = rev to req.actionId
+        val mark = rev?.let { sentMark(it, req.actionId) }
+        if (rev != null && mark != null && mark !in sentActions) {
             sentActions = sentActions + mark
             failed = false
             scope.launch {
@@ -178,7 +181,7 @@ fun AgentUiBubble(
 
     AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick) {
         if (ready != null) {
-            val pending = remember(sentActions, ready.rev) { sentActions.filter { it.first == ready.rev }.mapTo(HashSet()) { it.second } }
+            val pending = remember(sentActions, ready.rev) { sentActions.filter { it.startsWith("${ready.rev}:") }.mapTo(HashSet()) { it.substringAfter(':') } }
             AgentUiTreeView(
                 tree = ready.tree,
                 inputs = inputs,
@@ -187,11 +190,17 @@ fun AgentUiBubble(
                 pendingActionIds = pending,
                 onAction = onAction,
             )
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        } else if (load.value == TreeLoad.Loading) {
+            Row(
+                Modifier.heightIn(min = LoadingPlaceholderHeight),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(descriptor.fallback, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f, fill = false))
-                if (load.value == TreeLoad.Loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
             }
+        } else {
+            Text(descriptor.fallback, style = MaterialTheme.typography.bodyMedium)
         }
         if (failed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -205,6 +214,11 @@ fun AgentUiBubble(
         }
     }
 }
+
+private fun sentMark(rev: Int, actionId: String) = "$rev:$actionId"
+
+// A payload card holds this height while its tree loads; shorter than most cards, so it grows once and never shrinks.
+private val LoadingPlaceholderHeight = 160.dp
 
 @Composable
 fun AgentUiFrame(

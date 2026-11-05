@@ -88,9 +88,13 @@ class ChatMessageStream(
      */
     var sweepViewOnce: suspend (messages: List<MessageUiModel>, nowMs: Long) -> Unit = { _, _ -> }
 
+    /** Starts loading agent card trees as soon as their messages are written, not when they are composed. Wired in DI. */
+    var warmAgentUi: (messages: List<MessageUiModel>) -> Unit = {}
+
     private suspend fun onMessagesSurfaced(messages: List<MessageUiModel>) {
         autoPinNewTypedMessages(messages)
         if (messages.isEmpty()) return
+        warmAgentUi(messages)
         try {
             sweepViewOnce(messages, Clock.System.now().toEpochMilliseconds())
         } catch (e: CancellationException) {

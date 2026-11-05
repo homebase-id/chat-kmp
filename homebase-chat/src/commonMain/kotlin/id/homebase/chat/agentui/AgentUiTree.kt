@@ -1,7 +1,10 @@
 package id.homebase.chat.agentui
 
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.codePointCount
 import id.homebase.api.util.truncateToCodePoints
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -31,6 +34,10 @@ object AgentUiLimits {
     val ACTION_ID = Regex("^[a-z0-9_.-]{1,64}$")
     val IMAGE_KEY = Regex("^chat_web\\d$")
 }
+
+/** Keys of this message's payloads that a tree may show as images. */
+fun agentUiImageKeys(payloads: List<PayloadDescriptor>?): Set<String> =
+    payloads.orEmpty().filter { it.isImage() && AgentUiLimits.IMAGE_KEY.matches(it.key) && it.iv != null }.mapTo(HashSet()) { it.key }
 
 enum class Spacing { None, Small, Medium }
 enum class Tone { Default, Primary, Secondary, Error }
@@ -143,12 +150,17 @@ data class AgentUiTree(
             } catch (e: Exception) {
                 return AgentUiTreeResult.Invalid("not json")
             }
-            return try {
-                Decoder(availableImageKeys).decode(element)
-            } catch (e: Exception) {
-                AgentUiTreeResult.Invalid("decode failed")
-            }
+            return decodeParsed(element, availableImageKeys)
         }
+
+        /** For a tree already parsed out of the header; the caller has run [jsonNestingExceeds] on the raw text. */
+        internal fun decodeParsed(element: JsonElement, availableImageKeys: Set<String>): AgentUiTreeResult = try {
+            Decoder(availableImageKeys).decode(element)
+        } catch (e: Exception) {
+            AgentUiTreeResult.Invalid("decode failed")
+        }
+
+        internal fun jsonNestingExceeds(text: String, max: Int): Boolean = jsonNestingExceeds(text.encodeToByteArray(), max)
 
         // Iterative so a hostile payload cannot overflow the stack, which is small on wasm.
         private fun jsonNestingExceeds(bytes: ByteArray, max: Int): Boolean {
@@ -362,5 +374,20 @@ class AgentUiInputState(defaults: Map<String, String> = emptyMap()) {
         for (id in values.keys.toList()) if (id !in defaults) values.remove(id)
         for ((id, v) in defaults) if (id !in values || baseline[id] != v) values[id] = v
         baseline = defaults
+    }
+
+    companion object {
+        // Flattened as [valueCount, k1, v1, …, baseline k1, v1, …] so it fits every platform's saved-state bundle.
+        val Saver: Saver<AgentUiInputState, Any> = listSaver(
+            save = { s -> listOf(s.values.size.toString()) + (s.values.toMap().entries + s.baseline.entries).flatMap { listOf(it.key, it.value) } },
+            restore = { l ->
+                val n = l[0].toInt()
+                val pairs = l.drop(1).chunked(2) { it[0] to it[1] }
+                AgentUiInputState(pairs.drop(n).toMap()).apply {
+                    values.clear()
+                    values.putAll(pairs.take(n))
+                }
+            },
+        )
     }
 }
