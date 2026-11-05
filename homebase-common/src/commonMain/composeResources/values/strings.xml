@@ -3071,6 +3071,8 @@
     <string name="filesync_selected_size">%1$s · %2$s</string>
     <string name="filesync_select">Select %1$s</string>
     <string name="filesync_select_all">Select all</string>
+    <string name="filesync_up">Up a folder</string>
+    <string name="filesync_up_to">Up to %1$s</string>
     <string name="filesync_clear_selection">Clear selection</string>
     <string name="filesync_send_chat">Send to chat</string>
     <string name="filesync_remove_confirm">Delete %1$s? It goes to Recently deleted on every device, where it can be restored for 30 days.</string>

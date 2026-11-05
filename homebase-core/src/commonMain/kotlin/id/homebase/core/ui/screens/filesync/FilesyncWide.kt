@@ -131,6 +131,26 @@ import kotlin.uuid.Uuid
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.input.key.isAltPressed
 import id.homebase.common.util.WindowTitleEffect
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.triStateToggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.isBackPressed
+import id.homebase.core.util.isDesktop
+import id.homebase.resources.filesync_up
+import id.homebase.resources.filesync_up_to
 
 enum class FilesyncPlace { Files, Recent, Trash }
 
@@ -145,6 +165,8 @@ private val KindWidth = 134.dp
 private val KindGutter = 32.dp
 private val ActionsWidth = 80.dp
 private val RowHeight = 52.dp
+private val SelectWidth = 24.dp
+private val SelectGap = 4.dp
 private val PaneWidth = 320.dp
 
 // Below these content widths a column gives way to the name: Kind first, then Modified.
@@ -339,18 +361,43 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             }
         },
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            val sharer = uiState.sharing.sharer
-            val sharerPath = uiState.sharing.sharerPath
-            Breadcrumbs(
-                if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) + sharerPath else uiState.path,
-                onCrumb = { index ->
-                    if (sharer != null && index > 0) return@Breadcrumbs scope.onAction(FilesyncUiAction.OpenSharedFolder(sharerPath.take(index - 1)))
-                    if (viewing) scope.onAction(FilesyncUiAction.CloseShareView)
-                    scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
+        val sharer = uiState.sharing.sharer
+        val sharerPath = uiState.sharing.sharerPath
+        val crumbs = if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) + sharerPath else uiState.path
+        val onCrumb: (Int) -> Unit = { index ->
+            if (sharer != null && index > 0) {
+                scope.onAction(FilesyncUiAction.OpenSharedFolder(sharerPath.take(index - 1)))
+            } else {
+                if (viewing) scope.onAction(FilesyncUiAction.CloseShareView)
+                scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
+            }
+        }
+        val goUp by rememberUpdatedState { if (crumbs.size > 1) onCrumb(crumbs.size - 2) }
+        Column(
+            modifier = Modifier.fillMaxSize().then(
+                // The mouse's back button, as in Explorer; a browser keeps it for its own Back.
+                if (isDesktop()) {
+                    Modifier.pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                // Before the rows, which would take the press as a click.
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.type == PointerEventType.Press && event.buttons.isBackPressed) {
+                                    event.changes.forEach { it.consume() }
+                                    goUp()
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
                 },
-                heading = true,
-            )
+            ),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                UpButton(crumbs, onUp = goUp)
+                Breadcrumbs(crumbs, onCrumb = onCrumb, heading = true)
+            }
             if (viewing) {
                 FilesyncShareView(uiState.sharing, uiState.transfer, scope.onAction)
                 return@Column
@@ -474,10 +521,10 @@ internal fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: I
         modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(modifier = Modifier.width(FilesyncTileSize + 12.dp)) {
+        Box(modifier = Modifier.width(SelectWidth), contentAlignment = Alignment.Center) {
             if (visibleCount > 0) {
                 val all = selectedCount == visibleCount
-                SelectBox(
+                TableSelectBox(
                     state = when {
                         all -> ToggleableState.On
                         selectedCount > 0 -> ToggleableState.Indeterminate
@@ -488,6 +535,7 @@ internal fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: I
                 )
             }
         }
+        Spacer(Modifier.width(SelectGap + FilesyncTileSize + 12.dp))
         HeaderCell(FilesyncSortKey.Name, sort, onSort, Modifier.weight(1f))
         if (columns.modified) HeaderCell(FilesyncSortKey.Modified, sort, onSort, Modifier.width(ModifiedWidth))
         HeaderCell(FilesyncSortKey.Size, sort, onSort, Modifier.width(SizeWidth), Arrangement.End)
@@ -495,6 +543,54 @@ internal fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: I
         Spacer(Modifier.width(ActionsWidth))
     }
     HorizontalDivider()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UpButton(crumbs: List<FilesyncCrumb>, onUp: () -> Unit) {
+    val names = crumbNames(crumbs)
+    val label = if (crumbs.size > 1) stringResource(MR.string.filesync_up_to, names[crumbs.size - 2]) else stringResource(MR.string.filesync_up)
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = rememberTooltipState(),
+    ) {
+        IconButton(onClick = onUp, enabled = crumbs.size > 1) {
+            Icon(Icons.Default.ArrowUpward, contentDescription = label)
+        }
+    }
+}
+
+/** A desktop-sized checkbox: Material's is sized for touch, too big beside a 40dp tile in a table row. */
+@Composable
+private fun TableSelectBox(state: ToggleableState, description: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val on = state != ToggleableState.Off
+    val shape = RoundedCornerShape(4.dp)
+    Box(
+        modifier = Modifier
+            .size(SelectWidth)
+            .clip(CircleShape)
+            .triStateToggleable(state = state, role = Role.Checkbox, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .then(if (on) Modifier.background(colors.primary, shape) else Modifier.border(1.5.dp, colors.onSurfaceVariant, shape)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (on) {
+                Icon(
+                    if (state == ToggleableState.On) Icons.Default.Check else Icons.Default.Remove,
+                    contentDescription = null,
+                    tint = colors.onPrimary,
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -605,18 +701,18 @@ internal fun TableRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val deleted = node.removedMs != null
-            // The checkbox takes the icon's place, as in OneDrive: on hover, and on every row once anything is selected.
-            if (hovered || selecting) {
-                Box(modifier = Modifier.size(FilesyncTileSize), contentAlignment = Alignment.Center) {
-                    SelectBox(
+            // In its own column before the icon, as in Explorer and Dropbox: on hover, and on every row once anything is selected.
+            Box(modifier = Modifier.width(SelectWidth), contentAlignment = Alignment.Center) {
+                if (hovered || selecting) {
+                    TableSelectBox(
                         state = ToggleableState(selected),
                         description = stringResource(MR.string.filesync_select, node.name),
                         onClick = { onSelect(FilesyncSelectMode.Toggle) },
                     )
                 }
-            } else {
-                FileTypeTile(node, deleted = deleted)
             }
+            Spacer(Modifier.width(SelectGap))
+            FileTypeTile(node, deleted = deleted)
             Spacer(Modifier.width(12.dp))
             val nameInteraction = remember { MutableInteractionSource() }
             val nameHovered by nameInteraction.collectIsHoveredAsState()
