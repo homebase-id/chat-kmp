@@ -14,6 +14,9 @@ import id.homebase.api.diagnostics.BgTrace
 import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.notifications.CallPushRouter
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.isSilentPush
+import id.homebase.core.photobase.PUSH_WAKE_BUDGET
+import id.homebase.core.photobase.PhotoBackupTrigger
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
@@ -22,6 +25,7 @@ class DriveFcmService : FirebaseMessagingService() {
 
     private val notificationService: NotificationService by inject()
     private val pushLocationCapture: PushLocationCapture by inject()
+    private val photoBackupTrigger: PhotoBackupTrigger by inject()
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
@@ -43,6 +47,12 @@ class DriveFcmService : FirebaseMessagingService() {
         }
         // #1109 background wake-cause attribution (an FCM push woke the process).
         BgTrace.log(BgTrace.wake("fcm", "priority=${pri(message.priority)}"))
+
+        // Shows nothing, and holding DriveSyncWorker's KEEP slot could cost a chat push its notification.
+        if (isSilentPush(message.data)) {
+            runBlocking { photoBackupTrigger.onWake(PUSH_WAKE_BUDGET) }
+            return
+        }
 
         // Hand the FCM payload to the shared NotificationEntry via a worker —
         // the worker runs the same onPushArrived(...) body iOS calls inline,

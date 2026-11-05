@@ -74,7 +74,6 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
 
     override suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit) {
         val request = OneTimeWorkRequestBuilder<PhotoBackupWorker>()
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.Push.name))
             .build()

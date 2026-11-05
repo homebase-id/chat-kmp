@@ -1,5 +1,6 @@
 package id.homebase.core.notifications
 
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -14,6 +15,12 @@ data class PushNotification(
     val options: PushNotificationPayloadOptions,
     val appDisplayName: String? = null
 )
+
+/** False for a payload that can't be read, so a push we don't understand still gets the full chat path. */
+fun isSilentPush(data: Map<String, String>): Boolean {
+    val raw = data["data"] ?: return false
+    return runCatching { OdinSystemSerializer.deserialize<PushNotification>(raw).options.silent }.getOrDefault(false)
+}
 
 /** Options embedded in a push notification payload. */
 @Serializable
