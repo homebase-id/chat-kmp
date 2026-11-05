@@ -137,6 +137,7 @@ dependencies {
     implementation(project(":homebase-common"))
     implementation(project(":homebase-core"))
     implementation(project(":homebase-chat"))
+    implementation(project(":homebase-photobase"))
 
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)

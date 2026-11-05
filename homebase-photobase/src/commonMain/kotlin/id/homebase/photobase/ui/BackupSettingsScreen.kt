@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,6 +55,10 @@ import id.homebase.resources.photobase_backup_status
 import id.homebase.resources.photobase_backup_title
 import id.homebase.resources.photobase_backup_videos_cellular
 import id.homebase.resources.photobase_backup_wifi_only
+import id.homebase.resources.photobase_battery_body
+import id.homebase.resources.photobase_battery_open_settings
+import id.homebase.resources.photobase_battery_phone_maker
+import id.homebase.resources.photobase_battery_title
 import id.homebase.resources.photobase_library_allow
 import id.homebase.resources.photobase_library_allow_all
 import id.homebase.resources.photobase_library_limited
@@ -61,6 +66,7 @@ import id.homebase.resources.photobase_library_none
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
+private const val PHONE_MAKER_GUIDE_URL = "https://dontkillmyapp.com/"
 
 @Composable
 fun BackupSettingsScreen(
@@ -152,6 +158,24 @@ fun BackupSettingsScreen(
                 checked = settings.onlyNewFromMs != null,
                 onChange = { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
             )
+            uiState.batteryGuidance?.takeIf { it.isRestricted }?.let { guidance ->
+                HorizontalDivider()
+                ListItem(
+                    headlineContent = { Text(stringResource(MR.string.photobase_battery_title)) },
+                    supportingContent = {
+                        Column {
+                            Text(stringResource(MR.string.photobase_battery_body))
+                            TextButton(onClick = guidance.openSettings) {
+                                Text(stringResource(MR.string.photobase_battery_open_settings))
+                            }
+                            val uriHandler = LocalUriHandler.current
+                            TextButton(onClick = { uriHandler.openUri(PHONE_MAKER_GUIDE_URL) }) {
+                                Text(stringResource(MR.string.photobase_battery_phone_maker))
+                            }
+                        }
+                    },
+                )
+            }
             extraSections()
             HorizontalDivider()
             Text(

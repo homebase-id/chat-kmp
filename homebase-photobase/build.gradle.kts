@@ -68,6 +68,11 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.koin.core)
+        }
+        androidMain.dependencies {
+            implementation(libs.androidx.work.runtime)
+            implementation(libs.koin.android)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

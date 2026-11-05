@@ -177,6 +177,7 @@ import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.config.getPhotobasePermissionExtensionConfig
+import id.homebase.core.photobase.PhotoBackupTrigger
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.PhotoGalleryRepository
@@ -185,7 +186,6 @@ import id.homebase.photobase.backup.AssetHasher
 import id.homebase.photobase.backup.BackupLedger
 import id.homebase.photobase.backup.BackupOutboxResults
 import id.homebase.photobase.backup.BackupPushSchedule
-import id.homebase.photobase.backup.BackupScheduler
 import id.homebase.photobase.backup.BackupSettingsStore
 import id.homebase.photobase.backup.OutboxBackupUploader
 import id.homebase.photobase.backup.PhotoBackupController
@@ -1064,6 +1064,7 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { photoBackupController() }
+    single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining -> get<PhotoBackupController>().onWake(remaining) } }
     single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }
     single { FilesyncRepository(get(), get(), get(), get()) }
@@ -1594,7 +1595,6 @@ private fun Scope.photoBackupController(): PhotoBackupController {
     val ledger = BackupLedger(get<DatabaseManager>().deviceBackup, now)
     val settings = BackupSettingsStore(get())
     val results = BackupOutboxResults(ledger, get(), PhotobaseProtocol.DriveAlias, scope)
-    val scheduler = BackupScheduler { }
     val platform = createPhotoBackupPlatform(get())
     val run = platform?.let {
         val hasher = AssetHasher(it.source, get())
@@ -1615,7 +1615,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
                 }
                 get<CredentialsManager>().hasActiveCredentials()
             },
-            scheduler = scheduler,
+            scheduler = it.triggers,
             isStorageFull = { refresh ->
                 if (refresh) storageQuota.refresh()
                 storageQuota.state.value.isFull
@@ -1629,7 +1629,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         uploadFile = { request -> fileUploader.uploadFile(request) },
         updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
     )
-    return PhotoBackupController(run, platform?.source, settings, BackupPushSchedule(get(), get(), now), configFile, results, scheduler, scope)
+    return PhotoBackupController(run, platform?.source, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds

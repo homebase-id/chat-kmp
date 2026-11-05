@@ -26,7 +26,13 @@ data class BackupStatus(
     val failures: List<BackupFailure> = emptyList(),
     val failedCount: Long = 0,
     val libraryAccess: LibraryAccess = LibraryAccess.None,
-)
+) {
+    val progress: Float
+        get() {
+            val total = backedUpCount + pendingCount + uploadingCount
+            return if (total == 0L) 1f else backedUpCount.toFloat() / total
+        }
+}
 
 data class DeviceState(
     val hasNetwork: Boolean,

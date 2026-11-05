@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.photobase.backup.BackupSettings
 import id.homebase.photobase.backup.BackupStatus
+import id.homebase.photobase.backup.BatteryGuidance
 import id.homebase.photobase.backup.DeviceAlbum
 import id.homebase.photobase.backup.PhotoBackupController
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,7 @@ data class BackupSettingsUiState(
     val settings: BackupSettings = BackupSettings(),
     val status: BackupStatus = BackupStatus(),
     val albums: List<DeviceAlbum> = emptyList(),
+    val batteryGuidance: BatteryGuidance? = null,
 )
 
 sealed interface BackupSettingsUiAction {
@@ -37,7 +39,9 @@ class BackupSettingsViewModel(
     private val controller: PhotoBackupController,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(BackupSettingsUiState(isSupported = controller.isSupported))
+    private val _uiState = MutableStateFlow(
+        BackupSettingsUiState(isSupported = controller.isSupported, batteryGuidance = controller.batteryGuidance()),
+    )
     val uiState: StateFlow<BackupSettingsUiState> = _uiState.asStateFlow()
 
     init {

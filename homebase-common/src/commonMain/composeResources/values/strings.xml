@@ -3268,4 +3268,10 @@
     <string name="photobase_gallery_retry">Try again</string>
     <string name="photobase_gallery_photo">Photo</string>
     <string name="photobase_gallery_video">Video</string>
+    <string name="photobase_backup_notification">Backing up photos</string>
+    <string name="photobase_backup_notification_channel">Photo backup</string>
+    <string name="photobase_battery_title">Battery optimisation may delay backups</string>
+    <string name="photobase_battery_body">For the most reliable backup, allow Homebase to run without battery restrictions. This is optional.</string>
+    <string name="photobase_battery_open_settings">Battery settings</string>
+    <string name="photobase_battery_phone_maker">Advice for your phone's maker</string>
 </resources>

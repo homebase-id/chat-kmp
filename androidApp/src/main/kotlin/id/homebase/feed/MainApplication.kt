@@ -1,5 +1,6 @@
 package id.homebase.feed
 
+import id.homebase.photobase.backup.PhotoBackupController
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
@@ -159,6 +160,7 @@ class MainApplication : Application(), KoinComponent {
         // and background-location wakes — onPostAuthenticated never runs on
         // headless cold starts, so this cannot live there).
         get<LocationTrackingCoordinator>().onProcessStart()
+        get<PhotoBackupController>().onProcessStart()
 
         StartupLogger.checkpoint("onCreate end")
     }

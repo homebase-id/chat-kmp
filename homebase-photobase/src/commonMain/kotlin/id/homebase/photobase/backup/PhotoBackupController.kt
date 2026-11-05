@@ -7,7 +7,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** What the app and the settings screen ask of backup. Null [run] where backup doesn't exist: desktop and web. */
 class PhotoBackupController(
@@ -17,10 +20,12 @@ class PhotoBackupController(
     private val pushSchedule: BackupPushSchedule,
     private val configFile: PhotobaseConfigFile,
     private val results: BackupOutboxResults,
-    private val scheduler: BackupScheduler,
+    private val triggers: BackupTriggers?,
     private val scope: CoroutineScope,
 ) {
     private var foregroundJob: Job? = null
+
+    private var inForeground = false
 
     private var wokenInBackgroundSinceForeground = false
 
@@ -31,7 +36,9 @@ class PhotoBackupController(
     val settings: StateFlow<BackupSettings> get() = settingsStore.settings
 
     fun onAppForeground() {
+        inForeground = true
         val run = run ?: return
+        if (foregroundJob?.isActive == true) return
         val settings = settingsStore.settings.value
         if (!settings.enabled) {
             scope.launch { run.refreshStatus() }
@@ -52,6 +59,7 @@ class PhotoBackupController(
 
     /** Off screen a foreground run has no time budget at all, so it stops and a background trigger takes over. */
     fun onAppBackground() {
+        inForeground = false
         foregroundJob?.cancel()
         foregroundJob = null
     }
@@ -63,10 +71,28 @@ class PhotoBackupController(
 
     fun backUpNow() {
         val run = run ?: return
-        foregroundJob = scope.launch {
+        val inApp: suspend () -> Unit = {
             run.run(BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null), findDeletions = true))
         }
+        val progress = run.status.map { it.progress }
+        if (triggers?.startUserRequestedRun(settingsStore.settings.value, progress, inApp) != true) {
+            foregroundJob = scope.launch { inApp() }
+        }
     }
+
+    /** One call from a push: enqueues on Android, runs in what's left of the wake on iOS. */
+    suspend fun onWake(remaining: Duration) {
+        val triggers = triggers ?: return
+        if (!settingsStore.settings.value.enabled || remaining < MIN_WAKE) return
+        triggers.onWake(remaining) { request -> runFromBackground(request) }
+    }
+
+    /** Re-arms what a process death can lose. */
+    fun onProcessStart() {
+        triggers?.rearm(settingsStore.settings.value)
+    }
+
+    fun batteryGuidance(): BatteryGuidance? = triggers?.batteryGuidance()
 
     fun retryFailures() {
         val run = run ?: return
@@ -81,7 +107,7 @@ class PhotoBackupController(
             val before = settingsStore.settings.value
             settingsStore.update(transform)
             val after = settingsStore.settings.value
-            scheduler.rearm(after)
+            triggers?.rearm(after)
             when {
                 before.enabled && !after.enabled -> {
                     pushSchedule.cancel()
@@ -131,7 +157,7 @@ class PhotoBackupController(
     suspend fun onBeforeLogout() {
         foregroundJob?.cancel()
         run?.cancelActive()
-        scheduler.rearm(BackupSettings(enabled = false))
+        triggers?.rearm(BackupSettings(enabled = false))
         if (settingsStore.settings.value.enabled) pushSchedule.cancelBeforeLogout()
     }
 
@@ -145,11 +171,13 @@ class PhotoBackupController(
         results.start()
         scope.launch {
             run.resetStatus()
-            scheduler.rearm(settingsStore.settings.value)
+            triggers?.rearm(settingsStore.settings.value)
+            if (inForeground) onAppForeground()
         }
     }
 
     private companion object {
         const val TAG = "PhotoBackupController"
+        val MIN_WAKE = 3.seconds
     }
 }
