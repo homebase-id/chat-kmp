@@ -195,7 +195,7 @@ class FilesyncSharingTest {
     }
 
     @AfterTest
-    fun signOut() = runBlocking { FilesyncSession.credentials.removeAllCredentials() }
+    fun signOut() = runBlocking { FilesyncSession.forget() }
 
     @Test
     fun sharingAFileGivesSamACircleOfHisOwnWhoseKeyHeAloneCanOpenAndWritesNothingOnHisDrive() = runTest {

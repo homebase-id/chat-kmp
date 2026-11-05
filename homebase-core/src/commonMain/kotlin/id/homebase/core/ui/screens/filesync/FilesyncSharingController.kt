@@ -197,7 +197,8 @@ internal class FilesyncSharingController(
     }
 
     fun showSharedWith(nodeId: Uuid) {
-        if (state().sharedWith?.nodeId == nodeId) return
+        // Loaded already; one that failed is asked for again.
+        if (state().sharedWith?.takeIf { it.nodeId == nodeId }?.recipients != null) return
         update { it.copy(sharedWith = FilesyncSharedWith(nodeId)) }
         if (state().on) loadSharedWith(nodeId)
     }

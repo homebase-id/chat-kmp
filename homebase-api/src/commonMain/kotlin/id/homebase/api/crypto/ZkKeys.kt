@@ -55,8 +55,11 @@ object ZkSeal {
     }
 
     /** Opens [sealed] with the recipient's private key, PKCS8 DER. */
-    suspend fun open(sealed: ByteArray, privateKeyPkcs8: ByteArray): ByteArray =
-        ZkLock.open(sealed.copyOfRange(POINT_OFFSET + POINT_LENGTH, sealed.size), agreed(VERSION, sealed, privateKeyPkcs8))
+    suspend fun open(sealed: ByteArray, privateKeyPkcs8: ByteArray): ByteArray {
+        // Agreeing first checks the length the cut below relies on.
+        val key = agreed(VERSION, sealed, privateKeyPkcs8)
+        return ZkLock.open(sealed.copyOfRange(POINT_OFFSET + POINT_LENGTH, sealed.size), key)
+    }
 
     /** `version ‖ key id ‖ throwaway point`, and the AES key it agrees with [recipientPoint]. */
     internal suspend fun agree(version: Byte, recipientPoint: ByteArray): Pair<ByteArray, ByteArray> {
