@@ -1,12 +1,14 @@
 package id.homebase.photobase.backup
 
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.ScheduledPushNotificationProvider
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.photobase.PhotobaseConfigFile
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
@@ -19,11 +21,13 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 class PhotoBackupControllerTest {
@@ -60,6 +64,10 @@ class PhotoBackupControllerTest {
         override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) = error("offline")
     }
 
+    private val configUploads = mutableListOf<UploadFileRequest>()
+    private var configSaveFailure: Exception? = null
+    private lateinit var settingsStore: BackupSettingsStore
+
     private fun TestScope.controller(): PhotoBackupController {
         val eventBus = EventBus()
         val ledger = BackupLedger(db.deviceBackup) { 1_000 }
@@ -83,7 +91,16 @@ class PhotoBackupControllerTest {
             ScheduledPushNotificationProvider(HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }), CredentialsManager()),
             OutboxSync(db, Offline, eventBus, backgroundScope).also { it.setOnline(false) },
         ) { 1_000 }
-        return PhotoBackupController(run, source, store, push, results, triggers, backgroundScope)
+        val configFile = PhotobaseConfigFile(
+            getFileHeaderByUid = { _, _ -> null },
+            uploadFile = { request ->
+                configSaveFailure?.let { throw it }
+                configUploads += request
+            },
+            updateFileByUniqueId = { error("nothing to update") },
+        )
+        settingsStore = store
+        return PhotoBackupController(run, source, store, push, configFile, results, triggers, backgroundScope)
     }
 
     private suspend fun pushRow() = db.outbox.selectByUniqueId(PhotobaseProtocol.BackupPushTagId)
@@ -123,15 +140,25 @@ class PhotoBackupControllerTest {
     }
 
     @Test
-    fun aChangedIntervalReschedulesThePush() = runTest {
+    fun aChangedIntervalIsSavedForEveryDeviceWithoutCreatingASchedule() = runTest {
         val controller = controller()
-        enable(controller)
-        db.outbox.deleteBy(pushRow()!!.driveId, PhotobaseProtocol.BackupPushTagId)
 
-        controller.update { it.copy(pushIntervalMs = 2 * 60 * 60 * 1000) }
-        runCurrent()
+        controller.setPushInterval(2.hours.inWholeMilliseconds)
 
-        assertNotNull(pushRow())
+        assertEquals(PhotobaseProtocol.ConfigUniqueId, configUploads.single().metadata.appData.uniqueId)
+        assertEquals(2.hours.inWholeMilliseconds, settingsStore.settings.value.pushIntervalMs)
+        assertNull(pushRow(), "backup is off here, and no phone's job exists to correct")
+    }
+
+    @Test
+    fun aFailedSaveKeepsTheOldInterval() = runTest {
+        val controller = controller()
+        val before = settingsStore.settings.value.pushIntervalMs
+        configSaveFailure = IllegalStateException("offline")
+
+        assertFailsWith<IllegalStateException> { controller.setPushInterval(2.hours.inWholeMilliseconds) }
+
+        assertEquals(before, settingsStore.settings.value.pushIntervalMs)
     }
 
     @Test
