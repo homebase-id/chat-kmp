@@ -17,6 +17,8 @@ object Profile {
     fun select(name: String) {
         require(Regex("[a-z0-9_-]+").matches(name)) { "invalid profile name '$name'" }
         System.setProperty(JvmFileSystemUtil.DATA_DIR_OVERRIDE_PROPERTY, dataDir(name).absolutePath)
+        // headless: no Secret Service in a container, and the JNA jars are trimmed, so the key stays in the 0600 profile dir
+        System.setProperty("homebase.secureStorage", "file")
         harden(dataDir(name))
     }
 
