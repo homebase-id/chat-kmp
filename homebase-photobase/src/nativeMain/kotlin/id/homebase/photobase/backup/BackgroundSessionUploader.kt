@@ -9,8 +9,15 @@ import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.NSDate
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileModificationDate
+import platform.Foundation.timeIntervalSince1970
 import kotlin.coroutines.resume
+import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
+
+private val ABANDONED_BODY_AGE = 7.days
 
 /**
  * The whole encrypted multipart body goes to a file, and the system's URLSession takes it from there,
@@ -75,8 +82,26 @@ class BackgroundSessionUploader(
     }
 }
 
+// A subdirectory, because the Outbox's idle reap deletes loose staging files after 24 hours, and a low-priority upload can wait longer.
+private fun bodyDirectory(fileOps: FileOperationsProvider) = "${fileOps.getOutboxStagingDirectory()}/photo-bodies"
+
 /** Keyed by uniqueId, in the durable staging dir: it has to survive the process, like an Outbox payload. */
-private fun bodyPath(fileOps: FileOperationsProvider, uniqueId: Uuid) = "${fileOps.getOutboxStagingDirectory()}/photo-body-$uniqueId"
+private fun bodyPath(fileOps: FileOperationsProvider, uniqueId: Uuid) = "${bodyDirectory(fileOps)}/$uniqueId"
+
+/** Clears bodies whose upload never reported back; the age floor spares one written just before it's enqueued. */
+private fun deleteAbandonedBodies(fileOps: FileOperationsProvider) {
+    val bridge = BackgroundUploadBridgeHolder.bridge ?: return
+    val directory = bodyDirectory(fileOps)
+    bridge.activeUploadKeys { active ->
+        val files = NSFileManager.defaultManager
+        val cutoff = NSDate().timeIntervalSince1970 - ABANDONED_BODY_AGE.inWholeSeconds
+        files.contentsOfDirectoryAtPath(directory, null).orEmpty().filterIsInstance<String>().filter { it !in active }.forEach { name ->
+            val path = "$directory/$name"
+            val modified = files.attributesOfItemAtPath(path, null)?.get(NSFileModificationDate) as? NSDate
+            if (modified != null && modified.timeIntervalSince1970 < cutoff) files.removeItemAtPath(path, null)
+        }
+    }
+}
 
 /** Results reach the ledger whenever they arrive; a relaunch delivers ones from before the kill. */
 fun listenForBackgroundUploadResults(
@@ -84,6 +109,7 @@ fun listenForBackgroundUploadResults(
     fileOps: FileOperationsProvider,
     scope: CoroutineScope,
 ) {
+    deleteAbandonedBodies(fileOps)
     BackgroundUploadResults.setHandler { result ->
         scope.launch {
             val uniqueId = Uuid.parseOrNull(result.uploadKey) ?: return@launch
