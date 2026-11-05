@@ -18,7 +18,7 @@ class FollowUpTest {
     private fun cfg(kind: Kind = Kind.BOT, followUpMs: Long = 180_000L, listen: Set<Uuid> = emptySet()): AgentConfig {
         val allow = Allowlist(setOf(room, dm), if (kind == Kind.BOT) null else setOf(op), kind)
         allow.learn(listOf(ConversationInfo(room, "room", listOf(self, op, rando)), ConversationInfo(dm, "dm", listOf(self, rando))))
-        return AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = "full", listenRooms = listen, followUpMs = followUpMs)
+        return AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = "full", listenRooms = listen, listenQuietMs = 0, followUpMs = followUpMs)
     }
 
     private fun harness(config: AgentConfig = cfg(), outcome: BrainOutcome = BrainOutcome.Output("pong")) =

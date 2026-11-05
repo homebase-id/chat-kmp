@@ -54,6 +54,7 @@ class WatchProcessor(
     private val voice: VoiceOut? = null,
     private val sendVoice: (suspend (Uuid, OutVoice, String) -> Unit)? = null,
     private val notifier: OwnerNotifier? = null,
+    private val triageLog: ((Uuid, List<ChatMsg>, String) -> Unit)? = null,
 ) {
     private val self = OdinId(identity)
     private val trust = TrustPolicy(config, self)
@@ -65,6 +66,10 @@ class WatchProcessor(
     private val attempts = HashMap<Uuid, Int>()
     private val pending = LinkedHashMap<Uuid, ChatMsg>()
     private val lastListen = HashMap<Uuid, Long>()
+    private val listenWait = java.util.concurrent.ConcurrentHashMap<Uuid, Long>()
+
+    // true once a parked listen burst has been quiet for listenQuiet; the watch loop then polls so handleAll picks it up
+    fun listenDue() = listenWait.values.any { clock() >= it }
     private val followUps = HashMap<Pair<Uuid, String>, Long>()
     private val cues = HashMap<Uuid, Cue>()
     private val fetched = HashMap<Uuid, List<ChatMsg>>()
@@ -364,7 +369,7 @@ class WatchProcessor(
         when {
             mentioned(msg) -> Cue.ADDRESSED
             config.bot && followUpOpen(msg) -> Cue.FOLLOWUP
-            config.bot && msg.conversationId in config.listenRooms && !isBotNoise(msg) -> Cue.LISTEN
+            config.bot && msg.conversationId in config.listenRooms && !isBotNoise(msg) && !isChatter(msg.text) -> Cue.LISTEN
             else -> Cue.NONE
         }
     }
@@ -403,7 +408,18 @@ class WatchProcessor(
             if (operatorTriggers.isNotEmpty()) runTier(operatorTriggers, Tier.OPERATOR, results, modeOf(operatorTriggers))
             if (lockedTriggers.isNotEmpty()) runTier(lockedTriggers, Tier.LOCKED, results, modeOf(lockedTriggers))
         }
-        if (quiet.isNotEmpty() && addressed.isEmpty()) runTier(quiet, Tier.LOCKED, results, Cue.LISTEN)
+        if (addressed.isNotEmpty()) listenWait.remove(conversation)
+        if (quiet.isNotEmpty() && addressed.isEmpty()) {
+            if (config.listenQuietMs > 0) {
+                if (quiet.any { it.id !in pending }) listenWait[conversation] = clock() + config.listenQuietMs
+                if (clock() < (listenWait[conversation] ?: 0L)) {
+                    quiet.forEach { pending[it.id] = it; results[it.id] = "waiting" }
+                    return
+                }
+                listenWait.remove(conversation)
+            }
+            runTier(quiet, Tier.LOCKED, results, Cue.LISTEN)
+        }
     }
 
     private suspend fun runTier(group: List<ChatMsg>, tier: Tier, results: MutableMap<Uuid, String>, mode: Cue = Cue.ADDRESSED) {
@@ -446,6 +462,10 @@ class WatchProcessor(
                 throw e
             } catch (e: Exception) {
                 BrainOutcome.Failed(e.message ?: e.toString())
+            }
+            if (mode == Cue.LISTEN && outcome is BrainOutcome.Output) {
+                val said = outcome.stdout.trim()
+                triageLog?.invoke(conversation, sorted, if (said == JOIN_REPLY || said == PASS_REPLY) said else "REPLY")
             }
             if (canJoin && (outcome as? BrainOutcome.Output)?.stdout?.trim() == JOIN_REPLY) {
                 log("listen: joining in $conversation")
@@ -490,4 +510,13 @@ class WatchProcessor(
         }
         if (join) runTier(sorted, Tier.OPERATOR, results)
     }
+}
+
+private val ACKS = setOf("ok", "okay", "k", "kk", "lol", "lmao", "haha", "hah", "hehe", "thanks", "thank you", "thx", "ty", "cool", "nice", "great")
+
+// emoji, punctuation or a bare acknowledgement: never worth a triage run
+fun isChatter(text: String): Boolean {
+    if (text.isBlank()) return false
+    val words = text.lowercase().replace(Regex("[^\\p{L}\\p{N} ]"), " ").trim().replace(Regex("\\s+"), " ")
+    return words.isEmpty() || words in ACKS
 }

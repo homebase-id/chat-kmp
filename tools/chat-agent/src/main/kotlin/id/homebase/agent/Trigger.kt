@@ -47,6 +47,7 @@ const val DEFAULT_TTS_VOICE = "Bruno"
 const val MAX_CALL_MINUTES = 120
 const val DEFAULT_PERSONA_TTS_VOICE = "Marcus"
 const val DEFAULT_LISTEN_COOLDOWN_MS = 60_000L
+const val DEFAULT_LISTEN_QUIET_MS = 20_000L
 const val DEFAULT_FOLLOW_UP_MS = 180_000L
 const val MAX_LOCKED_HISTORY = 30
 
@@ -77,6 +78,7 @@ class AgentConfig(
     val operatorRooms: Set<Uuid> = emptySet(),
     val listenRooms: Set<Uuid> = emptySet(),
     val listenCooldownMs: Long = DEFAULT_LISTEN_COOLDOWN_MS,
+    val listenQuietMs: Long = DEFAULT_LISTEN_QUIET_MS,
     val followUpMs: Long = DEFAULT_FOLLOW_UP_MS,
     val operatorCwd: String? = null,
     val operatorGroup: String? = null,
@@ -273,6 +275,9 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         listenCooldownMs = str("listenCooldown")?.let {
             parseDurationMs(it) ?: throw IllegalArgumentException("invalid listenCooldown '$it': use e.g. 30s, 5m")
         } ?: DEFAULT_LISTEN_COOLDOWN_MS,
+        listenQuietMs = str("listenQuiet")?.let {
+            if (it.trim() == "0") 0L else parseDurationMs(it) ?: throw IllegalArgumentException("invalid listenQuiet '$it': use e.g. 20s, or 0 to disable")
+        } ?: DEFAULT_LISTEN_QUIET_MS,
         followUpMs = str("followUp")?.let {
             if (it.trim() == "0") 0L else parseDurationMs(it) ?: throw IllegalArgumentException("invalid followUp '$it': use e.g. 90s, 3m, or 0 to disable")
         } ?: DEFAULT_FOLLOW_UP_MS,

@@ -1,5 +1,8 @@
 package id.homebase.agent
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.drives.files.SendReadReceiptResult
@@ -150,6 +153,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         schedules = schedules,
         voice = voice,
         notifier = notifier,
+        triageLog = { conversation, msgs, decision -> appendTriage(File(dir, "triage.jsonl"), conversation, msgs, decision) },
         sendVoice = { conversation, spoken, caption -> timings.time("send") { sendVoiceNote(conversation, spoken, caption) } },
         sessions = sessionStore,
         brain = { prompt, tier, attachments, lease, session ->
@@ -201,6 +205,12 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     try {
       coroutineScope {
         startDoorbell(this, config.transport, sessionConnector(session, verbose, ::log, eventBus.takeIf { agentCalls != null }), waker, ::log)
+        if (config.listenRooms.isNotEmpty() && config.listenQuietMs > 0) launch {
+            while (true) {
+                delay(LISTEN_TICK_MS)
+                if (processor.listenDue()) waker.ring()
+            }
+        }
         if (schedules != null) launch {
             while (true) {
                 try {
@@ -241,4 +251,22 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         toolServer?.close()
         agentCalls?.close()
     }
+}
+
+private const val LISTEN_TICK_MS = 5_000L
+
+// one JSON line per listen-room triage: training data for a local classifier later
+private fun appendTriage(file: File, conversation: Uuid, msgs: List<ChatMsg>, decision: String) {
+    val line = buildJsonObject {
+        put("at", JsonPrimitive(System.currentTimeMillis()))
+        put("conversation", JsonPrimitive(conversation.toString()))
+        put("decision", JsonPrimitive(decision))
+        put("messages", JsonArray(msgs.map {
+            buildJsonObject {
+                put("author", JsonPrimitive(it.author?.toString()))
+                put("text", JsonPrimitive(it.text))
+            }
+        }))
+    }
+    file.appendText("$line\n")
 }

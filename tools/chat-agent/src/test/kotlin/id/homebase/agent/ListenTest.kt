@@ -25,7 +25,7 @@ class ListenTest {
         val allow = Allowlist(setOf(room, other), if (kind == Kind.BOT) null else setOf(op), kind)
         val members = listOf(self, op, rando)
         allow.learn(listOf(ConversationInfo(room, "room", members), ConversationInfo(other, "other", members)))
-        return AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = operatorBrain, listenRooms = listen, listenCooldownMs = cooldownMs, followUpMs = 0)
+        return AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = operatorBrain, listenRooms = listen, listenCooldownMs = cooldownMs, listenQuietMs = 0, followUpMs = 0)
     }
 
     private fun harness(
@@ -176,7 +176,7 @@ class ListenTest {
         val op2 = OdinId("op2.example.com")
         val allow = Allowlist(setOf(room), null, Kind.BOT)
         allow.learn(listOf(ConversationInfo(room, "room", listOf(self, op, op2))))
-        val config = AgentConfig(allowlist = allow, operators = setOf(op, op2), operatorBrain = "full", listenRooms = setOf(room), followUpMs = 0)
+        val config = AgentConfig(allowlist = allow, operators = setOf(op, op2), operatorBrain = "full", listenRooms = setOf(room), listenQuietMs = 0, followUpMs = 0)
         val work = CopyOnWriteArrayList<String>()
         val h = TestHarness(
             config, identity = self.toString(),
@@ -199,7 +199,7 @@ class ListenTest {
     @Test
     fun operatorsOnlyRoomPassStaysSilent() = runBlocking<Unit> {
         val (h, work) = operatorRoom("PASS")
-        h.handleAll(listOf(msg(op, "lol")))
+        h.handleAll(listOf(msg(op, "anyone up for lunch")))
         assertEquals(listOf(Tier.LOCKED), h.tiers)
         assertTrue(work.isEmpty() && h.replies.isEmpty())
     }
@@ -210,5 +210,30 @@ class ListenTest {
         h.handleAll(listOf(msg(op, "draft something")))
         assertFalse("output exactly JOIN" in h.prompts.single())
         assertEquals(listOf(Tier.LOCKED), h.tiers)
+    }
+
+    @Test
+    fun chatterNeverTriggersAListenRun() = runBlocking<Unit> {
+        val h = harness()
+        for (t in listOf("lol", "👍", "ok!", "Thanks 🙏", "...")) assertEquals("skip: no trigger", h.handle(msg(rando, t)))
+        assertEquals(0, h.brainRuns)
+        assertFalse(isChatter("ok, draft it"))
+    }
+
+    @Test
+    fun burstWaitsForAQuietPeriodThenRunsOnce() = runBlocking<Unit> {
+        val allow = Allowlist(setOf(room), null, Kind.BOT)
+        allow.learn(listOf(ConversationInfo(room, "room", listOf(self, op, rando))))
+        val h = TestHarness(AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = "full", listenRooms = setOf(room), followUpMs = 0), identity = self.toString())
+        assertEquals("waiting", h.handle(msg(rando, "what should we post friday")))
+        h.now += 10_000
+        assertEquals("waiting", h.handle(msg(rando, "maybe the stat one")))
+        h.now += 15_000
+        h.handleAll(emptyList())
+        assertEquals(0, h.brainRuns)
+        h.now += 5_000
+        h.handleAll(emptyList())
+        assertEquals(1, h.brainRuns)
+        assertTrue("maybe the stat one" in h.prompts.single() && "what should we post friday" in h.prompts.single())
     }
 }

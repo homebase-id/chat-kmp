@@ -104,7 +104,8 @@ private fun writeMcpConfig(dir: File, lease: ToolLease, group: String?): File {
     return file
 }
 
-private val LOCKED_ENV_KEYS = listOf("PATH", "HOME", "USER", "LANG")
+// the claude auth vars ride along: a headless box logs in with a token, not ~/.claude, and the locked brain has no tools to leak them
+private val LOCKED_ENV_KEYS = listOf("PATH", "HOME", "USER", "LANG", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
 
 // own process group so a double-forked daemon dies with the brain (perl fallback: no setsid on macOS)
 private const val GROUP_LAUNCHER =
