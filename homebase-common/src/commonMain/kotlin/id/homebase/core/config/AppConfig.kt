@@ -587,8 +587,12 @@ val filesyncAppRegistration = AppRegistrationParams(
             description = "People who can see the files you share through Homebase Filesync",
             emoji = "📁",
             drives = listOf(
-                // The ceiling: each file's share row narrows it per member.
-                filesyncDrive.copy(driveTypeSlug = null, grantOnly = true),
+                // No Write: drive Write lets a member add files anywhere, whatever their share rows say.
+                filesyncDrive.copy(
+                    permissions = listOf(DrivePermission.Read, DrivePermission.React, DrivePermission.Comment),
+                    driveTypeSlug = null,
+                    grantOnly = true,
+                ),
             ),
         )
     ),
