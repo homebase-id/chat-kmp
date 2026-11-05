@@ -1256,6 +1256,15 @@
     <string name="settings_appearance_theme">Tema: %1$s</string>
     <string name="settings_moments_desc">Billeder, klip og noter</string>
     <string name="settings_vault_desc">Krypteret dokumentopbevaring</string>
+    <string name="settings_feed_desc">Opslag fra dem, du følger</string>
+    <string name="settings_native_feed">Indbygget feed (eksperimentel)</string>
+    <string name="settings_filesync_icon_desc">Vis Filesync i navigationslinjen</string>
+    <string name="settings_calls_beta">Tale- og videoopkald (beta)</string>
+    <string name="settings_calls_beta_desc">Eksperimentel og kan gå ned. Genstart appen for at anvende.</string>
+    <string name="nav_calls">Opkald</string>
+    <string name="calls_home_subtitle">Din historik over tale- og videoopkald</string>
+    <string name="filesync_label">Filesync</string>
+    <string name="filesync_home_subtitle">Gennemse de filer, du synkroniserer fra dine computere</string>
     <string name="settings_location_desc">Privat placeringshistorik</string>
     <string name="settings_contactbook_desc">Din adressebog og cirkler</string>
     <string name="settings_storage_desc">Caches, database og medier</string>
@@ -1274,7 +1283,6 @@
     <string name="nav_moments">Moments</string>
     <string name="nav_apps">Apps</string>
     <string name="settings_apps_desc">Feed, Vault, Email og mere</string>
-    <string name="settings_apps_section_features">Funktioner</string>
     <string name="settings_apps_section_pages">App-indstillinger</string>
     <string name="owner_status_connected">Forbundet</string>
     <string name="owner_status_connecting">Forbinder</string>

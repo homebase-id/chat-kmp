@@ -76,14 +76,10 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
-import id.homebase.resources.filesync_label
-import id.homebase.resources.settings_filesync_icon_desc
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
-import id.homebase.resources.settings_calls_beta
-import id.homebase.resources.settings_calls_beta_desc
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.location_settings_section
@@ -106,7 +102,6 @@ import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_media
 import id.homebase.resources.settings_media_desc
 import id.homebase.resources.settings_moments_desc
-import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_status_checking
 import id.homebase.resources.settings_notifications_status_allowed

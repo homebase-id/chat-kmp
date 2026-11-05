@@ -290,6 +290,18 @@ sealed class Route {
     data object MomentsSettings : Route()
 
     @Serializable
+    @SerialName("feed-settings")
+    data object FeedSettings : Route()
+
+    @Serializable
+    @SerialName("filesync-settings")
+    data object FilesyncSettings : Route()
+
+    @Serializable
+    @SerialName("calls-settings")
+    data object CallsSettings : Route()
+
+    @Serializable
     @SerialName("location")
     data object Location : Route()
 
