@@ -2,7 +2,7 @@ package id.homebase.core.ui.screens.card
 
 /**
  * A preset: one of a design's schemes with its first accent. Presets set colours only; the layout fields are filled only on the custom tile.
- * The [isDefault] one is the first scheme, drawn as the card's built-in look; applying it clears every option a preset touches.
+ * The [isDefault] one is the first scheme, drawn as the card's built-in look; applying it clears the colours and accent, as the others only set those.
  */
 internal data class ResolvedCardStyle(
     val id: String,
@@ -31,15 +31,6 @@ internal fun cardStylesFor(spec: CardDesignSpec): List<ResolvedCardStyle> {
     }
 }
 
-private val PRESET_OPTIONS = listOf(
-    CardOption.COLOURS,
-    CardOption.ACCENT,
-    CardOption.DISPLAY_FONT,
-    CardOption.TEXT_FONT,
-    CardOption.PORTRAIT_SHAPE,
-    CardOption.SOCIALS_STYLE,
-    CardOption.BLOCK_STYLE,
-)
 
 private fun ResolvedCardStyle.values(): List<Pair<CardOption, String?>> = listOf(
     CardOption.ACCENT to accent,
@@ -52,7 +43,7 @@ private fun ResolvedCardStyle.values(): List<Pair<CardOption, String?>> = listOf
 
 internal fun CardOverrides.withStyle(style: ResolvedCardStyle, design: String): CardOverrides {
     val presetOrder = CardDesignSpecs.of(design)?.presetOrder ?: CardDesignSpecs.ORDERED_KINDS
-    if (style.isDefault) return PRESET_OPTIONS.fold(this) { edited, option -> edited.with(option, null, presetOrder, design) }.prunedFor(design)
+    if (style.isDefault) return with(CardOption.COLOURS, null, design = design).with(CardOption.ACCENT, null, design = design).prunedFor(design)
     return style.values().fold(with(CardOption.COLOURS, style.ground, design = design)) { edited, (option, value) ->
         if (value == null) edited else edited.with(option, value, presetOrder, design)
     }.prunedFor(design)
@@ -63,8 +54,7 @@ internal fun ResolvedCardStyle.matches(overrides: CardOverrides): Boolean {
     val colours = overrides.valueOf(CardOption.COLOURS)
     if (isDefault) {
         return (colours == null || colours.equals(ground, ignoreCase = true)) &&
-            PRESET_OPTIONS.drop(1).all { overrides.valueOf(it) == null } &&
-            overrides.blocks.orEmpty().all { it.presentation == null }
+            overrides.valueOf(CardOption.ACCENT) == null
     }
     return colours.equals(ground, ignoreCase = true) &&
         values().all { (option, value) -> value == null || overrides.valueOf(option).equals(value, ignoreCase = true) }

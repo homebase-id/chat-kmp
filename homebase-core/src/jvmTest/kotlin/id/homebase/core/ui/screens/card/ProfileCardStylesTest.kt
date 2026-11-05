@@ -109,19 +109,15 @@ class ProfileCardStylesTest {
     }
 
     @Test
-    fun defaultClearsEveryPresetOptionButKeepsTheSectionOrder() {
+    fun defaultClearsOnlyTheColoursAndAccentLikeTheColoursDefault() {
         for (design in designs) {
             val spec = CardDesignSpecs.of(design)!!
-            val reordered = styled(design).withBlockOrder(spec.presetOrder.reversed()).prunedFor(design)
-            val cleared = reordered.withStyle(default(design), design)
+            val before = styled(design).withBlockOrder(spec.presetOrder.reversed()).prunedFor(design)
+            val cleared = before.withStyle(default(design), design)
             assertNull(cleared.palette, design)
-            assertNull(cleared.type, design)
-            assertNull(cleared.portraits, design)
-            assertNull(cleared.socials, design)
-            assertTrue(cleared.blocks.orEmpty().all { it.presentation == null }, design)
-            assertEquals(reordered.blockOrder(), cleared.blockOrder(), design)
+            assertEquals(before.copy(palette = null), cleared, design)
+            assertEquals(before.with(CardOption.COLOURS, null, design = design).with(CardOption.ACCENT, null).prunedFor(design), cleared, design)
             assertTrue(default(design).matches(cleared), design)
-            assertEquals(CardOverrides.EMPTY, styled(design).withStyle(default(design), design), design)
         }
     }
 
@@ -134,17 +130,24 @@ class ProfileCardStylesTest {
         }
     }
 
-    @Test
-    fun anUntouchedTemplatedCardSelectsDefault() {
-        val audiences = listOf(CardAudience.Public) +
-            listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID, WORK_CIRCLE_ID).map { CardAudience.Circle(it, "") }
-        for (audience in audiences) {
-            val template = cardTemplateFor(audience)!!
-            val styles = cardStylesFor(template.design)
-            assertEquals(listOf(styles.first().id), styles.filter { it.matches(template.overrides) }.map { it.id }, "$audience")
-            assertNull(customStyle(styles, template.overrides, template.design), "$audience")
-        }
+    private fun assertSelects(expected: String, template: CardTemplate) {
+        val styles = cardStylesFor(template.design)
+        assertEquals(listOf(expected), styles.filter { it.matches(template.overrides) }.map { it.id }, template.toString())
+        assertNull(customStyle(styles, template.overrides, template.design), template.toString())
     }
+
+    @Test
+    fun anUntouchedFriendsCardSelectsDefault() = assertSelects(default(CardDesign.COLLAGE).id, cardTemplateFor(CardAudience.Circle(FRIENDS_CIRCLE_ID, ""))!!)
+
+    @Test
+    fun anUntouchedFamilyCardSelectsDefault() = assertSelects(default(CardDesign.POSTER).id, cardTemplateFor(CardAudience.Circle(FAMILY_CIRCLE_ID, ""))!!)
+
+    @Test
+    fun anUntouchedWorkCardSelectsDefault() = assertSelects(default(CardDesign.LINKS).id, cardTemplateFor(CardAudience.Circle(WORK_CIRCLE_ID, ""))!!)
+
+    // Public is Links like Work but on its own ground, so a fresh account's intro shows four different cards.
+    @Test
+    fun anUntouchedPublicCardSelectsItsBluePreset() = assertSelects("blue", cardTemplateFor(CardAudience.Public)!!)
 
     @Test
     fun theAppliedStyleIsTheOnlyOneSelected() {
@@ -159,21 +162,23 @@ class ProfileCardStylesTest {
     }
 
     @Test
-    fun anyPresetOptionDeselectsDefault() {
+    fun onlyColoursOrAnAccentDeselectDefault() {
         val design = CardDesign.BOARD
         val style = default(design)
         val presetOrder = CardDesignSpecs.of(design)!!.presetOrder
         val second = CardDesignSpecs.of(design)!!.schemes[1]
+        assertFalse(style.matches(CardOverrides().with(CardOption.COLOURS, second.ground, design = design).prunedFor(design)))
+        assertFalse(style.matches(CardOverrides().with(CardOption.ACCENT, second.accents.first()).prunedFor(design)))
         for ((option, value) in listOf(
-            CardOption.COLOURS to second.ground,
-            CardOption.ACCENT to second.accents.first(),
             CardOption.DISPLAY_FONT to "caveat",
             CardOption.TEXT_FONT to "caveat",
             CardOption.PORTRAIT_SHAPE to "ellipse",
             CardOption.SOCIALS_STYLE to "handles",
             CardOption.BLOCK_STYLE to "row",
         )) {
-            assertFalse(style.matches(CardOverrides().with(option, value, presetOrder, design).prunedFor(design)), "$option -> $value")
+            val edited = CardOverrides().with(option, value, presetOrder, design).prunedFor(design)
+            assertTrue(style.matches(edited), "$option -> $value")
+            assertNull(customStyle(cardStylesFor(design), edited, design), "$option -> $value")
         }
         assertTrue(style.matches(CardOverrides().withBlockOrder(presetOrder.reversed()).prunedFor(design)))
     }

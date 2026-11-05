@@ -394,6 +394,11 @@ class ProfileCardEditorShotsTest {
         polishCustomise("p13-colours-row", schemed),
         polishCustomise("p31-styles-bare-default", base.copy(previewDesign = CardDesign.COLLAGE)),
         polishCustomise("p32-styles-friends-template-default", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = cardTemplateFor(friendsCard)!!.overrides)),
+        polishCustomise("p34-styles-public-template-blue", base.copy(previewDesign = CardDesign.LINKS, previewOverrides = PUBLIC_CARD_TEMPLATE.overrides)),
+        polishCustomise(
+            "p35-styles-default-keeps-fonts",
+            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.DISPLAY_FONT, "caveat").with(CardOption.PORTRAIT_SHAPE, "ellipse").prunedFor(CardDesign.BOARD)),
+        ),
     ) + CardDesign.all.flatMap { design ->
         listOf(1f, 1.6f).map { scale ->
             Shot("p33-styles-$design-360-x$scale", base.copy(previewDesign = design), EditorStep.Customise, widthDp = 360, heightDp = 720, fontScale = scale)

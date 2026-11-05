@@ -135,11 +135,12 @@
             "design": "links",
             "overrides": {
                 "palette": {
-                    "ground": "#F1F3F6",
-                    "ink": "#1B1F24",
-                    "muted": "#5C6673",
+                    "ground": "#DCE5F9",
+                    "ink": "#151D2C",
+                    "muted": "#475066",
+                    "accent": "#2C58C3",
                     "surface": "#FFFFFF",
-                    "surfaceInk": "#1B1F24"
+                    "surfaceInk": "#151D2C"
                 }
             }
         },

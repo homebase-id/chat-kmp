@@ -57,6 +57,20 @@ class CardColourSchemeTest {
     }
 
     @Test
+    fun aCardOnARetiredGroundIsOfferedThatGroundsOwnReadableAccents() {
+        for ((design, grounds) in retiredGrounds) {
+            if (CardOption.ACCENT !in CardDesignSpecs.of(design)!!.options) continue
+            for (ground in grounds) {
+                val legacy = CardDesignSpecs.schemeByGround(ground)!!
+                val offered = CardDesignSpecs.accentsFor(design, ground)
+                assertEquals(legacy.accents, offered, "$design $ground")
+                assertEquals(offered, CardDesignSpecs.accentsFor(design, ground.lowercase()), "$design $ground")
+                offered.forEach { assertTrue(contrast(it, ground) >= 3.0, "$design $ground accent $it") }
+            }
+        }
+    }
+
+    @Test
     fun groundsStayUniqueWithTheRetiredOnesCounted() {
         val all = CardDesign.all.flatMap { CardDesignSpecs.of(it)!!.let { spec -> spec.schemes + spec.legacySchemes } }.map { it.ground.uppercase() }
         assertEquals(all.size, all.toSet().size)

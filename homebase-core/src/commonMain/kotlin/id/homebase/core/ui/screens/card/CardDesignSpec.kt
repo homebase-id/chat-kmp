@@ -175,10 +175,10 @@ object CardDesignSpecs {
 
     fun of(design: String): CardDesignSpec? = specs[design]
 
-    /** The accents on offer under [ground]; with no scheme picked the design's first scheme stands in, as the preset has none of its own. */
+    /** The accents on offer under [ground], a retired one included; with no scheme picked the design's first scheme stands in, as the preset has none of its own. */
     fun accentsFor(design: String, ground: String?): List<String> {
-        val schemes = of(design)?.schemes.orEmpty()
-        return (schemes.firstOrNull { it.ground.equals(ground, ignoreCase = true) } ?: schemes.firstOrNull())?.accents.orEmpty()
+        val spec = of(design) ?: return emptyList()
+        return ((spec.schemes + spec.legacySchemes).firstOrNull { it.ground.equals(ground, ignoreCase = true) } ?: spec.schemes.firstOrNull())?.accents.orEmpty()
     }
 
     /** A scheme is found by its ground, which is unique across every design, retired grounds included. */
@@ -213,9 +213,10 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
 /** What a fixed card renders until first saved, and what its reset returns to. */
 internal data class CardTemplate(val design: String, val overrides: CardOverrides)
 
+// The preset's accent rides along, so an untouched templated card selects its preset tile rather than Custom.
 private fun template(design: String, scheme: String) = CardTemplate(
     design,
-    CardOverrides(palette = CardDesignSpecs.of(design)!!.schemes.first { it.id == scheme }.applyTo(null)),
+    CardOverrides(palette = CardDesignSpecs.of(design)!!.schemes.first { it.id == scheme }.applyTo(CardPalette(accent = cardStylesFor(design).first { it.id == scheme }.accent))),
 )
 
 private val FIXED_CIRCLE_TEMPLATES = listOf(
@@ -224,7 +225,8 @@ private val FIXED_CIRCLE_TEMPLATES = listOf(
     WORK_CIRCLE_ID to template(CardDesign.LINKS, "cloud"),
 )
 
-internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.LINKS, "cloud")
+// Not cloud: that is Work's, and a fresh account's intro shows the four as different cards.
+internal val PUBLIC_CARD_TEMPLATE = template(CardDesign.LINKS, "blue")
 
 internal fun cardTemplateFor(audience: CardAudience): CardTemplate? = when (audience) {
     CardAudience.Public -> PUBLIC_CARD_TEMPLATE

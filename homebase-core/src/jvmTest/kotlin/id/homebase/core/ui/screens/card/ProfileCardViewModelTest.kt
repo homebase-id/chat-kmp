@@ -1793,7 +1793,7 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun anEmptyCardSetShowsEveryTemplate() = runTest(dispatcher) {
+    fun anEmptyCardSetShowsFourDistinctTemplates() = runTest(dispatcher) {
         val work = CardCircle(WORK_CIRCLE_ID, "Work")
         val store = FakeCardStore(keepWrites = true)
         val source = FakeSource(profile, defaults = { CardSiteDefaults() }, cardRepository = CardRepository(store)).apply {
@@ -1805,8 +1805,7 @@ class ProfileCardViewModelTest {
         val cards = vm.uiState.value.cards
         assertEquals(4, cards.size)
         assertEquals(setOf(CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), cards.map { it.design }.toSet())
-        // Public and Work both wear the links Default look, so an untouched card selects Default.
-        assertEquals(3, cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
+        assertEquals(4, cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
         assertTrue(store.writes.isEmpty())
     }
 
