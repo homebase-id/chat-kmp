@@ -2,8 +2,6 @@ package id.homebase.photobase.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -17,7 +15,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,7 +29,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.photobase.backup.LibraryAccess
-import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_backup_albums
 import id.homebase.resources.photobase_backup_albums_default
@@ -47,7 +43,6 @@ import id.homebase.resources.photobase_backup_now
 import id.homebase.resources.photobase_backup_only_new
 import id.homebase.resources.photobase_backup_only_new_desc
 import id.homebase.resources.photobase_backup_status
-import id.homebase.resources.photobase_backup_title
 import id.homebase.resources.photobase_backup_videos_cellular
 import id.homebase.resources.photobase_backup_wifi_only
 import id.homebase.resources.photobase_battery_body
@@ -65,9 +60,8 @@ import org.jetbrains.compose.resources.stringResource
 private const val PHONE_MAKER_GUIDE_URL = "https://dontkillmyapp.com/"
 
 @Composable
-fun BackupSettingsScreen(
+fun BackupSettingsSection(
     viewModel: BackupSettingsViewModel,
-    onBack: () -> Unit,
     onOpenStatus: () -> Unit,
     onOpenKeepOpen: () -> Unit,
 ) {
@@ -76,110 +70,96 @@ fun BackupSettingsScreen(
     val onAction = viewModel::onAction
     var showAlbums by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            SettingsTopBar(title = stringResource(MR.string.photobase_backup_title), onBack = onBack)
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
+    ToggleRow(
+        title = stringResource(MR.string.photobase_backup_enable),
+        supporting = stringResource(MR.string.photobase_backup_enable_desc),
+        checked = settings.enabled,
+        onChange = { onAction(BackupSettingsUiAction.SetEnabled(it)) },
+    )
+    LibraryAccessRow(uiState.status.libraryAccess) { onAction(BackupSettingsUiAction.PermissionChanged) }
+    ListItem(
+        modifier = Modifier.clickable(onClick = onOpenStatus),
+        headlineContent = { Text(stringResource(MR.string.photobase_backup_status)) },
+        supportingContent = { Text(backupStatusSummary(uiState.status)) },
+    )
+    if (settings.enabled) {
+        OutlinedButton(
+            onClick = { onAction(BackupSettingsUiAction.BackUpNow) },
+            enabled = !uiState.status.isRunning,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            ToggleRow(
-                title = stringResource(MR.string.photobase_backup_enable),
-                supporting = stringResource(MR.string.photobase_backup_enable_desc),
-                checked = settings.enabled,
-                onChange = { onAction(BackupSettingsUiAction.SetEnabled(it)) },
-            )
-            LibraryAccessRow(uiState.status.libraryAccess) { onAction(BackupSettingsUiAction.PermissionChanged) }
-            ListItem(
-                modifier = Modifier.clickable(onClick = onOpenStatus),
-                headlineContent = { Text(stringResource(MR.string.photobase_backup_status)) },
-                supportingContent = { Text(backupStatusSummary(uiState.status)) },
-            )
-            if (settings.enabled) {
-                OutlinedButton(
-                    onClick = { onAction(BackupSettingsUiAction.BackUpNow) },
-                    enabled = !uiState.status.isRunning,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    Text(stringResource(MR.string.photobase_backup_now))
-                }
-                TextButton(
-                    onClick = onOpenKeepOpen,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                ) {
-                    Text(stringResource(MR.string.photobase_keep_open))
-                }
-            }
-            HorizontalDivider()
-            ListItem(
-                modifier = Modifier.clickable {
-                    onAction(BackupSettingsUiAction.LoadAlbums)
-                    showAlbums = true
-                },
-                headlineContent = { Text(stringResource(MR.string.photobase_backup_albums)) },
-                supportingContent = {
-                    Text(
-                        if (settings.albumIds.isEmpty()) {
-                            stringResource(MR.string.photobase_backup_albums_default)
-                        } else {
-                            pluralStringResource(MR.plurals.photobase_backup_albums_some, settings.albumIds.size, settings.albumIds.size)
-                        },
-                    )
-                },
-            )
-            ToggleRow(
-                title = stringResource(MR.string.photobase_backup_wifi_only),
-                checked = settings.wifiOnly,
-                onChange = { onAction(BackupSettingsUiAction.SetWifiOnly(it)) },
-            )
-            ToggleRow(
-                title = stringResource(MR.string.photobase_backup_videos_cellular),
-                checked = settings.videosOnCellular,
-                onChange = { onAction(BackupSettingsUiAction.SetVideosOnCellular(it)) },
-            )
-            ToggleRow(
-                title = stringResource(MR.string.photobase_backup_charging_only),
-                checked = settings.chargingOnly,
-                onChange = { onAction(BackupSettingsUiAction.SetChargingOnly(it)) },
-            )
-            ToggleRow(
-                title = stringResource(MR.string.photobase_backup_only_new),
-                supporting = stringResource(MR.string.photobase_backup_only_new_desc),
-                checked = settings.onlyNewFromMs != null,
-                onChange = { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
-            )
-            uiState.batteryGuidance?.takeIf { it.isRestricted }?.let { guidance ->
-                HorizontalDivider()
-                ListItem(
-                    headlineContent = { Text(stringResource(MR.string.photobase_battery_title)) },
-                    supportingContent = {
-                        Column {
-                            Text(stringResource(MR.string.photobase_battery_body))
-                            TextButton(onClick = guidance.openSettings) {
-                                Text(stringResource(MR.string.photobase_battery_open_settings))
-                            }
-                            val uriHandler = LocalUriHandler.current
-                            TextButton(onClick = { uriHandler.openUri(PHONE_MAKER_GUIDE_URL) }) {
-                                Text(stringResource(MR.string.photobase_battery_phone_maker))
-                            }
-                        }
-                    },
-                )
-            }
-            HorizontalDivider()
-            Text(
-                text = stringResource(MR.string.photobase_backup_guidance),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(16.dp),
-            )
+            Text(stringResource(MR.string.photobase_backup_now))
+        }
+        TextButton(
+            onClick = onOpenKeepOpen,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        ) {
+            Text(stringResource(MR.string.photobase_keep_open))
         }
     }
+    HorizontalDivider()
+    ListItem(
+        modifier = Modifier.clickable {
+            onAction(BackupSettingsUiAction.LoadAlbums)
+            showAlbums = true
+        },
+        headlineContent = { Text(stringResource(MR.string.photobase_backup_albums)) },
+        supportingContent = {
+            Text(
+                if (settings.albumIds.isEmpty()) {
+                    stringResource(MR.string.photobase_backup_albums_default)
+                } else {
+                    pluralStringResource(MR.plurals.photobase_backup_albums_some, settings.albumIds.size, settings.albumIds.size)
+                },
+            )
+        },
+    )
+    ToggleRow(
+        title = stringResource(MR.string.photobase_backup_wifi_only),
+        checked = settings.wifiOnly,
+        onChange = { onAction(BackupSettingsUiAction.SetWifiOnly(it)) },
+    )
+    ToggleRow(
+        title = stringResource(MR.string.photobase_backup_videos_cellular),
+        checked = settings.videosOnCellular,
+        onChange = { onAction(BackupSettingsUiAction.SetVideosOnCellular(it)) },
+    )
+    ToggleRow(
+        title = stringResource(MR.string.photobase_backup_charging_only),
+        checked = settings.chargingOnly,
+        onChange = { onAction(BackupSettingsUiAction.SetChargingOnly(it)) },
+    )
+    ToggleRow(
+        title = stringResource(MR.string.photobase_backup_only_new),
+        supporting = stringResource(MR.string.photobase_backup_only_new_desc),
+        checked = settings.onlyNewFromMs != null,
+        onChange = { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
+    )
+    uiState.batteryGuidance?.takeIf { it.isRestricted }?.let { guidance ->
+        HorizontalDivider()
+        ListItem(
+            headlineContent = { Text(stringResource(MR.string.photobase_battery_title)) },
+            supportingContent = {
+                Column {
+                    Text(stringResource(MR.string.photobase_battery_body))
+                    TextButton(onClick = guidance.openSettings) {
+                        Text(stringResource(MR.string.photobase_battery_open_settings))
+                    }
+                    val uriHandler = LocalUriHandler.current
+                    TextButton(onClick = { uriHandler.openUri(PHONE_MAKER_GUIDE_URL) }) {
+                        Text(stringResource(MR.string.photobase_battery_phone_maker))
+                    }
+                }
+            },
+        )
+    }
+    HorizontalDivider()
+    Text(
+        text = stringResource(MR.string.photobase_backup_guidance),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(16.dp),
+    )
 
     if (showAlbums) {
         AlbumsDialog(

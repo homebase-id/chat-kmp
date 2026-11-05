@@ -216,7 +216,9 @@ import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsCategory
 import id.homebase.core.ui.screens.settings.AppsSettingsActions
 import id.homebase.core.ui.screens.settings.AppsSettingsScreen
+import id.homebase.core.ui.screens.settings.PhotoBackupLinks
 import id.homebase.core.ui.screens.settings.PhotobaseSettingsScreen
+import id.homebase.core.ui.screens.settings.PhotobaseSetupGate
 import id.homebase.core.ui.screens.settings.SettingsPaneRequest
 import id.homebase.core.ui.screens.settings.SettingsPaneActions
 import id.homebase.core.ui.screens.settings.SettingsPaneHost
@@ -239,13 +241,8 @@ import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
-import id.homebase.photobase.ui.BackupSettingsScreen
 import id.homebase.photobase.ui.BackupStatusScreen
 import id.homebase.photobase.ui.KeepOpenBackupScreen
-import id.homebase.photobase.ui.PhotobaseCheckingScreen
-import id.homebase.photobase.ui.PhotobaseOnboardingScreen
-import id.homebase.photobase.ui.PhotobaseSetupUiAction
-import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
 import id.homebase.core.ui.screens.filesync.FilesyncPlaces
 import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
@@ -710,8 +707,10 @@ fun AppNavHost(
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
     val openPhotobase: () -> Unit = { navController.openApp(Route.Photobase, tabRoutes) }
-    val openPhotoBackup: (() -> Unit)? = { navController.navigate(Route.PhotoBackupSettings) }
-        .takeIf { photobaseAvailable && koinInject<PhotoBackupController>().isSupported }
+    val photoBackupLinks = PhotoBackupLinks(
+        onOpenStatus = { navController.navigate(Route.PhotoBackupStatus) },
+        onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
+    ).takeIf { photobaseAvailable && koinInject<PhotoBackupController>().isSupported }
     // For the Filesync screen's own view model once it's open: a folder "Show" picked, or a share opened from chat.
     var filesyncToDo by remember { mutableStateOf<FilesyncUiAction?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
@@ -1807,7 +1806,7 @@ fun AppNavHost(
                                                 },
                                                 onOpenContacts = openContactBook,
                                                 photobaseAvailable = photobaseAvailable,
-                                                onOpenPhotoBackup = openPhotoBackup,
+                                                photoBackup = photoBackupLinks,
                                                 onNavigateToCropper = { requestId ->
                                                     navController.navigate(
                                                         Route.Crop(
@@ -2342,7 +2341,7 @@ fun AppNavHost(
                                         val backupSettings by photoBackup.settings.collectAsStateWithLifecycle()
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
-                                            onOpenBackupSettings = openPhotoBackup,
+                                            onOpenBackupSettings = { navController.navigate(Route.PhotobaseSettings) }.takeIf { photoBackupLinks != null },
                                             backupStatus = photoBackup.status?.collectAsStateWithLifecycle()?.value,
                                             backupEnabled = backupSettings.enabled,
                                             onOpenBackupStatus = { navController.navigate(Route.PhotoBackupStatus) },
@@ -2468,19 +2467,6 @@ fun AppNavHost(
                                             navController.popBackStack()
                                         },
                                     )
-                                }
-                            }
-
-                            composable<Route.PhotoBackupSettings> {
-                                if (isAuthenticated) {
-                                    PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
-                                        BackupSettingsScreen(
-                                            viewModel = koinViewModel(),
-                                            onBack = { navController.popBackStack() },
-                                            onOpenStatus = { navController.navigate(Route.PhotoBackupStatus) },
-                                            onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
-                                        )
-                                    }
                                 }
                             }
 
@@ -2629,9 +2615,8 @@ fun AppNavHost(
                                         viewModel = koinViewModel(
                                             viewModelStoreOwner = rememberSettingsOwner(navController, entry),
                                         ),
-                                        photobaseViewModel = koinViewModel(),
                                         onBack = { navController.popBackStack() },
-                                        onOpenPhotoBackup = openPhotoBackup,
+                                        backup = photoBackupLinks,
                                     )
                                 }
                             }
@@ -2800,25 +2785,6 @@ private fun FilesyncSetupGate(onDismiss: () -> Unit, installed: @Composable (Fil
                 onDismiss = onDismiss,
             )
             true -> installed(filesyncViewModel)
-        }
-    }
-}
-
-@Composable
-private fun PhotobaseSetupGate(onDismiss: () -> Unit, installed: @Composable () -> Unit) {
-    val viewModel: PhotobaseSetupViewModel = koinViewModel()
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    Crossfade(
-        targetState = uiState.installed,
-        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-    ) { state ->
-        when (state) {
-            null -> PhotobaseCheckingScreen(
-                failed = uiState.checkFailed,
-                onRetry = { viewModel.onAction(PhotobaseSetupUiAction.RetryCheck) },
-            )
-            false -> PhotobaseOnboardingScreen(viewModel = viewModel, onDismiss = onDismiss)
-            true -> installed()
         }
     }
 }
