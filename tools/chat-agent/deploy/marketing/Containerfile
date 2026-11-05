@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/playwright:v1.49.1-noble
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-21-jre-headless ffmpeg imagemagick python3 python3-pip python3-venv \
+        git jq curl ca-certificates fonts-noto-color-emoji \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY chat-agent /opt/chat-agent
+
+ENV HOME=/home/agent \
+    CHAT_AGENT_HOME=/data \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+    PATH=/home/agent/.local/bin:/home/agent/.npm-global/bin:/opt/chat-agent/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    NPM_CONFIG_PREFIX=/home/agent/.npm-global
+
+WORKDIR /workspace
+ENTRYPOINT ["/opt/chat-agent/bin/chat-agent"]

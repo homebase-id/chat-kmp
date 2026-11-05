@@ -1,0 +1,29 @@
+#!/usr/sbin/nft -f
+# Own table, never `flush ruleset`: that would wipe tailscale's rules.
+# Rootless podman's pasta opens host sockets as the agent user, so skuid covers the container.
+table inet marketing_egress
+delete table inet marketing_egress
+
+table inet marketing_egress {
+    set private4 {
+        type ipv4_addr
+        flags interval
+        elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16,
+                     172.16.0.0/12, 192.0.0.0/24, 192.168.0.0/16, 198.18.0.0/15,
+                     224.0.0.0/4, 240.0.0.0/4 }
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+        meta skuid != "marketing" accept
+        # replies to inbound connections (the one-off login callback tunnel)
+        ct state established,related accept
+        # host-side lookups (podman pull) go to tailscale's resolver; the container uses public DNS
+        ip daddr 100.100.100.100 meta l4proto { tcp, udp } th dport 53 accept
+        ip6 daddr fd7a:115c:a1e0::53 meta l4proto { tcp, udp } th dport 53 accept
+        # the LAN's IPv6 prefix is global here, so no IPv6 at all
+        meta nfproto ipv6 counter drop
+        fib daddr type local counter drop
+        ip daddr @private4 counter drop
+    }
+}

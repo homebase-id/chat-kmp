@@ -1,0 +1,13 @@
+[Unit]
+Description=Block LAN, tailnet and host for the marketing agent user
+After=network-pre.target tailscaled.service
+Before=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/marketing-egress.nft
+ExecStop=/usr/sbin/nft delete table inet marketing_egress
+
+[Install]
+WantedBy=multi-user.target
