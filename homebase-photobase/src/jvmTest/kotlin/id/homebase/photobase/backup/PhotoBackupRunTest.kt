@@ -74,7 +74,7 @@ class PhotoBackupRunTest {
                 dedupeFailure?.let { throw it }
                 ids.filter { it in existing }.toSet()
             },
-            uploaderFor = { uploader },
+            uploader = uploader,
             results = results,
             probe = probe,
             auth = { signedIn.await() },
@@ -431,6 +431,89 @@ class PhotoBackupRunTest {
         val counts = ledger.counts()
         assertTrue(counts.uploading in 4..5, "a batch, not the library: $counts")
         assertEquals(7, ledger.rowsInOutbox().first().uploadTaskId)
+    }
+
+    @Test
+    fun aForegroundRunKeepsGoingAsSessionUploadsLand() = runTest {
+        source.next = fullListing(*List(10) { asset("a$it") }.toTypedArray())
+        val uploader = uploader()
+        uploader.outlivesProcess = true
+        uploader.maxHandedOff = 4
+        uploader.result = { row ->
+            backgroundScope.launch {
+                delay(1.seconds)
+                ledger.onOutboxCompleted(Uuid.parse(row.uniqueId!!))
+            }
+            HandOffResult.Sending(taskId = 7)
+        }
+        val (run, _) = newRun(uploader)
+
+        run.run(request(trigger = BackupTrigger.Foreground))
+
+        assertEquals(10, uploader.handedOff.size)
+        assertEquals(10, ledger.counts().done)
+        assertTrue(ledger.isInitialBackupDone())
+    }
+
+    @Test
+    fun aForegroundRunStopsWhenTheSessionGoesQuiet() = runTest {
+        source.next = fullListing(*List(10) { asset("a$it") }.toTypedArray())
+        val uploader = uploader()
+        uploader.outlivesProcess = true
+        uploader.maxHandedOff = 4
+        uploader.result = { HandOffResult.Sending(taskId = 7) }
+        val (run, _) = newRun(uploader)
+
+        assertEquals(BackupRunOutcome.Finished, run.run(request(trigger = BackupTrigger.Foreground)))
+
+        assertTrue(uploader.handedOff.size in 4..5, "handed off ${uploader.handedOff.size}")
+        assertFalse(ledger.isInitialBackupDone())
+    }
+
+    @Test
+    fun uploadsStillWithTheSessionAreNotASuccessYet() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        val uploader = uploader()
+        uploader.outlivesProcess = true
+        uploader.result = { HandOffResult.Sending(taskId = 7) }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+
+        assertEquals(2, ledger.counts().uploading)
+        assertFalse(ledger.isInitialBackupDone())
+    }
+
+    @Test
+    fun aRowHandedToTheSessionSaysSoEvenIfTheRunIsCancelled() = runTest {
+        source.next = fullListing(asset("a"))
+        val uploader = uploader()
+        uploader.outlivesProcess = true
+        val (run, _) = newRun(uploader)
+        val going = launch(start = kotlinx.coroutines.CoroutineStart.LAZY) { run.run(request(trigger = BackupTrigger.Foreground)) }
+        uploader.result = {
+            going.cancel()
+            HandOffResult.Sending(taskId = 7)
+        }
+
+        going.start()
+        going.join()
+
+        assertEquals(BackupState.Uploading.code, state("a"))
+    }
+
+    @Test
+    fun videosKeepTheOutboxLimitWhenTheSessionTakesMore() = runTest {
+        source.next = fullListing(*List(20) { asset("v$it", mediaType = BackupMediaType.Video) }.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsComplete = false
+        uploader.outlivesProcess = true
+        uploader.maxHandedOff = 50
+        val (run, _) = newRun(uploader)
+
+        run.run(request(trigger = BackupTrigger.Foreground))
+
+        assertTrue(uploader.handedOff.size <= MAX_OUTBOX_HANDED_OFF + 2, "handed off ${uploader.handedOff.size}")
     }
 
     @Test

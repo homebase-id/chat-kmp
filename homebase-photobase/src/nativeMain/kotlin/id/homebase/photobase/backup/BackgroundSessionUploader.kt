@@ -13,9 +13,9 @@ import kotlin.coroutines.resume
 import kotlin.uuid.Uuid
 
 /**
- * While the app is in the background: the whole encrypted multipart body goes to a file, and the
- * system's URLSession takes it from there, even after the app is suspended. Videos stay on the Outbox,
- * because their HLS body is a directory. In the foreground everything uses the Outbox.
+ * The whole encrypted multipart body goes to a file, and the system's URLSession takes it from there,
+ * even after the app is suspended. Handing over from the open app matters: iOS treats an upload started
+ * in the background as low priority. Videos stay on the Outbox, because their HLS body is a directory.
  */
 class BackgroundSessionUploader(
     private val outbox: OutboxBackupUploader,
@@ -23,17 +23,17 @@ class BackgroundSessionUploader(
     private val source: DeviceChangeSource,
     private val uploadProvider: DriveUploadProvider,
     private val fileOps: FileOperationsProvider,
-    private val inBackground: Boolean,
+    private val wifiOnly: () -> Boolean,
 ) : BackupUploader {
 
-    override val outlivesProcess: Boolean get() = inBackground
+    override val outlivesProcess: Boolean get() = BackgroundUploadBridgeHolder.bridge != null
 
-    override val maxHandedOff: Int get() = if (inBackground) SESSION_BATCH else super.maxHandedOff
+    override val maxHandedOff: Int get() = SESSION_BATCH
 
     override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
         val mediaType = BackupMediaType.ofCode(row.mediaType)
         val bridge = BackgroundUploadBridgeHolder.bridge
-        if (!inBackground || bridge == null || mediaType == BackupMediaType.Video) return outbox.handOff(row, uniqueId)
+        if (bridge == null || mediaType == BackupMediaType.Video) return outbox.handOff(row, uniqueId)
 
         val exported = source.export(row.deviceAssetId, mediaType)
         try {
@@ -48,7 +48,7 @@ class BackgroundSessionUploader(
                 request.payloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
             }
             val taskId = timed(BackupStage.Enqueue) {
-                bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath)
+                bridge.enqueue(uniqueId.toString(), prepared.url, prepared.bearerToken, prepared.contentType, bodyPath, wifiOnly())
             }
             if (taskId == null) {
                 runCatching { fileOps.deleteTempFile(bodyPath) }

@@ -186,8 +186,6 @@ import id.homebase.photobase.backup.AssetHasher
 import id.homebase.photobase.backup.BackgroundUploaderContext
 import id.homebase.photobase.backup.BackupLedger
 import id.homebase.photobase.backup.BackupRequestBuilder
-import id.homebase.photobase.backup.BackupRunRequest
-import id.homebase.photobase.backup.BackupUploader
 import id.homebase.photobase.backup.BackupOutboxResults
 import id.homebase.photobase.backup.BackupPushSchedule
 import id.homebase.photobase.backup.BackupSettingsStore
@@ -1610,9 +1608,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         val hasher = AssetHasher(exports, get())
         val requests = BackupRequestBuilder(get())
         val outbox = OutboxBackupUploader(get(), exports, hasher, requests, get(), get(), scope)
-        val uploaderFor: (BackupRunRequest) -> BackupUploader = { request ->
-            it.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get(), !request.isInteractive)) ?: outbox
-        }
+        val uploader = it.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get()) { settings.settings.value.wifiOnly }) ?: outbox
         val storageQuota = get<StorageQuota>()
         PhotoBackupRun(
             settings = { settings.settings.value },
@@ -1620,7 +1616,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
             source = it.source,
             hasher = hasher,
             dedupe = ServerBackupDedupe(get()),
-            uploaderFor = uploaderFor,
+            uploader = uploader,
             results = results,
             probe = it.probe,
             auth = {

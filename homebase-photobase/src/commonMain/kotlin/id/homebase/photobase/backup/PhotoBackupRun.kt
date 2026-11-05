@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
@@ -39,7 +40,7 @@ class PhotoBackupRun(
     private val source: DeviceChangeSource,
     private val hasher: AssetHasher,
     private val dedupe: BackupDedupe,
-    private val uploaderFor: (BackupRunRequest) -> BackupUploader,
+    private val uploader: BackupUploader,
     private val results: BackupOutboxResults,
     private val probe: BackupDeviceProbe,
     private val auth: BackupAuth,
@@ -153,19 +154,18 @@ class PhotoBackupRun(
         _status.update { it.copy(pauseReason = null) }
 
         results.start()
-        val uploader = uploaderFor(request)
-        reconcileHandedOff(uploader)
+        reconcileHandedOff()
         refreshStatus()
 
         val finished = withTimeoutOrNull(request.budget.remaining) {
-            pipeline(request, uploader, includeVideos, newestFirst, hashing)
+            pipeline(request, includeVideos, newestFirst, hashing)
             true
         } ?: false
         uploader.kick()
-        val settled = timed(BackupStage.Settle) { awaitUploadsSettled(request.budget) }
+        val settled = timed(BackupStage.Settle) { awaitUploadsSettled(request) }
 
         val counts = ledger.counts()
-        if (finished && settled && counts.pending == 0L) {
+        if (finished && settled && counts.pending == 0L && counts.inOutbox + counts.uploading == 0L) {
             ledger.markSucceeded()
             if (!newestFirst) ledger.markInitialBackupDone()
         }
@@ -184,7 +184,7 @@ class PhotoBackupRun(
     }
 
     /** After a kill the ledger can say QUEUED for a row whose send already finished. Dedupe settles those. */
-    private suspend fun reconcileHandedOff(uploader: BackupUploader) {
+    private suspend fun reconcileHandedOff() {
         for (row in ledger.rowsInOutbox()) {
             val uniqueId = row.uniqueId?.let(Uuid::parse)
             if (uniqueId == null || !uploader.isStillSending(row, uniqueId)) {
@@ -195,7 +195,6 @@ class PhotoBackupRun(
 
     private suspend fun pipeline(
         request: BackupRunRequest,
-        uploader: BackupUploader,
         includeVideos: Boolean,
         newestFirst: Boolean,
         hashing: Job,
@@ -211,11 +210,11 @@ class PhotoBackupRun(
         repeat(PREPARE_PARALLELISM) {
             launch {
                 for ((row, uniqueId) in toPrepare) {
-                    if (request.budget.isExpired || !timed(BackupStage.WaitForRoom) { awaitUploadRoom(uploader) } || isStorageFull(false)) {
+                    if (request.budget.isExpired || !timed(BackupStage.WaitForRoom) { awaitUploadRoom(row, request.isInteractive) } || isStorageFull(false)) {
                         toPrepare.cancel()
                         return@launch
                     }
-                    prepare(row, uniqueId, uploader)
+                    prepare(row, uniqueId)
                 }
             }
         }
@@ -297,17 +296,21 @@ class PhotoBackupRun(
         }
     }
 
-    private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid, uploader: BackupUploader) {
+    private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid) {
         guarded(row) {
-            when (val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }) {
-                HandOffResult.Queued -> {
-                    ledger.markQueued(row.deviceAssetId)
-                    results.onHandedOff(uniqueId)
-                    uploader.kick()
+            val handedOff = timed(BackupStage.Prepare) { uploader.handOff(row, uniqueId) }
+            // Leaving the app cancels the run. A row left unmarked is sent again, over a body file the session is still reading.
+            withContext(NonCancellable) {
+                when (handedOff) {
+                    HandOffResult.Queued -> {
+                        ledger.markQueued(row.deviceAssetId)
+                        results.onHandedOff(uniqueId)
+                    }
+                    is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
+                    HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
                 }
-                is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
-                HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
             }
+            if (handedOff == HandOffResult.Queued) uploader.kick()
         }
     }
 
@@ -325,19 +328,24 @@ class PhotoBackupRun(
     }
 
     /** Small batches, so a whole library is never encrypted up front. False: nothing is moving, so stop until a later run. */
-    private suspend fun awaitUploadRoom(uploader: BackupUploader): Boolean {
+    private suspend fun awaitUploadRoom(row: DeviceBackupAsset, interactive: Boolean): Boolean {
+        // Videos stay on the Outbox whatever the uploader's own limit.
+        val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
         while (true) {
             val counts = ledger.counts()
-            if (counts.inOutbox + counts.uploading < uploader.maxHandedOff) return true
-            if (uploader.outlivesProcess || results.unsettled.value.isEmpty()) return false
-            if (!awaitActivity()) return false
+            val outboxHasRoom = !isVideo || results.unsettled.value.size < MAX_OUTBOX_HANDED_OFF
+            if (counts.inOutbox + counts.uploading < uploader.maxHandedOff && outboxHasRoom) return true
+            val waitingIsUseful = if (uploader.outlivesProcess) interactive else results.unsettled.value.isNotEmpty()
+            if (!waitingIsUseful || !awaitActivity()) return false
         }
     }
 
-    private suspend fun awaitUploadsSettled(budget: BackupBudget): Boolean {
+    private suspend fun awaitUploadsSettled(request: BackupRunRequest): Boolean {
+        val budget = request.budget
         if (budget.isExpired) return results.unsettled.value.isEmpty()
+        val waitForSends = request.isInteractive && uploader.outlivesProcess
         return withTimeoutOrNull(budget.remaining) {
-            while (results.unsettled.value.isNotEmpty()) {
+            while (results.unsettled.value.isNotEmpty() || (waitForSends && ledger.counts().uploading > 0)) {
                 if (!awaitActivity()) return@withTimeoutOrNull false
             }
             true
@@ -345,7 +353,7 @@ class PhotoBackupRun(
     }
 
     private suspend fun awaitActivity(): Boolean = withTimeoutOrNull(NO_PROGRESS_LIMIT) {
-        combine(results.activity, results.unsettled) { _, _ -> Unit }.drop(1).first()
+        combine(results.activity, results.unsettled, ledger.changes) { _, _, _ -> Unit }.drop(1).first()
         true
     } ?: false
 

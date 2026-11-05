@@ -10,7 +10,7 @@ class BackgroundUploaderContext(
     val source: DeviceChangeSource,
     val uploadProvider: DriveUploadProvider,
     val fileOps: FileOperationsProvider,
-    val inBackground: Boolean,
+    val wifiOnly: () -> Boolean,
 )
 
 class PhotoBackupPlatform(

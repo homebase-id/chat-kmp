@@ -83,7 +83,7 @@ class PhotoBackupControllerTest {
             source = source,
             hasher = AssetHasher(HashedExports(source, NoFileOps), NoFileOps),
             dedupe = { emptySet() },
-            uploaderFor = { uploader },
+            uploader = uploader,
             results = results,
             probe = FakeProbe(),
             auth = { true },

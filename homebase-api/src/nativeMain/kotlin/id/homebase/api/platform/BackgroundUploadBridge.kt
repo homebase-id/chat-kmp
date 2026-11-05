@@ -7,9 +7,10 @@ package id.homebase.api.platform
  * Contract: [enqueue] returns the session's task id, or null when refused. A finished upload always
  * reaches [BackgroundUploadResults], including after a relaunch. The body file must outlive the
  * process, and the bearer token can't be refreshed mid-transfer: a 401 comes back as a result.
+ * With wifiOnly the upload waits rather than use a cellular or other expensive network.
  */
 interface BackgroundUploadBridge {
-    fun enqueue(uploadKey: String, url: String, bearerToken: String, contentType: String, bodyPath: String): Long?
+    fun enqueue(uploadKey: String, url: String, bearerToken: String, contentType: String, bodyPath: String, wifiOnly: Boolean): Long?
 
     fun cancelAll()
 

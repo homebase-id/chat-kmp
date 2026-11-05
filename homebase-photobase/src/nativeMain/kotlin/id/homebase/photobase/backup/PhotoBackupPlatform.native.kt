@@ -7,6 +7,6 @@ actual fun createPhotoBackupPlatform(fileOps: FileOperationsProvider): PhotoBack
         source = IosDeviceChangeSource(fileOps),
         probe = IosBackupDeviceProbe(),
         triggers = IosBackupTriggers(),
-        uploader = { BackgroundSessionUploader(it.outbox, it.requests, it.source, it.uploadProvider, it.fileOps, it.inBackground) },
+        uploader = { BackgroundSessionUploader(it.outbox, it.requests, it.source, it.uploadProvider, it.fileOps, it.wifiOnly) },
         listenForUploadResults = ::listenForBackgroundUploadResults,
     )

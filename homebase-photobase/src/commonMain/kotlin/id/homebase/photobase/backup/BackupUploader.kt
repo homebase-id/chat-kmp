@@ -13,16 +13,19 @@ sealed interface HandOffResult {
     data object ChangedUnderUs : HandOffResult
 }
 
+/** How many rows may wait on the Outbox at once: each is an encrypted copy on disk. */
+const val MAX_OUTBOX_HANDED_OFF = 6
+
 /**
  * Takes a HASHED asset to where it will be sent without more work from the run: the Outbox, or the
  * iOS background URLSession. Expected failures throw; the run records them against the row.
  */
 interface BackupUploader {
-    /** True when a result can arrive long after this run ends, so the run doesn't wait for it. */
+    /** True when a result can arrive long after this run ends, so a run in the background doesn't wait for it. */
     val outlivesProcess: Boolean get() = false
 
     /** How many rows may be with this uploader unsettled at once. */
-    val maxHandedOff: Int get() = 6
+    val maxHandedOff: Int get() = MAX_OUTBOX_HANDED_OFF
 
     suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult
 

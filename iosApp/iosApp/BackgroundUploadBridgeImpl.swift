@@ -33,12 +33,14 @@ final class BackgroundUploadBridgeImpl: NSObject, BackgroundUploadBridge, URLSes
         start()
     }
 
-    func enqueue(uploadKey: String, url: String, bearerToken: String, contentType: String, bodyPath: String) -> KotlinLong? {
+    func enqueue(uploadKey: String, url: String, bearerToken: String, contentType: String, bodyPath: String, wifiOnly: Bool) -> KotlinLong? {
         guard let target = URL(string: url) else { return nil }
         var request = URLRequest(url: target)
         request.httpMethod = "POST"
         request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.allowsCellularAccess = !wifiOnly
+        request.allowsExpensiveNetworkAccess = !wifiOnly
         let task = session.uploadTask(with: request, fromFile: URL(fileURLWithPath: bodyPath))
         task.taskDescription = uploadKey
         task.resume()
