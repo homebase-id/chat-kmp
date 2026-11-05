@@ -1,7 +1,7 @@
 package id.homebase.chat.agentui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -36,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import co.touchlab.kermit.Logger
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -118,12 +117,14 @@ fun AgentUiBubble(
 
     // The inline tree and a tree already in the loader are there on the first frame, so the card is
     // measured at its full height when it scrolls into view. Only a payload tree not loaded yet starts as Loading.
-    val firstFrame = firstFrameTree(content, descriptor.rev, message, loader)
-    val load: State<TreeLoad> = produceState(
-        firstFrame,
-        content.inlineTree, message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys,
-    ) {
-        value = content.inlineTree.toLoad(descriptor.rev) ?: loader.load(message).toLoad(descriptor.rev) ?: TreeLoad.Failed
+    val loadKeys = arrayOf<Any?>(content.inlineTree, message.fileId, treePayload?.lastModified, treePayload?.iv?.bytes?.contentHashCode(), descriptor.rev, images.keys)
+    val firstFrame = remember(*loadKeys) { firstFrameTree(content, descriptor.rev, message, loader) }
+    val load: State<TreeLoad> = produceState(firstFrame, *loadKeys) {
+        content.inlineTree.toLoad(descriptor.rev)?.let { value = it; return@produceState }
+        val results = loader.results(message) ?: run { value = TreeLoad.Failed; return@produceState }
+        launch { if (loader.load(message) == null && value == TreeLoad.Loading) value = TreeLoad.Failed }
+        // A failed fetch shows the fallback, but a later warm that succeeds still replaces it.
+        results.collect { value = it.toLoad(descriptor.rev) ?: TreeLoad.Failed }
     }
 
     val ready = load.value as? TreeLoad.Ready
@@ -171,13 +172,14 @@ fun AgentUiBubble(
                 }
                 if (!ok) {
                     sentActions = sentActions - req.actionId
+                    req.rollback.forEach { (id, v) -> inputs[id] = v }
                     failed = true
                 }
             }
         }
     }
 
-    AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick) {
+    AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick.takeUnless { displayOnly }) {
         if (ready != null) {
             AgentUiTreeView(
                 tree = ready.tree,
@@ -237,8 +239,9 @@ fun AgentUiFrame(
     }
 }
 
+// Null off-stream (action-menu preview): any pointer handler there eats the tap the scrim needs to dismiss.
 private fun Modifier.onLongPress(onLongClick: (() -> Unit)?): Modifier =
-    if (onLongClick != null) pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) } else this
+    if (onLongClick != null) combinedClickable(onClick = {}, onLongClick = onLongClick) else this
 
 /** Caps the card at a readable bubble width that grows on wide windows. */
 private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constraints ->

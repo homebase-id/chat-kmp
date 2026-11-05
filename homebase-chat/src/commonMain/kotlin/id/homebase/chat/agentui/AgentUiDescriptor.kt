@@ -5,6 +5,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.codePointCount
 import id.homebase.api.util.truncateToCodePoints
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -17,7 +18,7 @@ data class AgentUiDescriptor(
     val fallback: String,
     val title: String? = null,
     val rev: Int = 0,
-    val tree: JsonObject? = null,
+    val tree: JsonElement? = null,
 ) {
     fun isValid(): Boolean =
         schemaVersion == 1 &&

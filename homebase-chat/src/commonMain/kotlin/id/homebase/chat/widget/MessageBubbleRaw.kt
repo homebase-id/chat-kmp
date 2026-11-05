@@ -407,7 +407,7 @@ fun MessageBubbleRaw(
                 authorName = message.displayName,
                 sentByYou = sentByYou,
                 modifier = modifier,
-                onLongClick = onLongClick,
+                onLongClick = onLongClick.takeUnless { displayOnly },
             )
             return
         }

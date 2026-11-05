@@ -15,7 +15,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -45,15 +49,20 @@ class AgentUiTreeLoader(
     private val trees = MutableStateFlow<Map<Key, AgentUiTreeResult>>(emptyMap())
     private val mutex = Mutex()
     private val pending = HashMap<Key, Deferred<AgentUiTreeResult?>>()
+    private var generation = 0
 
     /** The decoded tree if it is already in memory; never suspends, so a composable can read it on its first frame. */
     fun cached(message: MessageUiModel): AgentUiTreeResult? = request(message)?.let { trees.value[it.key] }
+
+    /** Every decoded tree for [message] as it lands, including one a later [warm] fetches after a failed [load]; null when it has no payload tree. */
+    fun results(message: MessageUiModel): Flow<AgentUiTreeResult>? =
+        request(message)?.let { req -> trees.map { it[req.key] }.filterNotNull().distinctUntilChanged() }
 
     /** Null when the payload could not be fetched (worth retrying later); an invalid tree is a result, not a failure. */
     suspend fun load(message: MessageUiModel): AgentUiTreeResult? {
         val req = request(message) ?: return null
         trees.value[req.key]?.let { return it }
-        val job = mutex.withLock { pending.getOrPut(req.key) { scope.async { fetchAndDecode(req) } } }
+        val job = mutex.withLock { pending.getOrPut(req.key) { generation.let { g -> scope.async { fetchAndDecode(req, g) } } } }
         return job.await()
     }
 
@@ -67,9 +76,18 @@ class AgentUiTreeLoader(
     /** Drops every decoded tree; called when the session ends so one identity's cards never outlive it. */
     fun clear() {
         trees.value = emptyMap()
+        scope.launch {
+            mutex.withLock {
+                generation++
+                pending.values.forEach { it.cancel() }
+                pending.clear()
+                trees.value = emptyMap()
+            }
+        }
     }
 
-    private suspend fun fetchAndDecode(req: Request): AgentUiTreeResult? = try {
+    // [startedIn] is the generation the fetch began in; a fetch that outlives a [clear] must not repopulate the cache.
+    private suspend fun fetchAndDecode(req: Request, startedIn: Int): AgentUiTreeResult? = try {
         val bytes = try {
             fetch(req.key.fileId, req.keyHeader, req.key.lastModified)
         } catch (e: CancellationException) {
@@ -80,12 +98,14 @@ class AgentUiTreeLoader(
         }
         bytes?.let {
             val result = withContext(decodeDispatcher) { AgentUiTree.decode(it, req.key.imageKeys) }
-            trees.update { m -> (m + (req.key to result)).let { if (it.size > MAX_TREES) it.entries.drop(it.size - MAX_TREES).associate { e -> e.key to e.value } else it } }
+            mutex.withLock {
+                if (startedIn == generation) trees.update { m -> (m + (req.key to result)).let { if (it.size > MAX_TREES) it.entries.drop(it.size - MAX_TREES).associate { e -> e.key to e.value } else it } }
+            }
             Logger.d(tag = TAG) { "ready id=${req.messageId} source=payload bytes=${it.size} state=${result::class.simpleName}" }
             result
         }
     } finally {
-        withContext(NonCancellable) { mutex.withLock { pending.remove(req.key) } }
+        withContext(NonCancellable) { mutex.withLock { if (startedIn == generation) pending.remove(req.key) } }
     }
 
     private fun request(message: MessageUiModel): Request? {

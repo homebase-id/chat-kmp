@@ -78,7 +78,13 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
 import org.jetbrains.compose.resources.stringResource
 
-data class AgentUiActionRequest(val actionId: String, val label: String, val values: Map<String, String>)
+/** [rollback] restores the inputs this action changed locally if the send fails. */
+data class AgentUiActionRequest(
+    val actionId: String,
+    val label: String,
+    val values: Map<String, String>,
+    val rollback: Map<String, String> = emptyMap(),
+)
 
 private val ListItemWidth = 260.dp
 
@@ -92,8 +98,8 @@ private class Env(
 ) {
     fun usable(action: AgentUiNodeAction?): Boolean = enabled && action?.id !in pending
 
-    fun fire(action: AgentUiNodeAction, nodeId: String, label: String) {
-        onAction(AgentUiActionRequest(action.id, label, tree.collectValues(action, nodeId, inputs.snapshot())))
+    fun fire(action: AgentUiNodeAction, nodeId: String, label: String, rollback: Map<String, String> = emptyMap()) {
+        onAction(AgentUiActionRequest(action.id, label, tree.collectValues(action, nodeId, inputs.snapshot()), rollback))
     }
 }
 
@@ -315,7 +321,7 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
     @Composable
     fun TableRow(cells: List<String>, style: TextStyle, color: Color) {
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            cells.forEachIndexed { c, cell ->
+            List(columns) { cells.getOrElse(it) { "" } }.forEachIndexed { c, cell ->
                 val isNumber = numeric.getOrElse(c) { false }
                 Text(
                     cell,
@@ -380,7 +386,7 @@ private fun ToggleView(node: AgentUiNode.Toggle, env: Env, modifier: Modifier) {
             .fillMaxWidth()
             .toggleable(value = checked, enabled = enabled, role = Role.Switch) {
                 env.inputs[node.id] = it.toString()
-                node.action?.let { a -> env.fire(a, node.id, node.label) }
+                node.action?.let { a -> env.fire(a, node.id, node.label, mapOf(node.id to checked.toString())) }
             }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -421,7 +427,7 @@ private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
             for (option in node.options) key(option.id) {
                 AgentChip(option.label, current == option.id, enabled = enabled) {
                     env.inputs[node.id] = option.id
-                    node.action?.let { env.fire(it, node.id, option.label) }
+                    node.action?.let { env.fire(it, node.id, option.label, mapOf(node.id to current)) }
                 }
             }
         }

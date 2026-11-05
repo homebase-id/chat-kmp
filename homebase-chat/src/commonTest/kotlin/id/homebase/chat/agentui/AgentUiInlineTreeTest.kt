@@ -17,6 +17,7 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -157,6 +158,38 @@ class AgentUiInlineTreeTest {
         fail = false
         assertIs<AgentUiTreeResult.Valid>(loader.load(m))
         assertEquals(2, fetches.size)
+    }
+
+    @Test fun a_tree_warmed_after_a_failed_load_reaches_the_results_flow() = runTest {
+        var fail = true
+        val loader = loader(mutableListOf()) { if (fail) null else AgentUiFixtures.draftPostCardBytes() }
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        val seen = async { assertNotNull(loader.results(m)).first() }
+        assertNull(loader.load(m))
+        fail = false
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        assertIs<AgentUiTreeResult.Valid>(seen.await())
+    }
+
+    @Test fun a_fetch_in_flight_when_the_session_ends_does_not_repopulate_the_cache() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val loader = AgentUiTreeLoader(fetch = { _, _, _ -> gate.await(); AgentUiFixtures.draftPostCardBytes() }, scope = this)
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        loader.clear()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertNull(loader.cached(m))
+    }
+
+    @Test fun an_inline_tree_that_is_not_an_object_keeps_the_descriptor() {
+        val content = assertIs<MessageContent.AgentUi>(
+            MessageContentParser.parse(218, """{"fallback":"Draft post","tree":[]}""", null)
+        )
+        assertNotNull(content.descriptor)
+        assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
     }
 
     @Test fun an_edit_that_replaces_the_payload_refetches() = runTest {

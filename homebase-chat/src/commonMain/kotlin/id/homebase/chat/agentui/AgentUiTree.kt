@@ -293,7 +293,8 @@ data class AgentUiTree(
             val include = (o["include"] as? JsonArray).orEmpty()
                 .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.takeIf { s -> s.isNotBlank() && s.length <= AgentUiLimits.MAX_ID_LENGTH } }
                 .distinct()
-                .take(AgentUiLimits.MAX_VALUES)
+                // The acting node's own value is always sent too, so the reply holds at most MAX_VALUES.
+                .take(AgentUiLimits.MAX_VALUES - 1)
             return AgentUiNodeAction(id, include)
         }
 

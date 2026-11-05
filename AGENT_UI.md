@@ -31,9 +31,10 @@ Re-check against A2UI when bumping `schemaVersion`.
 {"schemaVersion":1,"fallback":"Draft post for X and LinkedIn","title":"Draft post","rev":0}
 ```
 
-- `fallback`: required, non-blank, at most 1000 code points. Shown while the tree loads, if it
-  fails, and copied by "Copy".
-- `title`: optional, at most 80 code points (conversation list, pins).
+- `fallback`: required, non-blank, at most 1000 code points. Shown while the tree loads and if it
+  fails.
+- `title`: optional, at most 80 code points. The card's one-line summary (conversation list, pins,
+  search, "Copy") is the title, or the first 80 code points of `fallback` without one.
 - `rev`: integer, 0 or more. The agent bumps it on every edit.
 - `tree`: optional, the whole tree object from section 2, inline. Present only when the descriptor
   with it still fits the header (below). When present the receiver renders it from the header and
@@ -122,7 +123,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 | labels, table cells, alt | 200 code points | clamped |
 | table | 20 rows x 8 columns | clamped |
 | options | 50 | clamped |
-| `include` | 20 ids | clamped |
+| `include` | 19 ids (the acting node makes 20) | clamped |
 | input value | 1000 code points (`maxLength` 1 to 1000) | clamped |
 
 An invalid tree shows the header `fallback`. Missing child ids are dropped. `AgentUiTree.decode`
