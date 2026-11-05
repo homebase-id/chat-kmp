@@ -6,6 +6,9 @@ import kotlin.uuid.Uuid
 sealed interface HandOffResult {
     data object Queued : HandOffResult
 
+    /** Already with something that outlives this process, as task [taskId]. */
+    data class Sending(val taskId: Long) : HandOffResult
+
     /** The bytes on the device no longer match the hash; nothing was queued. */
     data object ChangedUnderUs : HandOffResult
 }
@@ -15,6 +18,12 @@ sealed interface HandOffResult {
  * iOS background URLSession. Expected failures throw; the run records them against the row.
  */
 interface BackupUploader {
+    /** True when a result can arrive long after this run ends, so the run doesn't wait for it. */
+    val outlivesProcess: Boolean get() = false
+
+    /** How many rows may be with this uploader unsettled at once. */
+    val maxHandedOff: Int get() = 6
+
     suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult
 
     /** Whether something is still going to send this row. False sends the row back through dedupe. */

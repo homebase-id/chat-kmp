@@ -142,6 +142,11 @@ class BackupLedger(
         changed()
     }
 
+    suspend fun markSending(uniqueId: Uuid, taskId: Long) {
+        store.setUploadTask(uniqueId.toString(), BackupState.Uploading.code, taskId)
+        changed()
+    }
+
     suspend fun onOutboxStarted(uniqueId: Uuid) {
         store.setStateOfUnique(uniqueId.toString(), listOf(BackupState.Queued.code), BackupState.Uploading.code, null, 0, 0)
         changed()

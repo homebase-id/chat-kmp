@@ -59,6 +59,7 @@ import id.homebase.resources.photobase_battery_body
 import id.homebase.resources.photobase_battery_open_settings
 import id.homebase.resources.photobase_battery_phone_maker
 import id.homebase.resources.photobase_battery_title
+import id.homebase.resources.photobase_keep_open
 import id.homebase.resources.photobase_library_allow
 import id.homebase.resources.photobase_library_allow_all
 import id.homebase.resources.photobase_library_limited
@@ -73,7 +74,7 @@ fun BackupSettingsScreen(
     viewModel: BackupSettingsViewModel,
     onBack: () -> Unit,
     onOpenStatus: () -> Unit,
-    extraSections: @Composable () -> Unit = {},
+    onOpenKeepOpen: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val settings = uiState.settings
@@ -118,6 +119,12 @@ fun BackupSettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
                     Text(stringResource(MR.string.photobase_backup_now))
+                }
+                TextButton(
+                    onClick = onOpenKeepOpen,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) {
+                    Text(stringResource(MR.string.photobase_keep_open))
                 }
             }
             HorizontalDivider()
@@ -176,7 +183,6 @@ fun BackupSettingsScreen(
                     },
                 )
             }
-            extraSections()
             HorizontalDivider()
             Text(
                 text = stringResource(MR.string.photobase_backup_guidance),

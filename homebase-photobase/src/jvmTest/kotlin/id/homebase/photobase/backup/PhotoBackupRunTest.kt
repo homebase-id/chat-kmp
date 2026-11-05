@@ -354,6 +354,27 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aSendThatOutlivesTheProcessIsNotWaitedFor() = runTest {
+        source.next = fullListing(*List(10) { asset("a$it") }.toTypedArray())
+        val uploader = uploader()
+        uploader.sendsComplete = false
+        uploader.outlivesProcess = true
+        uploader.maxHandedOff = 4
+        uploader.result = { HandOffResult.Sending(taskId = 7) }
+        val (run, results) = newRun(uploader)
+
+        val started = testTimeSource.markNow()
+        val outcome = run.run(request())
+
+        assertEquals(BackupRunOutcome.Finished, outcome)
+        assertEquals(Duration.ZERO, started.elapsedNow())
+        assertTrue(results.unsettled.value.isEmpty())
+        val counts = ledger.counts()
+        assertTrue(counts.uploading in 4..5, "a batch, not the library: $counts")
+        assertEquals(7, ledger.rowsInOutbox().first().uploadTaskId)
+    }
+
+    @Test
     fun theOutboxIsKickedForWhatWasHandedOff() = runTest {
         source.next = fullListing(asset("a"))
         val uploader = uploader()

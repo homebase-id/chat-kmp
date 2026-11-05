@@ -180,7 +180,7 @@ class PhotoBackupRun(
         repeat(PREPARE_PARALLELISM) {
             launch {
                 for ((row, uniqueId) in toPrepare) {
-                    if (request.budget.isExpired || !awaitUploadRoom() || isStorageFull(false)) {
+                    if (request.budget.isExpired || !awaitUploadRoom(uploader) || isStorageFull(false)) {
                         toPrepare.cancel()
                         return@launch
                     }
@@ -259,12 +259,13 @@ class PhotoBackupRun(
 
     private suspend fun prepare(row: DeviceBackupAsset, uniqueId: Uuid, uploader: BackupUploader) {
         guarded(row) {
-            when (uploader.handOff(row, uniqueId)) {
+            when (val handedOff = uploader.handOff(row, uniqueId)) {
                 HandOffResult.Queued -> {
                     ledger.markQueued(row.deviceAssetId)
                     results.onHandedOff(uniqueId)
                     uploader.kick()
                 }
+                is HandOffResult.Sending -> ledger.markSending(uniqueId, handedOff.taskId)
                 HandOffResult.ChangedUnderUs -> ledger.markChangedUnderUs(row.deviceAssetId)
             }
         }
@@ -284,11 +285,11 @@ class PhotoBackupRun(
     }
 
     /** Small batches, so a whole library is never encrypted up front. False: nothing is moving, so stop until a later run. */
-    private suspend fun awaitUploadRoom(): Boolean {
+    private suspend fun awaitUploadRoom(uploader: BackupUploader): Boolean {
         while (true) {
             val counts = ledger.counts()
-            if (counts.inOutbox + counts.uploading < MAX_HANDED_OFF) return true
-            if (results.unsettled.value.isEmpty()) return false
+            if (counts.inOutbox + counts.uploading < uploader.maxHandedOff) return true
+            if (uploader.outlivesProcess || results.unsettled.value.isEmpty()) return false
             if (!awaitActivity()) return false
         }
     }
@@ -314,7 +315,6 @@ class PhotoBackupRun(
         private const val HASH_BATCH = 16
         private const val DEDUPE_BATCH = 20
         private const val PREPARE_PARALLELISM = 2
-        private const val MAX_HANDED_OFF = 6
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes
 

@@ -1,6 +1,6 @@
 # Photobase: background backup and simple gallery — plan (chat-kmp)
 
-Status: **Proposed**. Date: 2026-11-04. Nothing here is built yet.
+Status: **Built, unproven on devices** (see `PHOTOBASE_OVERNIGHT_REPORT.md`). Date: 2026-11-04.
 
 Scope: background photo and video backup in chat-kmp (Android and iOS), plus a simple read-only
 gallery as the Photobase add-on app (all four platforms). This is Phase 0 of Photobase; the
@@ -455,73 +455,73 @@ and for "N items keep failing".
 ## 11. Task list
 
 ### Phase 1: Backup works while the app is open
-- [ ] Create `homebase-photobase` module
-- [ ] Add ledger and checkpoint tables
-- [ ] Derive `uniqueId` from the content hash
-- [ ] Android change detection
-- [ ] iOS change detection
-- [ ] Full enumeration fallback
-- [ ] Deletion detection
-- [ ] Build the Hasher
-- [ ] Build dedupe check
-- [ ] Read capture date and location from EXIF
-- [ ] Generate thumbnails on upload
-- [ ] Back up Live Photos as one file with two payloads
-- [ ] Derive the Live Photo `uniqueId` from both parts
-- [ ] Back up videos through chat-kmp's HLS
-- [ ] Feed the Outbox from the ledger
-- [ ] Reserve one Outbox upload slot for chat
-- [ ] Support several upload streams for bulk import
-- [ ] Build `PhotoBackupRun`
-- [ ] Run hashing, dedupe, preparing and uploading in parallel
-- [ ] Run a `PhotoBackupRun` on app foreground
-- [ ] Handle failures and retries
-- [ ] Schedule, update and cancel the recurring backup push
-- [ ] One shared schedule per identity, not one per device
-- [ ] Push interval setting
-- [ ] Backup settings screen
-- [ ] Backup status screen
-- [ ] Media permissions flow
+- [x] Create `homebase-photobase` module
+- [x] Add ledger and checkpoint tables
+- [x] Derive `uniqueId` from the content hash
+- [x] Android change detection
+- [x] iOS change detection
+- [x] Full enumeration fallback
+- [x] Deletion detection
+- [x] Build the Hasher
+- [x] Build dedupe check
+- [x] Read capture date and location from EXIF
+- [x] Generate thumbnails on upload
+- [x] Back up Live Photos as one file with two payloads
+- [x] Derive the Live Photo `uniqueId` from both parts
+- [x] Back up videos through chat-kmp's HLS
+- [x] Feed the Outbox from the ledger
+- [x] Reserve one Outbox upload slot for chat
+- [x] Support several upload streams for bulk import
+- [x] Build `PhotoBackupRun`
+- [x] Run hashing, dedupe, preparing and uploading in parallel
+- [x] Run a `PhotoBackupRun` on app foreground
+- [x] Handle failures and retries
+- [x] Schedule, update and cancel the recurring backup push
+- [x] One shared schedule per identity, not one per device
+- [x] Push interval setting
+- [x] Backup settings screen
+- [x] Backup status screen
+- [x] Media permissions flow
 
 ### Phase 2: Simple gallery add-on
-- [ ] Mint the Photobase `appId`
-- [ ] Register the Photobase app, drive and circle
-- [ ] Remove the unused `PHOTO_APP_ID`
-- [ ] Add-on setup (onboarding, permissions, nav icon, settings toggle)
-- [ ] Query the Photos drive from the server, paged
-- [ ] Query on open, plus a refresh button in the top bar
-- [ ] New gallery grid by capture date, modelled on `MomentsAlbumGrid`
-- [ ] Tiny thumbnail first, then larger sizes
-- [ ] Use `FullScreenMediaViewer` as is
-- [ ] Reuse chat-kmp's video player
+- [x] Mint the Photobase `appId`
+- [x] Register the Photobase app, drive and circle
+- [x] Remove the unused `PHOTO_APP_ID`
+- [x] Add-on setup (onboarding, permissions, nav icon, settings toggle)
+- [x] Query the Photos drive from the server, paged
+- [x] Query on open, plus a refresh button in the top bar
+- [x] New gallery grid by capture date, modelled on `MomentsAlbumGrid`
+- [x] Tiny thumbnail first, then larger sizes
+- [x] Use `FullScreenMediaViewer` as is
+- [x] Reuse chat-kmp's video player
 
 ### Phase 3: Android background
-- [ ] Set wake-time budget and order alongside chat sync
-- [ ] Add `PhotoBackupTrigger` and call `onWake()` from `onPushArrived`
-- [ ] Android: `onWake()` enqueues a separate backup worker
-- [ ] New-photo trigger
-- [ ] Periodic job
-- [ ] Overnight job
-- [ ] "Back up now"
-- [ ] Battery guidance
+- [x] Set wake-time budget and order alongside chat sync
+- [x] Add `PhotoBackupTrigger` and call `onWake()` from `onPushArrived`
+- [x] Android: `onWake()` enqueues a separate backup worker
+- [x] New-photo trigger
+- [x] Periodic job
+- [x] Overnight job
+- [x] "Back up now"
+- [x] Battery guidance
 
 ### Phase 4: iOS background
-- [ ] Register background refresh task
-- [ ] Register overnight processing task
-- [ ] iOS: `onWake()` starts `PhotoBackupRun` alongside `captureAndUpload`
+- [x] Register background refresh task
+- [x] Register overnight processing task
+- [x] iOS: `onWake()` starts `PhotoBackupRun` alongside `captureAndUpload`
 - [ ] Confirm a scheduled silent push actually wakes a backgrounded iPhone
-- [ ] Write encrypted upload body to file
-- [ ] Background URLSession bridge
-- [ ] Handle upload results on relaunch
-- [ ] "Back up now"
-- [ ] "Keep the app open" backup screen
-- [ ] Remove or wire up the unused `fetch` mode
+- [x] Write encrypted upload body to file
+- [x] Background URLSession bridge
+- [x] Handle upload results on relaunch
+- [x] "Back up now"
+- [x] "Keep the app open" backup screen
+- [x] Remove or wire up the unused `fetch` mode
 - [ ] Spike PhotoKit background upload against Homebase
 
 ### Testing
-- [ ] Ledger and `PhotoBackupRun` tests
-- [ ] BLAKE3 and `uniqueId` tests on all four platforms
-- [ ] Gallery tests
+- [x] Ledger and `PhotoBackupRun` tests
+- [x] BLAKE3 and `uniqueId` tests on all four platforms
+- [x] Gallery tests
 - [ ] Android background tests
 - [ ] iOS background tests
 - [ ] One-week soak test on real phones

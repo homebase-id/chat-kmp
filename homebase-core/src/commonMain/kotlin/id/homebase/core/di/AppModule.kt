@@ -183,7 +183,12 @@ import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.PhotoGalleryRepository
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
+import id.homebase.photobase.backup.BackgroundUploaderContext
 import id.homebase.photobase.backup.BackupLedger
+import id.homebase.photobase.backup.BackupRequestBuilder
+import id.homebase.photobase.backup.BackupRunRequest
+import id.homebase.photobase.backup.BackupTrigger
+import id.homebase.photobase.backup.BackupUploader
 import id.homebase.photobase.backup.BackupOutboxResults
 import id.homebase.photobase.backup.BackupPushSchedule
 import id.homebase.photobase.backup.BackupSettingsStore
@@ -1596,9 +1601,15 @@ private fun Scope.photoBackupController(): PhotoBackupController {
     val settings = BackupSettingsStore(get())
     val results = BackupOutboxResults(ledger, get(), PhotobaseProtocol.DriveAlias, scope)
     val platform = createPhotoBackupPlatform(get())
+    platform?.listenForUploadResults?.invoke(ledger, get(), scope) { }
     val run = platform?.let {
         val hasher = AssetHasher(it.source, get())
-        val uploader = OutboxBackupUploader(get(), it.source, hasher, get(), get(), scope)
+        val requests = BackupRequestBuilder(get())
+        val outbox = OutboxBackupUploader(get(), it.source, hasher, requests, get(), get(), scope)
+        val uploaderFor: (BackupRunRequest) -> BackupUploader = { request ->
+            val inBackground = request.trigger !in setOf(BackupTrigger.Foreground, BackupTrigger.UserRequested)
+            it.uploader?.invoke(BackgroundUploaderContext(outbox, requests, it.source, get(), get(), inBackground)) ?: outbox
+        }
         val storageQuota = get<StorageQuota>()
         PhotoBackupRun(
             settings = { settings.settings.value },
@@ -1606,7 +1617,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
             source = it.source,
             hasher = hasher,
             dedupe = ServerBackupDedupe(get()),
-            uploaderFor = { uploader },
+            uploaderFor = uploaderFor,
             results = results,
             probe = it.probe,
             auth = {

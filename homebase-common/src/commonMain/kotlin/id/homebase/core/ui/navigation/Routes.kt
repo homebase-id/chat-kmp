@@ -180,6 +180,10 @@ sealed class Route {
     data object PhotoBackupSettings : Route()
 
     @Serializable
+    @SerialName("photo-backup-keep-open")
+    data object PhotoBackupKeepOpen : Route()
+
+    @Serializable
     @SerialName("photo-backup-status")
     data object PhotoBackupStatus : Route()
 

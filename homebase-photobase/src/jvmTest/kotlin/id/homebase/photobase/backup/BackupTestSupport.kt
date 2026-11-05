@@ -67,6 +67,8 @@ internal class FakeUploader(
     var sendsComplete = true
     var stillSending = false
     var kicks = 0
+    override var outlivesProcess = false
+    override var maxHandedOff = 6
 
     override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
         handedOff += row.deviceAssetId

@@ -241,6 +241,7 @@ import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
 import id.homebase.photobase.ui.BackupSettingsScreen
 import id.homebase.photobase.ui.BackupStatusScreen
+import id.homebase.photobase.ui.KeepOpenBackupScreen
 import id.homebase.photobase.ui.PhotobaseCheckingScreen
 import id.homebase.photobase.ui.PhotobaseOnboardingScreen
 import id.homebase.photobase.ui.PhotobaseSetupUiAction
@@ -2461,8 +2462,15 @@ fun AppNavHost(
                                             viewModel = koinViewModel(),
                                             onBack = { navController.popBackStack() },
                                             onOpenStatus = { navController.navigate(Route.PhotoBackupStatus) },
+                                            onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
                                         )
                                     }
+                                }
+                            }
+
+                            composable<Route.PhotoBackupKeepOpen> {
+                                if (isAuthenticated) {
+                                    KeepOpenBackupScreen(viewModel = koinViewModel(), onDone = { navController.popBackStack() })
                                 }
                             }
 

@@ -7,6 +7,8 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).video-bundle.*</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).backup.refresh</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).backup.processing</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
@@ -51,6 +53,7 @@
 		<string>audio</string>
 		<string>fetch</string>
 		<string>location</string>
+		<string>processing</string>
 		<string>remote-notification</string>
 		<string>voip</string>
 	</array>

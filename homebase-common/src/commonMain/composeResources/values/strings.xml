@@ -3274,4 +3274,8 @@
     <string name="photobase_battery_body">For the most reliable backup, allow Homebase to run without battery restrictions. This is optional.</string>
     <string name="photobase_battery_open_settings">Battery settings</string>
     <string name="photobase_battery_phone_maker">Advice for your phone's maker</string>
+    <string name="photobase_keep_open">Keep the app open for a big backup</string>
+    <string name="photobase_keep_open_body">Backing up. Leave this screen open and plug in your phone: the screen stays on and dark.</string>
+    <string name="photobase_keep_open_progress">%1$s of %2$s</string>
+    <string name="photobase_keep_open_done">Done</string>
 </resources>
