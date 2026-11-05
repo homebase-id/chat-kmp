@@ -4,7 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.agentui.AgentUiActionDescriptor
 import id.homebase.chat.agentui.AgentUiDescriptor
-import id.homebase.chat.agentui.AgentUiLimits
+import id.homebase.chat.agentui.AgentUiHeaderFields
+import id.homebase.chat.agentui.AgentUiTreeResult
 import id.homebase.chat.agentui.AgentUiTree
 import id.homebase.chat.agentui.agentUiImageKeys
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -195,19 +196,25 @@ object MessageContentParser {
         MessageContent.ViewOnce(null)
     }
 
-    private fun parseAgentUi(content: String, payloads: List<PayloadDescriptor>?): MessageContent.AgentUi = try {
-        // The header is parsed whole, so a hostile inline tree must not nest deep enough to blow the parser's stack.
-        val descriptor = if (AgentUiTree.jsonNestingExceeds(content, AgentUiLimits.MAX_JSON_NESTING + 1)) null
-        else OdinSystemSerializer.deserialize<AgentUiDescriptor>(content)
-        if (descriptor != null && descriptor.isValid()) {
-            MessageContent.AgentUi(descriptor.copy(tree = null), descriptor.tree?.let { AgentUiTree.decodeParsed(it, agentUiImageKeys(payloads)) })
-        } else {
-            Logger.w(tag = TAG) { "AgentUi descriptor failed validation" }
-            MessageContent.AgentUi(null)
+    private fun parseAgentUi(content: String, payloads: List<PayloadDescriptor>?): MessageContent.AgentUi {
+        val parsed = try {
+            val d = OdinSystemSerializer.deserialize<AgentUiDescriptor>(content)
+            d.copy(tree = null) to d.tree?.let { AgentUiTree.decodeParsed(it, agentUiImageKeys(payloads)) }
+        } catch (e: Exception) {
+            // A tree the parser refuses (nested too deep) still leaves a readable header, so the card shows its fallback.
+            try {
+                OdinSystemSerializer.deserialize<AgentUiHeaderFields>(content).descriptor() to AgentUiTreeResult.Invalid("tree unreadable")
+            } catch (_: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "AgentUi parse failed; rendering chip" }
+                return MessageContent.AgentUi(null)
+            }
         }
-    } catch (e: Exception) {
-        Logger.w(tag = TAG, throwable = e) { "AgentUi parse failed; rendering chip" }
-        MessageContent.AgentUi(null)
+        val (descriptor, inlineTree) = parsed
+        if (!descriptor.isValid()) {
+            Logger.w(tag = TAG) { "AgentUi descriptor failed validation" }
+            return MessageContent.AgentUi(null)
+        }
+        return MessageContent.AgentUi(descriptor, inlineTree)
     }
 
     private fun parseAgentUiAction(content: String): MessageContent.AgentUiAction = try {

@@ -522,7 +522,7 @@ Three kinds do:
 A kind whose content is usually small but can outgrow the header (AgentUi) can carry it either
 way: an optional field in the descriptor when the encrypted descriptor still fits
 `MaxHeaderContentBytes`, a payload otherwise. Check the encrypted size, not the plaintext
-(`AgentUiDescriptor.encryptedHeaderBytes`). The bytes already live in the drive payload cache, so do
+(`HomebaseProtocol.fitsHeaderContent`, which `ChatMessageSizer` uses too). The bytes already live in the drive payload cache, so do
 not add a second byte cache; AGENT_UI.md §2 describes how AgentUi loads and holds decoded trees.
 
 For a kind whose media must stay private, as ViewOnce's does:

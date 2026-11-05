@@ -271,4 +271,30 @@ class AgentUiTreeTest {
         val action = assertIs<AgentUiNode.Select>((t.root as AgentUiNode.Column).children.last()).action!!
         assertEquals(AgentUiLimits.MAX_VALUES, t.collectValues(action, "pick", emptyMap()).size)
     }
+
+    private fun budgetTree(prefill: String) = valid(
+        tree(
+            """{"id":"root","type":"column","children":["a","b","go"]}""",
+            """{"id":"a","type":"textInput","label":"a","value":"$prefill","maxLength":1000}""",
+            """{"id":"b","type":"textInput","label":"b","value":"keep","maxLength":1000}""",
+            """{"id":"go","type":"button","label":"Go","action":{"id":"send","include":["a","b"]}}""",
+        ),
+    )
+
+    @Test fun typing_into_a_field_never_erases_it_when_other_defaults_fill_the_budget() {
+        val t = budgetTree("\u4E2D".repeat(1000))
+        assertEquals(listOf("send"), t.overBudgetActions())
+        assertEquals("keep", t.fitText("b", "keepx", t.inputs))
+        assertEquals("kee", t.fitText("b", "kee", t.inputs))
+        assertEquals("keep", t.fitText("b", "xkeep", t.inputs))
+    }
+
+    @Test fun a_paste_is_cut_to_what_the_budget_has_left() {
+        val t = budgetTree("\u4E2D".repeat(800))
+        assertTrue(t.overBudgetActions().isEmpty())
+        val pasted = t.fitText("b", "keep" + "y".repeat(1000), t.inputs)
+        assertTrue(pasted.startsWith("keep") && pasted.length in 5 until 1004, "got ${pasted.length}")
+        val go = (t.root as AgentUiNode.Column).children.last() as AgentUiNode.Button
+        assertTrue(AgentUiActionDescriptor.valuesFit(t.collectValues(go.action!!, "go", t.inputs + ("b" to pasted))))
+    }
 }

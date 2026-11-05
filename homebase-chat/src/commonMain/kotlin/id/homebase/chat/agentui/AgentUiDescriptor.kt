@@ -30,16 +30,16 @@ data class AgentUiDescriptor(
 
     /** This descriptor carrying [tree] inline, or null when that would not fit the encrypted header. */
     fun withInlineTree(tree: JsonObject): AgentUiDescriptor? =
-        copy(tree = tree).takeIf { encryptedHeaderBytes(OdinSystemSerializer.serialize(it)) <= HomebaseProtocol.MaxHeaderContentBytes }
+        copy(tree = tree).takeIf { HomebaseProtocol.fitsHeaderContent(OdinSystemSerializer.serialize(it)) }
 
     companion object {
         const val MAX_FALLBACK_CP = 1000
         const val MAX_TITLE_CP = 80
-
-        /** The server caps `appData.content` after encryption: base64 of AES-CBC with PKCS7 padding. */
-        fun encryptedHeaderBytes(plain: String): Int {
-            val cipher = (plain.encodeToByteArray().size / 16 + 1) * 16
-            return (cipher + 2) / 3 * 4
-        }
     }
+}
+
+/** [AgentUiDescriptor] without its tree; unknown keys are skipped, so this reads a header whose tree the parser refuses. */
+@Serializable
+internal data class AgentUiHeaderFields(val schemaVersion: Int = 1, val fallback: String, val title: String? = null, val rev: Int = 0) {
+    fun descriptor() = AgentUiDescriptor(schemaVersion, fallback, title, rev)
 }

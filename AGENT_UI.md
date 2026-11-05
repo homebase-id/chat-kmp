@@ -45,8 +45,9 @@ Re-check against A2UI when bumping `schemaVersion`.
 
 ### 2. Tree: inline or payload
 
-The server caps `appData.content` at `MaxHeaderContentBytes` = 7000 bytes after encryption, which
-is base64 of AES-CBC with PKCS7 padding: `4 * ceil((16 * (floor(n / 16) + 1)) / 3)` for `n` plaintext
+The app caps `appData.content` at `MaxHeaderContentBytes` = 7000 bytes after encryption
+(`HomebaseProtocol.fitsHeaderContent`, the same rule a long text message uses), which is base64 of
+AES-CBC with PKCS7 padding: `4 * ceil((16 * (floor(n / 16) + 1)) / 3)` for `n` plaintext
 bytes. That allows at most 5247 bytes of descriptor JSON. The agent minifies the tree, puts it in
 `tree`, and keeps it there when `AgentUiDescriptor.withInlineTree` says the whole descriptor fits;
 otherwise the header has no `tree` and the tree goes in the payload. With a typical 100-byte
@@ -113,7 +114,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 |---|---|---|
 | inline: whole descriptor, encrypted | 7000 bytes (5247 plaintext) | sent as payload instead |
 | payload bytes (checked before parsing) | 64 KB | tree invalid |
-| JSON nesting | 8 | tree invalid |
+| JSON nesting | 8 | tree invalid (an inline tree too deep to parse still leaves the header's fallback) |
 | nodes in the list | 200 | tree invalid |
 | tree depth | 10 | tree invalid |
 | children per node | 50 | tree invalid |
@@ -136,8 +137,10 @@ is pure, common and never throws, so the agent can use it to validate before sen
 ```
 
 - `values`: node id to string. Toggles `"true"`/`"false"`, selects the option id, inputs the text.
-  At most 20 entries, each at most 1000 code points; the whole descriptor at most 4096 bytes (an
-  over-size action is not sent and the card shows an error).
+  At most 20 entries, each at most 1000 code points; the values serialized at most 2796 bytes
+  (`AgentUiActionDescriptor.valuesFit`) and the whole descriptor at most 4096 bytes. The app stops a
+  text input growing past the budget but never cuts what it already holds; the agent refuses a tree
+  whose defaults already overflow an action (`AgentUiTree.overBudgetActions`).
 - `target` points at another message. Who acted is the server-set sender of this message
   (`originalAuthor`), never a field here. The agent identity itself cannot act.
 - Push: none (`pushesToRecipient = false`). Older apps show the Unknown chip for each action.

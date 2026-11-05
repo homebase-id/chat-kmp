@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.sync.database.TombstoneRetention
 import kotlin.uuid.Uuid
@@ -174,6 +175,6 @@ object ChatProtocol {
 
     const val DefaultPayloadKey = "dflt_key"
     const val MaxDescriptorContentLength = 1024
-    const val MaxHeaderContentBytes = 7000
+    const val MaxHeaderContentBytes = HomebaseProtocol.MaxHeaderContentBytes
 
 }

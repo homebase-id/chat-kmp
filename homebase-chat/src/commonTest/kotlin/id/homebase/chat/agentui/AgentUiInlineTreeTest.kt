@@ -31,6 +31,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -69,12 +70,6 @@ class AgentUiInlineTreeTest {
     private fun TestScope.loader(fetches: MutableList<Uuid>, bytes: () -> ByteArray? = { AgentUiFixtures.draftPostCardBytes() }) =
         AgentUiTreeLoader(fetch = { id, _, _ -> fetches += id; bytes() }, scope = this, decodeDispatcher = StandardTestDispatcher(testScheduler))
 
-    @Test fun encrypted_header_size_matches_aes_cbc_base64() {
-        assertEquals(24, AgentUiDescriptor.encryptedHeaderBytes(""))
-        assertEquals(7000, AgentUiDescriptor.encryptedHeaderBytes("x".repeat(5247)))
-        assertEquals(7020, AgentUiDescriptor.encryptedHeaderBytes("x".repeat(5248)))
-    }
-
     @Test fun small_tree_rides_inline_and_decodes_with_the_header() {
         val d = assertNotNull(AgentUiDescriptor(fallback = "Draft post").withInlineTree(draft))
         val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(218, header(d), images))
@@ -96,7 +91,7 @@ class AgentUiInlineTreeTest {
         val d = AgentUiDescriptor(fallback = "Report")
         assertNull(d.withInlineTree(big))
         assertNotNull(d.withInlineTree(draft)).let {
-            assert(AgentUiDescriptor.encryptedHeaderBytes(header(it)) <= HomebaseProtocol.MaxHeaderContentBytes)
+            assertTrue(HomebaseProtocol.fitsHeaderContent(header(it)))
         }
     }
 
@@ -106,9 +101,11 @@ class AgentUiInlineTreeTest {
         assertEquals(false, header(AgentUiDescriptor(fallback = "x")).contains("tree"))
     }
 
-    @Test fun a_deeply_nested_header_is_unparseable() {
-        val deep = """{"schemaVersion":1,"fallback":"x","tree":""" + "[".repeat(200) + "]".repeat(200) + "}"
-        assertNull(assertIs<MessageContent.AgentUi>(MessageContentParser.parse(218, deep, null)).descriptor)
+    @Test fun a_deeply_nested_inline_tree_shows_the_fallback() {
+        val deep = """{"schemaVersion":1,"fallback":"x","tree":""" + "[".repeat(5000) + "]".repeat(5000) + "}"
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(218, deep, null))
+        assertEquals("x", assertNotNull(content.descriptor).fallback)
+        assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
     }
 
     @Test fun inline_card_is_ready_on_the_first_frame_and_never_fetches() = runTest {
