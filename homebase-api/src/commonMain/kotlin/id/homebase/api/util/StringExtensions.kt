@@ -218,3 +218,17 @@ fun String.longestBacktickRun(): Int {
     }
     return best
 }
+
+private val httpSchemeRegex = Regex("^https?://", RegexOption.IGNORE_CASE)
+private val wwwPrefixRegex = Regex("^www\\.", RegexOption.IGNORE_CASE)
+
+fun normalizeUrlScheme(url: String): String {
+    val scheme = httpSchemeRegex.find(url)
+    return when {
+        scheme != null -> scheme.value.lowercase() + url.substring(scheme.value.length)
+        wwwPrefixRegex.containsMatchIn(url) -> "https://www." + url.substring(4)
+        else -> url
+    }
+}
+
+fun hasHttpScheme(url: String): Boolean = httpSchemeRegex.containsMatchIn(url)

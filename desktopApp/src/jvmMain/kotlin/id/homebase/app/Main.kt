@@ -18,12 +18,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.foundation.ComposeFoundationFlags
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.window.rememberWindowState
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
-import com.kdroid.composetray.utils.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
+import dev.nucleusframework.core.runtime.SingleInstanceManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
 import id.homebase.core.util.HostOs
@@ -31,8 +33,10 @@ import id.homebase.core.util.hostOs
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
+import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.DatabaseUnavailableException
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
@@ -70,6 +74,15 @@ import id.homebase.resources.desktop_menu_call_decline
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
+import id.homebase.resources.cancel
+import id.homebase.resources.keystore_reset_confirm
+import id.homebase.resources.keystore_reset_confirm_message
+import id.homebase.resources.keystore_reset_confirm_title
+import id.homebase.resources.keystore_unavailable_message
+import id.homebase.resources.keystore_unavailable_quit
+import id.homebase.resources.keystore_unavailable_reset
+import id.homebase.resources.keystore_unavailable_retry
+import id.homebase.resources.keystore_unavailable_title
 import id.homebase.resources.desktop_tray_call_indicator
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
@@ -78,7 +91,10 @@ import id.homebase.resources.theme
 import id.homebase.resources.update_available
 import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.getString
 import kotlinx.io.files.Path
+import javax.swing.JOptionPane
+import kotlin.system.exitProcess
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
@@ -89,7 +105,10 @@ import java.awt.desktop.AppReopenedListener
 import java.awt.event.WindowStateListener
 import java.io.File
 
+@OptIn(ExperimentalFoundationApi::class)
 fun main() {
+    // Off by default on desktop and web; without it custom text context menu items are dropped.
+    ComposeFoundationFlags.isNewContextMenuEnabled = true
     // Force JNA to load its bundled native library. Without this, Windows may resolve
     // a mismatched jnidispatch.dll from the system path, causing Native.<clinit> to throw.
     // Must be set before any JNA-using class (FileKit, compose-native-tray) loads.
@@ -120,6 +139,7 @@ fun main() {
 
     // Set up crash handler
     setupCrashHandler()
+    configureSmokeLogging()
     StartupLogger.checkpoint("main() entered, file logger online")
 
     installSwingDoubleBufferSizeGuard()
@@ -135,9 +155,7 @@ fun main() {
     // first, eager creation throws UninitializedPropertyAccessException during startKoin. The
     // recovery open only needs DatabaseDriverFactory + DatabaseKeyManager — no Koin dependency —
     // so it's safe to run here.
-    runBlocking {
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-    }
+    openDatabaseOrQuit()
     StartupLogger.checkpoint("database initialized")
 
     // Initialize Koin
@@ -162,13 +180,8 @@ fun main() {
     // returns from the owner-console "Extend Permissions" flow) to the in-app event
     // bus so ExtendPermissionViewModel re-runs its check and the dialog dismisses.
     val eventBus = GlobalContext.get().get<EventBus>()
-    LocalCallbackServer.setPermissionCallback { canceled ->
-        runBlocking {
-            eventBus.emit(
-                if (canceled) BackendEvent.PermissionsExtensionCanceled
-                else BackendEvent.PermissionsExtensionReturned
-            )
-        }
+    LocalCallbackServer.setPermissionCallback { callback ->
+        runBlocking { eventBus.emit(callback.event) }
     }
     LocalCallbackServer.setDataUpgradeCallback {
         runBlocking {
@@ -354,6 +367,7 @@ fun main() {
             state = state,
             visible = isWindowVisible
         ) {
+            SmokeExit()
             MenuBar {
                 Menu(stringResource(MR.string.desktop_menu_file)) {
                     if (uiState.updateAvailable) {
@@ -471,6 +485,55 @@ internal fun isContainableNonFatal(throwable: Throwable): Boolean =
         throwable.isRecoverableServerConflict() ||
         throwable.isRecoverablePermissionFailure()
 
+// Reset clears secure storage only; the open that follows hits the old encrypted file and initializeWithRecovery wipes it.
+private fun openDatabaseOrQuit() {
+    while (true) {
+        try {
+            runBlocking { DatabaseManager.initializeWithRecovery(DatabaseDriverFactory()) }
+            return
+        } catch (e: DatabaseUnavailableException) {
+            Logger.w(tag = "Main", throwable = e) { "Secure storage can't be opened; asking the user" }
+            when (askKeystoreChoice()) {
+                KeystoreChoice.Retry -> Unit
+                KeystoreChoice.Reset -> SecureStorage.clear()
+                KeystoreChoice.Quit -> exitProcess(1)
+            }
+        }
+    }
+}
+
+private enum class KeystoreChoice { Retry, Reset, Quit }
+
+private fun askKeystoreChoice(): KeystoreChoice {
+    val text = runBlocking {
+        listOf(
+            MR.string.keystore_unavailable_title, MR.string.keystore_unavailable_message,
+            MR.string.keystore_unavailable_retry, MR.string.keystore_unavailable_reset, MR.string.keystore_unavailable_quit,
+            MR.string.keystore_reset_confirm_title, MR.string.keystore_reset_confirm_message,
+            MR.string.keystore_reset_confirm, MR.string.cancel,
+        ).map { getString(it) }
+    }
+    val (title, message, retry, reset, quit) = text
+    val (confirmTitle, confirmMessage, confirm, cancel) = text.drop(5)
+    while (true) {
+        when (
+            JOptionPane.showOptionDialog(
+                null, message, title, JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE,
+                null, arrayOf(retry, reset, quit), retry,
+            )
+        ) {
+            0 -> return KeystoreChoice.Retry
+            1 -> if (
+                JOptionPane.showOptionDialog(
+                    null, confirmMessage, confirmTitle, JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
+                    null, arrayOf(confirm, cancel), cancel,
+                ) == 0
+            ) return KeystoreChoice.Reset
+            else -> return KeystoreChoice.Quit
+        }
+    }
+}
+
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
         if (isContainableNonFatal(throwable)) {
@@ -491,12 +554,13 @@ private fun setupCrashHandler() {
         }
         try {
             CrashLogger.logCrash(thread.name, throwable)
+            failSmokeRun(throwable)
             val reportPath = CrashReporting.writeReport(thread.name, throwable)
             // Modal dialog; it handles Restart/Reveal/Quit and owns termination.
             CrashRecoveryDialog.showAndBlock(reportPath?.toString())
         } catch (e: Throwable) {
             e.printStackTrace()
-            kotlin.system.exitProcess(1)
+            exitProcess(1)
         }
     }
 }

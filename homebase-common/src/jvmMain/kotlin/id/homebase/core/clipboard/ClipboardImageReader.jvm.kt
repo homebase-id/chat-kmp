@@ -16,7 +16,23 @@ private val imageFileExtensions =
 actual fun getImageFromClipboard(): ByteArray? =
     readImageFromClipboard(Toolkit.getDefaultToolkit().systemClipboard)
 
-actual suspend fun readClipboardImage(): ByteArray? = getImageFromClipboard()
+actual suspend fun readClipboard(): ClipboardContents {
+    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+    val text = try {
+        if (clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) clipboard.getData(DataFlavor.stringFlavor) as? String else null
+    } catch (_: Exception) {
+        null
+    }
+    return ClipboardContents(image = readImageFromClipboard(clipboard), text = text)
+}
+
+actual fun clipboardMayHoldImage(): Boolean = try {
+    Toolkit.getDefaultToolkit().systemClipboard.availableDataFlavors.any {
+        it.primaryType == "image" || it == DataFlavor.imageFlavor || it == DataFlavor.javaFileListFlavor
+    }
+} catch (_: Exception) {
+    false
+}
 
 /**
  * Testable core of [getImageFromClipboard] that takes the [Clipboard] explicitly so a

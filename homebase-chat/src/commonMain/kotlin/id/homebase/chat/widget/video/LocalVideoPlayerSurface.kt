@@ -28,4 +28,5 @@ expect fun TrimmableVideoPlayerSurface(
     onPositionMs: (Long) -> Unit,
     modifier: Modifier = Modifier,
     onFirstFrameRendered: (() -> Unit)? = null,
+    hideWhenPaused: Boolean = false,
 )

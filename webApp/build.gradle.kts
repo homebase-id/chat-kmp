@@ -49,12 +49,14 @@ val productionOptimizeTask: String get() = "compileProductionExecutableKotlinWas
 val wasmSymbolsWorkDir: File get() = layout.buildDirectory.dir("wasm-symbols").get().asFile
 
 fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrashSymbols() {
-    val linkedWasm = inputFileProperty
+    // Kotlin 2.4 sets inputFiles and leaves the deprecated inputFileProperty empty. A closed-world
+    // build links one .wasm, which is what these symbols assume; singleFile fails loudly otherwise.
+    val linkedWasm = inputFiles
     val workDir = wasmSymbolsWorkDir
     val binaryenInputMap = File(workDir, "binaryen-input.wasm.map")
     val namedWasm = File(workDir, "chat-kmp-webApp.wasm")
     val namedMap = File(workDir, "chat-kmp-webApp.wasm.map")
-    val optimizedWasm = outputFileProperty
+    val optimizedDir = outputDirectory
 
     binaryenArgs = (binaryenArgs + listOf(
         "-g",
@@ -67,7 +69,7 @@ fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrash
         // binaryen asserts on the null sourcesContent entries Kotlin writes. parseText, not parse(File):
         // over 2 MB, parse(File) switches to a reader parser that overruns its 10,000-char buffer.
         workDir.mkdirs()
-        val kotlinMap = File(linkedWasm.get().asFile.path + ".map")
+        val kotlinMap = File(linkedWasm.singleFile.path + ".map")
         @Suppress("UNCHECKED_CAST")
         val map = groovy.json.JsonSlurper().parseText(kotlinMap.readText()) as MutableMap<String, Any?>
         map.keys.retainAll(listOf("version", "sources", "names", "mappings"))
@@ -86,7 +88,7 @@ fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrash
             }
         }
 
-        val shippedWasm = optimizedWasm.get().asFile
+        val shippedWasm = optimizedDir.file(linkedWasm.singleFile.name).get().asFile
         val bytes = shippedWasm.readBytes()
         shippedWasm.copyTo(namedWasm, overwrite = true)
         val out = ByteArrayOutputStream(bytes.size)
@@ -109,18 +111,21 @@ fun org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec.keepWasmCrash
 // a production stack trace shows. dist/wasmJs/symbols is a sibling of the deployed directory.
 val collectWasmCrashSymbols = tasks.register("collectWasmCrashSymbols") {
     val workDir = wasmSymbolsWorkDir
-    val shippedWasm = tasks.named<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>(
+    // The optimizer's output directory, not a file in it: the file's name comes from the linked
+    // .wasm, which only exists once the link task has run.
+    val optimizedDir = tasks.named<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>(
         productionOptimizeTask
-    ).flatMap { it.outputFileProperty }
+    ).flatMap { it.outputDirectory }
     val distDir = layout.buildDirectory.dir("dist/wasmJs/productionExecutable").get().asFile
     val symbolsDir = layout.buildDirectory.dir("dist/wasmJs/symbols").get().asFile
     dependsOn("wasmJsBrowserDistribution")
-    inputs.file(shippedWasm)
+    inputs.dir(optimizedDir)
     inputs.dir(workDir)
     outputs.dir(symbolsDir)
 
     doLast {
-        val shipped = shippedWasm.get().asFile.readBytes()
+        val shipped = optimizedDir.get().asFile.listFiles().orEmpty()
+            .single { it.extension == "wasm" }.readBytes()
         val deployed = distDir.listFiles().orEmpty().filter {
             it.extension == "wasm" && it.length() == shipped.size.toLong() &&
                 it.readBytes().contentEquals(shipped)
@@ -201,10 +206,27 @@ val generateWebResourcesVersion = tasks.register("generateWebResourcesVersion") 
             digest.update(file.readBytes())
         }
         val version = digest.digest().take(8).joinToString("") { "%02x".format(it) }
+        val packageByModule = HashMap<File, String>()
+        val tables = resources.files.mapNotNull { file ->
+            val rel = file.relativeTo(root).invariantSeparatorsPath.split("/")
+            val srcAt = rel.indexOf("src")
+            val valuesDir = rel.getOrNull(srcAt + 3)
+            if (file.extension != "xml" || rel.getOrNull(srcAt + 2) != "composeResources" ||
+                valuesDir == null || !valuesDir.startsWith("values")) return@mapNotNull null
+            val module = File(root, rel.take(srcAt).joinToString("/"))
+            val pkg = packageByModule.getOrPut(module) {
+                Regex("""packageOfResClass\s*=\s*"([^"]+)"""")
+                    .find(File(module, "build.gradle.kts").readText())?.groupValues?.get(1)
+                    ?: error("No packageOfResClass in ${module.name}/build.gradle.kts")
+            }
+            "composeResources/$pkg/$valuesDir/${file.nameWithoutExtension}.${rel[srcAt + 1]}.cvr"
+        }.sorted()
+        val tableLiterals = tables.joinToString(",\n") { "    \"$it\"" }
         outFile.get().asFile.apply {
             parentFile.mkdirs()
             writeText(
-                "package id.homebase.app\n\ninternal const val WEB_RESOURCES_VERSION = \"$version\"\n"
+                "package id.homebase.app\n\ninternal const val WEB_RESOURCES_VERSION = \"$version\"\n\n" +
+                    "internal val WEB_RESOURCE_TABLES = listOf(\n$tableLiterals,\n)\n"
             )
         }
     }

@@ -12,6 +12,8 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.auth.effectiveOwnerSessionFlow
+import id.homebase.api.client.auth.synthesizeOwnerSession
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -52,9 +54,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.chat.widget.mentionNamesOf
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
@@ -67,6 +67,8 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.resources.chat_error_send_file
+import id.homebase.resources.chat_error_send_file_editor_open
 import id.homebase.resources.MR
 import id.homebase.resources.chat_error_load_conversations
 import id.homebase.resources.chat_error_load_messages
@@ -91,6 +93,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -104,6 +107,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -114,6 +118,7 @@ import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.time.Clock
 import kotlin.time.measureTimedValue
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -159,7 +164,7 @@ class ConversationListViewModel(
     private val fileOperationsProvider: FileOperationsProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val credentialsManager: CredentialsManager,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val ownerAvatarStatus: id.homebase.core.avatars.OwnerAvatarStatus,
     private val audioRecorder: AudioRecorder,
     private val audioWaveFormGenerator: AudioWaveFormGenerator,
     private val eventBus: EventBus,
@@ -198,6 +203,8 @@ class ConversationListViewModel(
         // How long the composer must sit idle before its draft is persisted (#1122).
         // Long enough that composing-then-sending normally writes nothing at all.
         private const val DRAFT_IDLE_MS = 2_000L
+
+        private val NEW_CHAT_WAIT = 10.seconds
     }
 
     private val enricher = ConversationEnricher()
@@ -493,6 +500,7 @@ class ConversationListViewModel(
         get() = stickerPermissionViewModel
 
     init {
+        addCloseable(stickerPermissionViewModel)
         optionalDriveActivation?.let { activation ->
             viewModelScope.launch {
                 activation.isActivatedFlow(id.homebase.core.config.vaultLabeledDrive)
@@ -953,15 +961,18 @@ class ConversationListViewModel(
                 }
         }
 
-        // Set connected state
         viewModelScope.launch {
-            authConnectionCoordinator.connectionState
-                .collectLatest { state ->
-                    val status = state.toConnectionStatus()
-                    _uiState.update { it.copy(connectionStatus = status) }
-                    // Drives the media upload overlay's online-only "Sending" spinner (#948).
-                    _messagesUiState.update { it.copy(isConnected = status == AppConnectionStatus.Connected) }
+            ownerAvatarStatus.state.collectLatest { avatar ->
+                _uiState.update {
+                    it.copy(
+                        connectionStatus = avatar.connectionStatus,
+                        driveIsSyncing = avatar.driveIsSyncing,
+                        hasDriveError = avatar.hasDriveError,
+                    )
                 }
+                // Drives the media upload overlay's online-only "Sending" spinner (#948).
+                _messagesUiState.update { it.copy(isConnected = avatar.connectionStatus == AppConnectionStatus.Connected) }
+            }
         }
 
         viewModelScope.launch {
@@ -969,34 +980,6 @@ class ConversationListViewModel(
                 .map { it.initialSyncFailed }
                 .distinctUntilChanged()
                 .collect { failed -> _uiState.update { it.copy(initialSyncFailed = failed) } }
-        }
-
-        // Set isConnecting state
-        viewModelScope.launch {
-            eventBus.events
-                .filter {
-                    it is BackendEvent.SyncAllStarted ||
-                            it is BackendEvent.SyncAllStopped
-                }
-                .collectLatest { event ->
-                    when (event) {
-                        is BackendEvent.SyncAllStarted -> _uiState.update {
-                            it.copy(
-                                driveIsSyncing = true,
-                                hasDriveError = false
-                            )
-                        }
-
-                        is BackendEvent.SyncAllStopped -> _uiState.update {
-                            it.copy(
-                                driveIsSyncing = false,
-                                hasDriveError = event.result is BackendEvent.SyncAllResult.Failure
-                            )
-                        }
-
-                        else -> Unit
-                    }
-                }
         }
 
         // Deferred notification-tap resolution. NotificationService sets a
@@ -1158,6 +1141,38 @@ class ConversationListViewModel(
                 content = MessageContentParser.serialize(MessageContent.Location(updated)),
             )
         }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
+    }
+
+    private fun sendFileTo(recipient: RecipientModel) {
+        val file = _uiState.value.uiDialog as? ConversationListUiDialog.SendFile ?: return
+        dialogClosed()
+        viewModelScope.launch {
+            try {
+                val conversationId = messageActionsHandler.conversationIdFor(recipient)
+                // The composer's editor outlives a switch of chat, and adding to it would send the file to its chat.
+                val editor = _messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                if (editor != null && editor.conversationId != conversationId) {
+                    discardSentFile(file.path)
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_send_file_editor_open, editor.conversationTitle))
+                    return@launch
+                }
+                selectConversation(conversationId)
+                // A contact's chat created just now joins the list a moment later, and attaching needs it there.
+                withTimeoutOrNull(NEW_CHAT_WAIT) { _uiState.first { state -> state.activeConversations.any { it.conversation.id == conversationId } } }
+                    ?: error("chat $conversationId never listed")
+                attachmentHandler.handleAttachPlatformFile(ConversationListUiAction.AttachPlatformFile(conversationId, listOf(platformFileFromPath(file.path))))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = "ConversationListViewModel") { "couldn't send ${file.name} to a chat" }
+                discardSentFile(file.path)
+                sendEvent(ShowErrorMessage(MR.string.chat_error_send_file, e.message ?: ""))
+            }
+        }
+    }
+
+    private fun discardSentFile(path: String) {
+        fileOperationsProvider.deleteTempFile(path)
     }
 
     fun dialogClosed() {
@@ -1409,6 +1424,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SaveMediaToVault -> mediaDownloadHandler.handleSaveMediaToVault(action)
 
+            is ConversationListUiAction.CopyImage -> mediaDownloadHandler.handleCopyImage(action)
+
             is ConversationListUiAction.ShareMessage -> mediaDownloadHandler.handleShareMessage(action)
 
             is ConversationListUiAction.DownloadMedia -> mediaDownloadHandler.handleDownloadMedia(action)
@@ -1518,6 +1535,18 @@ class ConversationListViewModel(
             is ConversationListUiAction.ForwardMessageSelectRecipient -> messageActionsHandler.handleForwardMessageSelectRecipient(action)
 
             is ConversationListUiAction.ForwardMessageSend -> messageActionsHandler.handleForwardMessageSend(action)
+            is ConversationListUiAction.ChooseChatForFile -> {
+                val earlier = _uiState.getAndUpdate {
+                    val recipients = recipientGroups(it.activeConversations, contactService.contacts.value)
+                    it.copy(uiDialog = ConversationListUiDialog.SendFile(action.path, action.name, recipients))
+                }.uiDialog
+                (earlier as? ConversationListUiDialog.SendFile)?.let { discardSentFile(it.path) }
+            }
+            is ConversationListUiAction.SendFileTo -> sendFileTo(action.recipient)
+            ConversationListUiAction.CancelSendFile -> {
+                (_uiState.value.uiDialog as? ConversationListUiDialog.SendFile)?.let { discardSentFile(it.path) }
+                dialogClosed()
+            }
 
             is ConversationListUiAction.CancelReplyToMessage -> messageActionsHandler.handleCancelReplyToMessage()
 
@@ -2397,41 +2426,6 @@ internal fun shouldClearLoadingSpinnerOnLoadEnd(
     conversationId: Uuid,
     stillLoading: Boolean,
 ): Boolean = stillLoading && selectedConversationId == conversationId
-
-/**
- * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the fully-resolved
- * [live] session, fall back to a minimal one synthesized from [credentials] when the async
- * profile load hasn't arrived yet. Returns null only when neither source is available
- * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
- * display name / profile image with a bare odinId.
- */
-fun synthesizeOwnerSession(
-    live: OwnerSession?,
-    credentials: ApiCredentials?,
-): OwnerSession? = live ?: credentials?.let {
-    OwnerSession(
-        odinId = it.domain,
-        displayName = null,
-        firstName = null,
-        surName = null,
-        profileImageFileId = null,
-        profileImageFileKey = null,
-        profileImagePreviewThumbnail = null,
-        status = null,
-    )
-}
-
-/**
- * The owner session as the UI states should see it. [live] stays null until the connect
- * chain reaches `loadProfile()` — seconds on a slow link — while [credentials] are set
- * locally at login/restore, so own-vs-peer rendering must not wait on [live].
- */
-internal fun effectiveOwnerSessionFlow(
-    live: Flow<OwnerSession?>,
-    credentials: Flow<ApiCredentials?>,
-): Flow<OwnerSession?> = combine(live, credentials) { session, creds ->
-    synthesizeOwnerSession(session, creds)
-}
 
 /**
  * Decides whether a pending notification tap is ready to be resolved

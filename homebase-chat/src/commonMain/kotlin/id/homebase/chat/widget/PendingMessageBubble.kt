@@ -91,12 +91,7 @@ private fun MediaPlaceholderBubble(
     contexts: Map<String, LocalAttachmentContext>,
 ) {
     val hasText = message.text.isNotEmpty()
-    val bubbleShape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius,
-        topEnd = Dimens.Message.cornerRadius,
-        bottomStart = Dimens.Message.cornerRadius,
-        bottomEnd = if (hasText) 4.dp else Dimens.Message.cornerRadius,
-    )
+    val bubbleShape = RoundedCornerShape(Dimens.Message.cornerRadius)
 
     // Synthesize payload descriptors from the local contexts, in payload-key order so the
     // ordering matches what MessageAttachmentBuilder produces and what MediaMessage/Gallery
@@ -207,12 +202,7 @@ private fun MediaPlaceholderBubble(
 private fun GenericPendingBubble(
     message: PendingOutgoingMessage,
 ) {
-    val shape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius,
-        topEnd = Dimens.Message.cornerRadius,
-        bottomStart = Dimens.Message.cornerRadius,
-        bottomEnd = 4.dp,
-    )
+    val shape = RoundedCornerShape(Dimens.Message.cornerRadius)
     val backgroundColor = HomebaseTheme.extendedColors.bubbleSentSurface
     val contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface
 

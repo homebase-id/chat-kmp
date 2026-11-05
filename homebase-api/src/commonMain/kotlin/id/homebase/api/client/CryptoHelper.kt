@@ -1,5 +1,6 @@
 package id.homebase.api.client
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.encodeUrl
@@ -77,8 +78,8 @@ object CryptoHelper {
 
         // Build payload
         val payload = SharedSecretEncryptedPayload(
-            iv = iv.toBase64(),
-            data = encryptedBytes.toBase64()
+            iv = Base64Bytes(iv),
+            data = Base64Bytes(encryptedBytes)
         )
 
         // Serialize and URL encode
@@ -102,8 +103,8 @@ object CryptoHelper {
         )
 
         return SharedSecretEncryptedPayload(
-            iv = Base64.Default.encode(iv),
-            data = Base64.Default.encode(encryptedBytes)
+            iv = Base64Bytes(iv),
+            data = Base64Bytes(encryptedBytes)
         )
     }
 
@@ -150,8 +151,8 @@ object CryptoHelper {
         val payload = OdinSystemSerializer.deserialize<SharedSecretEncryptedPayload>(content)
 
         // Decrypt the data
-        val iv = Base64.Default.decode(payload.iv)
-        val encryptedData = Base64.Default.decode(payload.data)
+        val iv = payload.iv.bytes
+        val encryptedData = payload.data.bytes
         val plainBytes = AesCbc.decrypt(encryptedData, sharedSecret, iv)
 
         // Convert to string

@@ -82,7 +82,7 @@ private fun validatePayload(payload: PayloadFile) {
 
 private fun validateEmbeddedThumb(thumb: EmbeddedThumb, where: String) {
     val content = thumb.content ?: return
-    val rawSize = estimateRawBytesFromBase64(content)
+    val rawSize = content.bytes.size
     if (rawSize > HomebaseProtocol.MaxEmbeddedThumbBytes) {
         // The "size of N exceeds M" shape is matched by
         // OutboxSync.isPermanentFailure's regex (added in Phase 2) so
@@ -93,18 +93,6 @@ private fun validateEmbeddedThumb(thumb: EmbeddedThumb, where: String) {
             "Thumbnail size of $rawSize exceeds ${HomebaseProtocol.MaxEmbeddedThumbBytes} ($where)"
         )
     }
-}
-
-// 4 base64 chars → 3 raw bytes; trailing '=' padding shaves 1 or 2
-// off the last group. Cheaper than re-decoding the string just to count.
-private fun estimateRawBytesFromBase64(content: String): Int {
-    if (content.isEmpty()) return 0
-    val padding = when {
-        content.endsWith("==") -> 2
-        content.endsWith("=") -> 1
-        else -> 0
-    }
-    return content.length / 4 * 3 - padding
 }
 
 private fun validationFailure(reason: String): ClientException {

@@ -501,7 +501,7 @@ private fun LabelChips(
     var focusCustom by remember { mutableStateOf(false) }
     val customField = remember { FocusRequester() }
     val motion = MaterialTheme.motionScheme
-    val colors = ToggleButtonDefaults.toggleButtonColors(
+    val colors = ToggleButtonDefaults.colors(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,

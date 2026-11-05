@@ -3,6 +3,8 @@ package id.homebase.chat.conversationlist
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.delay
+import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.youauth.DrivePermission
@@ -11,6 +13,7 @@ import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpHeaders
@@ -25,6 +28,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -53,6 +57,7 @@ class ExtendPermissionViewModelTest {
         ),
         permissions = emptyList(),
         returnUrl = { "https://return.example.com" },
+        requester = "test",
     )
 
     // No X-SSE header, so SecurityContextProvider treats the body as plaintext.
@@ -74,15 +79,12 @@ class ExtendPermissionViewModelTest {
         }
     """.trimIndent()
 
-    private fun jsonEngine(body: String) = MockEngine {
-        respond(
-            content = body,
-            status = HttpStatusCode.OK,
-            headers = headersOf(HttpHeaders.ContentType, "application/json"),
-        )
-    }
+    private fun MockRequestHandleScope.respondJson(body: String) =
+        respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
 
-    private suspend fun viewModel(engine: MockEngine): ExtendPermissionViewModel {
+    private fun jsonEngine(body: String) = MockEngine { respondJson(body) }
+
+    private suspend fun viewModel(engine: MockEngine, eventBus: EventBus = EventBus()): ExtendPermissionViewModel {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(
             ApiCredentials.create(
@@ -94,7 +96,7 @@ class ExtendPermissionViewModelTest {
         return ExtendPermissionViewModel(
             securityContextProvider = SecurityContextProvider(HttpClient(engine), credentials),
             credentialsManager = credentials,
-            eventBus = EventBus(),
+            eventBus = eventBus,
             config = config,
         )
     }
@@ -136,5 +138,101 @@ class ExtendPermissionViewModelTest {
         assertFalse(vm.permissionsGranted.value)
         assertEquals(ExtendPermissionUiState.ShowDialog(config.appName), vm.uiState.value)
         assertNotNull(vm.buildExtendPermissionUrl(), "the missing drive must reach the extend URL")
+    }
+
+    @Test
+    fun aSlowStaleCheckDoesntReplaceANewerVerdict() = runBlocking<Unit> {
+        val firstAsked = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val firstAnswered = CompletableDeferred<Unit>()
+        var calls = 0
+        val engine = MockEngine {
+            val first = ++calls == 1
+            if (first) {
+                firstAsked.complete(Unit)
+                releaseFirst.await()
+            }
+            respondJson(contextJson(if (first) "" else grantedDrive)).also { if (first) firstAnswered.complete(Unit) }
+        }
+        val vm = viewModel(engine)
+        withTimeout(10.seconds) { firstAsked.await() }
+
+        vm.recheckPermissions()
+        withTimeout(10.seconds) { vm.permissionsGranted.first { it } }
+        releaseFirst.complete(Unit)
+        withTimeout(10.seconds) { firstAnswered.await() }
+
+        assertNull(withTimeoutOrNull(1.seconds) { vm.permissionsGranted.first { !it } }, "the older 'missing' finished last but is stale")
+        assertEquals(ExtendPermissionUiState.Idle, vm.uiState.value)
+    }
+
+    @Test
+    fun aCheckInFlightWhenTheDialogIsDismissedDoesntBringItBack() = runBlocking<Unit> {
+        val asked = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val answered = CompletableDeferred<Unit>()
+        val engine = MockEngine {
+            asked.complete(Unit)
+            release.await()
+            respondJson(contextJson("")).also { answered.complete(Unit) }
+        }
+        val vm = viewModel(engine)
+        withTimeout(10.seconds) { asked.await() }
+
+        vm.dismissDialog()
+        release.complete(Unit)
+        withTimeout(10.seconds) { answered.await() }
+
+        assertNull(withTimeoutOrNull(1.seconds) { vm.uiState.first { it is ExtendPermissionUiState.ShowDialog } })
+        assertEquals(ExtendPermissionUiState.Dismissed, vm.uiState.value)
+    }
+
+    @Test
+    fun aClosedCheckerNoLongerChecksOnEvents() = runBlocking<Unit> {
+        val engine = jsonEngine(contextJson(""))
+        val eventBus = EventBus()
+        val vm = viewModel(engine, eventBus)
+        withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+        // Control: open, the same event makes it check again.
+        val before = engine.requestHistory.size
+        eventBus.emit(BackendEvent.DriveAuthorizationFailed("403"))
+        withTimeout(10.seconds) { while (engine.requestHistory.size == before) delay(20) }
+        val asked = engine.requestHistory.size
+
+        vm.close()
+        eventBus.emit(BackendEvent.PermissionsExtensionReturned())
+        eventBus.emit(BackendEvent.DriveAuthorizationFailed("403"))
+
+        assertNull(withTimeoutOrNull(1.seconds) { while (engine.requestHistory.size == asked) delay(20) })
+    }
+
+    @Test
+    fun onlyItsOwnMiniAppsReturnMakesItCheckAgain() = runBlocking<Unit> {
+        val engine = jsonEngine(contextJson(""))
+        val eventBus = EventBus()
+        val vm = viewModel(engine, eventBus)
+        withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+        val asked = engine.requestHistory.size
+
+        eventBus.emit(BackendEvent.PermissionsExtensionReturned("another"))
+        assertNull(withTimeoutOrNull(1.seconds) { while (engine.requestHistory.size == asked) delay(20) })
+
+        eventBus.emit(BackendEvent.PermissionsExtensionReturned("test"))
+        withTimeout(10.seconds) { while (engine.requestHistory.size == asked) delay(20) }
+    }
+
+    @Test
+    fun anotherMiniAppsCancelDoesntDismissIt_butItsOwnAndAnUntaggedOneDo() = runBlocking<Unit> {
+        suspend fun dismissedBy(vararg cancels: String?): Boolean {
+            val eventBus = EventBus()
+            val vm = viewModel(jsonEngine(contextJson("")), eventBus)
+            withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+            cancels.forEach { eventBus.emit(BackendEvent.PermissionsExtensionCanceled(it)) }
+            return withTimeoutOrNull(1.seconds) { vm.uiState.first { it is ExtendPermissionUiState.Dismissed } } != null
+        }
+
+        assertFalse(dismissedBy("another"))
+        assertTrue(dismissedBy("another", "test"))
+        assertTrue(dismissedBy(null))
     }
 }

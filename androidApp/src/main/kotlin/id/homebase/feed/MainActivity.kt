@@ -1,5 +1,6 @@
 package id.homebase.feed
 
+import id.homebase.api.youauth.PermissionCallback
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -233,20 +234,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             // Owner-console "Extend Permissions" return URL.
-            // Path: homebase-fchat://permission-callback?status=[canceled|...]
+            // Path: homebase-fchat://permission-callback?status=[canceled|...]&for=[mini-app]
             if (data.host == "permission-callback") {
-                val status = data.getQueryParameter("status")
-                val canceled = status.equals("canceled", ignoreCase = true) ||
-                    status.equals("cancelled", ignoreCase = true)
-                Logger.i(tag = "MainActivity") {
-                    "Permission-extend deep link (status=$status canceled=$canceled)"
-                }
-                lifecycleScope.launch {
-                    eventBus.emit(
-                        if (canceled) BackendEvent.PermissionsExtensionCanceled
-                        else BackendEvent.PermissionsExtensionReturned
-                    )
-                }
+                val callback = PermissionCallback.parse(data.toString())
+                Logger.i(tag = "MainActivity") { "Permission-extend deep link ($callback)" }
+                lifecycleScope.launch { eventBus.emit(callback.event) }
                 intent.data = null
                 return
             }

@@ -4,6 +4,7 @@ import FirebaseCrashlytics
 import FirebaseMessaging
 import ComposeApp
 import SafariServices
+import UniformTypeIdentifiers
 import UserNotifications
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -220,6 +221,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       PushChainLoggingKt.logPushChain(
           hop: "received(ios)",
           detail: "appState=\(application.applicationState.rawValue) hasAps=\(aps != nil) dataKeys=\(data.count)")
+      guard MainViewControllerKt.isDatabaseOpen() else {
+          completionHandler(.noData)
+          return
+      }
       let entry = NotificationEntry.companion.fromKoin()
       entry.onPushArrivedAsync(title: title, body: body, data: data) { success in
           completionHandler(success == true ? .newData : .failed)
@@ -254,6 +259,10 @@ struct iOSApp: App {
     }
 
     private func handleIncomingURL(_ url: URL) {
+        if url.isFileURL {
+            handleOpenedFileURL(url)
+            return
+        }
         switch url.scheme {
         // Accept both the prod scheme and the dev build's variant (see SHARE_URL_SCHEME /
         // ShareViewController.shareUrlScheme) — the app only ever receives its own.
@@ -276,6 +285,25 @@ struct iOSApp: App {
             }
         default:
             break
+        }
+    }
+
+    /// A document another app opened in Homebase. Opened in place (LSSupportsOpeningDocumentsInPlace), the file is only
+    /// readable inside its security scope, so it is copied into the app's cache before anything else touches it.
+    private func handleOpenedFileURL(_ url: URL) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let staging = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("open-with").path
+            let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+            let staged = OpenedFileBridge.shared.handleIncomingFile(
+                sourcePath: url.path, displayName: url.lastPathComponent, mimeType: mime, stagingRoot: staging)
+            let ownInbox = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Inbox").resolvingSymlinksInPath().path + "/"
+            if staged && url.resolvingSymlinksInPath().path.hasPrefix(ownInbox) {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 
@@ -322,14 +350,9 @@ struct iOSApp: App {
         }
     }
 
-    /// Handles `homebase-fchat://permission-callback?status=...` URLs returned from the
-    /// owner-console "Extend Permissions" flow. `status=canceled` routes the user back
-    /// to the chat tab without re-prompting; success triggers a permission recheck.
+    /// Hands the owner-console permission-callback URL to Kotlin.
     private func handlePermissionCallbackURL(_ url: URL) {
         guard url.host == "permission-callback" else { return }
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let status = components?.queryItems?.first(where: { $0.name == "status" })?.value?.lowercased()
-        let canceled = (status == "canceled" || status == "cancelled")
-        PermissionCallbackBridge.shared.handlePermissionCallback(canceled: canceled)
+        PermissionCallbackBridge.shared.handlePermissionCallback(url: url.absoluteString)
     }
 }

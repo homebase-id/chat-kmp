@@ -109,6 +109,7 @@ class FeedTimelineViewModel(
     }
 
     init {
+        addCloseable(feedPermissionViewModel)
         // Idempotent. AppModule.onPostAuthenticated normally starts the service, but that hook never fires on
         // a session-restore launch, leaving a returning user with an empty feed until a full relogin.
         timelineService.start()

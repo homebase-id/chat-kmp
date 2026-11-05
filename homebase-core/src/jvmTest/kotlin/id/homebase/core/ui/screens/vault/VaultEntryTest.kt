@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileState
@@ -204,7 +205,7 @@ class VaultEntryTest {
             pixelWidth = 200,
             pixelHeight = 150,
             contentType = "image/jpeg",
-            content = "base64data",
+            content = Base64Bytes(byteArrayOf(1, 2, 3)),
         )
         val file = buildHomebaseFile(previewThumb = thumb)
 

@@ -123,6 +123,7 @@ fun ContactBookScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val newCircle = rememberNewCircleAction { id -> viewModel.onAction(ContactBookUiAction.CircleCreated(id)) }
     val onContacts = uiState.selectedTab != ContactTab.CIRCLES
 
     // Search is hidden behind a top-bar icon; it expands into the app-bar title when tapped
@@ -319,6 +320,7 @@ fun ContactBookScreen(
                         listState = newListState,
                     )
                     ContactTab.CIRCLES -> CirclesTabContent(
+                        onNewCircle = newCircle,
                         circles = uiState.circles,
                         loading = uiState.circlesLoading,
                         onAction = viewModel::onAction,
@@ -379,6 +381,9 @@ fun ContactBookScreen(
             },
             onEnabledChange = {
                 viewModel.onAction(ContactBookUiAction.CircleEnabledChanged(members.circleId, it))
+            },
+            onDeleteCircle = {
+                viewModel.onAction(ContactBookUiAction.CircleDeleteConfirmed(members.circleId))
             },
         )
     }

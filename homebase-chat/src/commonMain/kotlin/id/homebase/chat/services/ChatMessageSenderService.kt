@@ -48,7 +48,6 @@ import id.homebase.api.file.SourceUnavailableException
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
@@ -934,7 +933,7 @@ class ChatMessageSenderService(
         val previewThumbs = mutableListOf<EmbeddedThumb>()
 
         for (descriptor in mediaDescriptors) {
-            val ivBytes = descriptor.iv?.let { Base64.decode(it) } ?: continue
+            val ivBytes = descriptor.iv?.bytes ?: continue
             val keyHeader = KeyHeader(iv = ivBytes, aesKey = source.keyHeader.aesKey)
 
 

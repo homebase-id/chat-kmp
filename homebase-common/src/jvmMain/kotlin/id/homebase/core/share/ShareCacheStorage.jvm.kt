@@ -38,6 +38,10 @@ actual class ShareCacheStorage {
         return if (file.exists()) file.readText() else null
     }
 
+    actual fun clearSharedContentDescriptor() {
+        File(cacheDir, "shared_content.json").delete()
+    }
+
     actual fun clearSharedContent() {
         File(cacheDir, "shared_content.json").delete()
         safeDeleteRecursively(cacheDir.absolutePath, "shared_files")

@@ -2,6 +2,7 @@ package id.homebase.core.files
 
 import id.homebase.api.file.FileOperationsProvider
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.WebFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 
@@ -17,6 +18,5 @@ actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
 // readBytes(). (FileKit's copyTo / cacheDir aren't available on wasmJs.)
 actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile = this
 
-private fun lastModifiedJs(file: JsAny): Double = js("file.lastModified")
-
-actual fun PlatformFile.modifiedAtMs(): Long? = lastModifiedJs(file).toLong().takeIf { it > 0 }
+actual fun PlatformFile.modifiedAtMs(): Long? =
+    (webFile as? WebFile.FileWrapper)?.lastModified?.toEpochMilliseconds()?.takeIf { it > 0 }

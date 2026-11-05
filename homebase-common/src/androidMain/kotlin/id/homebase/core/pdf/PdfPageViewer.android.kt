@@ -43,9 +43,12 @@ private class TapDetectingFrameLayout(
 actual fun PdfPageViewer(
     filePath: String,
     onTap: (() -> Unit)?,
+    onFailed: () -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
+    // A Dialog's context isn't the Activity, and the Activity's fragments can't live in the Dialog's window.
+    if (context !is FragmentActivity) return RenderedPdfPageViewer(filePath, onTap, onFailed, modifier)
     val uri = remember(filePath) { Uri.fromFile(File(filePath)) }
     val fragmentTag = remember(filePath) { "pdf_viewer_${filePath.hashCode()}_${filePath.length}" }
 
@@ -76,7 +79,7 @@ actual fun PdfPageViewer(
             // tag. Host a fresh one whenever the one we find isn't in the container we just built.
             val orphaned = existing != null && existing.view?.parent !== container
             if (existing == null || orphaned) {
-                val fragment = PdfViewerFragment()
+                val fragment = ReportingPdfViewerFragment().also { it.onFailed = onFailed }
                 fm.beginTransaction()
                     .apply { if (existing != null) remove(existing) }
                     .replace(container.id, fragment, fragmentTag)
@@ -84,6 +87,7 @@ actual fun PdfPageViewer(
                 fm.executePendingTransactions()
                 fragment.documentUri = uri
             } else if (existing.documentUri != uri) {
+                (existing as? ReportingPdfViewerFragment)?.onFailed = onFailed
                 existing.documentUri = uri
             }
         },
@@ -91,6 +95,15 @@ actual fun PdfPageViewer(
         onRelease = { removePdfFragment(context, fragmentTag) },
         modifier = modifier,
     )
+}
+
+class ReportingPdfViewerFragment : PdfViewerFragment() {
+    var onFailed: (() -> Unit)? = null
+
+    override fun onLoadDocumentError(error: Throwable) {
+        super.onLoadDocumentError(error)
+        onFailed?.invoke()
+    }
 }
 
 private fun removePdfFragment(context: Context, fragmentTag: String) {

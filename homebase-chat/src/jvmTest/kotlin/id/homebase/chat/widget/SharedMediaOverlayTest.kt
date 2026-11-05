@@ -11,7 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.LocalCompatNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SkikoComposeUiTest
@@ -50,7 +50,7 @@ class SharedMediaOverlayTest {
     private fun SkikoComposeUiTest.showGrid() {
         setContent {
             @Suppress("DEPRECATION")
-            val dispatcher = LocalCompatNavigationEventDispatcherOwner.current!!.navigationEventDispatcher
+            val dispatcher = LocalNavigationEventDispatcherOwner.current!!.navigationEventDispatcher
             DisposableEffect(dispatcher) {
                 dispatcher.addInput(back)
                 onDispose { dispatcher.removeInput(back) }

@@ -38,14 +38,13 @@ object LinkPreviewPayloadBuilder {
         // defensive size check below catches a hypothetical future raster
         // path that produces an oversize thumb so the upload can't slip
         // past the server's MaxEmbeddedThumbBytes cap and stall the
-        // outbox. Server measures raw (decoded) bytes; estimate the raw
-        // length from the base64 string without re-decoding it.
+        // outbox.
         val tinyThumb: EmbeddedThumb? = if (imageBytes.isNotEmpty()) {
             try {
                 val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
                 val content = thumb?.content
                 if (thumb != null && content != null &&
-                    estimateRawBytesFromBase64(content) > HomebaseProtocol.MaxEmbeddedThumbBytes) {
+                    content.bytes.size > HomebaseProtocol.MaxEmbeddedThumbBytes) {
                     null
                 } else {
                     thumb
@@ -96,19 +95,6 @@ object LinkPreviewPayloadBuilder {
                 )
             ), thumbnails = emptyList(), previewThumbs = listOfNotNull(tinyThumb)
         )
-    }
-
-    // Avoid re-decoding the base64 string just to count bytes. Each 4
-    // base64 chars encodes 3 raw bytes; trailing '=' padding shaves 1
-    // or 2 off the last group.
-    private fun estimateRawBytesFromBase64(content: String): Int {
-        if (content.isEmpty()) return 0
-        val padding = when {
-            content.endsWith("==") -> 2
-            content.endsWith("=") -> 1
-            else -> 0
-        }
-        return content.length / 4 * 3 - padding
     }
 
     private fun buildDescriptorJson(

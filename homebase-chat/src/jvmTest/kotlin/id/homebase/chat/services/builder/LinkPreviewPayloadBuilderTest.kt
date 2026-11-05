@@ -117,7 +117,7 @@ class LinkPreviewPayloadBuilderTest {
         assertNotNull(content)
         // Decoded raw size must stay under the server cap so the upload
         // succeeds on attempt=1.
-        val decodedSize = (content.length / 4) * 3
+        val decodedSize = content.bytes.size
         assertTrue(
             decodedSize <= 1024,
             "rasterized SVG tiny is ~$decodedSize raw bytes, server cap is 1024"

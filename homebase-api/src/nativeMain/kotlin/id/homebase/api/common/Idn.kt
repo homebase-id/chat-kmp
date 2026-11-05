@@ -10,7 +10,7 @@ actual object Idn {
                         "Use only ASCII domains or run on JVM/Android."
             )
         }
-        return idn.lowercase()
+        return idn
     }
 
     actual fun toUnicode(puny: String): String = puny   // already ASCII

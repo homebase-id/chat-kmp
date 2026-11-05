@@ -15,7 +15,6 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.screens.vault.VaultUploadStatus
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -38,14 +37,12 @@ data class VaultEntry(
     val isEncrypted: Boolean,
     val versionTag: Uuid?,
     val uploadStatus: VaultUploadStatus? = null,
-    val pendingFileUri: String? = null,
+    val isPending: Boolean = false,
     val groupId: Uuid? = null,
     val payloadDescriptors: List<PayloadDescriptor> = emptyList(),
     val notes: String? = null,
     val pdfPageCount: Int? = null,
 ) {
-    val isPending: Boolean get() = pendingFileUri != null
-
     val pageCount: Int get() = pdfPageCount ?: payloadDescriptors.size.coerceAtLeast(1)
     val hasMultiplePages: Boolean get() = pageCount > 1
 
@@ -138,9 +135,7 @@ fun VaultEntry.imageDataFor(
     previewThumbnail: EmbeddedThumb? = null,
     requestedSize: ImageSize? = null,
 ): HomebaseImageData? {
-    val ivBytes = descriptor.iv?.let {
-        try { Base64.decode(it) } catch (_: Exception) { null }
-    } ?: return null
+    val ivBytes = descriptor.iv?.bytes ?: return null
     return HomebaseImageData.from(
         driveId = driveId,
         fileId = fileId,

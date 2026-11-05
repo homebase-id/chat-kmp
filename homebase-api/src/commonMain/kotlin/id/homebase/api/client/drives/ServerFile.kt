@@ -4,6 +4,9 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EncryptedKeyHeader
+import id.homebase.api.crypto.EncryptionType
+import id.homebase.api.crypto.ZkSeal
+import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.serialization.UuidSerializer
 import io.ktor.utils.io.charsets.Charsets
@@ -42,7 +45,7 @@ data class ServerFile(
             }
 
             resolvedKeyHeader = try {
-                sharedSecretEncryptedKeyHeader.decryptAesToKeyHeader(sharedSecret)
+                sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret)
             } catch (e: Throwable) {
                 throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             }
@@ -74,6 +77,44 @@ data class ServerFile(
     }
 }
 
+/**
+ * Opens a key header as the server returns it: locked with the shared secret, or on a zero-knowledge drive with
+ * its key, or sealed to the drive's write-only public key (a deposit, or the server's own write).
+ */
+suspend fun EncryptedKeyHeader.open(driveId: Uuid, sharedSecret: SecureByteArray): KeyHeader = when (type) {
+    EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
+    EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
+    EncryptionType.Sealed -> openSealed(driveId)
+}
+
+// The sealed value is the file's IV then its AES key, as odin-js openClientLockedKeyHeader reads it.
+private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
+    val writeOnlyKey = ZkKeyStore.writeOnlyPrivateKey(driveId) ?: throw FileDecryptionException.Sealed()
+    val opened = ZkSeal.open(encryptedAesKey, writeOnlyKey)
+    return KeyHeader(opened.copyOf(16), SecureByteArray(opened.copyOfRange(16, opened.size)))
+}
+
+/**
+ * Locks [keyHeader] for an upload to [driveId]: with the shared secret under [transferIv], which the server
+ * re-locks with the drive key; or on a zero-knowledge drive with its key under the file's own IV, stored as sent.
+ */
+suspend fun lockKeyHeader(keyHeader: KeyHeader?, driveId: Uuid, sharedSecret: ByteArray, transferIv: ByteArray): EncryptedKeyHeader =
+    if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
+        EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader, keyHeader.iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
+    } else {
+        EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
+    }
+
+/** The key that locks key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
+private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) ?: throw FileDecryptionException.NoDriveKey(driveId)
+
+internal const val DECRYPTION_FAILURE_APP_DATA =
+    """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}"""
+
+/** True when this file's appData could not be decrypted and holds the placeholder instead. */
+fun HomebaseFile.appDataFailedToDecrypt(): Boolean =
+    fileMetadata.appData.content == DECRYPTION_FAILURE_APP_DATA
+
 fun FileMetadata.withDecryptedContent(bytes: ByteArray): FileMetadata =
     this.copy(
         appData = appData.copy(
@@ -99,7 +140,7 @@ private suspend fun FileMetadata.decryptAppData(
         // a `type` key on this placeholder will safely treat the file as unparseable and skip it.
         Logger.e("Base64 decode failure for AppData content: ${e.message}")
         return withDecryptedContent(
-            """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""".toByteArray(Charsets.UTF_8)
+            DECRYPTION_FAILURE_APP_DATA.toByteArray(Charsets.UTF_8)
         )
     }
 
@@ -113,7 +154,7 @@ private suspend fun FileMetadata.decryptAppData(
         keyHeader.decrypt(encryptedBytes)
     } catch (_: Throwable) {
         Logger.e("Decryption failure for AppData content")
-        """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""".toByteArray(Charsets.UTF_8)
+        DECRYPTION_FAILURE_APP_DATA.toByteArray(Charsets.UTF_8)
     }
 
     return withDecryptedContent(decryptedBytes)
@@ -131,13 +172,7 @@ private suspend fun FileMetadata.decryptLocalAppData(
         throw FileDecryptionException.ContentBase64DecodeFailed(e)
     }
 
-    val ivBytes = local.iv?.let {
-        try {
-            Base64.Default.decode(it)
-        } catch (e: Throwable) {
-            throw FileDecryptionException.ContentBase64DecodeFailed(e)
-        }
-    }
+    val ivBytes = local.iv?.bytes
 
     val decryptedBytes = try {
         keyHeader.decryptWithIv(encryptedBytes, ivBytes)
@@ -170,4 +205,10 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
 
     class ContentDecryptionFailed(cause: Throwable) :
         FileDecryptionException("Failed to decrypt file content", cause)
+
+    class NoDriveKey(driveId: Uuid) :
+        FileDecryptionException("This device holds no key for the zero-knowledge drive $driveId")
+
+    class Sealed :
+        FileDecryptionException("The key header is sealed to the drive's write-only key")
 }

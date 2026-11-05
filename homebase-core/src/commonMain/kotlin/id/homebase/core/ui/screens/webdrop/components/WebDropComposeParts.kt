@@ -260,7 +260,7 @@ private fun ChoiceToggleButton(
         onCheckedChange = onCheckedChange,
         enabled = enabled,
         shapes = shapes,
-        colors = ToggleButtonDefaults.toggleButtonColors(
+        colors = ToggleButtonDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),

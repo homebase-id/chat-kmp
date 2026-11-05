@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.encodeUrl
+import id.homebase.api.util.hasHttpScheme
+import id.homebase.api.util.normalizeUrlScheme
 import id.homebase.api.util.sanitizePreviewText
 import id.homebase.api.util.truncateToCodePoints
 import io.ktor.client.HttpClient
@@ -14,7 +16,7 @@ open class LinkPreviewProvider(
 
     open suspend fun getLinkPreview(url: String): LinkPreview? {
 
-        val standardisedUrl = if (url.startsWith("http")) url else "https://${url}"
+        val standardisedUrl = standardiseLinkUrl(url)
 
         val creds = requireCreds()
         val url = apiUrl(
@@ -42,6 +44,9 @@ open class LinkPreviewProvider(
 
     companion object {
         private const val MAX_FIELD_LENGTH = 300
+
+        internal fun standardiseLinkUrl(url: String): String =
+            normalizeUrlScheme(url).let { if (hasHttpScheme(it)) it else "https://$it" }
 
         private fun LinkPreview.sanitize(): LinkPreview {
             val cleanTitle = title.sanitizePreviewText().truncateToCodePoints(MAX_FIELD_LENGTH)

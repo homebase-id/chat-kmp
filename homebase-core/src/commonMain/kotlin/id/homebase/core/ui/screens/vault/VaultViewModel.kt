@@ -2,14 +2,15 @@
 
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.core.privatedrive.PrivateDriveOptIn
+import id.homebase.core.privatedrive.PrivateDriveState
+import id.homebase.core.privatedrive.VaultPrivateDrive
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.file.AppCacheDirs
-import id.homebase.api.file.scratchDir
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
@@ -18,6 +19,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
+import id.homebase.core.pdf.PDF_CARD_RENDER_WIDTH
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
@@ -37,8 +39,11 @@ import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.files.toUploadPath
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -74,6 +79,7 @@ class VaultViewModel(
     private val cropResultBus: CropResultBus,
     private val drawResultBus: DrawResultBus,
     private val webDropShareFlowState: WebDropShareFlowState,
+    private val privateDriveOptIn: PrivateDriveOptIn,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
@@ -99,11 +105,11 @@ class VaultViewModel(
             Triple(s, e, l)
         },
         combine(_overlayState, _pendingEditor) { o, p -> o to p },
-        _syncingState,
+        combine(_syncingState, privateDriveOptIn.state(VaultPrivateDrive)) { s, p -> s to p },
         _checkingPermissions,
         combine(_preparingShareKeys, _webDropActivated) { p, w -> p to w },
-    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), syncing, checkingPermissions, (preparing, webDrop) ->
-        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop)
+    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), (syncing, privateDrive), checkingPermissions, (preparing, webDrop) ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop, privateDrive)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -125,6 +131,7 @@ class VaultViewModel(
             checkingPermissions = _checkingPermissions.value,
             preparingShareKeys = _preparingShareKeys.value,
             webDropActivated = _webDropActivated.value,
+            privateDrive = privateDriveOptIn.currentState(VaultPrivateDrive),
         ),
     )
 
@@ -142,6 +149,7 @@ class VaultViewModel(
         checkingPermissions: Boolean,
         preparingShareKeys: Set<String>,
         webDropActivated: Boolean,
+        privateDrive: PrivateDriveState,
     ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
@@ -163,6 +171,7 @@ class VaultViewModel(
             preparingShareKeys = preparingShareKeys,
             pendingEditor = pendingEditor,
             webDropActivated = webDropActivated,
+            privateDrive = privateDrive,
         )
     }
 
@@ -183,6 +192,7 @@ class VaultViewModel(
     }
 
     init {
+        addCloseable(vaultPermissionViewModel)
         viewModelScope.launch {
             optionalDriveActivation.isActivatedFlow(webDropLabeledDrive).collect { activated ->
                 _webDropActivated.value = activated
@@ -270,6 +280,15 @@ class VaultViewModel(
         }
     }
 
+    private fun makePrivate() {
+        privateDriveOptIn.makePrivateUrl(VaultPrivateDrive, vaultPermissionViewModel.callbackUrl())
+            ?.let { _events.tryEmit(VaultUiEvent.OpenOwnerConsole(it)) }
+    }
+
+    fun onSignInCallback(url: String) {
+        viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
+    }
+
     fun onAction(action: VaultUiAction) {
         when (action) {
             is VaultUiAction.EntryClicked,
@@ -298,6 +317,14 @@ class VaultViewModel(
         }
 
         when (action) {
+            VaultUiAction.SignInAgain -> viewModelScope.launch {
+                privateDriveOptIn.signInAgain(
+                    open = { _events.tryEmit(VaultUiEvent.OpenSignIn(it)) },
+                    failed = { _events.tryEmit(VaultUiEvent.Error(VaultError.SignInAgainFailed)) },
+                )
+            }
+            VaultUiAction.MakePrivate -> makePrivate()
+
             VaultUiAction.SetupClicked -> {
                 _checkingPermissions.update { true }
                 if (vaultPermissionViewModel.permissionsGranted.value) {
@@ -482,17 +509,6 @@ class VaultViewModel(
             )
         }
 
-        files.forEachIndexed { index, file ->
-            val payloadKey = "vlt_pg_${index.toString().padStart(2, '0')}"
-            if (fileContentTypes[index] != "application/pdf") {
-                localAttachmentStore.put(
-                    pendingId,
-                    payloadKey,
-                    LocalAttachmentContext.Image(localFilePath = file.pathCompat, aspectRatio = null),
-                )
-            }
-        }
-
         val pendingItem = VaultEntry(
             fileId = pendingId,
             uniqueId = pendingId,
@@ -507,27 +523,25 @@ class VaultViewModel(
             isEncrypted = false,
             versionTag = null,
             uploadStatus = VaultUploadStatus.Preparing,
-            pendingFileUri = files.first().pathCompat,
+            isPending = true,
             groupId = action.sectionId,
             payloadDescriptors = placeholderDescriptors,
         )
 
+        files.forEachIndexed { index, file ->
+            if (fileContentTypes[index] != "application/pdf") previewPicked(pendingId, placeholderDescriptors[index].key, file)
+        }
         vaultStream.insertOptimisticEntry(pendingItem, action.sectionId)
 
         viewModelScope.launch {
             var fileData: List<Pair<String, String>> = emptyList()
             try {
-                fileData = files.mapIndexed { index, file ->
-                    val ext = file.name.substringAfterLast('.', "tmp")
-                    val tempPath = "${fileOperationsProvider.scratchDir(AppCacheDirs.PICKER_COPIES)}/vault_upload_${Uuid.random()}.$ext"
-                    file.copyToPath(tempPath)
-                    tempPath to fileContentTypes[index]
-                }
+                fileData = files.mapIndexed { index, file -> file.uploadCopy() to fileContentTypes[index] }
 
                 if (firstContentType == "application/pdf") {
                     try {
                         val pdfResult = withContext(Dispatchers.Default) {
-                            generatePdfThumbnailFromFile(fileData.first().first, 320)
+                            generatePdfThumbnailFromFile(fileData.first().first, PDF_CARD_RENDER_WIDTH)
                         }
                         val thumbBytes = pdfResult?.thumbnailBytes
                         if (thumbBytes != null) {
@@ -562,14 +576,10 @@ class VaultViewModel(
                     _events.tryEmit(VaultUiEvent.Error(VaultError.UploadFailed(firstName)))
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
-                fileData.forEach { (path, _) ->
-                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
-                }
+                deleteCopies(fileData, files)
                 throw e
             } catch (e: Exception) {
-                fileData.forEach { (path, _) ->
-                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
-                }
+                deleteCopies(fileData, files)
                 vaultStream.updateOptimisticEntry(
                     pendingItem.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
                 )
@@ -635,26 +645,17 @@ class VaultViewModel(
     }
 
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
-        val fileData = action.newFiles.map { file ->
-            val ct = file.contentType()
-            file.pathCompat to ct
-        }
+        val contentTypes = action.newFiles.map { it.contentType() }
 
         val existingMax = action.file.payloadDescriptors
             .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
             .maxOrNull() ?: -1
-        val placeholders = fileData.mapIndexed { i, (_, contentType) ->
+        val placeholders = contentTypes.mapIndexed { i, contentType ->
             val key = "vlt_pg_${(existingMax + 1 + i).toString().padStart(2, '0')}"
             PayloadDescriptor(key = key, contentType = contentType)
         }
 
-        fileData.forEachIndexed { i, (path, _) ->
-            localAttachmentStore.put(
-                action.file.uniqueId,
-                placeholders[i].key,
-                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null),
-            )
-        }
+        action.newFiles.forEachIndexed { i, file -> previewPicked(action.file.uniqueId, placeholders[i].key, file) }
 
         val optimisticEntry = action.file.copy(
             payloadDescriptors = action.file.payloadDescriptors + placeholders,
@@ -662,30 +663,32 @@ class VaultViewModel(
         vaultStream.updateOptimisticEntry(optimisticEntry)
 
         viewModelScope.launch {
-            // Copy each picked file into the sandbox NOW for the upload read. By upload
-            // time the iOS document picker's security scope is gone, so reading the raw
-            // "File Provider Storage" path there throws ("Unable to read file"). The raw
-            // paths above are fine for the instant optimistic preview because the picker
-            // scope is still live at pick time. Mirrors handleAddFiles (and chat's
-            // materializeForUpload fix).
-            val uploadData = action.newFiles.mapIndexed { index, file ->
-                val ext = file.name.substringAfterLast('.', "tmp")
-                val tempPath = "${fileOperationsProvider.scratchDir(AppCacheDirs.PICKER_COPIES)}/vault_upload_${Uuid.random()}.$ext"
-                file.copyToPath(tempPath)
-                tempPath to fileData[index].second
-            }
+            val uploadData = action.newFiles.mapIndexed { index, file -> file.uploadCopy() to contentTypes[index] }
             val success = vaultUploaderService.appendPages(
                 file = action.file,
                 newFiles = uploadData,
                 scope = viewModelScope,
             )
             if (!success) {
-                uploadData.forEach { (path, _) ->
-                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
-                }
+                deleteCopies(uploadData, action.newFiles)
                 vaultStream.updateOptimisticEntry(action.file)
                 _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
             }
+        }
+    }
+
+    // The picker's grant doesn't last and the browser has no paths; the upload reads a copy the app owns.
+    private suspend fun PlatformFile.uploadCopy(): String =
+        materializeForUpload(fileOperationsProvider).toUploadPath(fileOperationsProvider)
+
+    // On native toString() is the picked path, readable while the picker's grant is live; on web nothing previews.
+    private fun previewPicked(entryId: Uuid, payloadKey: String, file: PlatformFile) =
+        localAttachmentStore.put(entryId, payloadKey, LocalAttachmentContext.Image(localFilePath = file.toString(), aspectRatio = null))
+
+    // A file already in the app's cache is uploaded as it is, not copied: it isn't ours to delete here.
+    private fun deleteCopies(uploads: List<Pair<String, String>>, picked: List<PlatformFile>) {
+        uploads.forEachIndexed { i, (path, _) ->
+            if (path != picked[i].toString()) runCatching { fileOperationsProvider.deleteTempFile(path) }
         }
     }
 
@@ -731,7 +734,7 @@ class VaultViewModel(
             ?: return
         launchEditor(
             tool = action.tool,
-            readSource = { fileOperationsProvider.readFileBytes(attachment.file.pathCompat) },
+            readSource = { attachment.file.readBytes() },
         ) { editedBytes ->
             val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
             val replaced = AttachmentPendingFile.FileImage(

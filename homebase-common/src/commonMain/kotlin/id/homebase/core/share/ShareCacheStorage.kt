@@ -22,6 +22,9 @@ expect class ShareCacheStorage {
     /** Delete the conversation cache (e.g. on logout). */
     fun clearConversationCache()
 
+    /** Delete only the shared content descriptor, leaving the staged shared files in place. */
+    fun clearSharedContentDescriptor()
+
     /** Delete shared content after it has been processed. */
     fun clearSharedContent()
 

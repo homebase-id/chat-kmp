@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -44,7 +45,7 @@ class ViewOnceSendTest {
             if (!simulateVideoProcessor) return b
             return PayloadBundle(
                 payloads = b.payloads.map {
-                    it.copy(previewThumbnail = EmbeddedThumb(8, 8, "image/jpeg", "AAAA"))
+                    it.copy(previewThumbnail = EmbeddedThumb(8, 8, "image/jpeg", Base64Bytes(ByteArray(3))))
                 },
                 thumbnails = b.payloads.map { ThumbnailFile(320, 240, ByteArray(4) { 1 }, it.key) },
                 previewThumbs = emptyList(),

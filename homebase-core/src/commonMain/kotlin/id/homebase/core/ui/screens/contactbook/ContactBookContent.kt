@@ -22,6 +22,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import org.koin.compose.koinInject
+import id.homebase.core.ui.screens.feed.following.FollowGraph
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import id.homebase.resources.contactbook_follow_filter_empty
+import id.homebase.resources.contactbook_filter_following
+import id.homebase.resources.contactbook_filter_followers
+import id.homebase.resources.contactbook_follow_badge_mutual
+import id.homebase.resources.contactbook_follow_badge_follows_you
+import id.homebase.resources.contactbook_follow_badge_following
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,8 +69,14 @@ fun ContactBookContent(
     showNew: Boolean = false,
     listState: LazyListState,
 ) {
+    // Follow filters and badges, from the same lists the Following screen uses
+    val followGraph = koinInject<FollowGraph>()
+    val follows by followGraph.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { followGraph.ensureLoaded() }
+    val filter = uiState.filter
+
     Column(modifier = modifier.fillMaxSize()) {
-        if (!showNew) FilterRow(uiState.filter, onAction)
+        if (!showNew) FilterRow(filter, onAction)
 
         // Incoming requests are the actionable set (outgoing has nothing to do here but Cancel,
         // already reachable from the resolved identity itself). They live with the unreviewed
@@ -70,11 +87,13 @@ fun ContactBookContent(
             emptyList()
         }
 
-        val derivedFromStates = showNew || uiState.filter == ContactFilter.CIRCLES
+        val derivedFromStates = showNew || filter == ContactFilter.CIRCLES
         val list = when {
             showNew -> uiState.newContacts
-            uiState.filter == ContactFilter.CIRCLES -> uiState.circleContacts
-            uiState.filter == ContactFilter.BLOCKED -> uiState.blockedContacts
+            filter == ContactFilter.CIRCLES -> uiState.circleContacts
+            filter == ContactFilter.BLOCKED -> uiState.blockedContacts
+            filter == ContactFilter.FOLLOWING -> uiState.knownContacts.filter { it.odinId?.let(follows::isFollowing) == true }
+            filter == ContactFilter.FOLLOWERS -> uiState.knownContacts.filter { it.odinId?.let(follows::followsYou) == true }
             else -> uiState.knownContacts
         }
 
@@ -103,10 +122,13 @@ fun ContactBookContent(
 
                     showNew -> CenterText(stringResource(MR.string.contactbook_new_empty))
 
-                    uiState.filter == ContactFilter.CIRCLES ->
+                    filter == ContactFilter.FOLLOWING || filter == ContactFilter.FOLLOWERS ->
+                        CenterText(stringResource(MR.string.contactbook_follow_filter_empty))
+
+                    filter == ContactFilter.CIRCLES ->
                         CenterText(stringResource(MR.string.contactbook_circles_filter_empty))
 
-                    uiState.filter == ContactFilter.BLOCKED ->
+                    filter == ContactFilter.BLOCKED ->
                         CenterText(stringResource(MR.string.contactbook_blocked_filter_empty))
 
                     else -> ContactBookEmptyState(
@@ -171,6 +193,9 @@ fun ContactBookContent(
                                     // Check shows whenever the identity is connected, in every
                                     // filter (a New contact is still a connection).
                                     connected = domain in uiState.connectedOdinIds,
+                                    followBadge = domain?.let {
+                                        followBadgeText(follows.isFollowing(it), follows.followsYou(it))
+                                    },
                                     trailing = when {
                                         direction != null -> {
                                             { RequestDirectionIcon(direction) }
@@ -246,5 +271,23 @@ private fun FilterRow(
             onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.BLOCKED)) },
             label = { Text(stringResource(MR.string.contactbook_filter_blocked)) },
         )
+        FilterChip(
+            selected = filter == ContactFilter.FOLLOWING,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.FOLLOWING)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_following)) },
+        )
+        FilterChip(
+            selected = filter == ContactFilter.FOLLOWERS,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.FOLLOWERS)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_followers)) },
+        )
     }
+}
+
+@Composable
+private fun followBadgeText(following: Boolean, followsYou: Boolean): String? = when {
+    following && followsYou -> stringResource(MR.string.contactbook_follow_badge_mutual)
+    followsYou -> stringResource(MR.string.contactbook_follow_badge_follows_you)
+    following -> stringResource(MR.string.contactbook_follow_badge_following)
+    else -> null
 }

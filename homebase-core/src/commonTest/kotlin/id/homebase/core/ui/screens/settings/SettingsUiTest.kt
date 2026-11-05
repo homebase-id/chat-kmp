@@ -29,6 +29,7 @@ class SettingsUiTest {
 
         fun actions() = SettingsActions(
             onBack = { fired += "back" },
+            onApps = { fired += "apps" },
             onNotifications = { fired += "notifications" },
             onAppearance = { fired += "appearance" },
             onMedia = { fired += "media" },
@@ -36,12 +37,6 @@ class SettingsUiTest {
             onStorage = { fired += "storage" },
             onAccount = { fired += "account" },
             onHelp = { fired += "help" },
-            onMomentsSettings = { fired += "moments" },
-            onVaultSettings = { fired += "vault" },
-            onEmailSettings = { fired += "email" },
-            onOpenWebDrop = { fired += "webdrop" },
-            onLocation = { fired += "location" },
-            onContactBookSettings = { fired += "contactBook" },
             onProfileEdit = { fired += "profileEdit" },
             onProfileAvatarEdit = { fired += "profileAvatarEdit" },
             onProfileCard = { fired += "profileCard" },
@@ -56,7 +51,7 @@ class SettingsUiTest {
     }
 
     private fun ComposeUiTest.settings(
-        uiState: SettingsUiState = SettingsUiState(),
+        uiState: SettingsUiState = SettingsUiState(notificationStatus = NotificationVerificationStatus.OK),
         routes: Routes = Routes(),
         onAction: (SettingsUiAction) -> Unit = {},
         actions: SettingsActions = routes.actions(),
@@ -99,10 +94,7 @@ class SettingsUiTest {
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
             "mediaButton" to "media",
-            "momentsSettingsButton" to "moments",
-            "vaultSettingsButton" to "vault",
-            "locationSettingsButton" to "location",
-            "contactBookSettingsButton" to "contactBook",
+            "appsSettingsButton" to "apps",
             "storageButton" to "storage",
             "helpButton" to "help",
         )
@@ -112,6 +104,26 @@ class SettingsUiTest {
         }
 
         assertEquals(expected.map { it.second }, routes.fired)
+    }
+
+    @Test
+    fun hubHasOneAppsRowAndNoneOfTheNineAppRows() = runComposeUiTest {
+        settings()
+        onNodeWithTag("settingsList").performScrollToNode(hasTestTag("appsSettingsButton"))
+        onNodeWithTag("appsSettingsButton").assertExists()
+        AppsSettingsRowTags.forEach { tag ->
+            assertFailsWith<AssertionError>(tag) {
+                onNodeWithTag("settingsList").performScrollToNode(hasTestTag(tag))
+            }
+        }
+    }
+
+    @Test
+    fun appsRowOpensTheAppsPage() = runComposeUiTest {
+        val routes = Routes()
+        settings(routes = routes)
+        tapRow("appsSettingsButton")
+        assertEquals(listOf("apps"), routes.fired)
     }
 
     @Test
@@ -176,6 +188,34 @@ class SettingsUiTest {
             uiState = SettingsUiState(notificationStatus = NotificationVerificationStatus.ERROR),
         )
         onNodeWithText("Push notifications aren't working").assertExists()
+    }
+
+    @Test
+    fun desktopRowReportsThePermissionNotPush() = runComposeUiTest {
+        settings(
+            uiState = SettingsUiState(
+                hasPushRegistration = false,
+                notificationStatus = NotificationVerificationStatus.OK,
+            ),
+        )
+        onNodeWithText("Notifications are on").assertExists()
+    }
+
+    @Test
+    fun desktopDeniedPermissionSaysSo() = runComposeUiTest {
+        settings(
+            uiState = SettingsUiState(
+                hasPushRegistration = false,
+                notificationStatus = NotificationVerificationStatus.ERROR,
+            ),
+        )
+        onNodeWithText("Notifications are off in system settings").assertExists()
+    }
+
+    @Test
+    fun permissionDecidesTheDesktopStatus() {
+        assertEquals(NotificationVerificationStatus.OK, permissionStatus(true))
+        assertEquals(NotificationVerificationStatus.ERROR, permissionStatus(false))
     }
 
     @Test

@@ -2,6 +2,8 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.notification.NotifierManager
+import id.homebase.core.util.HostOs
+import id.homebase.core.util.hostOs
 
 /**
  * Desktop displayer — prefers the Nucleus cross-platform notification backend
@@ -51,12 +53,8 @@ actual class RichNotificationDisplayer actual constructor() {
     }
 }
 
-internal fun isMacOsRunningUnbundled(): Boolean {
-    val osName = System.getProperty("os.name") ?: ""
-    if (!osName.contains("Mac", ignoreCase = true)) return false
-    // Packaged HomebaseChat / HomebaseChatDev launchers put the JRE inside the .app
-    // bundle, so java.home contains the bundle name. Anything else (IDE JBR, gradle,
-    // system JDK) is unbundled and macOS native notifications will crash.
-    val javaHome = System.getProperty("java.home") ?: ""
-    return !javaHome.contains("HomebaseChat", ignoreCase = true)
-}
+// Packagers bundle the JRE at <App>.app/Contents/runtime; an IDE's JBR also sits inside a .app.
+internal fun isMacOsRunningUnbundled(
+    os: HostOs = hostOs,
+    javaHome: String = System.getProperty("java.home").orEmpty(),
+): Boolean = os == HostOs.Mac && !javaHome.contains(".app/Contents/runtime/")

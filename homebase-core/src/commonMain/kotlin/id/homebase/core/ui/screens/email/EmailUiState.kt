@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.email
 import id.homebase.api.client.mail.MailAppHealth
 import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailboxStatusResult
+import id.homebase.core.privatedrive.PrivateDriveState
 
 /**
  * What the Email setup screen renders from.
@@ -36,6 +37,7 @@ data class EmailUiState(
     val health: MailAppHealth? = null,
     val isCheckingHealth: Boolean = false,
     val healthError: EmailError? = null,
+    val privateDrive: PrivateDriveState = PrivateDriveState(),
 ) {
     /** The server answered, and answered no. Nothing to set up here. */
     val serverHasNoEmail: Boolean
@@ -64,6 +66,9 @@ sealed interface EmailUiAction {
 
     /** The email home came on screen: check the setup without waiting to be asked. */
     data object HomeShown : EmailUiAction
+
+    data object MakePrivate : EmailUiAction
+    data object SignInAgain : EmailUiAction
 }
 
 sealed interface EmailUiEvent {
@@ -74,6 +79,10 @@ sealed interface EmailUiEvent {
 
     /** Thunderbird could not be launched — almost always because it is not installed. */
     data class MailClientUnavailable(val displayName: String) : EmailUiEvent
+
+    data class OpenSignIn(val url: String) : EmailUiEvent
+    data class OpenOwnerConsole(val url: String) : EmailUiEvent
+    data object SignInAgainFailed : EmailUiEvent
 }
 
 sealed interface EmailError {

@@ -77,7 +77,6 @@ import id.homebase.resources.vault_gallery_add_page
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_label_placeholder
 import id.homebase.resources.vault_notes_placeholder
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -171,13 +170,7 @@ fun VaultGalleryDetailSheet(
                             }
                         } else {
                             val thumbImageData = remember(file.fileId, descriptor.key, descriptor.lastModified) {
-                                val payloadIv = descriptor.iv?.let {
-                                    try {
-                                        Base64.decode(it)
-                                    } catch (_: Exception) {
-                                        null
-                                    }
-                                } ?: return@remember null
+                                val payloadIv = descriptor.iv?.bytes ?: return@remember null
                                 HomebaseImageData.from(
                                     driveId = file.driveId,
                                     fileId = file.fileId,

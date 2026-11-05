@@ -1,0 +1,192 @@
+package id.homebase.notifshared
+
+import id.homebase.api.client.auth.ApiCredentials
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.HttpClientProvider
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.appDataFailedToDecrypt
+import id.homebase.api.client.drives.files.RichText
+import id.homebase.api.client.drives.files.getPlainTextFromRichText
+import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.serialization.OdinSystemSerializer
+import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.uuid.Uuid
+
+private const val CHAT_MESSAGE_FILE_TYPE = 7878
+private const val CONVERSATION_FILE_TYPE = 8888
+private const val PLAIN_MESSAGE_DATA_TYPE = 0
+
+/**
+ * Either the text to show, or why the sender's placeholder stays. [missReason] never carries
+ * message content, so the extension can log it unredacted.
+ */
+internal data class ChatNotificationPreview(
+    val text: String?,
+    val missReason: String?,
+    val group: ChatNotificationGroup? = null,
+) {
+    internal companion object {
+        fun shown(text: String) = ChatNotificationPreview(text, null)
+        fun missed(reason: String) = ChatNotificationPreview(null, reason)
+    }
+}
+
+/** A group conversation's name (blank when unnamed) and participants' odinIds, the reader's included. */
+data class ChatNotificationGroup(val title: String, val recipients: List<String>)
+
+/**
+ * The text of chat message [messageId] in [conversationId], fetched from the identity and
+ * decrypted on-device, for a push handler that runs without the app graph (the iOS Notification
+ * Service Extension).
+ *
+ * No text for anything that isn't readable plain text — a typed kind, status message, media-only
+ * or deleted message, a header that failed to decrypt, a network failure, or no answer within
+ * [PREVIEW_DEADLINE] — so the caller keeps the sender's placeholder, which for typed kinds is
+ * already their privacy-aware label. Never throws except for cancellation.
+ */
+internal suspend fun fetchChatNotificationPreview(
+    credentials: ApiCredentials,
+    conversationId: String,
+    messageId: String,
+): ChatNotificationPreview = HttpClientProvider.create().use { client ->
+    fetchChatNotificationPreview(client, credentials, conversationId, messageId)
+}
+
+internal val QUERY_TIMEOUT = 8.seconds
+
+// The NSE gets ~30 s in all; this leaves room for its badge read (2 s) and avatar fetch (5 s).
+internal val PREVIEW_DEADLINE = 18.seconds
+
+internal suspend fun fetchChatNotificationPreview(
+    httpClient: HttpClient,
+    credentials: ApiCredentials,
+    conversationId: String,
+    messageId: String,
+    deadline: Duration = PREVIEW_DEADLINE,
+    queryTimeout: Duration = QUERY_TIMEOUT,
+): ChatNotificationPreview {
+    val conversation = Uuid.parseOrNull(conversationId)
+        ?: return ChatNotificationPreview.missed("typeId is not a uuid")
+    val message = Uuid.parseOrNull(messageId)
+        ?: return ChatNotificationPreview.missed("tagId is not a uuid")
+    if (isMomentsPush(conversationId, messageId)) return ChatNotificationPreview.missed("moments push")
+
+    return withTimeoutOrNull(deadline) {
+        try {
+            fetchedPreview(httpClient, credentials, conversation, message, queryTimeout)
+        } catch (e: StepFailed) {
+            ChatNotificationPreview.missed(e.reason)
+        }
+    } ?: ChatNotificationPreview.missed("timed out after $deadline")
+}
+
+// QueryBatch drains the drive's transit inbox before it queries; the by-uid header read doesn't.
+private suspend fun fetchedPreview(
+    httpClient: HttpClient,
+    credentials: ApiCredentials,
+    conversation: Uuid,
+    message: Uuid,
+    queryTimeout: Duration,
+): ChatNotificationPreview {
+    val credentialsManager = CredentialsManager().apply { setActiveCredentials(credentials) }
+    // The conversation file rides in the same query, for the group name.
+    val request = QueryBatchRequest(
+        FileQueryParams(clientUniqueIdAtLeastOne = listOf(message, conversation)),
+        QueryBatchResultOptionsRequest(maxRecords = 2, includeMetadataHeader = true),
+    )
+    val response = step("query", queryTimeout) {
+        DriveQueryProvider(httpClient, credentialsManager).queryBatch(SystemDriveConstants.chatDrive.alias, request)
+    }
+    if (response.invalidDrive) return ChatNotificationPreview.missed("query answered invalidDrive")
+    val files = response.searchResults
+    val file = files.firstOrNull { it.fileMetadata.appData.uniqueId != conversation }
+        ?: return ChatNotificationPreview.missed("query returned 0 results")
+    val preview = chatMessagePreview(file, conversation)
+    if (preview.text == null) return preview
+    return preview.copy(group = files.firstOrNull { it.fileMetadata.appData.uniqueId == conversation }?.let(::conversationGroup))
+}
+
+private val CONVERSATION_GROUP_TAG = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
+
+/** Null for a 1:1 conversation or a conversation file that can't be read. */
+internal fun conversationGroup(file: HomebaseFile): ChatNotificationGroup? {
+    val appData = file.fileMetadata.appData
+    if (appData.fileType != CONVERSATION_FILE_TYPE || file.appDataFailedToDecrypt()) return null
+    val content = try {
+        OdinSystemSerializer.json.parseToJsonElement(appData.content ?: return null).jsonObject
+    } catch (_: Exception) {
+        return null
+    }
+    val recipients = (content["recipients"] as? JsonArray).orEmpty()
+        .mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+        .distinct()
+    val tagged = appData.tags?.contains(CONVERSATION_GROUP_TAG) == true
+    if (!tagged && recipients.size <= 2) return null
+    val title = (content["title"] as? JsonPrimitive)?.takeIf { it.isString }?.content.orEmpty()
+    return ChatNotificationGroup(title, recipients)
+}
+
+private class StepFailed(val reason: String) : Exception(reason)
+
+private suspend fun <T> step(name: String, timeout: Duration, block: suspend () -> T): T {
+    val outcome = withTimeoutOrNull(timeout) {
+        try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    } ?: throw StepFailed("$name timed out after $timeout")
+    return outcome.getOrElse { throw StepFailed("$name threw ${it.causeChain()}") }
+}
+
+// Class names only: an exception message can quote the decrypted header.
+private fun Throwable.causeChain(): String =
+    generateSequence(this) { it.cause }.take(4).joinToString(" <- ") { it::class.simpleName ?: "?" }
+
+internal fun chatMessagePreview(file: HomebaseFile, conversationId: Uuid): ChatNotificationPreview {
+    val appData = file.fileMetadata.appData
+    val dataType = appData.dataType ?: PLAIN_MESSAGE_DATA_TYPE
+    val miss = when {
+        appData.fileType != CHAT_MESSAGE_FILE_TYPE -> "fileType ${appData.fileType}"
+        dataType != PLAIN_MESSAGE_DATA_TYPE -> "dataType $dataType"
+        appData.groupId != conversationId -> "groupId ${appData.groupId} is not the push typeId"
+        file.isSoftDeleted() -> "deleted (${file.fileState}, ${appData.archivalStatus})"
+        appData.content.isNullOrEmpty() -> "no content (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
+        file.appDataFailedToDecrypt() -> "content failed to decrypt"
+        else -> null
+    }
+    if (miss != null) return ChatNotificationPreview.missed(miss)
+
+    val message = try {
+        OdinSystemSerializer.json.parseToJsonElement(appData.content!!).jsonObject["message"]
+    } catch (_: Exception) {
+        return ChatNotificationPreview.missed(
+            "content is not a json object (serverFileIsEncrypted=${file.serverFileIsEncrypted})"
+        )
+    }
+    val text = when (message) {
+        is JsonPrimitive -> message.content.takeIf { message.isString }
+        is JsonArray -> try {
+            getPlainTextFromRichText(OdinSystemSerializer.json.decodeFromJsonElement<RichText>(message))
+        } catch (_: Exception) {
+            return ChatNotificationPreview.missed("rich text did not parse")
+        }
+        else -> null
+    }
+    return text?.takeIf { it.isNotBlank() }?.let(ChatNotificationPreview::shown)
+        ?: ChatNotificationPreview.missed("no message text")
+}

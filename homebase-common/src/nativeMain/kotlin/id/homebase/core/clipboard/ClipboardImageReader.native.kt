@@ -40,7 +40,10 @@ actual fun getImageFromClipboard(): ByteArray? {
     return data.toByteArray()
 }
 
-actual suspend fun readClipboardImage(): ByteArray? = getImageFromClipboard()
+actual suspend fun readClipboard(): ClipboardContents =
+    ClipboardContents(image = getImageFromClipboard(), text = UIPasteboard.generalPasteboard.string)
+
+actual fun clipboardMayHoldImage(): Boolean = UIPasteboard.generalPasteboard.hasImages
 
 @OptIn(ExperimentalForeignApi::class)
 private fun NSData.toByteArray(): ByteArray? {

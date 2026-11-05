@@ -31,6 +31,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -94,6 +95,27 @@ class FilesyncUploaderTest {
         assertTrue("\"payloadKey\":\"sync_data\"" in body, body.take(600))
         assertTrue("\"algorithm\":\"blake3\"" in body, body.take(600))
         assertTrue("\"storedHash\"" in body && "\"contentHash\"" in body)
+    }
+
+    @Test
+    fun anUndecodableImageStillUploads() = runTest {
+        responses = mutableListOf(created)
+
+        uploader.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, source, "photo.jpg", null) {}
+
+        assertTrue("\"payloadKey\":\"sync_data\"" in bodies.single())
+    }
+
+    @Test
+    fun anUploadedImageCarriesNoPlaintextPreviewOnItsHeader() = runTest {
+        val image = java.awt.image.BufferedImage(400, 300, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val png = File(tempDir, "pic.png").also { javax.imageio.ImageIO.write(image, "png", it) }.path
+        val sent = mutableListOf<id.homebase.api.client.drives.upload.UploadFileRequest>()
+        val spy = FilesyncUploader({ request, _ -> sent += request }, OkioFileOperationsProvider(FileSystem.SYSTEM, tempDir), kotlin.time.Clock.System)
+
+        spy.uploadFile(Uuid.random(), FilesyncProtocol.RootNodeId, png, "pic.png", null) {}
+
+        assertNull(sent.single().metadata.appData.previewThumbnail)
     }
 
     @Test

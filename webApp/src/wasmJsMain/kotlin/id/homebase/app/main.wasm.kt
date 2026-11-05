@@ -3,6 +3,8 @@ package id.homebase.app
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
+import androidx.compose.foundation.ComposeFoundationFlags
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.navigation.ExperimentalBrowserHistoryApi
 import androidx.navigation.bindToBrowserNavigation
 import id.homebase.api.common.OdinId
@@ -45,14 +47,19 @@ private fun recordAutocompleteMismatch(report: String): Unit =
 private fun recordAutocompleteComposing(composing: String): Unit =
     js("{ if (window.__homebaseErrors) window.__homebaseErrors.autocompleteComposing = composing; }")
 
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class)
+private fun prefetchTable(url: String): Unit = js("{ fetch(url).catch(function (e) { console.warn('Resource table prefetch failed: ' + url, e); }); }")
+
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalResourceApi::class, ExperimentalFoundationApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
     initLazyStabilityFlags()
+    // Off by default on desktop and web; without it custom text context menu items are dropped.
+    ComposeFoundationFlags.isNewContextMenuEnabled = true
     WebAppLink.captureFromUrl()
     configureWebResources {
         resourcePathMapping { path -> "./$path?v=$WEB_RESOURCES_VERSION" }
     }
+    WEB_RESOURCE_TABLES.forEach { prefetchTable("./$it?v=$WEB_RESOURCES_VERSION") }
     ComposerAutocompleteProbe.install(object : ComposerAutocompleteProbe.Reporter {
         override fun onTrace(trace: String) = recordAutocompleteTrace(trace)
         override fun onMismatch(report: String) = recordAutocompleteMismatch(report)

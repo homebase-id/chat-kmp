@@ -65,7 +65,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import id.homebase.api.client.drives.files.ReactionSummary
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 import kotlin.time.Instant
@@ -399,8 +398,7 @@ private fun PostLinkPreview(
     // governs the image fetch only — the descriptor text renders either way.
     val keyHeader = remember(payload.iv, post.keyHeader) {
         payload.iv
-            ?.let { runCatching { Base64.decode(it) }.getOrNull() }
-            ?.let { KeyHeader(it, post.keyHeader.aesKey) }
+            ?.let { KeyHeader(it.bytes, post.keyHeader.aesKey) }
             ?: post.keyHeader
     }
 

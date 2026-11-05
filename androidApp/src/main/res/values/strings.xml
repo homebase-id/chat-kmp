@@ -3,6 +3,7 @@
     <string name="card_nfc_service_description">Homebase profile card</string>
     <string name="share_auth_required">Please open Homebase Chat and sign in first</string>
     <string name="share_nothing_to_share">Nothing to share</string>
+    <string name="share_file_unavailable">That shared file is no longer available — please share it again.</string>
     <string name="share_sent">Sent</string>
     <plurals name="share_sent_multiple">
         <item quantity="one">Sent to %1$d conversation</item>

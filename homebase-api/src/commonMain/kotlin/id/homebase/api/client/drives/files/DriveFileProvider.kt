@@ -20,6 +20,7 @@ import id.homebase.api.video.VideoPrefetchDriveAccess
 import io.ktor.client.HttpClient
 import io.ktor.client.request.options
 import io.ktor.http.Headers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
@@ -205,6 +206,17 @@ public class DriveFileProvider(
         )
     }
 
+    /** Full-payload read whose cache entry is addressed by [lastModified], so a rewritten payload is never served stale. */
+    suspend fun getPayloadBytesDecryptedAt(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        lastModified: Long?,
+    ): BytesResponse? = driveCache.getPayloadBytesDecrypted(
+        driveId, fileId, key, keyHeader, lastModified = lastModified
+    )
+
     /**
      * Fetch + decrypt a payload using the per-payload key header the server returns on the GET
      * (`SharedSecretEncryptedHeader64`) — the authoritative, race-free (key, IV) for that exact
@@ -342,6 +354,16 @@ public class DriveFileProvider(
         onProgress: ((Float) -> Unit)? = null,
     ): Boolean = driveCache.streamPayloadDecryptedToPath(
         driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+
+    /** The decrypted payload to [consume] as it streams in, at any size; false when it 404s. */
+    suspend fun streamPayloadDecrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
 
     /** [VideoPrefetchDriveAccess] variant — the cached layer supplies its own file ops. */
     override suspend fun streamPayloadDecryptedToPath(

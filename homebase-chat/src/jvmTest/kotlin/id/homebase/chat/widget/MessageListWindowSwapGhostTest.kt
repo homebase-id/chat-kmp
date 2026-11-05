@@ -152,11 +152,8 @@ class MessageListWindowSwapGhostTest {
     fun snappingAFrameAfterTheSwapStrandsTheOutgoingRows() = runComposeUiTest {
         val outcome = pinJumpThenScrollToLatest(Trigger.SnapAfterTheSwapFrame)
         assertTrue(outcome.stranded > 0, "no stranded fade-outs")
-        assertTrue(outcome.stalePixels > 0, "no stale rows drawn")
-        // Not laid-out rows but a stale recording of released layers: one redraw of the list clears them.
-        invalidateDisappearingItemsDraw()
-        waitForIdle()
-        assertEquals(0, pinPixels())
+        // Compose 1.13 redraws the list after releasing them; up to 1.10 their stale layers stayed painted.
+        assertEquals(0, outcome.stalePixels, "rows of the pin's window still drawn")
     }
 
     @Test

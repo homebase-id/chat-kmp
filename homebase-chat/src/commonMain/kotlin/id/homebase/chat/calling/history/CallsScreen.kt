@@ -49,9 +49,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.isSecondaryPressed
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -70,6 +67,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.formatTime
+import id.homebase.core.util.onSecondaryPress
 import id.homebase.resources.MR
 import id.homebase.resources.call_button_video
 import id.homebase.resources.call_button_voice
@@ -282,14 +280,7 @@ private fun CallRow(
         Row(
             Modifier
                 .fillMaxWidth()
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) menuOpen = true
-                        }
-                    }
-                }
+                .onSecondaryPress { menuOpen = true }
                 .combinedClickable(
                     onClick = { onAction(CallsAction.OpenChat(entry.conversationId, entry.messageId)) },
                     onLongClick = { menuOpen = true },

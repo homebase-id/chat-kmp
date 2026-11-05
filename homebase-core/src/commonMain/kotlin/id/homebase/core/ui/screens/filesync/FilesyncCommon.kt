@@ -1,13 +1,17 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.chat.widget.preview.FilePreviewDialog
 import id.homebase.resources.storage_full_upload_failed
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -15,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.LibraryMusic
@@ -22,18 +27,30 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,8 +60,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -68,6 +88,7 @@ import id.homebase.resources.filesync_delete_failed
 import id.homebase.resources.filesync_deleted
 import id.homebase.resources.filesync_deleted_forever
 import id.homebase.resources.filesync_download_failed
+import id.homebase.resources.filesync_too_large_here
 import id.homebase.resources.filesync_executable
 import id.homebase.resources.filesync_not_on_computers
 import id.homebase.resources.time_today
@@ -80,11 +101,26 @@ import id.homebase.resources.filesync_restore_failed
 import id.homebase.resources.filesync_restored
 import id.homebase.resources.filesync_restored_to_recovered
 import id.homebase.resources.filesync_retry
-import id.homebase.resources.filesync_save
+import id.homebase.resources.filesync_download
 import id.homebase.resources.filesync_save_failed
 import id.homebase.resources.filesync_share_failed
 import id.homebase.resources.filesync_too_large
 import id.homebase.resources.filesync_upload_failed
+import id.homebase.resources.sign_in_again_failed
+import id.homebase.resources.filesync_archive_cancel
+import id.homebase.resources.filesync_archive_damaged
+import id.homebase.resources.filesync_archive_listing
+import id.homebase.resources.filesync_archive_progress
+import id.homebase.resources.filesync_clear_selection
+import id.homebase.resources.filesync_move_failed
+import id.homebase.resources.filesync_moved
+import id.homebase.resources.filesync_removed
+import id.homebase.resources.filesync_role_folder_returns
+import id.homebase.resources.filesync_undo
+import id.homebase.resources.filesync_file_count
+import id.homebase.resources.filesync_folder_count
+import id.homebase.resources.filesync_selected
+import id.homebase.resources.filesync_totals
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -95,27 +131,56 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 // M3's disabled emphasis: a deleted item is shown but is no longer part of the folder.
 private const val DELETED_ALPHA = 0.38f
 
-/** Hands finished downloads to the OS and shows every message a Filesync screen can get. */
+internal fun FilesyncError.message(): StringResource = when (this) {
+    FilesyncError.MoveFailed -> MR.string.filesync_move_failed
+    FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
+    FilesyncError.TooLargeHere -> MR.string.filesync_too_large_here
+    FilesyncError.Damaged -> MR.string.filesync_damaged
+    FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
+    FilesyncError.TooLarge -> MR.string.filesync_too_large
+    FilesyncError.StorageFull -> MR.string.storage_full_upload_failed
+    FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
+    FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
+    FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
+    FilesyncError.SignInAgainFailed -> MR.string.sign_in_again_failed
+}
+
+internal val FilesyncRowInset = 8.dp
+internal val FilesyncTileSize = 40.dp
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun animatedRowColor(target: Color): Color =
+    animateColorAsState(target, MaterialTheme.motionScheme.defaultEffectsSpec()).value
+
+/** Hands finished downloads to the OS or a preview, and shows every message a Filesync screen can get. */
 @Composable
 internal fun FilesyncEventsEffect(
     events: Flow<FilesyncUiEvent>,
     snackbarHostState: SnackbarHostState,
     onOpenWebDrop: () -> Unit = {},
-    onSaveHandedOff: (String) -> Unit,
+    onSendToChat: (path: String, name: String) -> Unit = { _, _ -> },
+    onUndoRemove: (Set<Uuid>) -> Unit = {},
+    onOpenSignIn: (String) -> Unit = {},
+    onHandedOff: (String) -> Unit,
 ) {
     val fileSystemHandler = getUriHandler()
     val scope = rememberCoroutineScope()
     fun show(message: StringResource) {
         scope.launch { snackbarHostState.showSnackbar(getString(message)) }
     }
+    var preview by remember { mutableStateOf<FilesyncPreviewFile?>(null) }
+    preview?.let { file -> FilePreviewDialog(file.path, file.name, file.kind, onClose = { preview = null }, onGone = onHandedOff) }
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
+                is FilesyncUiEvent.PreviewFile -> preview = event.file
                 is FilesyncUiEvent.OpenFile -> fileSystemHandler.openFile(
                     Path(event.path),
                     showChooser = false,
@@ -124,9 +189,9 @@ internal fun FilesyncEventsEffect(
                 is FilesyncUiEvent.SaveFile -> fileSystemHandler.saveFile(
                     Path(event.path),
                     event.name,
-                    onSuccess = { onSaveHandedOff(event.path) },
+                    onSuccess = { onHandedOff(event.path) },
                     onError = {
-                        onSaveHandedOff(event.path)
+                        onHandedOff(event.path)
                         show(MR.string.filesync_save_failed)
                     },
                 )
@@ -135,18 +200,10 @@ internal fun FilesyncEventsEffect(
                     onError = { show(MR.string.filesync_share_failed) },
                 )
                 FilesyncUiEvent.OpenWebDrop -> onOpenWebDrop()
-                is FilesyncUiEvent.Error -> show(
-                    when (event.error) {
-                        FilesyncError.DownloadFailed -> MR.string.filesync_download_failed
-                        FilesyncError.Damaged -> MR.string.filesync_damaged
-                        FilesyncError.UploadFailed -> MR.string.filesync_upload_failed
-                        FilesyncError.TooLarge -> MR.string.filesync_too_large
-                        FilesyncError.StorageFull -> MR.string.storage_full_upload_failed
-                        FilesyncError.FolderFailed -> MR.string.filesync_folder_failed
-                        FilesyncError.RestoreFailed -> MR.string.filesync_restore_failed
-                        FilesyncError.DeleteFailed -> MR.string.filesync_delete_failed
-                    }
-                )
+                is FilesyncUiEvent.SendToChat -> onSendToChat(event.path, event.name)
+                is FilesyncUiEvent.OpenSignIn -> onOpenSignIn(event.url)
+                is FilesyncUiEvent.OpenOwnerConsole -> fileSystemHandler.openUrl(event.url)
+                is FilesyncUiEvent.Error -> show(event.error.message())
                 is FilesyncUiEvent.Notice -> show(
                     when (event.notice) {
                         FilesyncNotice.Restored -> MR.string.filesync_restored
@@ -156,6 +213,16 @@ internal fun FilesyncEventsEffect(
                         FilesyncNotice.TryAgainSoon -> MR.string.filesync_restore_try_again
                     }
                 )
+                is FilesyncUiEvent.Removed -> scope.launch {
+                    val undo = snackbarHostState.showSnackbar(getString(MR.string.filesync_removed), actionLabel = getString(MR.string.filesync_undo))
+                    if (undo == SnackbarResult.ActionPerformed) onUndoRemove(event.nodeIds)
+                }
+                is FilesyncUiEvent.Moved -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_moved, event.folderName ?: getString(MR.string.filesync_label)))
+                }
+                is FilesyncUiEvent.ArchiveDamaged -> scope.launch {
+                    snackbarHostState.showSnackbar(getString(MR.string.filesync_archive_damaged, event.name))
+                }
             }
         }
     }
@@ -169,16 +236,25 @@ internal fun FilesyncNodeRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     dimDeleted: Boolean = true,
+    // A checkbox in the icon's place while picking rows; null shows the icon.
+    checked: Boolean? = null,
     trailing: @Composable () -> Unit = {},
 ) {
-    val dim = if (dimDeleted && node.removedMs != null) Modifier.alpha(DELETED_ALPHA) else Modifier
-    val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+    val deleted = dimDeleted && node.removedMs != null
+    val container = animatedRowColor(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+    val rounded = Modifier.padding(horizontal = FilesyncRowInset).clip(MaterialTheme.shapes.medium).then(modifier)
     ListItem(
-        modifier = modifier,
+        modifier = if (checked == null) rounded else rounded.semantics { toggleableState = ToggleableState(checked) },
         colors = ListItemDefaults.colors(containerColor = container),
-        headlineContent = { NodeName(node, ringColor = container, modifier = dim, fontWeight = if (node.isFolder) FontWeight.SemiBold else null, maxLines = 2) },
-        supportingContent = { if (details.isNotEmpty()) Text(details, modifier = dim) },
-        leadingContent = { FileTypeTile(node, modifier = dim) },
+        headlineContent = { NodeName(node, ringColor = container, deleted = deleted, maxLines = 2) },
+        supportingContent = { if (details.isNotEmpty()) Text(details) },
+        leadingContent = {
+            if (checked == null) {
+                FileTypeTile(node, deleted = deleted)
+            } else {
+                Box(modifier = Modifier.size(FilesyncTileSize), contentAlignment = Alignment.Center) { SelectBox(ToggleableState(checked)) }
+            }
+        },
         trailingContent = trailing,
     )
 }
@@ -188,16 +264,23 @@ internal fun NodeName(
     node: FilesyncNode,
     ringColor: Color,
     modifier: Modifier = Modifier,
-    fontWeight: FontWeight? = null,
+    deleted: Boolean = false,
     maxLines: Int = 1,
+    // On the name alone, not the badges or the space after it.
+    nameModifier: Modifier = Modifier,
+    textDecoration: TextDecoration? = null,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = node.name,
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
-            fontWeight = fontWeight,
-            modifier = Modifier.weight(1f, fill = false),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (node.isFolder) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (deleted) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+            // Colour alone would leave a deleted row readable as live; the strike survives any theme.
+            textDecoration = if (deleted) TextDecoration.LineThrough + (textDecoration ?: TextDecoration.None) else textDecoration,
+            modifier = Modifier.weight(1f, fill = false).then(nameModifier),
         )
         if (node.executable) NameBadge(stringResource(MR.string.filesync_executable))
         if (node.notOnComputers) NameBadge(stringResource(MR.string.filesync_not_on_computers))
@@ -206,7 +289,7 @@ internal fun NodeName(
 }
 
 @Composable
-internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, size: Dp = FilesyncTileSize, deleted: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val kind = node.kind
     val (container, content) = when {
@@ -214,8 +297,14 @@ internal fun FileTypeTile(node: FilesyncNode, modifier: Modifier = Modifier, siz
         kind == FileKind.Image || kind == FileKind.Video || kind == FileKind.Audio -> colors.secondaryContainer to colors.onSecondaryContainer
         else -> colors.surfaceVariant to colors.onSurfaceVariant
     }
+    val shape = MaterialTheme.shapes.medium
     Box(
-        modifier = modifier.size(size).clip(RoundedCornerShape(size * 0.3f)).background(container),
+        modifier = modifier
+            .then(if (deleted) Modifier.alpha(DELETED_ALPHA) else Modifier)
+            .size(size)
+            .clip(shape)
+            .background(container)
+            .border(1.dp, colors.outlineVariant, shape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -331,7 +420,7 @@ internal fun SaveButton(progress: Float?, onSave: () -> Unit, onCancel: () -> Un
         CancelTransferButton(progress, onCancel)
     } else {
         IconButton(onClick = onSave) {
-            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_save))
+            Icon(Icons.Outlined.Download, contentDescription = stringResource(MR.string.filesync_download))
         }
     }
 }
@@ -429,4 +518,73 @@ internal object FinderTagColors {
     )
 
     fun of(c: Int): Color? = colours.getOrNull(c - 1)
+}
+
+// Deleting one lasts only while no computer syncs it: one that does makes it again.
+@Composable
+internal fun roleFoldersReturn(nodes: List<FilesyncNode>): String {
+    val names = nodes.mapNotNull { node -> node.takeIf { it.role != null }?.name }
+    return if (names.isEmpty()) "" else "\n\n" + pluralStringResource(MR.plurals.filesync_role_folder_returns, names.size, names.size, names.joinToString(", "))
+}
+
+/** A checkbox without the 48dp touch minimum, so it fits a row's icon place; with no [onClick] the row does the picking. */
+@Composable
+internal fun SelectBox(state: ToggleableState, description: String? = null, onClick: (() -> Unit)? = null) {
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        TriStateCheckbox(
+            state = state,
+            onClick = onClick,
+            modifier = if (description == null) Modifier else Modifier.semantics { contentDescription = description },
+        )
+    }
+}
+
+/** The phone's top bar while rows are picked. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun FilesyncSelectionTopBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.() -> Unit) {
+    TopAppBar(
+        title = { Text(pluralStringResource(MR.plurals.filesync_selected, count, count), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        navigationIcon = {
+            IconButton(onClick = onClear) {
+                Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_clear_selection))
+            }
+        },
+        actions = actions,
+    )
+}
+
+@Composable
+internal fun totalsLabel(totals: FilesyncTotals): String = stringResource(
+    MR.string.filesync_totals,
+    pluralStringResource(MR.plurals.filesync_folder_count, totals.folders, totals.folders),
+    pluralStringResource(MR.plurals.filesync_file_count, totals.files, totals.files),
+    formatBytes(totals.bytes),
+)
+
+/** A ZIP being made: how far it has got, and a way to stop it. */
+@Composable
+internal fun FilesyncArchiveBar(transfer: FilesyncTransfer, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    val total = transfer.totalBytes
+    Row(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = if (total == null) {
+                    stringResource(MR.string.filesync_archive_listing)
+                } else {
+                    stringResource(MR.string.filesync_archive_progress, formatBytes((transfer.progress * total).toLong()), formatBytes(total))
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (total == null || total == 0L) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(progress = { transfer.progress }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        IconButton(onClick = onCancel) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.filesync_archive_cancel))
+        }
+    }
 }

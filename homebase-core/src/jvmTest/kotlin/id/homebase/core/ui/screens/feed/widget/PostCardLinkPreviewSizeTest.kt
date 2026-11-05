@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import kotlin.io.encoding.Base64
+import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.layout.width
@@ -32,7 +34,7 @@ import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
 class PostCardLinkPreviewSizeTest {
 
     private val onePxPngBase64 =
@@ -81,7 +83,7 @@ class PostCardLinkPreviewSizeTest {
                     pixelWidth = thumbWidth,
                     pixelHeight = thumbHeight,
                     contentType = "image/png",
-                    content = onePxPngBase64,
+                    content = Base64Bytes(Base64.decode(onePxPngBase64)),
                 ),
             )
         ),

@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitViewController
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.delay
@@ -99,6 +100,7 @@ actual fun TrimmableVideoPlayerSurface(
     onPositionMs: (Long) -> Unit,
     modifier: Modifier,
     onFirstFrameRendered: (() -> Unit)?,
+    hideWhenPaused: Boolean,
 ) {
     val onPositionMsState = rememberUpdatedState(onPositionMs)
 
@@ -174,6 +176,7 @@ actual fun TrimmableVideoPlayerSurface(
             }.also { controller.value = it }
         },
         modifier = modifier,
+        properties = UIKitInteropProperties(interactionMode = null),
     )
 }
 

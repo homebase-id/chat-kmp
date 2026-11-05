@@ -16,13 +16,15 @@ import kotlinx.serialization.serializer
  * @param description Description of the drive purpose
  * @param permissions List of permission types requested
  * @param driveSlug Stable, human-readable identifier for this drive (e.g. "chat"). The server
- *   requires one on every requested drive; it matches `BuiltinDrives.DriveSlug` in odin-core.
+ *   requires one on every drive the request may create; it matches `BuiltinDrives.DriveSlug` in odin-core.
  * @param driveTypeSlug Stable, human-readable identifier for the drive's type (e.g. "chat").
  *   Matches `BuiltinDrives.DriveTypeSlug` in odin-core.
  * @param attributes Optional key-value attributes for the drive
  * @param allowAnonymousRead Whether anonymous read access is allowed
  * @param allowSubscriptions Whether subscriptions are allowed
  * @param requireStorageKey Read counts as granted only with the drive's storage key; client-side, never sent
+ * @param grantOnly Another app owns the drive: send only its address, which the owner console grants but never creates, adopts or changes
+ * @param sharingModel How the drive is created when it doesn't exist yet; an existing drive keeps its own. Null means collaborative
  */
 data class TargetDriveAccessRequest(
     val alias: String,
@@ -36,46 +38,27 @@ data class TargetDriveAccessRequest(
     val allowAnonymousRead: Boolean? = null,
     val allowSubscriptions: Boolean? = null,
     val requireStorageKey: Boolean = false,
+    val grantOnly: Boolean = false,
+    val sharingModel: DriveSharingModel? = null,
 ) {
-    /**
-     * Convert to a map for serialization using short keys matching the API.
-     * - a: alias
-     * - t: type
-     * - n: name
-     * - d: description
-     * - p: permissions (sum of bitwise values)
-     * - ds: driveSlug
-     * - ts: driveTypeSlug
-     * - r: allowAnonymousRead
-     * - s: allowSubscriptions
-     * - at: attributes (JSON encoded)
-     */
-    fun toMap(): Map<String, Any?> = buildMap {
-        put("a", alias)
-        put("t", type)
-        put("n", name)
-        put("d", description)
-        put("p", DrivePermission.combine(permissions))
-        driveSlug?.let { put("ds", it) }
-        driveTypeSlug?.let { put("ts", it) }
-        allowAnonymousRead?.let { put("r", it) }
-        allowSubscriptions?.let { put("s", it) }
-        attributes?.let { put("at", Json.encodeToString(serializer(), it)) }
-    }
-
     /** Convert to JsonObject for proper serialization. */
     fun toJsonObject(): JsonObject = buildJsonObject {
         put("a", JsonPrimitive(alias))
         put("t", JsonPrimitive(type))
-        put("n", JsonPrimitive(name))
-        put("d", JsonPrimitive(description))
+        if (!grantOnly) {
+            put("n", JsonPrimitive(name))
+            put("d", JsonPrimitive(description))
+        }
         put("p", JsonPrimitive(DrivePermission.combine(permissions)))
-        driveSlug?.let { put("ds", JsonPrimitive(it)) }
+        if (!grantOnly) driveSlug?.let { put("ds", JsonPrimitive(it)) }
         driveTypeSlug?.let { put("ts", JsonPrimitive(it)) }
-        allowAnonymousRead?.let { put("r", JsonPrimitive(it)) }
-        allowSubscriptions?.let { put("s", JsonPrimitive(it)) }
-        attributes?.let {
-            put("at", JsonPrimitive(Json.encodeToString(serializer(), it)))
+        if (!grantOnly) {
+            allowAnonymousRead?.let { put("r", JsonPrimitive(it)) }
+            allowSubscriptions?.let { put("s", JsonPrimitive(it)) }
+            attributes?.let {
+                put("at", JsonPrimitive(Json.encodeToString(serializer(), it)))
+            }
+            sharingModel?.let { put("sm", JsonPrimitive(it.wire)) }
         }
     }
 
@@ -89,4 +72,11 @@ data class TargetDriveAccessRequest(
             return Json.encodeToString(serializer(), jsonArray)
         }
     }
+}
+
+/** odin-core's DriveSharingModel, as the owner console reads it from a drive request's `sm`. */
+enum class DriveSharingModel(val wire: String) {
+    Collaborative("collaborative"),
+    Private("private"),
+    SelectiveShare("selectiveShare"),
 }

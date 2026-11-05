@@ -32,12 +32,15 @@ import androidx.compose.ui.Modifier
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.screens.account.AccountSettingsScreen
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.calls.settings.CallsSettingsScreen
 import id.homebase.core.ui.screens.card.ProfileCardEditorScreen
 import id.homebase.core.ui.screens.card.ProfileCardScreen
 import id.homebase.core.ui.screens.card.ProfileCardViewModel
 import id.homebase.core.ui.screens.card.StartCardHostWhenSettled
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
+import id.homebase.core.ui.screens.feed.settings.FeedSettingsScreen
+import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.keyboard.KeyboardSettingsScreen
 import id.homebase.core.ui.screens.media.MediaSettingsScreen
@@ -81,7 +84,9 @@ internal fun SettingsPaneHost(
 ) {
     // Plain remember, not rememberSaveable: the pane exists only on desktop/web, which have no
     // configuration change or process death to restore across.
-    var category by remember { mutableStateOf(SettingsPaneRequest.take() ?: SettingsCategory.General) }
+    val requested = remember { SettingsPaneRequest.take() }
+    var category by remember { mutableStateOf(requested?.category ?: SettingsCategory.General) }
+    var appsPage by remember { mutableStateOf(requested?.appsPage) }
     var profilePage by remember { mutableStateOf<ProfilePage?>(null) }
     var editorOpenedFromCard by remember { mutableStateOf(false) }
     var editorOpensDesign by remember { mutableStateOf(false) }
@@ -95,30 +100,7 @@ internal fun SettingsPaneHost(
     cardViewModel?.let { StartCardHostWhenSettled(it) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = Dimens.Spacing.gutter,
-                    end = Dimens.Spacing.item,
-                    top = Dimens.Spacing.item,
-                    bottom = Dimens.Spacing.item,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(MR.string.settings),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(MR.string.close),
-                )
-            }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SettingsPaneHeader(onDismiss)
 
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
             SettingsSidebar(
@@ -126,6 +108,7 @@ internal fun SettingsPaneHost(
                 onSelect = {
                     category = it
                     profilePage = null
+                    appsPage = null
                 },
             )
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -133,7 +116,7 @@ internal fun SettingsPaneHost(
             val exitFade = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
             val tabSlideFade = rememberTabSlideFade()
             AnimatedContent(
-                targetState = category to profilePage,
+                targetState = Triple(category, profilePage, appsPage),
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 transitionSpec = {
                     val from = initialState.second
@@ -141,17 +124,22 @@ internal fun SettingsPaneHost(
                     when {
                         // The card pages host a native view that neither fades nor can run twice at once.
                         from.isCard() || to.isCard() -> EnterTransition.None togetherWith ExitTransition.None
+                        from == to && initialState.third != targetState.third ->
+                            tabSlideFade.transform(targetState.third != null)
                         from == to -> fadeIn(enterFade) togetherWith fadeOut(exitFade)
                         else -> tabSlideFade.transform((to?.ordinal ?: -1) > (from?.ordinal ?: -1))
                     }
                 },
-            ) { (shownCategory, profile) ->
+            ) { (shownCategory, profile, shownAppsPage) ->
                 if (profile == null) {
-                    ProvideSettingsChrome(embedded = true) {
+                    // An app's page is a drill-down like the profile pages, so it keeps its back arrow.
+                    ProvideSettingsChrome(embedded = shownAppsPage == null) {
                         CategoryPage(
                             category = shownCategory,
+                            appsPage = shownAppsPage,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
+                            onSelectAppsPage = { appsPage = it },
                             onProfileEdit = { openEditor(false, false) },
                             onProfileAvatarEdit = { profilePage = ProfilePage.Avatar },
                             onProfileCard = { profilePage = ProfilePage.Card }.takeIf { cardViewModel != null },
@@ -196,13 +184,43 @@ internal fun SettingsPaneHost(
     }
 }
 
+@Composable
+internal fun SettingsPaneHeader(onDismiss: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = Dimens.Spacing.gutter,
+                end = Dimens.Spacing.item,
+                top = Dimens.Spacing.item,
+                bottom = Dimens.Spacing.item,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(MR.string.settings),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDismiss) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = stringResource(MR.string.close),
+            )
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
 private fun ProfilePage?.isCard() = this == ProfilePage.Card || this == ProfilePage.CardEditor
 
 @Composable
 private fun CategoryPage(
     category: SettingsCategory,
+    appsPage: AppsPage?,
     onDismiss: () -> Unit,
     onSelectCategory: (SettingsCategory) -> Unit,
+    onSelectAppsPage: (AppsPage?) -> Unit,
     onProfileEdit: () -> Unit,
     onProfileAvatarEdit: () -> Unit,
     onProfileCard: (() -> Unit)?,
@@ -214,6 +232,7 @@ private fun CategoryPage(
             viewModel = koinViewModel(),
             actions = SettingsActions(
                 onBack = onDismiss,
+                onApps = { onSelectCategory(SettingsCategory.Apps) },
                 onNotifications = { onSelectCategory(SettingsCategory.Notifications) },
                 onAppearance = { onSelectCategory(SettingsCategory.Appearance) },
                 onMedia = { onSelectCategory(SettingsCategory.Media) },
@@ -221,12 +240,6 @@ private fun CategoryPage(
                 onStorage = { onSelectCategory(SettingsCategory.Storage) },
                 onAccount = { onSelectCategory(SettingsCategory.Account) },
                 onHelp = { onSelectCategory(SettingsCategory.Help) },
-                onMomentsSettings = { onSelectCategory(SettingsCategory.Moments) },
-                onVaultSettings = { onSelectCategory(SettingsCategory.Vault) },
-                onEmailSettings = { onSelectCategory(SettingsCategory.Email) },
-                onOpenWebDrop = actions.onOpenWebDrop,
-                onLocation = actions.onLocation,
-                onContactBookSettings = { onSelectCategory(SettingsCategory.Contacts) },
                 onProfileEdit = onProfileEdit,
                 onProfileAvatarEdit = onProfileAvatarEdit,
                 onProfileCard = onProfileCard,
@@ -253,30 +266,60 @@ private fun CategoryPage(
             onBackClick = onDismiss,
         )
 
-        SettingsCategory.Moments -> MomentsSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenMoments = actions.onOpenMoments,
-        )
+        SettingsCategory.Apps -> AppsCategoryPage(
+            appsPage = appsPage,
+            root = {
+                AppsSettingsScreen(
+                    actions = AppsSettingsActions(
+                        onBack = onDismiss,
+                        onFeedSettings = { onSelectAppsPage(AppsPage.Feed) },
+                        onMomentsSettings = { onSelectAppsPage(AppsPage.Moments) },
+                        onVaultSettings = { onSelectAppsPage(AppsPage.Vault) },
+                        onFilesyncSettings = { onSelectAppsPage(AppsPage.Filesync) },
+                        onEmailSettings = { onSelectAppsPage(AppsPage.Email) },
+                        onOpenWebDrop = actions.onOpenWebDrop,
+                        onLocation = actions.onLocation,
+                        onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
+                        onCallsSettings = { onSelectAppsPage(AppsPage.Calls) },
+                    ),
+                )
+            },
+            page = { shown ->
+                val back = { onSelectAppsPage(null) }
+                when (shown) {
+                    AppsPage.Feed -> FeedSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
 
-        SettingsCategory.Vault -> VaultSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenVault = actions.onOpenVault,
-        )
+                    AppsPage.Moments -> MomentsSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenMoments = actions.onOpenMoments,
+                    )
 
-        SettingsCategory.Email -> EmailSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenEmail = actions.onOpenEmail,
-            mailboxMode = emailMailboxMode,
-            onChangeMode = actions.onOpenEmailModeSwitch,
-        )
+                    AppsPage.Vault -> VaultSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenVault = actions.onOpenVault,
+                    )
 
-        SettingsCategory.Contacts -> ContactBookSettingsScreen(
-            viewModel = koinViewModel(),
-            onBackClick = onDismiss,
-            onOpenContacts = actions.onOpenContacts,
+                    AppsPage.Filesync -> FilesyncSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
+
+                    AppsPage.Email -> EmailSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenEmail = actions.onOpenEmail,
+                        mailboxMode = emailMailboxMode,
+                        onChangeMode = actions.onOpenEmailModeSwitch,
+                    )
+
+                    AppsPage.Contacts -> ContactBookSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBackClick = back,
+                        onOpenContacts = actions.onOpenContacts,
+                    )
+
+                    AppsPage.Calls -> CallsSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
+                }
+            },
         )
 
         SettingsCategory.Storage -> StorageSettingsScreen(
@@ -299,4 +342,13 @@ private fun CategoryPage(
             onNavigateToDeveloperMenu = actions.onNavigateToDeveloperMenu,
         )
     }
+}
+
+@Composable
+internal fun AppsCategoryPage(
+    appsPage: AppsPage?,
+    root: @Composable () -> Unit,
+    page: @Composable (AppsPage) -> Unit,
+) {
+    if (appsPage == null) root() else page(appsPage)
 }

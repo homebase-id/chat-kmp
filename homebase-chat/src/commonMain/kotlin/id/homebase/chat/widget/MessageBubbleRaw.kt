@@ -64,8 +64,11 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
+import id.homebase.chat.agentui.AgentUiActionBubble
+import id.homebase.chat.agentui.AgentUiBubble
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
+import androidx.compose.ui.geometry.Offset
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.contactcard.ContactCardBubble
 import id.homebase.chat.contactcard.contactCardPhotoData
@@ -106,7 +109,6 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -167,6 +169,9 @@ fun MessageBubbleRaw(
     // Null keeps combinedClickable's single-tap path undelayed for bubbles that can't react.
     onDoubleClick: (() -> Unit)? = null,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    // Long-press on one media item, or right-click on one gallery cell; a null [onMediaLongClick] falls back to [onLongClick].
+    onMediaLongClick: ((PayloadDescriptor) -> Unit)? = null,
+    onMediaSecondaryPress: ((PayloadDescriptor) -> Unit)? = null,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     liveControls: LiveLocationBubbleControls? = null,
@@ -385,6 +390,27 @@ fun MessageBubbleRaw(
             )
             return
         }
+        is MessageContent.AgentUi -> {
+            AgentUiBubble(
+                descriptor = content.descriptor,
+                message = message,
+                displayOnly = displayOnly,
+                sentByYou = sentByYou,
+                modifier = modifier,
+                onLongClick = onLongClick,
+            )
+            return
+        }
+        is MessageContent.AgentUiAction -> {
+            AgentUiActionBubble(
+                descriptor = content.descriptor,
+                authorName = message.displayName,
+                sentByYou = sentByYou,
+                modifier = modifier,
+                onLongClick = onLongClick,
+            )
+            return
+        }
         is MessageContent.Poll -> {
             PollBubble(
                 descriptor = content.descriptor,
@@ -407,7 +433,7 @@ fun MessageBubbleRaw(
                 val mapPayload = message.payloads?.firstOrNull {
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
-                val pIv = mapPayload?.iv?.let { Base64.decode(it) }
+                val pIv = mapPayload?.iv?.bytes
                 // One fused bubble: the map "card" stays neutral grey; only the user's caption section
                 // takes the message-bubble background (blue when sent). The outer modifier supplies the
                 // single rounded clip — the card sets the grey, the caption section sets the blue.
@@ -501,18 +527,22 @@ fun MessageBubbleRaw(
         }
     }
 
-    fun handleLongClick() {
+    fun handleLongClick(action: () -> Unit = onLongClick) {
         if (isAnimatingLongPress.value) return
         isAnimatingLongPress.value = true
         coroutineScope.launch {
             try {
-                onLongClick()
+                action()
                 scaleAnim.animateTo(0.94f, animationSpec = springSpec)
                 scaleAnim.animateTo(1f, animationSpec = springSpec)
             } finally {
                 isAnimatingLongPress.value = false
             }
         }
+    }
+
+    val onMediaLongPress: (PayloadDescriptor, Offset) -> Unit = { payload, _ ->
+        handleLongClick { onMediaLongClick?.invoke(payload) ?: onLongClick() }
     }
 
     val timestamp = formatMessageTimestamp(message.userDate)
@@ -668,7 +698,8 @@ fun MessageBubbleRaw(
                         driveId = chatTargetDrive.alias,
                         previewThumbnail = message.previewThumbnail,
                         onMediaClick = onMediaClick,
-                        onMediaLongPress = { _, _ -> handleLongClick() },
+                        onMediaLongPress = onMediaLongPress,
+                        onMediaSecondaryPress = onMediaSecondaryPress,
                         liveControls = liveControls,
                         locationHeaderDescriptor = locationDescriptor,
                         onRequestDecryptedFile = onRequestDecryptedFile,
@@ -710,7 +741,8 @@ fun MessageBubbleRaw(
                                 driveId = chatTargetDrive.alias,
                                 previewThumbnail = message.previewThumbnail,
                                 onMediaClick = onMediaClick,
-                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                onMediaLongPress = onMediaLongPress,
+                                onMediaSecondaryPress = onMediaSecondaryPress,
                         liveControls = liveControls,
                         locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
@@ -802,7 +834,8 @@ fun MessageBubbleRaw(
                                     topStart = Dimens.Message.cornerRadius,
                                     topEnd = Dimens.Message.cornerRadius
                                 ) else RoundedCornerShape(0.dp),
-                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                onMediaLongPress = onMediaLongPress,
+                                onMediaSecondaryPress = onMediaSecondaryPress,
                                 liveControls = liveControls,
                                 locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
@@ -833,6 +866,7 @@ fun MessageBubbleRaw(
                                 searchQuery = effectiveSearchQuery,
                                 isCurrentSearchResult = isCurrentSearchResult,
                                 mentions = mentionContext,
+                                surface = backgroundColor,
                             )
                         }
                     }
@@ -917,7 +951,8 @@ fun MessageBubbleRaw(
                                             topStart = Dimens.Message.cornerRadius,
                                             topEnd = Dimens.Message.cornerRadius
                                         ) else RoundedCornerShape(0.dp),
-                                        onMediaLongPress = { _, _ -> handleLongClick() },
+                                        onMediaLongPress = onMediaLongPress,
+                                        onMediaSecondaryPress = onMediaSecondaryPress,
                                         liveControls = liveControls,
                                         locationHeaderDescriptor = locationDescriptor,
                                         onRequestDecryptedFile = onRequestDecryptedFile,
@@ -977,6 +1012,7 @@ fun MessageBubbleRaw(
                                             searchQuery = effectiveSearchQuery,
                                             isCurrentSearchResult = isCurrentSearchResult,
                                             mentions = mentionContext,
+                                            surface = backgroundColor,
                                             maxLines = bodyMaxLines,
                                             overflow = TextOverflow.Ellipsis,
                                             onTextLayout = { textLayoutResult = it },
@@ -1389,14 +1425,14 @@ internal fun messageBubbleShape(sentByYou: Boolean, clusterPosition: MessageClus
     val small = Dimens.Message.cornerCollapseRadius
     return if (sentByYou) {
         when (clusterPosition) {
-            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, small, big)
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big)
             MessageClusterPosition.START -> RoundedCornerShape(big, big, small, big)
             MessageClusterPosition.MIDDLE -> RoundedCornerShape(big, small, small, big)
             MessageClusterPosition.END -> RoundedCornerShape(big, small, big, big)
         }
     } else {
         when (clusterPosition) {
-            MessageClusterPosition.ALONE -> RoundedCornerShape(big, big, big, small)
+            MessageClusterPosition.ALONE -> RoundedCornerShape(big)
             MessageClusterPosition.START -> RoundedCornerShape(big, big, big, small)
             MessageClusterPosition.MIDDLE -> RoundedCornerShape(small, big, big, small)
             MessageClusterPosition.END -> RoundedCornerShape(small, big, big, big)

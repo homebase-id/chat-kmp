@@ -17,8 +17,9 @@ kotlin {
 
     android {
         namespace = "id.homebase.auth"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
-        compileSdkExtension = 19
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
     }

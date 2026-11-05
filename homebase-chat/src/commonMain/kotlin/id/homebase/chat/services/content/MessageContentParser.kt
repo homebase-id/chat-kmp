@@ -2,6 +2,8 @@ package id.homebase.chat.services.content
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.agentui.AgentUiActionDescriptor
+import id.homebase.chat.agentui.AgentUiDescriptor
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
@@ -47,6 +49,8 @@ object MessageContentParser {
             ChatProtocol.ChatCallEventMessageDataType -> parseCallEvent(content)
             ChatProtocol.ChatContactCardMessageDataType -> parseContactCard(content)
             ChatProtocol.ChatViewOnceMessageDataType -> parseViewOnce(content)
+            ChatProtocol.ChatAgentUiMessageDataType -> parseAgentUi(content)
+            ChatProtocol.ChatAgentUiActionMessageDataType -> parseAgentUiAction(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
             // as MessageAppData. 0 = plain text/media; 211 = Location, whose
             // descriptor lives on a payload (the header content is still a
@@ -186,6 +190,32 @@ object MessageContentParser {
         MessageContent.ViewOnce(null)
     }
 
+    private fun parseAgentUi(content: String): MessageContent.AgentUi = try {
+        val descriptor = OdinSystemSerializer.deserialize<AgentUiDescriptor>(content)
+        if (descriptor.isValid()) {
+            MessageContent.AgentUi(descriptor)
+        } else {
+            Logger.w(tag = TAG) { "AgentUi descriptor failed validation" }
+            MessageContent.AgentUi(null)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "AgentUi parse failed; rendering chip" }
+        MessageContent.AgentUi(null)
+    }
+
+    private fun parseAgentUiAction(content: String): MessageContent.AgentUiAction = try {
+        val descriptor = OdinSystemSerializer.deserialize<AgentUiActionDescriptor>(content)
+        if (descriptor.isValid()) {
+            MessageContent.AgentUiAction(descriptor)
+        } else {
+            Logger.w(tag = TAG) { "AgentUiAction descriptor failed validation" }
+            MessageContent.AgentUiAction(null)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "AgentUiAction parse failed; rendering chip" }
+        MessageContent.AgentUiAction(null)
+    }
+
     /**
      * Senders only ever construct a [MessageContent] subtype with a real
      * descriptor, so a null descriptor — or a [MessageContent.Unknown] kind —
@@ -224,6 +254,14 @@ object MessageContentParser {
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "Location descriptor must be non-null on send" }
             )
+        is MessageContent.AgentUi ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "AgentUi descriptor must be non-null on send" }
+            )
+        is MessageContent.AgentUiAction ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "AgentUiAction descriptor must be non-null on send" }
+            )
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be serialized")
     }
@@ -237,6 +275,8 @@ object MessageContentParser {
         is MessageContent.CallEvent -> ChatProtocol.ChatCallEventMessageDataType
         is MessageContent.ViewOnce -> ChatProtocol.ChatViewOnceMessageDataType
         is MessageContent.Location -> ChatProtocol.ChatLocationMessageDataType
+        is MessageContent.AgentUi -> ChatProtocol.ChatAgentUiMessageDataType
+        is MessageContent.AgentUiAction -> ChatProtocol.ChatAgentUiActionMessageDataType
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be re-sent")
     }
@@ -260,6 +300,8 @@ object MessageContentParser {
         is MessageContent.CallEvent,
         is MessageContent.ContactCard,
         is MessageContent.ViewOnce,
+        is MessageContent.AgentUi,
+        is MessageContent.AgentUiAction,
         is MessageContent.Location -> true
         is MessageContent.Unknown, null -> false
     }

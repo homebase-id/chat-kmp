@@ -19,7 +19,11 @@ compose.resources {
 }
 
 buildConfig {
-    buildConfigField("APP_BUILD_TIME", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+    // Checks pin this: a new value each build makes every module above this one miss the build cache.
+    buildConfigField(
+        "APP_BUILD_TIME",
+        System.getenv("APP_BUILD_TIME") ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+    )
     useKotlinOutput { internalVisibility = false }
 }
 
@@ -41,8 +45,9 @@ kotlin {
     // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
     android {
         namespace = "id.homebase.common"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
-        compileSdkExtension = 19
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest {}
@@ -94,6 +99,12 @@ kotlin {
         val cameraStubMain = create("cameraStubMain") { dependsOn(commonMain.get()) }
         jvmMain.get().dependsOn(cameraStubMain)
         wasmJsMain.get().dependsOn(cameraStubMain)
+
+        // The paste menu shared by every target but iOS, which takes UIKit's own paste: slot.
+        val nonIosPasteMain = create("nonIosPasteMain") { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(nonIosPasteMain)
+        jvmMain.get().dependsOn(nonIosPasteMain)
+        wasmJsMain.get().dependsOn(nonIosPasteMain)
 
         // FileKit's PlatformFile.path and lastModified() exist on every target but the web.
         val nonWebMain = create("nonWebMain") { dependsOn(commonMain.get()) }

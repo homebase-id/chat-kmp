@@ -52,6 +52,7 @@ class MarkdownAnnotatorClasspathTest {
             annotatorSettings = DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(SpanStyle()),
                 codeSpanStyle = SpanStyle(),
+                highlightSpanStyle = SpanStyle(),
                 annotator = markdownAnnotator(),
             ),
         )

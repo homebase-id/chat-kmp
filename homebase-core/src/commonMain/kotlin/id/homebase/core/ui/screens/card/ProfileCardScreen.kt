@@ -2,11 +2,14 @@
 
 package id.homebase.core.ui.screens.card
 
+import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.material3.LocalContentColor
+import id.homebase.core.ui.theme.withEmojiFont
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
@@ -234,7 +237,8 @@ fun ProfileCardScreen(
     onChangeDesign: () -> Unit,
 ) {
     LaunchedEffect(viewModel) { viewModel.onScreenShown() }
-    IntroViewerSwitch(viewModel = viewModel, onBack = onBack) { onClose ->
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = true) }
+    IntroViewerSwitch(viewModel = viewModel, onBack = onBack, onNewCircle = newCircle) { onClose ->
         ProfileCardViewer(viewModel = viewModel, onBack = onClose, onEdit = onEdit, onChangeDesign = onChangeDesign)
     }
 }
@@ -243,6 +247,7 @@ fun ProfileCardScreen(
 internal fun IntroViewerSwitch(
     viewModel: ProfileCardViewModel,
     onBack: () -> Unit,
+    onNewCircle: (() -> Unit)? = null,
     viewer: @Composable (onClose: () -> Unit) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -268,6 +273,7 @@ internal fun IntroViewerSwitch(
                 onRetry = viewModel::onRetry,
                 onCapture = viewModel::captureIntroTiles,
                 onTilePainted = viewModel::onIntroTilePainted,
+                onNewCircle = onNewCircle,
             )
         }
     }
@@ -379,7 +385,7 @@ private fun ProfileCardViewer(
         val bands = cardBands(uiState.design)
         val topColor by cardEdgeColor(uiState.cardTopArgb, uiState.design)
         val bottomColor by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
-        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceDim)) {
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -855,11 +861,12 @@ internal fun ReadOnlyCardDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-internal fun WithTooltip(text: String, content: @Composable () -> Unit) {
+internal fun WithTooltip(text: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(text) } },
         state = rememberTooltipState(),
+        modifier = modifier,
         content = content,
     )
 }
@@ -1053,12 +1060,31 @@ private fun CardSkeleton(design: String) {
 }
 
 @Composable
-internal fun CookieBadge(icon: ImageVector, container: Color, content: Color, size: Dp, iconSize: Dp) {
+internal fun CookieBadge(icon: ImageVector, container: Color, content: Color, size: Dp, iconSize: Dp, emoji: String? = null) {
     Box(
         modifier = Modifier.size(size).background(container, MaterialShapes.Cookie9Sided.toShape()),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(iconSize))
+        AudienceGlyph(icon = icon, emoji = emoji, size = iconSize, tint = content)
+    }
+}
+
+/** A circle's own emoji where it has one, otherwise the audience's icon. */
+@Composable
+internal fun AudienceGlyph(icon: ImageVector, emoji: String?, size: Dp, modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) {
+    if (emoji == null) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = modifier.size(size))
+    } else {
+        // Emoji font metrics run taller than the icon; the fixed box keeps a row's height the same either way.
+        Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
+            Text(
+                text = emoji.withEmojiFont(),
+                fontSize = with(LocalDensity.current) { size.toSp() },
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.wrapContentSize(unbounded = true),
+            )
+        }
     }
 }
 

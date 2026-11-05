@@ -43,6 +43,8 @@ import id.homebase.resources.vault_save_failed
 import id.homebase.resources.vault_saved
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.chat_error_copy_image
+import id.homebase.resources.chat_image_copied
 import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
 import id.homebase.resources.file_saved_to
@@ -50,7 +52,6 @@ import id.homebase.resources.file_share_failed
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
@@ -188,7 +189,7 @@ private fun SharedMediaViewer(
         onShare = { _, _ ->
             scope.launch {
                 try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
+                    val iv = item.payload.iv?.bytes ?: return@launch
                     // Stream-decrypt straight into share_outbound (#845) —
                     // bounded RAM for any payload size; the old byte path
                     // buffered the whole payload (~2×) in memory.
@@ -224,7 +225,7 @@ private fun SharedMediaViewer(
         onSaveToVault = if (vaultActive) { _, _ ->
             scope.launch {
                 val saved = try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) }
+                    val iv = item.payload.iv?.bytes
                     val contentType = item.payload.contentType
                     val path = if (iv != null && contentType != null) {
                         actionService.streamPayloadToUploadTemp(
@@ -246,6 +247,14 @@ private fun SharedMediaViewer(
                 )
             }
         } else null,
+        onCopyImage = { _, _ ->
+            scope.launch {
+                val copied = actionService.copyImagePayloadToClipboard(item.fileId, item.payload, item.keyHeader)
+                snackbarHostState.showSnackbar(
+                    TranslationUtil.getString(if (copied) MR.string.chat_image_copied else MR.string.chat_error_copy_image)
+                )
+            }
+        },
         onDelete = { onDismiss() },
         onDismiss = onDismiss,
         onNavigateToMessage = onNavigateToMessage?.let { cb -> { cb(item.messageId) } },
@@ -273,7 +282,7 @@ fun rememberSharedMediaSaver(
         { item ->
             scope.launch {
                 try {
-                    val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
+                    val iv = item.payload.iv?.bytes ?: return@launch
                     val ext = item.payload.contentType?.substringAfterLast('/')
                         ?.takeIf { it.isNotBlank() } ?: "bin"
                     val name = item.payload.filename() ?: "${item.payload.key}.$ext"

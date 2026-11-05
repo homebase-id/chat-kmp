@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
@@ -58,7 +59,7 @@ class HomebaseImageLoaderTest {
                 pixelWidth = 20,
                 pixelHeight = 20,
                 contentType = "image/webp",
-                content = "base64data"
+                content = Base64Bytes(byteArrayOf(1, 2, 3))
             )
         )
         assertEquals("image/webp", data.contentTypeHint)
@@ -92,7 +93,7 @@ class HomebaseImageLoaderTest {
                 pixelWidth = 20,
                 pixelHeight = 20,
                 contentType = "image/webp",
-                content = "base64data"
+                content = Base64Bytes(byteArrayOf(1, 2, 3))
             )
         )
         assertEquals("image/gif", gif.effectiveContentType)
@@ -112,7 +113,7 @@ class HomebaseImageLoaderTest {
                 pixelWidth = 20,
                 pixelHeight = 20,
                 contentType = "image/webp",
-                content = "base64data"
+                content = Base64Bytes(byteArrayOf(1, 2, 3))
             )
         )
         assertEquals("image/webp", data.effectiveContentType)
@@ -186,7 +187,7 @@ class HomebaseImageLoaderTest {
                 pixelWidth = 20,
                 pixelHeight = 20,
                 contentType = "image/webp",
-                content = "base64data",
+                content = Base64Bytes(byteArrayOf(1, 2, 3)),
             ),
         )
 
@@ -203,7 +204,7 @@ class HomebaseImageLoaderTest {
         assertEquals(1776703690500L, data.lastModified)
         assertEquals(listOf(ImageSize(320, 320)), data.availableThumbSizes)
         assertEquals(20, data.previewThumbnail?.pixelWidth)
-        assertEquals("base64data", data.previewThumbnail?.content)
+        assertEquals(Base64Bytes(byteArrayOf(1, 2, 3)), data.previewThumbnail?.content)
     }
 
     @Test

@@ -18,7 +18,9 @@ kotlin {
 
     android {
         namespace = "id.homebase.imageeditor.core"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
     }

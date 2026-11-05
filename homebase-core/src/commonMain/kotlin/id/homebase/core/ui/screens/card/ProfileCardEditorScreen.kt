@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.profile.PhotoRemovalConfirmDialog
+import id.homebase.core.ui.screens.contactbook.rememberNewCircleAction
 import id.homebase.core.ui.screens.profile.ProfileAudience
 import id.homebase.resources.profile_card_content_save_failed
 import id.homebase.resources.profile_card_read_only
@@ -32,6 +33,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -103,6 +105,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import id.homebase.core.util.isDesktopOrWeb
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -159,6 +163,9 @@ import id.homebase.resources.profile_card_import_public_message
 import id.homebase.resources.profile_card_import_public_confirm
 import id.homebase.resources.profile_card_make_public_message
 import id.homebase.resources.profile_card_make_public_title
+import id.homebase.resources.profile_card_nameless_public_confirm
+import id.homebase.resources.profile_card_nameless_public_message
+import id.homebase.resources.profile_card_nameless_public_title
 import id.homebase.resources.profile_card_content_now_hidden
 import id.homebase.resources.profile_card_content_now_public
 import id.homebase.resources.profile_card_import_done
@@ -171,6 +178,17 @@ import id.homebase.resources.profile_edit_title
 
 private val ACTION_HEIGHT = ButtonDefaults.MinHeight
 private val COMPACT_HEIGHT = 760.dp
+private val COMPACT_TILE_WIDTH = 88.dp
+private val COMPACT_TILE_CORNER = 16.dp
+
+internal enum class ContentLayout { PanelOnly, Wide, CompactHeader }
+
+internal fun contentLayout(cardsEnabled: Boolean, wide: Boolean, shortWindow: Boolean): ContentLayout = when {
+    !cardsEnabled -> ContentLayout.PanelOnly
+    wide -> ContentLayout.Wide
+    shortWindow -> ContentLayout.PanelOnly
+    else -> ContentLayout.CompactHeader
+}
 private val WIDE_LAYOUT_MIN_WIDTH = 840.dp
 private val WIDE_PANEL_WIDTH = 440.dp
 // Room for every tool and the picked one's name once the window can spare it.
@@ -209,6 +227,7 @@ fun ProfileCardEditorScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val avatarState by avatarViewModel.state.collectAsStateWithLifecycle()
     val host by viewModel.host.collectAsStateWithLifecycle()
+    val tiles by viewModel.introTiles.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = getUriHandler()
     val errAvatarUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
@@ -222,6 +241,7 @@ fun ProfileCardEditorScreen(
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
     val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = false) }
     LaunchedEffect(viewModel) {
         if (cardsEnabled) viewModel.startHost()
         viewModel.onContentEditorShown()
@@ -351,9 +371,13 @@ fun ProfileCardEditorScreen(
             onSelect = viewModel::onDesignPicked,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
+            onStyle = viewModel::onStyleSelected,
             onSave = viewModel::onSaveDesign,
             photo = photoUi,
             showCard = cardsEnabled,
+            host = host,
+            tiles = tiles,
+            onCaptureTiles = viewModel::captureEditorTiles,
             onSelectCard = viewModel::onCardSelected,
             onRetryLoad = viewModel::onRetry,
             onChangePhoto = {
@@ -369,6 +393,8 @@ fun ProfileCardEditorScreen(
             onContentEdit = viewModel::onContentEdited,
             onContentDelete = viewModel::onContentDeleted,
             onContentAdd = viewModel::onContentAdded,
+            onNewCircle = newCircle.takeIf { uiState.circleCardsSupported },
+            onCirclesChanged = viewModel::onCirclesChanged,
         ) { layoutWidth ->
             val backdrop by cardEdgeColor(uiState.cardBottomArgb, uiState.design)
             val designCover by viewModel.designCover.collectAsStateWithLifecycle()
@@ -391,6 +417,9 @@ fun ProfileCardEditorScreen(
         }
         uiState.pendingPublic?.let { pending ->
             MakePublicDialog(itemLabel = pending.itemLabel, onConfirm = viewModel::onPublicConfirmed, onDismiss = viewModel::onPublicCancelled)
+        }
+        if (uiState.pendingNameless != null) {
+            NamelessPublicDialog(onConfirm = viewModel::onNamelessConfirmed, onDismiss = viewModel::onNamelessCancelled)
         }
     }
 }
@@ -427,6 +456,22 @@ internal fun MakePublicDialog(itemLabel: String, onConfirm: () -> Unit, onDismis
     )
 }
 
+@Composable
+internal fun NamelessPublicDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Public, contentDescription = null) },
+        title = { Text(stringResource(MR.string.profile_card_nameless_public_title), textAlign = TextAlign.Center) },
+        text = { Text(stringResource(MR.string.profile_card_nameless_public_message)) },
+        confirmButton = {
+            Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.profile_card_nameless_public_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
 /** Stateless so the capture test can render it around a stand-in for the card. */
 @Composable
 internal fun ProfileCardEditorContent(
@@ -439,9 +484,13 @@ internal fun ProfileCardEditorContent(
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    onStyle: (ResolvedCardStyle) -> Unit = {},
     mode: EditorMode = EditorMode.Design,
     photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
     showCard: Boolean = true,
+    host: CardHost? = null,
+    tiles: Map<String, ImageBitmap> = emptyMap(),
+    onCaptureTiles: suspend () -> Unit = {},
     onSelectCard: (CardAudience) -> Unit = {},
     onRetryLoad: () -> Unit = {},
     onChangePhoto: () -> Unit = {},
@@ -451,12 +500,15 @@ internal fun ProfileCardEditorContent(
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit = { _, _, _ -> },
     onContentDelete: (Uuid) -> Unit = {},
     onContentAdd: (String, Map<String, String>) -> Unit = { _, _ -> },
+    onNewCircle: (() -> Unit)? = null,
+    onCirclesChanged: (() -> Unit)? = null,
     preview: @Composable BoxScope.(layoutWidth: Dp) -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceDim, contentColor = MaterialTheme.colorScheme.onSurface) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val wide = maxWidth >= WIDE_LAYOUT_MIN_WIDTH
             val widePanelWidth = if (maxWidth >= ROOMY_LAYOUT_MIN_WIDTH) ROOMY_PANEL_WIDTH else WIDE_PANEL_WIDTH
+            val contentLayout = contentLayout(showCard, wide, maxHeight < COMPACT_HEIGHT)
             val metrics = when {
                 wide -> PanelMetrics.Wide
                 maxHeight < COMPACT_HEIGHT -> PanelMetrics.Compact
@@ -493,12 +545,14 @@ internal fun ProfileCardEditorContent(
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
+                    onStyle = onStyle,
                     showCardsButton = showCard,
                     onContentAudience = onContentAudience,
                     onContentEdit = onContentEdit,
                     onContentDelete = onContentDelete,
                     onRetry = onRetryLoad,
                     onContentAdd = onContentAdd,
+                    onCirclesChanged = onCirclesChanged,
                     mode = mode,
                     photo = photo,
                     onChangePhoto = onChangePhoto,
@@ -517,9 +571,18 @@ internal fun ProfileCardEditorContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { previewOpen = false }) {
+                        IconButton(onClick = { previewOpen = false }, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.Filled.Close, contentDescription = stringResource(MR.string.close))
                         }
+                        Text(
+                            text = stringResource(MR.string.profile_card_preview),
+                            style = MaterialTheme.typography.titleLargeEmphasized,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() },
+                        )
+                        Spacer(Modifier.size(48.dp))
                     }
                     CardPreviewFrame(
                         keepProportions = false,
@@ -552,15 +615,58 @@ internal fun ProfileCardEditorContent(
                     CardSwitcher(
                         cards = uiState.cards.map { it.audience },
                         selected = uiState.selectedAudience,
+                        circles = uiState.circles,
                         onSelect = onSelectCard,
+                        onNewCircle = onNewCircle,
                         modifier = Modifier.padding(bottom = metrics.gap),
                     )
                 }
-                if (!showCard || contentOpen) {
+                if (!showCard || (contentOpen && contentLayout == ContentLayout.PanelOnly)) {
                     panel(
                         Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
                         cardSheetShape(),
                     )
+                } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
+                    val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
+                    val capturing = host != null && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
+                    LaunchedEffect(capturing, host, uiState.contentSaves, uiState.selectedAudience, uiState.cards) {
+                        if (capturing) onCaptureTiles()
+                    }
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        // Occluded by the opaque column above it: the host only has to be attached for the snapshot.
+                        if (capturing && host != null) {
+                            CardHostView(
+                                host = host,
+                                modifier = Modifier.size(width = CAPTURE_HOST_WIDTH, height = CAPTURE_HOST_WIDTH / CARD_THUMB_ASPECT),
+                                layoutWidth = CAPTURE_LAYOUT_WIDTH,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            if (selectedCard != null) {
+                                val shape = RoundedCornerShape(COMPACT_TILE_CORNER)
+                                val previewLabel = stringResource(MR.string.profile_card_preview)
+                                CardStill(
+                                    card = selectedCard,
+                                    still = tiles[audienceKey(selectedCard.audience)],
+                                    modifier = Modifier
+                                        .padding(bottom = metrics.gap)
+                                        .width(COMPACT_TILE_WIDTH)
+                                        .aspectRatio(CARD_THUMB_ASPECT)
+                                        .clip(shape)
+                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                                        .clickable(role = Role.Button) { previewOpen = true }
+                                        .semantics { contentDescription = previewLabel },
+                                )
+                            }
+                            panel(
+                                Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
+                                cardSheetShape(),
+                            )
+                        }
+                    }
                 } else if (wide) {
                     // Two columns that start and end on the same lines: the audience over its card, and the panel beside them.
                     Row(
@@ -709,7 +815,7 @@ private fun EditorTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 4.dp),
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onBack, shapes = IconButtonDefaults.shapes()) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(MR.string.menu_back),
@@ -718,7 +824,7 @@ private fun EditorTopBar(
             if (title != null) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleLargeEmphasized,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -737,7 +843,7 @@ private fun EditorTopBar(
                 }
             }
             if (onPreview != null) {
-                IconButton(onClick = onPreview) {
+                IconButton(onClick = onPreview, shapes = IconButtonDefaults.shapes()) {
                     Icon(Icons.Outlined.Visibility, contentDescription = stringResource(MR.string.profile_card_preview))
                 }
             } else if (onSave != null) {
@@ -765,12 +871,14 @@ private fun EditorPanel(
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
+    onStyle: (ResolvedCardStyle) -> Unit,
     showCardsButton: Boolean,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
     onContentDelete: (Uuid) -> Unit,
     onRetry: () -> Unit,
     onContentAdd: (String, Map<String, String>) -> Unit,
+    onCirclesChanged: (() -> Unit)?,
     mode: EditorMode,
     photo: CardPhotoUi,
     onChangePhoto: () -> Unit,
@@ -786,7 +894,10 @@ private fun EditorPanel(
     val isSaving = uiState.isSavingDesign
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
-    val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
+    val styles = remember(design) { cardStylesFor(design) }
+    val custom = remember(styles, uiState.overrides, design) { customStyle(styles, uiState.overrides, design) }
+    val control = if (styles.isEmpty()) CHIP_HEIGHT * grow else maxOf(CHIP_HEIGHT * grow, styleRowHeight(fontScale))
+    val optionsNeeded = CAPTION_LINE * fontScale + control + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
     val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
@@ -819,6 +930,7 @@ private fun EditorPanel(
                     onEdit = onContentEdit,
                     onDelete = onContentDelete,
                     onAdd = onContentAdd,
+                    onCirclesChanged = onCirclesChanged,
                     onChangePhoto = onChangePhoto,
                     onRemovePhoto = onRemovePhoto,
                     onImport = onImport,
@@ -861,6 +973,9 @@ private fun EditorPanel(
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
+                        styles = styles,
+                        custom = custom,
+                        onStyle = onStyle,
                         gap = metrics.gap,
                         hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                         modifier = Modifier.fillMaxSize(),

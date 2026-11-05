@@ -239,4 +239,17 @@ class ArchitectureTest {
                 property.type?.name in identityScopedTypes
             }
     }
+
+    @Test
+    fun `View models that take an ExtendPermissionViewModel close it`() {
+        val owners = Konsist.scopeFromProject().classes().filter { c ->
+            c.primaryConstructor?.parameters?.any { it.type.name == "ExtendPermissionViewModel" } == true
+        }
+        assertTrue(owners.isNotEmpty())
+        owners.assertTrue(additionalMessage = "It's in no ViewModelStore: without addCloseable its collectors outlive the owner.") { c ->
+            c.primaryConstructor!!.parameters.filter { it.type.name == "ExtendPermissionViewModel" }
+                // An AutoCloseable adapter hands the job to whoever owns it by forwarding close.
+                .all { c.text.contains("addCloseable(${it.name})") || c.text.contains("${it.name}.close()") }
+        }
+    }
 }

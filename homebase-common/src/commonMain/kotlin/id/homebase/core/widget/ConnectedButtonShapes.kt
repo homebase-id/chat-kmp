@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 
 @Composable
 fun connectedButtonShapes(index: Int, count: Int): ToggleButtonShapes = when {
-    count == 1 -> ToggleButtonDefaults.shapes()
+    count == 1 -> ToggleButtonShapes(ToggleButtonDefaults.shape, ToggleButtonDefaults.pressedShape, ToggleButtonDefaults.checkedShape)
     index == 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
     index == count - 1 -> ButtonGroupDefaults.connectedTrailingButtonShapes()
     else -> ButtonGroupDefaults.connectedMiddleButtonShapes()

@@ -29,6 +29,7 @@ open class OkioFileOperationsProvider(
     private val fileSystem: FileSystem,
     private val cacheDir: String,
     private val io: CoroutineDispatcher = defaultIoDispatcher,
+    private val downloadLimitBytes: Long? = null,
 ) : FileOperationsProvider {
 
     protected open fun openSource(path: String): Source = fileSystem.source(path.toPath())
@@ -138,6 +139,27 @@ open class OkioFileOperationsProvider(
         // okio's write{} block is non-suspend, so stream into a buffered sink instead.
         fileSystem.sink(p).buffer().use { sink ->
             data.collect { chunk -> sink.write(chunk) }
+        }
+    }
+
+    override suspend fun writeDownload(path: String, data: Flow<ByteArray>) {
+        val limit = downloadLimitBytes ?: return writeStream(path, data)
+        withContext(io) {
+            val p = path.toPath()
+            p.parent?.let { fileSystem.createDirectories(it) }
+            try {
+                fileSystem.sink(p).buffer().use { sink ->
+                    var written = 0L
+                    data.collect { chunk ->
+                        written += chunk.size
+                        if (written > limit) throw FileTooLargeForMemoryException(limit)
+                        sink.write(chunk)
+                    }
+                }
+            } catch (e: Throwable) {
+                runCatching { fileSystem.delete(p) }
+                throw e
+            }
         }
     }
 

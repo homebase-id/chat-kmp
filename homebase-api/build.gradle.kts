@@ -10,6 +10,24 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+// Same release iosApp pins for its SQLCipher.swift package; bump both together.
+val sqlCipherIosVersion = "4.19.0"
+val sqlCipherIosSha256 = "39f02d2f04f0de2ba1facf215550bfc6e6e2c9971d5d8ebb0cdd604874781bd7"
+val sqlCipherXcframeworkDir = layout.buildDirectory.dir("sqlcipher/$sqlCipherIosVersion/SQLCipher.xcframework")
+val sqlCipherSimulatorFrameworkDir =
+    sqlCipherXcframeworkDir.get().asFile.resolve("ios-arm64_x86_64-simulator").absolutePath
+
+val fetchSqlCipherXcframework by tasks.registering(Exec::class) {
+    val url = "https://github.com/sqlcipher/SQLCipher.swift/releases/download/$sqlCipherIosVersion/SQLCipher.xcframework.zip"
+    val script = file("scripts/fetch-sqlcipher-xcframework.sh")
+    val out = sqlCipherXcframeworkDir.get().asFile
+    inputs.file(script)
+    inputs.property("url", url)
+    inputs.property("sha256", sqlCipherIosSha256)
+    outputs.dir(out)
+    commandLine("sh", script.absolutePath, url, sqlCipherIosSha256, out.absolutePath)
+}
+
 kotlin {
     applyDefaultHierarchyTemplate()
 
@@ -39,7 +57,9 @@ kotlin {
     // See: https://kotlinlang.org/docs/multiplatform-discover-project.html#targets
     android {
         namespace = "id.homebase.api"
-        compileSdk = libs.versions.android.targetSdk.get().toInt()
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) { minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt() }
+        }
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
         withHostTest { isIncludeAndroidResources = true }
@@ -137,6 +157,22 @@ kotlin {
     }
     val ffmpegKitFrameworkDir = ffmpegKitSimulatorFrameworkDirs.first()  // ffmpegkit slice
 
+    // iOS 27 simulators refuse to dlopen unsigned frameworks, and the checked-in slices are unsigned.
+    // Test binary loads ad-hoc signed copies; libs/ and iosApp's CodeSignOnCopy embed stay untouched.
+    val signedFfmpegKitDir = layout.buildDirectory.dir("ffmpegkit-signed-simulator")
+    val signFfmpegKitSimulatorFrameworks by tasks.registering(Exec::class) {
+        val out = signedFfmpegKitDir.get().asFile
+        inputs.dir(ffmpegKitBundleRoot)
+        outputs.dir(out)
+        commandLine(
+            "sh", "-c",
+            """set -e; rm -rf "${'$'}0"; mkdir -p "${'$'}0"; for d in "${'$'}@"; do cp -R "${'$'}d"/*.framework "${'$'}0"/; done; for f in "${'$'}0"/*.framework; do codesign --force --sign - "${'$'}f"; done""",
+            out.absolutePath,
+            *ffmpegKitSimulatorFrameworkDirs.toTypedArray(),
+        )
+    }
+    val signedFfmpegKitPath = signedFfmpegKitDir.get().asFile.absolutePath
+
     iosSimulatorArm64().compilations.getByName("test").cinterops.create("ffmpegkit") {
         defFile(project.file("src/nativeTest/cinterop/ffmpegkit.def"))
         compilerOpts("-F$ffmpegKitFrameworkDir")
@@ -146,18 +182,19 @@ kotlin {
     // ffmpegkit.framework OR its bundled FFmpeg-lib siblings. Baking the absolute paths is
     // OK because the test binary only runs in the build environment and never ships.
     //
-    // Production iOS app links libsqlite3 via iosApp's Xcode project — for the gradle
-    // test binary we have to wire it in explicitly so SQLDelight's sqliter cinterop has its
-    // underlying symbols at link time. Previously unnoticed because iosSimulatorArm64Test
-    // was never run in CI (test.yml has been disabled).
+    // sqliter's sqlite3 symbols come from SQLCipher, never the system libsqlite3: the app gets
+    // it from iosApp's SQLCipher.swift package, this test binary from fetchSqlCipherXcframework.
     val testBinaryLinkerOpts = buildList {
-        add("-F$ffmpegKitFrameworkDir")
+        add("-F$signedFfmpegKitPath")
         add("-framework"); add("ffmpegkit")
-        ffmpegKitSimulatorFrameworkDirs.forEach { add("-rpath"); add(it) }
-        add("-lsqlite3")
+        add("-rpath"); add(signedFfmpegKitPath)
+        add("-F$sqlCipherSimulatorFrameworkDir")
+        add("-framework"); add("SQLCipher")
+        add("-rpath"); add(sqlCipherSimulatorFrameworkDir)
     }
     iosSimulatorArm64().binaries
         .getTest(org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG)
+        .apply { linkTaskProvider.configure { dependsOn(fetchSqlCipherXcframework, signFfmpegKitSimulatorFrameworks) } }
         .linkerOpts(testBinaryLinkerOpts)
 
     // wasmJsTest: SQLDelight has no sql.js-backed test driver wired up yet, so every
@@ -177,6 +214,8 @@ kotlin {
         "id.homebase.api.sync.database.FileStateFilterTest",
         "id.homebase.api.sync.database.LocationPointWrapperTest",
         "id.homebase.api.sync.database.MainIndexMetaTest",
+        "id.homebase.api.sync.database.OutboxEnqueueLatestTest",
+        "id.homebase.api.sync.database.OutboxNoDriveKeyTest",
         "id.homebase.api.sync.database.OutboxSetNextRunTimeTest",
         "id.homebase.api.sync.database.OutboxStorageFullTest",
         "id.homebase.api.sync.database.OutboxSyncTest",
@@ -227,6 +266,7 @@ kotlin {
             implementation(libs.cryptography.random)
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines.extensions)
+            implementation(libs.jetbrains.compose.foundation)
             implementation(libs.navigation.compose)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
@@ -311,6 +351,8 @@ kotlin {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")
             }
             implementation(libs.sqlite.jdbc.crypt)
+            implementation(libs.jna)
+            implementation(libs.jna.platform)
 
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)

@@ -1,5 +1,6 @@
 package id.homebase.core.moments.services
 
+import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -37,7 +38,7 @@ import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.notifications.MOMENT_COMMENT_TAG_SENTINEL
+import id.homebase.notifshared.MOMENT_COMMENT_TAG_SENTINEL
 import id.homebase.resources.MR
 import id.homebase.resources.moments_push_new_comment
 import id.homebase.resources.moments_push_new_post
@@ -51,7 +52,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
@@ -297,7 +297,7 @@ class MomentsPostSenderService(
                             pixelWidth = resized.size.pixelWidth,
                             pixelHeight = resized.size.pixelHeight,
                             contentType = "image/jpeg",
-                            content = Base64.encode(resized.bytes),
+                            content = Base64Bytes(resized.bytes),
                         )
                     }.getOrNull()
                     if (thumb != null) put(keyForIndex(i), thumb)
@@ -778,7 +778,7 @@ class MomentsPostSenderService(
                     }
                     continue
                 }
-                val ivBytes = descriptor.iv?.let { Base64.decode(it) }
+                val ivBytes = descriptor.iv?.bytes
                 if (ivBytes == null) {
                     Logger.w(tag = TAG) {
                         "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — descriptor has no iv (fileId=${file.fileId})"

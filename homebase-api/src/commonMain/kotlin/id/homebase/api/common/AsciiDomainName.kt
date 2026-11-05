@@ -5,6 +5,24 @@ import kotlin.jvm.JvmInline
 // ------------------------------------------------------------------
 // IDN conversion – platform-specific (see the other two files)
 // ------------------------------------------------------------------
+/**
+ * Converts domain names between Unicode (`bøg.dk`) and their ASCII punycode form
+ * (`xn--bg-lka.dk`). Both functions are pure, synchronous and safe on any thread.
+ *
+ * What every platform guarantees: a plain ASCII name (letters, digits, `-`, `.`) comes back from
+ * [toAscii] and [toUnicode] unchanged, case included; callers lowercase (see [AsciiDomainName]).
+ *
+ * What differs, because only the JVM has an IDNA implementation:
+ *  - Android and desktop use `java.net.IDN` (IDNA2003 with STD3 rules): non-ASCII names are
+ *    converted, and [toAscii] throws [IllegalArgumentException] for an invalid name (label
+ *    over 63 characters, a space or `_`, a leading or trailing `-`).
+ *  - iOS: [toAscii] throws [IllegalArgumentException] for any non-ASCII input and does no
+ *    validation of ASCII input; [toUnicode] returns its input.
+ *  - Web: both return the input untouched and never throw.
+ *
+ * So only Android and desktop can turn `æøå.dk` into `xn--5cab8c.dk`; on iOS and web, names
+ * must already be punycode. Domains on the wire always are.
+ */
 expect object Idn {
     fun toAscii(idn: String): String
     fun toUnicode(puny: String): String

@@ -250,6 +250,15 @@ class ConnectionNetworkProvider(
         )
     }
 
+    /** The server answers with the new circle's id as a bare GUID. */
+    suspend fun createCircle(request: CreateAppCircleRequest): Uuid =
+        postAndDeserialize("/connections/circles/create", request)
+
+    /** Refused with CannotDeleteCircleWithMembers unless [removeMembers] is true. */
+    suspend fun deleteCircle(circleId: Uuid, removeMembers: Boolean) {
+        post(deleteCirclePath(removeMembers), circleId)
+    }
+
     /** Only the owning app may toggle a circle; the server refuses anything else with a 403. */
     suspend fun disableCircle(circleId: Uuid) {
         post("/connections/circles/disable", circleId)
@@ -323,3 +332,5 @@ class ConnectionNetworkProvider(
         return deserialize(response.body)
     }
 }
+
+internal fun deleteCirclePath(removeMembers: Boolean) = "/connections/circles/delete?removeMembers=$removeMembers"

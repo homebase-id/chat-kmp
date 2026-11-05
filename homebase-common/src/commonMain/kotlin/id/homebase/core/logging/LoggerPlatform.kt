@@ -25,8 +25,19 @@ internal expect fun createFileLogWriter(
     maxFiles: Int,
 ): LogWriter?
 
+/**
+ * Files directly inside [logDirectory] whose name starts with `homebase` and ends with `.log`
+ * (the active log and its rolled siblings), in no particular order. A missing or empty
+ * directory gives an empty list; it never throws for that. Blocking file I/O. Web has no disk
+ * and always returns an empty list.
+ */
 internal expect fun listHomebaseLogFiles(logDirectory: Path): List<Path>
 
+/**
+ * Deletes every file [listHomebaseLogFiles] would list and nothing else. Returns true when
+ * none remain, which includes a missing directory and web, and false when a delete failed;
+ * it never throws.
+ */
 internal expect fun deleteHomebaseLogFiles(logDirectory: Path): Boolean
 
 internal expect fun <T> useHomebaseLogLines(logDirectory: Path, block: (List<Sequence<String>>) -> T): T

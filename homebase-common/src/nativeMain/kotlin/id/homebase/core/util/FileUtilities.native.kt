@@ -10,8 +10,11 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.UIKit.UIDocumentInteractionController
 import platform.UIKit.UIViewController
 import platform.UIKit.popoverPresentationController
+
+private var shownInteractionController: UIDocumentInteractionController? = null
 
 @Composable
 actual fun getUriHandler(): FileSystemHandler {
@@ -33,10 +36,9 @@ actual fun getUriHandler(): FileSystemHandler {
         override fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {
             try {
                 val fileUrl = NSURL.fileURLWithPath(file.toString())
-                val interactionController =
-                    platform.UIKit.UIDocumentInteractionController.interactionControllerWithURL(
-                        fileUrl
-                    )
+                val interactionController = UIDocumentInteractionController.interactionControllerWithURL(fileUrl)
+                // UIKit holds the controller weakly: released mid-menu, the menu goes with it. The next open replaces it.
+                shownInteractionController = interactionController
                 val rootVC = UIApplication.sharedApplication.keyWindow?.rootViewController
 
                 if (rootVC != null) {

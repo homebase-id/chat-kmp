@@ -37,7 +37,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
@@ -1002,11 +1001,9 @@ class ChatMessageStream(
             return null
         }
 
-        val payloadIv = Base64.decode(
-            descriptor.iv ?: throw IllegalStateException(
+        val payloadIv = (descriptor.iv ?: throw IllegalStateException(
                 "encrypted payload requires key header"
-            )
-        )
+            )).bytes
 
         val fullMessage = withRetry(tag = "ChatMessageStream") {
 

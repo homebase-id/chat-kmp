@@ -119,20 +119,33 @@ data class MessageUiModel(
 
     fun isEditableBy(domain: OdinId?): Boolean = isAuthoredBy(domain) && actionPolicy.allowEdit
 
+    private fun soleMediaPayload(): PayloadDescriptor? = payloads
+        ?.filter {
+            it.key != ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB &&
+                it.key != ChatProtocol.DefaultPayloadKey &&
+                !it.isInternalDescriptor()
+        }
+        ?.singleOrNull()
+
     /** Key of the payload when this is a media-only sticker message (solo ImageFile(isSticker = true)). */
     val stickerPayloadKey: String? by lazy {
         // A typed message (view-once above all) owns its payload; the sticker menu would leak it.
         if (messageContent != null || content.isNotBlank()) return@lazy null
-        payloads
-            ?.filter {
-                it.key != ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB &&
-                    it.key != ChatProtocol.DefaultPayloadKey &&
-                    !it.isInternalDescriptor()
-            }
-            ?.singleOrNull()
+        soleMediaPayload()
             ?.takeIf { (it.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true }
             ?.key
     }
+
+    /** Whether "Copy image" may be offered on this message at all; each payload must still be an image. */
+    val allowsImageCopy: Boolean get() = messageContent == null && !isPendingSend && !isDeleted
+
+    fun canCopyImage(payloadKey: String): Boolean = allowsImageCopy && payloads?.any {
+        it.key == payloadKey && it.contentType?.startsWith("image/") == true
+    } == true
+
+    /** The image "Copy image" copies: the gallery cell the menu was opened on, else the message's only image. */
+    fun copyImageTarget(menuImageKey: String?): String? =
+        (menuImageKey ?: soleMediaPayload()?.key)?.takeIf(::canCopyImage)
 
     val actionPolicy: ActionPolicy
         get() = messageContent?.actions

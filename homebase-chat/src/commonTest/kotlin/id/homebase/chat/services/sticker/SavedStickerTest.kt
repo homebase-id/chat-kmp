@@ -2,6 +2,7 @@
 
 package id.homebase.chat.services.sticker
 
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileState
@@ -17,7 +18,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageLoader
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,7 +53,7 @@ class SavedStickerTest {
             PayloadDescriptor(
                 key = StickerProtocol.STICKER_PAYLOAD_KEY,
                 contentType = "image/png",
-                iv = Base64.encode(ByteArray(16)),
+                iv = Base64Bytes(ByteArray(16)),
                 descriptorContent = DescriptorContent.descriptorContentFromImage(isSticker = true),
                 bytesWritten = 512L,
             )
@@ -211,13 +211,13 @@ class SavedStickerTest {
             PayloadDescriptor(
                 key = StickerProtocol.STICKER_PAYLOAD_KEY,
                 contentType = contentType,
-                iv = Base64.encode(ByteArray(16)),
+                iv = Base64Bytes(ByteArray(16)),
                 bytesWritten = bytesWritten,
             )
         ),
     ).toSavedSticker()!!
         // Every sticker ships a WebP preview, a GIF included.
-        .copy(previewThumbnail = EmbeddedThumb(20, 20, "image/webp", "AAAA"))
+        .copy(previewThumbnail = EmbeddedThumb(20, 20, "image/webp", Base64Bytes(ByteArray(3))))
         .toImageData()!!
 
     @Test

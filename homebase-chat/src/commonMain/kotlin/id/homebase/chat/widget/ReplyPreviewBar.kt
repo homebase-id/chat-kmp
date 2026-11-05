@@ -42,7 +42,6 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.ui.theme.withEmojiFont
-import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.cancel_reply
 import id.homebase.resources.cd_reply_thumbnail
@@ -97,7 +96,7 @@ fun ReplyPreviewBar(
     // Strip richeditor's `<br>` empty-paragraph artifacts so replying to a legacy `<br>` message
     // shows its real text in the composer bar, not a stray break / blank preview (#1104).
     val replyBarText = remember(message.content, quotesProtectedMedia) {
-        if (quotesProtectedMedia) "" else message.content.stripComposerLineBreakArtifacts()
+        if (quotesProtectedMedia) "" else message.content.replyQuotePlainText()
     }
     // Content label for media-only messages (no text)
     val contentLabel = messageContentLabel(

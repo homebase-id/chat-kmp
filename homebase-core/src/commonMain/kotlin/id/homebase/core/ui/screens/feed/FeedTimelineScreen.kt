@@ -23,7 +23,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DynamicFeed
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +42,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import id.homebase.core.feed.services.authorOdinId
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,6 +84,8 @@ import id.homebase.resources.feed_timeline_empty_title
 import id.homebase.resources.feed_timeline_error_body
 import id.homebase.resources.feed_timeline_error_retry
 import id.homebase.resources.feed_timeline_error_title
+import id.homebase.resources.feed_timeline_find_people
+import id.homebase.resources.feed_timeline_following_action
 import id.homebase.resources.feed_timeline_title
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -91,6 +100,7 @@ import kotlin.uuid.Uuid
 fun FeedTimelineScreen(
     viewModel: FeedTimelineViewModel = koinViewModel(),
     onNavigateToDetail: (Uuid) -> Unit,
+    onNavigateToFollowing: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
     onFullScreenMediaChanged: (Boolean) -> Unit = {},
     scrollToTop: Boolean = false,
@@ -160,11 +170,20 @@ fun FeedTimelineScreen(
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                // ponytail: Following/Followers is parked — the v2 API has no followers controller, so every
-                // /api/v2/followers/* call 404s. FollowingScreen and its VM are kept intact; restore this
-                // action + the Route.Following destination once the routes land.
                 TopAppBar(
                     title = { Text(stringResource(MR.string.feed_timeline_title)) },
+                    actions = {
+                        // Labelled: the Group icon alone reads as groups or contacts, not who you follow
+                        TextButton(onClick = onNavigateToFollowing) {
+                            Icon(
+                                imageVector = Icons.Outlined.Group,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(MR.string.feed_timeline_following_action))
+                        }
+                    },
                     scrollBehavior = scrollBehavior,
                 )
             },
@@ -208,6 +227,9 @@ fun FeedTimelineScreen(
                         title = stringResource(MR.string.feed_timeline_empty_title),
                         body = stringResource(MR.string.feed_timeline_empty_body),
                         modifier = contentModifier,
+                        // The Following screen opens on Suggested when you follow no one yet
+                        actionLabel = stringResource(MR.string.feed_timeline_find_people),
+                        onAction = onNavigateToFollowing,
                     )
 
                     FeedBody.Posts -> FeedTimelineList(

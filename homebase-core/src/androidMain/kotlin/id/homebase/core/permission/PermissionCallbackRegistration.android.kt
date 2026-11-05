@@ -1,6 +1,8 @@
 package id.homebase.core.permission
 
-actual fun registerPermissionCallbackHandler(handler: (canceled: Boolean) -> Unit) {
+import id.homebase.api.youauth.PermissionCallback
+
+actual fun registerPermissionCallbackHandler(handler: (PermissionCallback) -> Unit) {
     // No-op on Android — handled directly in MainActivity.handleIntent
 }
 

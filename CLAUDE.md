@@ -167,8 +167,8 @@ only when it behaves the same on all four.
 - **Java 21** (Temurin) in CI; the Play-publish step still pins 17
 - **Gradle config cache** enabled
 - **Version catalog:** `gradle/libs.versions.toml` — all dependency versions managed here
-- **Android:** compileSdk 36, minSdk 28, targetSdk 36
-- **Kotlin:** 2.3.21, Compose Multiplatform 1.10.3
+- **Android:** compileSdk 37.1, minSdk 28, targetSdk 36
+- **Kotlin:** 2.4.21, Compose Multiplatform 1.13.0-beta01
 
 ## iOS Framework
 

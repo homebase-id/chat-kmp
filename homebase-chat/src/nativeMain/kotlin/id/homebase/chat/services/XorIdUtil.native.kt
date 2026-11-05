@@ -11,9 +11,13 @@ import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
 @OptIn(ExperimentalForeignApi::class)
 actual fun sha256(input: ByteArray): ByteArray {
     val digest = UByteArray(CC_SHA256_DIGEST_LENGTH)
-    input.usePinned { inputPinned ->
-        digest.usePinned { digestPinned ->
-            CC_SHA256(inputPinned.addressOf(0).reinterpret<UByteVar>(), input.size.toUInt(), digestPinned.addressOf(0))
+    digest.usePinned { digestPinned ->
+        if (input.isEmpty()) {
+            CC_SHA256(null, 0u, digestPinned.addressOf(0))
+        } else {
+            input.usePinned { inputPinned ->
+                CC_SHA256(inputPinned.addressOf(0).reinterpret<UByteVar>(), input.size.toUInt(), digestPinned.addressOf(0))
+            }
         }
     }
     return digest.toByteArray()

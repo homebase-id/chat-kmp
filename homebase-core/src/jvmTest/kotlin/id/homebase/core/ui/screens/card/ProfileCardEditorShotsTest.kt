@@ -3,6 +3,10 @@ package id.homebase.core.ui.screens.card
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +59,9 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.core.ui.screens.contactbook.CreateCircleError
+import id.homebase.core.ui.screens.contactbook.CreateCircleSheet
+import id.homebase.core.ui.screens.contactbook.CreateCircleUiState
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -91,6 +98,7 @@ class ProfileCardEditorShotsTest {
         val completesToggle: Boolean = false,
         val failsToggle: Boolean = false,
         val showCard: Boolean = true,
+        val newCircle: Boolean = false,
         val act: ComposeUiTest.() -> Unit = {},
     )
 
@@ -107,10 +115,14 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides(palette = CardPalette(accent = "#F26B5B"), socials = "bar", type = CardTypeface(display = "newsreader")),
     )
 
-    private val schemed = base.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45").with(CardOption.ACCENT, "#F2B84B"))
+    private val boardForest = CardDesignSpecs.of(CardDesign.BOARD)!!.schemes.first { it.id == "forest" }
+    private val schemed = base.copy(
+        previewDesign = CardDesign.BOARD,
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, boardForest.ground).with(CardOption.ACCENT, boardForest.accents.first()),
+    )
     private val collageSchemed = base.copy(
         previewDesign = CardDesign.COLLAGE,
-        previewOverrides = CardOverrides().with(CardOption.COLOURS, "#DDE5D3"),
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, CardDesignSpecs.of(CardDesign.COLLAGE)!!.schemes.first { it.id == "mist" }.ground),
     )
     private val dossierSchemed = base.copy(
         previewDesign = CardDesign.DOSSIER,
@@ -288,8 +300,8 @@ class ProfileCardEditorShotsTest {
     private val editorWork = editorBase.copy(selectedAudience = workCard)
     private val editorPublic = editorBase.copy(selectedAudience = CardAudience.Public)
     private val editorEmpty = base.copy(attributes = emptyList(), circles = contentCircles, cards = listOf(public, card(friendsCard)), selectedAudience = friendsCard)
-    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), showCard: Boolean = true, act: ComposeUiTest.() -> Unit = {}) =
-        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, showCard = showCard, act = act)
+    private fun editor(name: String, state: ProfileCardUiState, w: Int = REDMI_W, h: Int = REDMI_H, fontScale: Float = 1f, rtl: Boolean = false, photo: CardPhotoUi = CardPhotoUi(null, false, true, false), showCard: Boolean = true, newCircle: Boolean = false, act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, mode = EditorMode.Content, widthDp = w, heightDp = h, fontScale = fontScale, rtl = rtl, photo = photo, showCard = showCard, newCircle = newCircle, act = act)
 
     private fun templateCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
         ProfileCard(Uuid.NIL, Uuid.NIL, audience, it.design, it.overrides)
@@ -331,6 +343,120 @@ class ProfileCardEditorShotsTest {
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
     )
+
+    private fun polishCustomise(name: String, state: ProfileCardUiState, act: ComposeUiTest.() -> Unit = {}) =
+        Shot(name, state, EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, act = act)
+
+    // Each card wears its real template plus an accent, and the circles have emoji, as a filled account would.
+    private fun filledCard(audience: CardAudience) = cardTemplateFor(audience)!!.let {
+        val accent = CardDesignSpecs.accentsFor(it.design, it.overrides.palette?.ground).first()
+        card(audience, it.design).copy(overrides = it.overrides.with(CardOption.ACCENT, accent))
+    }
+    private val polishBase = editorBase.copy(
+        cards = listOf(filledCard(CardAudience.Public), filledCard(friendsCard), filledCard(workCard)),
+        circles = listOf(
+            CardCircle(FAMILY_CIRCLE_ID, "Family"),
+            CardCircle(FRIENDS_CIRCLE_ID, "Friends", "\uD83E\uDDD7"),
+            CardCircle(WORK_CIRCLE_ID, "Work", "\uD83D\uDCBC"),
+        ),
+    )
+    private val polishWork = polishBase.copy(selectedAudience = workCard)
+
+    private val polishShots = listOf(
+        editor("p01-edit-profile-new-circle", polishBase, newCircle = true),
+        editor("p02-edit-profile-preview", polishWork, act = {
+            onAllNodesWithContentDescription("Preview").onFirst().performClick()
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
+        Shot(
+            "p03-content-style",
+            polishBase.copy(previewDesign = CardDesign.BOARD),
+            EditorStep.Customise,
+            widthDp = REDMI_W,
+            heightDp = REDMI_H,
+            act = tool("Content style"),
+        ),
+        polishCustomise("p24-styles-board", schemed),
+        polishCustomise("p25-styles-poster", base.copy(previewDesign = CardDesign.POSTER)),
+        polishCustomise("p26-styles-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[3], CardDesign.BOARD))),
+        Shot("p27-styles-font-scale", base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, widthDp = REDMI_W, heightDp = REDMI_H, fontScale = 1.6f),
+        Shot("p28-styles-wide", schemed, EditorStep.Customise, widthDp = 900, heightDp = 820),
+        Shot("p29-styles-small-order", base.copy(previewDesign = CardDesign.BOARD), EditorStep.Customise, widthDp = 360, heightDp = 640, act = tool("Section order")),
+        Shot("p30-styles-wide-applied", base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().withStyle(cardStylesFor(CardDesign.BOARD)[2], CardDesign.BOARD)), EditorStep.Customise, widthDp = 1200, heightDp = 820),
+        polishCustomise("p09-accent-dark-scheme", schemed, tool("Accent colour")),
+        polishCustomise("p10-accent-light-scheme", collageSchemed, tool("Accent colour")),
+        polishCustomise("p11-accent-default-scheme", base, tool("Accent colour")),
+        polishCustomise(
+            "p12-accent-saved-off-palette",
+            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.COLOURS, boardForest.ground).with(CardOption.ACCENT, "#123456")),
+            tool("Accent colour"),
+        ),
+        polishCustomise("p13-colours-row", schemed),
+        polishCustomise("p31-styles-bare-default", base.copy(previewDesign = CardDesign.COLLAGE)),
+        polishCustomise("p32-styles-friends-template-sage", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = cardTemplateFor(friendsCard)!!.overrides)),
+        polishCustomise("p34-styles-public-template-mint", base.copy(previewDesign = CardDesign.LINKS, previewOverrides = PUBLIC_CARD_TEMPLATE.overrides)),
+        polishCustomise(
+            "p35-styles-default-keeps-fonts",
+            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.DISPLAY_FONT, "caveat").with(CardOption.PORTRAIT_SHAPE, "ellipse").prunedFor(CardDesign.BOARD)),
+        ),
+    ) + CardDesign.all.flatMap { design ->
+        listOf(1f, 1.6f).map { scale ->
+            Shot("p33-styles-$design-360-x$scale", base.copy(previewDesign = design), EditorStep.Customise, widthDp = 360, heightDp = 720, fontScale = scale)
+        }
+    } + listOf(
+        polishCustomise("p14-colours-saved-off-design", base.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45"))),
+    )
+
+    @Test
+    fun polishedEditorSurfacesRender() {
+        for (dark in listOf(false, true)) {
+            for (shot in polishShots) render(shot, dark)
+        }
+    }
+
+    @Test
+    fun polishedIntroRendersTheNewCircleTile() {
+        for (dark in listOf(false, true)) {
+            runDesktopComposeUiTest(width = (REDMI_W * SCALE).toInt(), height = (REDMI_H * SCALE).toInt()) {
+                mainClock.autoAdvance = false
+                setContent {
+                    themed(dark) {
+                        CardIntro(
+                            uiState = polishBase,
+                            tiles = emptyMap(),
+                            host = null,
+                            revision = 0,
+                            onOpen = {},
+                            onClose = {},
+                            onRetry = {},
+                            onCapture = {},
+                            onTilePainted = {},
+                            onNewCircle = {},
+                        )
+                    }
+                }
+                mainClock.advanceTimeBy(SETTLE_MS)
+                save("p04-intro-new-circle", dark)
+            }
+        }
+    }
+
+    @Test
+    fun polishedCreateCircleSheetRendersEveryState() {
+        val filled = CreateCircleUiState(open = true, name = "Climbing", emoji = "\uD83E\uDDD7", description = "Tuesday gym night")
+        for (dark in listOf(false, true)) {
+            for ((name, state) in listOf(
+                "p05-create-circle-empty" to CreateCircleUiState(open = true),
+                "p06-create-circle-filled" to filled,
+                "p07-create-circle-creating" to filled.copy(isCreating = true),
+                "p08-create-circle-error" to filled.copy(error = CreateCircleError.NeedsPermission),
+            )) {
+                renderPopup(name, dark, REDMI_W, REDMI_H, backdrop = { EditorShot(editor(name, polishBase, newCircle = true)) }) {
+                    CreateCircleSheet(state, {}, {}, {}, {}, {}, {})
+                }
+            }
+        }
+    }
 
     @Test
     fun contentEditorRendersEveryState() {
@@ -420,14 +546,21 @@ class ProfileCardEditorShotsTest {
         save(shot.name, dark)
     }
 
-    private fun renderPopup(name: String, dark: Boolean, content: @Composable () -> Unit) = runDesktopComposeUiTest(
-        width = (PHONE_W * SCALE).toInt(),
-        height = (PHONE_H * SCALE).toInt(),
+    private fun renderPopup(
+        name: String,
+        dark: Boolean,
+        widthDp: Int = PHONE_W,
+        heightDp: Int = PHONE_H,
+        backdrop: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(CardDesign.COLLAGE)))) },
+        content: @Composable () -> Unit,
+    ) = runDesktopComposeUiTest(
+        width = (widthDp * SCALE).toInt(),
+        height = (heightDp * SCALE).toInt(),
     ) {
         mainClock.autoAdvance = false
         setContent {
             themed(dark) {
-                Box(Modifier.fillMaxSize().background(Color(CardDesign.baseArgb(CardDesign.COLLAGE))))
+                backdrop()
                 content()
             }
         }
@@ -478,6 +611,45 @@ class ProfileCardEditorShotsTest {
         }
     }
 
+    private fun customiseStep(state: ProfileCardUiState, step: EditorStep, mode: EditorMode, onStyle: (ResolvedCardStyle) -> Unit = {}, check: ComposeUiTest.() -> Unit) {
+        runDesktopComposeUiTest(width = (PHONE_W * SCALE).toInt(), height = (PHONE_H * SCALE).toInt()) {
+            setContent {
+                CompositionLocalProvider(LocalDensity provides Density(SCALE, 1f)) {
+                    HomebaseTheme(darkTheme = false, updatesSystemChrome = false) {
+                        CardExpressiveTheme {
+                            ProfileCardEditorContent(
+                                uiState = state,
+                                mode = mode,
+                                step = step,
+                                onStep = {},
+                                onBack = {},
+                                onSelect = {},
+                                onOption = { _, _ -> },
+                                onBlockOrder = {},
+                                onSave = {},
+                                onStyle = onStyle,
+                                snackbarHostState = remember { SnackbarHostState() },
+                            ) { Box(Modifier.fillMaxSize()) }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            check()
+        }
+    }
+
+    @Test
+    fun theCustomiseStepListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
+        val applied = mutableListOf<ResolvedCardStyle>()
+        customiseStep(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
+            for (name in listOf("Default", "Midnight", "Wine", "Pine", "Cobalt", "Rust", "Slate", "Plum")) onNodeWithText(name).assertExists()
+            for (name in listOf("Forest", "Sage", "Paper", "Purple")) onAllNodesWithText(name).assertCountEquals(0)
+            onNodeWithText("Wine").performClick()
+            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "wine" }), applied)
+        }
+    }
+
     @Test
     fun editorRendersEveryState() {
         for (dark in listOf(false, true)) {
@@ -496,46 +668,7 @@ class ProfileCardEditorShotsTest {
                 LocalLayoutDirection provides if (shot.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
             ) {
                 HomebaseTheme(darkTheme = dark, updatesSystemChrome = false) {
-                    CardExpressiveTheme {
-                        var step by remember { mutableStateOf(shot.step) }
-                        var uiState by remember { mutableStateOf(shot.state) }
-                        ProfileCardEditorContent(
-                            uiState = uiState,
-                            mode = shot.mode,
-                            photo = shot.photo,
-                            showCard = shot.showCard,
-                            step = step,
-                            onStep = { step = it },
-                            onBack = { step = EditorStep.Design },
-                            onSelect = {},
-                            onOption = { _, _ -> },
-                            onBlockOrder = {},
-                            onSave = {},
-                            snackbarHostState = remember { SnackbarHostState() },
-                            // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
-                            onContentAudience = { _, _ ->
-                                uiState = when {
-                                    shot.completesToggle -> uiState.copy(contentSaves = uiState.contentSaves + 1)
-                                    shot.failsToggle -> uiState.copy(contentFailures = uiState.contentFailures + 1)
-                                    else -> uiState.copy(isContentBusy = true)
-                                }
-                            },
-                        ) { layoutWidth ->
-                            when (shot.preview) {
-                                Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))
-                                Preview.Real -> RealCard(dark, shot.state, Modifier.fillMaxSize().laidOutAt(layoutWidth))
-                                else -> CardSurface(
-                                    uiState = shot.state,
-                                    host = null,
-                                    backdrop = { Color(CardDesign.baseArgb(shot.state.design)) },
-                                    onRetry = {},
-                                    paintWhileAttached = {},
-                                    modifier = Modifier.fillMaxSize(),
-                                    skeleton = true,
-                                )
-                            }
-                        }
-                    }
+                    CardExpressiveTheme { EditorShot(shot, dark) }
                 }
             }
         }
@@ -543,6 +676,49 @@ class ProfileCardEditorShotsTest {
         shot.act(this)
         mainClock.advanceTimeBy(SETTLE_MS)
         save(shot.name, dark)
+    }
+
+    @Composable
+    private fun EditorShot(shot: Shot, dark: Boolean = false) {
+        var step by remember { mutableStateOf(shot.step) }
+        var uiState by remember { mutableStateOf(shot.state) }
+        ProfileCardEditorContent(
+            uiState = uiState,
+            mode = shot.mode,
+            photo = shot.photo,
+            showCard = shot.showCard,
+            onNewCircle = {}.takeIf { shot.newCircle },
+            step = step,
+            onStep = { step = it },
+            onBack = { step = EditorStep.Design },
+            onSelect = {},
+            onOption = { _, _ -> },
+            onBlockOrder = {},
+            onSave = {},
+            snackbarHostState = remember { SnackbarHostState() },
+            // A toggle leaves the save in flight, so the busy state shows on the row that was changed.
+            onContentAudience = { _, _ ->
+                uiState = when {
+                    shot.completesToggle -> uiState.copy(contentSaves = uiState.contentSaves + 1)
+                    shot.failsToggle -> uiState.copy(contentFailures = uiState.contentFailures + 1)
+                    else -> uiState.copy(isContentBusy = true)
+                }
+            },
+        ) { layoutWidth ->
+            when (shot.preview) {
+                Preview.Ready -> StandInCard(shot.state.design, shot.state.overrides.palette, Modifier.fillMaxSize().laidOutAt(layoutWidth))
+                Preview.Real -> RealCard(dark, shot.state, Modifier.fillMaxSize().laidOutAt(layoutWidth))
+                else -> CardSurface(
+                    uiState = shot.state,
+                    host = null,
+                    backdrop = { Color(CardDesign.baseArgb(shot.state.design)) },
+                    onRetry = {},
+                    paintWhileAttached = {},
+                    modifier = Modifier.fillMaxSize(),
+                    skeleton = true,
+                )
+            }
+        }
     }
 
     // A web render of the same design from odin-js (card-shots), so the editor is judged against the real page, not a flat stand-in.
@@ -560,21 +736,35 @@ class ProfileCardEditorShotsTest {
     // Real-size type laid out at the viewer's width, so the shot shows the preview's scale-down, not a reflow.
     @Composable
     private fun StandInCard(design: String, palette: CardPalette?, modifier: Modifier) {
-        val name = "Samwise Gamgeex"
+        val name = "Samwise Gamgee"
         val headline = "HOMEBASE / NEW IDENTITY OWNER"
         val link = "samwise.gamgee.demo.rocks/posts"
+        val rows = listOf("Chat with me", "Moments", "Instagram", "LinkedIn", "Website")
         fun hex(value: String) = Color(hexToArgb(value))
         val ink = palette?.ink?.let(::hex) ?: Color(CardDesign.inkArgb(design))
         val ground = palette?.ground?.let(::hex) ?: Color(CardDesign.baseArgb(design))
+        val surface = palette?.surface?.let(::hex) ?: ink.copy(alpha = 0.12f)
+        val surfaceInk = palette?.surfaceInk?.let(::hex) ?: ink
+        val centred = design == CardDesign.BOARD || design == CardDesign.LINKS
         Column(
             modifier = modifier.background(ground).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start,
         ) {
-            Box(Modifier.size(120.dp).background(ink.copy(alpha = 0.3f)))
-            Text(name, style = MaterialTheme.typography.displaySmall, color = ink)
+            Box(Modifier.size(96.dp).clip(CircleShape).background(ink.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                Text("SG", style = MaterialTheme.typography.headlineMedium, color = ink)
+            }
+            Text(name, style = MaterialTheme.typography.headlineMedium, color = ink)
             Text(headline, style = MaterialTheme.typography.labelLarge, color = ink.copy(alpha = 0.7f))
             Text(link, style = MaterialTheme.typography.bodyLarge, color = ink.copy(alpha = 0.7f))
-            palette?.accent?.let { Box(Modifier.size(width = 160.dp, height = 8.dp).background(hex(it))) }
+            palette?.accent?.let {
+                Box(Modifier.size(width = 160.dp, height = 8.dp).clip(CircleShape).background(hex(it)).border(1.dp, ink.copy(alpha = 0.45f), CircleShape))
+            }
+            rows.forEach { row ->
+                Box(Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(16.dp)).background(surface), contentAlignment = Alignment.CenterStart) {
+                    Text(row, style = MaterialTheme.typography.titleSmall, color = surfaceInk, modifier = Modifier.padding(horizontal = 16.dp))
+                }
+            }
         }
     }
 

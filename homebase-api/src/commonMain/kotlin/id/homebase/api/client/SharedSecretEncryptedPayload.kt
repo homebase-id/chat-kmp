@@ -1,5 +1,6 @@
 package id.homebase.api.client
 
+import id.homebase.api.serialization.Base64Bytes
 import kotlinx.serialization.Serializable
 
 /**
@@ -7,6 +8,6 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class SharedSecretEncryptedPayload(
-    val iv: String,    // Base64 encoded IV
-    val data: String   // Base64 encoded encrypted data
+    val iv: Base64Bytes,
+    val data: Base64Bytes
 )

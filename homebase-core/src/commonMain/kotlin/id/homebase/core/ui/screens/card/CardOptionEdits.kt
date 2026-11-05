@@ -9,6 +9,7 @@ fun CardOverrides.valueOf(option: CardOption): String? = when (option) {
     CardOption.PORTRAIT_SHAPE -> portraits?.firstOrNull()?.shape
     CardOption.SOCIALS_STYLE -> socials
     CardOption.BLOCK_ORDER -> null
+    CardOption.BLOCK_STYLE -> blocks?.map { it.presentation }?.distinct()?.singleOrNull()
 }
 
 /** Orderable sections in effect; posts rides with moments. */
@@ -20,24 +21,47 @@ private fun completeOrder(kinds: List<String>): List<String> {
 }
 
 /** Sets a single-valued [option] to [value], or back to the preset for null. */
-fun CardOverrides.with(option: CardOption, value: String?): CardOverrides = when (option) {
-    CardOption.COLOURS -> copy(
-        palette = (CardDesignSpecs.schemeByGround(value)?.applyTo(palette) ?: CardPalette(accent = palette?.accent))
-            .takeUnless { it == CardPalette() },
-    )
+fun CardOverrides.with(
+    option: CardOption,
+    value: String?,
+    presetOrder: List<String> = CardDesignSpecs.ORDERED_KINDS,
+    design: String? = null,
+): CardOverrides = when (option) {
+    CardOption.COLOURS -> {
+        val scheme = CardDesignSpecs.schemeByGround(value)
+        val accent = palette?.accent?.let { saved ->
+            val offered = if (scheme == null) design?.let { CardDesignSpecs.accentsFor(it, null) }.orEmpty() else scheme.accents
+            if (offered.any { it.equals(saved, ignoreCase = true) }) saved else if (scheme == null) null else scheme.accents.first()
+        }
+        copy(palette = (scheme?.applyTo(palette)?.copy(accent = accent) ?: CardPalette(accent = accent)).takeUnless { it == CardPalette() })
+    }
     CardOption.ACCENT -> copy(palette = (palette ?: CardPalette()).copy(accent = value).takeUnless { it == CardPalette() })
     CardOption.DISPLAY_FONT -> copy(type = (type ?: CardTypeface()).copy(display = value).takeUnless { it == CardTypeface() })
     CardOption.TEXT_FONT -> copy(type = (type ?: CardTypeface()).copy(text = value).takeUnless { it == CardTypeface() })
     CardOption.PORTRAIT_SHAPE -> copy(portraits = value?.let { listOf(CardPortrait(shape = it)) })
     CardOption.SOCIALS_STYLE -> copy(socials = value)
     CardOption.BLOCK_ORDER -> this
+    CardOption.BLOCK_STYLE -> withBlockStyle(value, presetOrder)
 }
 
-fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides =
-    copy(blocks = kinds?.let { completeOrder(it) }?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }?.map { CardBlock(it) })
+fun CardOverrides.withBlockOrder(kinds: List<String>?): CardOverrides {
+    val styles = blocks.orEmpty().associate { it.kind to it.presentation }
+    return copy(
+        blocks = kinds?.let { completeOrder(it) }?.flatMap { if (it == "moments") listOf(it, "posts") else listOf(it) }
+            ?.map { CardBlock(it, styles[it] ?: if (it == "posts") styles["moments"] else null) },
+    )
+}
 
 /** Applies a new order of just the [kinds] a design shows, leaving the hidden kinds where they were. */
 fun CardOverrides.withShownBlockOrder(kinds: List<String>, shown: List<String>): CardOverrides {
     val queue = shown.iterator()
     return withBlockOrder(blockOrder().map { if (it in kinds) queue.next() else it })
+}
+
+private fun CardOverrides.withBlockStyle(value: String?, presetOrder: List<String>): CardOverrides {
+    if (blocks == null && value == null) return this
+    val ordered = if (blocks == null) withBlockOrder(presetOrder) else this
+    val styled = ordered.blocks.orEmpty().map { it.copy(presentation = value) }
+    val unchanged = value == null && ordered.blockOrder() == completeOrder(presetOrder)
+    return copy(blocks = styled.takeUnless { unchanged })
 }
