@@ -1,7 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
@@ -12,7 +11,6 @@ import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.config.filesyncAppRegistration
-import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -137,10 +135,10 @@ internal class FilesyncSharingController(
         scope.launch {
             val expiresAt = expiry.expiresAt(Clock.System.now().toEpochMilliseconds())
             val shared = attempt("sharing ${files.size} nodes") {
-                val tree = withDescendants(files)
+                val tree = treeOf(files, handles(), listFolders)
                 val to = audience()
-                val made = sharing.share(tree.values.toList(), to, access, expiresAt)
-                Triple(to, made, describe(files, tree.values, made.circleId, to, access, expiresAt, note))
+                val made = sharing.share(tree.handles.values.toList(), to, access, expiresAt)
+                Triple(to, made, describe(files, tree.nodes.values, made.circleId, to, access, expiresAt, note))
             }
             update { if (shared != null) it.copy(sending = false, shareWith = null) else it.copy(sending = false) }
             val (to, made, description) = shared ?: return@launch
@@ -243,7 +241,7 @@ internal class FilesyncSharingController(
         val shared = guarded { sharing.sharedWithAudience(group) }?.takeIf { it.isNotEmpty() } ?: return
         val top = sharedLevel(shared.map { it.node }, parent = null)
         val access = if (shared.all { it.access == FilesyncAccess.Edit }) FilesyncAccess.Edit else FilesyncAccess.View
-        val description = describe(top, shared.map { it.handle }, group.circleId, group, access, expiresAt = null, note = "")
+        val description = describe(top, shared.map { it.node }, group.circleId, group, access, expiresAt = null, note = "")
         tell(added, description).takeIf { it.isNotEmpty() }?.let { send(FilesyncUiEvent.NotTold(it)) }
     }
 
@@ -421,8 +419,7 @@ internal class FilesyncSharingController(
 
     // The owner revoked Filesync or its token ran out: sharing is off until the user turns it on and signs in again.
     private suspend fun forgetIfRevoked(e: Exception) {
-        if (e !is UnauthorizedException) return
-        sharing.signOut()
+        if (!sharing.signOutIfRefused(e)) return
         update { it.copy(on = false, turningOn = false) }
     }
 
@@ -436,15 +433,24 @@ internal suspend fun withDescendants(
     nodes: List<FilesyncNode>,
     handles: Map<Uuid, FilesyncHandle>,
     listFolders: suspend (List<Uuid>) -> FilesyncNodes,
-): Map<Uuid, FilesyncHandle> {
+): Map<Uuid, FilesyncHandle> = treeOf(nodes, handles, listFolders).handles
+
+/** [withDescendants], with the nodes too. */
+internal suspend fun treeOf(
+    nodes: List<FilesyncNode>,
+    handles: Map<Uuid, FilesyncHandle>,
+    listFolders: suspend (List<Uuid>) -> FilesyncNodes,
+): FilesyncNodes {
     val found = nodes.mapNotNull { node -> handles[node.nodeId]?.let { node.nodeId to it } }.toMap(LinkedHashMap())
+    val foundNodes = nodes.filter { it.nodeId in found }.associateByTo(LinkedHashMap()) { it.nodeId }
     var folders = nodes.filter { it.isFolder }.map { it.nodeId }
     while (folders.isNotEmpty()) {
         val below = listFolders(folders)
         folders = below.nodes.values.filter { it.isFolder && it.nodeId !in found }.map { it.nodeId }
         below.handles.forEach { (id, handle) -> found.getOrPut(id) { handle } }
+        below.nodes.forEach { (id, node) -> foundNodes.getOrPut(id) { node } }
     }
-    return found
+    return FilesyncNodes(foundNodes, found)
 }
 
 /** What [parent] holds of [shared]; at the top (null), whatever's shared without the folder it's in. */
@@ -453,10 +459,10 @@ internal fun sharedLevel(shared: List<FilesyncNode>, parent: Uuid?): List<Filesy
     return shared.filter { if (parent == null) it.parentId !in folders else it.parentId == parent }
 }
 
-/** What a share's chat message says: its top folder, or first file, and how much it holds. */
+/** What a share's chat message says: its top folder, or first file, and how much it holds outside Recently deleted. */
 internal fun describe(
     top: List<FilesyncNode>,
-    tree: Collection<FilesyncHandle>,
+    tree: Collection<FilesyncNode>,
     circleId: Uuid,
     audience: FilesyncAudience,
     access: FilesyncAccess,
@@ -465,13 +471,13 @@ internal fun describe(
 ): FileShareDescriptor {
     // As the browser lists them: folders first, then by name.
     val first = top.arranged(FilesyncSort()).first()
-    val files = tree.filter { it.fileType == FilesyncProtocol.FileFileType }
+    val live = tree.filter { it.removedMs == null }.totals()
     return FileShareDescriptor(
         circleId = circleId.toString(),
         title = first.name.truncateToCodePoints(FileShareDescriptor.MAX_TITLE_CODEPOINTS),
         titleIsFolder = first.isFolder,
-        files = files.size,
-        bytes = files.sumOf { it.sizeBytes ?: 0L },
+        files = live.files,
+        bytes = live.bytes,
         access = if (access == FilesyncAccess.Edit) FileShareDescriptor.ACCESS_EDIT else FileShareDescriptor.ACCESS_VIEW,
         group = (audience as? FilesyncAudience.Group)?.name?.truncateToCodePoints(FileShareDescriptor.MAX_GROUP_CODEPOINTS),
         note = note.trim().ifEmpty { null }?.truncateToCodePoints(FileShareDescriptor.MAX_NOTE_CODEPOINTS),

@@ -26,7 +26,11 @@ data class FileShareDescriptor(
 
     fun circle(): Uuid? = Uuid.parseOrNull(circleId)
 
-    fun summaryLine(): String = if (files == 1 && !titleIsFolder) title else "$title · $files files"
+    fun summaryLine(): String = when {
+        files == 1 && !titleIsFolder -> title
+        files == 1 -> "$title · 1 file"
+        else -> "$title · $files files"
+    }
 
     fun isValid(): Boolean =
         circle() != null &&
@@ -39,8 +43,9 @@ data class FileShareDescriptor(
     companion object {
         const val ACCESS_VIEW = "view"
         const val ACCESS_EDIT = "edit"
-        const val MAX_TITLE_CODEPOINTS = 255
+        // Tight, so the descriptor stays well under the header's 7 KB once encrypted.
+        const val MAX_TITLE_CODEPOINTS = 80
         const val MAX_GROUP_CODEPOINTS = 80
-        const val MAX_NOTE_CODEPOINTS = 1000
+        const val MAX_NOTE_CODEPOINTS = 280
     }
 }

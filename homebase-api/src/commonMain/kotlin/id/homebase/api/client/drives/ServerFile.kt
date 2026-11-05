@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives
 
+import kotlin.coroutines.cancellation.CancellationException
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
@@ -50,6 +51,12 @@ data class ServerFile(
 
             resolvedKeyHeader = try {
                 sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret, externalFileKey?.let { key -> { locked -> key.open(fileId, shares.orEmpty(), locked) } })
+            } catch (e: FileDecryptionException.Withheld) {
+                throw e
+            } catch (e: CancellationException) {
+                // Only an outside key suspends on the network; any other path keeps reporting as it did.
+                if (externalFileKey != null) throw e
+                throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             } catch (e: Throwable) {
                 throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             }
@@ -90,19 +97,24 @@ data class ServerFile(
 suspend fun EncryptedKeyHeader.open(
     driveId: Uuid,
     sharedSecret: SecureByteArray,
-    external: (suspend (lockedFileKey: ByteArray) -> SecureByteArray)? = null,
+    external: (suspend (lockedFileKey: ByteArray) -> SecureByteArray?)? = null,
 ): KeyHeader =
     when (type) {
         EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
         EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
         EncryptionType.Sealed -> openSealed(driveId)
-        EncryptionType.FileKey, EncryptionType.Share ->
-            KeyHeader(iv, (external ?: throw FileDecryptionException.NoFileKey())(encryptedAesKey).toByteArray().toSecureByteArray())
+        EncryptionType.FileKey, EncryptionType.Share -> {
+            val key = (external ?: throw FileDecryptionException.NoFileKey())(encryptedAesKey) ?: throw FileDecryptionException.Withheld()
+            KeyHeader(iv, key.toByteArray().toSecureByteArray())
+        }
     }
 
-/** The key a key header doesn't carry: a comment's file's, or a shared file's, unlocked from its [shares]' row. */
+/**
+ * The key a key header doesn't carry: a comment's file's, or a shared file's, unlocked from its [shares]' row. Null
+ * when this reader can't open it yet: the file is left out of the page ([FileDecryptionException.Withheld]).
+ */
 fun interface ExternalFileKey {
-    suspend fun open(fileId: Uuid, shares: List<ShareRow>, lockedFileKey: ByteArray): SecureByteArray
+    suspend fun open(fileId: Uuid, shares: List<ShareRow>, lockedFileKey: ByteArray): SecureByteArray?
 }
 
 // The sealed value is the file's IV then its AES key, as odin-js openClientLockedKeyHeader reads it.
@@ -245,4 +257,8 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
 
     class NoFileKey :
         FileDecryptionException("A key header whose key comes from outside, read without it")
+
+    /** The outside key isn't this reader's to use yet ([ExternalFileKey] gave none). */
+    class Withheld :
+        FileDecryptionException("The file's outside key isn't open to this reader yet")
 }

@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.filesync
 
 import id.homebase.api.client.CryptoHelper
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.CircleShareKeyProvider
@@ -127,6 +128,9 @@ class FilesyncSharingTest {
     private var samGrantsWrite = true
     private var samHasFilesync = true
     private var frodoReviewedUs = true
+    private var downPeers = emptySet<String>()
+    private var collaborative = false
+    private var filesyncRefused = false
     private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
     private val groupCircle = Uuid.random()
@@ -142,6 +146,8 @@ class FilesyncSharingTest {
             path.endsWith("/apps/filesync/drives/filesync/public-key") ->
                 if (!samGrantsWrite) return@MockEngine respond("""{"title":"Write access is required"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
                 else if (!samHasFilesync) return@MockEngine respond("""{"title":"Not found"}""", io.ktor.http.HttpStatusCode.NotFound, json)
+                else if (downPeers.any { "/peer/$it/" in path }) return@MockEngine respond("""{"title":"down"}""", io.ktor.http.HttpStatusCode.ServiceUnavailable, json)
+                else if (collaborative) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"collaborative"}"""
                 else if (samReady && notReady.none { "/peer/$it/" in path }) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
                 else return@MockEngine respond("""{"title":"no such drive","errorCode":"invalidRequest"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
             path.endsWith("/connections/circles/create") ->
@@ -162,7 +168,9 @@ class FilesyncSharingTest {
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call, filesyncSecret).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/share-key/members") || path.endsWith("/shares") -> "{}"
             "/shares/" in path && request.method == HttpMethod.Delete -> "{}"
-            path.endsWith("/circles/with-members") -> circles
+            path.endsWith("/circles/with-members") ->
+                if (filesyncRefused && call.asFilesync) return@MockEngine respond("""{"title":"Unauthorized"}""", io.ktor.http.HttpStatusCode.Unauthorized, json)
+                else circles
             path.endsWith("/query-batch") -> sharedPages.removeFirstOrNull() ?: """{"searchResults":[],"hasMoreRows":false}"""
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
             else -> error("unexpected ${request.method} $path")
@@ -340,6 +348,28 @@ class FilesyncSharingTest {
     }
 
     @Test
+    fun aViewShareWithNoEditorsReadsNoMore() = runTest {
+        sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
+
+        assertTrue(calls.none { it.path.endsWith("/query-batch") })
+    }
+
+    @Test
+    fun anEditorStillJoiningIsNeitherAddedAgainNorLeftIn() = runTest {
+        circles = """[
+            {"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"$appId"},"members":["sam.test"]},
+            {"circle":{"id":"$editorsCircle","name":"Filesync editors","slug":"${FilesyncProtocol.EditorsCircleSlug}","appId":"$appId"},"members":[],"pendingMembers":[{"odinId":"sam.test"}]}
+        ]"""
+        sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "readWrite")}],"hasMoreRows":false}"""
+        sharing.syncEditors()
+        assertTrue(calls.none { it.path.endsWith("/add-many") || it.path.endsWith("/revoke") })
+
+        sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "read")}],"hasMoreRows":false}"""
+        sharing.syncEditors()
+        assertEquals(listOf("sam.test"), calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject["odinId"]!!.jsonPrimitive.content })
+    }
+
+    @Test
     fun aShareCarriesItsExpiry() = runTest {
         sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = 1_900_000_000_000)
 
@@ -367,6 +397,37 @@ class FilesyncSharingTest {
         calls.clear()
         upkeep.upkeep()
         assertTrue(calls.isEmpty(), "a phone back in the foreground a minute later asks nothing")
+    }
+
+    @Test
+    fun aDriveWhoseKeyOthersHoldIsRefusedRatherThanLeftWaiting() = runTest {
+        collaborative = true
+
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotAdded> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
+        assertEquals(listOf(sam), e.recipients)
+        assertTrue(calls.none { it.path.endsWith("/shares") })
+    }
+
+    @Test
+    fun oneUnreachableServerLeavesOnlyItsPersonWaitingForTheKey() = runTest {
+        circles = """[{"circle":{"id":"$groupCircle","name":"Hiking","slug":"g0123456789abc","appId":"$appId"},"members":["merry.test","sam.test"]}]"""
+        unsealed = listOf("merry.test", "sam.test")
+        downPeers = setOf("merry.test")
+
+        sharing.sealPending()
+
+        val sealed = decrypted(calls.single { it.path.endsWith("/share-key/members") }, filesyncSecret).jsonObject["members"]!!.jsonArray
+        assertEquals(listOf("sam.test"), sealed.map { it.jsonObject["odinId"]!!.jsonPrimitive.content })
+    }
+
+    @Test
+    fun aRefusalOfTheAppsOwnTokenLeavesFilesyncSignedIn() = runTest {
+        assertEquals(false, sharing.signOutIfRefused(UnauthorizedException()))
+        assertTrue(FilesyncSession.signedIn.value)
+
+        filesyncRefused = true
+        assertEquals(true, sharing.signOutIfRefused(UnauthorizedException()))
+        assertEquals(false, FilesyncSession.signedIn.value)
     }
 
     @Test

@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.fileshare.FileShareDescriptor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -284,7 +286,8 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
     }
     OutlinedTextField(
         value = note,
-        onValueChange = { note = it },
+        // The chat message carries no more.
+        onValueChange = { note = it.truncateToCodePoints(FileShareDescriptor.MAX_NOTE_CODEPOINTS) },
         label = { Text(stringResource(MR.string.filesync_share_note)) },
         maxLines = 4,
         modifier = Modifier.fillMaxWidth(),

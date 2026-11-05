@@ -1,29 +1,22 @@
 package id.homebase.core.ui.screens.filesync
 
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.OdinId
 import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 class FilesyncShareDescriptionTest {
     private val circleId = Uuid.random()
     private val sam = FilesyncAudience.Person(OdinId("sam.test"))
 
-    private fun node(name: String, folder: Boolean) = FilesyncNode(Uuid.random(), FilesyncProtocol.RootNodeId, folder, name, modifiedMs = null, sizeBytes = null)
-
-    private fun handle(fileType: Int, size: Long? = null) = FilesyncHandle(
-        Uuid.random(), null, fileType, KeyHeader.newRandom16(),
-        JsonObject(size?.let { mapOf("size" to JsonPrimitive(it)) } ?: emptyMap()), null,
-    )
+    private fun node(name: String, folder: Boolean, size: Long? = null, removed: Boolean = false) =
+        FilesyncNode(Uuid.random(), FilesyncProtocol.RootNodeId, folder, name, modifiedMs = null, sizeBytes = size, removed = removed)
 
     @Test
-    fun aFolderNamesTheShareAndOnlyFilesAreCounted() {
-        val tree = listOf(handle(FilesyncProtocol.FolderFileType), handle(FilesyncProtocol.FileFileType, 100), handle(FilesyncProtocol.FileFileType, 50))
+    fun aFolderNamesTheShareAndOnlyLiveFilesAreCounted() {
+        val tree = listOf(node("Photos", true), node("a.jpg", false, 100), node("b.jpg", false, 50), node("gone.jpg", false, 999, removed = true))
 
         val described = describe(listOf(node("zebra.txt", false), node("Photos", true)), tree, circleId, sam, FilesyncAccess.Edit, 1_900_000_000_000, " see you ")
 
@@ -40,7 +33,7 @@ class FilesyncShareDescriptionTest {
     fun withoutAFolderTheFirstFileByNameNamesItAndAGroupIsNamed() {
         val hiking = FilesyncAudience.Group(circleId, "Hiking", listOf(OdinId("sam.test")))
 
-        val described = describe(listOf(node("b.txt", false), node("A.txt", false)), listOf(handle(FilesyncProtocol.FileFileType)), circleId, hiking, FilesyncAccess.View, null, "  ")
+        val described = describe(listOf(node("b.txt", false), node("A.txt", false)), listOf(node("A.txt", false)), circleId, hiking, FilesyncAccess.View, null, "  ")
 
         assertEquals("A.txt", described.title)
         assertEquals(false, described.titleIsFolder)

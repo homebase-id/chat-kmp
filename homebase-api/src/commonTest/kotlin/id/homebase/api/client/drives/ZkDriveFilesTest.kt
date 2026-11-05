@@ -307,12 +307,18 @@ class ZkDriveFilesTest {
             }
         """
         val opens = Uuid.random()
-        val byShare = ExternalFileKey { id, _, _ -> if (id == opens) file.aesKey else error("not sealed to this reader yet") }
+        val byShare = ExternalFileKey { id, _, _ -> if (id == opens) file.aesKey else null }
         val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
 
         val page = queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")},${json(Uuid.random(), "other.pdf")}]}""", SecureByteArray(sharedSecret), byShare)
 
         assertEquals(listOf("plan.pdf"), page.searchResults.map { it.fileMetadata.appData.content })
+
+        // Only a withheld key leaves a file out; any other failure still fails the page.
+        val broken = ExternalFileKey { _, _, _ -> error("the owner's server is down") }
+        assertFailsWith<FileDecryptionException> {
+            queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")}]}""", SecureByteArray(sharedSecret), broken)
+        }
     }
 
     private suspend fun unlockVault() {

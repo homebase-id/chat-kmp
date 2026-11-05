@@ -48,6 +48,7 @@ class FileShareDescriptorTest {
     fun theSummaryNamesTheShareAndItsSizeButThePushDoesnt() {
         assertEquals("Photos · 78 files", MessageContent.FileShare(photos).displayLabel)
         assertEquals("plan.pdf", photos.copy(title = "plan.pdf", titleIsFolder = false, files = 1).summaryLine())
+        assertEquals("Photos · 1 file", photos.copy(files = 1).summaryLine())
         assertEquals(MessageContent.UNPARSEABLE_FILE_SHARE_LABEL, MessageContent.FileShare(photos).notificationLabel)
     }
 }

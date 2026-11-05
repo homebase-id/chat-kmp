@@ -209,10 +209,8 @@ class DriveQueryProvider(
         val files = internal.searchResults.mapNotNull { serverFileJson ->
             try {
                 createServerFileWithSafeMetadata(serverFileJson, secret, externalFileKey)
-            } catch (e: FileDecryptionException) {
-                // A key from outside that won't open (a share not yet sealed to this reader) loses that file, not the page.
-                if (externalFileKey == null) throw e
-                Logger.w(e) { "DriveQueryProvider: left out a file whose outside key didn't open" }
+            } catch (e: FileDecryptionException.Withheld) {
+                // A share not yet open to this reader loses that file, not the page; the key's owner knows why.
                 null
             }
         }

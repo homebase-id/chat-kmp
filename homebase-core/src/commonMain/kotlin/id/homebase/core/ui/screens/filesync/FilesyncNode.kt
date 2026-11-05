@@ -101,10 +101,6 @@ internal data class FilesyncNodeContent(
     val size: Long? = null,
 )
 
-/** The size a file's content records; null for a folder or when it's unreadable. */
-internal val FilesyncHandle.sizeBytes: Long?
-    get() = runCatching { OdinSystemSerializer.json.decodeFromJsonElement(FilesyncNodeContent.serializer(), content).size }.getOrNull()
-
 /** The one file [this] is, which goes out as itself; anything else goes out as a ZIP. */
 internal val List<FilesyncNode>.singleFile: FilesyncNode? get() = singleOrNull()?.takeIf { !it.isFolder }
 

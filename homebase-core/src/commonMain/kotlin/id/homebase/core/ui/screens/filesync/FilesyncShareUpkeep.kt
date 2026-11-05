@@ -1,7 +1,6 @@
 package id.homebase.core.ui.screens.filesync
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -48,18 +47,23 @@ class FilesyncShareUpkeep(
         // A phone comes back online on every return to the foreground.
         if (lastRun?.let { it.elapsedNow() < MIN_INTERVAL } == true) return
         // Sharing was never turned on here.
-        if (!FilesyncSession.restoreFor(credentials)) return
+        if (step("restoring the Filesync sign-in") { FilesyncSession.restoreFor(credentials) } != true) return
         lastRun = TimeSource.Monotonic.markNow()
+        step("sealing keys") { sharing.sealPending() }
+        step("bringing editors up to date") { sharing.syncEditors() }
+    }
+
+    // A failed step mustn't end the collector, nor keep the other from running.
+    private suspend fun <T> step(what: String, block: suspend () -> T): T? =
         try {
-            sharing.sealPending()
-            sharing.syncEditors()
+            block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(e, TAG) { "share upkeep failed" }
-            if (e is UnauthorizedException) sharing.signOut()
+            Logger.w(e, TAG) { "$what failed" }
+            sharing.signOutIfRefused(e)
+            null
         }
-    }
 
     private companion object {
         val MIN_INTERVAL = 5.minutes

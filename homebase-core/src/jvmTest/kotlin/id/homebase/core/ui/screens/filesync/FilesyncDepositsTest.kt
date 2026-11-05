@@ -26,7 +26,7 @@ import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 
-// Every connection may leave a file on the drive (the sharers circle grants Write); theirs shows, saying who put it there.
+// Someone given Edit may add a file anywhere on the drive (the editors circle grants Write); theirs shows, saying who put it there.
 class FilesyncDepositsTest {
     private val frodo = OdinId("frodo.test")
     private val secret = ByteArray(16) { 4 }
