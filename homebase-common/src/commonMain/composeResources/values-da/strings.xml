@@ -2124,4 +2124,18 @@
     <string name="openedfile_open_failed">Filen kunne ikke åbnes.</string>
     <string name="openedfile_save_failed">Filen kunne ikke gemmes. Tjek din forbindelse, og prøv igen.</string>
     <string name="profile_card_style_custom">Tilpasset</string>
+    <string name="profile_card_option_default">Standard</string>
+    <string name="profile_card_colours_cobalt">Kobolt</string>
+    <string name="profile_card_colours_slate">Skifer</string>
+    <string name="profile_card_colours_plum">Blomme</string>
+    <string name="profile_card_colours_green">Grøn</string>
+    <string name="profile_card_colours_purple">Lilla</string>
+    <string name="profile_card_colours_graphite">Grafit</string>
+    <string name="profile_card_colours_light">Lys</string>
+    <string name="profile_card_colours_mist">Dis</string>
+    <string name="profile_card_colours_blue">Blå</string>
+    <string name="profile_card_colours_night">Nat</string>
+    <string name="profile_card_colours_blueprint">Blåtryk</string>
+    <string name="profile_card_colours_paper">Papir</string>
+    <string name="profile_card_colours_dark">Mørk</string>
 </resources>

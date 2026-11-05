@@ -1793,7 +1793,7 @@ class ProfileCardViewModelTest {
     }
 
     @Test
-    fun anEmptyCardSetShowsFourDistinctTemplates() = runTest(dispatcher) {
+    fun anEmptyCardSetShowsEveryTemplate() = runTest(dispatcher) {
         val work = CardCircle(WORK_CIRCLE_ID, "Work")
         val store = FakeCardStore(keepWrites = true)
         val source = FakeSource(profile, defaults = { CardSiteDefaults() }, cardRepository = CardRepository(store)).apply {
@@ -1805,7 +1805,8 @@ class ProfileCardViewModelTest {
         val cards = vm.uiState.value.cards
         assertEquals(4, cards.size)
         assertEquals(setOf(CardDesign.POSTER, CardDesign.COLLAGE, CardDesign.LINKS), cards.map { it.design }.toSet())
-        assertEquals(4, cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
+        // Public and Work both wear the links Default look, so an untouched card selects Default.
+        assertEquals(3, cards.map { it.design to it.overrides.palette?.ground }.distinct().size)
         assertTrue(store.writes.isEmpty())
     }
 
@@ -2005,15 +2006,14 @@ class ProfileCardViewModelTest {
     @Test
     fun applyingAStyleIsOneUnsavedPreviewEditThatRenders() = runTest(dispatcher) {
         val (vm, host, store) = boardVm()
-        val style = cardStylesFor(CardDesign.BOARD).first { it.id == "charcoal" }
+        val style = cardStylesFor(CardDesign.BOARD).first { it.id == "graphite" }
 
         vm.onStyleSelected(style)
 
         val overrides = vm.uiState.value.overrides
         assertEquals(style.ground, overrides.palette?.ground)
         assertEquals(style.accent, overrides.palette?.accent)
-        assertEquals("space-mono", overrides.type?.display)
-        assertEquals("space-mono", overrides.type?.text)
+        assertNull(overrides.type)
         assertTrue(style.matches(overrides))
         assertTrue(vm.uiState.value.canSaveDesign)
         assertTrue(store.writes.isEmpty())
@@ -2050,7 +2050,7 @@ class ProfileCardViewModelTest {
     fun savePassesTheDesignAndOverridesToTheCardWrite() = runTest(dispatcher) {
         val (vm, _, store) = boardVm()
         vm.onDesignSelected(CardDesign.DOSSIER)
-        vm.onOptionSelected(CardOption.ACCENT, "#8B7CF6")
+        vm.onOptionSelected(CardOption.ACCENT, "#9473CA")
         vm.onOptionSelected(CardOption.PORTRAIT_SHAPE, "rounded")
         vm.onBlockOrderChanged(listOf("moments", "chat", "links"))
 
@@ -2060,10 +2060,10 @@ class ProfileCardViewModelTest {
         val written = store.writes.single().data
         assertEquals(JsonPrimitive("dossier"), written["design"])
         val overrides = CardOverrides.fromJson(written["overrides"]!!.jsonObject)
-        assertEquals("#8B7CF6", overrides.palette?.accent)
+        assertEquals("#9473CA", overrides.palette?.accent)
         assertEquals("rounded", overrides.portraits?.first()?.shape)
         assertEquals(listOf("moments", "posts", "chat", "links"), overrides.blocks?.map { it.kind })
-        assertEquals("#8B7CF6", vm.uiState.value.savedOverrides.palette?.accent)
+        assertEquals("#9473CA", vm.uiState.value.savedOverrides.palette?.accent)
         assertNull(vm.uiState.value.previewOverrides)
         assertFalse(vm.uiState.value.hasUnsavedChanges)
     }

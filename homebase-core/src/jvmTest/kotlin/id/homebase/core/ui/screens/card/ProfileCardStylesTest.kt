@@ -10,16 +10,48 @@ class ProfileCardStylesTest {
 
     private val designs = listOf(CardDesign.POSTER, CardDesign.BOARD, CardDesign.COLLAGE, CardDesign.DOSSIER, CardDesign.LINKS)
 
+    private fun default(design: String) = cardStylesFor(design).first()
+
+    // Everything a preset can touch, set to something other than the preset.
+    private fun styled(design: String): CardOverrides {
+        val spec = CardDesignSpecs.of(design)!!
+        val presetOrder = spec.presetOrder
+        return listOf(
+            CardOption.COLOURS to spec.schemes[1].ground,
+            CardOption.ACCENT to spec.schemes[1].accents.last(),
+            CardOption.DISPLAY_FONT to "caveat",
+            CardOption.TEXT_FONT to "space-mono",
+            CardOption.PORTRAIT_SHAPE to "ellipse",
+            CardOption.SOCIALS_STYLE to "handles",
+            CardOption.BLOCK_STYLE to "button",
+        ).fold(CardOverrides()) { edited, (option, value) -> edited.with(option, value, presetOrder, design).prunedFor(design) }
+    }
+
     @Test
-    fun everyDesignHasOneStylePerOwnScheme() {
+    fun everyDesignHasOneStylePerOwnSchemeAndTheFirstIsDefault() {
         for (design in designs) {
             val schemes = CardDesignSpecs.of(design)!!.schemes.map { it.id }
-            assertEquals(schemes, cardStylesFor(design).map { it.id }, design)
+            val styles = cardStylesFor(design)
+            assertEquals(schemes, styles.map { it.id }, design)
+            assertEquals(listOf(true) + List(styles.size - 1) { false }, styles.map { it.isDefault }, design)
         }
     }
 
     @Test
-    fun everyDesignOffersAtLeastFiveStylesBuiltFromItsOwnValues() {
+    fun theDefaultTileIsTheBuiltInLookAndItsSchemeIsThatLookToo() {
+        for (design in designs) {
+            val scheme = CardDesignSpecs.of(design)!!.schemes.first()
+            val style = default(design)
+            assertEquals(argbToHex(CardDesign.baseArgb(design)), style.ground, design)
+            assertEquals(argbToHex(CardDesign.inkArgb(design)), style.ink, design)
+            assertEquals(scheme.ground, style.ground, design)
+            assertEquals(scheme.ink, style.ink, design)
+            assertNull(style.accent, design)
+        }
+    }
+
+    @Test
+    fun everyDesignOffersAtLeastFiveColourOnlyStylesBuiltFromItsOwnValues() {
         for (design in designs) {
             val spec = CardDesignSpecs.of(design)!!
             val styles = cardStylesFor(design)
@@ -27,12 +59,9 @@ class ProfileCardStylesTest {
             for (style in styles) {
                 val scheme = spec.schemes.single { it.ground == style.ground }
                 assertEquals(scheme.ink, style.ink)
-                style.accent?.let { assertTrue(it in scheme.accents) }
-                style.display?.let { assertTrue(it in CardDesignSpecs.FONTS) }
-                style.text?.let { assertTrue(it in CardDesignSpecs.FONTS) }
-                style.portrait?.let { assertTrue(it in CardDesignSpecs.PORTRAIT_SHAPES) }
-                style.socials?.let { assertTrue(it in CardDesignSpecs.SOCIALS_STYLES) }
-                style.blocks?.let { assertTrue(it in CardDesignSpecs.PRESENTATIONS) }
+                val accent = if (style.isDefault || CardOption.ACCENT !in spec.options) null else scheme.accents.first()
+                assertEquals(accent, style.accent, "$design ${style.id}")
+                assertTrue(listOf(style.display, style.text, style.portrait, style.socials, style.blocks).all { it == null }, "$design ${style.id}")
             }
         }
     }
@@ -45,66 +74,75 @@ class ProfileCardStylesTest {
     }
 
     @Test
-    fun aStyleThatHasNoSchemeInTheDesignIsHidden() {
-        val board = CardDesignSpecs.of(CardDesign.BOARD)!!
-        val withoutForest = board.copy(schemes = board.schemes.filter { it.id != "forest" })
-        assertTrue(cardStylesFor(withoutForest).none { it.id == "forest" })
+    fun aDesignWithoutColoursHasNoStyles() {
+        val spec = CardDesignSpecs.of(CardDesign.BOARD)!!
+        assertTrue(cardStylesFor(spec.copy(options = spec.options - CardOption.COLOURS)).isEmpty())
+        assertTrue(cardStylesFor(spec.copy(options = spec.options - CardOption.ACCENT)).all { it.accent == null })
         assertTrue(cardStylesFor("zine").isEmpty())
     }
 
     @Test
-    fun optionsTheDesignLacksAreLeftOutOfTheStyle() {
-        val spec = CardDesignSpecs.of(CardDesign.BOARD)!!
-        val trimmed = spec.copy(options = spec.options - CardOption.ACCENT - CardOption.TEXT_FONT)
-        val style = cardStylesFor(trimmed).first()
-        assertNull(style.accent)
-        assertNull(style.text)
-        assertTrue(style.display != null)
-        assertTrue(cardStylesFor(spec.copy(options = spec.options - CardOption.COLOURS)).isEmpty())
-        val bare = cardStylesFor(spec.copy(options = spec.options - CardOption.PORTRAIT_SHAPE - CardOption.SOCIALS_STYLE - CardOption.BLOCK_STYLE))
-        assertTrue(bare.all { it.portrait == null && it.socials == null && it.blocks == null })
-    }
-
-    @Test
-    fun aDesignWithoutALayoutOptionGetsNoneOfIt() {
-        for (design in designs) {
-            val options = CardDesignSpecs.of(design)!!.options
-            for (style in cardStylesFor(design)) {
-                assertEquals(CardOption.PORTRAIT_SHAPE in options, style.portrait != null, "$design ${style.id} portrait")
-                assertEquals(CardOption.SOCIALS_STYLE in options, style.socials != null, "$design ${style.id} socials")
-                assertEquals(CardOption.BLOCK_STYLE in options, style.blocks != null, "$design ${style.id} blocks")
-            }
-        }
-        assertTrue(cardStylesFor(CardDesign.POSTER).all { it.portrait == null })
-        assertTrue(cardStylesFor(CardDesign.COLLAGE).all { it.blocks == null })
-        assertTrue(cardStylesFor(CardDesign.LINKS).all { it.blocks == null })
-    }
-
-    @Test
     fun applyingAStyleWritesWhatTheManualPickersWrite() {
-        for (design in designs) for (style in cardStylesFor(design)) {
+        for (design in designs) for (style in cardStylesFor(design).filterNot { it.isDefault }) {
             val applied = CardOverrides().withStyle(style, design)
-            val presetOrder = CardDesignSpecs.of(design)!!.presetOrder
-            // As the editor does: each pick is one edit, pruned for the design.
-            val manual = listOf(
-                CardOption.COLOURS to style.ground,
-                CardOption.ACCENT to style.accent,
-                CardOption.DISPLAY_FONT to style.display,
-                CardOption.TEXT_FONT to style.text,
-                CardOption.PORTRAIT_SHAPE to style.portrait,
-                CardOption.SOCIALS_STYLE to style.socials,
-                CardOption.BLOCK_STYLE to style.blocks,
-            ).fold(CardOverrides()) { edited, (option, value) -> edited.with(option, value, presetOrder, design).prunedFor(design) }
+            val manual = listOf(CardOption.COLOURS to style.ground, CardOption.ACCENT to style.accent)
+                .fold(CardOverrides()) { edited, (option, value) -> edited.with(option, value, design = design).prunedFor(design) }
             assertEquals(manual, applied, "$design ${style.id}")
             assertEquals(applied, applied.prunedFor(design))
             assertEquals(style.ground, applied.valueOf(CardOption.COLOURS))
             assertEquals(style.accent, applied.valueOf(CardOption.ACCENT))
-            assertEquals(style.display, applied.valueOf(CardOption.DISPLAY_FONT))
-            assertEquals(style.text, applied.valueOf(CardOption.TEXT_FONT))
-            assertEquals(style.portrait, applied.valueOf(CardOption.PORTRAIT_SHAPE))
-            assertEquals(style.socials, applied.valueOf(CardOption.SOCIALS_STYLE))
-            assertEquals(style.blocks, applied.valueOf(CardOption.BLOCK_STYLE))
             assertTrue(style.matches(applied))
+        }
+    }
+
+    @Test
+    fun aColourStyleLeavesFontsAndLayoutAsTheyWere() {
+        for (design in designs) {
+            val before = styled(design)
+            val style = cardStylesFor(design).last()
+            val applied = before.withStyle(style, design)
+            for (option in listOf(CardOption.DISPLAY_FONT, CardOption.TEXT_FONT, CardOption.PORTRAIT_SHAPE, CardOption.SOCIALS_STYLE, CardOption.BLOCK_STYLE)) {
+                assertEquals(before.valueOf(option), applied.valueOf(option), "$design $option")
+            }
+            assertTrue(style.matches(applied), design)
+        }
+    }
+
+    @Test
+    fun defaultClearsEveryPresetOptionButKeepsTheSectionOrder() {
+        for (design in designs) {
+            val spec = CardDesignSpecs.of(design)!!
+            val reordered = styled(design).withBlockOrder(spec.presetOrder.reversed()).prunedFor(design)
+            val cleared = reordered.withStyle(default(design), design)
+            assertNull(cleared.palette, design)
+            assertNull(cleared.type, design)
+            assertNull(cleared.portraits, design)
+            assertNull(cleared.socials, design)
+            assertTrue(cleared.blocks.orEmpty().all { it.presentation == null }, design)
+            assertEquals(reordered.blockOrder(), cleared.blockOrder(), design)
+            assertTrue(default(design).matches(cleared), design)
+            assertEquals(CardOverrides.EMPTY, styled(design).withStyle(default(design), design), design)
+        }
+    }
+
+    @Test
+    fun aBareCardSelectsDefault() {
+        for (design in designs) {
+            val styles = cardStylesFor(design)
+            assertEquals(listOf(styles.first().id), styles.filter { it.matches(CardOverrides()) }.map { it.id }, design)
+            assertNull(customStyle(styles, CardOverrides(), design), design)
+        }
+    }
+
+    @Test
+    fun anUntouchedTemplatedCardSelectsDefault() {
+        val audiences = listOf(CardAudience.Public) +
+            listOf(FRIENDS_CIRCLE_ID, FAMILY_CIRCLE_ID, WORK_CIRCLE_ID).map { CardAudience.Circle(it, "") }
+        for (audience in audiences) {
+            val template = cardTemplateFor(audience)!!
+            val styles = cardStylesFor(template.design)
+            assertEquals(listOf(styles.first().id), styles.filter { it.matches(template.overrides) }.map { it.id }, "$audience")
+            assertNull(customStyle(styles, template.overrides, template.design), "$audience")
         }
     }
 
@@ -114,48 +152,64 @@ class ProfileCardStylesTest {
             val styles = cardStylesFor(design)
             for (style in styles) {
                 val applied = CardOverrides().withStyle(style, design)
-                assertEquals(listOf(style.id), styles.filter { it.matches(applied) }.map { it.id })
+                assertEquals(listOf(style.id), styles.filter { it.matches(applied) }.map { it.id }, "$design ${style.id}")
                 assertNull(customStyle(styles, applied, design))
             }
-            assertTrue(styles.none { it.matches(CardOverrides()) })
         }
     }
 
     @Test
-    fun changingAnyManualOptionDeselectsTheStyle() {
-        val style = cardStylesFor(CardDesign.BOARD).first()
-        val applied = CardOverrides().withStyle(style, CardDesign.BOARD)
-        val other = CardDesignSpecs.FONTS.first { it != style.display }
-        assertFalse(style.matches(applied.with(CardOption.DISPLAY_FONT, other)))
-        assertFalse(style.matches(applied.with(CardOption.TEXT_FONT, null)))
-        assertFalse(style.matches(applied.with(CardOption.ACCENT, null)))
-        assertFalse(style.matches(applied.with(CardOption.COLOURS, null)))
-        val presetOrder = CardDesignSpecs.of(CardDesign.BOARD)!!.presetOrder
-        for ((option, values) in listOf(
-            CardOption.PORTRAIT_SHAPE to CardDesignSpecs.PORTRAIT_SHAPES,
-            CardOption.SOCIALS_STYLE to CardDesignSpecs.SOCIALS_STYLES,
-            CardOption.BLOCK_STYLE to CardDesignSpecs.PRESENTATIONS,
+    fun anyPresetOptionDeselectsDefault() {
+        val design = CardDesign.BOARD
+        val style = default(design)
+        val presetOrder = CardDesignSpecs.of(design)!!.presetOrder
+        val second = CardDesignSpecs.of(design)!!.schemes[1]
+        for ((option, value) in listOf(
+            CardOption.COLOURS to second.ground,
+            CardOption.ACCENT to second.accents.first(),
+            CardOption.DISPLAY_FONT to "caveat",
+            CardOption.TEXT_FONT to "caveat",
+            CardOption.PORTRAIT_SHAPE to "ellipse",
+            CardOption.SOCIALS_STYLE to "handles",
+            CardOption.BLOCK_STYLE to "row",
         )) {
-            val other = values.first { it != applied.valueOf(option) }
-            assertFalse(style.matches(applied.with(option, other, presetOrder).prunedFor(CardDesign.BOARD)), "$option -> $other")
-            assertFalse(style.matches(applied.with(option, null, presetOrder).prunedFor(CardDesign.BOARD)), "$option -> preset")
+            assertFalse(style.matches(CardOverrides().with(option, value, presetOrder, design).prunedFor(design)), "$option -> $value")
         }
-        assertTrue(style.matches(applied.withBlockOrder(presetOrder.reversed()).prunedFor(CardDesign.BOARD)))
+        assertTrue(style.matches(CardOverrides().withBlockOrder(presetOrder.reversed()).prunedFor(design)))
+    }
+
+    @Test
+    fun changingTheColoursOrAccentDeselectsAColourStyle() {
+        val style = cardStylesFor(CardDesign.BOARD)[1]
+        val applied = CardOverrides().withStyle(style, CardDesign.BOARD)
+        assertFalse(style.matches(applied.with(CardOption.ACCENT, null)))
+        assertFalse(style.matches(applied.with(CardOption.ACCENT, CardDesignSpecs.of(CardDesign.BOARD)!!.schemes[1].accents.last())))
+        assertFalse(style.matches(applied.with(CardOption.COLOURS, null, design = CardDesign.BOARD)))
+        assertTrue(style.matches(applied.with(CardOption.DISPLAY_FONT, "caveat")))
     }
 
     @Test
     fun aCustomTileCarriesTheCardsLayout() {
         val styles = cardStylesFor(CardDesign.BOARD)
-        val edited = CardOverrides().withStyle(styles.first(), CardDesign.BOARD).with(CardOption.PORTRAIT_SHAPE, "ellipse")
+        val edited = CardOverrides().withStyle(styles[1], CardDesign.BOARD).with(CardOption.ACCENT, "#123456").with(CardOption.PORTRAIT_SHAPE, "ellipse")
         val custom = customStyle(styles, edited, CardDesign.BOARD)!!
         assertEquals("ellipse", custom.portrait)
-        assertEquals(styles.first().socials, custom.socials)
-        assertEquals(styles.first().blocks, custom.blocks)
+        assertEquals("#123456", custom.accent)
+        assertEquals(styles[1].ground, custom.ground)
+        assertFalse(custom.isDefault)
+    }
+
+    @Test
+    fun aCardOnARetiredGroundShowsAsCustom() {
+        val legacy = CardDesignSpecs.of(CardDesign.COLLAGE)!!.legacySchemes.first()
+        val saved = CardOverrides(palette = legacy.applyTo(null))
+        val styles = cardStylesFor(CardDesign.COLLAGE)
+        assertEquals(legacy.ground, customStyle(styles, saved, CardDesign.COLLAGE)?.ground)
     }
 
     @Test
     fun manualOptionsStillWorkAfterAStyle() {
-        val style = cardStylesFor(CardDesign.BOARD).first()
+        val style = cardStylesFor(CardDesign.BOARD)[1]
         val applied = CardOverrides().withStyle(style, CardDesign.BOARD).with(CardOption.DISPLAY_FONT, "caveat")
         assertEquals("caveat", applied.valueOf(CardOption.DISPLAY_FONT))
         assertEquals(style.ground, applied.valueOf(CardOption.COLOURS))

@@ -29,11 +29,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
+import id.homebase.resources.profile_card_option_default
 import id.homebase.resources.profile_card_style_custom
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -66,15 +66,13 @@ internal fun CardStyleRow(
 ) {
     val tiles = listOfNotNull(custom) + styles
     val selectedId = custom?.id ?: styles.firstOrNull { it.matches(overrides) }?.id
-    val labels = tiles.map { stringResource(styleLabel(it.id)) }
-    val labelStyles = tiles.map { styleLabelStyle(it.display) }
+    val labels = tiles.map { stringResource(styleLabel(it.id, it.isDefault)) }
+    val labelStyle = MaterialTheme.typography.labelMedium
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     // A tile widens to its own name so none is cut; the drawing stays one size so the row's height is known.
-    val widths = remember(labels, labelStyles, density) {
-        labels.indices.map { i ->
-            maxOf(STYLE_THUMB_WIDTH + STYLE_RING_GAP * 2, with(density) { measurer.measure(labels[i], labelStyles[i]).size.width.toDp() })
-        }
+    val widths = remember(labels, labelStyle, density) {
+        labels.map { maxOf(STYLE_THUMB_WIDTH + STYLE_RING_GAP * 2, with(density) { measurer.measure(it, labelStyle).size.width.toDp() }) }
     }
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val fits = widths.fold(STYLE_SPACING * (tiles.size - 1)) { sum, w -> sum + w } <= maxWidth - STYLE_ROW_INSET * 2
@@ -84,7 +82,7 @@ internal fun CardStyleRow(
                     style = style,
                     design = design,
                     label = labels[i],
-                    labelStyle = labelStyles[i],
+                    labelStyle = labelStyle,
                     selected = style.id == selectedId,
                     enabled = enabled,
                     width = widths[i],
@@ -105,18 +103,6 @@ internal fun CardStyleRow(
             ) { content() }
         }
     }
-}
-
-@Composable
-private fun styleLabelStyle(font: String?): TextStyle {
-    val label = MaterialTheme.typography.labelMedium
-    // Untrimmed, every face fills the same line, so names in different fonts share a midline.
-    return fontPreviewStyle(font).copy(
-        fontSize = label.fontSize,
-        lineHeight = label.lineHeight,
-        letterSpacing = label.letterSpacing,
-        lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
-    )
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -147,12 +133,12 @@ private fun StyleTile(
                 .border(STYLE_RING, ring, RoundedCornerShape(corner + STYLE_RING_GAP))
                 .padding(STYLE_RING_GAP),
         ) {
-            // A design without an accent of its own uses its ink, as the real card does.
+            // With no accent of its own the tile draws the design's preset accent, as the card does.
             CardDesignThumbnail(
                 design = design,
                 groundOverride = Color(hexToArgb(style.ground)),
                 inkOverride = Color(hexToArgb(style.ink)),
-                accentOverride = Color(hexToArgb(style.accent ?: style.ink)),
+                accentOverride = style.accent?.let { Color(hexToArgb(it)) },
                 portrait = style.portrait,
                 blocks = style.blocks,
                 socials = style.socials,
@@ -174,4 +160,8 @@ private fun StyleTile(
     }
 }
 
-private fun styleLabel(id: String): StringResource = if (id == CUSTOM_STYLE_ID) MR.string.profile_card_style_custom else schemeLabel(id)
+private fun styleLabel(id: String, isDefault: Boolean): StringResource = when {
+    isDefault -> MR.string.profile_card_option_default
+    id == CUSTOM_STYLE_ID -> MR.string.profile_card_style_custom
+    else -> schemeLabel(id)
+}

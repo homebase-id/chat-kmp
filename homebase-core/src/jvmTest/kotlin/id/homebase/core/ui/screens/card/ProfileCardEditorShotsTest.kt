@@ -115,10 +115,14 @@ class ProfileCardEditorShotsTest {
         previewOverrides = CardOverrides(palette = CardPalette(accent = "#F26B5B"), socials = "bar", type = CardTypeface(display = "newsreader")),
     )
 
-    private val schemed = base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45").with(CardOption.ACCENT, "#F2B84B"))
+    private val boardForest = CardDesignSpecs.of(CardDesign.BOARD)!!.schemes.first { it.id == "forest" }
+    private val schemed = base.copy(
+        previewDesign = CardDesign.BOARD,
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, boardForest.ground).with(CardOption.ACCENT, boardForest.accents.first()),
+    )
     private val collageSchemed = base.copy(
         previewDesign = CardDesign.COLLAGE,
-        previewOverrides = CardOverrides().with(CardOption.COLOURS, "#DDE5D3"),
+        previewOverrides = CardOverrides().with(CardOption.COLOURS, CardDesignSpecs.of(CardDesign.COLLAGE)!!.schemes.first { it.id == "mist" }.ground),
     )
     private val dossierSchemed = base.copy(
         previewDesign = CardDesign.DOSSIER,
@@ -384,10 +388,17 @@ class ProfileCardEditorShotsTest {
         polishCustomise("p11-accent-default-scheme", base, tool("Accent colour")),
         polishCustomise(
             "p12-accent-saved-off-palette",
-            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45").with(CardOption.ACCENT, "#123456")),
+            base.copy(previewDesign = CardDesign.BOARD, previewOverrides = CardOverrides().with(CardOption.COLOURS, boardForest.ground).with(CardOption.ACCENT, "#123456")),
             tool("Accent colour"),
         ),
         polishCustomise("p13-colours-row", schemed),
+        polishCustomise("p31-styles-bare-default", base.copy(previewDesign = CardDesign.COLLAGE)),
+        polishCustomise("p32-styles-friends-template-default", base.copy(previewDesign = CardDesign.COLLAGE, previewOverrides = cardTemplateFor(friendsCard)!!.overrides)),
+    ) + CardDesign.all.flatMap { design ->
+        listOf(1f, 1.6f).map { scale ->
+            Shot("p33-styles-$design-360-x$scale", base.copy(previewDesign = design), EditorStep.Customise, widthDp = 360, heightDp = 720, fontScale = scale)
+        }
+    } + listOf(
         polishCustomise("p14-colours-saved-off-design", base.copy(previewOverrides = CardOverrides().with(CardOption.COLOURS, "#1E5B45"))),
     )
 
@@ -627,10 +638,10 @@ class ProfileCardEditorShotsTest {
     fun theCustomiseStepListsOnlyTheStylesTheOpenDesignSupportsAndAppliesOneOnTap() {
         val applied = mutableListOf<ResolvedCardStyle>()
         customiseStep(base.copy(previewDesign = CardDesign.POSTER), EditorStep.Customise, EditorMode.Design, onStyle = { applied += it }) {
-            for (name in listOf("Midnight", "Wine", "Pine", "Cobalt", "Rust")) onNodeWithText(name).assertExists()
-            for (name in listOf("Forest", "Sage", "Paper")) onAllNodesWithText(name).assertCountEquals(0)
-            onNodeWithText("Wine").performClick()
-            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "wine" }), applied)
+            for (name in listOf("Default", "Green", "Cobalt", "Slate", "Plum")) onNodeWithText(name).assertExists()
+            for (name in listOf("Purple", "Mist", "Paper")) onAllNodesWithText(name).assertCountEquals(0)
+            onNodeWithText("Cobalt").performClick()
+            assertEquals(listOf(cardStylesFor(CardDesign.POSTER).first { it.id == "cobalt" }), applied)
         }
     }
 

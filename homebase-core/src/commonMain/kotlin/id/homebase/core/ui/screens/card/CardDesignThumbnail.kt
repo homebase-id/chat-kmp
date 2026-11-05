@@ -12,13 +12,13 @@ import androidx.compose.ui.graphics.drawscope.rotate
 
 internal const val CARD_THUMB_ASPECT = 0.66f
 
-// Stylised, not the page's accent: Poster's preset accent is its ink, which would erase the schematic's accent bar.
+// The preset accent each page draws (odin-js cards/presets.ts); Poster's is its ink.
 private fun thumbnailAccentArgb(design: String): Long = when (design) {
-    CardDesign.POSTER -> 0xFFF26B5B
-    CardDesign.COLLAGE -> 0xFFB4553A
-    CardDesign.DOSSIER -> 0xFF4FD1C5
+    CardDesign.POSTER -> 0xFFF4F0EA
+    CardDesign.COLLAGE -> 0xFF425985
+    CardDesign.DOSSIER -> 0xFF8FAEEA
     CardDesign.LINKS -> 0xFF1A66D6
-    else -> 0xFFF2B84B
+    else -> 0xFFB6C5FA
 }
 
 /** A schematic of the design's layout, so picking reads as picking a look rather than a word. */
