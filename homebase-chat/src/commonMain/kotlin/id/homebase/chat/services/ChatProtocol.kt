@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.sync.database.TombstoneRetention
 import kotlin.uuid.Uuid
@@ -92,6 +93,12 @@ object ChatProtocol {
      */
     const val ChatViewOnceMessageDataType = TombstoneRetention.VIEW_ONCE_DATA_TYPE
 
+    /** Agent-composed interactive card: header descriptor plus a tree payload under [PAYLOAD_KEY_AGENT_UI]. See AGENT_UI.md. */
+    const val ChatAgentUiMessageDataType = 218
+
+    /** A person's action on an [ChatAgentUiMessageDataType] card, sent back to the agent. See AGENT_UI.md. */
+    const val ChatAgentUiActionMessageDataType = 219
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */
@@ -164,9 +171,10 @@ object ChatProtocol {
     // Server-side constraint: payload keys must match `^[a-z0-9_]{8,10}$`. "chat_location"
     // (13 chars) was rejected with 400 "Missing payload key"; "chat_loc" (8 chars) fits.
     const val PAYLOAD_KEY_LOCATION = "chat_loc"
+    const val PAYLOAD_KEY_AGENT_UI = "agent_ui"
 
     const val DefaultPayloadKey = "dflt_key"
     const val MaxDescriptorContentLength = 1024
-    const val MaxHeaderContentBytes = 7000
+    const val MaxHeaderContentBytes = HomebaseProtocol.MaxHeaderContentBytes
 
 }

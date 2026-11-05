@@ -243,7 +243,7 @@ class ChatMessageStreamMapperTest {
     fun mapToMessageData_unknownHigherDataType_mapsToUnknown() = runTest {
         val header = buildChatMessageHeader(
             localAppDataJson = null,
-            dataType = 218,
+            dataType = 999,
             rawHeaderContent = """{"kind":"image"}""",
             payloadsJson = """[{"key":"chat_web0","contentType":"image/jpeg","bytesWritten":10,"lastModified":1}]""",
         )
