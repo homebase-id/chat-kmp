@@ -1,8 +1,8 @@
 package id.homebase.core.ui.screens.moments
 
-import androidx.lifecycle.ViewModel
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
@@ -173,9 +173,6 @@ class MomentsFeedViewModel(
                 _uiState.update { it.copy(feedPaneWidth = dp?.dp) }
             }
         }
-    }
-
-    init {
         // The service emits in its own canonical order (by userDate). The view
         // mode preference picks between Timeline (sort by post creation) and
         // Album (sort by userDate) — applying the sort here keeps the service
