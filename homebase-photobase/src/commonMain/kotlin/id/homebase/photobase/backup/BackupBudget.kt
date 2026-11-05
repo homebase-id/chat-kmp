@@ -25,6 +25,10 @@ data class BackupRunRequest(
     /** Ignore the checkpoint this once: after an iOS background launch deltas can miss assets. */
     val forceFullScan: Boolean = false,
 ) {
+    /** A push or refresh window is about 25 seconds, which an iCloud download often won't fit. */
+    val mayDownloadFromCloud: Boolean
+        get() = trigger != BackupTrigger.Push && trigger != BackupTrigger.BackgroundRefresh
+
     /** The user has the app open. */
     val isInteractive: Boolean
         get() = trigger == BackupTrigger.Foreground || trigger == BackupTrigger.UserRequested

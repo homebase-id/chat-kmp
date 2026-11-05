@@ -6,6 +6,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.core.photobase.PhotobaseProtocol
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -33,6 +34,7 @@ internal fun fullListing(vararg assets: DeviceAsset, checkpoint: Map<String, Str
 internal class FakeSource(var next: DeviceChanges = fullListing()) : DeviceChangeSource {
     val checkpointsSeen = mutableListOf<Map<String, String>>()
     var failure: Exception? = null
+    val onlyInCloud = mutableSetOf<String>()
 
     override suspend fun changes(checkpoint: Map<String, String>, albumIds: Set<String>, wantCurrentIds: Boolean): DeviceChanges {
         checkpointsSeen += checkpoint
@@ -40,8 +42,10 @@ internal class FakeSource(var next: DeviceChanges = fullListing()) : DeviceChang
         return next
     }
 
-    override suspend fun export(assetId: String, mediaType: BackupMediaType): ExportedAsset =
-        ExportedAsset(listOf(ExportedPart(ExportedPartRole.Primary, assetId, "image/jpeg", isTemporary = false)), assetId)
+    override suspend fun export(assetId: String, mediaType: BackupMediaType): ExportedAsset {
+        if (assetId in onlyInCloud && currentCoroutineContext()[NoCloudDownloads] != null) throw AssetNotOnDeviceException()
+        return ExportedAsset(listOf(ExportedPart(ExportedPartRole.Primary, assetId, "image/jpeg", isTemporary = false)), assetId)
+    }
 
     override suspend fun albums(): List<DeviceAlbum> = emptyList()
 }

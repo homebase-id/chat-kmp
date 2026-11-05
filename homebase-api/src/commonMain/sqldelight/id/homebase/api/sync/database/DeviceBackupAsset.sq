@@ -53,6 +53,11 @@ WHERE state = :state AND nextAttemptAt <= :now AND (mediaType != 1 OR :includeVi
 ORDER BY CASE WHEN mediaType = 1 THEN 1 ELSE 0 END ASC, createdAt DESC
 LIMIT :limit;
 
+clearBackoffForReason:
+UPDATE DeviceBackupAsset
+SET lastError = NULL, nextAttemptAt = 0
+WHERE lastError = :reason;
+
 markHashed:
 UPDATE DeviceBackupAsset
 SET contentHash = :contentHash, uniqueId = :uniqueId, state = :state, lastError = NULL, attempts = 0, nextAttemptAt = 0

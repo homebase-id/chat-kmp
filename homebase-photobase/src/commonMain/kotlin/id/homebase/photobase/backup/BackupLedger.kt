@@ -142,6 +142,14 @@ class BackupLedger(
         changed()
     }
 
+    /** Counts no attempt. Backed off so these photos can't use up every short window ahead of ones on the phone. */
+    suspend fun deferUntilOnDevice(row: DeviceBackupAsset) {
+        store.setState(row.deviceAssetId, row.state, NOT_ON_DEVICE, row.attempts, nowMs() + NOT_ON_DEVICE_RETRY.inWholeMilliseconds)
+        changed()
+    }
+
+    suspend fun clearNotOnDeviceDeferrals() = store.clearBackoffForReason(NOT_ON_DEVICE)
+
     suspend fun markSending(uniqueId: Uuid, taskId: Long) {
         store.setUploadTask(uniqueId.toString(), BackupState.Uploading.code, taskId)
         changed()
@@ -202,6 +210,8 @@ class BackupLedger(
         private const val ALBUM_SEPARATOR = "\n"
         private const val SINGLE_READ_LIMIT = 500
         const val MAX_ATTEMPTS = 10
+        private const val NOT_ON_DEVICE = "not on this device"
+        private val NOT_ON_DEVICE_RETRY = 6.hours
         private const val OWN_KEY_PREFIX = "photobase."
         private const val INITIAL_DONE_KEY = "${OWN_KEY_PREFIX}initialBackupDone"
         private const val SCOPE_KEY = "${OWN_KEY_PREFIX}albumScope"

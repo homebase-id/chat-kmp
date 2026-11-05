@@ -52,6 +52,10 @@ class DeviceBackupWrapper(
         databaseManager.withWriteValue { assets.markHashed(contentHash, uniqueId, state, id) }
     }
 
+    suspend fun clearBackoffForReason(reason: String) {
+        databaseManager.withWriteValue { assets.clearBackoffForReason(reason) }
+    }
+
     suspend fun setState(id: String, state: Long, lastError: String?, attempts: Long, nextAttemptAt: Long) {
         databaseManager.withWriteValue { assets.setState(state, lastError, attempts, nextAttemptAt, id) }
     }

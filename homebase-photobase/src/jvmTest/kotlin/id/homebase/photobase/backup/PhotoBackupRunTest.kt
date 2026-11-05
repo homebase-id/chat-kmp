@@ -306,6 +306,36 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aShortWindowSkipsAPhotoNotOnThePhoneWithoutCountingAFailure() = runTest {
+        source.onlyInCloud += "cloud"
+        source.next = fullListing(asset("cloud"), asset("local"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request(limit = 25.seconds, trigger = BackupTrigger.Push))
+
+        assertEquals(listOf("local"), uploader.handedOff)
+        val cloud = ledger.row("cloud")!!
+        assertEquals(BackupState.New.code, cloud.state)
+        assertEquals(0L, cloud.attempts)
+        assertTrue(cloud.nextAttemptAt > now, "must not use up the next short window too")
+    }
+
+    @Test
+    fun aRunThatMayDownloadFetchesWhatAShortWindowSkipped() = runTest {
+        source.onlyInCloud += "cloud"
+        source.next = fullListing(asset("cloud"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+        run.run(request(limit = 25.seconds, trigger = BackupTrigger.Push))
+        assertTrue(uploader.handedOff.isEmpty())
+
+        run.run(request(trigger = BackupTrigger.BackgroundProcessing))
+
+        assertEquals(listOf("cloud"), uploader.handedOff)
+    }
+
+    @Test
     fun aBudgetStopsNewWorkAndLeavesTheRestForLater() = runTest {
         hashTime = 10.seconds
         source.next = fullListing(*List(20) { asset("a$it") }.toTypedArray())

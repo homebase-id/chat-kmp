@@ -7,6 +7,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSData
@@ -80,11 +81,12 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
         }
         val expected = if (mediaType == BackupMediaType.LivePhoto) 2 else 1
         if (parts.size != expected) throw AssetPermanentlyUnavailableException("asset has no exportable original")
+        val mayDownload = currentCoroutineContext()[NoCloudDownloads] == null
         val exported = mutableListOf<ExportedPart>()
         try {
             for ((role, resource) in parts) {
                 val path = fileOps.createUploadTempPath("photo_export_", ".bin")
-                write(resource, path)
+                write(resource, path, mayDownload)
                 exported += ExportedPart(role, path, contentTypeOf(resource), isTemporary = true)
             }
         } catch (e: Throwable) {
@@ -171,13 +173,14 @@ class IosDeviceChangeSource(private val fileOps: FileOperationsProvider) : Devic
     private fun List<PHAssetResource>.pick(preferred: PHAssetResourceType, fallback: PHAssetResourceType): PHAssetResource? =
         firstOrNull { it.type == preferred } ?: firstOrNull { it.type == fallback }
 
-    private suspend fun write(resource: PHAssetResource, path: String) = suspendCancellableCoroutine<Unit> { continuation ->
-        val options = PHAssetResourceRequestOptions().apply { networkAccessAllowed = true }
-        PHAssetResourceManager.defaultManager().writeDataForAssetResource(resource, NSURL.fileURLWithPath(path), options) { error: NSError? ->
-            if (error == null) {
-                continuation.resume(Unit)
-            } else {
-                continuation.resumeWithException(IllegalStateException("export failed: ${error.localizedDescription}"))
+    private suspend fun write(resource: PHAssetResource, path: String, mayDownload: Boolean) = suspendCancellableCoroutine<Unit> { continuation ->
+        val options = PHAssetResourceRequestOptions().apply { networkAccessAllowed = mayDownload }
+        PHAssetResourceManager.defaultManager().writeDataForAssetResource(resource, NSURL.fileURLWithPath(path), options) { error ->
+            when {
+                error == null -> continuation.resume(Unit)
+                // Any refusal, not one error code: a real failure still counts when a run that may download meets it.
+                !mayDownload -> continuation.resumeWithException(AssetNotOnDeviceException())
+                else -> continuation.resumeWithException(IllegalStateException("export failed: ${error.localizedDescription}"))
             }
         }
     }

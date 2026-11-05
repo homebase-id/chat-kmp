@@ -106,7 +106,8 @@ class PhotoBackupRun(
         val timings = BackupTimings()
         val started = TimeSource.Monotonic.markNow()
         return try {
-            withContext(timings) { stoppingWhenWifiIsLost { runLocked(request) } }
+            val context = if (request.mayDownloadFromCloud) timings else timings + NoCloudDownloads
+            withContext(context) { stoppingWhenWifiIsLost { runLocked(request) } }
         } finally {
             hasher.forgetAll()
             Logger.i(tag = TAG) { "timing trigger=${request.trigger} total=${started.elapsedNow().inWholeMilliseconds}ms ${timings.summary()}" }
@@ -167,6 +168,7 @@ class PhotoBackupRun(
             ledger.saveDeviceCheckpoint(changes.newCheckpoint, current.albumIds)
         }
         if (interactive) ledger.requeueFailed()
+        if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
 
         val includeVideos = backupVideosAllowed(current, deviceState, interactive)
         val newestFirst = ledger.isInitialBackupDone()
@@ -353,6 +355,8 @@ class PhotoBackupRun(
             throw e
         } catch (e: AssetPermanentlyUnavailableException) {
             ledger.markSkipped(row.deviceAssetId, e.reason)
+        } catch (e: AssetNotOnDeviceException) {
+            ledger.deferUntilOnDevice(row)
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
             ledger.recordFailure(row, e.message ?: e::class.simpleName.orEmpty())

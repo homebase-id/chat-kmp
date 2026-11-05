@@ -1,5 +1,7 @@
 package id.homebase.photobase.backup
 
+import kotlin.coroutines.CoroutineContext
+
 enum class BackupMediaType(val code: Long) {
     Image(0),
     Video(1),
@@ -44,6 +46,14 @@ data class ExportedPart(
 
 data class ExportedAsset(val parts: List<ExportedPart>, val fileName: String)
 
+/** In a run's context when its window is too short to download from cloud storage. */
+object NoCloudDownloads : CoroutineContext.Element, CoroutineContext.Key<NoCloudDownloads> {
+    override val key: CoroutineContext.Key<*> get() = this
+}
+
+/** Not a failure: it waits for a run that may download. */
+class AssetNotOnDeviceException : Exception("not on this device")
+
 /** The asset can't be backed up and retrying won't change that. Becomes a SKIPPED row with [reason]. */
 class AssetPermanentlyUnavailableException(val reason: String) : Exception(reason)
 
@@ -64,6 +74,8 @@ class AssetPermanentlyUnavailableException(val reason: String) : Exception(reaso
  * - [export] returns the original bytes, downloading from cloud storage if needed, with no
  *   location or metadata removed. An asset that no longer exists throws
  *   [AssetPermanentlyUnavailableException]. A Live Photo returns the still first, then the video.
+ * - Under [NoCloudDownloads], [export] doesn't download: an asset it can't read from the device throws
+ *   [AssetNotOnDeviceException]. A platform that never downloads has nothing to do for this.
  */
 interface DeviceChangeSource {
     suspend fun changes(checkpoint: Map<String, String>, albumIds: Set<String>, wantCurrentIds: Boolean): DeviceChanges
