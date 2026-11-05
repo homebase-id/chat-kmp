@@ -11,6 +11,7 @@ enum class AppLink(val slug: String, val route: Route) {
     Vault("vault", Route.Vault),
     WebDrop("webdrop", Route.WebDrop),
     Filesync("filesync", Route.Filesync),
+    Photobase("photobase", Route.Photobase),
     Location("location", Route.Location),
     Contacts("contactbook", Route.ContactBook),
     Email("email", Route.Email),

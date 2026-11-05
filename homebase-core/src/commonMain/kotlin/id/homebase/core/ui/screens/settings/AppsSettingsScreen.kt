@@ -56,6 +56,8 @@ import id.homebase.resources.settings_section_apps
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.resources.photobase_backup_enable_desc
 import id.homebase.resources.photobase_backup_title
+import id.homebase.resources.photobase_label
+import id.homebase.resources.settings_photobase_icon_desc
 import id.homebase.resources.settings_vault_desc
 import id.homebase.resources.vault_settings_section
 import id.homebase.resources.webdrop_home_subtitle

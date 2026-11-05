@@ -168,6 +168,10 @@ sealed class Route {
     data object Filesync : Route()
 
     @Serializable
+    @SerialName("photobase")
+    data object Photobase : Route()
+
+    @Serializable
     @SerialName("photo-backup-settings")
     data object PhotoBackupSettings : Route()
 

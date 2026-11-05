@@ -70,7 +70,10 @@ import id.homebase.resources.vault_home_subtitle
 import id.homebase.resources.vault_label
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.resources.filesync_label
+import id.homebase.resources.photobase_home_subtitle
+import id.homebase.resources.photobase_label
 import id.homebase.resources.filesync_home_subtitle
 import id.homebase.resources.calls_home_subtitle
 import id.homebase.resources.nav_calls
@@ -83,6 +86,7 @@ fun HomeScreen(
     onNavigateToVault: () -> Unit,
     onNavigateToWebDrop: () -> Unit,
     onNavigateToFilesync: () -> Unit,
+    onNavigateToPhotobase: () -> Unit,
     onNavigateToMoments: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToContacts: () -> Unit,
@@ -141,6 +145,7 @@ fun HomeScreen(
         onNavigateToVault = onNavigateToVault,
         onNavigateToWebDrop = onNavigateToWebDrop,
         onNavigateToFilesync = onNavigateToFilesync,
+        onNavigateToPhotobase = onNavigateToPhotobase,
         onNavigateToMoments = onNavigateToMoments,
         onNavigateToLocation = onNavigateToLocation,
         onNavigateToContacts = onNavigateToContacts,
@@ -157,6 +162,7 @@ fun HomeUi(
     onNavigateToVault: () -> Unit = {},
     onNavigateToWebDrop: () -> Unit = {},
     onNavigateToFilesync: () -> Unit = {},
+    onNavigateToPhotobase: () -> Unit = {},
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
@@ -209,6 +215,15 @@ fun HomeUi(
                 label = stringResource(MR.string.filesync_label),
                 subtitle = stringResource(MR.string.filesync_home_subtitle),
                 onClick = onNavigateToFilesync,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
+                icon = Icons.Outlined.PhotoLibrary,
+                label = stringResource(MR.string.photobase_label),
+                subtitle = stringResource(MR.string.photobase_home_subtitle),
+                onClick = onNavigateToPhotobase,
             )
 
             Spacer(modifier = Modifier.height(12.dp))

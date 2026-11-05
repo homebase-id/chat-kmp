@@ -12,6 +12,7 @@ data class SettingsUiState(
     val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
     /** False on desktop: no push token exists, so the row reports the OS permission instead. */
     val hasPushRegistration: Boolean = true,
+    val photobaseIconVisible: Boolean = false,
     val theme: ThemeState = ThemeState.System,
     val appVersion: String = "",
     /** Null until the off-main measurement lands; the row shows a description meanwhile. */
@@ -29,6 +30,7 @@ sealed interface SettingsUiAction {
     data object OpenOwnerConsoleClicked : SettingsUiAction
     data object ProfileInfoClicked : SettingsUiAction
     data object SecuritySetupClicked : SettingsUiAction
+    data class SetPhotobaseIconVisible(val visible: Boolean) : SettingsUiAction
     data object AvatarClicked : SettingsUiAction
 }
 

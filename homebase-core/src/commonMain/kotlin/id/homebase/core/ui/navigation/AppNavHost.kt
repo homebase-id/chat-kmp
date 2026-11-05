@@ -232,6 +232,11 @@ import id.homebase.core.ui.screens.webdrop.WebDropUiEvent
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
 import id.homebase.core.filesync.FilesyncPreferences
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.photobase.PhotobasePreferences
+import id.homebase.photobase.ui.PhotoGalleryScreen
+import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
 import id.homebase.photobase.ui.BackupSettingsScreen
 import id.homebase.photobase.ui.BackupStatusScreen
@@ -409,6 +414,7 @@ fun AppNavHost(
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
     val vaultViewModel: VaultViewModel = koinViewModel()
     val filesyncIconVisible by koinInject<FilesyncPreferences>().iconVisible.collectAsStateWithLifecycle()
+    val photobaseIconVisible by koinInject<PhotobasePreferences>().iconVisible.collectAsStateWithLifecycle()
     val locationPreferences = koinInject<LocationPreferences>()
     val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
     val locationViewModel: LocationViewModel = koinViewModel()
@@ -445,6 +451,7 @@ fun AppNavHost(
         momentsIconVisible,
         vaultIconVisible,
         filesyncIconVisible,
+        photobaseIconVisible,
         locationIconVisible,
         contactBookIconVisible,
         emailIconVisible,
@@ -456,6 +463,7 @@ fun AppNavHost(
             momentsVisible = momentsIconVisible,
             vaultVisible = vaultIconVisible,
             filesyncVisible = filesyncIconVisible,
+            photobaseVisible = photobaseIconVisible,
             locationVisible = locationIconVisible,
             contactBookVisible = contactBookIconVisible,
             emailVisible = emailIconVisible && serverSupportsMail == true,
@@ -697,6 +705,7 @@ fun AppNavHost(
     val openVault: () -> Unit = { navController.openApp(Route.Vault, tabRoutes) }
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
+    val openPhotobase: () -> Unit = { navController.openApp(Route.Photobase, tabRoutes) }
     // Read only by the Filesync screen's own view model, the one "Show" opens.
     var filesyncFolderToShow by remember { mutableStateOf<List<FilesyncCrumb>?>(null) }
     // Sidebar hops between the three Filesync screens stay one deep above the browser.
@@ -1121,6 +1130,7 @@ fun AppNavHost(
                                         onNavigateToVault = openVault,
                                         onNavigateToWebDrop = openWebDrop,
                                         onNavigateToFilesync = openFilesync,
+                                        onNavigateToPhotobase = openPhotobase,
                                         onNavigateToMoments = openMoments,
                                         onNavigateToLocation = openLocation,
                                         onNavigateToContacts = openContactBook,
@@ -2310,6 +2320,18 @@ fun AppNavHost(
                                 }
                             }
 
+                            tab<Route.Photobase>(tabRoot) {
+                                if (isAuthenticated) {
+                                    PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
+                                        val backupSupported = koinInject<PhotoBackupController>().isSupported
+                                        PhotoGalleryScreen(
+                                            viewModel = koinViewModel(),
+                                            onOpenBackupSettings = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { backupSupported },
+                                        )
+                                    }
+                                }
+                            }
+
                             tab<Route.Filesync>(tabRoot) {
                                 if (isAuthenticated) {
                                     FilesyncSetupGate(onDismiss = { navController.popBackStack() }) { filesyncViewModel ->
@@ -2812,6 +2834,7 @@ internal fun topLevelRoutesFor(
     contactBookVisible: Boolean,
     emailVisible: Boolean,
     filesyncVisible: Boolean = false,
+    photobaseVisible: Boolean = false,
 ): List<TopLevelRoute> = buildList {
     add(TopLevelRoute.Chat)
     if (callsAvailable && callsIconVisible) add(TopLevelRoute.Calls)
@@ -2819,6 +2842,7 @@ internal fun topLevelRoutesFor(
     if (momentsVisible) add(TopLevelRoute.Moments)
     if (vaultVisible) add(TopLevelRoute.Vault)
     if (filesyncVisible) add(TopLevelRoute.Filesync)
+    if (photobaseVisible) add(TopLevelRoute.Photobase)
     if (locationVisible) add(TopLevelRoute.Location)
     if (contactBookVisible) add(TopLevelRoute.ContactBook)
     if (emailVisible) add(TopLevelRoute.Email)
@@ -2838,6 +2862,7 @@ sealed class TopLevelRoute(
     data object Apps : TopLevelRoute(Route.Home, MR.string.nav_apps, HomebaseIcons.Apps, HomebaseIcons.AppsOutlined)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Filled.Lock, Icons.Outlined.Lock)
     data object Filesync : TopLevelRoute(Route.Filesync, MR.string.filesync_label, HomebaseIcons.Filesync)
+    data object Photobase : TopLevelRoute(Route.Photobase, MR.string.photobase_label, Icons.Filled.PhotoLibrary, Icons.Outlined.PhotoLibrary)
     data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Filled.Mail, Icons.Outlined.MailOutline)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Filled.LocationOn, Icons.Outlined.LocationOn)
     data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Filled.People, Icons.Outlined.People)

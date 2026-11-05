@@ -3258,4 +3258,12 @@
     <string name="photobase_onboarding_dismiss">Not now</string>
     <string name="photobase_check_failed">Couldn't check whether Photobase is set up. Check your connection and try again.</string>
     <string name="photobase_check_retry">Try again</string>
+    <string name="photobase_home_subtitle">Your backed-up photos and videos</string>
+    <string name="settings_photobase_icon_desc">Show Photobase in the navigation bar</string>
+    <string name="photobase_gallery_refresh">Refresh</string>
+    <string name="photobase_gallery_empty">Nothing backed up yet.</string>
+    <string name="photobase_gallery_load_failed">Couldn't load your photos. Check your connection and try again.</string>
+    <string name="photobase_gallery_retry">Try again</string>
+    <string name="photobase_gallery_photo">Photo</string>
+    <string name="photobase_gallery_video">Video</string>
 </resources>

@@ -177,7 +177,10 @@ import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.config.getPhotobasePermissionExtensionConfig
+import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.photobase.gallery.PhotoGalleryRepository
+import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
 import id.homebase.photobase.backup.BackupLedger
 import id.homebase.photobase.backup.BackupOutboxResults
@@ -832,6 +835,7 @@ val appModule = module {
                 get<WebDropShareFlowState>().clear()
                 get<FilesyncPreferences>().reset()
                 get<PhotoBackupController>().onPostAuthenticated()
+                get<PhotobasePreferences>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -1058,6 +1062,8 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { photoBackupController() }
+    single { PhotobasePreferences(get()) }
+    single { PhotoGalleryRepository(get()) }
     single { FilesyncRepository(get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get()) }
@@ -1430,6 +1436,7 @@ val appModule = module {
     }
     viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
     viewModel { BackupSettingsViewModel(get()) }
+    viewModel { PhotoGalleryViewModel(get<PhotoGalleryRepository>()) }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
