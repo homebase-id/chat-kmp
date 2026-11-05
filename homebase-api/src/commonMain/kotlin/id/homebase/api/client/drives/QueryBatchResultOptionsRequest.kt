@@ -30,7 +30,9 @@ data class QueryBatchResultOptionsRequest(
      */
     val includeTransferHistory: Boolean = false,
     val ordering: QueryBatchSortOrder = QueryBatchSortOrder.OldestFirst,
-    val sorting: QueryBatchSortField = QueryBatchSortField.AnyChangeDate
+    val sorting: QueryBatchSortField = QueryBatchSortField.AnyChangeDate,
+    /** Each file's live share rows, for the drive's owner or owning app. */
+    val includeShares: Boolean = false,
 ) {
     fun toQueryBatchResultOptions(): QueryBatchResultOptions {
         return QueryBatchResultOptions(

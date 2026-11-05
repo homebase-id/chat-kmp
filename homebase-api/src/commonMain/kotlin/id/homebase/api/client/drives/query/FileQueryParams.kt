@@ -31,6 +31,8 @@ data class FileQueryParams(
     val localTagsMatchAll: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
     val globalTransitId: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
     val fileSystemType: FileSystemType? = null,
+    /** On a Selective Share drive, for its owner or owning app: files with a live share for any of these circles. */
+    val sharedWith: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
 ) {
 
 }

@@ -122,7 +122,8 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
         return DriveGrant(
             permissionedDrive = PermissionedDrive(drive = drive, permission = permissions),
             hasStorageKey = grantJson["hasStorageKey"]?.jsonPrimitive?.booleanOrNull ?: false,
-            zkAppKeyEncryptedStorageKey = grantJson["zkAppKeyEncryptedStorageKey"]?.jsonPrimitive?.contentOrNull
+            zkAppKeyEncryptedStorageKey = grantJson["zkAppKeyEncryptedStorageKey"]?.jsonPrimitive?.contentOrNull,
+            zkStorageKeyEncryptedWriteOnlyPrivateKey = grantJson["zkStorageKeyEncryptedWriteOnlyPrivateKey"]?.jsonPrimitive?.contentOrNull,
         )
     }
 
@@ -136,7 +137,7 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
         return when (element) {
             is JsonPrimitive -> {
                 // String permission like "ReadWrite", "All", etc.
-                getDrivePermissionFromString(element.contentOrNull ?: "")
+                DrivePermission.fromNames(element.contentOrNull ?: "")
             }
 
             is JsonArray -> {
@@ -148,34 +149,6 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
             }
 
             else -> emptyList()
-        }
-    }
-}
-
-/**
- * Convert text-based permission levels to DrivePermissionType list. Reflects DrivePermission enum
- * in services/Odin.Core.Services/Drives/DrivePermission.cs
- */
-fun getDrivePermissionFromString(permission: String): List<DrivePermission> {
-    if (permission.isBlank()) return emptyList()
-
-    var lowered = permission.lowercase()
-
-    // Convert multi types to their simpler form
-    lowered = lowered.replace("writereactionsandcomments", "react,comment")
-    lowered = lowered.replace("readwrite", "read,write,react,comment")
-    lowered = lowered.replace("reactandwrite", "write,react")
-    lowered = lowered.replace("all", "read,write,react,comment")
-
-    val parts = lowered.split(",")
-
-    return parts.mapNotNull { part ->
-        when (part.trim()) {
-            "read" -> DrivePermission.Read
-            "write" -> DrivePermission.Write
-            "react" -> DrivePermission.React
-            "comment" -> DrivePermission.Comment
-            else -> null
         }
     }
 }
