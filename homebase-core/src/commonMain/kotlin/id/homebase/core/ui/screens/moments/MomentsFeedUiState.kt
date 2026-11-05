@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.video.VideoProcessingPhase
@@ -39,6 +40,7 @@ data class MomentsFeedUiState(
     val pendingLocalPreviews: ImmutableMap<Uuid, Any> = persistentMapOf(),
     val viewMode: MomentsViewMode = MomentsViewMode.Timeline,
     val albumZoom: MomentsAlbumZoom = MomentsAlbumZoom.Day,
+    val feedPaneWidth: Dp? = null,
 )
 
 /**

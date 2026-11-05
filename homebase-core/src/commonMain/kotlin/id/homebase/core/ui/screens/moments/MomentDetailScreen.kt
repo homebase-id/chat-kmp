@@ -2556,10 +2556,7 @@ private val MediaWideBreakpoint = 600.dp
 private const val MediaWidthFraction = 0.6f
 private val MediaMaxWidth = 560.dp
 
-// Width of the persistent comments rail on the desktop wide split (the
-// `commentsDocked` branch in DetailContent). Fixed rather than a fraction —
-// comment text doesn't get more readable past a column width, and a fixed rail
-// keeps the media stage stable as the window resizes.
+// Widest the docked comments rail grows; past this comment text gets no more readable.
 internal val CommentsRailWidth = 400.dp
 
 @Composable
@@ -3344,7 +3341,13 @@ private fun AddCommentRow(
 ) {
     val canSend = draft.isNotBlank() && !isPosting
     val enterSendsMessage = rememberEnterSendsMessage()
-    val hint: @Composable () -> Unit = { Text(stringResource(MR.string.moments_detail_add_comment_hint)) }
+    val hint: @Composable () -> Unit = {
+        Text(
+            text = stringResource(MR.string.moments_detail_add_comment_hint),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),

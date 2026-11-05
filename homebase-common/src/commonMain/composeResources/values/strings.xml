@@ -461,6 +461,7 @@
     <string name="moments_detail_shared_with">Shared with</string>
     <string name="moments_detail_shared_with_conversation_fallback">Conversation</string>
     <string name="moments_detail_shared_with_more">+%1$d</string>
+    <string name="moments_resize_panes">Resize the feed and moment panes</string>
     <string name="moments_detail_shared_with_show">Show recipients</string>
     <string name="moments_detail_shared_with_hide">Hide recipients</string>
     <string name="moments_detail_shared_with_private">Private</string>
@@ -1690,6 +1691,7 @@
     <string name="settings_appearance_theme">Theme: %1$s</string>
     <string name="settings_moments_desc">Photos, clips and notes</string>
     <string name="settings_vault_desc">Encrypted document storage</string>
+    <string name="settings_feed_desc">Posts from the people you follow</string>
     <string name="settings_location_desc">Private location history</string>
     <string name="settings_contactbook_desc">Your address book and circles</string>
     <string name="settings_storage_desc">Caches, database and media</string>
@@ -1730,7 +1732,6 @@
     <string name="calls_kind_video">Video</string>
     <string name="nav_apps">Apps</string>
     <string name="settings_apps_desc">Feed, Vault, Email and more</string>
-    <string name="settings_apps_section_features">Features</string>
     <string name="settings_apps_section_pages">App settings</string>
     <string name="owner_status_connected">Connected</string>
     <string name="owner_status_connecting">Connecting</string>
@@ -2599,6 +2600,8 @@
     <string name="profile_card_colours_lavender">Lavender</string>
     <string name="profile_card_colours_navy">Navy</string>
     <string name="profile_card_colours_lemon">Lemon</string>
+    <string name="profile_card_colours_purple">Purple</string>
+    <string name="profile_card_colours_blue">Blue</string>
     <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
     <string name="profile_card_option_display_font">Heading font</string>
@@ -2608,6 +2611,8 @@
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>
     <string name="profile_card_tool_style">Style</string>
+    <string name="profile_card_tool_presets">Presets</string>
+    <string name="profile_card_option_presets">Ready-made styles</string>
     <string name="profile_card_presentation_bare">Plain</string>
     <string name="profile_card_presentation_boxed">Boxed</string>
     <string name="profile_card_presentation_row">Rows</string>
@@ -3214,4 +3219,5 @@
     <string name="circle_delete_body">This removes the circle and its card.</string>
     <string name="circle_delete_body_members">%1$d people are in this circle. Deleting it removes them from it, and removes the circle and its card.</string>
     <string name="circle_delete_failed">Couldn't delete the circle. Try again.</string>
+    <string name="profile_card_style_custom">Custom</string>
 </resources>

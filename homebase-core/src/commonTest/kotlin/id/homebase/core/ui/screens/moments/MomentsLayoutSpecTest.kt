@@ -106,10 +106,57 @@ class MomentsLayoutSpecTest {
     }
 
     @Test
-    fun railGivesWayToKeepTheMinimumMediaAtThePaneThreshold() {
-        val detail = 1080.dp - 380.dp - MomentsLayoutSpec.DetailPaneGutter - MomentsLayoutSpec.DetailPaneMargin
-        val rail = MomentsLayoutSpec.dockedRailWidth(detail)
-        assertEquals(MomentsLayoutSpec.MinDetailMediaWidth, detail - MomentsLayoutSpec.DetailStageInset - rail)
-        assertEquals(400.dp, MomentsLayoutSpec.dockedRailWidth(900.dp))
+    fun railFollowsItsPaneBetweenItsBounds() {
+        assertEquals(400.dp, MomentsLayoutSpec.dockedRailWidth(1400.dp))
+        assertEquals(240.dp, MomentsLayoutSpec.dockedRailWidth(300.dp))
+        val narrower = MomentsLayoutSpec.dockedRailWidth(600.dp)
+        val wider = MomentsLayoutSpec.dockedRailWidth(800.dp)
+        assertTrue(narrower < wider && wider < 400.dp, "$narrower vs $wider")
+    }
+
+    @Test
+    fun theNarrowestDetailPaneStillFitsRailAndMedia() {
+        val detail = MomentsLayoutSpec.DetailPaneDragMinWidth -
+            MomentsLayoutSpec.DetailPaneGutter - MomentsLayoutSpec.DetailPaneMargin
+        val media = detail - MomentsLayoutSpec.DetailStageInset - MomentsLayoutSpec.dockedRailWidth(detail)
+        assertTrue(media >= 160.dp, "media $media")
+    }
+
+    @Test
+    fun draggedFeedPaneStopsAtBothMinimums() {
+        val available = 1440.dp - railAndDivider
+        assertEquals(280.dp, MomentsLayoutSpec.feedPaneWidth(available, 100.dp))
+        assertEquals(available - 460.dp, MomentsLayoutSpec.feedPaneWidth(available, available))
+        assertEquals(800.dp, MomentsLayoutSpec.feedPaneWidth(available, 800.dp))
+    }
+
+    @Test
+    fun dragDeltasAccumulateWithinTheRange() {
+        val available = 1440.dp - railAndDivider
+        var width = MomentsLayoutSpec.feedPaneWidth(available)
+        val start = width
+        width = MomentsLayoutSpec.feedPaneWidth(available, width + 120.dp)
+        assertEquals(start + 120.dp, width)
+        repeat(50) { width = MomentsLayoutSpec.feedPaneWidth(available, width + 40.dp) }
+        assertEquals(MomentsLayoutSpec.feedPaneWidthRange(available).endInclusive, width)
+        // Overshooting the end does not bank distance: the first drag back moves the pane.
+        width = MomentsLayoutSpec.feedPaneWidth(available, width - 10.dp)
+        assertEquals(MomentsLayoutSpec.feedPaneWidthRange(available).endInclusive - 10.dp, width)
+        repeat(50) { width = MomentsLayoutSpec.feedPaneWidth(available, width - 40.dp) }
+        assertEquals(280.dp, width)
+    }
+
+    @Test
+    fun aStoredWidthIsReclampedForASmallerWindow() {
+        val stored = 900.dp
+        val atThreshold = MomentsLayoutSpec.DetailPaneMinWidth
+        assertEquals(atThreshold - 460.dp, MomentsLayoutSpec.feedPaneWidth(atThreshold, stored))
+        assertEquals(280.dp..(atThreshold - 460.dp), MomentsLayoutSpec.feedPaneWidthRange(atThreshold))
+    }
+
+    @Test
+    fun withoutAStoredWidthThePaneFollowsTheWindow() {
+        assertEquals(MomentsLayoutSpec.feedPaneWidth(1855.dp), MomentsLayoutSpec.feedPaneWidth(1855.dp, null))
+        assertEquals(480.dp, MomentsLayoutSpec.feedPaneWidth(1855.dp))
     }
 }

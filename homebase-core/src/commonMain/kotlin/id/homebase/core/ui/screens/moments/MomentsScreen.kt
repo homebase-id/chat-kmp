@@ -237,6 +237,7 @@ fun MomentsScreen(
         viewMode = effectiveViewMode,
         onViewModeChange = viewModel::setViewMode,
         onAlbumZoomChange = viewModel::setAlbumZoom,
+        onFeedPaneWidthChange = viewModel::setFeedPaneWidth,
         onCreateMoment = onCreateMoment,
         onProfileClick = onProfileClick,
         onOpenMoment = onOpenMoment,
@@ -260,8 +261,11 @@ internal fun MomentsAdaptiveContent(
     onDeleteFailedMoment: (Uuid) -> Unit,
     onDismissUpload: (Uuid) -> Unit,
     detailPane: @Composable (Uuid) -> Unit,
+    onFeedPaneWidthChange: (Dp) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
+    // Follows the stored width, and leads it during a drag so the store is written once per gesture.
+    var feedPaneWidth by remember(uiState.feedPaneWidth) { mutableStateOf(uiState.feedPaneWidth) }
     var selectedMomentId by remember { mutableStateOf<Uuid?>(null) }
     val momentIds = remember(uiState.moments) { uiState.moments.map { it.id } }
     val effectiveSelectedId = remember(selectedMomentId, momentIds) {
@@ -318,6 +322,8 @@ internal fun MomentsAdaptiveContent(
             )
         }
         val motion = MaterialTheme.motionScheme
+        val feedPaneRange = MomentsLayoutSpec.feedPaneWidthRange(availableWidth)
+        val shownFeedPaneWidth = MomentsLayoutSpec.feedPaneWidth(availableWidth, feedPaneWidth)
         // One Row for both layouts: moving the feed between call sites would dispose its open sheet mid-layout.
         Row(
             modifier = Modifier
@@ -327,13 +333,25 @@ internal fun MomentsAdaptiveContent(
             feed(
                 if (showPane) {
                     Modifier
-                        .width(MomentsLayoutSpec.feedPaneWidth(availableWidth))
+                        .width(shownFeedPaneWidth)
                         .fillMaxHeight()
                 } else {
                     Modifier.fillMaxSize()
                 },
             )
             if (showPane) {
+                MomentsPaneDivider(
+                    feedWidth = shownFeedPaneWidth,
+                    range = feedPaneRange,
+                    onResizeBy = { delta ->
+                        val from = MomentsLayoutSpec.feedPaneWidth(availableWidth, feedPaneWidth)
+                        feedPaneWidth = MomentsLayoutSpec.feedPaneWidth(availableWidth, from + delta)
+                    },
+                    onResizeFinished = { feedPaneWidth?.let(onFeedPaneWidthChange) },
+                    modifier = Modifier.windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Bottom),
+                    ),
+                )
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -344,7 +362,6 @@ internal fun MomentsAdaptiveContent(
                             ),
                         )
                         .padding(
-                            start = MomentsLayoutSpec.DetailPaneGutter,
                             top = MomentsLayoutSpec.DetailPaneMargin,
                             end = MomentsLayoutSpec.DetailPaneMargin,
                             bottom = MomentsLayoutSpec.DetailPaneMargin,

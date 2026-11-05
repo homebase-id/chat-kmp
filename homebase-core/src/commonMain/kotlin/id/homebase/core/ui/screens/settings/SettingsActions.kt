@@ -22,10 +22,13 @@ data class SettingsActions(
 
 data class AppsSettingsActions(
     val onBack: () -> Unit,
+    val onFeedSettings: () -> Unit,
     val onMomentsSettings: () -> Unit,
     val onVaultSettings: () -> Unit,
+    val onFilesyncSettings: () -> Unit,
     val onEmailSettings: () -> Unit,
     val onOpenWebDrop: () -> Unit,
     val onLocation: () -> Unit,
     val onContactBookSettings: () -> Unit,
+    val onCallsSettings: () -> Unit,
 )

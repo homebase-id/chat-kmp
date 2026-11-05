@@ -178,6 +178,9 @@ import id.homebase.core.ui.screens.moments.MomentDetailPager
 import id.homebase.core.ui.screens.moments.MomentsOnboardingScreen
 import id.homebase.core.ui.screens.moments.MomentsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
+import id.homebase.core.ui.screens.calls.settings.CallsSettingsScreen
+import id.homebase.core.ui.screens.feed.settings.FeedSettingsScreen
+import id.homebase.core.ui.screens.filesync.settings.FilesyncSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsUiEvent
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
@@ -1992,6 +1995,33 @@ fun AppNavHost(
                                 }
                             }
 
+                            composable<Route.FeedSettings> {
+                                if (isAuthenticated) {
+                                    FeedSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                    )
+                                }
+                            }
+
+                            composable<Route.FilesyncSettings> {
+                                if (isAuthenticated) {
+                                    FilesyncSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                    )
+                                }
+                            }
+
+                            composable<Route.CallsSettings> {
+                                if (isAuthenticated) {
+                                    CallsSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                    )
+                                }
+                            }
+
                             tab<Route.Location>(tabRoot) {
                                 val locationActivated by locationViewModel.isActivated.collectAsStateWithLifecycle()
                                 if (isAuthenticated && !locationActivated) {
@@ -2503,20 +2533,20 @@ fun AppNavHost(
                                 }
                             }
 
-                            composable<Route.AppsSettings> { entry ->
+                            composable<Route.AppsSettings> {
                                 if (isAuthenticated) {
                                     AppsSettingsScreen(
-                                        viewModel = koinViewModel(
-                                            viewModelStoreOwner = rememberSettingsOwner(navController, entry),
-                                        ),
                                         actions = AppsSettingsActions(
                                             onBack = { navController.popBackStack() },
+                                            onFeedSettings = { navController.navigate(Route.FeedSettings) },
                                             onMomentsSettings = { navController.navigate(Route.MomentsSettings) },
                                             onVaultSettings = { navController.navigate(Route.VaultSettings) },
+                                            onFilesyncSettings = { navController.navigate(Route.FilesyncSettings) },
                                             onEmailSettings = { navController.navigate(Route.EmailSettings) },
                                             onOpenWebDrop = openWebDrop,
                                             onLocation = openLocation,
                                             onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
+                                            onCallsSettings = { navController.navigate(Route.CallsSettings) },
                                         ),
                                     )
                                 }
