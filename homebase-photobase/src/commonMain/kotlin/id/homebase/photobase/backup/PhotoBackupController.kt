@@ -48,12 +48,17 @@ class PhotoBackupController(
             scope.launch { run.refreshStatus() }
             return
         }
-        val fullScan = wokenInBackgroundSinceForeground
+        val fullScan = wokenInBackgroundSinceForeground && triggers?.rescansAfterBackgroundWake == true
         wokenInBackgroundSinceForeground = false
         foregroundJob = scope.launch {
             pushSchedule.ensure(adoptSharedInterval())
             run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), findDeletions = true, forceFullScan = fullScan))
         }
+    }
+
+    suspend fun freshStatus(): BackupStatus? {
+        run?.refreshStatus()
+        return status?.value
     }
 
     fun refreshStatus() {

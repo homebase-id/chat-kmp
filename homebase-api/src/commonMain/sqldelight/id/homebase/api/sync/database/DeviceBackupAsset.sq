@@ -85,6 +85,9 @@ SELECT * FROM DeviceBackupAsset WHERE state IN ?;
 countByState:
 SELECT state, COUNT(*) FROM DeviceBackupAsset GROUP BY state;
 
+bytesByState:
+SELECT state, CAST(COALESCE(SUM(size), 0) AS INTEGER) AS bytes FROM DeviceBackupAsset GROUP BY state;
+
 selectFailures:
 SELECT deviceAssetId, lastError FROM DeviceBackupAsset WHERE state = :state ORDER BY createdAt DESC LIMIT :limit;
 

@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -46,6 +47,9 @@ class PhotoBackupControllerTest {
         val wakes = mutableListOf<Duration>()
         var takesUserRuns = true
         var userRuns = 0
+        var rescans = false
+
+        override val rescansAfterBackgroundWake: Boolean get() = rescans
 
         override fun rearm(settings: BackupSettings) {
             armed += settings
@@ -173,6 +177,26 @@ class PhotoBackupControllerTest {
         runCurrent()
 
         assertNull(pushRow())
+    }
+
+    private suspend fun TestScope.checkpointSeenByForegroundRunAfterAWake(): Map<String, String> {
+        val controller = controller()
+        enable(controller)
+        controller.runFromBackground(BackupRunRequest(BackupTrigger.Periodic, BackupBudget(null), findDeletions = false))
+        controller.onAppForeground()
+        advanceTimeBy(1.seconds)
+        return source.checkpointsSeen.last()
+    }
+
+    @Test
+    fun theOpenAppKeepsItsCheckpointAfterAWakeByDefault() = runTest {
+        assertTrue(checkpointSeenByForegroundRunAfterAWake().isNotEmpty())
+    }
+
+    @Test
+    fun aPlatformThatAsksRescansTheLibraryAfterAWake() = runTest {
+        triggers.rescans = true
+        assertTrue(checkpointSeenByForegroundRunAfterAWake().isEmpty())
     }
 
     @Test

@@ -1603,6 +1603,19 @@ private fun Scope.photoBackupController(): PhotoBackupController {
     val results = BackupOutboxResults(ledger, get(), PhotobaseProtocol.DriveAlias, scope)
     val platform = createPhotoBackupPlatform(get())
     platform?.listenForUploadResults?.invoke(ledger, get(), scope)
+    platform?.let { backup ->
+        get<OutboxSync>().holdBulkSends = {
+            // Runs inside chat's send loop, which a backup problem must not take down.
+            try {
+                settings.settings.value.wifiOnly && !backup.probe.state().isUnmetered
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = "PhotoBackup", throwable = e) { "could not read the network for held sends" }
+                false
+            }
+        }
+    }
     val run = platform?.let {
         val exports = HashedExports(it.source, get())
         val hasher = AssetHasher(exports, get())

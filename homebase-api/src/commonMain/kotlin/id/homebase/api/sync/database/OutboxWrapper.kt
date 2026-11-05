@@ -33,9 +33,9 @@ class OutboxWrapper(
         }
     }
 
-    suspend fun nextScheduled(): UnixTimeUtc? {
+    suspend fun nextScheduled(belowPriority: Long = Long.MAX_VALUE): UnixTimeUtc? {
         val n = databaseManager.readValue("outbox.nextScheduled") {
-            delegate.nextScheduled().executeAsOneOrNull()
+            delegate.nextScheduled(belowPriority).executeAsOneOrNull()
         }
         return if (n == null) null else UnixTimeUtc(n)
     }

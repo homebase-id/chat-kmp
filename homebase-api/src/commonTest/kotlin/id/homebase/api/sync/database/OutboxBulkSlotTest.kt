@@ -60,6 +60,26 @@ class OutboxBulkSlotTest {
     }
 
     @Test
+    fun heldBulkRowsStayQueuedAndChatStillSends() = run { db, sync, uploader ->
+        sync.holdBulkSends = { true }
+        val bulk = db.enqueue(OUTBOX_BULK_PRIORITY)
+        val message = db.enqueue(priority = 1)
+
+        sync.send()
+        drain()
+
+        assertEquals(listOf(message), uploader.uploaded.map { it.uniqueId })
+        assertEquals(1L, db.outbox.count())
+        assertEquals(0L, db.outbox.selectByUniqueId(bulk)?.checkOutCount)
+
+        sync.holdBulkSends = { false }
+        sync.send()
+        drain()
+
+        assertEquals(setOf(message, bulk), uploader.uploaded.map { it.uniqueId }.toSet())
+    }
+
+    @Test
     fun chatStartsAtOnceWhileBulkHoldsItsSlots() = run { db, sync, uploader ->
         repeat(6) { db.enqueue(OUTBOX_BULK_PRIORITY) }
         sync.send()

@@ -59,6 +59,7 @@ nextScheduled:
 SELECT nextRunTime
 FROM Outbox AS o
 WHERE o.checkOutStamp IS NULL
+    AND o.priority < :belowPriority
     AND (
         (o.dependencyUniqueId IS NULL)
         OR (NOT EXISTS (

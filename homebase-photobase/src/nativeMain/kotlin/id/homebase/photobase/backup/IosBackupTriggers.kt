@@ -51,6 +51,8 @@ private fun submit(request: BGTaskRequest) = memScoped {
 class IosBackupTriggers : BackupTriggers {
     private val scope = supervisedScope("photo-backup-ios", ioDispatcher)
 
+    override val rescansAfterBackgroundWake: Boolean get() = true
+
     override fun rearm(settings: BackupSettings) {
         val scheduler = BGTaskScheduler.sharedScheduler
         if (!settings.enabled) {

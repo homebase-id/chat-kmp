@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import kotlin.time.Duration
 import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.PhotoUniqueId
 import id.homebase.api.file.FileOperationsProvider
@@ -34,6 +35,8 @@ class AssetHasher(
             throw e
         }
     }
+
+    suspend fun awaitExportRoom(limit: Duration): Boolean = exports.awaitRoom(limit)
 
     suspend fun forget(assetId: String) = exports.forget(assetId)
 

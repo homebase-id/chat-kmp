@@ -78,6 +78,8 @@ class PhotoBackupRun(
                 pendingCount = counts.pending + counts.inOutbox,
                 uploadingCount = counts.uploading,
                 backedUpCount = counts.done,
+                backedUpBytes = counts.doneBytes,
+                remainingBytes = counts.remainingBytes,
                 failedCount = counts.failed,
                 failures = failures,
                 lastSuccessMs = lastSuccess,
@@ -280,6 +282,7 @@ class PhotoBackupRun(
 
     private suspend fun hashStage(request: BackupRunRequest, includeVideos: Boolean, newestFirst: Boolean) {
         val claimed = mutableSetOf<String>()
+        var waitForExportRoom = true
         coroutineScope {
             val slots = Channel<DeviceBackupAsset>()
             repeat(HASH_PARALLELISM) {
@@ -293,6 +296,9 @@ class PhotoBackupRun(
                 if (batch.isEmpty()) break
                 for (row in batch) {
                     claimed += row.deviceAssetId
+                    if (waitForExportRoom && row.mediaType != BackupMediaType.Video.code) {
+                        waitForExportRoom = hasher.awaitExportRoom(NO_PROGRESS_LIMIT)
+                    }
                     slots.send(row)
                 }
             }

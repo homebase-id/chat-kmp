@@ -3,12 +3,16 @@ package id.homebase.photobase.backup
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 class HashedExportsTest {
     private val sizes = mutableMapOf<String, Long>()
@@ -35,6 +39,27 @@ class HashedExportsTest {
     private val source = CountingSource()
     private val exports = HashedExports(source, files)
     private val hasher = AssetHasher(exports, files)
+
+    @Test
+    fun hashingWaitsForRoomUntilAnUploadTakesItsExport() = runTest {
+        exportSize = 256L * 1024 * 1024
+        hasher.hash("a", BackupMediaType.Image)
+
+        val room = async { exports.awaitRoom(2.minutes) }
+        runCurrent()
+        assertFalse(room.isCompleted)
+
+        exports.export("a", BackupMediaType.Image)
+        assertTrue(room.await())
+    }
+
+    @Test
+    fun aStalledUploadOnlyHoldsHashingUpToTheLimit() = runTest {
+        exportSize = 256L * 1024 * 1024
+        hasher.hash("a", BackupMediaType.Image)
+
+        assertFalse(exports.awaitRoom(2.minutes))
+    }
 
     @Test
     fun aHashedPhotoIsNotExportedAgain() = runTest {

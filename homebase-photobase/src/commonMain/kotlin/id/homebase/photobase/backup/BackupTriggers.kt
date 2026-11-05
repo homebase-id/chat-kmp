@@ -17,6 +17,9 @@ class BatteryGuidance(val isRestricted: Boolean, val openSettings: () -> Unit)
  * - [batteryGuidance] is null where there's nothing to advise.
  */
 interface BackupTriggers : BackupScheduler {
+    /** The change history can miss photos added during a background launch, so the next foreground run lists everything. */
+    val rescansAfterBackgroundWake: Boolean get() = false
+
     suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit)
 
     fun startUserRequestedRun(settings: BackupSettings, progress: Flow<Float>, runInApp: suspend () -> Unit): Boolean

@@ -172,6 +172,9 @@ class OutboxSync(
     // Started/Completed events that mark the same 0↔1 worker transitions.
     private var backgroundAssertion: BackgroundExecutionAssertion? = null
 
+    /** True keeps bulk rows queued, without spending a retry. An upload already under way isn't recalled. */
+    var holdBulkSends: suspend () -> Boolean = { false }
+
     // The send() function spawns a thread when it acquires the lock.
     // Then send() returns true if it begins processing in a thread, and false if
     // another thread is already processing.
@@ -210,6 +213,8 @@ class OutboxSync(
             } finally {
                 // After loop, check if this is the final thread
                 var nextSend: UnixTimeUtc? = null
+                // Held rows have no next time: waking for them would find nothing to check out, over and over.
+                val nextBelowPriority = if (holdBulkSends()) OUTBOX_BULK_PRIORITY else Long.MAX_VALUE
                 try {
                     counterMutex.withLock {
                         if (activeThreads.decrementAndGet() == 0) {
@@ -219,7 +224,7 @@ class OutboxSync(
                             backgroundAssertion?.end()
                             backgroundAssertion = null
                             val n = totalSent.getAndSet(0)
-                            nextSend = databaseManager.outbox.nextScheduled()
+                            nextSend = databaseManager.outbox.nextScheduled(nextBelowPriority)
                             eventBus.emit(BackendEvent.OutboxEvent.Completed(n))
                         }
                     }
@@ -236,18 +241,22 @@ class OutboxSync(
         return true
     }
 
+    // Everything else first and outside the hold check, so a slow check can never delay a chat message.
+    private suspend fun checkoutNext(): Outbox? {
+        checkoutMutex.withLock { databaseManager.outbox.checkout(belowPriority = OUTBOX_BULK_PRIORITY) }?.let { return it }
+        if (holdBulkSends()) return null
+        return checkoutMutex.withLock {
+            if (bulkInFlight.value >= MAX_BULK_SENDING) return@withLock null
+            databaseManager.outbox.checkout()?.also { if (it.priority >= OUTBOX_BULK_PRIORITY) bulkInFlight.incrementAndGet() }
+        }
+    }
+
     private suspend fun outboxSend() {
         while (true) {
             Logger.i("Popping Outbox")
 
 //            val outboxRecord = databaseManager.outbox.checkout()
-            val outboxRecord = checkoutMutex.withLock {
-                val record = databaseManager.outbox.checkout(
-                    belowPriority = if (bulkInFlight.value >= MAX_BULK_SENDING) OUTBOX_BULK_PRIORITY else Long.MAX_VALUE,
-                )
-                if (record != null && record.priority >= OUTBOX_BULK_PRIORITY) bulkInFlight.incrementAndGet()
-                record
-            }
+            val outboxRecord = checkoutNext()
 
             if (outboxRecord == null) {
                 Logger.i("No more items in outbox")

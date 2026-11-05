@@ -28,6 +28,8 @@ data class LedgerCounts(
     val uploading: Long,
     val done: Long,
     val failed: Long,
+    val doneBytes: Long = 0,
+    val remainingBytes: Long = 0,
 )
 
 /** The one place backup state changes, and what decides whether a photo is backed up. */
@@ -194,12 +196,16 @@ class BackupLedger(
     suspend fun counts(): LedgerCounts {
         val byState = store.countByState()
         fun count(state: BackupState) = byState[state.code] ?: 0
+        val bytes = store.bytesByState()
+        fun bytes(state: BackupState) = bytes[state.code] ?: 0
         return LedgerCounts(
             pending = count(BackupState.New) + count(BackupState.Hashed),
             inOutbox = count(BackupState.Queued),
             uploading = count(BackupState.Uploading),
             done = count(BackupState.Done),
             failed = count(BackupState.Failed),
+            doneBytes = bytes(BackupState.Done),
+            remainingBytes = listOf(BackupState.New, BackupState.Hashed, BackupState.Queued, BackupState.Uploading).sumOf(::bytes),
         )
     }
 
