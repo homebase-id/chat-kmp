@@ -67,6 +67,7 @@ class WatchProcessor(
     private val pending = LinkedHashMap<Uuid, ChatMsg>()
     private val lastListen = HashMap<Uuid, Long>()
     private val listenWait = java.util.concurrent.ConcurrentHashMap<Uuid, Long>()
+    private val lastSpoke = HashMap<Uuid, Long>()
 
     // true once a parked listen burst has been quiet for listenQuiet; the watch loop then polls so handleAll picks it up
     fun listenDue() = listenWait.values.any { clock() >= it }
@@ -89,6 +90,7 @@ class WatchProcessor(
         for (msg in batch) {
             if (msg.id in seen && msg.id !in pending) { results[msg.id] = "seen"; continue }
             notifier?.observe(msg)
+            if (isOwn(msg)) lastSpoke[msg.conversationId] = clock()
             if (isAwayCommand(msg)) { toggleAway(msg, results); continue }
             val skip = precheck(msg)
             if (skip != null) { finish(msg.id, skip, results); continue }
@@ -357,6 +359,9 @@ class WatchProcessor(
         finish(msg.id, if (on) "away on" else "away off", results)
     }
 
+    private val nameWord = Regex("(?<![\\p{L}\\p{N}_])${Regex.escape(config.nickname)}(?![\\p{L}\\p{N}_])", RegexOption.IGNORE_CASE)
+    private fun namesBot(text: String) = nameWord.containsMatchIn(text)
+
     private fun isBotNoise(msg: ChatMsg) = isOwn(msg) || msg.text.trimStart().startsWith(BOT_PREFIX)
 
     private fun mentioned(msg: ChatMsg): Boolean {
@@ -411,7 +416,11 @@ class WatchProcessor(
         if (addressed.isNotEmpty()) listenWait.remove(conversation)
         if (quiet.isNotEmpty() && addressed.isEmpty()) {
             if (config.listenQuietMs > 0) {
-                if (quiet.any { it.id !in pending }) listenWait[conversation] = clock() + config.listenQuietMs
+                // named mid-sentence, or the bot spoke here within followUp: no wait, triage now
+                val now = clock()
+                val urgent = quiet.any { namesBot(it.text) } || now - (lastSpoke[conversation] ?: Long.MIN_VALUE / 2) < config.followUpMs
+                if (urgent) listenWait[conversation] = now
+                else if (quiet.any { it.id !in pending }) listenWait[conversation] = now + config.listenQuietMs
                 if (clock() < (listenWait[conversation] ?: 0L)) {
                     quiet.forEach { pending[it.id] = it; results[it.id] = "waiting" }
                     return

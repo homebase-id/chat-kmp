@@ -236,4 +236,24 @@ class ListenTest {
         assertEquals(1, h.brainRuns)
         assertTrue("maybe the stat one" in h.prompts.single() && "what should we post friday" in h.prompts.single())
     }
+
+    @Test
+    fun namingTheBotMidSentenceSkipsTheWait() = runBlocking<Unit> {
+        val allow = Allowlist(setOf(room), null, Kind.BOT)
+        allow.learn(listOf(ConversationInfo(room, "room", listOf(self, op, rando))))
+        val h = TestHarness(AgentConfig(allowlist = allow, nickname = "bilbo", operators = setOf(op), operatorBrain = "full", listenRooms = setOf(room), followUpMs = 0), identity = self.toString())
+        h.handle(msg(rando, "what do you think, Bilbo?"))
+        assertEquals(1, h.brainRuns)
+    }
+
+    @Test
+    fun soonAfterTheBotSpokeThereIsNoWait() = runBlocking<Unit> {
+        val allow = Allowlist(setOf(room), null, Kind.BOT)
+        allow.learn(listOf(ConversationInfo(room, "room", listOf(self, op, rando))))
+        val h = TestHarness(AgentConfig(allowlist = allow, operators = setOf(op), operatorBrain = "full", listenRooms = setOf(room)), identity = self.toString())
+        h.handle(msg(self, "here's the draft"))
+        h.now += 30_000
+        h.handle(msg(rando, "can you make it shorter"))
+        assertEquals(1, h.brainRuns)
+    }
 }
