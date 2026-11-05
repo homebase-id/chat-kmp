@@ -61,7 +61,9 @@ data class UploadFileRequest(
     val payloads: List<PayloadFile> = emptyList(),
     val thumbnails: List<ThumbnailFile> = emptyList(),
     val transitOptions: TransitOptions? = null,
-    val fileSystemType: FileSystemType? = null
+    val fileSystemType: FileSystemType? = null,
+    /** The file's uniqueId is its content, so a 4105 means it's already there: sent, nothing to convert to an update. */
+    val existingFileIsSuccess: Boolean = false,
 )
 
 @Serializable

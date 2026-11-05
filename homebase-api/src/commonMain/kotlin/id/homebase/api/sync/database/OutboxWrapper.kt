@@ -32,6 +32,12 @@ class OutboxWrapper(
         return databaseManager.withWriteValue { delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds).executeAsOneOrNull() }
     }
 
+    suspend fun checkoutBelowPriority(priority: Long): Outbox? {
+        return databaseManager.withWriteValue {
+            delegate.checkoutBelowPriority(getUniqueId(), UnixTimeUtc.now().milliseconds, priority).executeAsOneOrNull()
+        }
+    }
+
     suspend fun nextScheduled(): UnixTimeUtc? {
         val n = databaseManager.readValue("outbox.nextScheduled") {
             delegate.nextScheduled().executeAsOneOrNull()

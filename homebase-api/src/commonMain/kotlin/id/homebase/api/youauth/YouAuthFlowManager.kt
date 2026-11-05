@@ -104,6 +104,8 @@ class YouAuthFlowManager(
     // on FileOperationsProvider directly. Default no-op keeps existing tests and
     // any construction path that doesn't care about platform caches working.
     private val clearPlatformCaches: suspend () -> Unit = {},
+    // Work that needs the session one last time; bounded by the caller, and never blocks logout.
+    private val beforeLogout: suspend () -> Unit = {},
 ) {
     private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Initializing)
     val authState: StateFlow<YouAuthState> = _authState.asStateFlow()
@@ -440,6 +442,8 @@ class YouAuthFlowManager(
      * round-trip needs valid credentials, which is exactly what's broken in that state.
      */
     suspend fun logout(force: Boolean = false) {
+        if (!force) stepOrLog("beforeLogout") { beforeLogout() }
+
         // Notify the backend first — this needs valid credentials.
         if (!force) {
             try {

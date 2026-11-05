@@ -45,6 +45,29 @@ WHERE checkOutStamp IS NULL AND
 )
 RETURNING rowId, driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
 
+-- The same checkout, leaving bulk rows queued: their upload slots are taken (OutboxSync)
+checkoutBelowPriority:
+UPDATE Outbox
+SET checkOutStamp=:checkOutStamp
+WHERE checkOutStamp IS NULL AND
+    rowId = (
+    SELECT rowId
+    FROM Outbox AS o
+    WHERE o.checkOutStamp IS NULL
+        AND o.nextRunTime <= :now
+        AND o.priority < :priority
+        AND ((o.dependencyUniqueId IS NULL)
+            OR (NOT EXISTS (
+                  SELECT 1
+                  FROM Outbox AS ib
+                  WHERE ib.uniqueId = o.dependencyUniqueId)
+        )
+    )
+    ORDER BY o.priority ASC, o.nextRunTime ASC
+    LIMIT 1
+)
+RETURNING rowId, driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
+
 -- Point new files queued behind a held row at what it waits on instead (OutboxSync, storage full)
 repointNewFilesQueuedBehind:
 UPDATE Outbox

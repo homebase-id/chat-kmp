@@ -61,6 +61,9 @@
      or higher if your app targets Android 14 (API level 34) or higher.  -->
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
+    <!-- Photo backup: without it Android redacts GPS from the photos it reads. -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+
     <application
         android:name=".MainApplication"
         android:allowBackup="false"

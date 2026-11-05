@@ -53,6 +53,9 @@ import id.homebase.resources.settings_feed_desc
 import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_section_apps
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.resources.photobase_backup_enable_desc
+import id.homebase.resources.photobase_backup_title
 import id.homebase.resources.settings_vault_desc
 import id.homebase.resources.vault_settings_section
 import id.homebase.resources.webdrop_home_subtitle
@@ -176,6 +179,16 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         containerColor = rowColor,
                         action = SettingsRowAction.Navigate(actions.onCallsSettings),
                     )
+                    actions.onPhotoBackup?.let { onPhotoBackup ->
+                        SettingsRow(
+                            modifier = Modifier.testTag("photoBackupSettingsButton"),
+                            icon = Icons.Outlined.PhotoLibrary,
+                            title = stringResource(MR.string.photobase_backup_title),
+                            supportingText = stringResource(MR.string.photobase_backup_enable_desc),
+                            containerColor = rowColor,
+                            action = SettingsRowAction.Navigate(onPhotoBackup),
+                        )
+                    }
                 }
             }
         }

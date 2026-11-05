@@ -2,6 +2,16 @@
 
 package id.homebase.core.di
 
+import org.koin.core.scope.Scope
+import id.homebase.api.client.storage.StorageQuota
+import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.coroutines.supervisedScope
+import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.sync.database.DatabaseManager
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import kotlin.time.Duration.Companion.seconds
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
@@ -166,6 +176,21 @@ import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
 import id.homebase.core.filesync.FilesyncPreferences
+import id.homebase.core.config.getPhotobasePermissionExtensionConfig
+import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.photobase.backup.AssetHasher
+import id.homebase.photobase.backup.BackupLedger
+import id.homebase.photobase.backup.BackupOutboxResults
+import id.homebase.photobase.backup.BackupPushSchedule
+import id.homebase.photobase.backup.BackupScheduler
+import id.homebase.photobase.backup.BackupSettingsStore
+import id.homebase.photobase.backup.OutboxBackupUploader
+import id.homebase.photobase.backup.PhotoBackupController
+import id.homebase.photobase.backup.PhotoBackupRun
+import id.homebase.photobase.backup.ServerBackupDedupe
+import id.homebase.photobase.backup.createPhotoBackupPlatform
+import id.homebase.photobase.ui.BackupSettingsViewModel
+import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
@@ -302,6 +327,7 @@ val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
+val PhotobasePermissionQualifier = named("photobasePermission")
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -606,6 +632,7 @@ val appModule = module {
             httpClient = get(),
             driveFileProviderCached = get(),
             contactInfo = get(),
+            beforeLogout = { get<PhotoBackupController>().onBeforeLogout() },
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -804,6 +831,7 @@ val appModule = module {
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
                 get<FilesyncPreferences>().reset()
+                get<PhotoBackupController>().onPostAuthenticated()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -1029,6 +1057,7 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
+    single { photoBackupController() }
     single { FilesyncRepository(get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncUploadQueue(get(), get(), get(), get()) }
@@ -1388,6 +1417,19 @@ val appModule = module {
         )
     }
     // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
+    viewModel(PhotobasePermissionQualifier) {
+        val drives = get<DriveQueryProvider>()
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getPhotobasePermissionExtensionConfig(
+                isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
+            ),
+        )
+    }
+    viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
+    viewModel { BackupSettingsViewModel(get()) }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
@@ -1535,3 +1577,42 @@ private suspend fun recordCallEvent(
         previousMessageUniqueId = null,
     )
 }
+
+private fun Scope.photoBackupController(): PhotoBackupController {
+    val now = { UnixTimeUtc.now().milliseconds }
+    val scope = supervisedScope("photo-backup", ioDispatcher)
+    val ledger = BackupLedger(get<DatabaseManager>().deviceBackup, now)
+    val settings = BackupSettingsStore(get())
+    val results = BackupOutboxResults(ledger, get(), PhotobaseProtocol.DriveAlias, scope)
+    val scheduler = BackupScheduler { }
+    val platform = createPhotoBackupPlatform(get())
+    val run = platform?.let {
+        val hasher = AssetHasher(it.source, get())
+        val uploader = OutboxBackupUploader(get(), it.source, hasher, get(), get(), scope)
+        val storageQuota = get<StorageQuota>()
+        PhotoBackupRun(
+            settings = { settings.settings.value },
+            ledger = ledger,
+            source = it.source,
+            hasher = hasher,
+            dedupe = ServerBackupDedupe(get()),
+            uploaderFor = { uploader },
+            results = results,
+            probe = it.probe,
+            auth = {
+                withTimeoutOrNull(BACKUP_AUTH_RESTORE_TIMEOUT) {
+                    get<YouAuthFlowManager>().authState.first { state -> state !is YouAuthState.Initializing }
+                }
+                get<CredentialsManager>().hasActiveCredentials()
+            },
+            scheduler = scheduler,
+            isStorageFull = { refresh ->
+                if (refresh) storageQuota.refresh()
+                storageQuota.state.value.isFull
+            },
+        )
+    }
+    return PhotoBackupController(run, platform?.source, settings, BackupPushSchedule(get(), get(), now), results, scheduler, scope)
+}
+
+private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds

@@ -23,5 +23,6 @@ internal fun webPermissionGranted(
     PermissionType.LOCATION,
     PermissionType.LOCATION_ALWAYS,
     PermissionType.ACTIVITY,
+    PermissionType.MEDIA_LOCATION,
         -> true
 }

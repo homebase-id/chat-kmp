@@ -232,6 +232,13 @@ import id.homebase.core.ui.screens.webdrop.WebDropUiEvent
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
 import id.homebase.core.filesync.FilesyncPreferences
+import id.homebase.photobase.backup.PhotoBackupController
+import id.homebase.photobase.ui.BackupSettingsScreen
+import id.homebase.photobase.ui.BackupStatusScreen
+import id.homebase.photobase.ui.PhotobaseCheckingScreen
+import id.homebase.photobase.ui.PhotobaseOnboardingScreen
+import id.homebase.photobase.ui.PhotobaseSetupUiAction
+import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
 import id.homebase.core.ui.screens.filesync.FilesyncPlaces
 import id.homebase.core.ui.screens.filesync.FilesyncRecentScreen
@@ -2423,6 +2430,24 @@ fun AppNavHost(
                                 }
                             }
 
+                            composable<Route.PhotoBackupSettings> {
+                                if (isAuthenticated) {
+                                    PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
+                                        BackupSettingsScreen(
+                                            viewModel = koinViewModel(),
+                                            onBack = { navController.popBackStack() },
+                                            onOpenStatus = { navController.navigate(Route.PhotoBackupStatus) },
+                                        )
+                                    }
+                                }
+                            }
+
+                            composable<Route.PhotoBackupStatus> {
+                                if (isAuthenticated) {
+                                    BackupStatusScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                                }
+                            }
+
                             composable<Route.VaultSettings> {
                                 if (isAuthenticated) {
                                     val fromVault = navController.previousBackStackEntry
@@ -2544,6 +2569,7 @@ fun AppNavHost(
                                             onLocation = openLocation,
                                             onContactBookSettings = { navController.navigate(Route.ContactBookSettings) },
                                             onCallsSettings = { navController.navigate(Route.CallsSettings) },
+                                            onPhotoBackup = { navController.navigate(Route.PhotoBackupSettings) }.takeIf { koinInject<PhotoBackupController>().isSupported },
                                         ),
                                     )
                                 }
@@ -2713,6 +2739,25 @@ private fun FilesyncSetupGate(onDismiss: () -> Unit, installed: @Composable (Fil
                 onDismiss = onDismiss,
             )
             true -> installed(filesyncViewModel)
+        }
+    }
+}
+
+@Composable
+private fun PhotobaseSetupGate(onDismiss: () -> Unit, installed: @Composable () -> Unit) {
+    val viewModel: PhotobaseSetupViewModel = koinViewModel()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    Crossfade(
+        targetState = uiState.installed,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    ) { state ->
+        when (state) {
+            null -> PhotobaseCheckingScreen(
+                failed = uiState.checkFailed,
+                onRetry = { viewModel.onAction(PhotobaseSetupUiAction.RetryCheck) },
+            )
+            false -> PhotobaseOnboardingScreen(viewModel = viewModel, onDismiss = onDismiss)
+            true -> installed()
         }
     }
 }

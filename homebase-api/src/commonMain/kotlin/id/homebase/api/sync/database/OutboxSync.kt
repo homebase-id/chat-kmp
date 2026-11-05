@@ -42,6 +42,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.*
 import kotlin.uuid.Uuid
 
+/** Rows at or above this are bulk work, like photo backup: they never take the last upload slot, so they can't hold up a message. */
+const val OUTBOX_BULK_PRIORITY = 1000L
+
 interface OutboxUploader {
     suspend fun upload(outboxRecord: Outbox, eventBus: EventBus): Unit
 }
@@ -150,11 +153,13 @@ class OutboxSync(
     fun isCurrentlyOnline(): Boolean = isOnline
 
     private val MAX_SENDING_THREADS = 3
+    private val MAX_BULK_SENDING = MAX_SENDING_THREADS - 1
     private val BASE_DELAY_SECONDS = 30L        // first retry after 30s
     private val MAX_DELAY_SECONDS = 14400L      // 4 hours cap
     private val MAX_RETRIES = MAX_ATTEMPTS      // ~48 hours total
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
     private val activeThreads = atomic(0)
+    private val bulkInFlight = atomic(0)
 
     private val totalSent = atomic(0)
     private val counterMutex = Mutex()
@@ -237,7 +242,13 @@ class OutboxSync(
 
 //            val outboxRecord = databaseManager.outbox.checkout()
             val outboxRecord = checkoutMutex.withLock {
-                databaseManager.outbox.checkout()
+                val record = if (bulkInFlight.value >= MAX_BULK_SENDING) {
+                    databaseManager.outbox.checkoutBelowPriority(OUTBOX_BULK_PRIORITY)
+                } else {
+                    databaseManager.outbox.checkout()
+                }
+                if (record != null && record.priority >= OUTBOX_BULK_PRIORITY) bulkInFlight.incrementAndGet()
+                record
             }
 
             if (outboxRecord == null) {
@@ -438,6 +449,7 @@ class OutboxSync(
                 // stays checked out in the DB but is no longer in flight, so it
                 // correctly reads as a zombie until clearCheckout revives it.)
                 markCheckoutDone(outboxRecord.checkOutStamp)
+                if (outboxRecord.priority >= OUTBOX_BULK_PRIORITY) bulkInFlight.decrementAndGet()
             }
         }
     }
