@@ -24,9 +24,8 @@ class PhotoBackupEntry(private val enabled: () -> Boolean, controller: () -> Pho
     suspend fun onWake(remaining: Duration) = guarded { it.onWake(remaining) }
 
     private inline fun guarded(call: (PhotoBackupController) -> Unit) {
-        if (!enabled()) return
         try {
-            call(controller)
+            if (enabled()) call(controller)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

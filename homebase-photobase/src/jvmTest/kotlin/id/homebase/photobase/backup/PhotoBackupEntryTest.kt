@@ -61,6 +61,20 @@ class PhotoBackupEntryTest {
     }
 
     @Test
+    fun aSwitchThatCannotBeReadStopsAtTheEntry() = runTest {
+        val entry = PhotoBackupEntry({ throw IllegalStateException("no switch") }) {
+            builds++
+            throw IllegalStateException("no controller")
+        }
+
+        entry.onProcessStart()
+        entry.onBeforeLogout()
+        entry.onWake(10.seconds)
+
+        assertEquals(0, builds)
+    }
+
+    @Test
     fun cancellationStillPropagates() = runTest {
         val entry = entry(enabled = true, failure = CancellationException("cancelled"))
 
