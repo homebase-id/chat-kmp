@@ -133,7 +133,7 @@ fun AgentUiBubble(
     LaunchedEffect(message.id, ready != null) {
         if (ready != null) {
             Logger.d(tag = "AgentUi") {
-                "ready id=${message.id} source=${if (content.inlineTree != null) "inline" else "payload"} firstFrame=${firstFrame is TreeLoad.Ready}"
+                "ready id=${message.id} source=${if (content.inlineTree != null) "inline" else "payload"}"
             }
         }
     }
