@@ -13,7 +13,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -68,7 +71,7 @@ class PhotoBackupControllerTest {
     private var configSaveFailure: Exception? = null
     private lateinit var settingsStore: BackupSettingsStore
 
-    private fun TestScope.controller(): PhotoBackupController {
+    private fun TestScope.controller(scope: CoroutineScope = backgroundScope): PhotoBackupController {
         val eventBus = EventBus()
         val ledger = BackupLedger(db.deviceBackup) { 1_000 }
         val store = BackupSettingsStore(db)
@@ -100,7 +103,7 @@ class PhotoBackupControllerTest {
             updateFileByUniqueId = { error("nothing to update") },
         )
         settingsStore = store
-        return PhotoBackupController(run, source, store, push, configFile, results, triggers, backgroundScope)
+        return PhotoBackupController(run, source, store, push, configFile, results, triggers, scope)
     }
 
     private suspend fun pushRow() = db.outbox.selectByUniqueId(PhotobaseProtocol.BackupPushTagId)
@@ -152,7 +155,8 @@ class PhotoBackupControllerTest {
 
     @Test
     fun aFailedSaveKeepsTheOldInterval() = runTest {
-        val controller = controller()
+        // Supervised like the real scope: backgroundScope would fail the test on the child's exception.
+        val controller = controller(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
         val before = settingsStore.settings.value.pushIntervalMs
         configSaveFailure = IllegalStateException("offline")
 
