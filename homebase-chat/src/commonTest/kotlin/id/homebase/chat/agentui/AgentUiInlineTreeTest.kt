@@ -159,11 +159,17 @@ class AgentUiInlineTreeTest {
 
     @Test fun a_tree_warmed_after_a_failed_load_reaches_the_results_flow() = runTest {
         var fail = true
-        val loader = loader(mutableListOf()) { if (fail) null else AgentUiFixtures.draftPostCardBytes() }
+        var now = 0L
+        val loader = AgentUiTreeLoader(
+            fetch = { _, _, _ -> if (fail) null else AgentUiFixtures.draftPostCardBytes() },
+            scope = this,
+            nowMs = { now },
+        )
         val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
         val seen = async { assertNotNull(loader.results(m)).first() }
         assertNull(loader.load(m))
         fail = false
+        now = 31_000
         loader.warm(listOf(m))
         advanceUntilIdle()
         assertIs<AgentUiTreeResult.Valid>(seen.await())
@@ -198,6 +204,25 @@ class AgentUiInlineTreeTest {
         assertNull(loader.cached(edited))
         loader.load(edited)
         assertEquals(2, fetches.size)
+        assertNull(loader.cached(m))
+    }
+
+    @Test fun warming_backs_off_after_a_failed_fetch() = runTest {
+        val fetches = mutableListOf<Uuid>()
+        var now = 0L
+        val loader = AgentUiTreeLoader(fetch = { id, _, _ -> fetches += id; null }, scope = this, nowMs = { now })
+        val m = message(header(AgentUiDescriptor(fallback = "Draft post")), images + treePayload)
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        assertEquals(1, fetches.size)
+        now = 31_000
+        loader.warm(listOf(m))
+        advanceUntilIdle()
+        assertEquals(2, fetches.size)
+        assertNull(loader.load(m))
+        assertEquals(3, fetches.size)
     }
 
     @Test fun an_edit_from_inline_to_payload_loads_the_payload() = runTest {

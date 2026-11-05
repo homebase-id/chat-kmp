@@ -54,6 +54,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -114,7 +116,12 @@ fun AgentUiTreeView(
     onAction: (AgentUiActionRequest) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val env = Env(tree, inputs, imageData, enabled, pendingActionIds, onAction)
+    val currentImageData by rememberUpdatedState(imageData)
+    val currentOnAction by rememberUpdatedState(onAction)
+    // Remembered so an unchanged card skips recomposing its nodes when the bubble around it recomposes.
+    val env = remember(tree, inputs, enabled, pendingActionIds) {
+        Env(tree, inputs, { currentImageData(it) }, enabled, pendingActionIds) { currentOnAction(it) }
+    }
     val root = tree.root
     Box(modifier) {
         if (root is AgentUiNode.Card) CardBody(root.children, env, Arrangement.spacedBy(12.dp)) else NodeView(root, env)

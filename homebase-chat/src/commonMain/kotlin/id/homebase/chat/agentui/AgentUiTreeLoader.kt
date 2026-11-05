@@ -25,6 +25,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
@@ -37,6 +38,7 @@ class AgentUiTreeLoader(
     private val scope: CoroutineScope,
     events: EventBus? = null,
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     init {
         events?.let { bus -> scope.launch { bus.events.collect { if (it is BackendEvent.SessionEnded) clear() } } }
@@ -50,6 +52,7 @@ class AgentUiTreeLoader(
     private val mutex = Mutex()
     private val pending = HashMap<Key, Deferred<AgentUiTreeResult?>>()
     private var generation = 0
+    private val failedAtMs = HashMap<Key, Long>()
 
     /** The decoded tree if it is already in memory; never suspends, so a composable can read it on its first frame. */
     fun cached(message: MessageUiModel): AgentUiTreeResult? = request(message)?.let { trees.value[it.key] }
@@ -66,10 +69,17 @@ class AgentUiTreeLoader(
         return job.await()
     }
 
+    /** Starts a load for each card not decoded yet; one whose fetch failed recently is left to its bubble's own [load] until the backoff passes. */
     fun warm(messages: List<MessageUiModel>) {
         for (m in messages) {
             val req = request(m) ?: continue
-            if (req.key !in trees.value) scope.launch { load(m) }
+            if (req.key in trees.value) continue
+            scope.launch {
+                val skip = mutex.withLock {
+                    req.key in pending || failedAtMs[req.key]?.let { nowMs() - it < WARM_RETRY_BACKOFF_MS } == true
+                }
+                if (!skip) load(m)
+            }
         }
     }
 
@@ -81,6 +91,7 @@ class AgentUiTreeLoader(
                 generation++
                 pending.values.forEach { it.cancel() }
                 pending.clear()
+                failedAtMs.clear()
                 trees.value = emptyMap()
             }
         }
@@ -96,10 +107,14 @@ class AgentUiTreeLoader(
             Logger.w(tag = TAG) { "tree fetch failed id=${req.messageId}: ${e.message}" }
             null
         }
+        if (bytes == null) mutex.withLock { if (startedIn == generation) failedAtMs[req.key] = nowMs() }
         bytes?.let {
             val result = withContext(decodeDispatcher) { AgentUiTree.decode(it, req.key.imageKeys) }
             mutex.withLock {
-                if (startedIn == generation) trees.update { m -> (m + (req.key to result)).let { if (it.size > MAX_TREES) it.entries.drop(it.size - MAX_TREES).associate { e -> e.key to e.value } else it } }
+                if (startedIn == generation) {
+                    failedAtMs.remove(req.key)
+                    trees.update { it.withTree(req.key, result) }
+                }
             }
             Logger.d(tag = TAG) { "ready id=${req.messageId} source=payload bytes=${it.size} state=${result::class.simpleName}" }
             result
@@ -124,6 +139,16 @@ class AgentUiTreeLoader(
     private companion object {
         const val TAG = "AgentUi"
         const val MAX_TREES = 200
+        const val WARM_RETRY_BACKOFF_MS = 30_000L
+
+        // A newer revision of a card replaces its older ones, and the oldest decoded tree goes first.
+        fun Map<Key, AgentUiTreeResult>.withTree(key: Key, result: AgentUiTreeResult): Map<Key, AgentUiTreeResult> {
+            val next = LinkedHashMap<Key, AgentUiTreeResult>(size + 1)
+            for ((k, v) in this) if (k.fileId != key.fileId) next[k] = v
+            next[key] = result
+            while (next.size > MAX_TREES) next.remove(next.keys.first())
+            return next
+        }
     }
 }
 
