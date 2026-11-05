@@ -19,6 +19,7 @@ class TestHarness(
     leaseFor: ((Uuid, Tier, id.homebase.api.common.OdinId?) -> ToolLease?)? = null,
     sessions: SessionStore? = null,
     schedules: ScheduleStore? = null,
+    approvals: ApprovalGate? = null,
     var now: Long = 1_000_000L,
     voice: VoiceOut? = null,
 ) {
@@ -57,6 +58,7 @@ class TestHarness(
         leaseFor = leaseFor,
         sessions = sessions,
         schedules = schedules,
+        approvals = approvals,
         clock = { now },
         voice = voice,
         sendVoice = { conversation, spoken, caption -> voices += Triple(conversation, spoken, caption) },

@@ -118,6 +118,7 @@ class AgentConfig(
     val callFiller: String = DEFAULT_CALL_FILLER,
     val callMaxMinutes: Int = DEFAULT_CALL_MAX_MINUTES,
     val callConverse: Boolean = true,
+    val publishCommand: String? = null,
     val warnings: List<String> = emptyList(),
 ) {
     val nick = Nickname(nickname)
@@ -327,6 +328,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
         callFiller = str("callFiller") ?: DEFAULT_CALL_FILLER,
         callMaxMinutes = callMinutes,
         callConverse = converseMode != "off",
+        publishCommand = str("publishCommand"),
         warnings = listOfNotNull(
             "WARNING: invalid calls '${str("calls")}', using off (on or off)".takeIf { callsMode != null && callsMode !in setOf("on", "off") },
             "WARNING: calls=on needs tts= to synthesize the message before dialing, calls stay off".takeIf { callsMode == "on" && tts == null },
@@ -338,6 +340,7 @@ fun parseConfig(text: String, owner: OdinId, profile: String = ""): AgentConfig 
             "WARNING: owner=$ownerKey is not in operators, so owner notifications (notify_owner, job results, call escalation) are off".takeIf { ownerKey != null && ownerKey != owner && notifyOwner == null && str("operatorBrain") != null },
             "WARNING: owner=$ownerKey is the bot's own identity, so there is no 1:1 to notify and owner notifications are off".takeIf { ownerKey != null && ownerKey == owner && str("operatorBrain") != null },
             "WARNING: invalid ownerQuietHours '$quietText', use HH:MM-HH:MM with different start and end; quiet hours are off".takeIf { quietText != null && quiet == null },
+            "WARNING: publishCommand is ignored without operatorBrain".takeIf { str("publishCommand") != null && str("operatorBrain") == null },
             "WARNING: bot=true is ignored for the $DELEGATE_PROFILE profile (always a delegate)".takeIf { profile == DELEGATE_PROFILE && bool("bot") == true },
             "WARNING: listenRooms is ignored unless bot=true (never for the $DELEGATE_PROFILE profile)".takeIf { !bot && str("listenRooms") != null },
             "WARNING: invalid operatorContext '${str("operatorContext")}', using operators".takeIf { str("operatorContext")?.lowercase() !in setOf(null, "all", "operators") },

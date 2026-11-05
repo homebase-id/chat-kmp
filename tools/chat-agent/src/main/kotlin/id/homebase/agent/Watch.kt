@@ -107,7 +107,8 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
     val fetcher = sessionFetcher(session)
     val toolServer = if (config.operatorBrain != null || config.lockedChat) ChatToolServer(::log).start() else null
     val schedules = if (config.operatorBrain != null) ScheduleStore(File(dir, "schedules.json"), config.zone, log = ::log) else null
-    val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules, voice, notifier) }
+    val approvals = if (config.operatorBrain != null) ApprovalGate(ApprovalStore(File(dir, "approvals.json"), ::log), config.operatorCwd?.let(::File), config.nickname, config.publishCommand, ::log) else null
+    val chatTools = toolServer?.let { ChatTools(it, config, session, previews, schedules, voice, notifier, approvals) }
     val sessionStore = if (config.sessions) SessionStore(File(dir, "sessions.json"), config.sessionMaxTokens, config.sessionMaxTurns, config.sessionWarmMs) else null
     val operatorBrain = config.operatorBrain
     val transcribeCommand = config.transcribe
@@ -151,6 +152,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         fetcher = fetcher,
         leaseFor = chatTools?.let { tools -> { conversation, tier, sender -> tools.lease(conversation, tier, sender) } },
         schedules = schedules,
+        approvals = approvals,
         voice = voice,
         notifier = notifier,
         triageLog = { conversation, msgs, decision -> appendTriage(File(dir, "triage.jsonl"), conversation, msgs, decision) },
@@ -199,6 +201,7 @@ suspend fun watch(profile: String, verbose: Boolean = false) {
         }
     }
     schedules?.let { log("schedules: ${it.activeCount()} active, timezone ${config.zone}") }
+    approvals?.let { log(it.banner()) }
     log("watching as ${session.identity} nickname=${config.nickname} bot=${config.bot} readReceipts=${config.sendsReceipts} transport=${config.transport.name.lowercase()} transcribe=${if (config.transcribe != null) "on" else "off"} tts=${if (config.tts != null) "on voice=${config.ttsReference?.let { "reference" } ?: config.ttsVoice} preset=${config.ttsPreset} replies=${if (config.voiceReplies) "mirror" else "off"} maxPerDay=${config.maxVoicePerDay}" else "off"} calls=${if (agentCalls != null) "on" else "off"} lastSeen=${cursor.position}")
     var poll = 0
     val waker = PollWaker()

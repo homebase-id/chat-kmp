@@ -88,7 +88,7 @@ const val MCP_PLACEHOLDER = "{mcp}"
 
 private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
 
-private fun shellWord(path: String) = if (SHELL_SAFE.matches(path)) path else "'" + path.replace("'", "'\\''") + "'"
+internal fun shellWord(path: String) = if (SHELL_SAFE.matches(path)) path else "'" + path.replace("'", "'\\''") + "'"
 
 // private by default: {mcp} puts this path in argv for every local user to see; operatorGroup is the only way to share it, never world-readable
 private fun writeMcpConfig(dir: File, lease: ToolLease, group: String?): File {

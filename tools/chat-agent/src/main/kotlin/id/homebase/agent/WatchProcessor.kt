@@ -50,6 +50,7 @@ class WatchProcessor(
     private val leaseFor: ((Uuid, Tier, OdinId?) -> ToolLease?)? = null,
     private val sessions: SessionStore? = null,
     private val schedules: ScheduleStore? = null,
+    private val approvals: ApprovalGate? = null,
     private val clock: () -> Long = System::currentTimeMillis,
     private val voice: VoiceOut? = null,
     private val sendVoice: (suspend (Uuid, OutVoice, String) -> Unit)? = null,
@@ -97,6 +98,10 @@ class WatchProcessor(
             val command = parseOperatorCommand(msg.text, config.nickname)?.takeIf(::isEnabled)
             if (command != null && trust.isOperator(msg.sender, msg.conversationId, allow.info(msg.conversationId)?.members)) {
                 runOperatorCommand(msg, command, results)
+                continue
+            }
+            if (command is OperatorCommand.Approve || command is OperatorCommand.Reject) {
+                refuseDecision(msg, results)
                 continue
             }
             eligible += msg
@@ -186,6 +191,17 @@ class WatchProcessor(
         is OperatorCommand.Status, is OperatorCommand.Cancel -> jobs != null
         OperatorCommand.New -> jobs != null && sessions != null
         OperatorCommand.Schedules, is OperatorCommand.Unschedule -> schedules != null
+        OperatorCommand.Approvals, is OperatorCommand.Approve, is OperatorCommand.Reject -> approvals != null
+    }
+
+    // the bot's own messages, the brain's tool sends included, have no sender or the bot's own: never a decision
+    private fun decider(msg: ChatMsg): OdinId? = msg.sender?.takeIf { it != self }
+
+    private suspend fun refuseDecision(msg: ChatMsg, results: MutableMap<Uuid, String>) {
+        log("approval decision refused: ${msg.sender ?: "self"} is not an operator here")
+        safeReply(msg.conversationId, tagged(config.replyPrefix, "only an operator can approve or reject posts"))
+        store.add(msg.id)
+        finish(msg.id, "approval refused", results)
     }
 
     private suspend fun runOperatorCommand(msg: ChatMsg, command: OperatorCommand, results: MutableMap<Uuid, String>) {
@@ -203,6 +219,15 @@ class WatchProcessor(
             is OperatorCommand.Unschedule -> "schedule unschedule" to tagged(
                 config.replyPrefix,
                 if (schedules!!.delete(conversation, command.id)) "unscheduled ${command.id}" else "no schedule ${command.id} in this conversation",
+            )
+            OperatorCommand.Approvals -> "approval list" to tagged(config.replyPrefix, approvals!!.list(conversation))
+            is OperatorCommand.Approve -> "approval approve" to tagged(
+                config.replyPrefix,
+                decider(msg)?.let { approvals!!.approve(conversation, command.id, it) } ?: "only an operator can approve posts",
+            )
+            is OperatorCommand.Reject -> "approval reject" to tagged(
+                config.replyPrefix,
+                decider(msg)?.let { approvals!!.reject(conversation, command.id, it) } ?: "only an operator can reject posts",
             )
         }
         safeReply(conversation, text)

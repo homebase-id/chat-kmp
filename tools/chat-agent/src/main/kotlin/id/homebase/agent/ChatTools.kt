@@ -38,12 +38,12 @@ const val MCP_SERVER_NAME = "chat"
 const val LOCKED_TOOL_CALL_CAP = 5
 private const val LEASE_GRACE_MS = 60_000L
 private const val UNTRUSTED_TAG = "untrusted_chat"
-private val SENDING_TOOLS = setOf("send_message", "send_file", VOICE_REPLY_TOOL, NOTIFY_TOOL) + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
+private val SENDING_TOOLS = setOf("send_message", "send_file", "request_approval", VOICE_REPLY_TOOL, NOTIFY_TOOL) + TYPED_SEND_TOOLS + MEDIA_SEND_TOOLS
 private val LEASE_KEY = AttributeKey<ToolRun>("chat-agent-run")
 
 private val READ_TOOLS = setOf("read_messages", "search_messages", "get_conversation")
 private val LOCKED_TOOLS = READ_TOOLS + setOf("send_message", "send_file", "react", "unreact", "vote_poll", "vote_groodle") + TYPED_SEND_TOOLS
-private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES + NOTIFY_TOOL
+private val OPERATOR_TOOLS = LOCKED_TOOLS + setOf("edit_message", "delete_message") + MEDIA_SEND_TOOLS + SCHEDULE_TOOL_NAMES + APPROVAL_TOOL_NAMES + NOTIFY_TOOL
 
 fun chatToolNames(tier: Tier, voice: Boolean = false): Set<String> =
     if (tier == Tier.OPERATOR) OPERATOR_TOOLS.let { if (voice) it + VOICE_REPLY_TOOL else it } else LOCKED_TOOLS
@@ -170,6 +170,7 @@ class WatcherBackend(
     private val voice: VoiceOut? = null,
     override val notifier: OwnerNotifier? = null,
     override val conversation: Uuid? = null,
+    override val approvals: ApprovalScope? = null,
     private val visibleTo: (List<ChatMsg>) -> List<ChatMsg>,
 ) : AgentBackend {
     override val filesDir: File? = config.mcpFilesDir
@@ -184,6 +185,9 @@ class WatcherBackend(
 
     override suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: id.homebase.chat.services.ReplyPreview?) =
         sendToConversation(session, allowlist, conversationId, caption, replyTo, files = listOf(file))
+
+    override suspend fun sendFiles(conversationId: Uuid, files: List<OutFile>, caption: String) =
+        sendToConversation(session, allowlist, conversationId, caption, files = files)
 
     override suspend fun speak(text: String): OutVoice = voice?.speak(text) ?: super.speak(text)
 
@@ -230,7 +234,7 @@ class WatcherBackend(
 fun visibilityFor(config: AgentConfig, trust: TrustPolicy, tier: Tier, members: List<OdinId>?, noteToSelf: Boolean, conversation: Uuid): (List<ChatMsg>) -> List<ChatMsg> =
     if (tier == Tier.OPERATOR && config.operatorContext == OperatorContext.OPERATORS) { all -> trust.history(all, members, noteToSelf, conversation) } else { all -> all }
 
-class ChatTools(private val server: ChatToolServer, private val config: AgentConfig, private val session: Session, private val previews: LinkPreviewSource?, private val schedules: ScheduleStore? = null, private val voice: VoiceOut? = null, private val notifier: OwnerNotifier? = null) {
+class ChatTools(private val server: ChatToolServer, private val config: AgentConfig, private val session: Session, private val previews: LinkPreviewSource?, private val schedules: ScheduleStore? = null, private val voice: VoiceOut? = null, private val notifier: OwnerNotifier? = null, private val approvals: ApprovalGate? = null) {
     private val trust = TrustPolicy(config, session.identity)
 
     fun lease(conversation: Uuid, tier: Tier, sender: OdinId?): ToolLease? {
@@ -242,7 +246,8 @@ class ChatTools(private val server: ChatToolServer, private val config: AgentCon
         val timeout = if (tier == Tier.OPERATOR) config.operatorTimeoutMs else BRAIN_TIMEOUT_MS
         return server.open(
             RunScope(conversation, tier, sender),
-            WatcherBackend(session, config, allowlist, previews, schedules?.takeIf { tier == Tier.OPERATOR }?.let { ScheduleScope(it, conversation, (sender ?: session.identity).toString()) }, voice, notifier?.takeIf { tier == Tier.OPERATOR }, conversation, visible),
+            WatcherBackend(session, config, allowlist, previews, schedules?.takeIf { tier == Tier.OPERATOR }?.let { ScheduleScope(it, conversation, (sender ?: session.identity).toString()) }, voice, notifier?.takeIf { tier == Tier.OPERATOR }, conversation,
+                approvals?.takeIf { tier == Tier.OPERATOR }?.let { ApprovalScope(it, conversation, (sender ?: session.identity).toString()) }, visible),
             chatToolNames(tier, voice != null).let { if (notifier == null) it - NOTIFY_TOOL else it },
             cap = if (tier == Tier.LOCKED) LOCKED_TOOL_CALL_CAP else null,
             timeoutMs = timeout,

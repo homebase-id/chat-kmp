@@ -279,6 +279,9 @@ sealed interface OperatorCommand {
     data object New : OperatorCommand
     data object Schedules : OperatorCommand
     data class Unschedule(val id: String) : OperatorCommand
+    data object Approvals : OperatorCommand
+    data class Approve(val id: String) : OperatorCommand
+    data class Reject(val id: String) : OperatorCommand
 }
 
 fun parseOperatorCommand(text: String, nickname: String): OperatorCommand? {
@@ -289,6 +292,8 @@ fun parseOperatorCommand(text: String, nickname: String): OperatorCommand? {
         return when (verb) {
             "cancel" -> parts[2].toIntOrNull()?.let(OperatorCommand::Cancel)
             "unschedule" -> OperatorCommand.Unschedule(parts[2])
+            "approve" -> OperatorCommand.Approve(parts[2])
+            "reject" -> OperatorCommand.Reject(parts[2])
             else -> null
         }
     }
@@ -297,6 +302,7 @@ fun parseOperatorCommand(text: String, nickname: String): OperatorCommand? {
         "cancel" -> OperatorCommand.Cancel(null)
         "new" -> OperatorCommand.New
         "schedules" -> OperatorCommand.Schedules
+        "approvals" -> OperatorCommand.Approvals
         else -> null
     }
 }

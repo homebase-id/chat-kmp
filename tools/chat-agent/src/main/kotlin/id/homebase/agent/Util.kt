@@ -8,6 +8,10 @@ import java.nio.file.StandardCopyOption
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 
 const val NAME_CODEPOINTS = 60
 private const val DISPLAY_NAME_CODEPOINTS = 100
@@ -17,6 +21,29 @@ fun atomicWrite(file: File, text: String) {
     val tmp = File.createTempFile(file.name, ".tmp", file.absoluteFile.parentFile)
     tmp.writeText(text)
     Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+}
+
+fun loadJsonRecords(file: File?, what: String, now: () -> Long, log: (String) -> Unit, add: (JsonObject) -> Unit) {
+    val f = file?.takeIf { it.exists() } ?: return
+    var bad = false
+    var kept = 0
+    try {
+        Json.parseToJsonElement(f.readText()).jsonArray.forEach { e ->
+            try {
+                add(e.jsonObject)
+                kept++
+            } catch (_: Exception) {
+                bad = true
+            }
+        }
+    } catch (_: Exception) {
+        bad = true
+    }
+    if (bad) {
+        val moved = File(f.parentFile, "${f.name}.corrupt-${now()}")
+        f.renameTo(moved)
+        log("WARNING: ${f.name} was unreadable or had invalid entries; moved to ${moved.name}, starting with $kept valid $what")
+    }
 }
 
 fun tempDir(kind: String): File = Files.createTempDirectory("chat-agent-$kind").toFile()

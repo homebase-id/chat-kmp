@@ -54,11 +54,13 @@ interface AgentBackend {
     suspend fun send(conversationId: Uuid, text: String, replyTo: ReplyPreview? = null): Uuid
     val filesDir: File? get() = null
     val schedules: ScheduleScope? get() = null
+    val approvals: ApprovalScope? get() = null
     val notifier: OwnerNotifier? get() = null
     val conversation: Uuid? get() = null
     fun toOwner(): AgentBackend = this
     val sendPrefix: String get() = if (allowlist.delegate) BOT_PREFIX else ""
     suspend fun sendFile(conversationId: Uuid, file: OutFile, caption: String, replyTo: ReplyPreview? = null): Uuid = error("sending files is not supported")
+    suspend fun sendFiles(conversationId: Uuid, files: List<OutFile>, caption: String): Uuid = error("sending files is not supported")
     fun visible(messages: List<ChatMsg>, conversationId: Uuid): List<ChatMsg> =
         messages.filter { allowlist.allowsAuthor(it.author, conversationId) }
     fun frame(lines: String): String = lines
@@ -315,7 +317,7 @@ private val BASE_TOOLS: List<ToolDef> = listOf(
     ToolDef("delete_message", "Delete one of your own messages for everyone.", buildJsonObject { put("messageId", MESSAGE_PROP) }, listOf("messageId"), stdio = false, write = true) { b, a -> toolDeleteMessage(b, a) },
 )
 
-val CHAT_TOOLS: List<ToolDef> = BASE_TOOLS + typedTools() + scheduleTools() + notifyTools()
+val CHAT_TOOLS: List<ToolDef> = BASE_TOOLS + typedTools() + scheduleTools() + approvalTools() + notifyTools()
 
 fun isValidReaction(emoji: String) = emoji.isNotBlank() && emoji.length <= 8 && !emoji.startsWith("_")
 

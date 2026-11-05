@@ -9,14 +9,10 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.uuid.Uuid
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
@@ -112,30 +108,13 @@ class ScheduleStore(
     private val items = ArrayList<Schedule>()
 
     init {
-        file?.takeIf { it.exists() }?.let { f ->
-            var bad = false
-            try {
-                Json.parseToJsonElement(f.readText()).jsonArray.forEach { e ->
-                    try {
-                        val o = e.jsonObject
-                        fun s(k: String) = o.getValue(k).jsonPrimitive.content
-                        items += Schedule(
-                            s("id").also { require(SCHEDULE_ID.matches(it)) }, Uuid.parse(s("conversation")).toString(), s("creator"), s("when"), s("prompt"),
-                            o.getValue("created").jsonPrimitive.long, o["lastRun"]?.jsonPrimitive?.longOrNull, o.getValue("nextRun").jsonPrimitive.long,
-                            o["enabled"]?.jsonPrimitive?.boolean ?: true,
-                        )
-                    } catch (_: Exception) {
-                        bad = true
-                    }
-                }
-            } catch (_: Exception) {
-                bad = true
-            }
-            if (bad) {
-                val kept = File(f.parentFile, "${f.name}.corrupt-${now()}")
-                f.renameTo(kept)
-                log("WARNING: ${f.name} was unreadable or had invalid entries; moved to ${kept.name}, starting with ${items.size} valid schedules")
-            }
+        loadJsonRecords(file, "schedules", now, log) { o ->
+            fun s(k: String) = o.getValue(k).jsonPrimitive.content
+            items += Schedule(
+                s("id").also { require(SCHEDULE_ID.matches(it)) }, Uuid.parse(s("conversation")).toString(), s("creator"), s("when"), s("prompt"),
+                o.getValue("created").jsonPrimitive.long, o["lastRun"]?.jsonPrimitive?.longOrNull, o.getValue("nextRun").jsonPrimitive.long,
+                o["enabled"]?.jsonPrimitive?.boolean ?: true,
+            )
         }
     }
 

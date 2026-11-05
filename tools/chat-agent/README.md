@@ -154,6 +154,7 @@ message file ids), once per message (`receipts.txt`, bounded), best-effort in th
 | maxVoicePerDay | voice replies per rolling 24 h, shared by the tool and `mirror`, kept in `voice.txt` | 20 |
 | lockedTools | comma list, default empty. `chat` gives the locked brain the chat tools below (claude default brain only; a custom `brain` gets the env vars and `{mcp}`). Unknown values warn and are ignored | none |
 | mcpFilesDir | directory the MCP `send_file` tool may send from (no default: tool refuses) | none |
+| publishCommand | shell command `publish_post` runs for an approved post (see Approval gate); `{dir}` and env `POST_DIR` are the approved files; unset = `publish_post` refuses | none |
 
 A custom `brain` / `operatorBrain` inherits `HOME` (operator tier: the full environment), so tools such as `claude`, `gh` and
 `git` find their logins under that user's home; the locked default also keeps `HOME` for the claude login.
@@ -663,6 +664,33 @@ longer an operator the schedule is disabled and posts nothing; a conversation th
 
 Operators can send `@<nick> schedules` (list this conversation's schedules) and `@<nick> unschedule <id>` (any operator may remove
 one here); neither runs the brain or uses job budget. The startup log shows the active schedule count and timezone.
+
+### Approval gate (publishing)
+
+Nothing is published until an operator approves that exact post in chat. The operator brain prepares a post in
+`<operatorCwd>/posts/<dir>/` (`post.json` plus `slide-NN.png`) and calls `request_approval(dir)` (operator tier only). The dir
+must resolve, symlinks followed, inside `<operatorCwd>/posts/` and hold `post.json`; symlinks inside it are refused. The
+chat-agent itself, not the brain, then sends the slides (4 per message) and a text with the channels, title, caption, the
+approval id and the two commands: `@<nick> approve <id>` and `@<nick> reject <id>`. A new request for the same dir replaces
+an older pending one. `@<nick> approvals` lists this conversation's requests.
+
+Only an operator (the server-set sender, as for `cancel`) can approve or reject, and only in the conversation the request was
+made in. The bot identity never can, so neither can anything the brain sends through the tools; a non-operator gets
+`only an operator can approve or reject posts`. For the `me` profile the owner shares the bot's identity, so another
+operator has to approve. These commands are handled in code and never reach the brain.
+
+The approval is bound to a SHA-256 over every file in the dir (sorted by path) except `post.json`, plus the canonical JSON of
+`post.json`'s `text`, `channels`, `title`, `alt` and `slides`. Other `post.json` fields (`approved_by`, `buffer`, ...) do not
+count, so the brain may record results there. If the hash changed since the request, approve refuses and a new request is
+needed.
+
+`publish_post(id)` (operator tier) needs an approved, unpublished request from this conversation whose hash still matches. It
+copies the files into a private temp dir, re-checks the hash on that copy and runs `publishCommand` once as the chat-agent's
+own user and environment (not the brain's, not the locked env), with the copy as `{dir}` (shell-quoted) and `POST_DIR`, killed
+after 10 minutes. Writes into `{dir}` are discarded; stdout and stderr go back to the brain. Exit 0 marks it published (a
+second call refuses); a failure leaves it approved so it can be retried. Unset `publishCommand` makes it refuse with
+`publishing not configured`. Requests, decisions and publishes are logged with ids and odinIds and kept in `approvals.json`
+in the profile data dir (survives restarts); the startup log shows the pending count and whether `publishCommand` is set.
 
 ### Mini-PC setup for operator jobs (see also Operator machine checklist)
 
