@@ -1,5 +1,6 @@
 package id.homebase.app
 
+import id.homebase.core.settings.DeveloperPreferences
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
@@ -119,11 +120,15 @@ fun main() {
         // (Android) and MainViewController() (iOS). Idempotent.
         GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
         val notificationService = GlobalContext.get().get<NotificationService>()
-        WebAppLink.consumePending()?.let { notificationService.navigateToApp(it.route) }
+        val developerPreferences = GlobalContext.get().get<DeveloperPreferences>()
+        fun open(link: AppLink) {
+            if (link.isAvailable(developerPreferences.photobaseEnabled.value)) notificationService.navigateToApp(link.route)
+        }
+        WebAppLink.consumePending()?.let(::open)
         ComposeViewport("ComposeApp") {
             LaunchedEffect(Unit) { bootDone() }
             App(onNavHostReady = { nav ->
-                WebAppLink.listenForTypedHash { notificationService.navigateToApp(it.route) }
+                WebAppLink.listenForTypedHash(::open)
                 // A custom fragment turns off the library's own hash parsing; WebAppLink does that instead.
                 nav.bindToBrowserNavigation { _ ->
                     AppLink.forBackStack(nav.currentBackStack.value)?.let { "#${it.slug}" }.orEmpty()

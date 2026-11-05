@@ -1,7 +1,6 @@
 package id.homebase.core.ui.navigation
 
 import androidx.navigation.NavBackStackEntry
-import chat_kmp.homebase_common.BuildConfig
 import androidx.navigation.NavDestination.Companion.hasRoute
 
 /** Link names for the mini apps, e.g. the web app's `#filesync`. Each slug is its route's `@SerialName`. */
@@ -19,13 +18,15 @@ enum class AppLink(val slug: String, val route: Route) {
     Home("home", Route.Home),
     Settings("settings", Route.Settings);
 
+    fun isAvailable(photobaseEnabled: Boolean): Boolean = this != Photobase || photobaseEnabled
+
     companion object {
         private val routes = entries.map { it.route }
 
-        fun fromSlug(text: String, photobaseAvailable: Boolean = BuildConfig.PHOTOBASE_ENABLED): AppLink? {
+        fun fromSlug(text: String): AppLink? {
             val slug = text.trimStart('#', '/').trimEnd('/')
             for (link in entries) {
-                if (link.slug.equals(slug, ignoreCase = true)) return link.takeIf { it != Photobase || photobaseAvailable }
+                if (link.slug.equals(slug, ignoreCase = true)) return link
             }
             return null
         }

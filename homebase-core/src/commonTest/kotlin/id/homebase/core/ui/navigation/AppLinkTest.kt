@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
@@ -25,9 +26,10 @@ class AppLinkTest {
     }
 
     @Test
-    fun fromSlug_hidesPhotobaseWhileItIsDark() {
-        assertEquals(AppLink.Photobase, AppLink.fromSlug("#photobase", photobaseAvailable = true))
-        assertNull(AppLink.fromSlug("#photobase", photobaseAvailable = false))
+    fun photobaseLinkIsOnlyAvailableWhenItIsOn() {
+        assertTrue(AppLink.Photobase.isAvailable(photobaseEnabled = true))
+        assertFalse(AppLink.Photobase.isAvailable(photobaseEnabled = false))
+        assertTrue(AppLink.Filesync.isAvailable(photobaseEnabled = false))
     }
 
     @Test

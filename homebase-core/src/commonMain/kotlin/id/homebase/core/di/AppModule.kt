@@ -191,7 +191,6 @@ import id.homebase.photobase.backup.BackupPushSchedule
 import id.homebase.photobase.backup.BackupSettingsStore
 import id.homebase.photobase.backup.HashedExports
 import id.homebase.photobase.backup.OutboxBackupUploader
-import chat_kmp.homebase_common.BuildConfig
 import id.homebase.photobase.backup.PhotoBackupController
 import id.homebase.photobase.backup.PhotoBackupEntry
 import id.homebase.photobase.backup.PhotoBackupRun
@@ -841,6 +840,7 @@ val appModule = module {
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
                 get<FilesyncPreferences>().reset()
+                get<DeveloperPreferences>().reload()
                 get<PhotoBackupEntry>().onPostAuthenticated()
                 get<PhotobasePreferences>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
@@ -1069,7 +1069,7 @@ val appModule = module {
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
     single { photoBackupController() }
-    single { PhotoBackupEntry(BuildConfig.PHOTOBASE_ENABLED) { get<PhotoBackupController>() } }
+    single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining -> get<PhotoBackupEntry>().onWake(remaining) } }
     single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }

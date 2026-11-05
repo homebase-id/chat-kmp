@@ -24,7 +24,6 @@ buildConfig {
         "APP_BUILD_TIME",
         System.getenv("APP_BUILD_TIME") ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
     )
-    buildConfigField("PHOTOBASE_ENABLED", providers.gradleProperty("photobase.enabled").map(String::toBoolean).getOrElse(false))
     useKotlinOutput { internalVisibility = false }
 }
 

@@ -1755,6 +1755,8 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_profile_card">Profile card</string>
     <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
+    <string name="dev_menu_photobase">Photobase</string>
+    <string name="dev_menu_photobase_desc">Show Photobase and allow photo backup. Turning it off stops any backup that's running.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_force_logout">Force Logout (local only)</string>

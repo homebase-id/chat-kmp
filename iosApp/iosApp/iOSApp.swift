@@ -55,11 +55,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       // Register notification categories with reply and mark-as-read actions
       registerNotificationCategories()
 
-      // Both have to happen before this method returns: a relaunch for finished uploads delivers
-      // them to this session, and iOS kills an app registering background tasks any later.
+      // Always registered, before this method returns: iOS kills an app that registers later, or
+      // that launches for a task still pending from when Photobase was on, with no handler for it.
+      PhotoBackupBackgroundTasksKt.registerPhotoBackupBackgroundTasks()
+      // A relaunch for finished uploads starts the session itself, and so does the first upload.
       if PhotoBackupBackgroundTasksKt.isPhotobaseEnabled() {
           BackgroundUploadBridgeImpl.shared.start()
-          PhotoBackupBackgroundTasksKt.registerPhotoBackupBackgroundTasks()
       }
 
       // Set delegate for handling notification actions

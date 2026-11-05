@@ -11,7 +11,7 @@ class PhotoBackupEntryTest {
     private var builds = 0
 
     private fun entry(enabled: Boolean, failure: Exception = IllegalStateException("no controller")) =
-        PhotoBackupEntry(enabled) {
+        PhotoBackupEntry({ enabled }) {
             builds++
             throw failure
         }
@@ -42,6 +42,22 @@ class PhotoBackupEntryTest {
         entry.onWake(10.seconds)
 
         assertEquals(6, builds)
+    }
+
+    @Test
+    fun turningItOnTakesEffectWithoutARestart() = runTest {
+        var on = false
+        val entry = PhotoBackupEntry({ on }) {
+            builds++
+            throw IllegalStateException("no controller")
+        }
+
+        entry.onProcessStart()
+        assertEquals(0, builds)
+
+        on = true
+        entry.onProcessStart()
+        assertEquals(1, builds)
     }
 
     @Test
