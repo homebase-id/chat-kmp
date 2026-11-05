@@ -67,6 +67,7 @@ val slimChatJar = tasks.register<Jar>("slimChatJar") {
     archiveFileName.set(chatJarName)
     destinationDirectory.set(layout.buildDirectory.dir("slim"))
     val chat = chatJarName
+    dependsOn(configurations.runtimeClasspath)
     from({ configurations.runtimeClasspath.get().filter { it.name == chat }.map { zipTree(it) } }) { exclude("ffmpeg/**") }
 }
 
