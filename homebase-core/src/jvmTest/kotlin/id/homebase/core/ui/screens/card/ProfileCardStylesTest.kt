@@ -8,8 +8,6 @@ import kotlin.test.assertTrue
 
 class ProfileCardStylesTest {
 
-    private val designs = listOf(CardDesign.POSTER, CardDesign.BOARD, CardDesign.COLLAGE, CardDesign.DOSSIER, CardDesign.LINKS)
-
     private fun default(design: String) = cardStylesFor(design).first()
 
     // Everything a preset can touch, set to something other than the preset.
@@ -29,7 +27,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun defaultComesFirstThenOneStylePerSchemeInOrder() {
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val schemes = CardDesignSpecs.of(design)!!.schemes.map { it.id }
             val styles = cardStylesFor(design)
             assertEquals(listOf(DEFAULT_STYLE_ID) + schemes, styles.map { it.id }, design)
@@ -47,7 +45,7 @@ class ProfileCardStylesTest {
             CardDesign.DOSSIER to ("#0E1013" to "#E9ECF1"),
             CardDesign.LINKS to ("#F1F3F6" to "#1B1F24"),
         )
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val style = default(design)
             assertEquals(presets.getValue(design), style.ground to style.ink, design)
             assertNull(style.accent, design)
@@ -56,7 +54,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun everyDesignOffersAtLeastFiveColourOnlyStylesBuiltFromItsOwnValues() {
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val spec = CardDesignSpecs.of(design)!!
             val styles = cardStylesFor(design)
             assertTrue(styles.size >= 5, "$design offers ${styles.size}")
@@ -64,9 +62,9 @@ class ProfileCardStylesTest {
                 val scheme = spec.schemes.single { it.id == style.id }
                 assertEquals(scheme.ground, style.ground)
                 assertEquals(scheme.ink, style.ink)
-                val accent = if (style.isDefault || CardOption.ACCENT !in spec.options) null else scheme.accents.first()
+                val accent = if (CardOption.ACCENT !in spec.options) null else scheme.accents.first()
                 assertEquals(accent, style.accent, "$design ${style.id}")
-                assertTrue(listOf(style.display, style.text, style.portrait, style.socials, style.blocks).all { it == null }, "$design ${style.id}")
+                assertTrue(listOf(style.portrait, style.socials, style.blocks).all { it == null }, "$design ${style.id}")
             }
         }
     }
@@ -88,7 +86,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun applyingAStyleWritesWhatTheManualPickersWrite() {
-        for (design in designs) for (style in cardStylesFor(design).filterNot { it.isDefault }) {
+        for (design in CardDesign.all) for (style in cardStylesFor(design).filterNot { it.isDefault }) {
             val applied = CardOverrides().withStyle(style, design)
             val manual = listOf(CardOption.COLOURS to style.ground, CardOption.ACCENT to style.accent)
                 .fold(CardOverrides()) { edited, (option, value) -> edited.with(option, value, design = design).prunedFor(design) }
@@ -102,7 +100,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun aColourStyleLeavesFontsAndLayoutAsTheyWere() {
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val before = styled(design)
             val style = cardStylesFor(design).last()
             val applied = before.withStyle(style, design)
@@ -115,7 +113,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun defaultClearsOnlyTheColoursAndAccentLikeTheColoursDefault() {
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val spec = CardDesignSpecs.of(design)!!
             val before = styled(design).withBlockOrder(spec.presetOrder.reversed()).prunedFor(design)
             val cleared = before.withStyle(default(design), design)
@@ -128,7 +126,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun aBareCardSelectsDefault() {
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val styles = cardStylesFor(design)
             assertEquals(listOf(styles.first().id), styles.filter { it.matches(CardOverrides()) }.map { it.id }, design)
             assertNull(customStyle(styles, CardOverrides(), design), design)
@@ -166,7 +164,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun theAccentToolOffersTheCurrentSchemesOwnAccents() {
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val spec = CardDesignSpecs.of(design)!!
             for (scheme in spec.schemes) assertEquals(scheme.accents, CardDesignSpecs.accentsFor(design, scheme.ground), "$design/${scheme.id}")
         }
@@ -179,7 +177,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun anAccentPickedAfterDefaultLeavesCustomSelected() {
-        for (design in designs.filter { CardOption.ACCENT in CardDesignSpecs.of(it)!!.options }) {
+        for (design in CardDesign.all.filter { CardOption.ACCENT in CardDesignSpecs.of(it)!!.options }) {
             val styles = cardStylesFor(design)
             val accent = CardDesignSpecs.accentsFor(design, null).first()
             val edited = CardOverrides().withStyle(default(design), design).with(CardOption.ACCENT, accent).prunedFor(design)
@@ -195,7 +193,7 @@ class ProfileCardStylesTest {
 
     @Test
     fun theAppliedStyleIsTheOnlyOneSelected() {
-        for (design in designs) {
+        for (design in CardDesign.all) {
             val styles = cardStylesFor(design)
             for (style in styles) {
                 val applied = CardOverrides().withStyle(style, design)

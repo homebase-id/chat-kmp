@@ -234,10 +234,10 @@ internal fun CardOptionsPanel(
     onBlockOrder: (List<String>) -> Unit,
     gap: Dp,
     hasLinks: Boolean,
+    styles: List<ResolvedCardStyle>,
+    custom: ResolvedCardStyle?,
+    onStyle: (ResolvedCardStyle) -> Unit,
     modifier: Modifier = Modifier,
-    styles: List<ResolvedCardStyle> = emptyList(),
-    custom: ResolvedCardStyle? = null,
-    onStyle: (ResolvedCardStyle) -> Unit = {},
 ) {
     val spec = CardDesignSpecs.of(design)
     val orderable = spec?.reorderable(hasLinks).orEmpty()
@@ -522,7 +522,7 @@ private fun DefaultGlyph() {
 
 // Each name set in the card's own face (Latin subsets bundled from the web card's fonts), so look-alike names still differ.
 @Composable
-internal fun fontPreviewStyle(font: String?): TextStyle {
+private fun fontPreviewStyle(font: String?): TextStyle {
     val base = MaterialTheme.typography.titleMedium
     val face = when (font) {
         "montserrat" -> MR.font.montserrat_regular

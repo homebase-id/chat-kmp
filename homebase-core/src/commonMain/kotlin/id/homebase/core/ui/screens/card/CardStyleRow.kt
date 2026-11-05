@@ -5,15 +5,12 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -48,13 +45,11 @@ private val STYLE_LABEL_GAP = 4.dp
 private val STYLE_LABEL_LINE = 16.dp
 private val STYLE_SPACING = 8.dp
 private val STYLE_ROW_INSET = 12.dp
-internal const val CUSTOM_STYLE_ID = "custom"
-internal const val DEFAULT_STYLE_ID = "default"
 
 internal fun styleRowHeight(fontScale: Float): Dp =
     (STYLE_RING_GAP * 2 + STYLE_THUMB_HEIGHT + STYLE_LABEL_GAP + STYLE_LABEL_LINE * fontScale)
 
-/** Every tile in one still row when they fit; otherwise a scrolling row. */
+/** Centred when every tile fits, otherwise a scrolling row. */
 @Composable
 internal fun CardStyleRow(
     styles: List<ResolvedCardStyle>,
@@ -62,12 +57,11 @@ internal fun CardStyleRow(
     design: String,
     enabled: Boolean,
     onStyle: (ResolvedCardStyle) -> Unit,
-    modifier: Modifier = Modifier,
     custom: ResolvedCardStyle? = null,
 ) {
     val tiles = listOfNotNull(custom) + styles
-    val selectedId = custom?.id ?: styles.firstOrNull { it.matches(overrides) }?.id
-    val labels = tiles.map { stringResource(styleLabel(it.id, it.isDefault)) }
+    val selectedId = remember(custom, styles, overrides) { custom?.id ?: styles.firstOrNull { it.matches(overrides) }?.id }
+    val labels = tiles.map { stringResource(styleLabel(it)) }
     val labelStyle = MaterialTheme.typography.labelMedium
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -75,33 +69,22 @@ internal fun CardStyleRow(
     val widths = remember(labels, labelStyle, density) {
         labels.map { maxOf(STYLE_THUMB_WIDTH + STYLE_RING_GAP * 2, with(density) { measurer.measure(it, labelStyle).size.width.toDp() }) }
     }
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val fits = widths.fold(STYLE_SPACING * (tiles.size - 1)) { sum, w -> sum + w } <= maxWidth - STYLE_ROW_INSET * 2
-        val content: @Composable () -> Unit = {
-            tiles.forEachIndexed { i, style ->
-                StyleTile(
-                    style = style,
-                    design = design,
-                    label = labels[i],
-                    labelStyle = labelStyle,
-                    selected = style.id == selectedId,
-                    enabled = enabled,
-                    width = widths[i],
-                    onClick = { if (style.id != CUSTOM_STYLE_ID) onStyle(style) },
-                )
-            }
-        }
-        if (fits) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = STYLE_ROW_INSET).selectableGroup(),
-                horizontalArrangement = Arrangement.spacedBy(STYLE_SPACING, Alignment.CenterHorizontally),
-            ) { content() }
-        } else {
-            ScrollableChoiceRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = STYLE_ROW_INSET,
-                horizontalArrangement = Arrangement.spacedBy(STYLE_SPACING),
-            ) { content() }
+    ScrollableChoiceRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = STYLE_ROW_INSET,
+        horizontalArrangement = Arrangement.spacedBy(STYLE_SPACING, Alignment.CenterHorizontally),
+    ) {
+        tiles.forEachIndexed { i, style ->
+            StyleTile(
+                style = style,
+                design = design,
+                label = labels[i],
+                labelStyle = labelStyle,
+                selected = style.id == selectedId,
+                enabled = enabled,
+                width = widths[i],
+                onClick = { if (style.id != CUSTOM_STYLE_ID) onStyle(style) },
+            )
         }
     }
 }
@@ -161,8 +144,8 @@ private fun StyleTile(
     }
 }
 
-private fun styleLabel(id: String, isDefault: Boolean): StringResource = when {
-    isDefault -> MR.string.profile_card_option_default
-    id == CUSTOM_STYLE_ID -> MR.string.profile_card_style_custom
-    else -> schemeLabel(id)
+private fun styleLabel(style: ResolvedCardStyle): StringResource = when (style.id) {
+    DEFAULT_STYLE_ID -> MR.string.profile_card_option_default
+    CUSTOM_STYLE_ID -> MR.string.profile_card_style_custom
+    else -> schemeLabel(style.id)
 }
