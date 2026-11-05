@@ -27,6 +27,27 @@ import kotlin.time.Duration.Companion.minutes
 val backupRefreshTaskId: String get() = "${NSBundle.mainBundle.bundleIdentifier}.backup.refresh"
 val backupProcessingTaskId: String get() = "${NSBundle.mainBundle.bundleIdentifier}.backup.processing"
 
+private val REFRESH_EARLIEST = 15.minutes
+
+/** One request is one launch, so each launch has to submit the next. */
+fun submitBackupTasks() {
+    submit(BGAppRefreshTaskRequest(backupRefreshTaskId).apply {
+        earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(REFRESH_EARLIEST.inWholeSeconds.toDouble())
+    })
+    submit(BGProcessingTaskRequest(backupProcessingTaskId).apply {
+        requiresNetworkConnectivity = true
+        requiresExternalPower = true
+    })
+}
+
+private fun submit(request: BGTaskRequest) = memScoped {
+    val error = alloc<ObjCObjectVar<NSError?>>()
+    // Refused in the simulator, or without Background App Refresh. A missed trigger only costs latency.
+    if (!BGTaskScheduler.sharedScheduler.submitTaskRequest(request, error.ptr)) {
+        Logger.w(tag = "IosBackupTriggers") { "${request.identifier} not scheduled: ${error.value?.localizedDescription}" }
+    }
+}
+
 class IosBackupTriggers : BackupTriggers {
     private val scope = supervisedScope("photo-backup-ios", ioDispatcher)
 
@@ -38,14 +59,7 @@ class IosBackupTriggers : BackupTriggers {
             BackgroundUploadBridgeHolder.bridge?.cancelAll()
             return
         }
-        // One request is one launch, so every run submits the next.
-        submit(BGAppRefreshTaskRequest(backupRefreshTaskId).apply {
-            earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(REFRESH_EARLIEST.inWholeSeconds.toDouble())
-        })
-        submit(BGProcessingTaskRequest(backupProcessingTaskId).apply {
-            requiresNetworkConnectivity = true
-            requiresExternalPower = true
-        })
+        submitBackupTasks()
     }
 
     override suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit) {
@@ -75,18 +89,9 @@ class IosBackupTriggers : BackupTriggers {
 
     override fun batteryGuidance(): BatteryGuidance? = null
 
-    private fun submit(request: BGTaskRequest) = memScoped {
-        val error = alloc<ObjCObjectVar<NSError?>>()
-        // Refused in the simulator, or without Background App Refresh. A missed trigger only costs latency.
-        if (!BGTaskScheduler.sharedScheduler.submitTaskRequest(request, error.ptr)) {
-            Logger.w(tag = TAG) { "${request.identifier} not scheduled: ${error.value?.localizedDescription}" }
-        }
-    }
-
     private companion object {
         const val TAG = "IosBackupTriggers"
         const val CONTINUED_TASK_NAME = "photo-backup"
         const val CONTINUED_TASK_TITLE = "Backing up photos"
-        val REFRESH_EARLIEST = 15.minutes
     }
 }

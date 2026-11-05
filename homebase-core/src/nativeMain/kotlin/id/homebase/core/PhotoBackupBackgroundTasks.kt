@@ -12,6 +12,7 @@ import id.homebase.photobase.backup.PhotoBackupEntry
 import id.homebase.photobase.backup.PhotoBackupRun
 import id.homebase.photobase.backup.backupProcessingTaskId
 import id.homebase.photobase.backup.backupRefreshTaskId
+import id.homebase.photobase.backup.submitBackupTasks
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -46,6 +47,8 @@ fun startListeningForPhotoBackupUploads() {
 }
 
 private fun handle(task: BGTask, request: BackupRunRequest) {
+    // First, so nothing below can end the chain. A closed database can't say the switch is off, so it keeps the chain alive.
+    if (!isDatabaseOpen() || isPhotobaseEnabled()) submitBackupTasks()
     if (!isPhotobaseEnabled()) {
         task.setTaskCompletedWithSuccess(false)
         return
