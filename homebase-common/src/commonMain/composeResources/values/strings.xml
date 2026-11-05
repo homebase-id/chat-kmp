@@ -461,6 +461,7 @@
     <string name="moments_detail_shared_with">Shared with</string>
     <string name="moments_detail_shared_with_conversation_fallback">Conversation</string>
     <string name="moments_detail_shared_with_more">+%1$d</string>
+    <string name="moments_resize_panes">Resize the feed and moment panes</string>
     <string name="moments_detail_shared_with_show">Show recipients</string>
     <string name="moments_detail_shared_with_hide">Hide recipients</string>
     <string name="moments_detail_shared_with_private">Private</string>

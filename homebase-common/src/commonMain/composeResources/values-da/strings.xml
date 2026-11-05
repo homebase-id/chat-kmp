@@ -440,6 +440,7 @@
     <string name="moments_detail_shared_with">Delt med</string>
     <string name="moments_detail_shared_with_conversation_fallback">Samtale</string>
     <string name="moments_detail_shared_with_more">+%1$d</string>
+    <string name="moments_resize_panes">Tilpas bredden på feedet og øjebliksvisningen</string>
     <string name="moments_detail_shared_with_show">Vis modtagere</string>
     <string name="moments_detail_shared_with_hide">Skjul modtagere</string>
     <string name="moments_detail_shared_with_private">Privat</string>

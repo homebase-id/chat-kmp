@@ -23,6 +23,10 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
     private val _viewMode = MutableStateFlow(readViewMode())
     val viewMode: StateFlow<MomentsViewMode> = _viewMode.asStateFlow()
 
+    // Wide layouts only; null until the user drags the divider, so the default tracks the window.
+    private val _feedPaneWidthDp = MutableStateFlow(readFeedPaneWidthDp())
+    val feedPaneWidthDp: StateFlow<Float?> = _feedPaneWidthDp.asStateFlow()
+
     suspend fun setIconVisible(value: Boolean) {
         if (_iconVisible.value == value) return
         keyValue.upsertValue(ICON_VISIBLE_KEY, encode(value))
@@ -34,6 +38,16 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
         keyValue.upsertValue(VIEW_MODE_KEY, value.name.encodeToByteArray())
         _viewMode.value = value
     }
+
+    suspend fun setFeedPaneWidthDp(value: Float) {
+        if (_feedPaneWidthDp.value == value) return
+        keyValue.upsertValue(FEED_PANE_WIDTH_KEY, value.toString().encodeToByteArray())
+        _feedPaneWidthDp.value = value
+    }
+
+    private fun readFeedPaneWidthDp(): Float? = runCatching {
+        keyValue.selectByKeyBootstrapSync(FEED_PANE_WIDTH_KEY) { _, data -> data }
+    }.getOrNull()?.decodeToString()?.toFloatOrNull()
 
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
         // Bootstrap-only sync read — seeds the StateFlow at construction. See
@@ -62,6 +76,7 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
         // 0a0201 (former ACTIVATED_KEY) is retired — activation now derives from the drive.
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0202")
         val VIEW_MODE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0203")
+        val FEED_PANE_WIDTH_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0204")
     }
 }
 

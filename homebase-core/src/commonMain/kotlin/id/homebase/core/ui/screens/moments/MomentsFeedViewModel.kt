@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.moments
 
 import androidx.lifecycle.ViewModel
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
@@ -54,6 +56,7 @@ class MomentsFeedViewModel(
         MomentsFeedUiState(
             moments = sortedFor(feedService.feed.value, momentsPreferences.viewMode.value),
             viewMode = momentsPreferences.viewMode.value,
+            feedPaneWidth = momentsPreferences.feedPaneWidthDp.value?.dp,
             isLoading = !feedService.isLoaded.value,
         )
     )
@@ -146,6 +149,10 @@ class MomentsFeedViewModel(
         }
     }
 
+    fun setFeedPaneWidth(width: Dp) {
+        viewModelScope.launch { momentsPreferences.setFeedPaneWidthDp(width.value) }
+    }
+
     fun setViewMode(mode: MomentsViewMode) {
         viewModelScope.launch {
             momentsPreferences.setViewMode(mode)
@@ -158,6 +165,14 @@ class MomentsFeedViewModel(
      */
     fun setAlbumZoom(zoom: MomentsAlbumZoom) {
         _uiState.update { it.copy(albumZoom = zoom) }
+    }
+
+    init {
+        viewModelScope.launch {
+            momentsPreferences.feedPaneWidthDp.collect { dp ->
+                _uiState.update { it.copy(feedPaneWidth = dp?.dp) }
+            }
+        }
     }
 
     init {
