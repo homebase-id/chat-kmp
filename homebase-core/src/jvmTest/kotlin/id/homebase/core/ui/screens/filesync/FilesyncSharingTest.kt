@@ -130,7 +130,7 @@ class FilesyncSharingTest {
     private var samReady = true
     private var notReady = emptySet<String>()
     private var samGrantsWrite = true
-    private var samReviewed = true
+    private var samHasFilesync = true
     private var storedShareKey: String? = null
     private val merry = OdinId("merry.test")
     private val groupCircle = Uuid.random()
@@ -145,7 +145,7 @@ class FilesyncSharingTest {
         val body = when {
             path.endsWith("/apps/filesync/drives/filesync/public-key") ->
                 if (!samGrantsWrite) return@MockEngine respond("""{"title":"Write access is required"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
-                else if (!samReviewed) return@MockEngine respond("""{"title":"Not reviewed","errorCode":"contactNotReviewed"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
+                else if (!samHasFilesync) return@MockEngine respond("""{"title":"Not found"}""", io.ktor.http.HttpStatusCode.NotFound, json)
                 else if (samReady && notReady.none { "/peer/$it/" in path }) """{"publicKeyJwk":${Json.encodeToString(samsJwk)},"publicKeyCrc32":0,"isZeroKnowledge":true,"sharingModel":"selectiveShare"}"""
                 else return@MockEngine respond("""{"title":"no such drive","errorCode":"invalidRequest"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
             path.endsWith("/connections/circles/create") ->
@@ -335,10 +335,10 @@ class FilesyncSharingTest {
     }
 
     @Test
-    fun someoneWhoHasntReviewedUsIsNamedAsSuch() = runTest {
-        samReviewed = false
+    fun someoneWithoutAFilesyncDriveCantBeSharedWith() = runTest {
+        samHasFilesync = false
 
-        val e = assertFailsWith<FilesyncSharingException.RecipientNotReviewed> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotReady> { sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null) }
         assertEquals(listOf(sam), e.recipients)
         assertTrue(calls.none { it.path.endsWith("/shares") })
     }

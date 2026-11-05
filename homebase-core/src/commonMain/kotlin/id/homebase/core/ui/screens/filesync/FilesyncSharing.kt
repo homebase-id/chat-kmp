@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.filesync
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.RetryConfig
@@ -55,6 +56,7 @@ import id.homebase.core.config.filesyncAppRegistration
 import id.homebase.core.config.filesyncLabeledDrive
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
@@ -128,8 +130,8 @@ sealed class FilesyncSharingException(message: String, cause: Throwable? = null)
     /** [recipients] haven't turned sharing on, so nothing can be left for them yet. */
     class RecipientNotReady(val recipients: List<OdinId>) : FilesyncSharingException("$recipients can't receive shared files yet")
 
-    /** [recipients] haven't reviewed this identity's connection, so their drive won't hand out its key. */
-    class RecipientNotReviewed(val recipients: List<OdinId>) : FilesyncSharingException("$recipients haven't reviewed this connection")
+    /** [owner] hasn't reviewed this identity's connection, so it won't hand over the keys to what it shared. */
+    class NotReviewedByOwner(val owner: OdinId) : FilesyncSharingException("$owner hasn't reviewed this connection")
 }
 
 /**
@@ -243,15 +245,12 @@ class FilesyncSharing(
     suspend fun setGroupMembers(group: FilesyncAudience.Group, members: List<OdinId>): List<OdinId> {
         requireSignedIn()
         val added = members.filter { it !in group.members }
-        val found = pointsOf(added)
-        val points = found.mapNotNull { (id, key) -> (key as? RecipientKey.Ready)?.let { id to it.point } }.toMap()
+        val points = pointsOf(added).filterValues { it != null }.mapValues { it.value!! }
         if (points.isNotEmpty()) enroll(recipientsCircle(), points.keys)
         val joined = points - enroll(group.circleId, points.keys)
         sealCircleKey(group.circleId, joined)
         group.members.filter { it !in members }.forEach { asFilesync.removeFromCircle(group.circleId, it) }
 
-        val notReviewed = added.filter { found[it] == RecipientKey.NotReviewed }
-        if (notReviewed.isNotEmpty()) throw FilesyncSharingException.RecipientNotReviewed(notReviewed)
         val notReady = added.filter { it !in joined }
         if (notReady.isNotEmpty()) throw FilesyncSharingException.RecipientNotReady(notReady)
         return joined.keys.toList()
@@ -477,20 +476,34 @@ class FilesyncSharing(
     /** The files and folders [owner] shares with this identity, opened with the keys their shares unlock. */
     suspend fun sharedBy(owner: OdinId): List<Pair<FilesyncNode, FilesyncHandle>> {
         val self = requireNotNull(appCredentials.getActiveCredentials()).domain
+        var notReviewed = false
         val byShare = ExternalFileKey { fileId, shares, locked ->
             val circleId = shares.firstOrNull()?.circleId ?: error("file $fileId came with no share")
-            ShareKeys.openFileKey(memberCircleKey(owner, circleId, self), locked, FilesyncProtocol.DriveAlias, fileId, circleId).toSecureByteArray()
+            val circleKey = try {
+                memberCircleKey(owner, circleId, self)
+            } catch (e: ForbiddenException) {
+                // A file whose key won't open is left out of the page, so this is remembered to say why.
+                if (e.problem?.errorCodeEnum() == OdinClientErrorCode.NotReviewedByOwner) notReviewed = true
+                throw e
+            }
+            ShareKeys.openFileKey(circleKey, locked, FilesyncProtocol.DriveAlias, fileId, circleId).toSecureByteArray()
         }
         val found = mutableListOf<Pair<FilesyncNode, FilesyncHandle>>()
-        query.forEachFilesyncPage(
-            FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), archivalStatus = FilesyncStatus.Live.archivalStatus),
-            QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true),
-            ownerOdinId = owner,
-            externalFileKey = byShare,
-        ) { page ->
-            found += page.searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toFilesyncNode(addedByOtherThan = owner) }
-            true
+        try {
+            query.forEachFilesyncPage(
+                FileQueryParams(fileType = listOf(FilesyncProtocol.FolderFileType, FilesyncProtocol.FileFileType), archivalStatus = FilesyncStatus.Live.archivalStatus),
+                QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true),
+                ownerOdinId = owner,
+                externalFileKey = byShare,
+            ) { page ->
+                found += page.searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toFilesyncNode(addedByOtherThan = owner) }
+                true
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException || !notReviewed) throw e
+            throw FilesyncSharingException.NotReviewedByOwner(owner)
         }
+        if (found.isEmpty() && notReviewed) throw FilesyncSharingException.NotReviewedByOwner(owner)
         return found
     }
 
@@ -518,40 +531,31 @@ class FilesyncSharing(
         filesyncKeys.setMemberKeys(circleId, SealedMemberShareKeys(own.locked, sealed))
     }
 
-    /** Each of [recipients]' point to seal to; all who haven't reviewed this identity, or can't receive shared files yet, are named together. */
+    /** Each of [recipients]' point to seal to; all who can't receive shared files yet are named together. */
     private suspend fun recipientPoints(recipients: List<OdinId>): Map<OdinId, ByteArray> {
-        val keys = pointsOf(recipients)
-        val notReviewed = keys.filterValues { it == RecipientKey.NotReviewed }.keys.toList()
-        if (notReviewed.isNotEmpty()) throw FilesyncSharingException.RecipientNotReviewed(notReviewed)
-        val notReady = keys.filterValues { it !is RecipientKey.Ready }.keys.toList()
+        val points = pointsOf(recipients)
+        val notReady = points.filterValues { it == null }.keys.toList()
         if (notReady.isNotEmpty()) throw FilesyncSharingException.RecipientNotReady(notReady)
-        return keys.mapValues { (it.value as RecipientKey.Ready).point }
-    }
-
-    private sealed interface RecipientKey {
-        class Ready(val point: ByteArray) : RecipientKey
-        data object NotReviewed : RecipientKey
-        data object NoDrive : RecipientKey
+        return points.mapValues { it.value!! }
     }
 
     // Each from the recipient's own server, a few at a time.
-    private suspend fun pointsOf(recipients: List<OdinId>): Map<OdinId, RecipientKey> =
+    private suspend fun pointsOf(recipients: List<OdinId>): Map<OdinId, ByteArray?> =
         recipients.chunked(PARALLEL).flatMap { chunk ->
-            coroutineScope { chunk.map { async { it to recipientKey(it) } }.awaitAll() }
+            coroutineScope { chunk.map { async { it to recipientPointOrNull(it) } }.awaitAll() }
         }.toMap()
 
-    private suspend fun recipientKey(recipient: OdinId): RecipientKey {
+    private suspend fun recipientPointOrNull(recipient: OdinId): ByteArray? {
         val key = try {
             peer.drivePublicKey(recipient, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug)
         } catch (e: OdinApiException) {
-            if (e is ForbiddenException && e.problem?.errorCodeEnum() == OdinClientErrorCode.ContactNotReviewed) return RecipientKey.NotReviewed
-            // No drive yet (400), or no access to it (403): sharing is off there.
-            if (e !is ClientException && e !is ForbiddenException) throw e
-            return RecipientKey.NoDrive
+            // No Filesync drive there (404; 400 or 403 from an older server): sharing is off.
+            if (e !is NotFoundException && e !is ClientException && e !is ForbiddenException) throw e
+            return null
         }
         // Its server and members hold a collaborative drive's key: sealing to it would share with them too.
-        if (!key.isZeroKnowledge || key.sharingModel == "collaborative") return RecipientKey.NoDrive
-        return RecipientKey.Ready(ShareKeys.pointOfJwk(key.publicKeyJwk))
+        if (!key.isZeroKnowledge || key.sharingModel == "collaborative") return null
+        return ShareKeys.pointOfJwk(key.publicKeyJwk)
     }
 
     private suspend fun ownCircleKey(circleId: Uuid): OwnCircleKey = keys.withLock {

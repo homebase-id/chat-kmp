@@ -300,7 +300,8 @@ sealed interface FilesyncUiEvent {
     data class Error(val error: FilesyncError) : FilesyncUiEvent
     /** [recipients] can't receive shared files until they turn sharing on. */
     data class NotReady(val recipients: List<OdinId>) : FilesyncUiEvent
-    data class NotReviewed(val recipients: List<OdinId>) : FilesyncUiEvent
+    /** [owner] shared files with this identity but hasn't reviewed it, so they can't be opened yet. */
+    data class NotReviewedBy(val owner: OdinId) : FilesyncUiEvent
 
     /** Shared, but the chat message telling [recipients] didn't go out. */
     data class NotTold(val recipients: List<OdinId>) : FilesyncUiEvent

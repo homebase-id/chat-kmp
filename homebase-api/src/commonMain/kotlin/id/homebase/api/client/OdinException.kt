@@ -89,6 +89,7 @@ enum class OdinClientErrorCode(val value: Int) {
     NotACircleMember(3025),
     InvalidShareKey(3026),
     CircleShareKeyChanged(3027),
+    NotReviewedByOwner(3028),
 
     // Drive management errors 40xx
     CannotAllowAnonymousReadsOnOwnerOnlyDrive(4001),

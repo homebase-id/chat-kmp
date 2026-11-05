@@ -319,7 +319,14 @@ internal class FilesyncSharingController(
         closeViews()
         update { it.copy(sharer = sharer) }
         sharedFilesJob = scope.launch {
-            val listed = guarded { sharing.sharedBy(sharer) }
+            val listed = guarded {
+                try {
+                    sharing.sharedBy(sharer)
+                } catch (e: FilesyncSharingException.NotReviewedByOwner) {
+                    send(FilesyncUiEvent.NotReviewedBy(e.owner))
+                    null
+                }
+            }
             if (listed == null) {
                 update { it.copy(sharedFilesFailed = true) }
                 return@launch
@@ -406,7 +413,6 @@ internal class FilesyncSharingController(
             send(
                 when (e) {
                     is FilesyncSharingException.RecipientNotReady -> FilesyncUiEvent.NotReady(e.recipients)
-                    is FilesyncSharingException.RecipientNotReviewed -> FilesyncUiEvent.NotReviewed(e.recipients)
                     else -> FilesyncUiEvent.Error(error)
                 }
             )
