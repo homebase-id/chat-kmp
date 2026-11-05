@@ -9,7 +9,6 @@ import id.homebase.api.coroutines.supervisedScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -51,7 +50,7 @@ class PhotoBackupJobService : JobService(), KoinComponent {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         val alreadyBackedUp = controller.freshStatus()?.backedUpBytes ?: return
         val status = controller.status ?: return
-        status.conflate().collect {
+        status.collect {
             val sent = (it.backedUpBytes - alreadyBackedUp).coerceAtLeast(0)
             updateEstimatedNetworkBytes(params, 0, sent + it.remainingBytes)
             updateTransferredNetworkBytes(params, 0, sent)
