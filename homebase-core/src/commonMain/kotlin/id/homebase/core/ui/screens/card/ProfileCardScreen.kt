@@ -18,11 +18,6 @@ import androidx.compose.material3.toShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.PlainTooltip
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.rememberTooltipState
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.FilledTonalButton
@@ -183,6 +178,7 @@ import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.widget.WithTooltip
 
 // Wide windows get a card-width sheet rather than the page's full website layout.
 internal val WIDE_SHEET_MAX_WIDTH = 480.dp
@@ -866,22 +862,6 @@ internal fun ReadOnlyCardDialog(onDismiss: () -> Unit) {
     )
 }
 
-@Composable
-internal fun WithTooltip(
-    text: String,
-    modifier: Modifier = Modifier,
-    // A Boolean, not TooltipAnchorPosition: that type is experimental and would make every caller opt in.
-    below: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(if (below) TooltipAnchorPosition.Below else TooltipAnchorPosition.Above),
-        tooltip = { PlainTooltip { Text(text) } },
-        state = rememberTooltipState(),
-        modifier = modifier,
-        content = content,
-    )
-}
 
 @Composable
 private fun chromePillColor(): Color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f)

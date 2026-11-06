@@ -195,6 +195,7 @@ import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableRow
+import id.homebase.core.widget.WithTooltip
 
 internal val TOOLBAR_HEIGHT = 64.dp
 internal val CHIP_HEIGHT = 40.dp

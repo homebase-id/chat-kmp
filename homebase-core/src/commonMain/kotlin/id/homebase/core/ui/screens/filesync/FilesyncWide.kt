@@ -141,11 +141,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.isBackPressed
-import id.homebase.core.util.isDesktop
-import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.resources.filesync_up
 import id.homebase.resources.filesync_up_to
+import id.homebase.core.widget.WithTooltip
 
 enum class FilesyncPlace { Files, Recent, Trash }
 
@@ -163,6 +161,7 @@ private val RowHeight = 52.dp
 private val SelectWidth = 24.dp
 private val SelectGap = 4.dp
 private val SelectShape = RoundedCornerShape(4.dp)
+private val NameGap = 12.dp
 private val PaneWidth = 320.dp
 
 // Below these content widths a column gives way to the name: Kind first, then Modified.
@@ -287,12 +286,25 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
     }
     val actions = scope.actions
     val viewing = uiState.sharing.viewing
+    val sharer = uiState.sharing.sharer
+    val sharerPath = uiState.sharing.sharerPath
+    val crumbs = if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) + sharerPath else uiState.path
+    val onCrumb: (Int) -> Unit = { index ->
+        if (sharer != null && index > 0) {
+            scope.onAction(FilesyncUiAction.OpenSharedFolder(sharerPath.take(index - 1)))
+        } else {
+            if (viewing) scope.onAction(FilesyncUiAction.CloseShareView)
+            scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
+        }
+    }
+    val up = filesyncUp(uiState.path, uiState.sharing)
+    val goUp: () -> Unit by rememberUpdatedState { up?.actions?.forEach(scope.onAction) }
     FilesyncShell(
         // Only at the top: deeper, the breadcrumb says where you are.
         place = FilesyncPlace.Files.takeIf { !viewing && uiState.path.size == 1 },
         places = if (viewing) scope.places.closing { scope.onAction(FilesyncUiAction.CloseShareView) } else scope.places,
         snackbarHostState = scope.snackbarHostState,
-        modifier = Modifier.onPreviewKeyEvent { event ->
+        modifier = Modifier.onMouseBack { goUp() }.onPreviewKeyEvent { event ->
             val find = event.type == KeyEventType.KeyDown && event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed)
             if (find) searchFocus.requestFocus()
             find
@@ -357,21 +369,9 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             }
         },
     ) {
-        val sharer = uiState.sharing.sharer
-        val sharerPath = uiState.sharing.sharerPath
-        val crumbs = if (sharer != null) uiState.path.take(1) + FilesyncCrumb(SharerCrumbId, sharer.domainName) + sharerPath else uiState.path
-        val onCrumb: (Int) -> Unit = { index ->
-            if (sharer != null && index > 0) {
-                scope.onAction(FilesyncUiAction.OpenSharedFolder(sharerPath.take(index - 1)))
-            } else {
-                if (viewing) scope.onAction(FilesyncUiAction.CloseShareView)
-                scope.onAction(FilesyncUiAction.NavigateToCrumb(index))
-            }
-        }
-        val goUp by rememberUpdatedState { if (crumbs.size > 1) onCrumb(crumbs.size - 2) }
-        Column(modifier = Modifier.fillMaxSize().onMouseBack { goUp() }) {
+        Column(modifier = Modifier.fillMaxSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                UpButton(crumbs, onUp = goUp)
+                UpButton(crumbs, up, onUp = goUp)
                 Breadcrumbs(crumbs, onCrumb = onCrumb, heading = true)
             }
             if (viewing) {
@@ -511,7 +511,7 @@ internal fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: I
                 )
             }
         }
-        Spacer(Modifier.width(SelectGap + FilesyncTileSize + 12.dp))
+        Spacer(Modifier.width(SelectGap + FilesyncTileSize + NameGap))
         HeaderCell(FilesyncSortKey.Name, sort, onSort, Modifier.weight(1f))
         if (columns.modified) HeaderCell(FilesyncSortKey.Modified, sort, onSort, Modifier.width(ModifiedWidth))
         HeaderCell(FilesyncSortKey.Size, sort, onSort, Modifier.width(SizeWidth), Arrangement.End)
@@ -521,35 +521,42 @@ internal fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: I
     HorizontalDivider()
 }
 
+/** Where Up goes from what's shown: [target] indexes the crumbs it lands on. */
+internal data class FilesyncUp(val target: Int, val actions: List<FilesyncUiAction>)
+
+/** A sharer's folders climb to their top, then home; a recipient's list closes; your own folders go up one. */
+internal fun filesyncUp(path: List<FilesyncCrumb>, sharing: FilesyncSharingState): FilesyncUp? = when {
+    // The sharer's crumbs sit after home and the sharer's own crumb.
+    sharing.sharer != null && sharing.sharerPath.isNotEmpty() ->
+        FilesyncUp(sharing.sharerPath.size, listOf(FilesyncUiAction.OpenSharedFolder(sharing.sharerPath.dropLast(1))))
+    sharing.sharer != null -> FilesyncUp(0, listOf(FilesyncUiAction.CloseShareView, FilesyncUiAction.NavigateToCrumb(0)))
+    sharing.recipient != null -> FilesyncUp(path.lastIndex, listOf(FilesyncUiAction.CloseShareView))
+    path.size > 1 -> FilesyncUp(path.size - 2, listOf(FilesyncUiAction.NavigateUp))
+    else -> null
+}
+
 @Composable
-private fun UpButton(crumbs: List<FilesyncCrumb>, onUp: () -> Unit) {
-    val parent = crumbNames(crumbs).getOrNull(crumbs.size - 2)
-    val label = if (parent != null) stringResource(MR.string.filesync_up_to, parent) else stringResource(MR.string.filesync_up)
+private fun UpButton(crumbs: List<FilesyncCrumb>, up: FilesyncUp?, onUp: () -> Unit) {
+    val label = if (up != null) stringResource(MR.string.filesync_up_to, crumbNames(crumbs)[up.target]) else stringResource(MR.string.filesync_up)
     WithTooltip(label, below = true) {
-        IconButton(onClick = onUp, enabled = parent != null) {
+        IconButton(onClick = onUp, enabled = up != null) {
             Icon(Icons.Default.ArrowUpward, contentDescription = label)
         }
     }
 }
 
-// The mouse's back button, as in Explorer; a browser keeps it for its own Back.
-private fun Modifier.onMouseBack(action: () -> Unit): Modifier =
-    if (!isDesktop()) {
-        this
-    } else {
-        pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    // Before the rows, which would take the press as a click.
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    if (event.type == PointerEventType.Press && event.buttons.isBackPressed) {
-                        event.changes.forEach { it.consume() }
-                        action()
-                    }
-                }
+private fun Modifier.onMouseBack(action: () -> Unit): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            // Before the rows, which would take the press as a click.
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.isMouseBackPress()) {
+                event.changes.forEach { it.consume() }
+                action()
             }
         }
     }
+}
 
 /** A desktop-sized checkbox: Material's draws 18dp with a 40dp hover circle, too big for a table row. */
 @Composable
@@ -691,7 +698,6 @@ internal fun TableRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val deleted = node.removedMs != null
-            // Beside the icon, not in its place, as in Explorer and Dropbox.
             Box(modifier = Modifier.width(SelectWidth), contentAlignment = Alignment.Center) {
                 if (hovered || selecting) {
                     TableSelectBox(
@@ -703,7 +709,7 @@ internal fun TableRow(
             }
             Spacer(Modifier.width(SelectGap))
             FileTypeTile(node, deleted = deleted)
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(NameGap))
             val nameInteraction = remember { MutableInteractionSource() }
             val nameHovered by nameInteraction.collectIsHoveredAsState()
             NodeName(
@@ -727,7 +733,7 @@ internal fun TableRow(
                                     if (event.type != PointerEventType.Press) continue
                                     val change = event.changes.first()
                                     val keys = event.keyboardModifiers
-                                    if (change.type != PointerType.Mouse || event.buttons.isSecondaryPressed) continue
+                                    if (change.isConsumed || change.type != PointerType.Mouse || event.buttons.isSecondaryPressed) continue
                                     if (keys.isCtrlPressed || keys.isMetaPressed || keys.isShiftPressed) continue
                                     change.consume()
                                     // Whatever a double-click opens would catch its second press, so it opens on that press.
