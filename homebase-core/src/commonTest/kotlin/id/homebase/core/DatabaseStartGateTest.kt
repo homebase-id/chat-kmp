@@ -50,6 +50,15 @@ class DatabaseStartGateTest {
     }
 
     @Test
+    fun queuedWorkFailingAfterTheOpenIsNotTakenForAnUnreadableDatabase() = runTest {
+        val gate = DatabaseStartGate()
+        gate.whenOpen { throw DatabaseUnavailableException("a key store the work reads") }
+
+        assertFailsWith<DatabaseUnavailableException> { gate.tryOpen {} }
+        assertTrue(gate.isOpen)
+    }
+
+    @Test
     fun aPlatformThatCantWaitGetsTheUnavailableDatabaseAsIs() = runTest {
         val gate = DatabaseStartGate()
         assertFailsWith<DatabaseUnavailableException> { gate.open { throw DatabaseUnavailableException("key store locked") } }

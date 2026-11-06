@@ -6,6 +6,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.crash.CrashReporting
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
+import id.homebase.core.util.PlatformInfo
 import id.homebase.core.di.allModules
 import org.koin.dsl.KoinAppDeclaration
 import org.koin.mp.KoinPlatformTools
@@ -30,16 +31,10 @@ object AppStartup {
     }
 
     /** False while the database can't be read yet: the platform tries again when that may have changed. */
-    suspend fun openDatabase(factory: DatabaseDriverFactory): Boolean {
-        check(koinStarted) { "AppStartup.startKoin first" }
-        return database.tryOpen { timed(factory) }
-    }
+    suspend fun openDatabase(factory: DatabaseDriverFactory): Boolean = database.tryOpen(opener(factory))
 
     /** For a platform whose database is readable from the start: if it isn't, the cause is thrown as it is. */
-    suspend fun openDatabaseNow(factory: DatabaseDriverFactory) {
-        check(koinStarted) { "AppStartup.startKoin first" }
-        database.open { timed(factory) }
-    }
+    suspend fun openDatabaseNow(factory: DatabaseDriverFactory) = database.open(opener(factory))
 
     fun whenDatabaseOpen(block: () -> Unit) = database.whenOpen(block)
 
@@ -48,8 +43,9 @@ object AppStartup {
      * launch; [platform] adds its own, e.g. its call coordinator.
      */
     fun afterDatabase(platform: () -> Unit = {}) = whenDatabaseOpen {
+        val koin = KoinPlatformTools.defaultContext().get()
         // Wakes never reach onPostAuthenticated, so tracking is re-armed here; the coordinator's preferences need the database.
-        KoinPlatformTools.defaultContext().get().get<LocationTrackingCoordinator>().onProcessStart()
+        if (koin.get<PlatformInfo>().supportsBackgroundWake) koin.get<LocationTrackingCoordinator>().onProcessStart()
         platform()
         CrashReporting.markStartupComplete()
     }
@@ -59,9 +55,12 @@ object AppStartup {
         KoinPlatformTools.defaultContext().get().get<AuthConnectionCoordinator>().promoteToForeground()
     }
 
-    private suspend fun timed(factory: DatabaseDriverFactory) {
-        val mark = TimeSource.Monotonic.markNow()
-        DatabaseManager.initializeWithRecovery(factory)
-        Logger.i(tag = "AppStartup") { "database open: ${mark.elapsedNow().inWholeMilliseconds}ms" }
+    private fun opener(factory: DatabaseDriverFactory): suspend () -> Unit {
+        check(koinStarted) { "AppStartup.startKoin first" }
+        return {
+            val mark = TimeSource.Monotonic.markNow()
+            DatabaseManager.initializeWithRecovery(factory)
+            Logger.i(tag = "AppStartup") { "database open: ${mark.elapsedNow().inWholeMilliseconds}ms" }
+        }
     }
 }

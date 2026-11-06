@@ -22,8 +22,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallService
+import id.homebase.core.AppStartup
 import id.homebase.core.App
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AppConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.NotificationEntry
@@ -56,7 +56,6 @@ class MainActivity : AppCompatActivity() {
     private val notificationService: NotificationService by inject()
     private val notificationEntry: NotificationEntry by inject()
     private val eventBus: EventBus by inject()
-    private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
     private val callService: CallService by inject()
     private var micRequestFor: String? = null
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -96,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         // Promote AuthCC out of headless mode — this is the first reliable signal
         // that the user is looking at the UI (FCM-cold-wake doesn't reach here).
         // Idempotent; safe across Activity recreation. See AuthCC.promoteToForeground.
-        authConnectionCoordinator.promoteToForeground()
+        AppStartup.promoteToForeground()
 
         showOverLockScreenForCall(intent)
         acceptCallFromIntent(intent)

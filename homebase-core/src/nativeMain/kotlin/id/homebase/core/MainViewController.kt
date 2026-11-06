@@ -111,6 +111,9 @@ fun initializeApp() {
 /** Swift skips background work that needs the database while this is false. */
 fun isDatabaseOpen(): Boolean = AppStartup.isDatabaseOpen
 
+/** For Swift: runs [block] once the database is open (at once if it is). Main thread. */
+fun whenDatabaseOpen(block: () -> Unit) = AppStartup.whenDatabaseOpen(block)
+
 private var protectedDataObserver: NSObjectProtocol? = null
 
 /** Before the first unlock the database can't be read: open it once protected data is available. */

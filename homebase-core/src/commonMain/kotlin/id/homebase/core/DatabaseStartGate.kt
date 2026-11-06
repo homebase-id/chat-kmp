@@ -18,19 +18,27 @@ class DatabaseStartGate {
         if (isOpen) block() else waiting += block
     }
 
-    suspend fun tryOpen(open: suspend () -> Unit): Boolean =
+    suspend fun tryOpen(opener: suspend () -> Unit): Boolean {
+        if (isOpen) return true
         try {
-            this.open(open)
-            true
+            opener()
         } catch (e: DatabaseUnavailableException) {
             Logger.w(tag = "DatabaseStartGate", throwable = e) { "Database not readable yet; waiting" }
-            false
+            return false
         }
+        opened()
+        return true
+    }
 
     /** For a platform that can't wait: an unreadable database throws as it is. */
-    suspend fun open(open: suspend () -> Unit) {
+    suspend fun open(opener: suspend () -> Unit) {
         if (isOpen) return
-        open()
+        opener()
+        opened()
+    }
+
+    // Outside tryOpen's catch: queued work failing is not the database being unreadable.
+    private fun opened() {
         isOpen = true
         val pending = waiting.toList()
         waiting.clear()

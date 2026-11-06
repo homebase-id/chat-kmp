@@ -24,6 +24,7 @@ import id.homebase.core.notifications.NotificationService
 import id.homebase.core.ui.navigation.AppLink
 import id.homebase.core.widget.ComposerAutocompleteProbe
 import id.homebase.core.widget.initLazyStabilityFlags
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -64,9 +65,9 @@ fun main() {
         override fun onMismatch(report: String) = recordAutocompleteMismatch(report)
         override fun onComposing(composing: String) = recordAutocompleteComposing(composing)
     })
-    AppStartup.startKoin()
-    // sql.js compiles its wasm asynchronously, so the database opens in a coroutine; nothing resolves it before that.
-    MainScope().launch {
+    // sql.js compiles its wasm asynchronously: start that first, so it runs while Koin builds; a promise only resumes
+    // the coroutine after main() returns, so Koin is up before the database opens.
+    MainScope().launch(start = CoroutineStart.UNDISPATCHED) {
         initWebSqlJs()
         bootStage("Opening database…", 60)
         AppStartup.openDatabaseNow(DatabaseDriverFactory())
@@ -126,4 +127,5 @@ fun main() {
             })
         }
     }
+    AppStartup.startKoin()
 }

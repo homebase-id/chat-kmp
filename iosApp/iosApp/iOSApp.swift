@@ -117,11 +117,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-      // As for a push: before the first unlock, or behind the crash-recovery screen, nothing is started yet.
+      // Before the first unlock the database is shut, and behind the crash-recovery screen nothing has started: act once it opens.
       guard MainViewControllerKt.isDatabaseOpen() else {
+          MainViewControllerKt.whenDatabaseOpen { self.handle(response) {} }
           completionHandler()
           return
       }
+      handle(response, completionHandler: completionHandler)
+  }
+
+  private func handle(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) {
       let userInfo = response.notification.request.content.userInfo
       let conversationId = extractConversationId(from: userInfo)
 

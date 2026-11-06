@@ -152,7 +152,6 @@ fun main() {
 
     openDatabaseOrQuit()
     StartupLogger.checkpoint("database initialized")
-    GlobalContext.get().get<DesktopChatNotificationBridge>()
 
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
@@ -200,7 +199,10 @@ fun main() {
     val viewModel = koin.get<DesktopViewModel>()
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
-    AppStartup.afterDatabase { id.homebase.core.calling.startDesktopCallCoordinator() }
+    AppStartup.afterDatabase {
+        GlobalContext.get().get<DesktopChatNotificationBridge>().start()
+        id.homebase.core.calling.startDesktopCallCoordinator()
+    }
     val callWindow = koin.get<id.homebase.chat.calling.CallWindowModel>()
 
     application {
