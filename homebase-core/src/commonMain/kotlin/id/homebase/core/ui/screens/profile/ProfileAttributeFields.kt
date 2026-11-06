@@ -110,7 +110,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.core.ui.screens.card.CookieBadge
-import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.widget.AdaptiveSheet
@@ -150,6 +149,7 @@ import id.homebase.resources.profile_edit_twitter
 import id.homebase.resources.remove
 import id.homebase.resources.save
 import kotlinx.coroutines.flow.first
+import id.homebase.core.widget.WithTooltip
 
 @Composable
 internal fun EditorActions(

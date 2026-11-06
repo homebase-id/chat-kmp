@@ -67,7 +67,6 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.card.AudienceGlyph
 import id.homebase.core.ui.screens.card.CardCircle
 import id.homebase.core.ui.screens.card.CookieBadge
-import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.moments_detail_shared_with_more
@@ -85,6 +84,7 @@ import id.homebase.resources.profile_edit_visibility_circles
 import id.homebase.resources.profile_edit_visibility_public
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.core.widget.WithTooltip
 
 private enum class AudienceKind(val icon: ImageVector, val label: StringResource) {
     Public(Icons.Outlined.Public, MR.string.profile_edit_visibility_public),
