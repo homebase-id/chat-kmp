@@ -241,7 +241,7 @@ fun ProfileCardEditorScreen(
     val errCircleUnsupported = stringResource(MR.string.profile_card_circle_unsupported)
     val errContent = stringResource(MR.string.profile_card_content_save_failed)
 
-    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openEditor = false) }
+    val newCircle = rememberNewCircleAction { id -> viewModel.onCircleCreated(id, openCard = false) }
     LaunchedEffect(viewModel) {
         if (cardsEnabled) viewModel.startHost()
         viewModel.onContentEditorShown()
@@ -292,7 +292,6 @@ fun ProfileCardEditorScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is ProfileCardEvent.OpenLink -> uriHandler.openUrl(event.url)
-                ProfileCardEvent.OpenContentEditor -> Unit
                 ProfileCardEvent.DesignSaved -> onBack()
                 ProfileCardEvent.DesignSaveFailed -> launch { snackbarHostState.showSnackbar(errSave) }
                 ProfileCardEvent.CardFailed -> launch { snackbarHostState.showSnackbar(errCard) }
@@ -372,6 +371,7 @@ fun ProfileCardEditorScreen(
             onSelect = viewModel::onDesignPicked,
             onOption = viewModel::onOptionSelected,
             onBlockOrder = viewModel::onBlockOrderChanged,
+            onStyle = viewModel::onStyleSelected,
             onSave = viewModel::onSaveDesign,
             photo = photoUi,
             showCard = cardsEnabled,
@@ -484,6 +484,7 @@ internal fun ProfileCardEditorContent(
     onBlockOrder: (List<String>) -> Unit,
     onSave: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    onStyle: (ResolvedCardStyle) -> Unit = {},
     mode: EditorMode = EditorMode.Design,
     photo: CardPhotoUi = CardPhotoUi(photo = null, own = false, canChange = false, busy = false),
     showCard: Boolean = true,
@@ -544,6 +545,7 @@ internal fun ProfileCardEditorContent(
                     onSelect = onSelect,
                     onOption = onOption,
                     onBlockOrder = onBlockOrder,
+                    onStyle = onStyle,
                     showCardsButton = showCard,
                     onContentAudience = onContentAudience,
                     onContentEdit = onContentEdit,
@@ -869,6 +871,7 @@ private fun EditorPanel(
     onSelect: (String) -> Unit,
     onOption: (CardOption, String?) -> Unit,
     onBlockOrder: (List<String>) -> Unit,
+    onStyle: (ResolvedCardStyle) -> Unit,
     showCardsButton: Boolean,
     onContentAudience: (Uuid, ProfileAudience) -> Unit,
     onContentEdit: (Uuid, Map<String, String>, ProfileAudience) -> Unit,
@@ -891,7 +894,10 @@ private fun EditorPanel(
     val isSaving = uiState.isSavingDesign
     val grow = fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     // Grows with the text so a large font scale shortens the preview rather than clipping the controls.
-    val optionsNeeded = CAPTION_LINE * fontScale + CHIP_HEIGHT * grow + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
+    val styles = remember(design) { cardStylesFor(design) }
+    val custom = remember(styles, uiState.overrides, design) { customStyle(styles, uiState.overrides, design) }
+    val control = if (styles.isEmpty()) CHIP_HEIGHT * grow else maxOf(CHIP_HEIGHT * grow, styleRowHeight(fontScale))
+    val optionsNeeded = CAPTION_LINE * fontScale + control + 8.dp + metrics.gap * 2 + TOOLBAR_HEIGHT
     val body by animateDpAsState(maxOf(metrics.body, optionsNeeded), motion.defaultSpatialSpec())
     val items = remember(uiState.attributes, uiState.circles, uiState.selectedAudience) { uiState.contentItems }
     val importSources = remember(uiState.attributes, uiState.circles, uiState.cards, uiState.selectedAudience) { uiState.importSources }
@@ -967,6 +973,9 @@ private fun EditorPanel(
                         enabled = !isSaving,
                         onOption = onOption,
                         onBlockOrder = onBlockOrder,
+                        styles = styles,
+                        custom = custom,
+                        onStyle = onStyle,
                         gap = metrics.gap,
                         hasLinks = uiState.contentItems.any { it.type == ProfileAttributeTypes.LINK && it.shown },
                         modifier = Modifier.fillMaxSize(),

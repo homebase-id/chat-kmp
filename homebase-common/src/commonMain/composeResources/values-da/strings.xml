@@ -1556,6 +1556,8 @@
     <string name="contactbook_onboarding_dismiss">Måske senere</string>
 
     <string name="contactbook_tab_circles">Kredse</string>
+    <string name="contactbook_requests_banner_one">Du har en forbindelsesanmodning fra %1$s</string>
+
     <string name="contactbook_connected">Forbundet</string>
     <string name="contactbook_circles_empty">Du har ingen kredse endnu.</string>
     <string name="contactbook_circle_members_empty">Denne kreds har ingen medlemmer.</string>
@@ -1651,7 +1653,16 @@
     <string name="contactbook_action_settings">Kontaktindstillinger</string>
 
     <string name="contactbook_empty_title">Ingen kontakter endnu</string>
-    <string name="contactbook_empty_body">Tilføj en kontakt manuelt.</string>
+    <string name="contactbook_empty_body">Inviter en ven, eller tilføj en, du allerede kender.</string>
+    <string name="contactbook_empty_invite">Inviter en ven</string>
+    <string name="contactbook_empty_share_card">Del mit kort</string>
+    <string name="contactbook_invite_message">Jeg er på Homebase. Opret en konto på %1$s, og tilføj mig derefter som kontakt: %2$s</string>
+    <string name="contactbook_invite_body">Send dette til dem, du gerne vil forbindes med på Homebase.</string>
+    <string name="contactbook_invite_copy">Kopiér besked</string>
+    <string name="contactbook_invite_copied">Kopieret</string>
+    <string name="contactbook_invite_email">E-mail</string>
+    <string name="contactbook_invite_email_failed">Kunne ikke åbne en e-mailapp. Kopiér beskeden i stedet.</string>
+    <string name="contactbook_invite_email_subject">Kom med på Homebase</string>
     <string name="contactbook_empty_new">Tilføj en kontakt</string>
 
     <string name="contactbook_detail_message">Besked</string>
@@ -2082,6 +2093,8 @@
     <string name="keystore_reset_confirm">Nulstil</string>
     <string name="profile_card_option_block_style">Indholdsstil</string>
     <string name="profile_card_tool_style">Stil</string>
+    <string name="profile_card_tool_presets">Forslag</string>
+    <string name="profile_card_option_presets">Færdige stilarter</string>
     <string name="profile_card_presentation_bare">Almindelig</string>
     <string name="profile_card_presentation_boxed">Boks</string>
     <string name="profile_card_presentation_row">Rækker</string>
@@ -2121,4 +2134,41 @@
     <string name="openedfile_show">Vis</string>
     <string name="openedfile_open_failed">Filen kunne ikke åbnes.</string>
     <string name="openedfile_save_failed">Filen kunne ikke gemmes. Tjek din forbindelse, og prøv igen.</string>
+    <string name="profile_card_style_custom">Tilpasset</string>
+    <string name="profile_card_option_default">Standard</string>
+    <string name="profile_card_colours_midnight">Midnat</string>
+    <string name="profile_card_colours_wine">Vin</string>
+    <string name="profile_card_colours_pine">Fyr</string>
+    <string name="profile_card_colours_cobalt">Kobolt</string>
+    <string name="profile_card_colours_rust">Rust</string>
+    <string name="profile_card_colours_forest">Skov</string>
+    <string name="profile_card_colours_plum">Blomme</string>
+    <string name="profile_card_colours_terracotta">Terrakotta</string>
+    <string name="profile_card_colours_charcoal">Trækul</string>
+    <string name="profile_card_colours_sky">Himmel</string>
+    <string name="profile_card_colours_butter">Smør</string>
+    <string name="profile_card_colours_blush">Rosa</string>
+    <string name="profile_card_colours_sage">Salvie</string>
+    <string name="profile_card_colours_mist">Dis</string>
+    <string name="profile_card_colours_rose">Rose</string>
+    <string name="profile_card_colours_lilac">Syren</string>
+    <string name="profile_card_colours_kraft">Kraft</string>
+    <string name="profile_card_colours_night">Nat</string>
+    <string name="profile_card_colours_mono">Mono</string>
+    <string name="profile_card_colours_ink">Blæk</string>
+    <string name="profile_card_colours_moss">Mos</string>
+    <string name="profile_card_colours_oxblood">Okseblod</string>
+    <string name="profile_card_colours_graphite">Grafit</string>
+    <string name="profile_card_colours_paper">Papir</string>
+    <string name="profile_card_colours_blueprint">Blåtryk</string>
+    <string name="profile_card_colours_sand">Sand</string>
+    <string name="profile_card_colours_cloud">Sky</string>
+    <string name="profile_card_colours_slate">Skifer</string>
+    <string name="profile_card_colours_mint">Mynte</string>
+    <string name="profile_card_colours_peach">Fersken</string>
+    <string name="profile_card_colours_lavender">Lavendel</string>
+    <string name="profile_card_colours_navy">Marineblå</string>
+    <string name="profile_card_colours_lemon">Citron</string>
+    <string name="profile_card_colours_purple">Lilla</string>
+    <string name="profile_card_colours_blue">Blå</string>
 </resources>

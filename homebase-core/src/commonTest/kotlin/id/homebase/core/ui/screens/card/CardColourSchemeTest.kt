@@ -44,7 +44,30 @@ class CardColourSchemeTest {
         for (design in CardDesign.all) {
             val spec = CardDesignSpecs.of(design)!!
             assertEquals(CardOption.COLOURS in spec.options, spec.schemes.isNotEmpty(), design)
-            assertTrue(spec.schemes.size in 5..7, design)
+            // Five to seven original schemes, plus up to three Tonal variations; Collage and Links carry ten.
+            assertTrue(spec.schemes.size in 5..10, design)
+            assertEquals(spec.schemes.size, spec.schemes.map { it.id }.toSet().size, "$design ids")
+        }
+    }
+
+    // Every ground a card could have saved before the Tonal variations were added; each is still offered, unchanged.
+    private val originalGrounds = mapOf(
+        CardDesign.POSTER to listOf("#0F1626", "#2A0E14", "#0E1E16", "#10215C", "#3A1708"),
+        CardDesign.BOARD to listOf("#1E5B45", "#5B2A6E", "#9A3B26", "#23262B", "#DCEBFA", "#F7E7A6", "#F6D6D9"),
+        CardDesign.COLLAGE to listOf("#DDE5D3", "#DCE6F0", "#F3DCDC", "#E6DFF0", "#C9A882", "#1F1C19", "#EDEDED"),
+        CardDesign.DOSSIER to listOf("#0D1B2A", "#0F1A14", "#1C0F10", "#2A2D33", "#F4F1EA", "#12355B", "#E8DCC6"),
+        CardDesign.LINKS to listOf("#F1F3F6", "#1B1F24", "#DDF0E6", "#FBE3D6", "#E7E3F7", "#14213D", "#F8F2C8"),
+    )
+
+    @Test
+    fun theOriginalSchemesComeFirstInTheirOrderAndACardSavedOnOneKeepsIt() {
+        for ((design, grounds) in originalGrounds) {
+            val spec = CardDesignSpecs.of(design)!!
+            assertEquals(grounds, spec.schemes.take(grounds.size).map { it.ground }, design)
+            for (scheme in spec.schemes) {
+                val saved = CardOverrides(palette = scheme.applyTo(CardPalette(accent = scheme.accents.first().takeIf { CardOption.ACCENT in spec.options })))
+                assertEquals(saved, CardOverrides.fromJson(saved.toJson()).prunedFor(design), "$design/${scheme.id}")
+            }
         }
     }
 

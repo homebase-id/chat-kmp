@@ -153,7 +153,6 @@ sealed interface ProfileCardEvent {
     data object DesignSaveFailed : ProfileCardEvent
     data object ResetFailed : ProfileCardEvent
     data object CircleCardsUnsupported : ProfileCardEvent
-    data object OpenContentEditor : ProfileCardEvent
     data object ContentSaveFailed : ProfileCardEvent
     data class ContentImported(val count: Int, val from: CardAudience) : ProfileCardEvent
     data object ImportUndoExpired : ProfileCardEvent
@@ -396,6 +395,8 @@ class ProfileCardViewModel(
     }
 
     fun onOptionSelected(option: CardOption, value: String?) = editOverrides { it.with(option, value, CardDesignSpecs.of(_uiState.value.design)?.presetOrder ?: CardDesignSpecs.ORDERED_KINDS, _uiState.value.design) }
+
+    internal fun onStyleSelected(style: ResolvedCardStyle) = editOverrides { it.withStyle(style, _uiState.value.design) }
 
     fun onBlockOrderChanged(kinds: List<String>?) = editOverrides { it.withBlockOrder(kinds) }
 
@@ -653,14 +654,14 @@ class ProfileCardViewModel(
     fun onCirclesChanged() = load(force = true)
 
     /** Reloads so the new circle's card exists, then lands on it; every circle gets a card, borrowing the public design until saved. */
-    fun onCircleCreated(id: String, openEditor: Boolean) {
+    fun onCircleCreated(id: String, openCard: Boolean) {
         viewModelScope.launch {
             load(force = true)
             loadJob?.join()
             val card = _uiState.value.cards.firstOrNull { it.audience.isSameAs(CardAudience.Circle(id, "")) }
                 ?: return@launch
             selectAudience(card.audience)
-            if (openEditor) _events.tryEmit(ProfileCardEvent.OpenContentEditor)
+            if (openCard) _uiState.update { it.copy(viewing = true) }
         }
     }
 

@@ -92,4 +92,8 @@
         <item quantity="one">%1$d new item</item>
         <item quantity="other">%1$d new items</item>
     </plurals>
+    <plurals name="contactbook_requests_banner_more">
+        <item quantity="one">You have connection requests from %1$s and %2$d more</item>
+        <item quantity="other">You have connection requests from %1$s and %2$d more</item>
+    </plurals>
 </resources>

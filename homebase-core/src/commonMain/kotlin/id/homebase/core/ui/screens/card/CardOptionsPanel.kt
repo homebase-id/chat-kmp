@@ -32,6 +32,41 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.LineHeightStyle
+import id.homebase.resources.profile_card_colours_blue
+import id.homebase.resources.profile_card_colours_blueprint
+import id.homebase.resources.profile_card_colours_blush
+import id.homebase.resources.profile_card_colours_butter
+import id.homebase.resources.profile_card_colours_charcoal
+import id.homebase.resources.profile_card_colours_cloud
+import id.homebase.resources.profile_card_colours_cobalt
+import id.homebase.resources.profile_card_colours_forest
+import id.homebase.resources.profile_card_colours_graphite
+import id.homebase.resources.profile_card_colours_ink
+import id.homebase.resources.profile_card_colours_kraft
+import id.homebase.resources.profile_card_colours_lavender
+import id.homebase.resources.profile_card_colours_lemon
+import id.homebase.resources.profile_card_colours_lilac
+import id.homebase.resources.profile_card_colours_midnight
+import id.homebase.resources.profile_card_colours_mint
+import id.homebase.resources.profile_card_colours_mist
+import id.homebase.resources.profile_card_colours_mono
+import id.homebase.resources.profile_card_colours_moss
+import id.homebase.resources.profile_card_colours_navy
+import id.homebase.resources.profile_card_colours_night
+import id.homebase.resources.profile_card_colours_oxblood
+import id.homebase.resources.profile_card_colours_paper
+import id.homebase.resources.profile_card_colours_peach
+import id.homebase.resources.profile_card_colours_pine
+import id.homebase.resources.profile_card_colours_plum
+import id.homebase.resources.profile_card_colours_purple
+import id.homebase.resources.profile_card_colours_rose
+import id.homebase.resources.profile_card_colours_rust
+import id.homebase.resources.profile_card_colours_sage
+import id.homebase.resources.profile_card_colours_sand
+import id.homebase.resources.profile_card_colours_sky
+import id.homebase.resources.profile_card_colours_slate
+import id.homebase.resources.profile_card_colours_terracotta
+import id.homebase.resources.profile_card_colours_wine
 import id.homebase.resources.profile_card_tool_accent
 import id.homebase.resources.profile_card_tool_heading
 import id.homebase.resources.profile_card_tool_body
@@ -43,39 +78,6 @@ import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.ViewAgenda
 import id.homebase.resources.profile_card_option_colours
 import id.homebase.resources.profile_card_option_colours_swatch
-import id.homebase.resources.profile_card_colours_midnight
-import id.homebase.resources.profile_card_colours_wine
-import id.homebase.resources.profile_card_colours_pine
-import id.homebase.resources.profile_card_colours_cobalt
-import id.homebase.resources.profile_card_colours_rust
-import id.homebase.resources.profile_card_colours_forest
-import id.homebase.resources.profile_card_colours_plum
-import id.homebase.resources.profile_card_colours_terracotta
-import id.homebase.resources.profile_card_colours_charcoal
-import id.homebase.resources.profile_card_colours_sky
-import id.homebase.resources.profile_card_colours_butter
-import id.homebase.resources.profile_card_colours_blush
-import id.homebase.resources.profile_card_colours_sage
-import id.homebase.resources.profile_card_colours_mist
-import id.homebase.resources.profile_card_colours_rose
-import id.homebase.resources.profile_card_colours_lilac
-import id.homebase.resources.profile_card_colours_kraft
-import id.homebase.resources.profile_card_colours_night
-import id.homebase.resources.profile_card_colours_mono
-import id.homebase.resources.profile_card_colours_ink
-import id.homebase.resources.profile_card_colours_cloud
-import id.homebase.resources.profile_card_colours_slate
-import id.homebase.resources.profile_card_colours_mint
-import id.homebase.resources.profile_card_colours_peach
-import id.homebase.resources.profile_card_colours_lavender
-import id.homebase.resources.profile_card_colours_navy
-import id.homebase.resources.profile_card_colours_lemon
-import id.homebase.resources.profile_card_colours_moss
-import id.homebase.resources.profile_card_colours_oxblood
-import id.homebase.resources.profile_card_colours_graphite
-import id.homebase.resources.profile_card_colours_paper
-import id.homebase.resources.profile_card_colours_blueprint
-import id.homebase.resources.profile_card_colours_sand
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -95,6 +97,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Style
+import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -170,6 +173,8 @@ import id.homebase.resources.profile_card_option_accent_swatch
 import id.homebase.resources.profile_card_option_block_order
 import id.homebase.resources.profile_card_option_block_style
 import id.homebase.resources.profile_card_tool_style
+import id.homebase.resources.profile_card_tool_presets
+import id.homebase.resources.profile_card_option_presets
 import id.homebase.resources.profile_card_presentation_bare
 import id.homebase.resources.profile_card_presentation_boxed
 import id.homebase.resources.profile_card_presentation_row
@@ -230,18 +235,24 @@ internal fun CardOptionsPanel(
     onBlockOrder: (List<String>) -> Unit,
     gap: Dp,
     hasLinks: Boolean,
+    styles: List<ResolvedCardStyle>,
+    custom: ResolvedCardStyle?,
+    onStyle: (ResolvedCardStyle) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spec = CardDesignSpecs.of(design)
     val orderable = spec?.reorderable(hasLinks).orEmpty()
     val options = CardOption.entries.filter { spec != null && it in spec.options && (it != CardOption.BLOCK_ORDER || orderable.size > 1) }
-    var picked by rememberSaveable(design) { mutableStateOf(options.firstOrNull()?.name.orEmpty()) }
-    val current = options.firstOrNull { it.name == picked } ?: options.firstOrNull() ?: return
+    val tools = remember(options, styles.isEmpty()) {
+        listOfNotNull(PRESETS_TOOL.takeIf { styles.isNotEmpty() }) + options.map { PanelTool(it.name, optionIcon(it), toolLabel(it), optionLabel(it)) }
+    }
+    var picked by rememberSaveable(design) { mutableStateOf(tools.firstOrNull()?.key.orEmpty()) }
+    val current = tools.firstOrNull { it.key == picked } ?: tools.firstOrNull() ?: return
     val motion = MaterialTheme.motionScheme
     val chipHeight = CHIP_HEIGHT * LocalDensity.current.fontScale.coerceIn(1f, LARGE_TEXT_SCALE)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         AnimatedContent(
-            targetState = current.name,
+            targetState = current.key,
             transitionSpec = {
                 (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
                     .togetherWith(fadeOut(motion.fastEffectsSpec()))
@@ -249,16 +260,17 @@ internal fun CardOptionsPanel(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopStart,
         ) { shown ->
-            val option = options.firstOrNull { it.name == shown } ?: current
             // The picked tool names itself in the group below, so the control stands alone here.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
+                val option = options.firstOrNull { it.name == shown }
+                if (option == null) CardStyleRow(styles, overrides, design, enabled, onStyle, custom = custom)
+                else OptionControl(option, design, overrides, enabled, chipHeight, orderable, onOption, onBlockOrder)
             }
         }
         OptionToolbar(
-            options = options,
+            tools = tools,
             current = current,
-            onPick = { picked = it.name },
+            onPick = { picked = it.key },
             modifier = Modifier.fillMaxWidth().height(TOOLBAR_HEIGHT).padding(horizontal = TOOLBAR_SIDE_INSET),
         )
     }
@@ -333,16 +345,16 @@ private fun OptionControl(
 // When every tool fits it sits still and whole, naming the picked one, with what room is left around that label; otherwise the row scrolls.
 @Composable
 private fun OptionToolbar(
-    options: List<CardOption>,
-    current: CardOption,
-    onPick: (CardOption) -> Unit,
+    tools: List<PanelTool>,
+    current: PanelTool,
+    onPick: (PanelTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val count = options.size
-    val labels = options.map { stringResource(toolLabel(it)) }
-    val descriptions = options.map { stringResource(optionLabel(it)) }
-    val icons = options.map(::optionIcon)
-    val pickedIndex = options.indexOf(current)
+    val count = tools.size
+    val labels = tools.map { stringResource(it.label) }
+    val descriptions = tools.map { stringResource(it.description) }
+    val icons = tools.map { it.icon }
+    val pickedIndex = tools.indexOf(current)
     val measurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelMedium
     val density = LocalDensity.current
@@ -359,7 +371,7 @@ private fun OptionToolbar(
                     description = descriptions[index],
                     selected = index == pickedIndex,
                     shapes = connectedButtonShapes(index, count),
-                    onClick = { onPick(options[index]) },
+                    onClick = { onPick(tools[index]) },
                     padding = padding,
                 )
             }
@@ -572,7 +584,7 @@ private fun InkDot(ink: Color, size: Dp = INK_DOT_SIZE, edge: Color = Color.Tran
 // Accents are curated per ground and vanish on the app's own surface, so each is shown on the scheme it is meant for.
 @Composable
 private fun SwatchRow(design: String, colours: String?, selected: String?, enabled: Boolean, onSelect: (String?) -> Unit) {
-    val scheme = CardDesignSpecs.of(design)?.schemes?.firstOrNull { it.ground.equals(colours, ignoreCase = true) }
+    val scheme = CardDesignSpecs.schemeFor(design, colours)
     val ground = Color(scheme?.let { hexToArgb(it.ground) } ?: CardDesign.baseArgb(design))
     val ink = Color(scheme?.let { hexToArgb(it.ink) } ?: CardDesign.inkArgb(design))
     val accents = CardDesignSpecs.accentsFor(design, colours)
@@ -807,6 +819,10 @@ private fun List<String>.swap(a: Int, b: Int): List<String> {
     return moved
 }
 
+private data class PanelTool(val key: String, val icon: ImageVector, val label: StringResource, val description: StringResource)
+
+private val PRESETS_TOOL = PanelTool("presets", Icons.Outlined.Layers, MR.string.profile_card_tool_presets, MR.string.profile_card_option_presets)
+
 private fun optionLabel(option: CardOption): StringResource = when (option) {
     CardOption.COLOURS -> MR.string.profile_card_option_colours
     CardOption.ACCENT -> MR.string.profile_card_option_accent
@@ -876,18 +892,20 @@ private fun blockLabel(kind: String): StringResource = when (kind) {
     else -> MR.string.profile_card_block_chat
 }
 
-private fun schemeLabel(id: String): StringResource = when (id) {
+internal fun schemeLabel(id: String): StringResource = when (id) {
     "wine" -> MR.string.profile_card_colours_wine
     "pine" -> MR.string.profile_card_colours_pine
     "cobalt" -> MR.string.profile_card_colours_cobalt
     "rust" -> MR.string.profile_card_colours_rust
-    "forest" -> MR.string.profile_card_colours_forest
+    "slate" -> MR.string.profile_card_colours_slate
     "plum" -> MR.string.profile_card_colours_plum
+    "forest" -> MR.string.profile_card_colours_forest
     "terracotta" -> MR.string.profile_card_colours_terracotta
     "charcoal" -> MR.string.profile_card_colours_charcoal
     "sky" -> MR.string.profile_card_colours_sky
     "butter" -> MR.string.profile_card_colours_butter
     "blush" -> MR.string.profile_card_colours_blush
+    "purple" -> MR.string.profile_card_colours_purple
     "sage" -> MR.string.profile_card_colours_sage
     "mist" -> MR.string.profile_card_colours_mist
     "rose" -> MR.string.profile_card_colours_rose
@@ -895,6 +913,7 @@ private fun schemeLabel(id: String): StringResource = when (id) {
     "kraft" -> MR.string.profile_card_colours_kraft
     "night" -> MR.string.profile_card_colours_night
     "mono" -> MR.string.profile_card_colours_mono
+    "blue" -> MR.string.profile_card_colours_blue
     "ink" -> MR.string.profile_card_colours_ink
     "moss" -> MR.string.profile_card_colours_moss
     "oxblood" -> MR.string.profile_card_colours_oxblood
@@ -903,7 +922,6 @@ private fun schemeLabel(id: String): StringResource = when (id) {
     "blueprint" -> MR.string.profile_card_colours_blueprint
     "sand" -> MR.string.profile_card_colours_sand
     "cloud" -> MR.string.profile_card_colours_cloud
-    "slate" -> MR.string.profile_card_colours_slate
     "mint" -> MR.string.profile_card_colours_mint
     "peach" -> MR.string.profile_card_colours_peach
     "lavender" -> MR.string.profile_card_colours_lavender

@@ -2033,6 +2033,7 @@
     <string name="contactbook_tab_known">Contacts</string>
     <string name="contactbook_tab_new">New</string>
     <string name="contactbook_tab_circles">Circles</string>
+    <string name="contactbook_requests_banner_one">You have a connection request from %1$s</string>
     <string name="contactbook_connected">Connected</string>
     <string name="contactbook_filter_circles">Circles</string>
     <string name="contactbook_new_empty">Nothing waiting on you.</string>
@@ -2149,7 +2150,16 @@
     <string name="contactbook_action_settings">Contact settings</string>
 
     <string name="contactbook_empty_title">No contacts yet</string>
-    <string name="contactbook_empty_body">Add a contact by hand.</string>
+    <string name="contactbook_empty_body">Invite a friend, or add someone you already know.</string>
+    <string name="contactbook_empty_invite">Invite a friend</string>
+    <string name="contactbook_empty_share_card">Share my card</string>
+    <string name="contactbook_invite_message">I'm on Homebase. Create an account at %1$s, then add me as a contact: %2$s</string>
+    <string name="contactbook_invite_body">Send this to anyone you'd like to connect with on Homebase.</string>
+    <string name="contactbook_invite_copy">Copy message</string>
+    <string name="contactbook_invite_copied">Copied</string>
+    <string name="contactbook_invite_email">Email</string>
+    <string name="contactbook_invite_email_failed">Couldn't open an email app. Copy the message instead.</string>
+    <string name="contactbook_invite_email_subject">Join me on Homebase</string>
     <string name="contactbook_empty_new">Add a contact</string>
 
     <string name="contactbook_detail_message">Message</string>
@@ -2599,6 +2609,8 @@
     <string name="profile_card_colours_lavender">Lavender</string>
     <string name="profile_card_colours_navy">Navy</string>
     <string name="profile_card_colours_lemon">Lemon</string>
+    <string name="profile_card_colours_purple">Purple</string>
+    <string name="profile_card_colours_blue">Blue</string>
     <string name="profile_card_change_design_to">Change design. Current design: %1$s</string>
     <string name="profile_card_option_accent_swatch">Accent %1$s</string>
     <string name="profile_card_option_display_font">Heading font</string>
@@ -2608,6 +2620,8 @@
     <string name="profile_card_option_block_order">Section order</string>
     <string name="profile_card_option_block_style">Content style</string>
     <string name="profile_card_tool_style">Style</string>
+    <string name="profile_card_tool_presets">Presets</string>
+    <string name="profile_card_option_presets">Ready-made styles</string>
     <string name="profile_card_presentation_bare">Plain</string>
     <string name="profile_card_presentation_boxed">Boxed</string>
     <string name="profile_card_presentation_row">Rows</string>
@@ -3284,4 +3298,5 @@
     <string name="circle_delete_body">This removes the circle and its card.</string>
     <string name="circle_delete_body_members">%1$d people are in this circle. Deleting it removes them from it, and removes the circle and its card.</string>
     <string name="circle_delete_failed">Couldn't delete the circle. Try again.</string>
+    <string name="profile_card_style_custom">Custom</string>
 </resources>
