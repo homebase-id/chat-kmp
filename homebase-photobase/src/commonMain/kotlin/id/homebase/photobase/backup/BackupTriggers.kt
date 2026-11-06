@@ -3,7 +3,7 @@ package id.homebase.photobase.backup
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Duration
 
-class BatteryGuidance(val isRestricted: Boolean, val openSettings: () -> Unit)
+class BatteryGuidance(val openSettings: () -> Unit)
 
 /**
  * What a platform can do to run backup while the app isn't open.

@@ -62,13 +62,15 @@ class PhotoBackupRun(
         activeJob?.cancel(CancellationException("backup run expired"))
     }
 
-    /** Keeps the counts live, including results that land with no run going. At most one refresh a second: a run ticks per row. */
+    /** Keeps the counts live for whoever is watching, including results that land with no run going. At most one refresh a second: a run ticks per row. */
     suspend fun followLedger() {
         ledger.changes.collect {
-            refreshStatus()
+            if (_status.subscriptionCount.value > 0) refreshStatus()
             delay(STATUS_REFRESH_GAP)
         }
     }
+
+    suspend fun albums(): List<DeviceAlbum> = source.albums()
 
     suspend fun refreshStatus() {
         val counts = ledger.counts()
@@ -125,11 +127,6 @@ class PhotoBackupRun(
         }
     }
 
-    /**
-     * The network settings hold for the whole run, not just its start. Losing Wi-Fi under Wi-Fi only pauses it.
-     * Losing what videos need starts it over, which leaves videos out and carries on with photos. An Outbox send
-     * already under way isn't recalled.
-     */
     private suspend fun noteForStuckAlert(request: BackupRunRequest, outcome: BackupRunOutcome) {
         if (outcome != BackupRunOutcome.Paused) {
             ledger.markRan()
@@ -141,6 +138,11 @@ class PhotoBackupRun(
         if (ledger.counts().pending > 0 && ledger.takeStuckAlert()) scheduler.alertBackupStuck()
     }
 
+    /**
+     * The network settings hold for the whole run, not just its start. Losing Wi-Fi under Wi-Fi only pauses it.
+     * Losing what videos need starts it over, which leaves videos out and carries on with photos. An Outbox send
+     * already under way isn't recalled.
+     */
     private suspend fun followingTheNetwork(run: suspend () -> BackupRunOutcome): BackupRunOutcome {
         while (true) {
             runUntilNetworkChange(run)?.let { return it }
@@ -262,10 +264,8 @@ class PhotoBackupRun(
     /** After a kill the ledger can say QUEUED for a row whose send already finished. Dedupe settles those. */
     private suspend fun reconcileHandedOff() {
         for (row in ledger.rowsInOutbox()) {
-            val uniqueId = row.uniqueId?.let(Uuid::parse)
-            if (uniqueId == null || !uploader.isStillSending(row, uniqueId)) {
-                ledger.onOutboxDropped(uniqueId ?: continue, "no send under way")
-            }
+            val uniqueId = row.uniqueId?.let(Uuid::parse) ?: continue
+            if (!uploader.isStillSending(row, uniqueId)) ledger.onOutboxDropped(uniqueId, "no send under way")
         }
     }
 
@@ -417,9 +417,8 @@ class PhotoBackupRun(
         // Videos stay on the Outbox whatever the uploader's own limit.
         val isVideo = BackupMediaType.ofCode(row.mediaType) == BackupMediaType.Video
         while (true) {
-            val counts = ledger.counts()
             val outboxHasRoom = !isVideo || results.unsettled.value.size < MAX_OUTBOX_HANDED_OFF
-            if (counts.inOutbox + counts.uploading < uploader.maxHandedOff && outboxHasRoom) return true
+            if (ledger.handedOffCount() < uploader.maxHandedOff && outboxHasRoom) return true
             val waitingIsUseful = if (uploader.outlivesProcess) interactive else results.unsettled.value.isNotEmpty()
             if (!waitingIsUseful || !awaitActivity()) return false
         }
@@ -438,7 +437,7 @@ class PhotoBackupRun(
     }
 
     private suspend fun awaitActivity(): Boolean = withTimeoutOrNull(NO_PROGRESS_LIMIT) {
-        combine(results.activity, results.unsettled, ledger.changes) { _, _, _ -> Unit }.drop(1).first()
+        combine(results.progress, results.unsettled, ledger.changes) { _, _, _ -> Unit }.drop(1).first()
         true
     } ?: false
 
@@ -453,7 +452,6 @@ class PhotoBackupRun(
         private val STATUS_REFRESH_GAP: Duration = 1.seconds
         private val NETWORK_RECHECK: Duration = 5.seconds
 
-        val WAKE_BUDGET: Duration = 25.seconds
         val WORKER_BUDGET: Duration = 9.minutes
     }
 }

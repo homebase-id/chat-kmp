@@ -23,7 +23,6 @@ class PhotoBackupWorker(appContext: Context, params: WorkerParameters) : Corouti
         val request = BackupRunRequest(
             trigger = trigger,
             budget = BackupBudget(if (userRequested) null else PhotoBackupRun.WORKER_BUDGET),
-            findDeletions = trigger == BackupTrigger.Periodic || trigger == BackupTrigger.Overnight || userRequested,
         )
         return try {
             get<PhotoBackupController>().runFromBackground(request)

@@ -92,8 +92,8 @@ class PhotoBackupRunTest {
         return run to results
     }
 
-    private fun TestScope.request(limit: Duration? = null, trigger: BackupTrigger = BackupTrigger.Periodic, findDeletions: Boolean = false) =
-        BackupRunRequest(trigger, BackupBudget(limit, testTimeSource), findDeletions)
+    private fun TestScope.request(limit: Duration? = null, trigger: BackupTrigger = BackupTrigger.Periodic) =
+        BackupRunRequest(trigger, BackupBudget(limit, testTimeSource))
 
     private fun TestScope.uploader(sendTime: Duration = 1.seconds) = FakeUploader(eventBus, backgroundScope, sendTime)
 

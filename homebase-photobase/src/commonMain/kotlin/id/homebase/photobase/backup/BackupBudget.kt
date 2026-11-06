@@ -25,14 +25,16 @@ enum class BackupTrigger {
 data class BackupRunRequest(
     val trigger: BackupTrigger,
     val budget: BackupBudget,
-    /** Foreground and long runs: list every id, which is what finds deletions. */
-    val findDeletions: Boolean,
     /** Ignore the checkpoint this once: after an iOS background launch deltas can miss assets. */
     val forceFullScan: Boolean = false,
 ) {
     /** A push or refresh window is about 25 seconds, which an iCloud download often won't fit. */
     val mayDownloadFromCloud: Boolean
         get() = trigger != BackupTrigger.Push && trigger != BackupTrigger.BackgroundRefresh
+
+    /** Foreground and long runs: list every id, which is what finds deletions. */
+    val findDeletions: Boolean
+        get() = trigger != BackupTrigger.Push && trigger != BackupTrigger.MediaChanged && trigger != BackupTrigger.BackgroundRefresh
 
     /** The user has the app open. */
     val isInteractive: Boolean

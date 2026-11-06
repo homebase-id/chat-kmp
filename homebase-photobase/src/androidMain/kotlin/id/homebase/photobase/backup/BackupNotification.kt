@@ -17,11 +17,15 @@ internal const val BACKUP_NOTIFICATION_ID = 7201
 private const val STUCK_NOTIFICATION_ID = 7202
 private const val CHANNEL_ID = "photo_backup"
 
-internal suspend fun postBackupStuckNotification(context: Context) {
-    val manager = context.getSystemService(NotificationManager::class.java)
+private suspend fun createChannel(manager: NotificationManager) {
     manager.createNotificationChannel(
         NotificationChannel(CHANNEL_ID, getString(MR.string.photobase_backup_notification_channel), NotificationManager.IMPORTANCE_LOW),
     )
+}
+
+internal suspend fun postBackupStuckNotification(context: Context) {
+    val manager = context.getSystemService(NotificationManager::class.java)
+    createChannel(manager)
     val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
         PendingIntent.getActivity(context, STUCK_NOTIFICATION_ID, it, PendingIntent.FLAG_IMMUTABLE)
     }
@@ -43,9 +47,7 @@ internal fun cancelBackupStuckNotification(context: Context) {
 
 /** [progress] null shows it as indeterminate. */
 internal suspend fun backupNotification(context: Context, progress: Float? = null): Notification {
-    context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-        NotificationChannel(CHANNEL_ID, getString(MR.string.photobase_backup_notification_channel), NotificationManager.IMPORTANCE_LOW),
-    )
+    createChannel(context.getSystemService(NotificationManager::class.java))
     return NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(context.applicationInfo.icon)
         .setContentTitle(getString(MR.string.photobase_backup_notification))

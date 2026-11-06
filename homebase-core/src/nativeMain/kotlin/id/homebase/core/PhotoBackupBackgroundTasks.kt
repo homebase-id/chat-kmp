@@ -7,9 +7,9 @@ import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.photobase.backup.BackupBudget
 import id.homebase.photobase.backup.BackupRunRequest
 import id.homebase.photobase.backup.BackupTrigger
+import id.homebase.core.photobase.PUSH_WAKE_BUDGET
 import id.homebase.photobase.backup.PhotoBackupController
 import id.homebase.photobase.backup.PhotoBackupEntry
-import id.homebase.photobase.backup.PhotoBackupRun
 import id.homebase.photobase.backup.backupProcessingTaskId
 import id.homebase.photobase.backup.backupRefreshTaskId
 import id.homebase.photobase.backup.submitBackupTasks
@@ -34,10 +34,10 @@ fun isPhotobaseEnabled(): Boolean = isDatabaseOpen() && try {
 fun registerPhotoBackupBackgroundTasks() {
     val scheduler = BGTaskScheduler.sharedScheduler
     scheduler.registerForTaskWithIdentifier(backupRefreshTaskId, usingQueue = null) { task ->
-        task?.let { handle(it, BackupRunRequest(BackupTrigger.BackgroundRefresh, BackupBudget(PhotoBackupRun.WAKE_BUDGET), findDeletions = false)) }
+        task?.let { handle(it, BackupRunRequest(BackupTrigger.BackgroundRefresh, BackupBudget(PUSH_WAKE_BUDGET))) }
     }
     scheduler.registerForTaskWithIdentifier(backupProcessingTaskId, usingQueue = null) { task ->
-        task?.let { handle(it, BackupRunRequest(BackupTrigger.BackgroundProcessing, BackupBudget(null), findDeletions = true)) }
+        task?.let { handle(it, BackupRunRequest(BackupTrigger.BackgroundProcessing, BackupBudget(null))) }
     }
 }
 

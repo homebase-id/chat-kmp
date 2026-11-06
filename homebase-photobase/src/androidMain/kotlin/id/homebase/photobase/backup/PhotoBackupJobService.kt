@@ -30,7 +30,7 @@ class PhotoBackupJobService : JobService(), KoinComponent {
             var failed = false
             try {
                 controller.runFromBackground(
-                    BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null), findDeletions = true),
+                    BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null)),
                 )
             } catch (e: CancellationException) {
                 throw e

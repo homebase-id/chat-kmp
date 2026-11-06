@@ -8,6 +8,9 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlin.time.Duration.Companion.seconds
@@ -1618,57 +1621,55 @@ private fun Scope.photoBackupController(): PhotoBackupController {
     val settings = BackupSettingsStore(get())
     val results = BackupOutboxResults(ledger, get(), PhotobaseProtocol.DriveAlias, scope)
     val platform = createPhotoBackupPlatform(get())
-    platform?.listenForUploadResults?.invoke(ledger, get(), scope)
-    platform?.let { backup ->
+    val run = platform?.let { backup ->
+        backup.listenForUploadResults?.invoke(ledger, get(), scope)
         get<OutboxSync>().holdBulkSends = {
             // Runs inside chat's send loop, which a backup problem must not take down.
             try {
                 settings.settings.value.wifiOnly && !backup.probe.state().isUnmetered
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.w(tag = "PhotoBackup", throwable = e) { "could not read the network for held sends" }
                 false
             }
         }
-    }
-    val run = platform?.let {
-        val exports = HashedExports(it.source, get())
+        val exports = HashedExports(backup.source, get())
         val hasher = AssetHasher(exports, get())
         val requests = BackupRequestBuilder(get())
         val outbox = OutboxBackupUploader(get(), exports, hasher, requests, get(), get(), scope)
-        val uploader = it.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get()) { settings.settings.value.wifiOnly }) ?: outbox
+        val uploader = backup.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get()) { settings.settings.value.wifiOnly }) ?: outbox
         val storageQuota = get<StorageQuota>()
         PhotoBackupRun(
             settings = { settings.settings.value },
             ledger = ledger,
-            source = it.source,
+            source = backup.source,
             hasher = hasher,
             dedupe = ServerBackupDedupe(get()),
             uploader = uploader,
             results = results,
-            probe = it.probe,
+            probe = backup.probe,
             auth = {
                 withTimeoutOrNull(BACKUP_AUTH_RESTORE_TIMEOUT) {
                     get<YouAuthFlowManager>().authState.first { state -> state !is YouAuthState.Initializing }
                 }
                 get<CredentialsManager>().hasActiveCredentials()
             },
-            scheduler = it.triggers,
+            scheduler = backup.triggers,
             isStorageFull = { refresh ->
                 if (refresh) storageQuota.refresh()
                 storageQuota.state.value.isFull
             },
         )
     }
-    val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
-    val fileUploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
+    val files = get<DriveFileProvider>()
+    val fileUploader = get<DriveUploadProvider>()
     val configFile = PhotobaseConfigFile(
         getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
         uploadFile = { request -> fileUploader.uploadFile(request) },
         updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
     )
-    return PhotoBackupController(run, platform?.source, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
+    return PhotoBackupController(run, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds

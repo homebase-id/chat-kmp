@@ -15,7 +15,6 @@ import kotlin.time.Duration.Companion.seconds
 /** What the app and the settings screen ask of backup. Null [run] where backup doesn't exist: desktop and web. */
 class PhotoBackupController(
     private val run: PhotoBackupRun?,
-    private val source: DeviceChangeSource?,
     private val settingsStore: BackupSettingsStore,
     private val pushSchedule: BackupPushSchedule,
     private val configFile: PhotobaseConfigFile,
@@ -51,8 +50,8 @@ class PhotoBackupController(
         val fullScan = wokenInBackgroundSinceForeground && triggers?.rescansAfterBackgroundWake == true
         wokenInBackgroundSinceForeground = false
         foregroundJob = scope.launch {
-            pushSchedule.ensure(adoptSharedInterval())
-            run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), findDeletions = true, forceFullScan = fullScan))
+            launch { pushSchedule.ensure(adoptSharedInterval()) }
+            run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), forceFullScan = fullScan))
         }
     }
 
@@ -73,19 +72,19 @@ class PhotoBackupController(
         foregroundJob = null
     }
 
-    suspend fun runFromBackground(request: BackupRunRequest): BackupRunOutcome? {
+    suspend fun runFromBackground(request: BackupRunRequest) {
         wokenInBackgroundSinceForeground = true
         // Another phone turning backup off or logging out cancels the identity's one schedule.
         if (settingsStore.settings.value.enabled && request.trigger.restoresPushSchedule) {
             scope.launch { pushSchedule.ensure(adoptSharedInterval()) }
         }
-        return run?.run(request)
+        run?.run(request)
     }
 
     fun backUpNow() {
         val run = run ?: return
         val inApp: suspend () -> Unit = {
-            run.run(BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null), findDeletions = true))
+            run.run(BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null)))
         }
         val progress = run.status.map { it.progress }
         if (triggers?.startUserRequestedRun(settingsStore.settings.value, progress, inApp) != true) {
@@ -165,7 +164,7 @@ class PhotoBackupController(
         }
     }
 
-    suspend fun albums(): List<DeviceAlbum> = source?.albums().orEmpty()
+    suspend fun albums(): List<DeviceAlbum> = run?.albums().orEmpty()
 
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
     suspend fun onBeforeLogout() {

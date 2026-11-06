@@ -12,29 +12,21 @@ import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.ReturnCode
 import com.arthenica.ffmpegkit.Statistics
 import com.arthenica.ffmpegkit.StatisticsCallback
-import co.touchlab.kermit.Logger
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import java.io.File
 import java.util.UUID
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 actual object FFmpegUtils {
 
     private fun scratchFolder(context: Context, sub: String): File =
         File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, sub))
     private const val TAG = "FFmpegUtils"
-    private val SESSION_STOP_LIMIT = 30.seconds
-    private val SESSION_CANCEL_RETRY = 500.milliseconds
 
     @Volatile private var cachedFfmpegVersion: String? = null
     @Volatile private var ffmpegVersionProbed: Boolean = false
@@ -425,29 +417,7 @@ actual object FFmpegUtils {
         } else {
             FFmpegKit.executeWithArgumentsAsync(args, onComplete)
         }
-        try {
-            return finished.await()
-        } catch (e: CancellationException) {
-            withContext(NonCancellable) { stop(session, finished) }
-            throw e
-        }
-    }
-
-    // The engine isn't reentrant, so VideoCompressionService's lock has to outlast the session.
-    private suspend fun stop(session: FFmpegSession, finished: CompletableDeferred<FFmpegSession>) {
-        val stopping = TimeSource.Monotonic.markNow()
-        val stopped = withTimeoutOrNull(SESSION_STOP_LIMIT) {
-            while (!finished.isCompleted) {
-                // A cancel does nothing until the session is running, so it's repeated.
-                try { session.cancel() } catch (_: Exception) {}
-                withTimeoutOrNull(SESSION_CANCEL_RETRY) { finished.await() }
-            }
-        } != null
-        if (stopped) {
-            Logger.i(tag = TAG) { "ffmpeg session ${session.sessionId} stopped ${stopping.elapsedNow()} after cancel" }
-        } else {
-            Logger.e(tag = TAG) { "ffmpeg session ${session.sessionId} still running $SESSION_STOP_LIMIT after cancel; carrying on so sends aren't stuck" }
-        }
+        return awaitFfmpegSession(finished, session.sessionId) { session.cancel() }
     }
 
     private fun progressFraction(timeMs: Long, durationMs: Long): Float =

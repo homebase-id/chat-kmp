@@ -48,8 +48,9 @@ class PhotoGalleryViewModelTest {
     }
 
     private fun TestScope.viewModel(source: PhotoGalleryPageSource): PhotoGalleryViewModel {
-        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        return PhotoGalleryViewModel(source)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        return PhotoGalleryViewModel(source, dispatcher)
     }
 
     @Test

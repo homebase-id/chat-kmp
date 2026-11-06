@@ -121,7 +121,7 @@ class IosBackupTriggers : BackupTriggers {
     }
 
     override suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit) {
-        run(BackupRunRequest(BackupTrigger.Push, BackupBudget(remaining), findDeletions = false))
+        run(BackupRunRequest(BackupTrigger.Push, BackupBudget(remaining)))
     }
 
     /** BGContinuedProcessingTask on iOS 26+, for a user-started run with system progress. Below it, the open app runs it. */

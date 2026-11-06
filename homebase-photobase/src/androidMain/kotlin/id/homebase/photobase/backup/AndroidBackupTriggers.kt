@@ -49,7 +49,7 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
         }
         val periodic = PeriodicWorkRequestBuilder<PhotoBackupWorker>(SAFETY_NET_PERIOD.toJavaDuration())
             .setConstraints(constraints(settings))
-            .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.Periodic.name))
+            .setInputData(triggerData(BackupTrigger.Periodic))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, FIRST_RETRY.inWholeMinutes, TimeUnit.MINUTES)
             .build()
         workManager.enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, periodic)
@@ -61,10 +61,12 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
                     .setRequiresDeviceIdle(true)
                     .build(),
             )
-            .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.Overnight.name))
+            .setInputData(triggerData(BackupTrigger.Overnight))
             .build()
         workManager.enqueueUniquePeriodicWork(OVERNIGHT_WORK, ExistingPeriodicWorkPolicy.UPDATE, overnight)
     }
+
+    private fun triggerData(trigger: BackupTrigger) = workDataOf(PhotoBackupWorker.KEY_TRIGGER to trigger.name)
 
     override fun onBackupRan() = cancelBackupStuckNotification(context)
 
@@ -75,7 +77,7 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
         watchLibrary()
         val request = OneTimeWorkRequestBuilder<PhotoBackupWorker>()
             .setConstraints(constraints(settings))
-            .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.MediaChanged.name))
+            .setInputData(triggerData(BackupTrigger.MediaChanged))
             .build()
         workManager.enqueueUniqueWork(MEDIA_CHANGED_WORK, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
@@ -83,7 +85,7 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
     override suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit) {
         val request = OneTimeWorkRequestBuilder<PhotoBackupWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.Push.name))
+            .setInputData(triggerData(BackupTrigger.Push))
             .build()
         workManager.enqueueUniqueWork(PUSH_WORK, ExistingWorkPolicy.KEEP, request)
     }
@@ -105,22 +107,20 @@ class AndroidBackupTriggers(private val context: Context) : BackupTriggers {
         val request = OneTimeWorkRequestBuilder<PhotoBackupWorker>()
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setConstraints(constraints(settings))
-            .setInputData(workDataOf(PhotoBackupWorker.KEY_TRIGGER to BackupTrigger.UserRequested.name))
+            .setInputData(triggerData(BackupTrigger.UserRequested))
             .build()
         workManager.enqueueUniqueWork(USER_REQUESTED_WORK, ExistingWorkPolicy.KEEP, request)
         return true
     }
 
-    override fun batteryGuidance(): BatteryGuidance {
+    override fun batteryGuidance(): BatteryGuidance? {
         val power = context.getSystemService(PowerManager::class.java)
-        return BatteryGuidance(
-            isRestricted = !power.isIgnoringBatteryOptimizations(context.packageName),
-            openSettings = {
-                context.startActivity(
-                    Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            },
-        )
+        if (power.isIgnoringBatteryOptimizations(context.packageName)) return null
+        return BatteryGuidance {
+            context.startActivity(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     // Its own job, apart from the run: WorkManager's KEEP treats a running trigger as already armed, so it could never re-arm itself.

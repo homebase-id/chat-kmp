@@ -111,7 +111,7 @@ class PhotoBackupControllerTest {
             updateFileByUniqueId = { error("nothing to update") },
         )
         settingsStore = store
-        return PhotoBackupController(run, source, store, push, configFile, results, triggers, scope)
+        return PhotoBackupController(run, store, push, configFile, results, triggers, scope)
     }
 
     private suspend fun pushRow() = db.outbox.selectByUniqueId(PhotobaseProtocol.BackupPushTagId)
@@ -152,7 +152,7 @@ class PhotoBackupControllerTest {
 
     private suspend fun TestScope.scheduleChecksDuring(controller: PhotoBackupController, trigger: BackupTrigger): Int {
         configReads = 0
-        controller.runFromBackground(BackupRunRequest(trigger, BackupBudget(null), findDeletions = false))
+        controller.runFromBackground(BackupRunRequest(trigger, BackupBudget(null)))
         runCurrent()
         return configReads
     }
@@ -218,7 +218,7 @@ class PhotoBackupControllerTest {
     private suspend fun TestScope.checkpointSeenByForegroundRunAfterAWake(): Map<String, String> {
         val controller = controller()
         enable(controller)
-        controller.runFromBackground(BackupRunRequest(BackupTrigger.Periodic, BackupBudget(null), findDeletions = false))
+        controller.runFromBackground(BackupRunRequest(BackupTrigger.Periodic, BackupBudget(null)))
         controller.onAppForeground()
         advanceTimeBy(1.seconds)
         return source.checkpointsSeen.last()

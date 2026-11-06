@@ -135,7 +135,7 @@ fun BackupSettingsSection(
         checked = settings.onlyNewFromMs != null,
         onChange = { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
     )
-    uiState.batteryGuidance?.takeIf { it.isRestricted }?.let { guidance ->
+    uiState.batteryGuidance?.let { guidance ->
         HorizontalDivider()
         ListItem(
             headlineContent = { Text(stringResource(MR.string.photobase_battery_title)) },

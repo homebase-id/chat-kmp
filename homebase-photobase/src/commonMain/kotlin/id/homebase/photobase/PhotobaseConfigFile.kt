@@ -2,6 +2,7 @@ package id.homebase.photobase
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.isExistingFileWithUniqueId
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.AccessControlList
@@ -48,8 +49,7 @@ class PhotobaseConfigFile(
                 if (existing == null) create(content) else update(existing, content)
                 return
             } catch (e: ClientException) {
-                val conflict = e.errorCode == OdinClientErrorCode.ExistingFileWithUniqueId ||
-                    e.errorCode == OdinClientErrorCode.VersionTagMismatch
+                val conflict = e.isExistingFileWithUniqueId() || e.errorCode == OdinClientErrorCode.VersionTagMismatch
                 if (!conflict) throw e
                 Logger.i(tag = TAG) { "update: ${e.errorCode}, retrying" }
             }

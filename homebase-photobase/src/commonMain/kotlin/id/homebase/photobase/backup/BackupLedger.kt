@@ -221,6 +221,8 @@ class BackupLedger(
         changed()
     }
 
+    suspend fun handedOffCount(): Long = store.countInStates(listOf(BackupState.Queued.code, BackupState.Uploading.code))
+
     suspend fun counts(): LedgerCounts {
         val byState = store.countByState()
         fun count(state: BackupState) = byState[state.code] ?: 0

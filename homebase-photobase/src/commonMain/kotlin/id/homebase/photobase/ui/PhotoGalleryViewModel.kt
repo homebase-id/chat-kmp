@@ -9,12 +9,15 @@ import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGalleryPageSource
 import id.homebase.photobase.gallery.groupByCaptureDay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.time.Instant
 
 data class PhotoGalleryUiState(
@@ -34,7 +37,7 @@ sealed interface PhotoGalleryUiAction {
 }
 
 /** Queries when it opens and when asked: with no sync or WebSocket, that's how other devices' photos appear. */
-class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource) : ViewModel() {
+class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private val grouping: CoroutineDispatcher = Dispatchers.Default) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
 
@@ -80,9 +83,10 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource) : ViewMo
         }
         items = if (cursorToLoad == null) page.items else items + page.items
         cursor = page.nextCursor
+        val days = withContext(grouping) { groupByCaptureDay(items) }
         _uiState.update {
             it.copy(
-                days = groupByCaptureDay(items),
+                days = days,
                 isLoading = false,
                 isLoadingMore = false,
                 loadFailed = false,

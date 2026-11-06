@@ -241,6 +241,7 @@ import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
+import id.homebase.photobase.ui.BackupIndicatorButton
 import id.homebase.photobase.ui.BackupStatusScreen
 import id.homebase.photobase.ui.KeepOpenBackupScreen
 import id.homebase.core.ui.screens.filesync.FilesyncCheckingScreen
@@ -2337,14 +2338,10 @@ fun AppNavHost(
                             tab<Route.Photobase>(tabRoot) {
                                 if (isAuthenticated) {
                                     PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
-                                        val photoBackup = koinInject<PhotoBackupController>()
-                                        val backupSettings by photoBackup.settings.collectAsStateWithLifecycle()
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
                                             onOpenBackupSettings = { navController.navigate(Route.PhotobaseSettings) }.takeIf { photoBackupLinks != null },
-                                            backupStatus = photoBackup.status?.collectAsStateWithLifecycle()?.value,
-                                            backupEnabled = backupSettings.enabled,
-                                            onOpenBackupStatus = { navController.navigate(Route.PhotoBackupStatus) },
+                                            backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
                                         )
                                     }
                                 }
@@ -2787,6 +2784,14 @@ private fun FilesyncSetupGate(onDismiss: () -> Unit, installed: @Composable (Fil
             true -> installed(filesyncViewModel)
         }
     }
+}
+
+@Composable
+private fun PhotobaseBackupIndicator(onClick: () -> Unit) {
+    val photoBackup = koinInject<PhotoBackupController>()
+    val status = photoBackup.status?.collectAsStateWithLifecycle()?.value ?: return
+    val settings by photoBackup.settings.collectAsStateWithLifecycle()
+    BackupIndicatorButton(status, settings.enabled, onClick)
 }
 
 private inline fun <reified T : Any> NavGraphBuilder.tab(

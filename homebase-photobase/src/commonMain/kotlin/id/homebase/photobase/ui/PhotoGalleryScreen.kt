@@ -54,7 +54,6 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
-import id.homebase.photobase.backup.BackupStatus
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
@@ -77,9 +76,7 @@ private const val LOAD_MORE_WHEN_WITHIN = 30
 fun PhotoGalleryScreen(
     viewModel: PhotoGalleryViewModel,
     onOpenBackupSettings: (() -> Unit)?,
-    backupStatus: BackupStatus? = null,
-    backupEnabled: Boolean = false,
-    onOpenBackupStatus: () -> Unit = {},
+    backupIndicator: @Composable () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val onAction = viewModel::onAction
@@ -101,7 +98,7 @@ fun PhotoGalleryScreen(
                     data = viewer,
                     onDismiss = { onAction(PhotoGalleryUiAction.CloseViewer) },
                 )
-                else -> GalleryGrid(uiState, onAction, onOpenBackupSettings, backupStatus, backupEnabled, onOpenBackupStatus)
+                else -> GalleryGrid(uiState, onAction, onOpenBackupSettings, backupIndicator)
             }
         }
     }
@@ -112,16 +109,14 @@ private fun GalleryGrid(
     uiState: PhotoGalleryUiState,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
-    backupStatus: BackupStatus?,
-    backupEnabled: Boolean,
-    onOpenBackupStatus: () -> Unit,
+    backupIndicator: @Composable () -> Unit,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.photobase_label)) },
                 actions = {
-                    backupStatus?.let { BackupIndicatorButton(it, backupEnabled, onOpenBackupStatus) }
+                    backupIndicator()
                     IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isLoading) {
                         Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
                     }
@@ -184,8 +179,9 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
     LaunchedEffect(gridState) {
         snapshotFlow {
             val info = gridState.layoutInfo
-            (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - LOAD_MORE_WHEN_WITHIN
-        }.collect { nearEnd -> if (nearEnd) onAction(PhotoGalleryUiAction.LoadMore) }
+            // With the count, so a page that still leaves the end in view asks for the next.
+            info.totalItemsCount to ((info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - LOAD_MORE_WHEN_WITHIN)
+        }.collect { (_, nearEnd) -> if (nearEnd) onAction(PhotoGalleryUiAction.LoadMore) }
     }
     LazyVerticalGrid(
         state = gridState,

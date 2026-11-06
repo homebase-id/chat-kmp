@@ -26,10 +26,10 @@ class BackupOutboxResults(
     /** What this process handed to the Outbox and hasn't heard a verdict on. */
     val unsettled: StateFlow<Set<Uuid>> = _unsettled.asStateFlow()
 
-    private val _activity = MutableStateFlow(0L)
+    private val _progress = MutableStateFlow(0L)
 
-    /** Ticks on anything the Outbox reports for the Photos drive, progress included. */
-    val activity: StateFlow<Long> = _activity.asStateFlow()
+    /** Ticks on upload progress for the Photos drive: verdicts show in [unsettled] and the ledger. */
+    val progress: StateFlow<Long> = _progress.asStateFlow()
 
     fun start() {
         if (jobs.isNotEmpty()) return
@@ -50,14 +50,13 @@ class BackupOutboxResults(
     }
 
     private fun onProgress(event: BackendEvent) {
-        if (event is BackendEvent.OutboxEvent.ItemProgress && event.driveId == photosDriveId) _activity.update { it + 1 }
+        if (event is BackendEvent.OutboxEvent.ItemProgress && event.driveId == photosDriveId) _progress.update { it + 1 }
     }
 
     private suspend fun onEvent(event: BackendEvent) {
         when (event) {
             is BackendEvent.OutboxEvent.ItemStarted -> if (event.driveId == photosDriveId) {
                 ledger.onOutboxStarted(event.fileId)
-                _activity.update { it + 1 }
             }
             is BackendEvent.OutboxEvent.ItemCompleted -> if (event.driveId == photosDriveId) {
                 ledger.onOutboxCompleted(event.uniqueId)
@@ -78,7 +77,6 @@ class BackupOutboxResults(
 
     private fun settled(uniqueId: Uuid) {
         _unsettled.update { it - uniqueId }
-        _activity.update { it + 1 }
     }
 
     private companion object {
