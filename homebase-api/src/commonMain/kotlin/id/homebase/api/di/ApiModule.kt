@@ -115,7 +115,7 @@ val apiModule = module {
             eventBus = get(),
             scope = get<CoroutineScope>(),
             storageQuota = get(),
-        )
+        ).also { it.takeKeyHeaderTransforms() }
     }
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform

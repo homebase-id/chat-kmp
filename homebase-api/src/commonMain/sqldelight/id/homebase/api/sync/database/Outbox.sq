@@ -133,6 +133,13 @@ SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTim
 FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
 
+-- The rows of one kind for a drive that no worker holds yet, oldest first (OutboxSync merges key header transforms into them).
+selectPendingByDriveAndType:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE driveId = ? AND uploadType = ? AND checkOutStamp IS NULL
+ORDER BY rowId;
+
 -- Does ANY outbox row still exist for this uniqueId (across drives)? Message
 -- Info uses it to tell whether a queued message is still waiting on an earlier
 -- message — its dependencyUniqueId row hasn't drained yet — which is the same

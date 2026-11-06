@@ -61,6 +61,10 @@ data class ServerFile(
                 throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             }
 
+            if (sharedSecretEncryptedKeyHeader.type == EncryptionType.Sealed) {
+                SealedKeyHeaders.opened(driveId, fileId, fileMetadata.versionTag, sharedSecretEncryptedKeyHeader, resolvedKeyHeader)
+            }
+
             resolvedMetadata = fileMetadata
 
             // ---- server appData ----
@@ -122,6 +126,23 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
     val writeOnlyKey = ZkKeyStore.writeOnlyPrivateKey(driveId) ?: throw FileDecryptionException.Sealed()
     val opened = ZkSeal.open(encryptedAesKey, writeOnlyKey)
     return KeyHeader(opened.copyOf(16), SecureByteArray(opened.copyOfRange(16, opened.size)))
+}
+
+/** This sealed header's file key locked with the drive key instead: what the server stores in its place once told. */
+suspend fun EncryptedKeyHeader.sealedToZkDrive(driveId: Uuid): EncryptedKeyHeader = zkDriveFormOf(openSealed(driveId), driveId)
+
+/**
+ * [opened], this sealed header's file key, locked with the drive key under the same IV, and checked to open to the
+ * same key: the server can't check it, and a wrong key would leave the file unreadable for good.
+ */
+internal suspend fun EncryptedKeyHeader.zkDriveFormOf(opened: KeyHeader, driveId: Uuid): EncryptedKeyHeader {
+    check(type == EncryptionType.Sealed) { "not a sealed key header" }
+    // The server refuses any IV but the one it stores.
+    check(opened.iv.contentEquals(iv)) { "the sealed IV doesn't match the header's" }
+    val driveKey = SecureByteArray(zkDriveKey(driveId))
+    val locked = EncryptedKeyHeader.encryptKeyHeaderAes(opened, opened.iv, driveKey).apply { type = EncryptionType.ZkDrive }
+    check(locked.decryptAesToKeyHeader(driveKey) == opened) { "the drive-key header doesn't open to the same file key" }
+    return locked
 }
 
 /**

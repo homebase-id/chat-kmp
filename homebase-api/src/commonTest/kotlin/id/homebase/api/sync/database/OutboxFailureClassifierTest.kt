@@ -1,6 +1,10 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.NetworkException
+import id.homebase.api.client.ServerException
+import id.homebase.api.client.drives.files.keyHeaderTransformFailure
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
@@ -9,6 +13,7 @@ import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.uuid.Uuid
 
 private fun clientException(
@@ -207,6 +212,16 @@ class OutboxFailureClassifierTest {
     @Test
     fun aKeyMismatchOnAZeroKnowledgeDriveIsPermanent() {
         assertNotNull(classifyPermanentFailure(ZkKeyMismatchException(Uuid.random())))
+    }
+
+    @Test
+    fun anAnsweredKeyHeaderTransformIsDroppedButOneWithNoAnswerWaits() {
+        val answers = listOf(clientException(message = "zkDriveKeyHeaderNeedsZeroKnowledgeDrive"), ForbiddenException(), ServerException(500, null, null))
+        answers.forEach { assertNotNull(classifyPermanentFailure(keyHeaderTransformFailure(it)), "$it") }
+
+        val offline = NetworkException(IllegalStateException("no route"))
+        assertSame(offline, keyHeaderTransformFailure(offline))
+        assertNull(classifyPermanentFailure(keyHeaderTransformFailure(offline)))
     }
 
     @Test

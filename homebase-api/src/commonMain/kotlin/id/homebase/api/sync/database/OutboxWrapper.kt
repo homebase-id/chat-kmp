@@ -51,6 +51,11 @@ class OutboxWrapper(
             delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
         }
 
+    suspend fun selectPendingByDriveAndType(driveId: Uuid, uploadType: Long): List<Outbox> =
+        databaseManager.readValue("outbox.selectPendingByDriveAndType") {
+            delegate.selectPendingByDriveAndType(driveId, uploadType).executeAsList()
+        }
+
     /** True when any outbox row still exists for [uniqueId] (across drives) —
      *  i.e. a dependency a queued message is waiting on hasn't drained yet. */
     suspend fun existsByUniqueId(uniqueId: Uuid): Boolean =

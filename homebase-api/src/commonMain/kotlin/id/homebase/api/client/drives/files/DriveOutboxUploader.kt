@@ -2,6 +2,8 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.ServerException
 import id.homebase.api.client.isExistingFileWithUniqueId
 import id.homebase.api.client.KeyHeader
 import kotlin.io.encoding.Base64
@@ -60,6 +62,7 @@ class DriveOutboxUploader(
                 ToggleReaction -> toggleReaction(outboxRecord)
                 SetReactions -> setReactions(outboxRecord)
                 DeleteFilesByGroupId -> deleteFilesByGroupId(outboxRecord)
+                TransformKeyHeaders -> transformKeyHeaders(outboxRecord)
             }
         } catch (e: ClientException) {
             // Always rethrow — never swallow a terminal error by returning
@@ -430,6 +433,21 @@ class DriveOutboxUploader(
         }
     }
 
+    // Settles every file by the server's answer to it and never retries one it answered: another device converts it later.
+    private suspend fun transformKeyHeaders(outboxRecord: Outbox) {
+        val request = OutboxSerializer.decode<TransformKeyHeadersOutboxRequest>(outboxRecord)
+        val result = try {
+            operationsProvider.transformKeyHeaders(request.driveId, request.files)
+        } catch (e: Exception) {
+            throw keyHeaderTransformFailure(e)
+        }
+        val refused = result.results.filter { it.errorCode != null }
+        Logger.i(TAG) {
+            "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${request.files.size}" +
+                refused.joinToString(prefix = " refused=", separator = ",") { "${it.fileId}:${it.errorCode}" }.takeIf { refused.isNotEmpty() }.orEmpty()
+        }
+    }
+
     private suspend fun toggleReaction(outboxRecord: Outbox) {
         val request = OutboxSerializer.decode<ToggleReactionOutboxRequest>(outboxRecord)
         reactionProvider.toggleReaction(
@@ -520,8 +538,18 @@ class DriveOutboxUploader(
         const val DeleteFilesByGroupId = 9L
         // 10 and 11 belong to ScheduledPushOutboxUploader; CompositeOutboxUploader routes on these ids.
         const val SetReactions = 12L
+        const val TransformKeyHeaders = 13L
     }
 }
+
+/** An answer refusing the whole request is final; no answer at all (offline) waits like any outbox item. */
+internal fun keyHeaderTransformFailure(e: Exception): Exception = when (e) {
+    is ClientException, is ForbiddenException, is ServerException -> KeyHeaderTransformRefused(e)
+    else -> e
+}
+
+/** The server answered a key header transform with a refusal: the outbox drops it, and another device converts the files. */
+class KeyHeaderTransformRefused(cause: Throwable) : Exception("key header transform refused: ${cause.message}", cause)
 
 /**
  * Root-cause fix for the "AES key must match" drop (see
