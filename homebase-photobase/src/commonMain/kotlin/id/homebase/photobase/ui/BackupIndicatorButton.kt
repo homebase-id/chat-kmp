@@ -14,6 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.theme.ExtendedColors
@@ -30,41 +32,57 @@ import org.jetbrains.compose.resources.stringResource
 
 /** Green is working or done, grey will resume by itself, amber needs the user. */
 @Composable
+internal fun backupIndicatorColor(indicator: BackupIndicator?): Color = when (indicator) {
+    BackupIndicator.Working, BackupIndicator.UpToDate -> ExtendedColors.Success
+    BackupIndicator.NeedsAttention -> LocalHomebaseExtendedColors.current.warning
+    BackupIndicator.Paused, null -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+internal fun backupIndicatorIcon(indicator: BackupIndicator?): ImageVector = when (indicator) {
+    BackupIndicator.Working -> Icons.Outlined.CloudUpload
+    BackupIndicator.UpToDate -> Icons.Outlined.CloudDone
+    BackupIndicator.NeedsAttention -> Icons.Outlined.WarningAmber
+    BackupIndicator.Paused, null -> Icons.Outlined.PauseCircleOutline
+}
+
+@Composable
 fun BackupIndicatorButton(status: BackupStatus, backupEnabled: Boolean, onClick: () -> Unit) {
     val indicator = backupIndicatorOf(status, backupEnabled) ?: return
+    val color = backupIndicatorColor(indicator)
+    val icon = backupIndicatorIcon(indicator)
     IconButton(onClick = onClick, modifier = Modifier.testTag("backupIndicator")) {
         when (indicator) {
             BackupIndicator.Working -> Box(contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     progress = { status.progress },
                     modifier = Modifier.size(32.dp),
-                    color = ExtendedColors.Success,
+                    color = color,
                     strokeWidth = 2.dp,
                 )
                 Icon(
-                    Icons.Outlined.CloudUpload,
+                    icon,
                     contentDescription = stringResource(MR.string.photobase_indicator_working),
                     modifier = Modifier.size(18.dp).testTag("backupIndicatorWorking"),
-                    tint = ExtendedColors.Success,
+                    tint = color,
                 )
             }
             BackupIndicator.UpToDate -> Icon(
-                Icons.Outlined.CloudDone,
+                icon,
                 contentDescription = stringResource(MR.string.photobase_indicator_up_to_date),
                 modifier = Modifier.testTag("backupIndicatorUpToDate"),
-                tint = ExtendedColors.Success,
+                tint = color,
             )
             BackupIndicator.Paused -> Icon(
-                Icons.Outlined.PauseCircleOutline,
+                icon,
                 contentDescription = stringResource(MR.string.photobase_indicator_paused),
                 modifier = Modifier.testTag("backupIndicatorPaused"),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = color,
             )
             BackupIndicator.NeedsAttention -> Icon(
-                Icons.Outlined.WarningAmber,
+                icon,
                 contentDescription = stringResource(MR.string.photobase_indicator_attention),
                 modifier = Modifier.testTag("backupIndicatorAttention"),
-                tint = LocalHomebaseExtendedColors.current.warning,
+                tint = color,
             )
         }
     }

@@ -132,6 +132,7 @@ class PhotoBackupController(
                     pushSchedule.schedule(adoptSharedInterval())
                     backUpNow()
                 }
+                after.enabled && (before.albumIds != after.albumIds || before.onlyNewFromMs != after.onlyNewFromMs) -> backUpNow()
             }
         }
     }

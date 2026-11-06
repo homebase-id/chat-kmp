@@ -201,6 +201,25 @@ class PhotoBackupControllerTest {
     }
 
     @Test
+    fun changingWhatGetsBackedUpStartsABackupAndOtherSettingsDoNot() = runTest {
+        val controller = controller()
+        enable(controller)
+        val runsBefore = triggers.userRuns
+
+        controller.update { it.copy(wifiOnly = !it.wifiOnly) }
+        runCurrent()
+        assertEquals(runsBefore, triggers.userRuns)
+
+        controller.update { it.copy(albumIds = setOf("album")) }
+        runCurrent()
+        assertEquals(runsBefore + 1, triggers.userRuns)
+
+        controller.update { it.copy(onlyNewFromMs = 5L) }
+        runCurrent()
+        assertEquals(runsBefore + 2, triggers.userRuns)
+    }
+
+    @Test
     fun aChatPushIsIgnoredOnAPlatformWithOtherWakeUps() = runTest {
         val controller = controller()
         enable(controller)

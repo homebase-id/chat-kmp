@@ -3343,6 +3343,9 @@
     <string name="photobase_status_never">Not yet</string>
     <string name="photobase_status_backed_up">Backed up</string>
     <string name="photobase_status_pending">Waiting</string>
+    <string name="photobase_status_progress">%1$d of %2$d backed up</string>
+    <string name="photobase_status_size_backed_up">Size backed up</string>
+    <string name="photobase_status_size_left">Left to back up</string>
     <string name="photobase_status_uploading">Uploading now</string>
     <string name="photobase_status_failures">Keep failing</string>
     <string name="photobase_status_retry">Retry</string>
