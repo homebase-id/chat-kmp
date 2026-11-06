@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -64,6 +65,8 @@ import id.homebase.resources.photobase_gallery_empty
 import id.homebase.resources.photobase_gallery_load_failed
 import id.homebase.resources.photobase_gallery_photo
 import id.homebase.resources.photobase_gallery_refresh
+import id.homebase.resources.photobase_gallery_sort_newest
+import id.homebase.resources.photobase_gallery_sort_oldest
 import id.homebase.resources.photobase_gallery_retry
 import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_label
@@ -117,6 +120,14 @@ private fun GalleryGrid(
                 title = { Text(stringResource(MR.string.photobase_label)) },
                 actions = {
                     backupIndicator()
+                    IconButton(onClick = { onAction(PhotoGalleryUiAction.ToggleSort) }, enabled = !uiState.isLoading) {
+                        Icon(
+                            Icons.Outlined.SwapVert,
+                            contentDescription = stringResource(
+                                if (uiState.newestFirst) MR.string.photobase_gallery_sort_newest else MR.string.photobase_gallery_sort_oldest,
+                            ),
+                        )
+                    }
                     IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isLoading) {
                         Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
                     }
@@ -176,6 +187,8 @@ private fun GalleryGrid(
 @Composable
 private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAction) -> Unit) {
     val gridState = rememberLazyGridState()
+    // Keyed on the top photo too: the grid would otherwise follow the photo it was on to its new place.
+    LaunchedEffect(uiState.newestFirst, uiState.days.firstOrNull()?.items?.firstOrNull()?.fileId) { gridState.scrollToItem(0) }
     LaunchedEffect(gridState) {
         snapshotFlow {
             val info = gridState.layoutInfo

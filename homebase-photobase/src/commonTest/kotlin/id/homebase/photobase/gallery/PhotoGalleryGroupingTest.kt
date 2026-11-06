@@ -31,6 +31,14 @@ class PhotoGalleryGroupingTest {
     }
 
     @Test
+    fun oldestDayFirstAndOldestPhotoFirstWithinIt() {
+        val days = groupByCaptureDay(listOf(item(day1 + 2), item(day2 + 1), item(day1 + 1)), TimeZone.UTC, newestFirst = false)
+
+        assertEquals(listOf(LocalDate(2026, 1, 1), LocalDate(2026, 1, 2)), days.map { it.date })
+        assertEquals(listOf(day1 + 1, day1 + 2), days[0].items.map { it.capturedAtMs })
+    }
+
+    @Test
     fun aFileOnTwoPagesShowsOnce() {
         val id = Uuid.random()
         val days = groupByCaptureDay(listOf(item(day1, id), item(day1, id)), TimeZone.UTC)

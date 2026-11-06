@@ -1,5 +1,6 @@
 package id.homebase.photobase.gallery
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
@@ -32,7 +33,7 @@ data class PhotoGalleryItem(
 data class PhotoGalleryPage(val items: List<PhotoGalleryItem>, val nextCursor: String?)
 
 fun interface PhotoGalleryPageSource {
-    suspend fun page(cursor: String?): PhotoGalleryPage
+    suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage
 }
 
 /** Network only: the Photos drive is never synced, so a page is what the server says right now. */
@@ -41,7 +42,7 @@ class PhotoGalleryRepository(
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGalleryPageSource {
     // Parsing and decrypting a page of headers doesn't belong on the view model's Main.
-    override suspend fun page(cursor: String?): PhotoGalleryPage = withContext(Dispatchers.Default) {
+    override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage = withContext(Dispatchers.Default) {
             val response = queryProvider.queryBatch(
                 photosDriveId,
                 QueryBatchRequest(
@@ -53,13 +54,17 @@ class PhotoGalleryRepository(
                         cursorState = cursor,
                         maxRecords = PAGE_SIZE,
                         includeMetadataHeader = true,
-                        ordering = QueryBatchSortOrder.NewestFirst,
+                        ordering = if (newestFirst) QueryBatchSortOrder.NewestFirst else QueryBatchSortOrder.OldestFirst,
                         sorting = QueryBatchSortField.UserDate,
                     ),
                 ),
             )
+            val items = response.searchResults.mapNotNull { it.toGalleryItem() }
+            Logger.i(tag = "PhotoGallery") {
+                "page newestFirst=$newestFirst first=${items.firstOrNull()?.capturedAtMs} last=${items.lastOrNull()?.capturedAtMs} count=${items.size}"
+            }
             PhotoGalleryPage(
-                items = response.searchResults.mapNotNull { it.toGalleryItem() },
+                items = items,
                 nextCursor = response.cursorState?.takeIf { response.hasMoreRows && it != cursor },
             )
     }

@@ -3357,6 +3357,8 @@
     <string name="photobase_home_subtitle">Your backed-up photos and videos</string>
     <string name="settings_photobase_icon_desc">Show Photobase in the navigation bar</string>
     <string name="photobase_gallery_refresh">Refresh</string>
+    <string name="photobase_gallery_sort_newest">Newest first. Change to oldest first</string>
+    <string name="photobase_gallery_sort_oldest">Oldest first. Change to newest first</string>
     <string name="photobase_status_all_backed_up">All photos backed up</string>
     <string name="photobase_indicator_working">Backing up. Open backup status.</string>
     <string name="photobase_indicator_up_to_date">All photos backed up. Open backup status.</string>

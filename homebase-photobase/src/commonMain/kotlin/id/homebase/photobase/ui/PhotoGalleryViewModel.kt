@@ -26,12 +26,14 @@ data class PhotoGalleryUiState(
     val isLoadingMore: Boolean = false,
     val loadFailed: Boolean = false,
     val endReached: Boolean = false,
+    val newestFirst: Boolean = true,
     val viewer: FullScreenOverlay? = null,
 )
 
 sealed interface PhotoGalleryUiAction {
     data object Refresh : PhotoGalleryUiAction
     data object LoadMore : PhotoGalleryUiAction
+    data object ToggleSort : PhotoGalleryUiAction
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
 }
@@ -53,6 +55,10 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
         when (action) {
             PhotoGalleryUiAction.Refresh -> refresh()
             PhotoGalleryUiAction.LoadMore -> loadMore()
+            PhotoGalleryUiAction.ToggleSort -> {
+                _uiState.update { it.copy(newestFirst = !it.newestFirst) }
+                refresh()
+            }
             is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(viewer = viewerFor(action.item)) }
             PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(viewer = null) }
         }
@@ -72,8 +78,9 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
     }
 
     private suspend fun load(cursorToLoad: String?) {
+        val newestFirst = _uiState.value.newestFirst
         val page = try {
-            source.page(cursorToLoad)
+            source.page(cursorToLoad, newestFirst)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -83,7 +90,7 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
         }
         items = if (cursorToLoad == null) page.items else items + page.items
         cursor = page.nextCursor
-        val days = withContext(grouping) { groupByCaptureDay(items) }
+        val days = withContext(grouping) { groupByCaptureDay(items, newestFirst = newestFirst) }
         _uiState.update {
             it.copy(
                 days = days,

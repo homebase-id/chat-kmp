@@ -40,8 +40,11 @@ class PhotoGalleryViewModelTest {
         val asked = mutableListOf<String?>()
         var failure: Exception? = null
 
-        override suspend fun page(cursor: String?): PhotoGalleryPage {
+        val orders = mutableListOf<Boolean>()
+
+        override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage {
             asked += cursor
+            orders += newestFirst
             failure?.let { throw it }
             return pages.getValue(cursor)
         }
@@ -51,6 +54,20 @@ class PhotoGalleryViewModelTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
         return PhotoGalleryViewModel(source, dispatcher)
+    }
+
+    @Test
+    fun theSortStartsNewestFirstAndAToggleReloadsTheOtherWay() = runTest {
+        val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000), item(2_000)), null)))
+        val viewModel = viewModel(source)
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf(2_000L, 1_000L), viewModel.uiState.value.days.flatMap { it.items }.map { it.capturedAtMs })
+
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSort)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(true, false), source.orders)
+        assertEquals(listOf(1_000L, 2_000L), viewModel.uiState.value.days.flatMap { it.items }.map { it.capturedAtMs })
     }
 
     @Test
