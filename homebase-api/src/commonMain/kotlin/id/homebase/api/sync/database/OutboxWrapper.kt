@@ -51,9 +51,10 @@ class OutboxWrapper(
             delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
         }
 
-    suspend fun selectPendingByDriveAndType(driveId: Uuid, uploadType: Long): List<Outbox> =
-        databaseManager.readValue("outbox.selectPendingByDriveAndType") {
-            delegate.selectPendingByDriveAndType(driveId, uploadType).executeAsList()
+    /** Rows of [uploadType] for [driveId] that no worker holds and none has tried yet. */
+    suspend fun selectUntriedByDriveAndType(driveId: Uuid, uploadType: Long): List<Outbox> =
+        databaseManager.readValue("outbox.selectUntriedByDriveAndType") {
+            delegate.selectUntriedByDriveAndType(driveId, uploadType).executeAsList()
         }
 
     /** True when any outbox row still exists for [uniqueId] (across drives) —

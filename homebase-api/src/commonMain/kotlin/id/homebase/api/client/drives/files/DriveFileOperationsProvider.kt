@@ -11,7 +11,6 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 import id.homebase.api.client.drives.KeyHeaderTransform
-import id.homebase.api.crypto.EncryptedKeyHeader
 
 @Serializable
 data class SendReadReceiptByEndTimeRequestV2(
@@ -92,11 +91,10 @@ data class TransformKeyHeadersRequest(val files: List<KeyHeaderTransform>)
 @Serializable
 data class TransformKeyHeadersResult(val results: List<TransformKeyHeaderResult>)
 
-/** One per file, in request order: the header now stored, or why not (e.g. versionTagMismatch, notSealed). */
+/** One per file, in request order; [errorCode] says why the server kept the sealed header (e.g. versionTagMismatch). */
 @Serializable
 data class TransformKeyHeaderResult(
     val fileId: Uuid,
-    val keyHeader: EncryptedKeyHeader? = null,
     val errorCode: String? = null,
 )
 

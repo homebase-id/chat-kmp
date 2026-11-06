@@ -433,7 +433,6 @@ class DriveOutboxUploader(
         }
     }
 
-    // Settles every file by the server's answer to it and never retries one it answered: another device converts it later.
     private suspend fun transformKeyHeaders(outboxRecord: Outbox) {
         val request = OutboxSerializer.decode<TransformKeyHeadersOutboxRequest>(outboxRecord)
         val result = try {
@@ -442,9 +441,9 @@ class DriveOutboxUploader(
             throw keyHeaderTransformFailure(e)
         }
         val refused = result.results.filter { it.errorCode != null }
-        Logger.i(TAG) {
-            "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${request.files.size}" +
-                refused.joinToString(prefix = " refused=", separator = ",") { "${it.fileId}:${it.errorCode}" }.takeIf { refused.isNotEmpty() }.orEmpty()
+        Logger.i(TAG) { "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${request.files.size}" }
+        if (refused.isNotEmpty()) {
+            Logger.w(TAG) { "transformKeyHeaders: kept sealed ${refused.joinToString { "${it.fileId}:${it.errorCode}" }}" }
         }
     }
 
@@ -542,13 +541,13 @@ class DriveOutboxUploader(
     }
 }
 
-/** An answer refusing the whole request is final; no answer at all (offline) waits like any outbox item. */
+// An answer refusing the whole request is final; no answer at all (offline) waits like any outbox item.
 internal fun keyHeaderTransformFailure(e: Exception): Exception = when (e) {
     is ClientException, is ForbiddenException, is ServerException -> KeyHeaderTransformRefused(e)
     else -> e
 }
 
-/** The server answered a key header transform with a refusal: the outbox drops it, and another device converts the files. */
+/** A key header transform the server refused: never retried, another device converts the files later. */
 class KeyHeaderTransformRefused(cause: Throwable) : Exception("key header transform refused: ${cause.message}", cause)
 
 /**

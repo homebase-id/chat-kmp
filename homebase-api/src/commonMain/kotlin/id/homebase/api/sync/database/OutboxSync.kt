@@ -9,9 +9,6 @@ import id.homebase.api.client.storageFullOrNull
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
-import id.homebase.api.client.drives.files.TransformKeyHeadersOutboxRequest
-import id.homebase.api.client.drives.KeyHeaderTransform
-import id.homebase.api.client.drives.SealedKeyHeaders
 import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.notifications.CancelScheduledPushRequest
@@ -165,8 +162,6 @@ class OutboxSync(
 
     private val checkoutMutex = Mutex()
     private val latestWriteMutex = Mutex()
-    private val keyHeaderMutex = Mutex()
-    private val keyHeadersQueued = mutableSetOf<Pair<Uuid, Uuid>>()
 
     // Held for as long as any worker is draining, so iOS doesn't suspend the process
     // mid-POST (#1467). Only ever touched under counterMutex, alongside the
@@ -690,10 +685,6 @@ class OutboxSync(
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
 
-        // After everything else: a sealed header still opens, only more slowly, until the server stores the converted one.
-        internal const val KEY_HEADER_TRANSFORM_PRIORITY = 500L
-        internal const val KEY_HEADER_TRANSFORMS_PER_ROW = 100
-
         // When a 507 carries no Retry-After; the server sends an hour
         private const val STORAGE_FULL_RETRY_SECONDS = 3600L
 
@@ -981,53 +972,6 @@ class OutboxSync(
             outcome
         }
         return kickIfEnqueued(result, sendNow)
-    }
-
-    /** Sends back every sealed key header that files arrive with, re-locked with the drive key ([SealedKeyHeaders]). */
-    fun takeKeyHeaderTransforms() {
-        scope.launch {
-            for (first in SealedKeyHeaders.waiting) {
-                val arrived = mutableListOf(first)
-                while (true) arrived += SealedKeyHeaders.waiting.tryReceive().getOrNull() ?: break
-                // A file listed again before the server answered would queue the same transform each time.
-                val fresh = arrived.filter { (_, t) -> keyHeadersQueued.add(t.fileId to t.versionTag) }
-                fresh.groupBy({ it.first }, { it.second }).forEach { (driveId, transforms) ->
-                    try {
-                        enqueueKeyHeaderTransforms(driveId, transforms)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Logger.w(e) { "OutboxSync: key header transforms for $driveId not queued" }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Merges [transforms] into the drive's waiting rows, at most [KEY_HEADER_TRANSFORMS_PER_ROW] files a row, so each
-     * row is one request; a file queued again keeps only its newest transform. A row a worker holds is left alone.
-     */
-    internal suspend fun enqueueKeyHeaderTransforms(driveId: Uuid, transforms: List<KeyHeaderTransform>, sendNow: Boolean = true) {
-        keyHeaderMutex.withLock {
-            val merged = LinkedHashMap<Uuid, KeyHeaderTransform>()
-            databaseManager.outbox.selectPendingByDriveAndType(driveId, DriveOutboxUploader.TransformKeyHeaders).forEach { row ->
-                if (databaseManager.outbox.deleteByIfNotCheckedOut(driveId, row.uniqueId) > 0) {
-                    runCatching { OutboxSerializer.decode<TransformKeyHeadersOutboxRequest>(row) }.getOrNull()?.files?.forEach { merged[it.fileId] = it }
-                }
-            }
-            transforms.forEach { merged.remove(it.fileId); merged[it.fileId] = it }
-            merged.values.chunked(KEY_HEADER_TRANSFORMS_PER_ROW).forEach { files ->
-                tryEnqueue(
-                    driveId = driveId,
-                    uniqueId = Uuid.random(),
-                    priority = KEY_HEADER_TRANSFORM_PRIORITY,
-                    uploadType = DriveOutboxUploader.TransformKeyHeaders,
-                    json = OutboxSerializer.serialize(TransformKeyHeadersOutboxRequest(driveId, files)),
-                )
-            }
-        }
-        if (sendNow) send()
     }
 
     public suspend fun tryEnqueue(

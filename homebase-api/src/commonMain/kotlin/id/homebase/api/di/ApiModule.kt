@@ -51,6 +51,7 @@ import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.api.file.StartupCacheAudit
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.KeyHeaderTransformQueue
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.VideoPayloadProcessor
@@ -115,8 +116,9 @@ val apiModule = module {
             eventBus = get(),
             scope = get<CoroutineScope>(),
             storageQuota = get(),
-        ).also { it.takeKeyHeaderTransforms() }
+        )
     }
+    single(createdAtStart = true) { KeyHeaderTransformQueue(get(), get(), get<CoroutineScope>()) }
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
     // singletons (ImageLoader, FileOperationsProvider) needed by its

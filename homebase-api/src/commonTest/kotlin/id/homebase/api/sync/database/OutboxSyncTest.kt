@@ -41,6 +41,17 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.serialization.OutboxSerializer
 import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 
+/** An outbox over an in-memory database; the explicit dispatcher is what lets the database run in tests. */
+internal fun runOutboxSyncTest(body: suspend TestScope.(DatabaseManager, OutboxSync) -> Unit) = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val db = DatabaseManager({ createInMemoryDatabase() }, dispatcher = dispatcher, readDispatcher = dispatcher)
+    try {
+        body(db, OutboxSync(db, TestUploader(), EventBus(), backgroundScope))
+    } finally {
+        db.close()
+    }
+}
+
 class TestUploader : OutboxUploader {
     var shouldFail = false
     var failureException: Throwable? = null

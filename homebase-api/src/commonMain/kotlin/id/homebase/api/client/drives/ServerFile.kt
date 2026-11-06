@@ -128,20 +128,15 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
     return KeyHeader(opened.copyOf(16), SecureByteArray(opened.copyOfRange(16, opened.size)))
 }
 
-/** This sealed header's file key locked with the drive key instead: what the server stores in its place once told. */
-suspend fun EncryptedKeyHeader.sealedToZkDrive(driveId: Uuid): EncryptedKeyHeader = zkDriveFormOf(openSealed(driveId), driveId)
-
 /**
  * [opened], this sealed header's file key, locked with the drive key under the same IV, and checked to open to the
  * same key: the server can't check it, and a wrong key would leave the file unreadable for good.
  */
 internal suspend fun EncryptedKeyHeader.zkDriveFormOf(opened: KeyHeader, driveId: Uuid): EncryptedKeyHeader {
-    check(type == EncryptionType.Sealed) { "not a sealed key header" }
     // The server refuses any IV but the one it stores.
     check(opened.iv.contentEquals(iv)) { "the sealed IV doesn't match the header's" }
-    val driveKey = SecureByteArray(zkDriveKey(driveId))
-    val locked = EncryptedKeyHeader.encryptKeyHeaderAes(opened, opened.iv, driveKey).apply { type = EncryptionType.ZkDrive }
-    check(locked.decryptAesToKeyHeader(driveKey) == opened) { "the drive-key header doesn't open to the same file key" }
+    val locked = opened.lockedWithDriveKey(driveId)
+    check(locked.decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId))) == opened) { "the drive-key header doesn't open to the same file key" }
     return locked
 }
 
@@ -164,10 +159,13 @@ suspend fun lockKeyHeader(
         val sealed = ZkSeal.seal(keyHeader.iv + keyHeader.aesKey.toByteArray(), sealedTo)
         EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Sealed, iv = keyHeader.iv, encryptedAesKey = sealed)
     } else if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
-        EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader, keyHeader.iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
+        keyHeader.lockedWithDriveKey(driveId)
     } else {
         EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
     }
+
+private suspend fun KeyHeader.lockedWithDriveKey(driveId: Uuid): EncryptedKeyHeader =
+    EncryptedKeyHeader.encryptKeyHeaderAes(this, iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
 
 /** The key that locks key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
 private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) ?: throw FileDecryptionException.NoDriveKey(driveId)

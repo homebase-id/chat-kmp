@@ -133,11 +133,10 @@ SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTim
 FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
 
--- The rows of one kind for a drive that no worker holds yet, oldest first (OutboxSync merges key header transforms into them).
-selectPendingByDriveAndType:
+selectUntriedByDriveAndType:
 SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
 FROM Outbox
-WHERE driveId = ? AND uploadType = ? AND checkOutStamp IS NULL
+WHERE driveId = ? AND uploadType = ? AND checkOutStamp IS NULL AND checkOutCount = 0
 ORDER BY rowId;
 
 -- Does ANY outbox row still exist for this uniqueId (across drives)? Message
