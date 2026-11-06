@@ -197,7 +197,9 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         onOpenSignIn = signIn::open,
     ) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
-    BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
+    // Where Up goes: in a share view, NavigateUp alone would move the path hidden under it.
+    val up = filesyncUp(uiState.path, uiState.sharing)
+    BackHandler(enabled = up != null) { up?.actions?.forEach(viewModel::onAction) }
 
     val onFilesChosen: (List<PlatformFile>) -> Unit = { viewModel.onAction(FilesyncUiAction.FilesPicked(it)) }
     val filePicker = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Multiple()) { files ->

@@ -577,15 +577,11 @@ internal fun roleFoldersReturn(nodes: List<FilesyncNode>): String {
     return if (names.isEmpty()) "" else "\n\n" + pluralStringResource(MR.plurals.filesync_role_folder_returns, names.size, names.size, names.joinToString(", "))
 }
 
-/** A checkbox without the 48dp touch minimum, so it fits a row's icon place; with no [onClick] the row does the picking. */
+/** A checkbox without the 48dp touch minimum, so it fits a row's icon place; the row does the picking. */
 @Composable
-internal fun SelectBox(state: ToggleableState, description: String? = null, onClick: (() -> Unit)? = null) {
+internal fun SelectBox(state: ToggleableState) {
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-        TriStateCheckbox(
-            state = state,
-            onClick = onClick,
-            modifier = if (description == null) Modifier else Modifier.semantics { contentDescription = description },
-        )
+        TriStateCheckbox(state = state, onClick = null)
     }
 }
 
