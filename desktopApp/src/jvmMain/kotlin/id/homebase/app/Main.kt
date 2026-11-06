@@ -151,12 +151,17 @@ fun main() {
 
     openDatabaseOrQuit()
     StartupLogger.checkpoint("database initialized")
+    // Before afterDatabase: the call coordinator's fallback notifier needs it.
+    NotifierManager.initialize(
+        configuration = com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Desktop(
+            showPushNotification = true,
+        )
+    )
     // Before anything syncs: the bridge must be listening for the first batch.
     AppStartup.afterDatabase {
         GlobalContext.get().get<DesktopChatNotificationBridge>().start()
         id.homebase.core.calling.startDesktopCallCoordinator()
     }
-
 
     AppStartup.promoteToForeground()
 
@@ -178,13 +183,6 @@ fun main() {
 
     // Initialize FileKit
     FileKit.init(appId = "HomebaseChat")
-
-    // Initialize KMPNotifier for desktop notifications
-    NotifierManager.initialize(
-        configuration = com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Desktop(
-            showPushNotification = true,
-        )
-    )
 
     // Apply saved locale
     val koin = GlobalContext.get()

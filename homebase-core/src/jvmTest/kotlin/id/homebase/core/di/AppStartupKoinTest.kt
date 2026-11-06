@@ -8,21 +8,19 @@ import id.homebase.api.sync.database.DatabaseManager
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import java.nio.file.Files
-import kotlin.io.path.ExperimentalPathApi
-import kotlin.io.path.deleteRecursively
 import kotlin.test.AfterTest
 import kotlin.test.Test
 
 // Its ceiling: work an eager definition launches in a coroutine can still reach the database after this has passed.
-@OptIn(DelicateCoilApi::class, ExperimentalPathApi::class)
+@OptIn(DelicateCoilApi::class)
 class AppStartupKoinTest {
     private val cache = Files.createTempDirectory("app-startup")
 
     @AfterTest
     fun cleanUp() {
-        // The eager image loader installs itself as Coil's singleton; later tests must not get this one.
+        // The eager image loader installs itself as Coil's singleton; later tests must not get this one. The temp
+        // cache is left to the OS: the audit's own scope, which close() doesn't cancel, may still be walking it.
         SingletonImageLoader.reset()
-        cache.deleteRecursively()
     }
 
     @Test

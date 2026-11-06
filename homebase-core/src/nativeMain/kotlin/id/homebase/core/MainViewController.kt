@@ -110,8 +110,8 @@ fun initializeApp() {
 /** Swift skips background work that needs the database while this is false. */
 fun isDatabaseOpen(): Boolean = AppStartup.isDatabaseOpen
 
-/** For Swift: runs [block] once the database is open (at once if it is). Main thread. */
-fun whenDatabaseOpen(block: () -> Unit) = AppStartup.whenDatabaseOpen(block)
+/** For Swift: runs [block] once startup's after-database work is done (at once if it is). Main thread. */
+fun whenStarted(block: () -> Unit) = AppStartup.whenStarted(block)
 
 private var protectedDataObserver: NSObjectProtocol? = null
 
@@ -145,7 +145,6 @@ private fun initializeBeforeDatabase() {
     val koinMark = kotlin.time.TimeSource.Monotonic.markNow()
     AppStartup.startKoin()
     Logger.i(tag = "TextRendering") { "Koin init: ${koinMark.elapsedNow().inWholeMilliseconds}ms" }
-
 
     // Configure Crashlytics based on user preference
     // Note: Koin must be initialized before accessing UserPreferences

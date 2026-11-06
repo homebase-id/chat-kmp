@@ -47,9 +47,8 @@ class MainApplication : Application(), KoinComponent {
 
         if (getProcessName() != packageName) return
 
-        // Earliest app-code mark. The existing "APP STARTUP" header is logged late (after
-        // DB + Koin), so these checkpoints are what actually size the cold-start phases —
-        // diff their log timestamps. See StartupLogger.
+        // Earliest app-code mark; the "APP STARTUP" header follows Koin. Diff the checkpoints'
+        // timestamps to size the cold-start phases. See StartupLogger.
         StartupLogger.checkpoint("onCreate start")
 
         // Register the application Context up-front so components that only
@@ -91,7 +90,6 @@ class MainApplication : Application(), KoinComponent {
         // Configure Crashlytics based on user preference
         val userPreferences = get<UserPreferences>()
         Firebase.crashlytics.isCrashlyticsCollectionEnabled = userPreferences.errorCollectionEnabled
-
 
         // Detect main-thread stalls before Android ANRs. Logs the main-thread stack to
         // homebase.log when a frame budget is exceeded by >4s — gives us a usable trace
@@ -197,6 +195,5 @@ class MainApplication : Application(), KoinComponent {
             )
         }
     }
-
 
 }

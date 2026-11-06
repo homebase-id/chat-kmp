@@ -37,11 +37,19 @@ class DatabaseStartGate {
         opened()
     }
 
-    // Outside tryOpen's catch: queued work failing is not the database being unreadable.
+    // Outside tryOpen's catch: queued work failing isn't an unreadable database. One failure doesn't skip the rest.
     private fun opened() {
         isOpen = true
         val pending = waiting.toList()
         waiting.clear()
-        pending.forEach { it() }
+        var failure: Throwable? = null
+        pending.forEach { block ->
+            try {
+                block()
+            } catch (t: Throwable) {
+                failure?.addSuppressed(t) ?: run { failure = t }
+            }
+        }
+        failure?.let { throw it }
     }
 }

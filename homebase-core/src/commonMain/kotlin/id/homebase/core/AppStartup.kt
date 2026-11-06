@@ -21,6 +21,8 @@ import org.koin.core.context.startKoin as koinStart
 object AppStartup {
     private var koinStarted = false
     private val database = DatabaseStartGate()
+    private var started = false
+    private val afterStart = mutableListOf<() -> Unit>()
 
     val isDatabaseOpen: Boolean get() = database.isOpen
 
@@ -46,12 +48,20 @@ object AppStartup {
     /** Every process start, background wakes included, runs this once the database is open; [platform] adds its own. */
     fun afterDatabase(platform: () -> Unit = {}) = whenDatabaseOpen {
         val koin = KoinPlatformTools.defaultContext().get()
-        // Wakes never reach onPostAuthenticated; the coordinator skips itself where there's no tracker.
-        koin.get<LocationTrackingCoordinator>().onProcessStart()
-        // Up before the UI too, so tokens and pushes arriving on a wake aren't missed.
-        koin.get<NotificationService>()
+        // First and synchronous: an iOS location relaunch needs its CLLocationManager back before the run loop drains.
+        // Only where the OS wakes the app for location; elsewhere it would build the location graph for nothing.
+        if (koin.get<PlatformInfo>().supportsBackgroundWake) koin.get<LocationTrackingCoordinator>().onProcessStart()
+        // On a start that opens the database, pushes and tokens find a listener before any UI.
+        koin.get<NotificationService>().startListening()
         platform()
         CrashReporting.markStartupComplete()
+        started = true
+        afterStart.toList().also { afterStart.clear() }.forEach { it() }
+    }
+
+    /** Runs [block] once [afterDatabase] has run (at once if it has): a deferred user action shouldn't beat startup. */
+    fun whenStarted(block: () -> Unit) {
+        if (started) block() else afterStart += block
     }
 
     // Ends headless mode where the OS starts processes without UI (Android, iOS); elsewhere it only builds AuthCC.
