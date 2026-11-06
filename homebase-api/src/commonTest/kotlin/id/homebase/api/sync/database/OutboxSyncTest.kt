@@ -214,6 +214,30 @@ class OutboxSyncTest {
     }
 
     @Test
+    fun aKeyHeaderTransformRowIsSentWithoutAnyPerItemEvent() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val sync = OutboxSync(databaseManager = db, uploader = TestUploader(), eventBus = eventBus, scope = backgroundScope)
+        sync.setOnline(true)
+        val seen = mutableListOf<BackendEvent>()
+        val collecting = launch { eventBus.events.collect { seen += it } }
+        val completed = async { eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first().totalCount }
+        testScheduler.runCurrent()
+
+        sync.tryEnqueue(Uuid.random(), Uuid.random(), priority = 500, uploadType = DriveOutboxUploader.TransformKeyHeaders, json = "{}")
+        assertTrue(sync.send())
+        advanceUntilIdle()
+
+        assertEquals(1, completed.await())
+        collecting.cancel()
+        val perItem = seen.filter {
+            it is BackendEvent.OutboxEvent.ItemEnqueued || it is BackendEvent.OutboxEvent.ItemStarted ||
+                it is BackendEvent.OutboxEvent.ItemCompleted || it is BackendEvent.OutboxEvent.ItemFailed ||
+                it is BackendEvent.OutboxEvent.OutboxItemDropped
+        }
+        assertEquals(emptyList(), perItem)
+    }
+
+    @Test
     fun testSuccessfulSend() = runOutboxTest { db ->
         val eventBus = EventBus()  // Fresh instance per test
 

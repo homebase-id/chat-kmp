@@ -256,7 +256,7 @@ class OutboxSync(
                 // a dead zombie without guessing at elapsed time.
                 markCheckoutLive(outboxRecord.checkOutStamp)
                 // We sent the item, send an event
-                eventBus.emit(
+                emitFor(outboxRecord,
                     BackendEvent.OutboxEvent.ItemStarted(
                         outboxRecord.driveId,
                         outboxRecord.uniqueId
@@ -272,7 +272,7 @@ class OutboxSync(
                 Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()} driveId=${outboxRecord.driveId}")
 
                 // We sent the item, send an event
-                eventBus.emit(
+                emitFor(outboxRecord,
                     BackendEvent.OutboxEvent.ItemCompleted(
                         outboxRecord.driveId,
                         outboxRecord.uniqueId
@@ -309,13 +309,13 @@ class OutboxSync(
                         UnixTimeUtc.now().addSeconds(BASE_DELAY_SECONDS).milliseconds
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
-                    eventBus.emit(
+                    emitFor(outboxRecord,
                         BackendEvent.OutboxEvent.ItemFailed(
                             outboxRecord.driveId,
                             outboxRecord.uniqueId
                         )
                     )
-                    eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Network unreachable"))
+                    emitFor(outboxRecord, BackendEvent.OutboxEvent.Failed(e.message ?: "Network unreachable"))
                     break // the finally below runs markCheckoutDone
                 }
 
@@ -342,8 +342,8 @@ class OutboxSync(
                         DriveOutboxUploader.UploadNewFile,
                     )
                     storageQuota?.reportStorageFull()
-                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
-                    eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Storage full"))
+                    emitFor(outboxRecord,BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
+                    emitFor(outboxRecord, BackendEvent.OutboxEvent.Failed(e.message ?: "Storage full"))
                     continue
                 }
 
@@ -359,7 +359,7 @@ class OutboxSync(
                         UnixTimeUtc.now().addSeconds(NO_DRIVE_KEY_RETRY_SECONDS).milliseconds
                     )
                     recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
-                    eventBus.emit(BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
+                    emitFor(outboxRecord,BackendEvent.OutboxEvent.ItemFailed(outboxRecord.driveId, outboxRecord.uniqueId))
                     continue
                 }
 
@@ -394,7 +394,7 @@ class OutboxSync(
                         Logger.w("OutboxSync: payload cleanup failed for dropped uniqueId=${outboxRecord.uniqueId}", it)
                     }
 
-                    eventBus.emit(
+                    emitFor(outboxRecord,
                         BackendEvent.OutboxEvent.OutboxItemDropped(
                             outboxRecord.driveId,
                             outboxRecord.uniqueId,
@@ -425,14 +425,14 @@ class OutboxSync(
                 // reason instead of a bare "still sending" spinner.
                 recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
 
-                eventBus.emit(
+                emitFor(outboxRecord,
                     BackendEvent.OutboxEvent.ItemFailed(
                         outboxRecord.driveId,
                         outboxRecord.uniqueId
                     )
                 )
 
-                eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
+                emitFor(outboxRecord, BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
             } finally {
                 // No longer running on this worker — whether it completed, failed,
                 // dropped, or the scope was cancelled. (On cancellation the row
@@ -449,6 +449,11 @@ class OutboxSync(
      * non-blocking today, but we launch it on the outbox's own scope so future
      * changes to send() can't leak back into the caller's suspension chain.
      */
+    // Background rows (key header transforms) aren't anyone's upload: nothing on screen should hear of them.
+    private suspend fun emitFor(row: Outbox, event: BackendEvent) {
+        if (row.uploadType !in SILENT_UPLOAD_TYPES) eventBus.emit(event)
+    }
+
     private fun kickIfEnqueued(result: EnqueueResult, sendNow: Boolean): EnqueueResult {
         if (sendNow && result.enqueued) {
             scope.launch { send() }
@@ -684,6 +689,8 @@ class OutboxSync(
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
+
+        private val SILENT_UPLOAD_TYPES = setOf(DriveOutboxUploader.TransformKeyHeaders)
 
         // When a 507 carries no Retry-After; the server sends an hour
         private const val STORAGE_FULL_RETRY_SECONDS = 3600L
@@ -1096,7 +1103,7 @@ class OutboxSync(
                 filePaths = null
             )
 
-            eventBus.emit(BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId))
+            if (uploadType !in SILENT_UPLOAD_TYPES) eventBus.emit(BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId))
 
             return EnqueueResult.Enqueued
 
