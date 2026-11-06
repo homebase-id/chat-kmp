@@ -36,15 +36,12 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.DatabaseUnavailableException
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.desktop.AppIconBadge
-import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.app.diagnostics.EdtHitchMonitor
 import id.homebase.api.client.isRecoverablePermissionFailure
@@ -99,12 +96,13 @@ import kotlin.system.exitProcess
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
-import org.koin.core.context.GlobalContext.startKoin
 import java.awt.Desktop
 import java.awt.Frame
 import java.awt.desktop.AppReopenedListener
 import java.awt.event.WindowStateListener
 import java.io.File
+import id.homebase.core.notifications.DesktopChatNotificationBridge
+import id.homebase.core.AppStartup
 
 @OptIn(ExperimentalFoundationApi::class)
 fun main() {
@@ -150,18 +148,12 @@ fun main() {
     MainThreadWatchdog().start()
     EdtHitchMonitor().start()
 
-    // Initialize the database BEFORE Koin. startKoin eagerly instantiates `createdAtStart`
-    // singletons (e.g. DesktopChatNotificationBridge), and that chain resolves
-    // `DatabaseManager.appDb`, which reads the lateinit `instance`. If the DB isn't initialized
-    // first, eager creation throws UninitializedPropertyAccessException during startKoin. The
-    // recovery open only needs DatabaseDriverFactory + DatabaseKeyManager — no Koin dependency —
-    // so it's safe to run here.
+    AppStartup.startKoin()
+    StartupLogger.checkpoint("Koin DI graph built")
+
     openDatabaseOrQuit()
     StartupLogger.checkpoint("database initialized")
-
-    // Initialize Koin
-    startKoin { modules(allModules) }
-    StartupLogger.checkpoint("Koin DI graph built")
+    GlobalContext.get().get<DesktopChatNotificationBridge>()
 
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
@@ -489,17 +481,11 @@ internal fun isContainableNonFatal(throwable: Throwable): Boolean =
 
 // Reset clears secure storage only; the open that follows hits the old encrypted file and initializeWithRecovery wipes it.
 private fun openDatabaseOrQuit() {
-    while (true) {
-        try {
-            runBlocking { DatabaseManager.initializeWithRecovery(DatabaseDriverFactory()) }
-            return
-        } catch (e: DatabaseUnavailableException) {
-            Logger.w(tag = "Main", throwable = e) { "Secure storage can't be opened; asking the user" }
-            when (askKeystoreChoice()) {
-                KeystoreChoice.Retry -> Unit
-                KeystoreChoice.Reset -> SecureStorage.clear()
-                KeystoreChoice.Quit -> exitProcess(1)
-            }
+    while (!runBlocking { AppStartup.openDatabase(DatabaseDriverFactory()) }) {
+        when (askKeystoreChoice()) {
+            KeystoreChoice.Retry -> Unit
+            KeystoreChoice.Reset -> SecureStorage.clear()
+            KeystoreChoice.Quit -> exitProcess(1)
         }
     }
 }

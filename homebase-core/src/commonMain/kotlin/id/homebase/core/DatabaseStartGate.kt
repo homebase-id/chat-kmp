@@ -5,10 +5,10 @@ import id.homebase.api.sync.database.DatabaseUnavailableException
 
 /**
  * Opens the database once, then runs the work queued with [whenOpen]. A
- * [DatabaseUnavailableException] (iOS before the first unlock) keeps the gate shut so the caller
- * can call [tryOpen] again later; any other failure propagates. Not thread-safe: main thread only.
+ * [DatabaseUnavailableException] (iOS before the first unlock, a locked desktop key store) keeps the gate shut so the
+ * caller can call [tryOpen] again later; any other failure propagates. Not thread-safe: main thread only.
  */
-class DatabaseStartGate(private val open: () -> Unit) {
+class DatabaseStartGate(private val open: suspend () -> Unit) {
     var isOpen = false
         private set
 
@@ -18,7 +18,7 @@ class DatabaseStartGate(private val open: () -> Unit) {
         if (isOpen) block() else waiting += block
     }
 
-    fun tryOpen(): Boolean {
+    suspend fun tryOpen(): Boolean {
         if (isOpen) return true
         try {
             open()

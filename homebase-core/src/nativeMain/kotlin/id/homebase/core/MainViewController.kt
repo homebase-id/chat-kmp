@@ -20,8 +20,6 @@ import androidx.compose.ui.window.ComposeUIViewController
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.diagnostics.ProcessHeartbeat
 import id.homebase.core.diagnostics.installGpuTextDiagnostics
@@ -38,7 +36,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
-import org.koin.core.context.startKoin
 import platform.Foundation.NSBundle
 import platform.UIKit.UIDevice
 import platform.Foundation.NSDocumentDirectory
@@ -51,7 +48,6 @@ import platform.darwin.NSObjectProtocol
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
-private var koinInitialized = false
 private var appInitialized = false
 private var crashHandlingInstalled = false
 
@@ -95,12 +91,6 @@ fun clearPendingCrash() {
     CrashReporting.clearPending()
 }
 
-/** Start Koin early so it's available before any Compose UI renders (e.g. on background push). */
-fun initKoin() {
-    if (koinInitialized) return
-    koinInitialized = true
-    startKoin { modules(allModules) }
-}
 
 /**
  * Run all heavy initialization (Koin, logging, crash reporting, database) outside
@@ -116,19 +106,14 @@ fun initializeApp() {
         appInitialized = true
         initializeBeforeDatabase()
     }
-    if (!databaseGate.tryOpen()) retryWhenProtectedDataAvailable()
+    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
+    val opened = runBlocking { AppStartup.openDatabase(DatabaseDriverFactory()) }
+    Logger.i(tag = "TextRendering") { "DB open (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms opened=$opened" }
+    if (!opened) retryWhenProtectedDataAvailable()
 }
 
 /** Swift skips background work that needs the database while this is false. */
-fun isDatabaseOpen(): Boolean = databaseGate.isOpen
-
-private val databaseGate = DatabaseStartGate {
-    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
-    runBlocking {
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-    }
-    Logger.i(tag = "TextRendering") { "DB init (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms" }
-}
+fun isDatabaseOpen(): Boolean = AppStartup.isDatabaseOpen
 
 private var protectedDataObserver: NSObjectProtocol? = null
 
@@ -151,22 +136,20 @@ private fun initializeBeforeDatabase() {
     installCrashReportingAndHandlers()
 
     val startMark = kotlin.time.TimeSource.Monotonic.markNow()
-    Logger.i(tag = "TextRendering") { "initializeApp() started" }
 
-    initKoin()
-    Logger.i(tag = "TextRendering") { "Koin init: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
-
-    // Initialize file logging first
     try {
-        val logDir = getLogDirectory()
-        LoggerConfig.initialize(logDirectory = logDir)
-
-        val versionName = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String ?: "Unknown"
-        val versionCode = (NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String)?.toIntOrNull() ?: 0
-        StartupLogger.logAppStartupInfo(versionName, versionCode, BuildConfig.APP_BUILD_TIME)
+        LoggerConfig.initialize(logDirectory = getLogDirectory())
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = "MainViewController") { "Failed to initialize file logging" }
     }
+    Logger.i(tag = "TextRendering") { "initializeApp() started" }
+
+    AppStartup.startKoin()
+    Logger.i(tag = "TextRendering") { "Koin init: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
+
+    val versionName = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String ?: "Unknown"
+    val versionCode = (NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String)?.toIntOrNull() ?: 0
+    StartupLogger.logAppStartupInfo(versionName, versionCode, BuildConfig.APP_BUILD_TIME)
 
     // Configure Crashlytics based on user preference
     // Note: Koin must be initialized before accessing UserPreferences
@@ -190,7 +173,7 @@ private fun initializeBeforeDatabase() {
     // GpuTextDiagnostics / BLANK_TEXT_INVESTIGATION.md.
     installGpuTextDiagnostics()
 
-    databaseGate.whenOpen { initializeAfterDatabase(startMark) }
+    AppStartup.whenDatabaseOpen { initializeAfterDatabase(startMark) }
 }
 
 private fun initializeAfterDatabase(startMark: kotlin.time.TimeSource.Monotonic.ValueTimeMark) {
@@ -225,7 +208,7 @@ fun MainViewController(): UIViewController {
     // here, so headless work stays headless. Idempotent. See
     // AuthConnectionCoordinator.promoteToForeground.
     val databaseOpen = mutableStateOf(false)
-    databaseGate.whenOpen {
+    AppStartup.whenDatabaseOpen {
         org.koin.mp.KoinPlatformTools.defaultContext().get()
             .get<id.homebase.core.auth.AuthConnectionCoordinator>()
             .promoteToForeground()

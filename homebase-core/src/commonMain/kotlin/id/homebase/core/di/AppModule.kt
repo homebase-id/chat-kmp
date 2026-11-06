@@ -760,8 +760,7 @@ val appModule = module {
                 get<FeedTimelineService>().start()
 
                 // An event collector with no UI referent, so nothing else constructs it. Resolved
-                // here and NOT createdAtStart: iOS starts Koin before the database, so its DB edge
-                // would kill every launch.
+                // here and NOT createdAtStart: Koin starts before the database (AppStartup).
                 get<ChatMediaAutoSaveService>()
 
                 // Let ChatMessageStream skip messages for left conversations

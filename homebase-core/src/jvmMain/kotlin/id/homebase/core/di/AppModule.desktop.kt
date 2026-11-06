@@ -76,7 +76,8 @@ actual fun platformModule(): Module = module {
     ) }
     single<ShakeDetector> { JvmShakeDetector() }
     single<NotificationBackend> { KMPNotifierBackend() }
-    single(createdAtStart = true) {
+    // Not at Koin start: its chain reaches the database, which opens after Koin (AppStartup). Main resolves it.
+    single {
         DesktopChatNotificationBridge(
             eventBus = get(),
             notificationService = get(),

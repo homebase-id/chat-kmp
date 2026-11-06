@@ -9,7 +9,6 @@ import androidx.navigation.ExperimentalBrowserHistoryApi
 import androidx.navigation.bindToBrowserNavigation
 import id.homebase.api.common.OdinId
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.initWebSqlJs
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
@@ -21,7 +20,6 @@ import id.homebase.core.config.AppConfig
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
-import id.homebase.core.di.allModules
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.ui.navigation.AppLink
 import id.homebase.core.widget.ComposerAutocompleteProbe
@@ -32,7 +30,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.configureWebResources
 import org.koin.core.context.GlobalContext
-import org.koin.core.context.startKoin
+import id.homebase.core.AppStartup
 
 private fun bootStage(label: String, percent: Int): Unit =
     js("{ if (window.__homebaseBoot) window.__homebaseBoot(label, percent); }")
@@ -67,14 +65,13 @@ fun main() {
         override fun onMismatch(report: String) = recordAutocompleteMismatch(report)
         override fun onComposing(composing: String) = recordAutocompleteComposing(composing)
     })
-    // sql.js compiles its wasm asynchronously; finish that and build the in-memory database
-    // before Koin (and the DriveSync graph behind the login screen) ever touches DatabaseManager.
+    AppStartup.startKoin()
+    // sql.js compiles its wasm asynchronously, so the database opens in a coroutine; nothing resolves it before that.
     MainScope().launch {
         initWebSqlJs()
         bootStage("Preparing storage…", 60)
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
+        check(AppStartup.openDatabase(DatabaseDriverFactory())) { "database unavailable" }
         bootStage("Opening database…", 75)
-        startKoin { modules(allModules) }
         bootStage("Starting services…", 85)
 
         // Seamless owner-session login (issue #853). Two halves, both no-ops on the dev server:

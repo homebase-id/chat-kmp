@@ -117,6 +117,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
   ) {
+      // Like a push: before the first unlock, or behind the crash-recovery screen, Koin's graph can't reach the database.
+      guard MainViewControllerKt.isDatabaseOpen() else {
+          completionHandler()
+          return
+      }
       let userInfo = response.notification.request.content.userInfo
       let conversationId = extractConversationId(from: userInfo)
 
