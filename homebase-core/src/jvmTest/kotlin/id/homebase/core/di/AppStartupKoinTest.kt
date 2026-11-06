@@ -11,7 +11,7 @@ import java.nio.file.Files
 import kotlin.io.path.deleteRecursively
 import kotlin.test.Test
 
-// The desktop graph (Android's: AndroidKoinStartTest; iOS and web have only the image loader, as here). Its ceiling: work an
+// The desktop graph (Android's: AndroidKoinStartTest; iOS's and web's few eager ones are in their AppModule files). Its ceiling: work an
 // eager definition launches in a coroutine can still reach the database later, after this has passed.
 class AppStartupKoinTest {
 
