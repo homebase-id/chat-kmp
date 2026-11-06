@@ -26,6 +26,7 @@ sealed interface BackupSettingsUiAction {
     data class SetWifiOnly(val wifiOnly: Boolean) : BackupSettingsUiAction
     data class SetVideosOnCellular(val allowed: Boolean) : BackupSettingsUiAction
     data class SetChargingOnly(val chargingOnly: Boolean) : BackupSettingsUiAction
+    data class SetNewestFirst(val newestFirst: Boolean) : BackupSettingsUiAction
     data class SetOnlyNewFromNow(val onlyNew: Boolean) : BackupSettingsUiAction
     data class SetAlbums(val albumIds: Set<String>) : BackupSettingsUiAction
     data object LoadAlbums : BackupSettingsUiAction
@@ -61,6 +62,7 @@ class BackupSettingsViewModel(
             is BackupSettingsUiAction.SetWifiOnly -> controller.update { it.copy(wifiOnly = action.wifiOnly) }
             is BackupSettingsUiAction.SetVideosOnCellular -> controller.update { it.copy(videosOnCellular = action.allowed) }
             is BackupSettingsUiAction.SetChargingOnly -> controller.update { it.copy(chargingOnly = action.chargingOnly) }
+            is BackupSettingsUiAction.SetNewestFirst -> controller.update { it.copy(newestFirst = action.newestFirst) }
             is BackupSettingsUiAction.SetOnlyNewFromNow -> controller.update {
                 it.copy(onlyNewFromMs = if (action.onlyNew) clock.now().toEpochMilliseconds() else null)
             }

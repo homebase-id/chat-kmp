@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.PhotoAlbum
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
@@ -49,6 +50,8 @@ import id.homebase.resources.photobase_backup_enable
 import id.homebase.resources.photobase_backup_enable_desc
 import id.homebase.resources.photobase_backup_guidance
 import id.homebase.resources.photobase_backup_now
+import id.homebase.resources.photobase_backup_newest_first
+import id.homebase.resources.photobase_backup_newest_first_desc
 import id.homebase.resources.photobase_backup_only_new
 import id.homebase.resources.photobase_backup_only_new_desc
 import id.homebase.resources.photobase_backup_status
@@ -92,7 +95,7 @@ fun BackupSettingsSection(
         SettingsRow(
             icon = Icons.Outlined.Info,
             title = stringResource(MR.string.photobase_backup_status),
-            supportingText = backupStatusSummary(uiState.status),
+            supportingText = backupStatusSummary(uiState.status, settings.enabled),
             containerColor = rowColor,
             action = SettingsRowAction.Navigate(onOpenStatus),
         )
@@ -151,6 +154,13 @@ fun BackupSettingsSection(
             supportingText = stringResource(MR.string.photobase_backup_only_new_desc),
             containerColor = rowColor,
             action = SettingsRowAction.Toggle(settings.onlyNewFromMs != null) { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
+        )
+        SettingsRow(
+            icon = Icons.Outlined.SwapVert,
+            title = stringResource(MR.string.photobase_backup_newest_first),
+            supportingText = stringResource(MR.string.photobase_backup_newest_first_desc),
+            containerColor = rowColor,
+            action = SettingsRowAction.Toggle(settings.newestFirst) { onAction(BackupSettingsUiAction.SetNewestFirst(it)) },
         )
     }
     uiState.batteryGuidance?.let { guidance ->

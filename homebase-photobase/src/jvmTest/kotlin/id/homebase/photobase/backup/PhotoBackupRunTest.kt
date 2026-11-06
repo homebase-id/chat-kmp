@@ -496,7 +496,21 @@ class PhotoBackupRunTest {
     }
 
     @Test
-    fun theInitialBackupGoesOldestFirstAndLaterOnesNewestFirst() = runTest {
+    fun theFirstBackupGoesNewestFirstByDefault() = runTest {
+        source.next = fullListing(asset("old", createdAtMs = 1), asset("new", createdAtMs = 2))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(listOf("new", "old"), uploader.handedOff)
+        assertTrue(ledger.isInitialBackupDone())
+    }
+
+    @Test
+    fun turnedOffTheFirstBackupGoesOldestFirstAndLaterOnesNewestFirst() = runTest {
+        settings = settings.copy(newestFirst = false)
         source.next = fullListing(asset("old", createdAtMs = 1), asset("new", createdAtMs = 2))
         val uploader = uploader()
         val (run, _) = newRun(uploader)

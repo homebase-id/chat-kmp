@@ -21,6 +21,8 @@ data class BackupSettings(
     val pushIntervalMs: Long = DEFAULT_PUSH_INTERVAL.inWholeMilliseconds,
     /** "Only back up new items from now": older assets become SKIPPED. Null backs up everything. */
     val onlyNewFromMs: Long? = null,
+    /** The order of the first backup of a library. After that, new photos always go first. */
+    val newestFirst: Boolean = true,
 ) {
     companion object {
         val DEFAULT_PUSH_INTERVAL: Duration = 1.hours

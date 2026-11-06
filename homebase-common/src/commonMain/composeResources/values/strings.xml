@@ -3311,6 +3311,8 @@
     <string name="photobase_backup_wifi_only">Wi-Fi only</string>
     <string name="photobase_backup_videos_cellular">Videos on cellular</string>
     <string name="photobase_backup_charging_only">Only while charging</string>
+    <string name="photobase_backup_newest_first">Newest photos first</string>
+    <string name="photobase_backup_newest_first_desc">The order of your first backup. After that, new photos always go first.</string>
     <string name="photobase_backup_only_new">Only new items from now</string>
     <string name="photobase_backup_only_new_desc">Skip what's already on this phone.</string>
     <string name="photobase_backup_interval">Background check</string>

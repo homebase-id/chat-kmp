@@ -217,7 +217,8 @@ class PhotoBackupRun(
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
 
         val includeVideos = backupVideosAllowed(current, deviceState, interactive)
-        val newestFirst = ledger.isInitialBackupDone()
+        val initialBackupDone = ledger.isInitialBackupDone()
+        val newestFirst = current.newestFirst || initialBackupDone
         val hashing = launch {
             withTimeoutOrNull(request.budget.remaining) { hashStage(request, includeVideos, newestFirst) }
         }
@@ -247,7 +248,7 @@ class PhotoBackupRun(
         val counts = ledger.counts()
         if (finished && settled && counts.pending == 0L && counts.inOutbox + counts.uploading == 0L) {
             ledger.markSucceeded()
-            if (!newestFirst) ledger.markInitialBackupDone()
+            if (!initialBackupDone) ledger.markInitialBackupDone()
         }
         scheduler.rearm(settings())
         refreshStatus()

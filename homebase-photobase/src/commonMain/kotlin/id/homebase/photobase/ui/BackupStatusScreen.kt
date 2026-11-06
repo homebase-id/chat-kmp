@@ -126,7 +126,7 @@ private fun StatusHero(status: BackupStatus, backupEnabled: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 // The headline beside it says the same thing.
                 Icon(backupIndicatorIcon(indicator), contentDescription = null, tint = color, modifier = Modifier.size(40.dp))
-                Text(backupStatusSummary(status), style = MaterialTheme.typography.titleLarge)
+                Text(backupStatusSummary(status, backupEnabled), style = MaterialTheme.typography.titleLarge)
             }
             if (status.pendingCount > 0 || status.uploadingCount > 0) {
                 LinearProgressIndicator(
@@ -194,7 +194,8 @@ private fun FailureSection(status: BackupStatus, onRetry: () -> Unit) {
 }
 
 @Composable
-internal fun backupStatusSummary(status: BackupStatus): String = when {
+internal fun backupStatusSummary(status: BackupStatus, backupEnabled: Boolean): String = when {
+    !backupEnabled -> stringResource(MR.string.photobase_status_paused_off)
     status.isRunning -> stringResource(MR.string.photobase_status_running)
     status.pauseReason != null -> stringResource(
         when (status.pauseReason) {

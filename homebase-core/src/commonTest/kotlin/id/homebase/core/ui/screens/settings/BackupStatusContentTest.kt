@@ -4,9 +4,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.test.waitUntilExactlyOneExists
 import id.homebase.photobase.backup.BackupFailure
 import id.homebase.photobase.backup.BackupStatus
 import id.homebase.photobase.ui.BackupStatusContent
@@ -17,8 +19,20 @@ import kotlin.test.assertEquals
 class BackupStatusContentTest {
     private var retries = 0
 
-    private fun ComposeUiTest.content(status: BackupStatus) = setContent {
-        MaterialTheme { BackupStatusContent(status, backupEnabled = true, onRetry = { retries++ }) }
+    private fun ComposeUiTest.content(status: BackupStatus, backupEnabled: Boolean = true) = setContent {
+        MaterialTheme { BackupStatusContent(status, backupEnabled, onRetry = { retries++ }) }
+    }
+
+    @Test
+    fun turnedOffSaysSoEvenWithNothingLeftToDo() = runComposeUiTest {
+        content(BackupStatus(backedUpCount = 3), backupEnabled = false)
+        waitUntilExactlyOneExists(hasText("Backup is off"))
+    }
+
+    @Test
+    fun turnedOnWithNothingLeftSaysAllBackedUp() = runComposeUiTest {
+        content(BackupStatus(backedUpCount = 3))
+        waitUntilExactlyOneExists(hasText("All photos backed up"))
     }
 
     @Test
