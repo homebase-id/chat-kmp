@@ -29,6 +29,8 @@ import com.mmk.kmpnotifier.notification.NotifierManager
 import dev.nucleusframework.core.runtime.SingleInstanceManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
+import id.homebase.core.AppStartup
+import id.homebase.core.notifications.DesktopChatNotificationBridge
 import id.homebase.core.util.HostOs
 import id.homebase.core.util.hostOs
 import id.homebase.api.client.eventbus.BackendEvent
@@ -36,15 +38,11 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.DatabaseUnavailableException
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.desktop.AppIconBadge
-import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.app.diagnostics.EdtHitchMonitor
 import id.homebase.api.client.isRecoverablePermissionFailure
@@ -65,7 +63,6 @@ import id.homebase.core.ui.screens.appearance.getIconForTheme
 import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.screens.desktop.DesktopUiAction
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
-import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_new_conversation
@@ -99,7 +96,6 @@ import kotlin.system.exitProcess
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
-import org.koin.core.context.GlobalContext.startKoin
 import java.awt.Desktop
 import java.awt.Frame
 import java.awt.desktop.AppReopenedListener
@@ -150,32 +146,24 @@ fun main() {
     MainThreadWatchdog().start()
     EdtHitchMonitor().start()
 
-    // Initialize the database BEFORE Koin. startKoin eagerly instantiates `createdAtStart`
-    // singletons (e.g. DesktopChatNotificationBridge), and that chain resolves
-    // `DatabaseManager.appDb`, which reads the lateinit `instance`. If the DB isn't initialized
-    // first, eager creation throws UninitializedPropertyAccessException during startKoin. The
-    // recovery open only needs DatabaseDriverFactory + DatabaseKeyManager — no Koin dependency —
-    // so it's safe to run here.
-    openDatabaseOrQuit()
-    StartupLogger.checkpoint("database initialized")
-
-    // Initialize Koin
-    startKoin { modules(allModules) }
+    AppStartup.startKoin()
     StartupLogger.checkpoint("Koin DI graph built")
 
-    val platformInfo = GlobalContext.get().get<PlatformInfo>()
-    StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
+    openDatabaseOrQuit()
+    StartupLogger.checkpoint("database initialized")
+    // Before afterDatabase: the call coordinator's fallback notifier needs it.
+    NotifierManager.initialize(
+        configuration = com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Desktop(
+            showPushNotification = true,
+        )
+    )
+    // Before anything syncs: the bridge must be listening for the first batch.
+    AppStartup.afterDatabase {
+        GlobalContext.get().get<DesktopChatNotificationBridge>().start()
+        id.homebase.core.calling.startDesktopCallCoordinator()
+    }
 
-    // Promote AuthConnectionCoordinator out of headless mode. AuthCC starts
-    // headless = true to suppress foreground-only work (WebSocket connect,
-    // driveRegistry.start, loadProfile, UI preload) during FCM cold-wakes on
-    // mobile. Desktop has no background FCM wake — launching the process IS
-    // the foreground signal — so without this call the Authenticated branch
-    // defers connect() forever and the app hangs on "syncing" after login.
-    // Mirrors MainActivity.onCreate (Android) and MainViewController() (iOS).
-    // Idempotent and order-independent: if Authenticated hasn't fired yet it
-    // simply flips the flag so the next Authenticated runs the full sequence.
-    GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
+    AppStartup.promoteToForeground()
 
     // Bridge the local callback server's /permission-callback hit (after the user
     // returns from the owner-console "Extend Permissions" flow) to the in-app event
@@ -196,13 +184,6 @@ fun main() {
     // Initialize FileKit
     FileKit.init(appId = "HomebaseChat")
 
-    // Initialize KMPNotifier for desktop notifications
-    NotifierManager.initialize(
-        configuration = com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Desktop(
-            showPushNotification = true,
-        )
-    )
-
     // Apply saved locale
     val koin = GlobalContext.get()
     val userPreferences = koin.get<UserPreferences>()
@@ -218,7 +199,6 @@ fun main() {
     val viewModel = koin.get<DesktopViewModel>()
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
-    id.homebase.core.calling.startDesktopCallCoordinator()
     val callWindow = koin.get<id.homebase.chat.calling.CallWindowModel>()
 
     application {
@@ -489,17 +469,11 @@ internal fun isContainableNonFatal(throwable: Throwable): Boolean =
 
 // Reset clears secure storage only; the open that follows hits the old encrypted file and initializeWithRecovery wipes it.
 private fun openDatabaseOrQuit() {
-    while (true) {
-        try {
-            runBlocking { DatabaseManager.initializeWithRecovery(DatabaseDriverFactory()) }
-            return
-        } catch (e: DatabaseUnavailableException) {
-            Logger.w(tag = "Main", throwable = e) { "Secure storage can't be opened; asking the user" }
-            when (askKeystoreChoice()) {
-                KeystoreChoice.Retry -> Unit
-                KeystoreChoice.Reset -> SecureStorage.clear()
-                KeystoreChoice.Quit -> exitProcess(1)
-            }
+    while (!runBlocking { AppStartup.openDatabase(DatabaseDriverFactory()) }) {
+        when (askKeystoreChoice()) {
+            KeystoreChoice.Retry -> Unit
+            KeystoreChoice.Reset -> SecureStorage.clear()
+            KeystoreChoice.Quit -> exitProcess(1)
         }
     }
 }
