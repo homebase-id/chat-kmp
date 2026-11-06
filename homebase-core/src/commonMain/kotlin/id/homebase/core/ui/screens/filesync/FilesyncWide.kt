@@ -140,7 +140,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.ui.input.pointer.PointerEventPass
 import id.homebase.resources.filesync_up
 import id.homebase.resources.filesync_up_to
 import id.homebase.core.widget.WithTooltip
@@ -304,7 +303,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
         place = FilesyncPlace.Files.takeIf { !viewing && uiState.path.size == 1 },
         places = if (viewing) scope.places.closing { scope.onAction(FilesyncUiAction.CloseShareView) } else scope.places,
         snackbarHostState = scope.snackbarHostState,
-        modifier = Modifier.onMouseBack { goUp() }.onPreviewKeyEvent { event ->
+        modifier = Modifier.onPreviewKeyEvent { event ->
             val find = event.type == KeyEventType.KeyDown && event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed)
             if (find) searchFocus.requestFocus()
             find
@@ -545,19 +544,6 @@ private fun UpButton(crumbs: List<FilesyncCrumb>, up: FilesyncUp?, onUp: () -> U
     }
 }
 
-private fun Modifier.onMouseBack(action: () -> Unit): Modifier = pointerInput(Unit) {
-    awaitPointerEventScope {
-        while (true) {
-            // Before the rows, which would take the press as a click.
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            if (event.isMouseBackPress()) {
-                event.changes.forEach { it.consume() }
-                action()
-            }
-        }
-    }
-}
-
 /** A desktop-sized checkbox: Material's draws 18dp with a 40dp hover circle, too big for a table row. */
 @Composable
 private fun TableSelectBox(state: ToggleableState, description: String, onClick: () -> Unit) {
@@ -733,7 +719,7 @@ internal fun TableRow(
                                     if (event.type != PointerEventType.Press) continue
                                     val change = event.changes.first()
                                     val keys = event.keyboardModifiers
-                                    if (change.isConsumed || change.type != PointerType.Mouse || event.buttons.isSecondaryPressed) continue
+                                    if (change.type != PointerType.Mouse || event.buttons.isSecondaryPressed) continue
                                     if (keys.isCtrlPressed || keys.isMetaPressed || keys.isShiftPressed) continue
                                     change.consume()
                                     // Whatever a double-click opens would catch its second press, so it opens on that press.
