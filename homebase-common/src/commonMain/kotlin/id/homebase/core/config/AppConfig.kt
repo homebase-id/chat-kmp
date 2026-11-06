@@ -13,6 +13,7 @@ import id.homebase.api.youauth.DriveSharingModel
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
@@ -112,7 +113,6 @@ const val FEED_NEW_COMMENT_TYPE_ID = "1e08b70a-3826-4840-8372-18410bfc02c7"
 // APP IDs
 const val MAIL_APP_ID = "6e8ecfff-7c15-40e4-94f4-d6e83bfb5857"
 const val FEED_APP_ID = "5f887d80-0132-4294-ba40-bda79155551d"
-const val PHOTO_APP_ID = "32f0bdbf-017f-4fc0-8004-2d4631182d1e"
 const val OWNER_APP_ID = "ac126e09-54cb-4878-a690-856be692da16"
 const val COMMUNITY_APP_ID = "77ed6136-6b33-4654-8088-3d89c91e6065"
 
@@ -243,6 +243,11 @@ val webDropLabeledDrive = LabeledDrive(
 val filesyncLabeledDrive = LabeledDrive(
     drive = TargetDrive(alias = FilesyncProtocol.DriveAlias, type = FilesyncProtocol.DriveType),
     label = "Filesync",
+)
+
+val photosLabeledDrive = LabeledDrive(
+    drive = TargetDrive(alias = PhotobaseProtocol.DriveAlias, type = PhotobaseProtocol.DriveType),
+    label = "Photos",
 )
 
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
@@ -607,6 +612,51 @@ fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): Pe
         returnUrl = ::returnUrl,
         requester = "filesync",
         install = AppInstall(filesyncAppRegistration, isInstalled),
+    )
+}
+
+private val photosDrive = TargetDriveAccessRequest(
+    alias = photosLabeledDrive.drive.alias.toString(),
+    type = photosLabeledDrive.drive.type.toString(),
+    name = photosLabeledDrive.label,
+    description = "Photos and videos backed up by Homebase Photobase",
+    permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    driveSlug = PhotobaseProtocol.DriveSlug,
+    driveTypeSlug = PhotobaseProtocol.DriveTypeSlug,
+    sharingModel = DriveSharingModel.SelectiveShare,
+)
+
+// Not synced: the gallery pages from the server, so the drive is never mounted.
+// Grant only: Photobase owns the drive, and installing Photobase is what creates it.
+val photosTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(photosDrive.copy(grantOnly = true))
+
+val photobaseAppRegistration = AppRegistrationParams(
+    appId = PhotobaseProtocol.AppId,
+    name = "Homebase Photobase",
+    appSlug = PhotobaseProtocol.AppSlug,
+    drives = listOf(photosDrive),
+    circles = listOf(
+        AppCircleDeclaration(
+            slug = PhotobaseProtocol.CircleSlug,
+            name = "Photobase",
+            description = "People who can see the photos you share through Homebase Photobase",
+            emoji = "📷",
+            drives = listOf(
+                photosDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),
+            ),
+        )
+    ),
+)
+
+fun getPhotobasePermissionExtensionConfig(isInstalled: suspend () -> Boolean): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = photosTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+        requester = "photobase",
+        install = AppInstall(photobaseAppRegistration, isInstalled),
     )
 }
 

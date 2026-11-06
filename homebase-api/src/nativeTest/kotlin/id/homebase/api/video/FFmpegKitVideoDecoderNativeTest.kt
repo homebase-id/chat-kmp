@@ -49,7 +49,7 @@ class FFmpegKitVideoDecoderNativeTest {
 
     @Test
     fun extractThumbnailStrip_cancelsBridgeWhenFlowIsCancelled() = runBlocking {
-        // Bridge that never fires onComplete — simulates a stuck/long-running ffmpeg session.
+        // Bridge that only fires onComplete on cancel — simulates a long-running ffmpeg session.
         val bridge = RecordingDeferredBridge()
         FFmpegKitBridgeHolder.setBridge(bridge)
 
@@ -147,7 +147,7 @@ class FFmpegKitVideoDecoderNativeTest {
             }
 
             // Wait until segmentation has dispatched ffmpeg via the bridge (RecordingDeferredBridge
-            // never fires onComplete, so the job stays parked in executeFfmpegWithProgress).
+            // only fires onComplete on cancel, so the job stays parked in executeFfmpegWithProgress).
             withTimeout(5_000) {
                 while (!bridge.executeAsyncCalled) delay(20)
             }
@@ -264,8 +264,8 @@ class FFmpegKitVideoDecoderNativeTest {
 }
 
 /**
- * A minimal [FFmpegKitBridge] that records cancel invocations and *never* completes the
- * pending session — to drive the cancellation-during-poll path.
+ * A minimal [FFmpegKitBridge] that records cancel invocations and completes a session only
+ * when it's cancelled, as the real engine does — to drive the cancellation-during-poll path.
  */
 private class RecordingDeferredBridge : FFmpegKitBridge {
     @Volatile var executeAsyncCalled: Boolean = false
@@ -274,6 +274,7 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
 
     private var nextSessionId = 100L
     val cancelSessionCalls = mutableListOf<Long>()
+    private val running = mutableMapOf<Long, (FFmpegResult) -> Unit>()
 
     fun simulateConcurrentSession(): Long = nextSessionId++
 
@@ -285,10 +286,10 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
     ): Long {
-        // Intentionally never invoke onComplete — simulate a long-running session so the
-        // caller's cancellation path runs. Return a session id like the real bridge.
-        executeAsyncCalled = true
+        // Simulate a long-running session so the caller's cancellation path runs.
         lastSessionId = nextSessionId++
+        running[lastSessionId] = onComplete
+        executeAsyncCalled = true
         return lastSessionId
     }
 
@@ -297,8 +298,9 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
         onProgress: (timeMs: Long) -> Unit,
         onComplete: (FFmpegResult) -> Unit,
     ): Long {
-        executeAsyncCalled = true
         lastSessionId = nextSessionId++
+        running[lastSessionId] = onComplete
+        executeAsyncCalled = true
         return lastSessionId
     }
 
@@ -308,6 +310,7 @@ private class RecordingDeferredBridge : FFmpegKitBridge {
 
     override fun cancelFFmpegSession(sessionId: Long) {
         cancelSessionCalls.add(sessionId)
+        running.remove(sessionId)?.invoke(FFmpegResult(isSuccess = false, failStackTrace = "cancelled"))
     }
 
     override fun getMediaInformation(filePath: String): MediaInfo? = null

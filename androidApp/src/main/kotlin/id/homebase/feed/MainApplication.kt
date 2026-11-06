@@ -1,5 +1,6 @@
 package id.homebase.feed
 
+import id.homebase.photobase.backup.PhotoBackupEntry
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
@@ -134,7 +135,10 @@ class MainApplication : Application(), KoinComponent {
         // a same-process share's on-disk lifetime.
         registerShareOutboundForegroundSweep()
 
-        AppStartup.afterDatabase { AndroidCallCoordinator(this, get(), get(), appScope).start() }
+        AppStartup.afterDatabase {
+            AndroidCallCoordinator(this, get(), get(), appScope).start()
+            get<PhotoBackupEntry>().onProcessStart()
+        }
 
         StartupLogger.checkpoint("onCreate end")
     }

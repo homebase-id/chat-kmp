@@ -36,6 +36,9 @@ import kotlinx.coroutines.sync.withLock
 import id.homebase.api.youauth.ZkKeyStore
 import kotlin.uuid.Uuid
 
+internal fun UploadFileRequest.countsAsSent(failure: ClientException): Boolean =
+    existingFileIsSuccess && failure.isExistingFileWithUniqueId()
+
 class DriveOutboxUploader(
     private val driveUploadProvider: DriveUploadProvider,
     private val fileProvider: DriveFileProvider,
@@ -125,6 +128,10 @@ class DriveOutboxUploader(
         // from a previous install), convert the failed UploadNewFile into an
         // UpdateFileByUniqueId so the client's fresh content lands on the server.
         } catch (e: ClientException) {
+            if (request.countsAsSent(e)) {
+                Logger.i("$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} already on the server, counts as sent")
+                return
+            }
             if (e.isExistingFileWithUniqueId()) {
                 Logger.w(
                     "$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} " +

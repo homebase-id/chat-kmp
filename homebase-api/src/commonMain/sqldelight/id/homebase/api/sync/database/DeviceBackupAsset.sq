@@ -1,0 +1,103 @@
+-- One row per asset in the device's photo library: what backup still has to do for it.
+-- `state` and `mediaType` hold homebase-photobase's enum codes.
+CREATE TABLE IF NOT EXISTS DeviceBackupAsset(
+  deviceAssetId TEXT NOT NULL PRIMARY KEY,
+  albumIds TEXT NOT NULL,
+  mediaType INTEGER NOT NULL,
+  createdAt INTEGER NOT NULL,
+  modifiedAt INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  contentHash TEXT,
+  uniqueId TEXT,
+  state INTEGER NOT NULL,
+  attempts INTEGER NOT NULL,
+  lastError TEXT,
+  nextAttemptAt INTEGER NOT NULL,
+  uploadTaskId INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_backup_due ON DeviceBackupAsset(state, nextAttemptAt);
+CREATE INDEX IF NOT EXISTS idx_device_backup_unique ON DeviceBackupAsset(uniqueId);
+
+insertOrIgnore:
+INSERT OR IGNORE INTO DeviceBackupAsset(deviceAssetId, albumIds, mediaType, createdAt, modifiedAt, size, state, attempts, nextAttemptAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0);
+
+selectAll:
+SELECT * FROM DeviceBackupAsset;
+
+selectById:
+SELECT * FROM DeviceBackupAsset WHERE deviceAssetId = ?;
+
+selectAllIdsExcept:
+SELECT deviceAssetId FROM DeviceBackupAsset WHERE state != ?;
+
+restart:
+UPDATE DeviceBackupAsset
+SET albumIds = :albumIds, mediaType = :mediaType, createdAt = :createdAt, modifiedAt = :modifiedAt, size = :size,
+    state = :state, contentHash = NULL, uniqueId = NULL, attempts = 0, lastError = NULL, nextAttemptAt = 0, uploadTaskId = NULL
+WHERE deviceAssetId = :deviceAssetId;
+
+updateAlbums:
+UPDATE DeviceBackupAsset SET albumIds = ? WHERE deviceAssetId = ?;
+
+selectDueOldestFirst:
+SELECT * FROM DeviceBackupAsset
+WHERE state = :state AND nextAttemptAt <= :now AND (mediaType != 1 OR :includeVideos = 1)
+ORDER BY CASE WHEN mediaType = 1 THEN 1 ELSE 0 END ASC, createdAt ASC
+LIMIT :limit;
+
+selectDueNewestFirst:
+SELECT * FROM DeviceBackupAsset
+WHERE state = :state AND nextAttemptAt <= :now AND (mediaType != 1 OR :includeVideos = 1)
+ORDER BY CASE WHEN mediaType = 1 THEN 1 ELSE 0 END ASC, createdAt DESC
+LIMIT :limit;
+
+clearBackoffForReason:
+UPDATE DeviceBackupAsset
+SET lastError = NULL, nextAttemptAt = 0
+WHERE lastError = :reason;
+
+markHashed:
+UPDATE DeviceBackupAsset
+SET contentHash = :contentHash, uniqueId = :uniqueId, state = :state, lastError = NULL, attempts = 0, nextAttemptAt = 0
+WHERE deviceAssetId = :deviceAssetId;
+
+setState:
+UPDATE DeviceBackupAsset
+SET state = :state, lastError = :lastError, attempts = :attempts, nextAttemptAt = :nextAttemptAt
+WHERE deviceAssetId = :deviceAssetId;
+
+setStateOfUnique:
+UPDATE DeviceBackupAsset
+SET state = :state, lastError = :lastError, nextAttemptAt = :nextAttemptAt, attempts = attempts + :addAttempts, uploadTaskId = NULL
+WHERE uniqueId = :uniqueId AND state IN :fromStates;
+
+setUploadTask:
+UPDATE DeviceBackupAsset SET state = :state, uploadTaskId = :uploadTaskId WHERE uniqueId = :uniqueId;
+
+selectByUnique:
+SELECT * FROM DeviceBackupAsset WHERE uniqueId = ?;
+
+selectInStates:
+SELECT * FROM DeviceBackupAsset WHERE state IN ?;
+
+countByState:
+SELECT state, COUNT(*) FROM DeviceBackupAsset GROUP BY state;
+
+countInStates:
+SELECT COUNT(*) FROM DeviceBackupAsset WHERE state IN ?;
+
+bytesByState:
+SELECT state, CAST(COALESCE(SUM(size), 0) AS INTEGER) AS bytes FROM DeviceBackupAsset GROUP BY state;
+
+selectFailures:
+SELECT deviceAssetId, lastError FROM DeviceBackupAsset WHERE state = :state ORDER BY createdAt DESC LIMIT :limit;
+
+requeueFailed:
+UPDATE DeviceBackupAsset
+SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL
+WHERE state = :failedState;
+
+deleteAll:
+DELETE FROM DeviceBackupAsset;

@@ -54,6 +54,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       // Register notification categories with reply and mark-as-read actions
       registerNotificationCategories()
 
+      // Always registered, before this method returns: iOS kills an app that registers later, or
+      // that launches for a task still pending from when Photobase was on, with no handler for it.
+      PhotoBackupBackgroundTasksKt.registerPhotoBackupBackgroundTasks()
+      // A relaunch for finished uploads starts the session itself, and so does the first upload.
+      if PhotoBackupBackgroundTasksKt.isPhotobaseEnabled() {
+          BackgroundUploadBridgeImpl.shared.start()
+      }
+
       // Set delegate for handling notification actions
       UNUserNotificationCenter.current().delegate = self
 
@@ -202,6 +210,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       return UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
   }
 
+  func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+      PhotoBackupBackgroundTasksKt.startListeningForPhotoBackupUploads()
+      BackgroundUploadBridgeImpl.shared.handleEvents(identifier: identifier, completionHandler: completionHandler)
+  }
+
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
   }
@@ -254,6 +267,7 @@ struct iOSApp: App {
         CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
 
         ContinuedProcessingBridgeHolder.shared.bridge = ContinuedProcessingBridgeImpl()
+        BackgroundUploadBridgeHolder.shared.bridge = BackgroundUploadBridgeImpl.shared
 
         CallKitManager.shared.start()
     }

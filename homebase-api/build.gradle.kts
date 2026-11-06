@@ -219,6 +219,7 @@ kotlin {
         "id.homebase.api.sync.database.OutboxSetNextRunTimeTest",
         "id.homebase.api.sync.database.OutboxStorageFullTest",
         "id.homebase.api.sync.database.OutboxSyncTest",
+        "id.homebase.api.sync.database.OutboxBulkSlotTest",
         "id.homebase.api.sync.database.OutboxTest",
         "id.homebase.api.sync.DriveSyncCollectionTest",
         "id.homebase.api.sync.DriveSyncManagerTest",

@@ -27,14 +27,15 @@ class OutboxWrapper(
         }
     }
 
-    suspend fun checkout(): Outbox?
-    {
-        return databaseManager.withWriteValue { delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds).executeAsOneOrNull() }
+    suspend fun checkout(belowPriority: Long = Long.MAX_VALUE): Outbox? {
+        return databaseManager.withWriteValue {
+            delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds, belowPriority).executeAsOneOrNull()
+        }
     }
 
-    suspend fun nextScheduled(): UnixTimeUtc? {
+    suspend fun nextScheduled(belowPriority: Long = Long.MAX_VALUE): UnixTimeUtc? {
         val n = databaseManager.readValue("outbox.nextScheduled") {
-            delegate.nextScheduled().executeAsOneOrNull()
+            delegate.nextScheduled(belowPriority).executeAsOneOrNull()
         }
         return if (n == null) null else UnixTimeUtc(n)
     }

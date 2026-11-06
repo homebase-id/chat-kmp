@@ -46,7 +46,13 @@ class UploadService(
             encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
-        }.let { if (spec.omitThumbnails) it.withoutThumbnails() else it }
+        }.let {
+            when {
+                spec.omitThumbnails -> it.withoutThumbnails()
+                spec.omitPlaintextPreviews -> it.withoutPlaintextPreviews()
+                else -> it
+            }
+        }
 
         // 2. Build the request with shared-secret-encrypted metadata content.
         val request = UploadFileRequest(
@@ -56,6 +62,7 @@ class UploadService(
             transitOptions = spec.transit,
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails,
+            existingFileIsSuccess = spec.existingFileIsSuccess,
         )
 
         // 3. Outbox enqueue — the durable success gate. Once accepted, delivery is guaranteed.
