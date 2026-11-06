@@ -76,13 +76,14 @@ actual fun platformModule(): Module = module {
     ) }
     single<ShakeDetector> { JvmShakeDetector() }
     single<NotificationBackend> { KMPNotifierBackend() }
-    single(createdAtStart = true) {
+    // Not at Koin start: its chain reaches the database, which opens after Koin.
+    single {
         DesktopChatNotificationBridge(
             eventBus = get(),
             notificationService = get(),
             credentialsManager = get(),
             scope = get(),
-        ).also { it.start() }
+        )
     }
     single(createdAtStart = true) {
         // Note: No disk cache - DriveFileProviderCached handles encrypted disk caching

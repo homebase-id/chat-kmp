@@ -30,8 +30,7 @@ class IdentityScopedResolutionTest {
 
     @BeforeTest
     fun setUp() {
-        // createEagerInstances = false for the same reason as MomentDraftSurvivesLogoutTest: the
-        // real graph has createdAtStart singletons that cannot construct headless.
+        // createEagerInstances = false for the same reason as MomentDraftSurvivesLogoutTest.
         koin = koinApplication(createEagerInstances = false) { modules(allModules) }.koin
         session = IdentitySessionScope(koin)
     }
