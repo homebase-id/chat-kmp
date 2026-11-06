@@ -114,6 +114,7 @@ import id.homebase.resources.profile_card_switcher
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_load_failed_desc
 import id.homebase.resources.profile_edit_retry
+import id.homebase.core.widget.WithTooltip
 
 private val PHOTO_SIZE = 88.dp
 
