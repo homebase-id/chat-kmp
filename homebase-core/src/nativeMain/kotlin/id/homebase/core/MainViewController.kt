@@ -177,19 +177,10 @@ private fun initializeAfterDatabase(startMark: kotlin.time.TimeSource.Monotonic.
     protectedDataObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
     protectedDataObserver = null
 
-    // Re-arm Location tracking on every process start — including the
-    // UIApplicationLaunchOptionsLocationKey relaunch after the OS terminated
-    // the app (AppDelegate calls initializeApp() before the launch runloop
-    // drains, so the CLLocationManager is re-created in time to receive the
-    // pending significant-location-change delivery). Must run after DB init:
-    // the coordinator's preferences read the encrypted keyValue store.
-    org.koin.mp.KoinPlatformTools.defaultContext().get()
-        .get<id.homebase.core.location.tracking.LocationTrackingCoordinator>()
-        .onProcessStart()
+    // The location relaunch (UIApplicationLaunchOptionsLocationKey) needs its CLLocationManager re-created before the
+    // launch runloop drains: AppDelegate calls initializeApp() early for that.
+    AppStartup.afterDatabase { id.homebase.core.calling.startAppleCallCoordinator() }
 
-    id.homebase.core.calling.startAppleCallCoordinator()
-
-    CrashReporting.markStartupComplete()
     Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }
 

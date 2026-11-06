@@ -200,7 +200,7 @@ fun main() {
     val viewModel = koin.get<DesktopViewModel>()
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
-    id.homebase.core.calling.startDesktopCallCoordinator()
+    AppStartup.afterDatabase { id.homebase.core.calling.startDesktopCallCoordinator() }
     val callWindow = koin.get<id.homebase.chat.calling.CallWindowModel>()
 
     application {

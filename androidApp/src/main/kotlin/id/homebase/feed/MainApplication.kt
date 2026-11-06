@@ -23,7 +23,6 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.core.AppStartup
 import id.homebase.core.ui.screens.card.resetCardNfcService
 import id.homebase.core.diagnostics.MainThreadWatchdog
-import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.feed.crash.GlobalCrashHandler
@@ -134,8 +133,6 @@ class MainApplication : Application(), KoinComponent {
         // Publish share shortcuts when conversations change
         initShareShortcuts()
 
-        AndroidCallCoordinator(this, get(), get(), appScope).start()
-
         // Reap cleartext share-OUT temps every time the app reaches the
         // foreground. The chat "Share to other app" flow writes decrypted
         // copies of E2EE Homebase payloads into <cacheDir>/share_outbound/
@@ -147,10 +144,7 @@ class MainApplication : Application(), KoinComponent {
         // a same-process share's on-disk lifetime.
         registerShareOutboundForegroundSweep()
 
-        // Re-arm Location tracking on every process start (incl. boot-receiver
-        // and background-location wakes — onPostAuthenticated never runs on
-        // headless cold starts, so this cannot live there).
-        get<LocationTrackingCoordinator>().onProcessStart()
+        AppStartup.afterDatabase { AndroidCallCoordinator(this, get(), get(), appScope).start() }
 
         StartupLogger.checkpoint("onCreate end")
     }

@@ -70,6 +70,7 @@ fun main() {
         initWebSqlJs()
         bootStage("Opening database…", 60)
         AppStartup.openDatabaseNow(DatabaseDriverFactory())
+        AppStartup.afterDatabase()
         bootStage("Starting services…", 85)
 
         // Seamless owner-session login (issue #853). Two halves, both no-ops on the dev server:

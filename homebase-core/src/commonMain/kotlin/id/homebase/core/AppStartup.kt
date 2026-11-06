@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.crash.CrashReporting
+import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.di.allModules
 import org.koin.dsl.KoinAppDeclaration
 import org.koin.mp.KoinPlatformTools
@@ -40,6 +42,17 @@ object AppStartup {
     }
 
     fun whenDatabaseOpen(block: () -> Unit) = database.whenOpen(block)
+
+    /**
+     * What every process start runs once the database is open, a background wake (push, location, boot) as much as a
+     * launch; [platform] adds its own, e.g. its call coordinator.
+     */
+    fun afterDatabase(platform: () -> Unit = {}) = whenDatabaseOpen {
+        // Wakes never reach onPostAuthenticated, so tracking is re-armed here; the coordinator's preferences need the database.
+        KoinPlatformTools.defaultContext().get().get<LocationTrackingCoordinator>().onProcessStart()
+        platform()
+        CrashReporting.markStartupComplete()
+    }
 
     // The process starting is the foreground signal on desktop and web; iOS sends it when its UI appears.
     fun promoteToForeground() = whenDatabaseOpen {
