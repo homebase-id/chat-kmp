@@ -8,6 +8,7 @@ import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGalleryPageSource
 import id.homebase.photobase.gallery.groupByCaptureDay
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ data class PhotoGalleryUiState(
 sealed interface PhotoGalleryUiAction {
     data object Refresh : PhotoGalleryUiAction
     data object LoadMore : PhotoGalleryUiAction
+    data object ThumbnailShown : PhotoGalleryUiAction
     data object ToggleSort : PhotoGalleryUiAction
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
@@ -46,6 +48,9 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
     private var items: List<PhotoGalleryItem> = emptyList()
     private var cursor: String? = null
     private var loadJob: Job? = null
+    private val opened = TimeSource.Monotonic.markNow()
+    private var firstPageLogged = false
+    private var thumbnailsShown = 0
 
     init {
         refresh()
@@ -55,12 +60,20 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
         when (action) {
             PhotoGalleryUiAction.Refresh -> refresh()
             PhotoGalleryUiAction.LoadMore -> loadMore()
+            PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> {
                 _uiState.update { it.copy(newestFirst = !it.newestFirst) }
                 refresh()
             }
             is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(viewer = viewerFor(action.item)) }
             PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(viewer = null) }
+        }
+    }
+
+    private fun logThumbnailShown() {
+        thumbnailsShown++
+        if (thumbnailsShown == 1 || thumbnailsShown == FIRST_SCREEN_THUMBNAILS) {
+            Logger.i(tag = TAG) { "thumbnail $thumbnailsShown shown ${opened.elapsedNow()} after opening" }
         }
     }
 
@@ -100,6 +113,10 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
                 endReached = page.nextCursor == null,
             )
         }
+        if (!firstPageLogged) {
+            firstPageLogged = true
+            Logger.i(tag = TAG) { "first page ready ${opened.elapsedNow()} after opening" }
+        }
     }
 
     private fun viewerFor(item: PhotoGalleryItem): FullScreenOverlay =
@@ -127,5 +144,6 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
 
     private companion object {
         const val TAG = "PhotoGalleryViewModel"
+        const val FIRST_SCREEN_THUMBNAILS = 12
     }
 }

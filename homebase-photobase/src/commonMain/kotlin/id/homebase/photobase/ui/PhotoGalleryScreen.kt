@@ -72,7 +72,8 @@ import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.stringResource
 
-private const val LOAD_MORE_WHEN_WITHIN = 30
+// Under what's left of the first page after a screenful, or opening would fetch the next one straight away.
+private const val LOAD_MORE_WHEN_WITHIN = 15
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -213,7 +214,7 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
                 )
             }
             items(day.items, key = { it.fileId.toString() }, contentType = { "photo" }) { item ->
-                PhotoCell(item) { onAction(PhotoGalleryUiAction.Open(item)) }
+                PhotoCell(item, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) { onAction(PhotoGalleryUiAction.Open(item)) }
             }
         }
         if (uiState.isLoadingMore) {
@@ -227,7 +228,7 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
 }
 
 @Composable
-private fun PhotoCell(item: PhotoGalleryItem, onClick: () -> Unit) {
+private fun PhotoCell(item: PhotoGalleryItem, onShown: () -> Unit, onClick: () -> Unit) {
     val iv = item.payload.iv?.bytes
     val isVideo = item.payload.isVideo()
     val description = stringResource(if (isVideo) MR.string.photobase_gallery_video else MR.string.photobase_gallery_photo)
@@ -253,6 +254,7 @@ private fun PhotoCell(item: PhotoGalleryItem, onClick: () -> Unit) {
                 contentDescription = description,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                onLoaded = onShown,
             )
         }
         if (isVideo) {

@@ -15,6 +15,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.backup.PhotoContent
+import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
@@ -43,6 +44,7 @@ class PhotoGalleryRepository(
 ) : PhotoGalleryPageSource {
     // Parsing and decrypting a page of headers doesn't belong on the view model's Main.
     override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage = withContext(Dispatchers.Default) {
+            val querying = TimeSource.Monotonic.markNow()
             val response = queryProvider.queryBatch(
                 photosDriveId,
                 QueryBatchRequest(
@@ -52,16 +54,18 @@ class PhotoGalleryRepository(
                     ),
                     resultOptionsRequest = QueryBatchResultOptionsRequest(
                         cursorState = cursor,
-                        maxRecords = PAGE_SIZE,
+                        maxRecords = if (cursor == null) FIRST_PAGE_SIZE else PAGE_SIZE,
                         includeMetadataHeader = true,
                         ordering = if (newestFirst) QueryBatchSortOrder.NewestFirst else QueryBatchSortOrder.OldestFirst,
                         sorting = QueryBatchSortField.UserDate,
                     ),
                 ),
             )
+            val queryTook = querying.elapsedNow()
+            val parsing = TimeSource.Monotonic.markNow()
             val items = response.searchResults.mapNotNull { it.toGalleryItem() }
             Logger.i(tag = "PhotoGallery") {
-                "page newestFirst=$newestFirst first=${items.firstOrNull()?.capturedAtMs} last=${items.lastOrNull()?.capturedAtMs} count=${items.size}"
+                "page query=$queryTook parse=${parsing.elapsedNow()} newestFirst=$newestFirst first=${items.firstOrNull()?.capturedAtMs} last=${items.lastOrNull()?.capturedAtMs} count=${items.size}"
             }
             PhotoGalleryPage(
                 items = items,
@@ -70,6 +74,8 @@ class PhotoGalleryRepository(
     }
 
     private companion object {
+        // A phone shows about 24 tiles, and the query is what the first screen waits on.
+        const val FIRST_PAGE_SIZE = 40
         const val PAGE_SIZE = 100
     }
 }
