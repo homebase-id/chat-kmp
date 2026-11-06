@@ -8,17 +8,25 @@ import id.homebase.api.sync.database.DatabaseManager
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import java.nio.file.Files
+import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.deleteRecursively
+import kotlin.test.AfterTest
 import kotlin.test.Test
 
-// The desktop graph (Android's: AndroidKoinStartTest; iOS's and web's few eager ones are in their AppModule files). Its ceiling: work an
-// eager definition launches in a coroutine can still reach the database later, after this has passed.
+// Its ceiling: work an eager definition launches in a coroutine can still reach the database after this has passed.
+@OptIn(DelicateCoilApi::class, ExperimentalPathApi::class)
 class AppStartupKoinTest {
+    private val cache = Files.createTempDirectory("app-startup")
 
-    @OptIn(DelicateCoilApi::class, kotlin.io.path.ExperimentalPathApi::class)
+    @AfterTest
+    fun cleanUp() {
+        // The eager image loader installs itself as Coil's singleton; later tests must not get this one.
+        SingletonImageLoader.reset()
+        cache.deleteRecursively()
+    }
+
     @Test
     fun nothingBuiltAtKoinStartReachesTheDatabase() {
-        val cache = Files.createTempDirectory("app-startup")
         val headless = module {
             single<DatabaseManager> { error("built at Koin start, before the database opens") }
             // The eager cache audit sweeps the cache directory for real.
@@ -28,12 +36,6 @@ class AppStartupKoinTest {
                 }
             }
         }
-        try {
-            koinApplication { modules(allModules + headless) }.close()
-        } finally {
-            // The eager image loader installs itself as Coil's singleton; later tests must not get this one.
-            SingletonImageLoader.reset()
-            cache.deleteRecursively()
-        }
+        koinApplication { modules(allModules + headless) }.close()
     }
 }

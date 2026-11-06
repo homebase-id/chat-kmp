@@ -27,7 +27,6 @@ import id.homebase.core.diagnostics.installIosMemoryDiagnostics
 import id.homebase.core.crash.CrashMetadata
 import id.homebase.core.crash.CrashReporting
 import id.homebase.core.logging.LoggerConfig
-import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.logging.setupIOSCrashHandler
 import id.homebase.core.location.tracking.observeAppForeground
@@ -147,9 +146,6 @@ private fun initializeBeforeDatabase() {
     AppStartup.startKoin()
     Logger.i(tag = "TextRendering") { "Koin init: ${koinMark.elapsedNow().inWholeMilliseconds}ms" }
 
-    val versionName = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String ?: "Unknown"
-    val versionCode = (NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String)?.toIntOrNull() ?: 0
-    StartupLogger.logAppStartupInfo(versionName, versionCode, BuildConfig.APP_BUILD_TIME)
 
     // Configure Crashlytics based on user preference
     // Note: Koin must be initialized before accessing UserPreferences
@@ -173,16 +169,14 @@ private fun initializeBeforeDatabase() {
     // GpuTextDiagnostics / BLANK_TEXT_INVESTIGATION.md.
     installGpuTextDiagnostics()
 
-    AppStartup.whenDatabaseOpen { initializeAfterDatabase(startMark) }
+    AppStartup.afterDatabase { initializeAfterDatabase(startMark) }
 }
 
 private fun initializeAfterDatabase(startMark: kotlin.time.TimeSource.Monotonic.ValueTimeMark) {
     protectedDataObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
     protectedDataObserver = null
 
-    // The location relaunch (UIApplicationLaunchOptionsLocationKey) needs its CLLocationManager re-created before the
-    // launch runloop drains: AppDelegate calls initializeApp() early for that.
-    AppStartup.afterDatabase { id.homebase.core.calling.startAppleCallCoordinator() }
+    id.homebase.core.calling.startAppleCallCoordinator()
 
     Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }

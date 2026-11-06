@@ -22,8 +22,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallService
-import id.homebase.core.AppStartup
 import id.homebase.core.App
+import id.homebase.core.AppStartup
 import id.homebase.core.config.AppConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.NotificationEntry

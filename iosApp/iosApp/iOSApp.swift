@@ -117,7 +117,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-      // Before the first unlock the database is shut, and behind the crash-recovery screen nothing has started: act once it opens.
+      // Shut before the first unlock; nothing started behind the crash-recovery screen: act once it opens.
       guard MainViewControllerKt.isDatabaseOpen() else {
           MainViewControllerKt.whenDatabaseOpen { self.handle(response) {} }
           completionHandler()

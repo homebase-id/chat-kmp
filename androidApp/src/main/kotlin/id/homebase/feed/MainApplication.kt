@@ -26,9 +26,7 @@ import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.feed.crash.GlobalCrashHandler
-import id.homebase.core.util.PlatformInfo
 import chat_kmp.homebase_common.BuildConfig
-import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.services.convo.ConversationStream
@@ -94,8 +92,6 @@ class MainApplication : Application(), KoinComponent {
         val userPreferences = get<UserPreferences>()
         Firebase.crashlytics.isCrashlyticsCollectionEnabled = userPreferences.errorCollectionEnabled
 
-        val platformInfo = get<PlatformInfo>()
-        StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
 
         // Detect main-thread stalls before Android ANRs. Logs the main-thread stack to
         // homebase.log when a frame budget is exceeded by >4s — gives us a usable trace
@@ -122,10 +118,6 @@ class MainApplication : Application(), KoinComponent {
                 )
         )
 
-        // Register notification listener immediately so tokens/pushes arriving
-        // before the UI composes are not lost
-        val notificationService: NotificationService = get()
-        notificationService.startListening()
         // Brackets createNotificationChannels + NotifierManager.initialize() (KMPNotifier/
         // Firebase) — a prime suspect for cold-process stalls on the FCM boot.
         StartupLogger.checkpoint("notifications init done")

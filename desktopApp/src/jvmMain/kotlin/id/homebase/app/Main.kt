@@ -63,7 +63,6 @@ import id.homebase.core.ui.screens.appearance.getIconForTheme
 import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.screens.desktop.DesktopUiAction
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
-import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_new_conversation
@@ -152,9 +151,12 @@ fun main() {
 
     openDatabaseOrQuit()
     StartupLogger.checkpoint("database initialized")
+    // Before anything syncs: the bridge must be listening for the first batch.
+    AppStartup.afterDatabase {
+        GlobalContext.get().get<DesktopChatNotificationBridge>().start()
+        id.homebase.core.calling.startDesktopCallCoordinator()
+    }
 
-    val platformInfo = GlobalContext.get().get<PlatformInfo>()
-    StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
 
     AppStartup.promoteToForeground()
 
@@ -199,10 +201,6 @@ fun main() {
     val viewModel = koin.get<DesktopViewModel>()
     StartupLogger.checkpoint("DesktopViewModel resolved")
 
-    AppStartup.afterDatabase {
-        GlobalContext.get().get<DesktopChatNotificationBridge>().start()
-        id.homebase.core.calling.startDesktopCallCoordinator()
-    }
     val callWindow = koin.get<id.homebase.chat.calling.CallWindowModel>()
 
     application {

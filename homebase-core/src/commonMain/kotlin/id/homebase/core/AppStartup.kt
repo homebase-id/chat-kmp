@@ -6,7 +6,10 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.crash.CrashReporting
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
+import id.homebase.core.logging.StartupLogger
+import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.PlatformInfo
+import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.di.allModules
 import org.koin.dsl.KoinAppDeclaration
 import org.koin.mp.KoinPlatformTools
@@ -28,6 +31,8 @@ object AppStartup {
             platform()
             modules(allModules)
         }
+        val info = KoinPlatformTools.defaultContext().get().get<PlatformInfo>()
+        StartupLogger.logAppStartupInfo(info.versionName, info.versionCode, BuildConfig.APP_BUILD_TIME)
     }
 
     /** False while the database can't be read yet: the platform tries again when that may have changed. */
@@ -38,19 +43,18 @@ object AppStartup {
 
     fun whenDatabaseOpen(block: () -> Unit) = database.whenOpen(block)
 
-    /**
-     * What every process start runs once the database is open, a background wake (push, location, boot) as much as a
-     * launch; [platform] adds its own, e.g. its call coordinator.
-     */
+    /** Every process start, background wakes included, runs this once the database is open; [platform] adds its own. */
     fun afterDatabase(platform: () -> Unit = {}) = whenDatabaseOpen {
         val koin = KoinPlatformTools.defaultContext().get()
-        // Wakes never reach onPostAuthenticated, so tracking is re-armed here; the coordinator's preferences need the database.
-        if (koin.get<PlatformInfo>().supportsBackgroundWake) koin.get<LocationTrackingCoordinator>().onProcessStart()
+        // Wakes never reach onPostAuthenticated; the coordinator skips itself where there's no tracker.
+        koin.get<LocationTrackingCoordinator>().onProcessStart()
+        // Up before the UI too, so tokens and pushes arriving on a wake aren't missed.
+        koin.get<NotificationService>()
         platform()
         CrashReporting.markStartupComplete()
     }
 
-    // The process starting is the foreground signal on desktop and web; iOS sends it when its UI appears.
+    // Ends headless mode where the OS starts processes without UI (Android, iOS); elsewhere it only builds AuthCC.
     fun promoteToForeground() = whenDatabaseOpen {
         KoinPlatformTools.defaultContext().get().get<AuthConnectionCoordinator>().promoteToForeground()
     }
