@@ -91,7 +91,6 @@ fun clearPendingCrash() {
     CrashReporting.clearPending()
 }
 
-
 /**
  * Run all heavy initialization (Koin, logging, crash reporting, database) outside
  * [MainViewController] so the main-thread run-loop is free to process CoreText / Metal
@@ -106,10 +105,7 @@ fun initializeApp() {
         appInitialized = true
         initializeBeforeDatabase()
     }
-    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
-    val opened = runBlocking { AppStartup.openDatabase(DatabaseDriverFactory()) }
-    Logger.i(tag = "TextRendering") { "DB open (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms opened=$opened" }
-    if (!opened) retryWhenProtectedDataAvailable()
+    if (!runBlocking { AppStartup.openDatabase(DatabaseDriverFactory()) }) retryWhenProtectedDataAvailable()
 }
 
 /** Swift skips background work that needs the database while this is false. */
@@ -144,8 +140,9 @@ private fun initializeBeforeDatabase() {
     }
     Logger.i(tag = "TextRendering") { "initializeApp() started" }
 
+    val koinMark = kotlin.time.TimeSource.Monotonic.markNow()
     AppStartup.startKoin()
-    Logger.i(tag = "TextRendering") { "Koin init: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
+    Logger.i(tag = "TextRendering") { "Koin init: ${koinMark.elapsedNow().inWholeMilliseconds}ms" }
 
     val versionName = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String ?: "Unknown"
     val versionCode = (NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String)?.toIntOrNull() ?: 0
@@ -208,12 +205,8 @@ fun MainViewController(): UIViewController {
     // here, so headless work stays headless. Idempotent. See
     // AuthConnectionCoordinator.promoteToForeground.
     val databaseOpen = mutableStateOf(false)
-    AppStartup.whenDatabaseOpen {
-        org.koin.mp.KoinPlatformTools.defaultContext().get()
-            .get<id.homebase.core.auth.AuthConnectionCoordinator>()
-            .promoteToForeground()
-        databaseOpen.value = true
-    }
+    AppStartup.promoteToForeground()
+    AppStartup.whenDatabaseOpen { databaseOpen.value = true }
     val controller = ComposeUIViewController { if (databaseOpen.value) App() }
     MainViewControllerRef.instance = controller
     return controller

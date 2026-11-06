@@ -1,40 +1,54 @@
 package id.homebase.core
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import org.koin.dsl.KoinAppDeclaration
+import org.koin.mp.KoinPlatformTools
+import kotlin.time.TimeSource
+import org.koin.core.context.startKoin as koinStart
 
-/**
- * The start every platform runs, in this order: Koin, then the database, then the work that needs it
- * ([whenDatabaseOpen]). Koin comes first everywhere because iOS can be launched (a push, a location wake) before the
- * first unlock, when the database key can't be read: so nothing built at Koin start may touch the database
- * (AppStartupKoinTest). A platform adds only what is its own, such as how it waits when the database can't open yet.
- * Main thread only.
- */
+// Koin before the database on every platform: iOS can launch before the first unlock, so nothing built at Koin start
+// may touch it (AppStartupKoinTest). Main thread only.
 object AppStartup {
     private var koinStarted = false
-    private var drivers: DatabaseDriverFactory? = null
-    private val database = DatabaseStartGate { DatabaseManager.initializeWithRecovery(checkNotNull(drivers)) }
+    private val database = DatabaseStartGate()
 
     val isDatabaseOpen: Boolean get() = database.isOpen
 
-    /** Once; [platform] adds what one platform needs, e.g. Android's context. */
     fun startKoin(platform: KoinAppDeclaration = {}) {
         if (koinStarted) return
         koinStarted = true
-        org.koin.core.context.startKoin {
+        koinStart {
             platform()
             modules(allModules)
         }
     }
 
-    /** False while the database can't be read yet: the platform calls it again when that may have changed. */
+    /** False while the database can't be read yet: the platform tries again when that may have changed. */
     suspend fun openDatabase(factory: DatabaseDriverFactory): Boolean {
-        drivers = factory
-        return database.tryOpen()
+        check(koinStarted) { "AppStartup.startKoin first" }
+        return database.tryOpen { timed(factory) }
     }
 
-    /** Runs [block] once the database is open; at once if it already is. */
+    /** For a platform whose database is readable from the start: if it isn't, the cause is thrown as it is. */
+    suspend fun openDatabaseNow(factory: DatabaseDriverFactory) {
+        check(koinStarted) { "AppStartup.startKoin first" }
+        database.open { timed(factory) }
+    }
+
     fun whenDatabaseOpen(block: () -> Unit) = database.whenOpen(block)
+
+    // The process starting is the foreground signal on desktop and web; iOS sends it when its UI appears.
+    fun promoteToForeground() = whenDatabaseOpen {
+        KoinPlatformTools.defaultContext().get().get<AuthConnectionCoordinator>().promoteToForeground()
+    }
+
+    private suspend fun timed(factory: DatabaseDriverFactory) {
+        val mark = TimeSource.Monotonic.markNow()
+        DatabaseManager.initializeWithRecovery(factory)
+        Logger.i(tag = "AppStartup") { "database open: ${mark.elapsedNow().inWholeMilliseconds}ms" }
+    }
 }

@@ -117,7 +117,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-      // Like a push: before the first unlock, or behind the crash-recovery screen, Koin's graph can't reach the database.
+      // As for a push: before the first unlock, or behind the crash-recovery screen, nothing is started yet.
       guard MainViewControllerKt.isDatabaseOpen() else {
           completionHandler()
           return

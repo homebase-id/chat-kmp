@@ -14,8 +14,8 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.common.util.WindowTitle
 import kotlinx.browser.document
+import id.homebase.core.AppStartup
 import id.homebase.core.App
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
@@ -30,7 +30,6 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.configureWebResources
 import org.koin.core.context.GlobalContext
-import id.homebase.core.AppStartup
 
 private fun bootStage(label: String, percent: Int): Unit =
     js("{ if (window.__homebaseBoot) window.__homebaseBoot(label, percent); }")
@@ -69,9 +68,8 @@ fun main() {
     // sql.js compiles its wasm asynchronously, so the database opens in a coroutine; nothing resolves it before that.
     MainScope().launch {
         initWebSqlJs()
-        bootStage("Preparing storage…", 60)
-        check(AppStartup.openDatabase(DatabaseDriverFactory())) { "database unavailable" }
-        bootStage("Opening database…", 75)
+        bootStage("Opening database…", 60)
+        AppStartup.openDatabaseNow(DatabaseDriverFactory())
         bootStage("Starting services…", 85)
 
         // Seamless owner-session login (issue #853). Two halves, both no-ops on the dev server:
@@ -111,12 +109,7 @@ fun main() {
             }
         }
 
-        // Promote AuthConnectionCoordinator out of headless mode. Like desktop,
-        // the web app has no FCM cold-wake — loading the page IS the foreground
-        // signal — so without this the Authenticated branch defers connect()
-        // forever and the app hangs on "syncing". Mirrors MainActivity.onCreate
-        // (Android) and MainViewController() (iOS). Idempotent.
-        GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
+        AppStartup.promoteToForeground()
         val notificationService = GlobalContext.get().get<NotificationService>()
         WebAppLink.consumePending()?.let { notificationService.navigateToApp(it.route) }
         val pageTitle = document.title

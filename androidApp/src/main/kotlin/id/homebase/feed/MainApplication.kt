@@ -20,6 +20,7 @@ import id.homebase.api.file.sweepShareOutbound
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.core.AppStartup
 import id.homebase.core.ui.screens.card.resetCardNfcService
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
@@ -42,7 +43,6 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
-import id.homebase.core.AppStartup
 
 class MainApplication : Application(), KoinComponent {
     override fun onCreate() {
@@ -88,8 +88,7 @@ class MainApplication : Application(), KoinComponent {
         }
         StartupLogger.checkpoint("koin started")
 
-        // Android's key store is readable from the first moment, so a database that can't open is a defect.
-        check(runBlocking { AppStartup.openDatabase(DatabaseDriverFactory(applicationContext)) }) { "database key unreadable" }
+        runBlocking { AppStartup.openDatabaseNow(DatabaseDriverFactory(applicationContext)) }
         StartupLogger.checkpoint("db init done")
 
         // Configure Crashlytics based on user preference

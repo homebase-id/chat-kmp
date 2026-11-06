@@ -29,6 +29,8 @@ import com.mmk.kmpnotifier.notification.NotifierManager
 import dev.nucleusframework.core.runtime.SingleInstanceManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
+import id.homebase.core.AppStartup
+import id.homebase.core.notifications.DesktopChatNotificationBridge
 import id.homebase.core.util.HostOs
 import id.homebase.core.util.hostOs
 import id.homebase.api.client.eventbus.BackendEvent
@@ -40,7 +42,6 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.desktop.AppIconBadge
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.app.diagnostics.EdtHitchMonitor
@@ -101,8 +102,6 @@ import java.awt.Frame
 import java.awt.desktop.AppReopenedListener
 import java.awt.event.WindowStateListener
 import java.io.File
-import id.homebase.core.notifications.DesktopChatNotificationBridge
-import id.homebase.core.AppStartup
 
 @OptIn(ExperimentalFoundationApi::class)
 fun main() {
@@ -158,16 +157,7 @@ fun main() {
     val platformInfo = GlobalContext.get().get<PlatformInfo>()
     StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
 
-    // Promote AuthConnectionCoordinator out of headless mode. AuthCC starts
-    // headless = true to suppress foreground-only work (WebSocket connect,
-    // driveRegistry.start, loadProfile, UI preload) during FCM cold-wakes on
-    // mobile. Desktop has no background FCM wake — launching the process IS
-    // the foreground signal — so without this call the Authenticated branch
-    // defers connect() forever and the app hangs on "syncing" after login.
-    // Mirrors MainActivity.onCreate (Android) and MainViewController() (iOS).
-    // Idempotent and order-independent: if Authenticated hasn't fired yet it
-    // simply flips the flag so the next Authenticated runs the full sequence.
-    GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
+    AppStartup.promoteToForeground()
 
     // Bridge the local callback server's /permission-callback hit (after the user
     // returns from the owner-console "Extend Permissions" flow) to the in-app event

@@ -4,11 +4,11 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseUnavailableException
 
 /**
- * Opens the database once, then runs the work queued with [whenOpen]. A
- * [DatabaseUnavailableException] (iOS before the first unlock, a locked desktop key store) keeps the gate shut so the
- * caller can call [tryOpen] again later; any other failure propagates. Not thread-safe: main thread only.
+ * Opens the database once, then runs the work queued with [whenOpen]. A [DatabaseUnavailableException] (iOS before
+ * the first unlock, a locked desktop key store) keeps [tryOpen] shut so the caller can try again later; any other
+ * failure propagates. Not thread-safe: main thread only.
  */
-class DatabaseStartGate(private val open: suspend () -> Unit) {
+class DatabaseStartGate {
     var isOpen = false
         private set
 
@@ -18,18 +18,22 @@ class DatabaseStartGate(private val open: suspend () -> Unit) {
         if (isOpen) block() else waiting += block
     }
 
-    suspend fun tryOpen(): Boolean {
-        if (isOpen) return true
+    suspend fun tryOpen(open: suspend () -> Unit): Boolean =
         try {
-            open()
+            this.open(open)
+            true
         } catch (e: DatabaseUnavailableException) {
             Logger.w(tag = "DatabaseStartGate", throwable = e) { "Database not readable yet; waiting" }
-            return false
+            false
         }
+
+    /** For a platform that can't wait: an unreadable database throws as it is. */
+    suspend fun open(open: suspend () -> Unit) {
+        if (isOpen) return
+        open()
         isOpen = true
         val pending = waiting.toList()
         waiting.clear()
         pending.forEach { it() }
-        return true
     }
 }

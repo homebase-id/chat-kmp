@@ -14,28 +14,29 @@ class DatabaseStartGateTest {
     fun unavailableDatabaseRunsNothingUntilARetryOpensIt() = runTest {
         var readable = false
         var opens = 0
-        val gate = DatabaseStartGate {
+        val gate = DatabaseStartGate()
+        val open: suspend () -> Unit = {
             opens++
             if (!readable) throw DatabaseUnavailableException("before first unlock")
         }
         val ran = mutableListOf<String>()
         gate.whenOpen { ran += "after" }
 
-        assertFalse(gate.tryOpen())
+        assertFalse(gate.tryOpen(open))
         assertFalse(gate.isOpen)
         assertEquals(emptyList(), ran)
 
         readable = true
-        assertTrue(gate.tryOpen())
-        assertTrue(gate.tryOpen())
+        assertTrue(gate.tryOpen(open))
+        assertTrue(gate.tryOpen(open))
         assertEquals(listOf("after"), ran)
         assertEquals(2, opens)
     }
 
     @Test
     fun workQueuedOnceOpenRunsImmediately() = runTest {
-        val gate = DatabaseStartGate {}
-        gate.tryOpen()
+        val gate = DatabaseStartGate()
+        gate.tryOpen {}
         var ran = false
         gate.whenOpen { ran = true }
         assertTrue(ran)
@@ -43,8 +44,15 @@ class DatabaseStartGateTest {
 
     @Test
     fun otherOpenFailuresStillPropagate() = runTest {
-        val gate = DatabaseStartGate { error("schema broken") }
-        assertFailsWith<IllegalStateException> { gate.tryOpen() }
+        val gate = DatabaseStartGate()
+        assertFailsWith<IllegalStateException> { gate.tryOpen { error("schema broken") } }
+        assertFalse(gate.isOpen)
+    }
+
+    @Test
+    fun aPlatformThatCantWaitGetsTheUnavailableDatabaseAsIs() = runTest {
+        val gate = DatabaseStartGate()
+        assertFailsWith<DatabaseUnavailableException> { gate.open { throw DatabaseUnavailableException("key store locked") } }
         assertFalse(gate.isOpen)
     }
 }
