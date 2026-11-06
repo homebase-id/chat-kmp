@@ -69,11 +69,13 @@ internal class FakeUploader(
     var sendsComplete = true
     var stillSending = false
     var kicks = 0
+    var markedBackground = false
     override var outlivesProcess = false
     override var maxHandedOff = 6
 
     override suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult {
         handedOff += row.deviceAssetId
+        markedBackground = currentCoroutineContext()[id.homebase.api.video.BackgroundVideoWork.Key] != null
         val outcome = result(row)
         if (outcome == HandOffResult.Queued && sendsComplete) {
             scope.launch {

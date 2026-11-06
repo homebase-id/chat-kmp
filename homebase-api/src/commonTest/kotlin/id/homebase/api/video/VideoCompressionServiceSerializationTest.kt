@@ -1,9 +1,13 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -120,6 +124,93 @@ class VideoCompressionServiceSerializationTest {
         compress.join()
         transcode.join()
         assertTrue(transcodeEntered)
+    }
+
+    private class StoppableCompressor(val stopped: CompletableDeferred<Unit>) : NoopVideoCompressor() {
+        val entered = mutableListOf<String>()
+
+        override suspend fun compress(
+            inputPath: String,
+            onProgress: VideoProgressListener?,
+            trimStartMs: Long?,
+            trimEndMs: Long?,
+            quality: VideoQuality,
+        ): String {
+            entered += inputPath
+            if (inputPath != "background") return "out_$inputPath"
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) { stopped.await() }
+            }
+        }
+    }
+
+    @Test
+    fun foregroundWorkStopsBackgroundWorkAndWaitsUntilItHasReallyStopped() = runTest {
+        val stopped = CompletableDeferred<Unit>()
+        val fake = StoppableCompressor(stopped)
+        VideoCompressionService.compressor = fake
+        var thrown: Throwable? = null
+
+        val background = launch {
+            try {
+                withContext(BackgroundVideoWork) { VideoCompressionService.compress("background", quality = VideoQuality.STANDARD) }
+            } catch (e: Throwable) {
+                thrown = e
+            }
+        }
+        testScheduler.advanceUntilIdle()
+        val foreground = launch { VideoCompressionService.compress("foreground", quality = VideoQuality.STANDARD) }
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf("background"), fake.entered, "foreground entered while the cancelled session was still stopping")
+
+        stopped.complete(Unit)
+        background.join()
+        foreground.join()
+
+        assertEquals(listOf("background", "foreground"), fake.entered)
+        assertTrue(thrown is VideoWorkYieldedException, "got $thrown")
+    }
+
+    @Test
+    fun cancelledBackgroundWorkHoldsTheLockUntilItHasReallyStoppedAndIsNotAYield() = runTest {
+        val stopped = CompletableDeferred<Unit>()
+        val fake = StoppableCompressor(stopped)
+        VideoCompressionService.compressor = fake
+        var thrown: Throwable? = null
+
+        val background = launch {
+            try {
+                withContext(BackgroundVideoWork) { VideoCompressionService.compress("background", quality = VideoQuality.STANDARD) }
+            } catch (e: Throwable) {
+                thrown = e
+                throw e
+            }
+        }
+        testScheduler.advanceUntilIdle()
+        background.cancel()
+        testScheduler.advanceUntilIdle()
+        val next = launch { withContext(BackgroundVideoWork) { VideoCompressionService.compress("next", quality = VideoQuality.STANDARD) } }
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf("background"), fake.entered)
+
+        stopped.complete(Unit)
+        background.join()
+        next.join()
+
+        assertEquals(listOf("background", "next"), fake.entered)
+        assertTrue(thrown is CancellationException, "got $thrown")
+    }
+
+    @Test
+    fun backgroundWorkRunsWhenNothingIsWaiting() = runTest {
+        val fake = StoppableCompressor(CompletableDeferred(Unit))
+        VideoCompressionService.compressor = fake
+
+        val out = withContext(BackgroundVideoWork) { VideoCompressionService.compress("a", quality = VideoQuality.STANDARD) }
+
+        assertEquals("out_a", out)
     }
 }
 

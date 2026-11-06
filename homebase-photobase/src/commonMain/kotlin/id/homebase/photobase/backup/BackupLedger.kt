@@ -169,6 +169,12 @@ class BackupLedger(
         changed()
     }
 
+    /** Counts no attempt: the video was fine, and something a person sent went first. */
+    suspend fun deferForOtherVideoWork(row: DeviceBackupAsset) {
+        store.setState(row.deviceAssetId, row.state, row.lastError, row.attempts, nowMs() + VIDEO_YIELD_RETRY.inWholeMilliseconds)
+        changed()
+    }
+
     suspend fun clearNotOnDeviceDeferrals() = store.clearBackoffForReason(NOT_ON_DEVICE)
 
     suspend fun markSending(uniqueId: Uuid, taskId: Long) {
@@ -240,6 +246,7 @@ class BackupLedger(
         const val MAX_ATTEMPTS = 10
         private const val NOT_ON_DEVICE = "not on this device"
         private val NOT_ON_DEVICE_RETRY = 6.hours
+        private val VIDEO_YIELD_RETRY = 1.minutes
         private const val OWN_KEY_PREFIX = "photobase."
         private const val INITIAL_DONE_KEY = "${OWN_KEY_PREFIX}initialBackupDone"
         private const val SCOPE_KEY = "${OWN_KEY_PREFIX}albumScope"

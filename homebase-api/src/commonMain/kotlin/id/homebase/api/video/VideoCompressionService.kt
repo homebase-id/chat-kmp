@@ -1,8 +1,25 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+/** Marks heavy video work nobody is waiting on: it stops for any that someone is. */
+object BackgroundVideoWork : AbstractCoroutineContextElement(Key) {
+    object Key : CoroutineContext.Key<BackgroundVideoWork>
+}
+
+/** Thrown to [BackgroundVideoWork] that stopped for other work. It hasn't failed; run it again later. */
+class VideoWorkYieldedException : Exception("gave way to video work someone is waiting on")
 
 /**
  * Singleton entry point for video compression, segmentation, and metadata probes
@@ -25,7 +42,9 @@ import kotlinx.coroutines.sync.withLock
  * - **iOS (FFmpegKit):** a job's coroutine-cancellation tears down its own session; if two
  *   heavy jobs overlap, the bookkeeping and scratch dirs (`compressed_<id>.mp4`,
  *   `hls_<id>/`) can collide.
- * - **Android / JVM:** parallel transcodes just thrash CPU/memory for no throughput gain.
+ * - **Android (FFmpegKit):** the engine isn't reentrant, so overlapping sessions can crash the
+ *   process. A cancelled session counts until it has really stopped.
+ * - **JVM:** parallel transcodes just thrash CPU/memory for no throughput gain.
  *
  * Rather than rely on every caller (the full-screen attachment editor, multi-video send,
  * Moments, Chat) to remember to serialize, this service guards the heavy ops — [compress],
@@ -48,6 +67,40 @@ object VideoCompressionService : VideoCompressor, VideoProber {
     /** Serializes the heavy ffmpeg ops so two never run on the shared backend at once. */
     private val heavyOpLock = Mutex()
 
+    private val waitingForeground = atomic(0)
+    private val runningBackground = atomic<Job?>(null)
+
+    private suspend fun <T> heavy(op: suspend () -> T): T =
+        if (currentCoroutineContext()[BackgroundVideoWork.Key] == null) foreground(op) else background(op)
+
+    private suspend fun <T> foreground(op: suspend () -> T): T {
+        waitingForeground.incrementAndGet()
+        try {
+            runningBackground.value?.cancel()
+            return heavyOpLock.withLock { op() }
+        } finally {
+            waitingForeground.decrementAndGet()
+        }
+    }
+
+    // The lock outlasts the op even when cancelled: coroutineScope waits for it to really stop.
+    private suspend fun <T> background(op: suspend () -> T): T = heavyOpLock.withLock {
+        coroutineScope {
+            val running = async { op() }
+            runningBackground.value = running
+            // After publishing, so foreground work arriving from here on can reach it.
+            if (waitingForeground.value > 0) running.cancel()
+            try {
+                running.await()
+            } catch (e: CancellationException) {
+                if (isActive) throw VideoWorkYieldedException()
+                throw e
+            } finally {
+                runningBackground.value = null
+            }
+        }
+    }
+
     override suspend fun compress(
         inputPath: String,
         onProgress: VideoProgressListener?,
@@ -55,7 +108,7 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         trimEndMs: Long?,
         quality: VideoQuality,
     ): String =
-        heavyOpLock.withLock {
+        heavy {
             compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality)
         }
 
@@ -63,7 +116,7 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         inputPath: String,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? =
-        heavyOpLock.withLock {
+        heavy {
             compressor.segment(inputPath, onProgress)
         }
 
@@ -72,17 +125,17 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         keyHeader: KeyHeader,
         onProgress: VideoProgressListener?,
     ): SegmentedVideo? =
-        heavyOpLock.withLock {
+        heavy {
             compressor.segmentAndEncrypt(inputPath, keyHeader, onProgress)
         }
 
     override suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
-        heavyOpLock.withLock {
+        heavy {
             compressor.remuxHlsToMp4(playlistPath, outputPath)
         }
 
     override suspend fun transcode(input: ByteArray, extension: String, outputArgs: List<String>): ByteArray? =
-        heavyOpLock.withLock {
+        heavy {
             compressor.transcode(input, extension, outputArgs)
         }
 

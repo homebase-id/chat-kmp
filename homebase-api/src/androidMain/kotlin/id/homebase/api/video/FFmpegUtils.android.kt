@@ -12,21 +12,29 @@ import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.ReturnCode
 import com.arthenica.ffmpegkit.Statistics
 import com.arthenica.ffmpegkit.StatisticsCallback
+import co.touchlab.kermit.Logger
 import id.homebase.api.ActivityProvider
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.AppCacheDirs
 import java.io.File
 import java.util.UUID
-import kotlin.coroutines.resume
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 actual object FFmpegUtils {
 
     private fun scratchFolder(context: Context, sub: String): File =
         File(AppCacheDirs.scratchDir(context.cacheDir.absolutePath, sub))
     private const val TAG = "FFmpegUtils"
+    private val SESSION_STOP_LIMIT = 30.seconds
+    private val SESSION_CANCEL_RETRY = 500.milliseconds
 
     @Volatile private var cachedFfmpegVersion: String? = null
     @Volatile private var ffmpegVersionProbed: Boolean = false
@@ -195,6 +203,9 @@ actual object FFmpegUtils {
             executeFfmpegAsync(args) { stats ->
                 onProgress?.invoke(progressFraction(stats.time.toLong(), trimDurationMs))
             }
+        } catch (e: CancellationException) {
+            outFile.delete()
+            throw e
         } catch (e: Throwable) {
             val elapsedMs = System.currentTimeMillis() - t0
             Log.e(TAG, "compressVideo crashed after ${elapsedMs}ms", e)
@@ -401,25 +412,43 @@ actual object FFmpegUtils {
     private suspend fun executeFfmpegAsync(
         args: Array<String>,
         onStatistics: ((Statistics) -> Unit)? = null,
-    ): FFmpegSession =
-        suspendCancellableCoroutine { cont ->
-            val onComplete = FFmpegSessionCompleteCallback { sess ->
-                if (cont.isActive) cont.resume(sess)
-            }
-            val session = if (onStatistics != null) {
-                FFmpegKit.executeWithArgumentsAsync(
-                    args,
-                    onComplete,
-                    null,
-                    StatisticsCallback { stats -> stats?.let(onStatistics) },
-                )
-            } else {
-                FFmpegKit.executeWithArgumentsAsync(args, onComplete)
-            }
-            cont.invokeOnCancellation {
-                try { session.cancel() } catch (_: Exception) {}
-            }
+    ): FFmpegSession {
+        val finished = CompletableDeferred<FFmpegSession>()
+        val onComplete = FFmpegSessionCompleteCallback { finished.complete(it) }
+        val session = if (onStatistics != null) {
+            FFmpegKit.executeWithArgumentsAsync(
+                args,
+                onComplete,
+                null,
+                StatisticsCallback { stats -> stats?.let(onStatistics) },
+            )
+        } else {
+            FFmpegKit.executeWithArgumentsAsync(args, onComplete)
         }
+        try {
+            return finished.await()
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) { stop(session, finished) }
+            throw e
+        }
+    }
+
+    // The engine isn't reentrant, so VideoCompressionService's lock has to outlast the session.
+    private suspend fun stop(session: FFmpegSession, finished: CompletableDeferred<FFmpegSession>) {
+        val stopping = TimeSource.Monotonic.markNow()
+        val stopped = withTimeoutOrNull(SESSION_STOP_LIMIT) {
+            while (!finished.isCompleted) {
+                // A cancel does nothing until the session is running, so it's repeated.
+                try { session.cancel() } catch (_: Exception) {}
+                withTimeoutOrNull(SESSION_CANCEL_RETRY) { finished.await() }
+            }
+        } != null
+        if (stopped) {
+            Logger.i(tag = TAG) { "ffmpeg session ${session.sessionId} stopped ${stopping.elapsedNow()} after cancel" }
+        } else {
+            Logger.e(tag = TAG) { "ffmpeg session ${session.sessionId} still running $SESSION_STOP_LIMIT after cancel; carrying on so sends aren't stuck" }
+        }
+    }
 
     private fun progressFraction(timeMs: Long, durationMs: Long): Float =
         if (durationMs <= 0L) 0f else (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
@@ -572,6 +601,9 @@ actual object FFmpegUtils {
                 executeFfmpegAsync(args.toTypedArray()) { stats ->
                     onProgress?.invoke(progressFraction(stats.time.toLong(), durationMs))
                 }
+            } catch (e: CancellationException) {
+                deleteFailedFfmpegOutput(outputDir.absolutePath)
+                throw e
             } catch (e: Throwable) {
                 Log.e(TAG, "segmentAndEncryptVideo crashed", e)
                 deleteFailedFfmpegOutput(outputDir.absolutePath)

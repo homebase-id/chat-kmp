@@ -1,5 +1,7 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.video.BackgroundVideoWork
+import id.homebase.api.video.VideoWorkYieldedException
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
@@ -282,7 +284,8 @@ class PhotoBackupRun(
             }
         }
         repeat(PREPARE_PARALLELISM) {
-            launch {
+            // On the worker, not withContext around the hand-off: that would throw away a result if cancelled on the way out.
+            launch(BackgroundVideoWork) {
                 for ((row, uniqueId) in toPrepare) {
                     if (request.budget.isExpired || !timed(BackupStage.WaitForRoom) { awaitUploadRoom(row, request.isInteractive) } || isStorageFull(false)) {
                         toPrepare.cancel()
@@ -401,6 +404,8 @@ class PhotoBackupRun(
             ledger.markSkipped(row.deviceAssetId, e.reason)
         } catch (e: AssetNotOnDeviceException) {
             ledger.deferUntilOnDevice(row)
+        } catch (e: VideoWorkYieldedException) {
+            ledger.deferForOtherVideoWork(row)
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
             ledger.recordFailure(row, e.message ?: e::class.simpleName.orEmpty())

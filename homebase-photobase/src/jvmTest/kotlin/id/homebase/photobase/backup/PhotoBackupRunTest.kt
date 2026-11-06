@@ -348,6 +348,21 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aVideoThatGaveWayToAChatSendIsRetriedWithoutCountingAFailure() = runTest {
+        source.next = fullListing(asset("clip"))
+        val uploader = uploader()
+        uploader.result = { throw id.homebase.api.video.VideoWorkYieldedException() }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+
+        assertTrue(uploader.markedBackground, "chat sends can only go first if backup's work is marked")
+        val clip = ledger.row("clip")!!
+        assertEquals(0L, clip.attempts)
+        assertTrue(clip.nextAttemptAt > now)
+    }
+
+    @Test
     fun aRunThatMayDownloadFetchesWhatAShortWindowSkipped() = runTest {
         source.onlyInCloud += "cloud"
         source.next = fullListing(asset("cloud"))
