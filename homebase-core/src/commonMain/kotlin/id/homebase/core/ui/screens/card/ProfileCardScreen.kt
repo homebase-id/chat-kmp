@@ -867,9 +867,15 @@ internal fun ReadOnlyCardDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-internal fun WithTooltip(text: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun WithTooltip(
+    text: String,
+    modifier: Modifier = Modifier,
+    // A Boolean, not TooltipAnchorPosition: that type is experimental and would make every caller opt in.
+    below: Boolean = false,
+    content: @Composable () -> Unit,
+) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(if (below) TooltipAnchorPosition.Below else TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(text) } },
         state = rememberTooltipState(),
         modifier = modifier,

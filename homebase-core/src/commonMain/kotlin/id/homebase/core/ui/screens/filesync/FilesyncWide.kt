@@ -140,15 +140,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.PlainTooltip
-import androidx.compose.material3.rememberTooltipState
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.isBackPressed
 import id.homebase.core.util.isDesktop
+import id.homebase.core.ui.screens.card.WithTooltip
 import id.homebase.resources.filesync_up
 import id.homebase.resources.filesync_up_to
 
@@ -167,6 +162,7 @@ private val ActionsWidth = 80.dp
 private val RowHeight = 52.dp
 private val SelectWidth = 24.dp
 private val SelectGap = 4.dp
+private val SelectShape = RoundedCornerShape(4.dp)
 private val PaneWidth = 320.dp
 
 // Below these content widths a column gives way to the name: Kind first, then Modified.
@@ -373,27 +369,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
             }
         }
         val goUp by rememberUpdatedState { if (crumbs.size > 1) onCrumb(crumbs.size - 2) }
-        Column(
-            modifier = Modifier.fillMaxSize().then(
-                // The mouse's back button, as in Explorer; a browser keeps it for its own Back.
-                if (isDesktop()) {
-                    Modifier.pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                // Before the rows, which would take the press as a click.
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                if (event.type == PointerEventType.Press && event.buttons.isBackPressed) {
-                                    event.changes.forEach { it.consume() }
-                                    goUp()
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Modifier
-                },
-            ),
-        ) {
+        Column(modifier = Modifier.fillMaxSize().onMouseBack { goUp() }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 UpButton(crumbs, onUp = goUp)
                 Breadcrumbs(crumbs, onCrumb = onCrumb, heading = true)
@@ -411,7 +387,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                         if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                         val one = uiState.selectedOne
                         when {
-                            event.key == Key.DirectionUp && (event.isAltPressed || event.isMetaPressed) -> actions.onAction(FilesyncUiAction.NavigateUp)
+                            event.key == Key.DirectionUp && (event.isAltPressed || event.isMetaPressed) -> goUp()
                             event.key == Key.DirectionDown || event.key == Key.DirectionUp -> {
                                 actions.onAction(FilesyncUiAction.MoveSelection(if (event.key == Key.DirectionDown) 1 else -1, extend = event.isShiftPressed))
                                 keyMoves++
@@ -419,7 +395,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                             event.key == Key.A && (event.isCtrlPressed || event.isMetaPressed) -> actions.onAction(FilesyncUiAction.SelectAll)
                             // Without a single selection Enter belongs to whichever button has focus.
                             (event.key == Key.Enter || event.key == Key.NumPadEnter) && one != null -> actions.click(one)
-                            event.key == Key.Backspace -> actions.onAction(FilesyncUiAction.NavigateUp)
+                            event.key == Key.Backspace -> goUp()
                             event.key == Key.Delete && FilesyncBulkAction.Delete in uiState.bulkActions -> actions.onAction(FilesyncUiAction.Bulk(FilesyncBulkAction.Delete))
                             event.key == Key.Escape && uiState.selecting -> actions.onAction(FilesyncUiAction.ClearSelection)
                             event.key == Key.F5 -> actions.onAction(FilesyncUiAction.Refresh)
@@ -545,28 +521,41 @@ internal fun TableHeader(sort: FilesyncSort, selectedCount: Int, visibleCount: I
     HorizontalDivider()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UpButton(crumbs: List<FilesyncCrumb>, onUp: () -> Unit) {
-    val names = crumbNames(crumbs)
-    val label = if (crumbs.size > 1) stringResource(MR.string.filesync_up_to, names[crumbs.size - 2]) else stringResource(MR.string.filesync_up)
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
-        tooltip = { PlainTooltip { Text(label) } },
-        state = rememberTooltipState(),
-    ) {
-        IconButton(onClick = onUp, enabled = crumbs.size > 1) {
+    val parent = crumbNames(crumbs).getOrNull(crumbs.size - 2)
+    val label = if (parent != null) stringResource(MR.string.filesync_up_to, parent) else stringResource(MR.string.filesync_up)
+    WithTooltip(label, below = true) {
+        IconButton(onClick = onUp, enabled = parent != null) {
             Icon(Icons.Default.ArrowUpward, contentDescription = label)
         }
     }
 }
 
-/** A desktop-sized checkbox: Material's is sized for touch, too big beside a 40dp tile in a table row. */
+// The mouse's back button, as in Explorer; a browser keeps it for its own Back.
+private fun Modifier.onMouseBack(action: () -> Unit): Modifier =
+    if (!isDesktop()) {
+        this
+    } else {
+        pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    // Before the rows, which would take the press as a click.
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (event.type == PointerEventType.Press && event.buttons.isBackPressed) {
+                        event.changes.forEach { it.consume() }
+                        action()
+                    }
+                }
+            }
+        }
+    }
+
+/** A desktop-sized checkbox: Material's draws 18dp with a 40dp hover circle, too big for a table row. */
 @Composable
 private fun TableSelectBox(state: ToggleableState, description: String, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val on = state != ToggleableState.Off
-    val shape = RoundedCornerShape(4.dp)
     Box(
         modifier = Modifier
             .size(SelectWidth)
@@ -578,7 +567,8 @@ private fun TableSelectBox(state: ToggleableState, description: String, onClick:
         Box(
             modifier = Modifier
                 .size(16.dp)
-                .then(if (on) Modifier.background(colors.primary, shape) else Modifier.border(1.5.dp, colors.onSurfaceVariant, shape)),
+                .background(if (on) colors.primary else Color.Transparent, SelectShape)
+                .border(1.5.dp, if (on) colors.primary else colors.onSurfaceVariant, SelectShape),
             contentAlignment = Alignment.Center,
         ) {
             if (on) {
@@ -701,7 +691,7 @@ internal fun TableRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val deleted = node.removedMs != null
-            // In its own column before the icon, as in Explorer and Dropbox: on hover, and on every row once anything is selected.
+            // Beside the icon, not in its place, as in Explorer and Dropbox.
             Box(modifier = Modifier.width(SelectWidth), contentAlignment = Alignment.Center) {
                 if (hovered || selecting) {
                     TableSelectBox(
