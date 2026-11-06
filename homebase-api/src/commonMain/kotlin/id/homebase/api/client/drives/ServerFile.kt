@@ -61,7 +61,8 @@ data class ServerFile(
                 throw FileDecryptionException.KeyHeaderDecryptionFailed(e)
             }
 
-            if (sharedSecretEncryptedKeyHeader.type == EncryptionType.Sealed) {
+            // The transform request names no file system, so the server looks among standard files.
+            if (sharedSecretEncryptedKeyHeader.type == EncryptionType.Sealed && fileSystemType == FileSystemType.Standard) {
                 SealedKeyHeaders.opened(driveId, fileId, fileMetadata.versionTag, sharedSecretEncryptedKeyHeader, resolvedKeyHeader)
             }
 

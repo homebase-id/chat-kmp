@@ -541,9 +541,10 @@ class DriveOutboxUploader(
     }
 }
 
-// An answer refusing the whole request is final; no answer at all (offline) waits like any outbox item.
-internal fun keyHeaderTransformFailure(e: Exception): Exception = when (e) {
-    is ClientException, is ForbiddenException, is ServerException -> KeyHeaderTransformRefused(e)
+// The server refusing the whole request is final; no answer (offline, a gateway's 502-504, 408, 429) waits like any outbox item.
+internal fun keyHeaderTransformFailure(e: Exception): Exception = when {
+    e is ClientException || e is ForbiddenException -> KeyHeaderTransformRefused(e)
+    e is ServerException && e.status in 500..599 && e.status !in 502..504 -> KeyHeaderTransformRefused(e)
     else -> e
 }
 

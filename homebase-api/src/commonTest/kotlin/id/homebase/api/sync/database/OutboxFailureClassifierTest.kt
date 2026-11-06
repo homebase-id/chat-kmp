@@ -219,9 +219,11 @@ class OutboxFailureClassifierTest {
         val answers = listOf(clientException(message = "zkDriveKeyHeaderNeedsZeroKnowledgeDrive"), ForbiddenException(), ServerException(500, null, null))
         answers.forEach { assertNotNull(classifyPermanentFailure(keyHeaderTransformFailure(it)), "$it") }
 
-        val offline = NetworkException(IllegalStateException("no route"))
-        assertSame(offline, keyHeaderTransformFailure(offline))
-        assertNull(classifyPermanentFailure(keyHeaderTransformFailure(offline)))
+        val noAnswer = listOf(NetworkException(IllegalStateException("no route")), ServerException(502, null, null), ServerException(429, null, null))
+        noAnswer.forEach {
+            assertSame(it, keyHeaderTransformFailure(it))
+            assertNull(classifyPermanentFailure(keyHeaderTransformFailure(it)), "$it")
+        }
     }
 
     @Test

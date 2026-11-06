@@ -7,6 +7,8 @@ import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.TransformKeyHeadersOutboxRequest
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.crypto.EncryptionType
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OutboxSerializer
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -20,7 +22,7 @@ import kotlin.uuid.Uuid
 class KeyHeaderTransformQueueTest {
 
     private fun run(body: suspend TestScope.(DatabaseManager, KeyHeaderTransformQueue) -> Unit) =
-        runOutboxSyncTest { db, sync -> body(db, KeyHeaderTransformQueue(sync, db, backgroundScope)) }
+        runOutboxSyncTest { db, sync -> body(db, KeyHeaderTransformQueue(sync, db, events, backgroundScope)) }
 
     @AfterTest
     fun noSink() {
@@ -28,6 +30,7 @@ class KeyHeaderTransformQueueTest {
     }
 
     private val drive = Uuid.random()
+    private val events = EventBus()
 
     private fun transform(fileId: Uuid = Uuid.random(), versionTag: Uuid = Uuid.random()) =
         KeyHeaderTransform(fileId, versionTag, EncryptedKeyHeader(type = EncryptionType.ZkDrive, iv = ByteArray(16), encryptedAesKey = ByteArray(48)))
@@ -50,6 +53,32 @@ class KeyHeaderTransformQueueTest {
         assertEquals(listOf(setOf(a.fileId, b.fileId)), db.waiting().map { r -> r.files.map { it.fileId }.toSet() })
         val row = db.outbox.selectUntriedByDriveAndType(drive, DriveOutboxUploader.TransformKeyHeaders).single()
         assertEquals(KeyHeaderTransformQueue.PRIORITY, row.priority)
+    }
+
+    @Test
+    fun afterLogoutTheSameFilesAreQueuedAgain() = run { db, _ ->
+        val a = transform()
+        val sink = assertNotNull(SealedKeyHeaders.sink)
+        sink(SealedKeyHeader(drive, a))
+        advanceTimeBy(5.seconds)
+        db.outbox.deleteAll()
+        events.emit(BackendEvent.SessionEnded)
+        advanceTimeBy(1.seconds)
+        sink(SealedKeyHeader(drive, a))
+        advanceTimeBy(5.seconds)
+
+        assertEquals(listOf(listOf(a.fileId)), db.waiting().map { r -> r.files.map { it.fileId } })
+    }
+
+    @Test
+    fun aRowRetriedWhileOfflineKeepsItsBackoffToo() = run { db, queue ->
+        queue.enqueue(drive, listOf(transform()), sendNow = false)
+        val row = assertNotNull(db.outbox.checkout())
+        db.outbox.checkInUncharged(row.checkOutStamp!!, nextRunTime = Long.MAX_VALUE)
+        queue.enqueue(drive, listOf(transform()), sendNow = false)
+
+        assertEquals(Long.MAX_VALUE, assertNotNull(db.outbox.selectByDriveAndUnique(drive, row.uniqueId)).nextRunTime)
+        assertEquals(2L, db.outbox.count())
     }
 
     @Test

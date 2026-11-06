@@ -3,6 +3,8 @@ package id.homebase.api.client.drives
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.crypto.EncryptedKeyHeader
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.getAndUpdate
 import kotlinx.serialization.Serializable
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.cancellation.CancellationException
@@ -34,9 +36,12 @@ object SealedKeyHeaders {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(e, TAG) { "no drive-key header for $fileId on $driveId" }
+            // Every read of the file would fail the same way.
+            if (fileId !in unconverted.getAndUpdate { it + fileId }) Logger.w(TAG) { "no drive-key header for $fileId on $driveId: ${e.message}" }
         }
     }
+
+    private val unconverted = atomic(emptySet<Uuid>())
 
     private const val TAG = "SealedKeyHeaders"
 }

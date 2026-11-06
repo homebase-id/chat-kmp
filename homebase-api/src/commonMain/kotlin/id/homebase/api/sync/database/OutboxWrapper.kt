@@ -51,7 +51,7 @@ class OutboxWrapper(
             delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
         }
 
-    /** Rows of [uploadType] for [driveId] that no worker holds and none has tried yet. */
+    /** Rows of [uploadType] for [driveId] that no worker holds and none has tried yet (an offline retry counts no attempt but moves nextRunTime). */
     suspend fun selectUntriedByDriveAndType(driveId: Uuid, uploadType: Long): List<Outbox> =
         databaseManager.readValue("outbox.selectUntriedByDriveAndType") {
             delegate.selectUntriedByDriveAndType(driveId, uploadType).executeAsList()

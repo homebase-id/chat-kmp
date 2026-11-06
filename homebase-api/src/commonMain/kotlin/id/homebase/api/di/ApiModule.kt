@@ -118,7 +118,7 @@ val apiModule = module {
             storageQuota = get(),
         )
     }
-    single(createdAtStart = true) { KeyHeaderTransformQueue(get(), get(), get<CoroutineScope>()) }
+    single { KeyHeaderTransformQueue(get(), get(), get(), get<CoroutineScope>()) }
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
     // singletons (ImageLoader, FileOperationsProvider) needed by its
