@@ -50,7 +50,7 @@ class DriveFcmService : FirebaseMessagingService() {
 
         // Shows nothing, and holding DriveSyncWorker's KEEP slot could cost a chat push its notification.
         if (isSilentPush(message.data)) {
-            runBlocking { photoBackupTrigger.onWake(PUSH_WAKE_BUDGET) }
+            runBlocking { photoBackupTrigger.onWake(PUSH_WAKE_BUDGET, isBackupPush = true) }
             return
         }
 

@@ -196,9 +196,9 @@ class OutboxBackupUploaderTest {
         val (row, uniqueId) = rowFor("a", BackupMediaType.Image, bytes)
         val uploader = backgroundScope.uploader(listOf(ExportedPart(ExportedPartRole.Primary, file("p", bytes), "image/jpeg", false)))
 
-        assertFalse(uploader.isStillSending(row, uniqueId))
+        assertFalse(uniqueId in uploader.stillSending(mapOf(row to uniqueId)))
         uploader.handOff(row, uniqueId)
-        assertTrue(uploader.isStillSending(row, uniqueId))
+        assertTrue(uniqueId in uploader.stillSending(mapOf(row to uniqueId)))
     }
 }
 

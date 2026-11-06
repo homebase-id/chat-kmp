@@ -19,9 +19,9 @@ class PhotoBackupEntry(private val enabled: () -> Boolean, controller: () -> Pho
 
     fun onPostAuthenticated() = guarded { it.onPostAuthenticated() }
 
-    suspend fun onBeforeLogout() = guarded { it.onBeforeLogout() }
+    suspend fun onBeforeLogout(hasSession: Boolean = true) = guarded { it.onBeforeLogout(hasSession) }
 
-    suspend fun onWake(remaining: Duration) = guarded { it.onWake(remaining) }
+    suspend fun onWake(remaining: Duration, isBackupPush: Boolean = true) = guarded { it.onWake(remaining, isBackupPush) }
 
     private inline fun guarded(call: (PhotoBackupController) -> Unit) {
         try {

@@ -650,7 +650,7 @@ val appModule = module {
             httpClient = get(),
             driveFileProviderCached = get(),
             contactInfo = get(),
-            beforeLogout = { get<PhotoBackupEntry>().onBeforeLogout() },
+            beforeLogout = { hasSession -> get<PhotoBackupEntry>().onBeforeLogout(hasSession) },
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -1079,7 +1079,7 @@ val appModule = module {
     single { FilesyncPreferences(get()) }
     single { photoBackupController() }
     single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
-    single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining -> get<PhotoBackupEntry>().onWake(remaining) } }
+    single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }

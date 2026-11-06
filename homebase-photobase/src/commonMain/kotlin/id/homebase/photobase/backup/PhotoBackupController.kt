@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /** What the app and the settings screen ask of backup. Null [run] where backup doesn't exist: desktop and web. */
@@ -93,9 +94,10 @@ class PhotoBackupController(
     }
 
     /** One call from a push: enqueues on Android, runs in what's left of the wake on iOS. */
-    suspend fun onWake(remaining: Duration) {
+    suspend fun onWake(remaining: Duration, isBackupPush: Boolean = true) {
         val triggers = triggers ?: return
         if (!settingsStore.settings.value.enabled || remaining < MIN_WAKE) return
+        if (!isBackupPush && (!triggers.usesOtherPushes || run?.takeOtherPushWake(OTHER_PUSH_WAKE_GAP) != true)) return
         triggers.onWake(remaining) { request -> runFromBackground(request) }
     }
 
@@ -167,11 +169,12 @@ class PhotoBackupController(
     suspend fun albums(): List<DeviceAlbum> = run?.albums().orEmpty()
 
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
-    suspend fun onBeforeLogout() {
+    suspend fun onBeforeLogout(hasSession: Boolean = true) {
         foregroundJob?.cancel()
         run?.cancelActive()
         triggers?.rearm(BackupSettings(enabled = false))
-        if (settingsStore.settings.value.enabled) pushSchedule.cancelBeforeLogout()
+        // Without a session the schedule can't be cancelled, so it keeps firing until another phone or login replaces it.
+        if (hasSession && settingsStore.settings.value.enabled) pushSchedule.cancelBeforeLogout()
     }
 
     fun onPostAuthenticated() {
@@ -190,6 +193,8 @@ class PhotoBackupController(
     }
 
     private companion object {
+        val OTHER_PUSH_WAKE_GAP = 30.minutes
+
         const val TAG = "PhotoBackupController"
         val MIN_WAKE = 3.seconds
     }

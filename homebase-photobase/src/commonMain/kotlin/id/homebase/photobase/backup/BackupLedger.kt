@@ -108,6 +108,15 @@ class BackupLedger(
 
     suspend fun markRan() = store.saveCheckpoints(mapOf(LAST_RAN_KEY to nowMs().toString()))
 
+    /** True at most once per [gap], across process deaths: iOS often starts a fresh process for each push. */
+    suspend fun takeOtherPushWake(gap: Duration): Boolean {
+        val now = nowMs()
+        val last = store.checkpoints()[LAST_OTHER_PUSH_WAKE_KEY]?.toLongOrNull()
+        if (last != null && now - last < gap.inWholeMilliseconds) return false
+        store.saveCheckpoints(mapOf(LAST_OTHER_PUSH_WAKE_KEY to now.toString()))
+        return true
+    }
+
     /** At most once per [STUCK_AFTER]. The first answer only starts the clock, for a backup that has never run. */
     suspend fun takeStuckAlert(): Boolean {
         val stored = store.checkpoints()
@@ -254,6 +263,7 @@ class BackupLedger(
         private const val SCOPE_KEY = "${OWN_KEY_PREFIX}albumScope"
         private const val LAST_SUCCESS_KEY = "${OWN_KEY_PREFIX}lastSuccessMs"
         private const val LAST_RAN_KEY = "${OWN_KEY_PREFIX}lastRanMs"
+        private const val LAST_OTHER_PUSH_WAKE_KEY = "${OWN_KEY_PREFIX}lastOtherPushWakeMs"
         private const val LAST_STUCK_ALERT_KEY = "${OWN_KEY_PREFIX}lastStuckAlertMs"
         val STUCK_AFTER: Duration = 24.hours
         private val FIRST_RETRY: Duration = 1.minutes

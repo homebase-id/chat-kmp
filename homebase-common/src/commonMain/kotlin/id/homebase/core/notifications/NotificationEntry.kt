@@ -79,7 +79,7 @@ class NotificationEntry(
             }
             // After chat, so a message never waits on a photo; alongside location, which has its own budget.
             launch {
-                runCatching { photoBackupTrigger.onWake(PUSH_WAKE_BUDGET - wake.elapsedNow()) }
+                runCatching { photoBackupTrigger.onWake(PUSH_WAKE_BUDGET - wake.elapsedNow(), isBackupPush = isSilentPush(data)) }
                     .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "backup wake failed" } }
             }
         }

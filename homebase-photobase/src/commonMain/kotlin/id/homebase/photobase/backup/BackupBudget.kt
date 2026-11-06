@@ -32,9 +32,10 @@ data class BackupRunRequest(
     val mayDownloadFromCloud: Boolean
         get() = trigger != BackupTrigger.Push && trigger != BackupTrigger.BackgroundRefresh
 
-    /** Foreground and long runs: list every id, which is what finds deletions. */
+    /** List every id, which is what finds deletions. Not on opening the app: that would walk the whole library on each return. */
     val findDeletions: Boolean
-        get() = trigger != BackupTrigger.Push && trigger != BackupTrigger.MediaChanged && trigger != BackupTrigger.BackgroundRefresh
+        get() = trigger == BackupTrigger.UserRequested || trigger == BackupTrigger.Periodic ||
+            trigger == BackupTrigger.Overnight || trigger == BackupTrigger.BackgroundProcessing
 
     /** The user has the app open. */
     val isInteractive: Boolean

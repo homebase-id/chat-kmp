@@ -85,6 +85,8 @@ class IosBackupTriggers : BackupTriggers {
 
     override val rescansAfterBackgroundWake: Boolean get() = true
 
+    override val usesOtherPushes: Boolean get() = true
+
     override fun rearm(settings: BackupSettings) {
         val scheduler = BGTaskScheduler.sharedScheduler
         if (!settings.enabled) {

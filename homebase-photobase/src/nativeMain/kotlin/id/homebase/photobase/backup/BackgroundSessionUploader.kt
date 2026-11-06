@@ -67,11 +67,17 @@ class BackgroundSessionUploader(
         }
     }
 
-    override suspend fun isStillSending(row: DeviceBackupAsset, uniqueId: Uuid): Boolean {
-        if (row.uploadTaskId == null) return outbox.isStillSending(row, uniqueId)
-        val bridge = BackgroundUploadBridgeHolder.bridge ?: return false
+    override suspend fun stillSending(rows: Map<DeviceBackupAsset, Uuid>): Set<Uuid> {
+        val (inSession, inOutbox) = rows.entries.partition { it.key.uploadTaskId != null }
+        val active = if (inSession.isEmpty()) emptySet() else activeUploadKeys()
+        return outbox.stillSending(inOutbox.associate { it.key to it.value }) +
+            inSession.map { it.value }.filter { it.toString() in active }
+    }
+
+    private suspend fun activeUploadKeys(): Set<String> {
+        val bridge = BackgroundUploadBridgeHolder.bridge ?: return emptySet()
         return suspendCancellableCoroutine { continuation ->
-            bridge.activeUploadKeys { keys -> continuation.resume(uniqueId.toString() in keys) }
+            bridge.activeUploadKeys { keys -> continuation.resume(keys.toSet()) }
         }
     }
 

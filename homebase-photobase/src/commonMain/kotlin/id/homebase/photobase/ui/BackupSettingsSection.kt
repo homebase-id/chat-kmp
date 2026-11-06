@@ -1,21 +1,27 @@
 package id.homebase.photobase.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BatteryChargingFull
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.NewReleases
+import androidx.compose.material.icons.outlined.PhotoAlbum
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,10 +30,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
 import id.homebase.photobase.backup.LibraryAccess
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_backup_albums
@@ -70,73 +79,81 @@ fun BackupSettingsSection(
     val onAction = viewModel::onAction
     var showAlbums by remember { mutableStateOf(false) }
 
-    ToggleRow(
-        title = stringResource(MR.string.photobase_backup_enable),
-        supporting = stringResource(MR.string.photobase_backup_enable_desc),
-        checked = settings.enabled,
-        onChange = { onAction(BackupSettingsUiAction.SetEnabled(it)) },
-    )
+    val rowColor = MaterialTheme.colorScheme.surfaceContainer
     LibraryAccessRow(uiState.status.libraryAccess) { onAction(BackupSettingsUiAction.PermissionChanged) }
-    ListItem(
-        modifier = Modifier.clickable(onClick = onOpenStatus),
-        headlineContent = { Text(stringResource(MR.string.photobase_backup_status)) },
-        supportingContent = { Text(backupStatusSummary(uiState.status)) },
-    )
+    RowGroup {
+        SettingsRow(
+            icon = Icons.Outlined.CloudUpload,
+            title = stringResource(MR.string.photobase_backup_enable),
+            supportingText = stringResource(MR.string.photobase_backup_enable_desc),
+            containerColor = rowColor,
+            action = SettingsRowAction.Toggle(settings.enabled) { onAction(BackupSettingsUiAction.SetEnabled(it)) },
+        )
+        SettingsRow(
+            icon = Icons.Outlined.Info,
+            title = stringResource(MR.string.photobase_backup_status),
+            supportingText = backupStatusSummary(uiState.status),
+            containerColor = rowColor,
+            action = SettingsRowAction.Navigate(onOpenStatus),
+        )
+    }
     if (settings.enabled) {
         OutlinedButton(
             onClick = { onAction(BackupSettingsUiAction.BackUpNow) },
             enabled = !uiState.status.isRunning,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         ) {
             Text(stringResource(MR.string.photobase_backup_now))
         }
         TextButton(
             onClick = onOpenKeepOpen,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp),
         ) {
             Text(stringResource(MR.string.photobase_keep_open))
         }
     }
-    HorizontalDivider()
-    ListItem(
-        modifier = Modifier.clickable {
-            onAction(BackupSettingsUiAction.LoadAlbums)
-            showAlbums = true
-        },
-        headlineContent = { Text(stringResource(MR.string.photobase_backup_albums)) },
-        supportingContent = {
-            Text(
-                if (settings.albumIds.isEmpty()) {
-                    stringResource(MR.string.photobase_backup_albums_default)
-                } else {
-                    pluralStringResource(MR.plurals.photobase_backup_albums_some, settings.albumIds.size, settings.albumIds.size)
-                },
-            )
-        },
-    )
-    ToggleRow(
-        title = stringResource(MR.string.photobase_backup_wifi_only),
-        checked = settings.wifiOnly,
-        onChange = { onAction(BackupSettingsUiAction.SetWifiOnly(it)) },
-    )
-    ToggleRow(
-        title = stringResource(MR.string.photobase_backup_videos_cellular),
-        checked = settings.videosOnCellular,
-        onChange = { onAction(BackupSettingsUiAction.SetVideosOnCellular(it)) },
-    )
-    ToggleRow(
-        title = stringResource(MR.string.photobase_backup_charging_only),
-        checked = settings.chargingOnly,
-        onChange = { onAction(BackupSettingsUiAction.SetChargingOnly(it)) },
-    )
-    ToggleRow(
-        title = stringResource(MR.string.photobase_backup_only_new),
-        supporting = stringResource(MR.string.photobase_backup_only_new_desc),
-        checked = settings.onlyNewFromMs != null,
-        onChange = { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
-    )
+    RowGroup {
+        SettingsRow(
+            icon = Icons.Outlined.PhotoAlbum,
+            title = stringResource(MR.string.photobase_backup_albums),
+            supportingText = if (settings.albumIds.isEmpty()) {
+                stringResource(MR.string.photobase_backup_albums_default)
+            } else {
+                pluralStringResource(MR.plurals.photobase_backup_albums_some, settings.albumIds.size, settings.albumIds.size)
+            },
+            containerColor = rowColor,
+            action = SettingsRowAction.Navigate {
+                onAction(BackupSettingsUiAction.LoadAlbums)
+                showAlbums = true
+            },
+        )
+        SettingsRow(
+            icon = Icons.Outlined.Wifi,
+            title = stringResource(MR.string.photobase_backup_wifi_only),
+            containerColor = rowColor,
+            action = SettingsRowAction.Toggle(settings.wifiOnly) { onAction(BackupSettingsUiAction.SetWifiOnly(it)) },
+        )
+        SettingsRow(
+            icon = Icons.Outlined.Videocam,
+            title = stringResource(MR.string.photobase_backup_videos_cellular),
+            containerColor = rowColor,
+            action = SettingsRowAction.Toggle(settings.videosOnCellular) { onAction(BackupSettingsUiAction.SetVideosOnCellular(it)) },
+        )
+        SettingsRow(
+            icon = Icons.Outlined.BatteryChargingFull,
+            title = stringResource(MR.string.photobase_backup_charging_only),
+            containerColor = rowColor,
+            action = SettingsRowAction.Toggle(settings.chargingOnly) { onAction(BackupSettingsUiAction.SetChargingOnly(it)) },
+        )
+        SettingsRow(
+            icon = Icons.Outlined.NewReleases,
+            title = stringResource(MR.string.photobase_backup_only_new),
+            supportingText = stringResource(MR.string.photobase_backup_only_new_desc),
+            containerColor = rowColor,
+            action = SettingsRowAction.Toggle(settings.onlyNewFromMs != null) { onAction(BackupSettingsUiAction.SetOnlyNewFromNow(it)) },
+        )
+    }
     uiState.batteryGuidance?.let { guidance ->
-        HorizontalDivider()
         ListItem(
             headlineContent = { Text(stringResource(MR.string.photobase_battery_title)) },
             supportingContent = {
@@ -153,7 +170,6 @@ fun BackupSettingsSection(
             },
         )
     }
-    HorizontalDivider()
     Text(
         text = stringResource(MR.string.photobase_backup_guidance),
         style = MaterialTheme.typography.bodyMedium,
@@ -192,12 +208,14 @@ private fun LibraryAccessRow(access: LibraryAccess, onChanged: () -> Unit) {
 }
 
 @Composable
-private fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, supporting: String? = null) {
-    ListItem(
-        modifier = Modifier.toggleable(value = checked, onValueChange = onChange, role = Role.Switch),
-        headlineContent = { Text(title) },
-        supportingContent = supporting?.let { { Text(it) } },
-        trailingContent = { Switch(checked = checked, onCheckedChange = null) },
+private fun RowGroup(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .clip(MaterialTheme.shapes.large),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        content = content,
     )
 }
 

@@ -30,7 +30,7 @@ interface BackupUploader {
     suspend fun handOff(row: DeviceBackupAsset, uniqueId: Uuid): HandOffResult
 
     /** Whether something is still going to send this row. False sends the row back through dedupe. */
-    suspend fun isStillSending(row: DeviceBackupAsset, uniqueId: Uuid): Boolean
+    suspend fun stillSending(rows: Map<DeviceBackupAsset, Uuid>): Set<Uuid>
 
     /** Start whatever handed-off work isn't moving yet. */
     suspend fun kick()

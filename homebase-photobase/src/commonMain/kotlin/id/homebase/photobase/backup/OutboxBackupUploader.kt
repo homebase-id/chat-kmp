@@ -48,8 +48,8 @@ class OutboxBackupUploader(
         }
     }
 
-    override suspend fun isStillSending(row: DeviceBackupAsset, uniqueId: Uuid): Boolean =
-        outboxSync.pendingUploadType(photosDriveId, uniqueId) != null
+    override suspend fun stillSending(rows: Map<DeviceBackupAsset, Uuid>): Set<Uuid> =
+        rows.values.filterTo(mutableSetOf()) { outboxSync.pendingUploadType(photosDriveId, it) != null }
 
     // A plain send() is skipped in a background wake, where the WebSocket never comes up. Two
     // workers, because a forced drain's own re-entry is a plain send() too.

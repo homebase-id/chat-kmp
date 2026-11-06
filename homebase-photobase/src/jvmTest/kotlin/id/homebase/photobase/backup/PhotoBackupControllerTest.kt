@@ -1,6 +1,9 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.ScheduledPushNotificationProvider
@@ -14,6 +17,8 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -43,6 +48,9 @@ class PhotoBackupControllerTest {
     fun close() = db.close()
 
     private class RecordingTriggers : BackupTriggers {
+        var otherPushes = false
+        override val usesOtherPushes: Boolean get() = otherPushes
+
         val armed = mutableListOf<BackupSettings>()
         val wakes = mutableListOf<Duration>()
         var takesUserRuns = true
@@ -74,6 +82,8 @@ class PhotoBackupControllerTest {
     private val configUploads = mutableListOf<UploadFileRequest>()
     private var configSaveFailure: Exception? = null
     private var configReads = 0
+    private var scheduleLists = 0
+    private val credentials = CredentialsManager()
     private lateinit var settingsStore: BackupSettingsStore
 
     private fun TestScope.controller(scope: CoroutineScope = backgroundScope): PhotoBackupController {
@@ -96,7 +106,13 @@ class PhotoBackupControllerTest {
             isStorageFull = { false },
         )
         val push = BackupPushSchedule(
-            ScheduledPushNotificationProvider(HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }), CredentialsManager()),
+            ScheduledPushNotificationProvider(
+                HttpClient(MockEngine {
+                    scheduleLists++
+                    respondError(HttpStatusCode.InternalServerError)
+                }),
+                credentials,
+            ),
             OutboxSync(db, Offline, eventBus, backgroundScope).also { it.setOnline(false) },
         ) { 1_000 }
         val configFile = PhotobaseConfigFile(
@@ -113,6 +129,8 @@ class PhotoBackupControllerTest {
         settingsStore = store
         return PhotoBackupController(run, store, push, configFile, results, triggers, scope)
     }
+
+    private fun testCredentials() = ApiCredentials.create(OdinId("frodo.test"), "token", SecureByteArray(ByteArray(16) { 1 }))
 
     private suspend fun pushRow() = db.outbox.selectByUniqueId(PhotobaseProtocol.BackupPushTagId)
 
@@ -180,6 +198,64 @@ class PhotoBackupControllerTest {
         val controller = controller()
 
         assertEquals(0, scheduleChecksDuring(controller, BackupTrigger.Periodic))
+    }
+
+    @Test
+    fun aChatPushIsIgnoredOnAPlatformWithOtherWakeUps() = runTest {
+        val controller = controller()
+        enable(controller)
+
+        controller.onWake(20.seconds, isBackupPush = false)
+
+        assertTrue(triggers.wakes.isEmpty())
+    }
+
+    @Test
+    fun aChatPushWakesBackupAtMostOnceWithinTheGap() = runTest {
+        triggers.otherPushes = true
+        val controller = controller()
+        enable(controller)
+
+        controller.onWake(20.seconds, isBackupPush = false)
+        controller.onWake(20.seconds, isBackupPush = false)
+        assertEquals(1, triggers.wakes.size)
+
+        controller.onWake(20.seconds, isBackupPush = true)
+        assertEquals(2, triggers.wakes.size, "a backup push always counts")
+    }
+
+    @Test
+    fun aForcedLogoutStillStopsLocalWorkAndLeavesTheServerAlone() = runTest {
+        val controller = controller()
+        enable(controller)
+        credentials.setActiveCredentials(testCredentials())
+        val listedBefore = scheduleLists
+
+        // Real time: the request runs off the test clock, which would run out the cancel's timeout first.
+        withContext(Dispatchers.Default) { controller.onBeforeLogout(hasSession = false) }
+
+        assertFalse(triggers.armed.last().enabled)
+        assertEquals(listedBefore, scheduleLists)
+    }
+
+    @Test
+    fun aNormalLogoutAlsoAsksTheServerToCancel() = runTest {
+        val controller = controller()
+        enable(controller)
+        credentials.setActiveCredentials(testCredentials())
+        val listedBefore = scheduleLists
+
+        // Real time: the request runs off the test clock, which would run out the cancel's timeout first.
+        withContext(Dispatchers.Default) { controller.onBeforeLogout(hasSession = true) }
+
+        assertEquals(listedBefore + 1, scheduleLists)
+    }
+
+    @Test
+    fun openingTheAppDoesNotListTheWholeLibrary() {
+        assertFalse(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null)).findDeletions)
+        assertTrue(BackupRunRequest(BackupTrigger.Periodic, BackupBudget(null)).findDeletions)
+        assertTrue(BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null)).findDeletions)
     }
 
     @Test

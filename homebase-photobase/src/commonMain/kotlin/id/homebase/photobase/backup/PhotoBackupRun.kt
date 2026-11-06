@@ -72,6 +72,8 @@ class PhotoBackupRun(
 
     suspend fun albums(): List<DeviceAlbum> = source.albums()
 
+    suspend fun takeOtherPushWake(gap: Duration): Boolean = ledger.takeOtherPushWake(gap)
+
     suspend fun refreshStatus() {
         val counts = ledger.counts()
         val failures = ledger.failures(MAX_FAILURES_SHOWN)
@@ -263,10 +265,9 @@ class PhotoBackupRun(
 
     /** After a kill the ledger can say QUEUED for a row whose send already finished. Dedupe settles those. */
     private suspend fun reconcileHandedOff() {
-        for (row in ledger.rowsInOutbox()) {
-            val uniqueId = row.uniqueId?.let(Uuid::parse) ?: continue
-            if (!uploader.isStillSending(row, uniqueId)) ledger.onOutboxDropped(uniqueId, "no send under way")
-        }
+        val handedOff = ledger.rowsInOutbox().mapNotNull { row -> row.uniqueId?.let { row to Uuid.parse(it) } }.toMap()
+        val sending = uploader.stillSending(handedOff)
+        for (uniqueId in handedOff.values - sending) ledger.onOutboxDropped(uniqueId, "no send under way")
     }
 
     private suspend fun pipeline(

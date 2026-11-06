@@ -20,6 +20,9 @@ interface BackupTriggers : BackupScheduler {
     /** The change history can miss photos added during a background launch, so the next foreground run lists everything. */
     val rescansAfterBackgroundWake: Boolean get() = false
 
+    /** A chat push is also a chance to check for photos, for a platform short of other wake-ups. */
+    val usesOtherPushes: Boolean get() = false
+
     suspend fun onWake(remaining: Duration, run: suspend (BackupRunRequest) -> Unit)
 
     fun startUserRequestedRun(settings: BackupSettings, progress: Flow<Float>, runInApp: suspend () -> Unit): Boolean

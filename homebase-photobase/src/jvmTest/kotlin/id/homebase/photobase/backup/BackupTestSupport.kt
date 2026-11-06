@@ -87,7 +87,7 @@ internal class FakeUploader(
         return outcome
     }
 
-    override suspend fun isStillSending(row: DeviceBackupAsset, uniqueId: Uuid) = stillSending
+    override suspend fun stillSending(rows: Map<DeviceBackupAsset, Uuid>): Set<Uuid> = if (stillSending) rows.values.toSet() else emptySet()
 
     override suspend fun kick() {
         kicks++
