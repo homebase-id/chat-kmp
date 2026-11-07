@@ -24,6 +24,10 @@ enum class TransferStatus(val value: String) {
     RecipientIdentityOutOfStorage("recipientidentityoutofstorage"),
     @SerialName("recipientidentityreturnedbadrequest")
     RecipientIdentityReturnedBadRequest("recipientidentityreturnedbadrequest"),
+    @SerialName("recipientidentityreturnedversiontagmismatch")
+    RecipientIdentityReturnedVersionTagMismatch("recipientidentityreturnedversiontagmismatch"),
+    @SerialName("recipientidentityreturnedinvalidkeyheader")
+    RecipientIdentityReturnedInvalidKeyHeader("recipientidentityreturnedinvalidkeyheader"),
     @SerialName("unknownservererror") UnknownServerError("unknownservererror"),
     @SerialName("sendingservertoomanyattempts")
     SendingServerTooManyAttempts("sendingservertoomanyattempts");
@@ -41,6 +45,8 @@ enum class TransferStatus(val value: String) {
                         RecipientServerNotResponding,
                         RecipientIdentityReturnedServerError,
                         RecipientIdentityReturnedBadRequest,
+                        RecipientIdentityReturnedVersionTagMismatch,
+                        RecipientIdentityReturnedInvalidKeyHeader,
                         UnknownServerError,
                         SendingServerTooManyAttempts
                 )

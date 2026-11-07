@@ -38,6 +38,12 @@ class RecipientFileStatusTest {
         assertEquals(TransferStatus.RecipientIdentityReturnedAccessDenied, status.rawStatus)
     }
 
+    @Test
+    fun aVersionConflictOutOfTheOutbox_isProblem() {
+        val status = entry(TransferStatus.RecipientIdentityReturnedVersionTagMismatch, isInOutbox = false).toRecipientFileStatus()
+        assertIs<RecipientFileStatus.Problem>(status)
+    }
+
     private fun entry(status: TransferStatus, isInOutbox: Boolean) = RecipientTransferHistoryEntry(
         recipient = "frodo.dotyou.cloud",
         lastUpdated = 0,

@@ -1154,8 +1154,8 @@ class GroupSettingsViewModel(
      *
      * We do NOT try to map specific failure codes to UI text — the user just
      * needs to know "got through" vs "didn't" per peer. A peer rejecting on
-     * vt mismatch surfaces here as RecipientIdentityReturnedBadRequest, same
-     * bucket as any other 400-class peer-side rejection.
+     * vt mismatch (RecipientIdentityReturnedVersionTagMismatch, or BadRequest
+     * from an older server) is the same bucket as any other peer-side rejection.
      */
     private suspend fun pollOneFileDelivery(
         fileId: Uuid,

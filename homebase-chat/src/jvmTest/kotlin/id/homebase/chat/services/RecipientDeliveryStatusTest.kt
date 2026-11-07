@@ -36,12 +36,23 @@ class RecipientDeliveryStatusTest {
     }
 
     @Test
+    fun aRecipientRefusingTheVersionOrKeyHeader_isFailed() {
+        for (status in listOf(TransferStatus.RecipientIdentityReturnedVersionTagMismatch, TransferStatus.RecipientIdentityReturnedInvalidKeyHeader)) {
+            val entry = entry(status, isInOutbox = false)
+            assertEquals(ChatDeliveryStatus.Failed, entry.toChatDeliveryStatus(), "$status")
+            assertEquals(MR.string.error_delivery_failed, entry.latestTransferStatus.toErrorDetailRes(), "$status")
+        }
+    }
+
+    @Test
     fun serverStatusesDecode_andAnUnknownOneIsNone() {
         fun decode(status: String) = OdinSystemSerializer.json.decodeFromString<RecipientTransferHistoryEntry>(
             """{"recipient":"frodo.dotyou.cloud","lastUpdated":0,"latestTransferStatus":"$status","isInOutbox":true}"""
         ).latestTransferStatus
 
         assertEquals(TransferStatus.RecipientIdentityOutOfStorage, decode("recipientIdentityOutOfStorage"))
+        assertEquals(TransferStatus.RecipientIdentityReturnedVersionTagMismatch, decode("recipientIdentityReturnedVersionTagMismatch"))
+        assertEquals(TransferStatus.RecipientIdentityReturnedInvalidKeyHeader, decode("recipientIdentityReturnedInvalidKeyHeader"))
         assertEquals(TransferStatus.None, decode("someStatusFromALaterServer"))
     }
 

@@ -318,9 +318,8 @@ enum class HealProgressState {
     Done,
     /** Either the enqueue threw, or transfer-history reports a failed
      *  TransferStatus value with the recipient no longer in our outbox.
-     *  We can't always distinguish *why* a peer rejected (e.g. vt mismatch
-     *  surfaces as `RecipientIdentityReturnedBadRequest`), so the row just
-     *  marks "did not get through this round". */
+     *  The row doesn't say *why* a peer rejected; it just marks "did not
+     *  get through this round". */
     Failed,
     /** Plan target where the heal service intentionally did nothing
      *  (caller is not the file author, the per-file target set is empty
