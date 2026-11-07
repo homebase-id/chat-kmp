@@ -11,7 +11,7 @@ import id.homebase.api.common.time.UnixTimeUtcRange
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSync
-import id.homebase.api.sync.DriveSyncPolicy
+import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.sync.database.MainIndexMetaHelpers
@@ -19,6 +19,7 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -64,6 +65,8 @@ class PhotoGalleryStore internal constructor(
     private val backend: PhotoGalleryBackend,
     private val oldestFirstSource: PhotoGalleryPageSource,
 ) : PhotoGalleryPageSource {
+    private val fetching = Mutex()
+
 
     override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage =
         if (newestFirst) withContext(Dispatchers.Default) { newestFirstPage(cursor) } else oldestFirstSource.page(cursor, newestFirst = false)
@@ -87,18 +90,27 @@ class PhotoGalleryStore internal constructor(
         }
     }
 
-    /** Brings the next server page onto the device, and moves the unbroken stretch back to cover it. */
-    private suspend fun fetchOlder(coverage: GalleryCoverage, limit: Int): GalleryCoverage {
+    /**
+     * Brings the next server page onto the device and moves the unbroken stretch back to cover it.
+     * The lock is because the grid and the prefetcher both page: whoever waited re-reads coverage
+     * and uses what the other fetched, rather than fetching it again and saving an older position.
+     */
+    private suspend fun fetchOlder(seen: GalleryCoverage, limit: Int): GalleryCoverage = fetching.withLock {
+        val coverage = backend.coverage()
+        if (coverage != seen) return@withLock coverage
         val page = backend.serverPage(coverage.serverCursor, limit)
         backend.save(page.files)
+        // The floor stops just above the oldest date on the page: the next page can hold more photos
+        // from that same moment, and a local cursor that had passed them would never see them.
         val oldest = page.files.minOfOrNull { it.sqlUserDateMs() }
         val updated = GalleryCoverage(
-            floorMs = listOfNotNull(coverage.floorMs, oldest).minOrNull(),
+            floorMs = listOfNotNull(coverage.floorMs, oldest?.plus(1)).minOrNull(),
             serverCursor = page.cursor ?: coverage.serverCursor,
-            reachedTheEnd = !page.hasMore,
+            // A cursor that doesn't advance would ask for the same page forever.
+            reachedTheEnd = !page.hasMore || page.cursor == null || page.cursor == coverage.serverCursor,
         )
         backend.saveCoverage(updated)
-        return updated
+        updated
     }
 }
 
@@ -180,18 +192,34 @@ class PhotoGallerySync(
     suspend fun syncNow() {
         val job = mutex.withLock {
             running?.takeIf { it.isActive } ?: withContext(Dispatchers.Default) {
+                seedPhotoSyncCursor(db, photosDriveId, UnixTimeUtc.now())
                 DriveSync(
                     identityId = credentials.requireActiveCredentials().getIdentityId(),
                     driveId = photosDriveId,
                     driveQueryProvider = queryProvider,
                     databaseManager = db,
                     eventBus = eventBus,
-                    // Only changes from now on: older photos arrive by fetching pages. A day's overlap
-                    // covers a device clock running ahead of the server's.
-                    policy = DriveSyncPolicy(fullSyncWindow = 1.days),
                 ).sync()
             }.also { running = it }
         }
         job?.join()
+    }
+
+    /** Before the local database is wiped: a round still running would write into the next account's. */
+    suspend fun stop() = mutex.withLock {
+        running?.cancelAndJoin()
+        running = null
+    }
+}
+
+/**
+ * Only changes from now on: older photos arrive by fetching pages. Saved here because DriveSync only
+ * saves a cursor with a batch of rows, so after a quiet first round the next would re-seed later and
+ * skip whatever changed in between. A day's overlap covers a device clock running ahead of the server's.
+ */
+internal suspend fun seedPhotoSyncCursor(db: DatabaseManager, driveId: Uuid, now: UnixTimeUtc) {
+    val storage = CursorStorage(db, driveId)
+    if (storage.loadCursor() == null) {
+        storage.saveCursor(QueryBatchCursor.fromStartPoint(now.addMilliseconds(-1.days.inWholeMilliseconds)))
     }
 }

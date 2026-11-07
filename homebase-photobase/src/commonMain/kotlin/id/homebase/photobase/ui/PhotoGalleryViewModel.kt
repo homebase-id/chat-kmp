@@ -107,9 +107,12 @@ class PhotoGalleryViewModel(
         try {
             catchUp()
             // Past the first page, or oldest first, a reload would change what's on screen for nothing.
+            // It goes in loadJob so a sort toggle can cancel it, and a load-more can't run alongside it.
+            loadJob?.join()
             if (!pagedPastFirst && _uiState.value.newestFirst) {
-                loadJob?.join()
-                load(cursorToLoad = null)
+                val reload = viewModelScope.launch { load(cursorToLoad = null) }
+                loadJob = reload
+                reload.join()
             }
             warm()
         } catch (e: CancellationException) {
@@ -122,6 +125,7 @@ class PhotoGalleryViewModel(
     private fun loadMore() {
         val state = _uiState.value
         if (state.isLoading || state.isLoadingMore || state.endReached || cursor == null) return
+        if (loadJob?.isActive == true) return
         _uiState.update { it.copy(isLoadingMore = true, loadFailed = false) }
         loadJob = viewModelScope.launch { load(cursorToLoad = cursor) }
     }

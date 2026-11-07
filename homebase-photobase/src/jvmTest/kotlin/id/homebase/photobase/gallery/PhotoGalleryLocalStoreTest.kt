@@ -3,8 +3,11 @@ package id.homebase.photobase.gallery
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.photobase.backup.PhotoContent
 import io.ktor.client.HttpClient
@@ -68,5 +71,18 @@ class PhotoGalleryLocalStoreTest {
         val coverage = GalleryCoverage(floorMs = 42, serverCursor = "abc", reachedTheEnd = true)
         backend.saveCoverage(coverage)
         assertEquals(coverage, backend.coverage())
+    }
+
+    @Test
+    fun aQuietFirstSyncStillLeavesACursorSoTheNextDoesntSkipAhead() = runTest {
+        val drive = Uuid.random()
+        val monday = UnixTimeUtc(1_000_000_000_000)
+
+        seedPhotoSyncCursor(db, drive, monday)
+        val seeded = CursorStorage(db, drive).loadCursor()
+
+        seedPhotoSyncCursor(db, drive, UnixTimeUtc(2_000_000_000_000))
+        assertEquals(seeded?.toJson(), CursorStorage(db, drive).loadCursor()?.toJson(), "Friday mustn't move Monday's position")
+        assertEquals(QueryBatchCursor.fromStartPoint(UnixTimeUtc(monday.milliseconds - 86_400_000)).toJson(), seeded?.toJson())
     }
 }

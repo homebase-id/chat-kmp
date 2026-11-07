@@ -9,6 +9,8 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.photobase.PhotobaseProtocol
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,7 +51,7 @@ class PhotoGalleryStoreTest {
         }
 
         override suspend fun save(files: List<HomebaseFile>) {
-            local = local + files
+            local = (local + files).distinctBy { it.fileId }
         }
     }
 
@@ -65,9 +67,59 @@ class PhotoGalleryStoreTest {
 
         val page = store(backend).page(null, newestFirst = true)
 
-        assertEquals(listOf(300L, 200L), page.items.dates())
+        assertEquals(listOf(300L), page.items.dates(), "The oldest moment waits for the page that might finish it")
         assertEquals(2, backend.local.size)
-        assertEquals(GalleryCoverage(floorMs = 200, serverCursor = "c1"), backend.coverage)
+        assertEquals(GalleryCoverage(floorMs = 201, serverCursor = "c1"), backend.coverage)
+    }
+
+    /** A burst split across two server pages, with a local cursor that must not pass any of it. */
+    @Test
+    fun photosFromTheSameMomentAcrossTwoPagesAllAppear() = runTest {
+        val backend = Backend(
+            server = mapOf(
+                null to ServerPhotoPage(listOf(photo(300), photo(100), photo(100)), hasMore = true, cursor = "c1"),
+                "c1" to ServerPhotoPage(listOf(photo(100), photo(100), photo(50)), hasMore = false, cursor = "c2"),
+            ),
+        )
+        val store = store(backend)
+
+        val first = store.page(null, newestFirst = true)
+        val second = store.page(first.nextCursor, newestFirst = true)
+
+        assertEquals(listOf(300L), first.items.dates())
+        assertEquals(listOf(100L, 100L, 100L, 100L, 50L), second.items.dates())
+    }
+
+    @Test
+    fun aCursorThatDoesntAdvanceEndsTheLibraryInsteadOfLooping() = runTest {
+        val backend = Backend(
+            coverage = GalleryCoverage(floorMs = 300, serverCursor = "c1"),
+            server = mapOf("c1" to ServerPhotoPage(emptyList(), hasMore = true, cursor = "c1")),
+        )
+
+        val page = store(backend).page("100", newestFirst = true)
+
+        assertTrue(page.items.isEmpty())
+        assertNull(page.nextCursor)
+        assertEquals(1, backend.askedServer.size)
+    }
+
+    @Test
+    fun whoeverWaitedUsesWhatTheOtherFetched() = runTest {
+        val backend = Backend(
+            coverage = GalleryCoverage(floorMs = 300, serverCursor = "c1"),
+            server = mapOf(
+                "c1" to ServerPhotoPage(listOf(photo(200), photo(150)), hasMore = true, cursor = "c2"),
+                "c2" to ServerPhotoPage(listOf(photo(100)), hasMore = false, cursor = "c3"),
+            ),
+        )
+        val store = store(backend)
+
+        val pages = listOf(async { store.page("301", newestFirst = true) }, async { store.page("301", newestFirst = true) }).awaitAll()
+
+        assertEquals(listOf<String?>("c1"), backend.askedServer)
+        assertEquals("c2", backend.coverage.serverCursor)
+        pages.forEach { assertEquals(listOf(200L), it.items.dates()) }
     }
 
     @Test
@@ -93,18 +145,19 @@ class PhotoGalleryStoreTest {
         val second = store.page(first.nextCursor, newestFirst = true)
 
         assertEquals(listOf<String?>("c1"), backend.askedServer)
-        assertEquals(listOf(200L, 100L), second.items.dates())
-        assertEquals(100L, backend.coverage.floorMs)
+        assertEquals(listOf(200L), second.items.dates())
+        assertEquals(101L, backend.coverage.floorMs)
         assertEquals("c2", backend.coverage.serverCursor)
     }
 
     /** The reason for coverage: a just-backed-up 2015 photo is local, and the years between aren't. */
     @Test
     fun anOldPhotoThatSyncedDownWaitsItsTurnInsteadOfSkippingTheYearsBetween() = runTest {
+        val old = photo(10)
         val backend = Backend(
-            local = listOf(photo(300), photo(10)),
+            local = listOf(photo(300), old),
             coverage = GalleryCoverage(floorMs = 300, serverCursor = "c1"),
-            server = mapOf("c1" to ServerPhotoPage(listOf(photo(200), photo(10)), hasMore = false, cursor = null)),
+            server = mapOf("c1" to ServerPhotoPage(listOf(photo(200), old), hasMore = false, cursor = null)),
         )
         val store = store(backend)
 
@@ -113,6 +166,7 @@ class PhotoGalleryStoreTest {
 
         val second = store.page(first.nextCursor, newestFirst = true)
         assertEquals(200L, second.items.dates().first())
+        assertEquals(listOf(200L, 10L), second.items.dates())
     }
 
     @Test

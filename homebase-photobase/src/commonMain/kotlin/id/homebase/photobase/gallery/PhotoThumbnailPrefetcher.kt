@@ -17,11 +17,15 @@ class PhotoThumbnailPrefetcher(
     private val mayDownload: suspend () -> Boolean,
     private val ensureThumbnail: suspend (PhotoGalleryItem, ImageSize) -> Unit,
 ) {
+    private var finished = false
+
+    /** Once a process: after that, a new photo's tile fetches its own, and re-walking 500 records buys nothing. */
     suspend fun prefetch() = withContext(Dispatchers.Default) {
-        if (!mayDownload()) return@withContext
+        if (finished) return@withContext
         var cursor: String? = null
         var seen = 0
         do {
+            if (!mayDownload()) return@withContext
             val page = store.page(cursor, newestFirst = true)
             for (item in page.items.take(RECENT_PHOTOS - seen)) {
                 val sizes = thumbSizesFrom(item.payload.thumbnails)
@@ -31,13 +35,20 @@ class PhotoThumbnailPrefetcher(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    // One bad thumbnail mustn't cost the rest; a tile still fetches its own.
+                    // One bad thumbnail mustn't cost the rest, but losing the network or moving to
+                    // mobile data ends the walk.
                     Logger.w(tag = "PhotoThumbnailPrefetcher", throwable = e) { "prefetch failed for ${item.fileId}" }
+                    if (!mayDownload()) return@withContext
                 }
             }
             seen += page.items.size
             cursor = page.nextCursor
         } while (cursor != null && seen < RECENT_PHOTOS)
+        finished = true
+    }
+
+    fun reset() {
+        finished = false
     }
 
     private companion object {

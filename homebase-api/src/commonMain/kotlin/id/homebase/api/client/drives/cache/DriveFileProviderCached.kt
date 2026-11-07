@@ -843,11 +843,17 @@ class DriveFileProviderCached(
         }
         try {
             thumbDiskCache.clear()
-            dedicatedThumbDiskCache?.clear()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
+        }
+        try {
+            dedicatedThumbDiskCache?.clear()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "dedicated thumb cache clear failed" }
         }
         try {
             hlsChunkDiskCache.clear()
@@ -873,8 +879,6 @@ class DriveFileProviderCached(
 
     private fun statsOf(id: String, cache: DiskCache): CacheStats = try {
         CacheStats(id = id, sizeBytes = cache.size, maxBytes = cache.maxSize)
-    } catch (e: CancellationException) {
-        throw e
     } catch (e: Throwable) {
         Logger.w(tag = "DriveFileProviderCached", throwable = e) { "$id stats unavailable" }
         CacheStats(id = id, sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L)

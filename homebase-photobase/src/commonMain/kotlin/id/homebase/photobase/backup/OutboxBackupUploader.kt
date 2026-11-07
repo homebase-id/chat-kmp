@@ -105,7 +105,7 @@ class OutboxBackupUploader(
                 previewThumbs = emptyList(),
             ),
             metadata = videoMetadata(null),
-            metadataFromBundle = { bundle -> videoMetadata(bundle.previewThumbs.firstOrNull()) },
+            metadataFromBundle = { bundle -> videoMetadata(bundle.payloads.firstNotNullOfOrNull { it.previewThumbnail }) },
             priority = OUTBOX_BULK_PRIORITY,
             sendNow = false,
             writeOptimistic = false,

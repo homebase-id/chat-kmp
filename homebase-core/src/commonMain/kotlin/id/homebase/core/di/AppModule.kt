@@ -658,7 +658,10 @@ val appModule = module {
             httpClient = get(),
             driveFileProviderCached = get(),
             contactInfo = get(),
-            beforeLogout = { hasSession -> get<PhotoBackupEntry>().onBeforeLogout(hasSession) },
+            beforeLogout = { hasSession ->
+                get<PhotoGallerySync>().stop()
+                get<PhotoBackupEntry>().onBeforeLogout(hasSession)
+            },
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -860,6 +863,7 @@ val appModule = module {
                 get<DeveloperPreferences>().reload()
                 get<PhotoBackupEntry>().onPostAuthenticated()
                 get<PhotobasePreferences>().reset()
+                get<PhotoThumbnailPrefetcher>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -1106,7 +1110,8 @@ val appModule = module {
         PhotoThumbnailPrefetcher(
             store = get<PhotoGalleryStore>(),
             // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
-            mayDownload = { get<NetworkMonitor>().isUnmetered() },
+            // Nor on web, where the cache is gone at the next reload.
+            mayDownload = { !isWeb() && get<NetworkMonitor>().isUnmetered() },
             ensureThumbnail = { item, size ->
                 files.ensureThumbCached(item.driveId, item.fileId, item.payload.key, size.pixelWidth, size.pixelHeight, item.payload.lastModified)
             },

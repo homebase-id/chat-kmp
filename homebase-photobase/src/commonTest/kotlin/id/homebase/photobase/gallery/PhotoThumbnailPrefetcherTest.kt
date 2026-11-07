@@ -69,4 +69,29 @@ class PhotoThumbnailPrefetcherTest {
 
         assertEquals(500, attempts)
     }
+
+    @Test
+    fun leavingWifiPartWayStopsTheWalk() = runTest {
+        val pages = EndlessPages().also { it.pageItem = { item() } }
+        var checks = 0
+
+        PhotoThumbnailPrefetcher(pages, { ++checks <= 2 }) { _, _ -> }.prefetch()
+
+        assertEquals(2, pages.asked.size)
+    }
+
+    @Test
+    fun afterAFinishedWalkItDoesntWalkAgainUntilReset() = runTest {
+        val pages = EndlessPages().also { it.pageItem = { item() } }
+        val prefetcher = PhotoThumbnailPrefetcher(pages, { true }) { _, _ -> }
+
+        prefetcher.prefetch()
+        val first = pages.asked.size
+        prefetcher.prefetch()
+        assertEquals(first, pages.asked.size)
+
+        prefetcher.reset()
+        prefetcher.prefetch()
+        assertEquals(first * 2, pages.asked.size)
+    }
 }

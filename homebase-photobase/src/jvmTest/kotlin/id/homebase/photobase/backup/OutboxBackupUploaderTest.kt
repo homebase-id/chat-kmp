@@ -233,8 +233,9 @@ private class PreviewingEncryptor : PayloadBundleEncryptor {
 
     override suspend fun encryptBundle(uniqueId: Uuid, bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope): PayloadBundle {
         calls++
+        // On the payload and nowhere else, which is where the real video processing puts it.
         val preview = id.homebase.api.client.drives.upload.EmbeddedThumb(1, 1, "image/webp", id.homebase.api.serialization.Base64Bytes(byteArrayOf(9, 9)))
-        return bundle!!.copy(payloads = bundle.payloads.map { it.copy(previewThumbnail = preview, isPreEncrypted = true, iv = ByteArray(16)) }, previewThumbs = listOf(preview))
+        return bundle!!.copy(payloads = bundle.payloads.map { it.copy(previewThumbnail = preview, isPreEncrypted = true, iv = ByteArray(16)) })
     }
 }
 
