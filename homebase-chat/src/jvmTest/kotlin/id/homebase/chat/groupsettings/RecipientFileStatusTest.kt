@@ -33,15 +33,15 @@ class RecipientFileStatusTest {
 
     @Test
     fun failedAndOutOfTheOutbox_isProblem() {
-        val status = entry(TransferStatus.RecipientIdentityReturnedAccessDenied, isInOutbox = false).toRecipientFileStatus()
-        assertIs<RecipientFileStatus.Problem>(status)
-        assertEquals(TransferStatus.RecipientIdentityReturnedAccessDenied, status.rawStatus)
-    }
-
-    @Test
-    fun aVersionConflictOutOfTheOutbox_isProblem() {
-        val status = entry(TransferStatus.RecipientIdentityReturnedVersionTagMismatch, isInOutbox = false).toRecipientFileStatus()
-        assertIs<RecipientFileStatus.Problem>(status)
+        for (raw in listOf(
+            TransferStatus.RecipientIdentityReturnedAccessDenied,
+            TransferStatus.RecipientIdentityReturnedVersionTagMismatch,
+            TransferStatus.RecipientIdentityReturnedInvalidKeyHeader,
+        )) {
+            val status = entry(raw, isInOutbox = false).toRecipientFileStatus()
+            assertIs<RecipientFileStatus.Problem>(status, "$raw")
+            assertEquals(raw, status.rawStatus)
+        }
     }
 
     private fun entry(status: TransferStatus, isInOutbox: Boolean) = RecipientTransferHistoryEntry(

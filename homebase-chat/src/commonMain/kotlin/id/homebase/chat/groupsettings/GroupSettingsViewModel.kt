@@ -1153,9 +1153,7 @@ class GroupSettingsViewModel(
      *     outbox hasn't given up) → keep polling; at timeout → StillQueued
      *
      * We do NOT try to map specific failure codes to UI text — the user just
-     * needs to know "got through" vs "didn't" per peer. A peer rejecting on
-     * vt mismatch (RecipientIdentityReturnedVersionTagMismatch, or BadRequest
-     * from an older server) is the same bucket as any other peer-side rejection.
+     * needs to know "got through" vs "didn't" per peer.
      */
     private suspend fun pollOneFileDelivery(
         fileId: Uuid,

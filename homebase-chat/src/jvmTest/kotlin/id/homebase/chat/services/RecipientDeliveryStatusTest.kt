@@ -30,14 +30,11 @@ class RecipientDeliveryStatusTest {
 
     @Test
     fun errorOutOfTheOutbox_isFailed() {
-        val entry = entry(TransferStatus.RecipientIdentityReturnedServerError, isInOutbox = false)
-        assertEquals(ChatDeliveryStatus.Failed, entry.toChatDeliveryStatus())
-        assertEquals(MR.string.error_delivery_failed, entry.latestTransferStatus.toErrorDetailRes())
-    }
-
-    @Test
-    fun aRecipientRefusingTheVersionOrKeyHeader_isFailed() {
-        for (status in listOf(TransferStatus.RecipientIdentityReturnedVersionTagMismatch, TransferStatus.RecipientIdentityReturnedInvalidKeyHeader)) {
+        for (status in listOf(
+            TransferStatus.RecipientIdentityReturnedServerError,
+            TransferStatus.RecipientIdentityReturnedVersionTagMismatch,
+            TransferStatus.RecipientIdentityReturnedInvalidKeyHeader,
+        )) {
             val entry = entry(status, isInOutbox = false)
             assertEquals(ChatDeliveryStatus.Failed, entry.toChatDeliveryStatus(), "$status")
             assertEquals(MR.string.error_delivery_failed, entry.latestTransferStatus.toErrorDetailRes(), "$status")

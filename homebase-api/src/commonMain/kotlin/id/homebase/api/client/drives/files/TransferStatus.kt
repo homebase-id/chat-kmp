@@ -8,35 +8,31 @@ import kotlinx.serialization.Serializable
  * enum.
  */
 @Serializable
-enum class TransferStatus(val value: String) {
-    @SerialName("none") None("none"),
-    @SerialName("delivered") Delivered("delivered"),
+enum class TransferStatus {
+    @SerialName("none") None,
+    @SerialName("delivered") Delivered,
     @SerialName("recipientidentityreturnedaccessdenied")
-    RecipientIdentityReturnedAccessDenied("recipientidentityreturnedaccessdenied"),
+    RecipientIdentityReturnedAccessDenied,
     @SerialName("sourcefiledoesnotallowdistribution")
-    SourceFileDoesNotAllowDistribution("sourcefiledoesnotallowdistribution"),
+    SourceFileDoesNotAllowDistribution,
     @SerialName("recipientservernotresponding")
-    RecipientServerNotResponding("recipientservernotresponding"),
+    RecipientServerNotResponding,
     @SerialName("recipientidentityreturnedservererror")
-    RecipientIdentityReturnedServerError("recipientidentityreturnedservererror"),
+    RecipientIdentityReturnedServerError,
     /** The recipient is out of storage: still in the outbox, delivered once they have room. Waiting, not failed. */
     @SerialName("recipientidentityoutofstorage")
-    RecipientIdentityOutOfStorage("recipientidentityoutofstorage"),
+    RecipientIdentityOutOfStorage,
     @SerialName("recipientidentityreturnedbadrequest")
-    RecipientIdentityReturnedBadRequest("recipientidentityreturnedbadrequest"),
+    RecipientIdentityReturnedBadRequest,
     @SerialName("recipientidentityreturnedversiontagmismatch")
-    RecipientIdentityReturnedVersionTagMismatch("recipientidentityreturnedversiontagmismatch"),
+    RecipientIdentityReturnedVersionTagMismatch,
     @SerialName("recipientidentityreturnedinvalidkeyheader")
-    RecipientIdentityReturnedInvalidKeyHeader("recipientidentityreturnedinvalidkeyheader"),
-    @SerialName("unknownservererror") UnknownServerError("unknownservererror"),
+    RecipientIdentityReturnedInvalidKeyHeader,
+    @SerialName("unknownservererror") UnknownServerError,
     @SerialName("sendingservertoomanyattempts")
-    SendingServerTooManyAttempts("sendingservertoomanyattempts");
+    SendingServerTooManyAttempts;
 
     companion object {
-        fun fromString(value: String): TransferStatus {
-            return entries.firstOrNull { it.value.equals(value, ignoreCase = true) } ?: None
-        }
-
         /** List of failed transfer statuses. */
         val failedStatuses: List<TransferStatus> =
                 listOf(
