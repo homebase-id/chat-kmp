@@ -83,7 +83,7 @@ private fun MediaImagePlan.toOutputs(): List<ImageOutput> = buildList {
     thumbnails.forEach { add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES)) }
     finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE)) }
     // No floor: the server rejects the whole upload over the tiny's limit, so the limit wins.
-    add(ImageOutput(tiny.width, tiny.height, tiny.quality, MAX_TINY_BYTES, minQuality = 1))
+    add(ImageOutput(tiny.width, tiny.height, tiny.quality, MAX_TINY_BYTES, minQuality = 1, keepColorProfile = false))
 }
 
 private fun assembled(rendered: List<RenderedImage>, plan: MediaImagePlan, payloadKey: String, natural: ImageSize) = MediaImages(
