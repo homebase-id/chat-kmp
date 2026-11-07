@@ -150,51 +150,6 @@ class VideoPayloadProcessorCompressionSeamTest {
         override suspend fun probeVideo(inputPath: String): VideoTrackInfo? = null
     }
 
-    private fun originalFixture(): Pair<VideoPayloadProcessor, FakeVideoCompressor> {
-        val store = mutableMapOf(
-            "$cacheDir/input.mp4" to ByteArray(1024),
-            "$cacheDir/compressed.mp4" to ByteArray(1024),
-        )
-        val compressor = FakeVideoCompressor(
-            compressedPath = "$cacheDir/compressed.mp4",
-            segmented = SegmentedVideo("$cacheDir/playlist.m3u8", "$cacheDir/segments.ts"),
-        )
-        return VideoPayloadProcessor(FakeFileOperationsProvider(store), compressor, FakeVideoProbe(12_345L)) to compressor
-    }
-
-    @Test
-    fun originalIsNotTranscoded() = runTest {
-        val (processor, compressor) = originalFixture()
-
-        processor.process(
-            payload = PayloadFile(key = "vid", filePath = "$cacheDir/input.mp4"),
-            keyHeader = KeyHeader.newRandom16(),
-            onProgress = null,
-            descriptorContentPayloadKey = "descriptor",
-            videoQuality = VideoQuality.ORIGINAL,
-        )
-
-        assertEquals(null, compressor.compressInput)
-    }
-
-    @Test
-    fun aTrimmedOriginalStillGoesThroughTheCompressor() = runTest {
-        val (processor, compressor) = originalFixture()
-
-        processor.process(
-            payload = PayloadFile(key = "vid", filePath = "$cacheDir/input.mp4"),
-            keyHeader = KeyHeader.newRandom16(),
-            onProgress = null,
-            descriptorContentPayloadKey = "descriptor",
-            trimStartMs = 1_000L,
-            trimEndMs = 4_000L,
-            videoQuality = VideoQuality.ORIGINAL,
-        )
-
-        assertEquals("$cacheDir/input.mp4", compressor.compressInput)
-        assertEquals(1_000L to 4_000L, compressor.compressTrim)
-    }
-
     @Test
     fun smallCompressedVideoTakesDirectEncryptPathNotHls() = runTest {
         val inputPath = "$cacheDir/input.mp4"

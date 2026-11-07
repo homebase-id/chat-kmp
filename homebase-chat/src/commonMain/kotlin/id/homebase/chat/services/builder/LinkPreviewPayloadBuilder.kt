@@ -1,6 +1,5 @@
 package id.homebase.chat.services.builder
 
-import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.link.LinkPreview
@@ -32,23 +31,10 @@ object LinkPreviewPayloadBuilder {
             ByteArray(0)
         }
 
-        // Generate tinyThumb first so we know whether we'll be able to
-        // render an image on the receiver side. createThumbnails returns
-        // null for SVG (no decoder in any ImageUtils actual today); the
-        // defensive size check below catches a hypothetical future raster
-        // path that produces an oversize thumb so the upload can't slip
-        // past the server's MaxEmbeddedThumbBytes cap and stall the
-        // outbox.
+        // Generated first so we know whether the receiver will have an image to render.
         val tinyThumb: EmbeddedThumb? = if (imageBytes.isNotEmpty()) {
             try {
-                val thumb = createTinyPreview(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
-                val content = thumb?.content
-                if (thumb != null && content != null &&
-                    content.bytes.size > HomebaseProtocol.MaxEmbeddedThumbBytes) {
-                    null
-                } else {
-                    thumb
-                }
+                createTinyPreview(imageBytes)
             } catch (e: Exception) {
                 null
             }

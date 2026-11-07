@@ -19,7 +19,7 @@ import kotlin.test.Test
  * exactly like one that explicitly recorded standard. Only HIGH draws the badge.
  */
 @OptIn(ExperimentalTestApi::class)
-class HdBadgeRenderTest {
+class MediaQualityBadgeRenderTest {
 
     private val badgeDescription = "Sent as the original file"
 

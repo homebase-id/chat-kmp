@@ -16,12 +16,10 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.image.MediaQuality
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.settings.label
 import id.homebase.resources.MR
 import id.homebase.resources.cd_media_quality_hd_badge
 import id.homebase.resources.cd_media_quality_original_badge
-import id.homebase.resources.chat_media_quality_hd
-import id.homebase.resources.chat_media_quality_original
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -34,19 +32,13 @@ import org.jetbrains.compose.resources.stringResource
 fun PayloadDescriptor.badgedQuality(): MediaQuality? =
     (descriptorInfo() as? DescriptorContent.ImageFile)?.quality?.takeIf { it != MediaQuality.STANDARD }
 
-val MediaQuality.badgeLabel: StringResource
-    get() = when (this) {
-        MediaQuality.ORIGINAL -> MR.string.chat_media_quality_original
-        else -> MR.string.chat_media_quality_hd
-    }
-
 /**
  * Quality marker overlaid on a photo. Carries its own scrim because it sits on arbitrary picture
  * content, where no surface role can guarantee contrast.
  */
 @Composable
 fun MediaQualityBadge(quality: MediaQuality, modifier: Modifier = Modifier) {
-    val label = stringResource(quality.badgeLabel)
+    val label = stringResource(quality.label)
     val description = stringResource(
         if (quality == MediaQuality.ORIGINAL) MR.string.cd_media_quality_original_badge else MR.string.cd_media_quality_hd_badge
     )

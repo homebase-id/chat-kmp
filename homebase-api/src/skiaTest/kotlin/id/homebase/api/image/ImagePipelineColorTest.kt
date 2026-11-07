@@ -46,4 +46,14 @@ class ImagePipelineColorTest {
         val red = redInSrgb(image.bytes)
         assertTrue(abs(red - 200) <= 5, "P3 colour lost: sRGB red $red, expected about 200")
     }
+
+    @Test
+    fun aDisplayP3TinyFitsItsLimitAndKeepsItsColour() = runTest {
+        val tiny = createTinyPreview(p3Png())
+
+        val bytes = tiny.content!!.bytes
+        assertTrue(bytes.size <= tinyThumbSize.maxBytes, "Tiny was ${bytes.size} bytes")
+        val red = redInSrgb(bytes)
+        assertTrue(abs(red - 200) <= 8, "Should be converted, not relabelled: sRGB red $red")
+    }
 }

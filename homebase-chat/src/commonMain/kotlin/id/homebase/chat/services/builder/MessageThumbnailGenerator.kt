@@ -5,7 +5,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.createMediaImages
 import id.homebase.api.image.createThumbnails
-import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +30,7 @@ object MessageThumbnailGenerator {
     ): ThumbnailResult {
         val bytes = fileOperationsProvider.readFileBytes(filePath)
         val media = try {
-            createMediaImages(bytes, payloadKey, mediaQuality, allowFinalImage = !forceSticker && !ImageFormatDetector.isAnimated(bytes))
+            createMediaImages(bytes, payloadKey, mediaQuality, allowFinalImage = !forceSticker)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

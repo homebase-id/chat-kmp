@@ -22,9 +22,6 @@ const val MAX_THUMBNAIL_BYTES = 1024 * 1024 - 32
 
 const val MAX_TINY_BYTES = 768
 
-private const val TINY_LONG_EDGE = 20
-private const val TINY_QUALITY = 76
-
 private class Row(
     val longEdge: Int,
     val minShortEdge: Int,
@@ -49,6 +46,12 @@ private val ROWS = listOf(
     Row(4096, 2160, 8192, standard = null, hd = 80, original = null),
 )
 
+/** What a vector has to render at to cover this setting's thumbnails. */
+internal fun largestThumbnailLongEdge(setting: MediaQuality): Int {
+    val rows = ROWS.filter { it.quality(setting) != null }
+    return (if (setting == MediaQuality.ORIGINAL) rows else rows.dropLast(1)).last().longEdge
+}
+
 /** Pure integer math on the displayed size: nothing here decodes, scales or encodes. */
 fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
     val rows = ROWS.mapNotNull { row -> row.quality(setting)?.let { row to it } }
@@ -69,7 +72,7 @@ fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
         }
     }
     return MediaImagePlan(
-        tiny = sized(source, TINY_LONG_EDGE, 0, TINY_LONG_EDGE, TINY_QUALITY),
+        tiny = sized(source, tinyThumbSize.maxPixelDimension, 0, tinyThumbSize.maxPixelDimension, tinyThumbSize.quality),
         thumbnails = thumbnails,
         finalImage = finalImage,
     )

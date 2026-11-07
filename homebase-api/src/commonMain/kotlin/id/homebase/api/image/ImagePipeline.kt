@@ -1,6 +1,7 @@
 package id.homebase.api.image
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 
@@ -13,6 +14,8 @@ data class ImageOutput(
     val format: ImageFormat = ImageFormat.WEBP,
     /** Below this, an image over [maxBytes] shrinks instead of losing more quality. */
     val minQuality: Int = DEFAULT_MIN_QUALITY,
+    /** False converts to sRGB first, for outputs too small to afford an embedded colour profile. */
+    val keepColorProfile: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_MIN_QUALITY = 40
@@ -60,6 +63,9 @@ internal interface PipelineBitmap : AutoCloseable {
     fun scaledTo(width: Int, height: Int): PipelineBitmap
 
     fun encode(format: ImageFormat, quality: Int): ByteArray
+
+    /** This bitmap's pixels in sRGB: itself if they already are, otherwise a new bitmap, leaving this one open. */
+    fun inSrgb(): PipelineBitmap
 }
 
 internal expect fun openImageSource(bytes: ByteArray): ImageSource
@@ -70,12 +76,16 @@ internal expect fun openImageSource(bytes: ByteArray): ImageSource
  * keeps the plan's order.
  */
 suspend fun renderImages(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    withContext(Dispatchers.Default) { renderImagesBlocking(bytes, plan) }
+    withContext(Dispatchers.Default) {
+        val context = coroutineContext
+        openImageSource(bytes).use { renderFrom(it, { context.ensureActive() }, plan) }
+    }
 
-internal fun renderImagesBlocking(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    openImageSource(bytes).use { renderFrom(it, plan) }
-
-internal fun renderFrom(source: ImageSource, plan: (ImageSize) -> List<ImageOutput>): RenderedImages {
+internal fun renderFrom(
+    source: ImageSource,
+    checkCancelled: () -> Unit = {},
+    plan: (ImageSize) -> List<ImageOutput>,
+): RenderedImages {
     val size = source.displayedSize
     val outputs = plan(size)
     if (outputs.isEmpty()) return RenderedImages(size, emptyList())
@@ -85,10 +95,15 @@ internal fun renderFrom(source: ImageSource, plan: (ImageSize) -> List<ImageOutp
     var current = source.decode(longEdge(largestFirst.first().value))
     try {
         for ((index, output) in largestFirst) {
+            checkCancelled()
             val scaled = scaleDown(current, output.width, output.height)
             if (scaled !== current) current.close()
             current = scaled
-            rendered[index] = encodeWithin(current, output)
+            rendered[index] = if (output.keepColorProfile) {
+                encodeWithin(current, output)
+            } else {
+                encodeInSrgb(current, output)
+            }
         }
     } finally {
         current.close()
@@ -113,13 +128,23 @@ internal fun scaleDown(source: PipelineBitmap, width: Int, height: Int): Pipelin
     return current.replacedBy(source) { it.scaledTo(width, height) }
 }
 
+// The finally is what frees an intermediate when the next step runs out of memory.
 private inline fun PipelineBitmap.replacedBy(
     keepOpen: PipelineBitmap,
     next: (PipelineBitmap) -> PipelineBitmap,
-): PipelineBitmap {
-    val result = next(this)
+): PipelineBitmap = try {
+    next(this)
+} finally {
     if (this !== keepOpen) close()
-    return result
+}
+
+private fun encodeInSrgb(bitmap: PipelineBitmap, output: ImageOutput): RenderedImage {
+    val srgb = bitmap.inSrgb()
+    try {
+        return encodeWithin(srgb, output)
+    } finally {
+        if (srgb !== bitmap) srgb.close()
+    }
 }
 
 /**
@@ -133,10 +158,9 @@ private fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedI
     var quality = output.quality.coerceIn(1, 100)
     var bytes = bitmap.encode(output.format, quality)
     while (bytes.size > maxBytes && quality > floor) {
-        quality = (quality - QUALITY_STEP).coerceAtLeast(floor)
+        quality = nextQuality(quality, bytes.size, maxBytes).coerceAtLeast(floor)
         bytes = bitmap.encode(output.format, quality)
     }
-    if (bytes.size <= maxBytes) return RenderedImage(bytes, bitmap.width, bitmap.height, quality, output.format)
 
     var current = bitmap
     try {
@@ -156,7 +180,14 @@ private fun shrink(edge: Int) = max(1, edge * 3 / 4)
 
 private fun longEdge(output: ImageOutput) = max(output.width, output.height)
 
-private const val QUALITY_STEP = 8
+// Further over the limit means a bigger drop, because each attempt is a full encode.
+private fun nextQuality(quality: Int, size: Int, maxBytes: Int): Int {
+    val excess = (size.toLong() - maxBytes) * quality / maxBytes.coerceAtLeast(1) / 2
+    return quality - excess.coerceIn(MIN_QUALITY_STEP.toLong(), MAX_QUALITY_STEP.toLong()).toInt()
+}
+
+private const val MIN_QUALITY_STEP = 8
+private const val MAX_QUALITY_STEP = 30
 
 /** The one aspect-preserving resize behind [ImageUtils.resizePreserveAspect] on every platform. */
 internal fun resizeThroughPipeline(
@@ -167,16 +198,9 @@ internal fun resizeThroughPipeline(
     quality: Int,
 ): ImageResult = openImageSource(srcBytes).use { source ->
     val natural = source.displayedSize
-    val (targetW, targetH) = calculateTargetDimensions(natural.pixelWidth, natural.pixelHeight, maxWidth, maxHeight)
-    val decoded = source.decode(max(targetW, targetH))
-    try {
-        val scaled = scaleDown(decoded, targetW, targetH)
-        try {
-            ImageResult(scaled.encode(outputFormat, quality), natural, ImageSize(targetW, targetH))
-        } finally {
-            if (scaled !== decoded) scaled.close()
-        }
-    } finally {
-        decoded.close()
-    }
+    val image = renderFrom(source) {
+        val (width, height) = calculateTargetDimensions(natural.pixelWidth, natural.pixelHeight, maxWidth, maxHeight)
+        listOf(ImageOutput(width, height, quality, Int.MAX_VALUE, outputFormat))
+    }.images.single()
+    ImageResult(image.bytes, natural, ImageSize(image.width, image.height))
 }
