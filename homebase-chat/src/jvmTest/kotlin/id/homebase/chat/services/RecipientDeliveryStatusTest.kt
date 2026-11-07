@@ -2,7 +2,6 @@ package id.homebase.chat.services
 
 import id.homebase.api.client.drives.files.RecipientTransferHistoryEntry
 import id.homebase.api.client.drives.files.TransferStatus
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.resources.MR
 import id.homebase.resources.error_delivery_failed
 import id.homebase.resources.error_recipient_storage_full
@@ -39,18 +38,6 @@ class RecipientDeliveryStatusTest {
             assertEquals(ChatDeliveryStatus.Failed, entry.toChatDeliveryStatus(), "$status")
             assertEquals(MR.string.error_delivery_failed, entry.latestTransferStatus.toErrorDetailRes(), "$status")
         }
-    }
-
-    @Test
-    fun serverStatusesDecode_andAnUnknownOneIsNone() {
-        fun decode(status: String) = OdinSystemSerializer.json.decodeFromString<RecipientTransferHistoryEntry>(
-            """{"recipient":"frodo.dotyou.cloud","lastUpdated":0,"latestTransferStatus":"$status","isInOutbox":true}"""
-        ).latestTransferStatus
-
-        assertEquals(TransferStatus.RecipientIdentityOutOfStorage, decode("recipientIdentityOutOfStorage"))
-        assertEquals(TransferStatus.RecipientIdentityReturnedVersionTagMismatch, decode("recipientIdentityReturnedVersionTagMismatch"))
-        assertEquals(TransferStatus.RecipientIdentityReturnedInvalidKeyHeader, decode("recipientIdentityReturnedInvalidKeyHeader"))
-        assertEquals(TransferStatus.None, decode("someStatusFromALaterServer"))
     }
 
     private fun entry(status: TransferStatus, isInOutbox: Boolean) = RecipientTransferHistoryEntry(

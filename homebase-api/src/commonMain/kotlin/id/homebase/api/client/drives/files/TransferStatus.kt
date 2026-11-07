@@ -32,23 +32,22 @@ enum class TransferStatus {
     @SerialName("sendingservertoomanyattempts")
     SendingServerTooManyAttempts;
 
-    companion object {
-        /** List of failed transfer statuses. */
-        val failedStatuses: List<TransferStatus> =
-                listOf(
-                        RecipientIdentityReturnedAccessDenied,
-                        SourceFileDoesNotAllowDistribution,
-                        RecipientServerNotResponding,
-                        RecipientIdentityReturnedServerError,
-                        RecipientIdentityReturnedBadRequest,
-                        RecipientIdentityReturnedVersionTagMismatch,
-                        RecipientIdentityReturnedInvalidKeyHeader,
-                        UnknownServerError,
-                        SendingServerTooManyAttempts
-                )
-
-        fun isFailedStatus(status: TransferStatus): Boolean {
-            return status in failedStatuses
+    /** Every entry is listed, so a new one won't compile until it's decided. */
+    val isFailed: Boolean
+        get() = when (this) {
+            RecipientIdentityReturnedAccessDenied,
+            SourceFileDoesNotAllowDistribution,
+            RecipientServerNotResponding,
+            RecipientIdentityReturnedServerError,
+            RecipientIdentityReturnedBadRequest,
+            RecipientIdentityReturnedVersionTagMismatch,
+            RecipientIdentityReturnedInvalidKeyHeader,
+            UnknownServerError,
+            SendingServerTooManyAttempts -> true
+            None, Delivered, RecipientIdentityOutOfStorage -> false
         }
+
+    companion object {
+        fun isFailedStatus(status: TransferStatus): Boolean = status.isFailed
     }
 }

@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.TransferStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 
 class RecipientFileStatusTest {
 
@@ -41,6 +42,7 @@ class RecipientFileStatusTest {
             val status = entry(raw, isInOutbox = false).toRecipientFileStatus()
             assertIs<RecipientFileStatus.Problem>(status, "$raw")
             assertEquals(raw, status.rawStatus)
+            assertNotNull(status.detailRes, "$raw")
         }
     }
 

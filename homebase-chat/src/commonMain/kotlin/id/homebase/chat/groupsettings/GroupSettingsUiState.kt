@@ -316,10 +316,7 @@ enum class HealProgressState {
     InFlight,
     /** Server reports `TransferStatus.Delivered` for this recipient. */
     Done,
-    /** Either the enqueue threw, or transfer-history reports a failed
-     *  TransferStatus value with the recipient no longer in our outbox.
-     *  The row doesn't say *why* a peer rejected; it just marks "did not
-     *  get through this round". */
+    /** The enqueue threw, or the recipient left our outbox with a failed TransferStatus. */
     Failed,
     /** Plan target where the heal service intentionally did nothing
      *  (caller is not the file author, the per-file target set is empty
