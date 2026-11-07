@@ -1,6 +1,8 @@
 package id.homebase.api.image
 
+import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
@@ -35,6 +37,14 @@ internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
         }
     }
 
+    override fun inSrgb(): PipelineBitmap {
+        val colorSpace = image.colorSpace
+        if (colorSpace == null || colorSpace.isSRGB) return this
+        val surface = Surface.makeRaster(ImageInfo(image.width, image.height, ColorType.N32, ColorAlphaType.PREMUL, ColorSpace.sRGB))
+        surface.canvas.drawImage(image, 0f, 0f)
+        return SkiaPipelineBitmap(surface.snapshotAndClose())
+    }
+
     override fun close() = image.close()
 }
 
@@ -44,11 +54,17 @@ internal class SkiaImageSource(bytes: ByteArray) : ImageSource {
 
     override val displayedSize get() = ImageSize(image.width, image.height)
 
-    // Drawn into a raster so the decode happens exactly here, and only here.
+    // readPixels decodes exactly here, and unlike drawing, it reports a body that can't be decoded.
     override fun decode(minLongEdge: Int): PipelineBitmap {
-        val surface = rasterSurface(image, image.width, image.height)
-        surface.canvas.drawImage(image, 0f, 0f)
-        return SkiaPipelineBitmap(surface.snapshotAndClose())
+        val pixels = Bitmap()
+        try {
+            pixels.allocPixels(ImageInfo(image.width, image.height, ColorType.N32, ColorAlphaType.PREMUL, image.colorSpace))
+            check(image.readPixels(pixels, 0, 0)) { "Couldn't decode the image's pixels" }
+            pixels.setImmutable()
+            return SkiaPipelineBitmap(Image.makeFromBitmap(pixels))
+        } finally {
+            pixels.close()
+        }
     }
 
     override fun close() = image.close()

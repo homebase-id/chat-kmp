@@ -167,6 +167,8 @@ private fun ThumbnailInstruction.toOutput(source: ImageSize, isTiny: Boolean): I
         format = if (isTiny) ImageFormat.WEBP else type,
         // No floor for the tiny: its limit is a hard one, because the server rejects the upload over it.
         minQuality = if (isTiny) 1 else ImageOutput.DEFAULT_MIN_QUALITY,
+        // A colour profile alone could use up most of the tiny's limit.
+        keepColorProfile = !isTiny,
     )
 }
 

@@ -175,7 +175,6 @@ class CreateImageThumbnailTest {
 
     @Test
     fun createThumbnail_exactSizeSource_isReallyWebp() = runTest {
-        // A PNG already at the target size used to come back as-is, labelled image/webp.
         val bytes = ImageTestHelper.loadImage("pngsuite/basn6a08.png")
         val instr = ThumbnailInstruction(quality = 84, maxPixelDimension = 32, maxBytes = 1024)
         val result = createImageThumbnail(bytes, "key", instr, isTinyThumb = false)

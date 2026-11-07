@@ -67,7 +67,11 @@ import platform.ImageIO.kCGImageSourceThumbnailMaxPixelSize
  * bridge. It hands over to Skia's bitmap for scaling and encoding, so those match the other targets.
  * [SkiaImageSource] takes over for anything ImageIO can't read.
  */
-private class ImageIoSource(private val source: CGImageSourceRef, override val displayedSize: ImageSize) : ImageSource {
+private class ImageIoSource(
+    private val source: CGImageSourceRef,
+    private val bytes: ByteArray,
+    override val displayedSize: ImageSize,
+) : ImageSource {
     override fun decode(minLongEdge: Int): PipelineBitmap {
         val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
             ?: throw IllegalStateException("Couldn't create decode options")
@@ -81,7 +85,7 @@ private class ImageIoSource(private val source: CGImageSourceRef, override val d
         } finally {
             CFRelease(maxSize)
             CFRelease(options)
-        } ?: throw IllegalArgumentException("ImageIO couldn't decode the image")
+        } ?: return SkiaImageSource(bytes).use { it.decode(minLongEdge) }
         try {
             return SkiaPipelineBitmap(cgImage.toSkiaImage())
         } finally {
@@ -145,7 +149,7 @@ private fun openWithImageIo(bytes: ByteArray): ImageSource? {
         CFRelease(source)
         return null
     }
-    return ImageIoSource(source, displayed)
+    return ImageIoSource(source, bytes, displayed)
 }
 
 // CF lookups, not NSDictionary.objectForKey: a CFStringRef key doesn't bridge to NSString in K/N.

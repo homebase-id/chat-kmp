@@ -2,6 +2,8 @@ package id.homebase.api.image
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.ColorSpace
 import android.graphics.ImageDecoder
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
@@ -17,8 +19,17 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override fun scaledTo(width: Int, height: Int): PipelineBitmap =
         AndroidPipelineBitmap(Bitmap.createScaledBitmap(bitmap, width, height, true))
 
+    // compress reports failure by writing nothing, and an empty result would pass any byte limit.
     override fun encode(format: ImageFormat, quality: Int): ByteArray =
-        ImageUtils.encodeBitmap(bitmap, format, quality)
+        ImageUtils.encodeBitmap(bitmap, format, quality).also { check(it.isNotEmpty()) { "Failed to encode image as $format" } }
+
+    override fun inSrgb(): PipelineBitmap {
+        val srgb = ColorSpace.get(ColorSpace.Named.SRGB)
+        if (bitmap.colorSpace == null || bitmap.colorSpace == srgb) return this
+        val converted = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888, bitmap.hasAlpha(), srgb)
+        Canvas(converted).drawBitmap(bitmap, 0f, 0f, null)
+        return AndroidPipelineBitmap(converted)
+    }
 
     override fun close() = bitmap.recycle()
 }

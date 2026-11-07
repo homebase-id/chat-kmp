@@ -1,7 +1,9 @@
 package id.homebase.api.image
 
+import kotlinx.coroutines.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ImagePipelineTest {
@@ -11,6 +13,7 @@ class ImagePipelineTest {
 
         override fun scaledTo(width: Int, height: Int): PipelineBitmap {
             log.scales += (this.width to this.height) to (width to height)
+            if (log.failScalesAfter?.let { log.scales.size > it } == true) throw IllegalStateException("out of memory")
             return FakeBitmap(width, height, log)
         }
 
@@ -19,6 +22,8 @@ class ImagePipelineTest {
             return ByteArray(log.bytesFor(width, height, quality))
         }
 
+        override fun inSrgb(): PipelineBitmap = this
+
         override fun close() { log.open-- }
     }
 
@@ -26,6 +31,7 @@ class ImagePipelineTest {
         var decodes = 0
         var decodedAt = 0
         var open = 0
+        var failScalesAfter: Int? = null
         val scales = mutableListOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
         val encodedQualities = mutableListOf<Int>()
     }
@@ -107,9 +113,45 @@ class ImagePipelineTest {
 
         assertEquals(40, image.quality)
         assertEquals(40, log.encodedQualities.last())
-        assertEquals(listOf(80, 72, 64, 56, 48, 40), log.encodedQualities.take(6))
+        assertEquals(listOf(80, 50, 40), log.encodedQualities.take(3))
         assertTrue(image.width < 100, "Should have shrunk once quality reached its floor")
         assertEquals(500, image.bytes.size)
+    }
+
+    @Test
+    fun aSmallOverageOnlyStepsDownALittle() {
+        val log = Log { _, _, quality -> if (quality > 72) 1050 else 900 }
+
+        val image = renderFrom(FakeSource(100, 100, log)) { listOf(output(100, 100)) }.images.single()
+
+        assertEquals(72, image.quality)
+        assertEquals(listOf(80, 72), log.encodedQualities)
+    }
+
+    @Test
+    fun aFailedScaleStillClosesWhatItHeld() {
+        val log = Log().also { it.failScalesAfter = 1 }
+
+        assertFailsWith<IllegalStateException> {
+            renderFrom(FakeSource(4000, 3000, log)) { listOf(output(300, 225)) }
+        }
+
+        assertEquals(0, log.open)
+    }
+
+    @Test
+    fun cancellationStopsBetweenSizes() {
+        val log = Log()
+        var checks = 0
+
+        assertFailsWith<CancellationException> {
+            renderFrom(FakeSource(640, 480, log), { if (++checks == 2) throw CancellationException("gone") }) {
+                listOf(output(640, 480), output(320, 240))
+            }
+        }
+
+        assertEquals(1, log.encodedQualities.size, "The second size shouldn't have been made")
+        assertEquals(0, log.open)
     }
 
     @Test
