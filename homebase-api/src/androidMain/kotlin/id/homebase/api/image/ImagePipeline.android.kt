@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import androidx.exifinterface.media.ExifInterface
+import co.touchlab.kermit.Logger
+import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import kotlin.math.max
@@ -21,6 +23,8 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
     override fun close() = bitmap.recycle()
 }
 
+private const val TAG = "ImagePipeline"
+
 private class HeaderRead : RuntimeException(null, null, false, false)
 
 /**
@@ -28,7 +32,7 @@ private class HeaderRead : RuntimeException(null, null, false, false)
  * BitmapFactory stays as the fallback for whatever it refuses.
  */
 private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
-    override val displayedSize: ImageSize by lazy { readWithDecoder() ?: readWithBitmapFactory() }
+    override val displayedSize: ImageSize = readWithDecoder() ?: readWithBitmapFactory()
 
     private fun readWithDecoder(): ImageSize? {
         var size: ImageSize? = null
@@ -38,7 +42,8 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
                 throw HeaderRead() // Stops before any pixels are allocated.
             }
         } catch (_: HeaderRead) {
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "ImageDecoder couldn't read the header" }
         }
         return size
     }
@@ -58,7 +63,7 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
     override fun decode(minLongEdge: Int): PipelineBitmap {
         // Only a JPEG decoder averages when it samples (DCT scaling). Every other format here picks
         // every Nth pixel, which is the aliasing this pipeline exists to remove.
-        val sampleSize = if (bytes.isJpeg()) {
+        val sampleSize = if (ImageFormatDetector.detectFormat(bytes) == "image/jpeg") {
             sampleSizeFor(max(displayedSize.pixelWidth, displayedSize.pixelHeight), minLongEdge)
         } else {
             1
@@ -69,26 +74,15 @@ private class AndroidImageSource(private val bytes: ByteArray) : ImageSource {
                 // A HARDWARE bitmap has no readable pixels, so compress would fail on it.
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
-        } catch (_: Exception) {
-            decodeWithBitmapFactory(sampleSize)
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "ImageDecoder refused the image; trying BitmapFactory" }
+            ImageUtils.decodeBitmap(bytes, sampleSize)
         }
         return AndroidPipelineBitmap(bitmap)
     }
 
-    private fun decodeWithBitmapFactory(sampleSize: Int): Bitmap {
-        val options = BitmapFactory.Options().apply {
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-            inSampleSize = sampleSize
-        }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-            ?: throw IllegalArgumentException("Failed to decode image bytes")
-        return ImageUtils.applyExifOrientation(bitmap, bytes)
-    }
-
     override fun close() = Unit
 }
-
-private fun ByteArray.isJpeg() = size >= 3 && this[0] == 0xFF.toByte() && this[1] == 0xD8.toByte() && this[2] == 0xFF.toByte()
 
 /** The biggest power of two that still leaves at least [minLongEdge]; the pipeline scales the rest. */
 private fun sampleSizeFor(longEdge: Int, minLongEdge: Int): Int {

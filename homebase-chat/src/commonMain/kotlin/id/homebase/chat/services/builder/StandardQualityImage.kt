@@ -39,9 +39,7 @@ internal suspend fun standardQualityImage(
             max(natural.pixelWidth, natural.pixelHeight) <= standardPrimaryImage.maxPixelDimension &&
                 sourceBytes.size <= standardPrimaryImage.maxBytes
         if (alreadyFits) {
-            // Re-encoding would only add generational loss. It also sidesteps
-            // createImageThumbnail's pass-through fast path, which hands back the source bytes
-            // labelled image/webp.
+            // Re-encoding would only add generational loss.
             attachment
         } else {
             val encoded = createImageThumbnail(sourceBytes, payloadKey, standardPrimaryImage)

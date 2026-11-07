@@ -70,10 +70,7 @@ internal expect fun openImageSource(bytes: ByteArray): ImageSource
  * keeps the plan's order.
  */
 suspend fun renderImages(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    withContext(Dispatchers.Default) { renderImagesBlocking(bytes, plan) }
-
-internal fun renderImagesBlocking(bytes: ByteArray, plan: (ImageSize) -> List<ImageOutput>): RenderedImages =
-    openImageSource(bytes).use { renderFrom(it, plan) }
+    withContext(Dispatchers.Default) { openImageSource(bytes).use { renderFrom(it, plan) } }
 
 internal fun renderFrom(source: ImageSource, plan: (ImageSize) -> List<ImageOutput>): RenderedImages {
     val size = source.displayedSize
@@ -136,7 +133,6 @@ private fun encodeWithin(bitmap: PipelineBitmap, output: ImageOutput): RenderedI
         quality = (quality - QUALITY_STEP).coerceAtLeast(floor)
         bytes = bitmap.encode(output.format, quality)
     }
-    if (bytes.size <= maxBytes) return RenderedImage(bytes, bitmap.width, bitmap.height, quality, output.format)
 
     var current = bitmap
     try {
@@ -167,16 +163,9 @@ internal fun resizeThroughPipeline(
     quality: Int,
 ): ImageResult = openImageSource(srcBytes).use { source ->
     val natural = source.displayedSize
-    val (targetW, targetH) = calculateTargetDimensions(natural.pixelWidth, natural.pixelHeight, maxWidth, maxHeight)
-    val decoded = source.decode(max(targetW, targetH))
-    try {
-        val scaled = scaleDown(decoded, targetW, targetH)
-        try {
-            ImageResult(scaled.encode(outputFormat, quality), natural, ImageSize(targetW, targetH))
-        } finally {
-            if (scaled !== decoded) scaled.close()
-        }
-    } finally {
-        decoded.close()
-    }
+    val image = renderFrom(source) {
+        val (width, height) = calculateTargetDimensions(natural.pixelWidth, natural.pixelHeight, maxWidth, maxHeight)
+        listOf(ImageOutput(width, height, quality, Int.MAX_VALUE, outputFormat))
+    }.images.single()
+    ImageResult(image.bytes, natural, ImageSize(image.width, image.height))
 }

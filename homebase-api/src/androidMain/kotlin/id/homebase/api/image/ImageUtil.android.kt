@@ -8,7 +8,6 @@ import android.graphics.Matrix
 import android.os.Build
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.scale
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
@@ -94,7 +93,7 @@ actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
  */
 actual object ImageUtils {
 
-    private fun decodeBitmap(bytes: ByteArray): Bitmap {
+    internal fun decodeBitmap(bytes: ByteArray, sampleSize: Int = 1): Bitmap {
         val isHeic = ImageFormatDetector.isHeic(bytes)
         val inputBytes = if (isHeic) {
             convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
@@ -102,6 +101,7 @@ actual object ImageUtils {
         val options = BitmapFactory.Options().apply {
             inPreferredConfig = Bitmap.Config.ARGB_8888
             inMutable = true
+            inSampleSize = sampleSize
         }
         val bitmap = BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
             ?: throw IllegalArgumentException("Failed to decode image bytes")
@@ -110,7 +110,7 @@ actual object ImageUtils {
         return if (isHeic) bitmap else applyExifOrientation(bitmap, inputBytes)
     }
 
-    internal fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {
+    private fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {
         val exif = ExifInterface(ByteArrayInputStream(imageBytes))
         val orientation = exif.getAttributeInt(
             ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
