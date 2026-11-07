@@ -38,6 +38,7 @@ with `cursor = null`, so the sync cursor doesn't move.
 Photos and videos both carry their tiny preview in the encrypted `PhotoContent`, so the drive stays
 zero knowledge. For videos, the metadata is built after video processing, which is what makes the
 preview. Videos backed up without one need a decision: fix them up, or wait for the sharp thumbnail.
+#2230 doesn't cover this, so it stays in this plan.
 
 ### 3.4 A separate thumbnail cache
 
@@ -65,6 +66,10 @@ private fun thumbCacheFor(driveId: Uuid) =
 Recent thumbnails are on the device before the gallery asks for them, with their own small download
 limit so they never hold up chat images. How they get there depends on question 1 in §5.
 
+Pre-downloading only the small size works only if the grid never asks for more. That's the grid rule
+in #2230: the grid stays on Small on every screen size. Without it, a 381px tile on an iPhone picks
+the 640px thumbnail, so the pre-downloaded ones would go unused.
+
 ## 4. Risks and limits
 
 - **Sync window:** a window based on when a file last changed treats a freshly backed-up 2015 photo
@@ -76,6 +81,8 @@ limit so they never hold up chat images. How they get there depends on question 
   or confuse the ledger.
 - **Cache eviction:** iOS and Android can clear cache folders when storage runs low, and old entries
   get evicted. Tiles fall back to the tiny preview and then the server.
+- **Thumbnail sizes (#2230):** new backups get #2230's sizes and no 26 KB cap, while existing backups
+  keep theirs because #2230 doesn't regenerate thumbnails. The cache holds a mix of both.
 - **Web:** its file system is in memory, so this cache won't survive a page reload there.
 - **Not yet confirmed:** that tiny previews in `PhotoContent` come back through sync and can be read
   from the local database.
@@ -85,10 +92,11 @@ limit so they never hold up chat images. How they get there depends on question 
 1. What does "synced from the local client" mean: thumbnails downloaded ahead of time by sync, the
    ones the phone made during backup kept locally, or both?
 2. How should "recent" be defined for the sync window?
-3. How big should the photo thumbnail cache be? Suggested start: 1 GB, which holds at least about
-   40,000 thumbnails at the 26 KB cap for 320px. A very large library won't fully fit.
-4. Which sizes go in the cache? Suggested: pre-download 320px only. Larger sizes load when requested,
-   and need a usage limit or a second cache so they don't push out grid thumbnails.
+3. How big should the photo thumbnail cache be? Decide after measuring Small under #2230, which has
+   no 26 KB cap. A very large library may not fully fit.
+4. Which sizes go in the cache? Suggested: pre-download Small only, relying on #2230's grid rule.
+   Larger sizes load when requested, and need a usage limit or a second cache so they don't push out
+   grid thumbnails.
 5. Should the gallery update live over the WebSocket, or from a refresh button?
 
 ## 6. Task list
@@ -96,6 +104,8 @@ limit so they never hold up chat images. How they get there depends on question 
 - [ ] Answer the open questions in §5
 - [ ] Confirm tiny previews come through sync and read back from the local database
 - [ ] Measure sync time and database size with a large photo library
+- [ ] Measure Small thumbnail bytes under #2230 on real photos, then set the cache size
+- [ ] Confirm #2230's grid rule has landed, or land it here
 - [ ] Tiny previews for videos in the encrypted `PhotoContent`
 - [ ] Sync the Photos drive
 - [ ] Gallery reads from the local database
