@@ -47,21 +47,10 @@ object MessageAttachmentBuilder {
                                 payloadKey,
                                 fileOperationsProvider,
                                 mediaQuality,
+                                forceSticker = attachment.forceSticker,
                             )
 
-                        // Thumbs are cut from the original bytes, not from this encode — a thumb of
-                        // a thumb is needlessly soft.
-                        val primary =
-                            if (mediaQuality == MediaQuality.STANDARD) {
-                                standardQualityImage(
-                                    attachment = attachment,
-                                    sourceBytes = thumbs.sourceBytes,
-                                    payloadKey = payloadKey,
-                                    fileOperationsProvider = fileOperationsProvider,
-                                )
-                            } else {
-                                attachment
-                            }
+                        val primary = finalImagePayload(attachment, thumbs, fileOperationsProvider)
 
                         // Sticker is opt-in only: the "Send as sticker" toggle, the sticker
                         // tool, and the background-remover all set forceSticker=true. We do
@@ -71,19 +60,19 @@ object MessageAttachmentBuilder {
                         // real format so the download is named "StickerFile.<ext>"; ordinary
                         // photos keep the legacy "" so nothing changes for them.
                         //
-                        // Quality is recorded only for a HIGH ordinary photo: STANDARD keeps
-                        // the legacy "" (absent reads as standard), and a sticker's bytes are
-                        // bounded at 512px regardless of the toggle, so "HD" would be a lie.
+                        // Quality is recorded only for an HD or Original ordinary photo: STANDARD
+                        // keeps the legacy "" (absent reads as standard), and a sticker's bytes
+                        // are bounded at 512px regardless of the setting, so a badge would lie.
                         val descriptorContent =
                             if (attachment.forceSticker) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = true,
                                     format = ImageFormatDetector.detectFormat(thumbs.sourceBytes),
                                 )
-                            } else if (mediaQuality == MediaQuality.HIGH) {
+                            } else if (mediaQuality != MediaQuality.STANDARD) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = false,
-                                    quality = MediaQuality.HIGH,
+                                    quality = mediaQuality,
                                 )
                             } else {
                                 ""

@@ -356,10 +356,10 @@ fun ConversationMessagesPane(
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },
                             mediaQuality = uiState.mediaQuality,
-                            onToggleMediaQuality = {
+                            onSetMediaQuality = {
                                 onUiAction(
                                     id.homebase.chat.conversationlist.ConversationListUiAction
-                                        .ToggleMediaQuality
+                                        .SetMediaQuality(it)
                                 )
                             },
                             centerImageInPage = true,

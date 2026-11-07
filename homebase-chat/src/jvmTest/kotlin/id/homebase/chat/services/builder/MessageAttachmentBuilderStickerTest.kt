@@ -70,7 +70,7 @@ class MessageAttachmentBuilderStickerTest {
             override fun getFileSize(path: String): Long = bytes.size.toLong()
             override suspend fun writeBytesToTempFile(
                 bytes: ByteArray, prefix: String, suffix: String,
-            ): String = fail("writeBytesToTempFile")
+            ): String = "/tmp/final-image.webp"
             override suspend fun writeBytesToShareOutboundFile(
                 bytes: ByteArray, suffix: String,
             ): String = fail("writeBytesToShareOutboundFile")

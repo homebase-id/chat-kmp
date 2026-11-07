@@ -362,11 +362,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 onAddImage = { galleryLauncher.launch() },
                                 onCameraClick = null,         // not available in share flow
                                 mediaQuality = prefState.mediaQuality,
-                                onToggleMediaQuality = {
-                                    userPreferences.mediaQuality =
-                                        if (userPreferences.mediaQuality == MediaQuality.HIGH) MediaQuality.STANDARD
-                                        else MediaQuality.HIGH
-                                },
+                                onSetMediaQuality = { userPreferences.mediaQuality = it },
                                 onRemoveFile = { attachmentId ->
                                     val updated = editorAttachments.filter { it.attachmentId != attachmentId }
                                     editorAttachments = updated

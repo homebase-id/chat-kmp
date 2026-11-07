@@ -246,6 +246,7 @@ private fun PhotoCell(item: PhotoGalleryItem, onShown: () -> Unit, onClick: () -
                     descriptor = item.payload,
                     previewThumbnail = item.tinyPreview ?: item.payload.previewThumbnail?.toEmbeddedThumb(),
                     requestedSize = ImageSize.THUMB_SMALL,
+                    thumbSizeLimit = ImageSize.THUMB_SMALL,
                     keyHeader = KeyHeader(iv = iv, aesKey = item.keyHeader.aesKey),
                 )
             }

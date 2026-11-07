@@ -16,10 +16,14 @@ enum class VideoQuality {
 
     /** ~1080p short edge, ~5 Mbps video + 192 kbps audio. */
     HIGH,
+
+    /** The file as it is, unless it's being trimmed: a trim has to re-encode, so that comes out as [HIGH]. */
+    ORIGINAL,
 }
 
 // LOW is not reachable from the user-facing toggle; it stays for callers that ask for it directly.
 fun MediaQuality.toVideoQuality(): VideoQuality = when (this) {
     MediaQuality.STANDARD -> VideoQuality.STANDARD
-    MediaQuality.HIGH -> VideoQuality.HIGH
+    MediaQuality.HD -> VideoQuality.HIGH
+    MediaQuality.ORIGINAL -> VideoQuality.ORIGINAL
 }

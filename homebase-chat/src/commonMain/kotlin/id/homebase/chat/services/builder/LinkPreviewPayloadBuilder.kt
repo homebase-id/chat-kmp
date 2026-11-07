@@ -5,7 +5,7 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.createThumbnails
+import id.homebase.api.image.createTinyPreview
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
@@ -41,7 +41,7 @@ object LinkPreviewPayloadBuilder {
         // outbox.
         val tinyThumb: EmbeddedThumb? = if (imageBytes.isNotEmpty()) {
             try {
-                val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
+                val thumb = createTinyPreview(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
                 val content = thumb?.content
                 if (thumb != null && content != null &&
                     content.bytes.size > HomebaseProtocol.MaxEmbeddedThumbBytes) {

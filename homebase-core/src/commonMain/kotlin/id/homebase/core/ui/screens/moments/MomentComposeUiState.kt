@@ -82,7 +82,7 @@ sealed interface MomentComposeUiAction {
     data class ToggleIncludeLocation(val attachmentId: Uuid) : MomentComposeUiAction
 
     /** Flips the same persisted quality preference the in-chat editor writes. */
-    data object ToggleMediaQuality : MomentComposeUiAction
+    data class SetMediaQuality(val quality: MediaQuality) : MomentComposeUiAction
 
     /**
      * User picked a date via the date chip. `epochMillis = null` clears the

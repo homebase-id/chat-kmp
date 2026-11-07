@@ -21,7 +21,7 @@ import kotlin.test.Test
 @OptIn(ExperimentalTestApi::class)
 class HdBadgeRenderTest {
 
-    private val badgeDescription = "Sent in high quality"
+    private val badgeDescription = "Sent as the original file"
 
     private fun image(descriptorContent: String?) = PayloadDescriptor(
         key = "chat_web0",
@@ -33,7 +33,7 @@ class HdBadgeRenderTest {
     private fun BubbleFor(payload: PayloadDescriptor) {
         HomebaseTheme(darkTheme = false, followsSystemTheme = false) {
             Box(Modifier.fillMaxSize()) {
-                if (payload.isHighQualityImage()) HdBadge()
+                payload.badgedQuality()?.let { quality -> MediaQualityBadge(quality) }
             }
         }
     }
@@ -48,7 +48,7 @@ class HdBadgeRenderTest {
     fun highQualityPhoto_drawsTheBadge() {
         val wire = DescriptorContent.descriptorContentFromImage(
             isSticker = false,
-            quality = MediaQuality.HIGH,
+            quality = MediaQuality.ORIGINAL,
         )
         assertBadgeCount(image(wire), 1)
     }

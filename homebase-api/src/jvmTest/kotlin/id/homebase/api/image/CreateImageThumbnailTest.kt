@@ -7,6 +7,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
+// Sizes and limits for exercising createImageThumbnail, the path profile avatars take.
+private val baseThumbSizes = listOf(
+    ThumbnailInstruction(quality = 84, maxPixelDimension = 320, maxBytes = 26 * 1024),
+    ThumbnailInstruction(quality = 84, maxPixelDimension = 640, maxBytes = 102 * 1024),
+    ThumbnailInstruction(quality = 76, maxPixelDimension = 1080, maxBytes = 291 * 1024),
+    ThumbnailInstruction(quality = 76, maxPixelDimension = 1600, maxBytes = 640 * 1024),
+)
+
 class CreateImageThumbnailTest {
 
     // =========================================================

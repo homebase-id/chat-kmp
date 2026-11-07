@@ -17,7 +17,7 @@ data class QualityTargets(
 fun VideoQuality.targets(): QualityTargets = when (this) {
     VideoQuality.LOW      -> QualityTargets(shortEdgePx = 480,  videoBitrateBps = 1_250_000, audioBitrateBps = 128_000)
     VideoQuality.STANDARD -> QualityTargets(shortEdgePx = 720,  videoBitrateBps = 2_500_000, audioBitrateBps = 128_000)
-    VideoQuality.HIGH     -> QualityTargets(shortEdgePx = 1080, videoBitrateBps = 5_000_000, audioBitrateBps = 192_000)
+    VideoQuality.HIGH, VideoQuality.ORIGINAL -> QualityTargets(shortEdgePx = 1080, videoBitrateBps = 5_000_000, audioBitrateBps = 192_000)
 }
 
 /**

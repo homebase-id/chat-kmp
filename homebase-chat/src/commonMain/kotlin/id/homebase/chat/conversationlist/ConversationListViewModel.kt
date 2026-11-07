@@ -1643,10 +1643,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
 
-            is ConversationListUiAction.ToggleMediaQuality -> {
-                userPreferences.mediaQuality =
-                    if (userPreferences.mediaQuality == MediaQuality.HIGH) MediaQuality.STANDARD
-                    else MediaQuality.HIGH
+            is ConversationListUiAction.SetMediaQuality -> {
+                userPreferences.mediaQuality = action.quality
                 _messagesUiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
             }
             is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)

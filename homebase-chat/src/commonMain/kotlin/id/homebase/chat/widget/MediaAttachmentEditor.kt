@@ -63,6 +63,8 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.graphics.vector.ImageVector
 import org.jetbrains.compose.resources.StringResource
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -104,10 +106,9 @@ import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
 import id.homebase.api.image.MediaQuality
+import id.homebase.core.settings.label
 import id.homebase.resources.MR
-import id.homebase.resources.cd_media_quality_high_off
-import id.homebase.resources.cd_media_quality_high_on
-import id.homebase.resources.chat_media_quality_hd
+import id.homebase.resources.cd_media_quality_choice
 import id.homebase.resources.cd_file_attachment
 import id.homebase.resources.cd_gallery_thumbnail
 import id.homebase.resources.cd_image_attachment
@@ -210,7 +211,7 @@ fun MediaAttachmentEditor(
      * the toggle writes straight through to the global preference.
      */
     mediaQuality: MediaQuality = MediaQuality.STANDARD,
-    onToggleMediaQuality: (() -> Unit)? = null,
+    onSetMediaQuality: ((MediaQuality) -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -734,7 +735,7 @@ fun MediaAttachmentEditor(
                 canCrop = onCropImage != null,
                 canDraw = onDrawImage != null,
                 canSave = onSaveFile != null,
-                canSetQuality = onToggleMediaQuality != null,
+                canSetQuality = onSetMediaQuality != null,
             )
         }
         val toolset = toolsetFor(currentAttachment)
@@ -794,9 +795,9 @@ fun MediaAttachmentEditor(
                             connectedButtonShapes(0, groupSize),
                         )
                     }
-                    MediaQualityToggle(
-                        isHigh = mediaQuality == MediaQuality.HIGH,
-                        onClick = { onToggleMediaQuality!!() },
+                    MediaQualityChoice(
+                        selected = mediaQuality,
+                        onSelected = { onSetMediaQuality!!(it) },
                         shapes = connectedButtonShapes(groupSize - 1, groupSize),
                     )
                 }
@@ -836,23 +837,41 @@ private fun ConnectedToolButton(tool: EditorTool, shapes: ToggleButtonShapes) {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun MediaQualityToggle(isHigh: Boolean, onClick: () -> Unit, shapes: ToggleButtonShapes) {
-    ToggleButton(
-        checked = isHigh,
-        onCheckedChange = { onClick() },
-        shapes = shapes,
-        colors = sendOptionColors(),
-        modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag("mediaQualityChip"),
-    ) {
-        Icon(
-            imageVector = if (isHigh) Icons.Default.Hd else HomebaseIcons.HdOff,
-            contentDescription = stringResource(
-                if (isHigh) MR.string.cd_media_quality_high_on else MR.string.cd_media_quality_high_off
-            ),
-            modifier = Modifier.size(ButtonDefaults.IconSize),
-        )
-        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-        Text(stringResource(MR.string.chat_media_quality_hd))
+private fun MediaQualityChoice(
+    selected: MediaQuality,
+    onSelected: (MediaQuality) -> Unit,
+    shapes: ToggleButtonShapes,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLabel = stringResource(selected.label)
+    Box {
+        ToggleButton(
+            checked = selected != MediaQuality.STANDARD,
+            onCheckedChange = { expanded = true },
+            shapes = shapes,
+            colors = sendOptionColors(),
+            modifier = Modifier.heightIn(min = SEND_OPTION_HEIGHT).testTag("mediaQualityChip"),
+        ) {
+            Icon(
+                imageVector = if (selected == MediaQuality.STANDARD) HomebaseIcons.HdOff else Icons.Default.Hd,
+                contentDescription = stringResource(MR.string.cd_media_quality_choice, selectedLabel),
+                modifier = Modifier.size(ButtonDefaults.IconSize),
+            )
+            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+            Text(selectedLabel)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            MediaQuality.entries.forEach { quality ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(quality.label)) },
+                    onClick = {
+                        expanded = false
+                        onSelected(quality)
+                    },
+                    modifier = Modifier.testTag("mediaQuality_${quality.code}"),
+                )
+            }
+        }
     }
 }
 

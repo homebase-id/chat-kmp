@@ -4,7 +4,7 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.MediaQuality
-import id.homebase.chat.widget.isHighQualityImage
+import id.homebase.chat.widget.badgedQuality
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
 
 /**
  * Send-side half of the HD indicator: MessageAttachmentBuilder records
- * [MediaQuality.HIGH] on an ordinary photo's payload descriptor and records nothing
+ * [MediaQuality.ORIGINAL] on an ordinary photo's payload descriptor and records nothing
  * otherwise, so that only a deliberate HD send is badgeable by the receiver.
  */
 class MessageAttachmentBuilderQualityTest {
@@ -58,7 +58,7 @@ class MessageAttachmentBuilderQualityTest {
             override fun getFileSize(path: String): Long = bytes.size.toLong()
             override suspend fun writeBytesToTempFile(
                 bytes: ByteArray, prefix: String, suffix: String,
-            ): String = fail("writeBytesToTempFile")
+            ): String = "/tmp/final-image.webp"
 
             override suspend fun writeBytesToShareOutboundFile(
                 bytes: ByteArray, suffix: String,
@@ -99,13 +99,13 @@ class MessageAttachmentBuilderQualityTest {
 
     @Test
     fun highQualityPhoto_recordsHighOnTheWire() = runTest {
-        val descriptorContent = sendPhoto(MediaQuality.HIGH)
+        val descriptorContent = sendPhoto(MediaQuality.ORIGINAL)
 
         val info = received(descriptorContent).descriptorInfo()
         assertTrue(info is DescriptorContent.ImageFile, "Expected ImageFile, got $info")
-        assertEquals(MediaQuality.HIGH, info.quality)
+        assertEquals(MediaQuality.ORIGINAL, info.quality)
         assertFalse(info.isSticker, "A photo sent in HD is still not a sticker")
-        assertTrue(received(descriptorContent).isHighQualityImage())
+        assertEquals(MediaQuality.ORIGINAL, received(descriptorContent).badgedQuality())
     }
 
     @Test
@@ -118,19 +118,19 @@ class MessageAttachmentBuilderQualityTest {
         val info = received(descriptorContent).descriptorInfo()
         assertTrue(info is DescriptorContent.ImageFile)
         assertNull(info.quality)
-        assertFalse(received(descriptorContent).isHighQualityImage())
+        assertNull(received(descriptorContent).badgedQuality())
     }
 
     @Test
     fun sticker_neverRecordsQuality_evenWhenSentAsHigh() = runTest {
         // A sticker's bytes are bounded at 512px regardless of the toggle, so "HD" would
         // be a false claim.
-        val descriptorContent = sendPhoto(MediaQuality.HIGH, forceSticker = true)
+        val descriptorContent = sendPhoto(MediaQuality.ORIGINAL, forceSticker = true)
 
         val info = received(descriptorContent).descriptorInfo()
         assertTrue(info is DescriptorContent.ImageFile)
         assertTrue(info.isSticker)
         assertNull(info.quality)
-        assertFalse(received(descriptorContent).isHighQualityImage())
+        assertNull(received(descriptorContent).badgedQuality())
     }
 }

@@ -158,6 +158,19 @@ Tiny previews grew because proper filtering keeps detail that nearest-neighbour 
 land closer to the 768-byte limit, so its loop runs more often. No phone numbers yet: time, memory and
 bytes on a real iPhone and Android phone for 12 MP and 48 MP HEIC and JPEG are still open in #2221.
 
+### 2026-11-07, media table (#2230), desktop JVM (macOS), test fixtures, not phone photos
+
+`createMediaImages` from the same bench. These fixtures are already compressed and small, so treat them
+as a shape, not as real byte counts. #2230's q60 and q70 still need checking on real photos, faces
+included.
+
+| Fixture | Setting | Thumbnails | Final image |
+|---|---|---|---|
+| waterhouse.jpg | Standard | 427x240 q70 16 KB, 853x480 q70 54 KB, 1439x810 q70 133 KB | 2048x1153 q60 236 KB |
+| waterhouse.jpg | HD | 427x240 q80 20 KB, 853x480 q80 69 KB, 1439x810 q76 147 KB, 2048x1153 q70 262 KB | 2048x1153 q80 339 KB |
+| waterhouse.jpg | Original | 427x240 q80 20 KB, 853x480 q80 69 KB, 1439x810 q80 170 KB, 2048x1153 q76 288 KB | The file |
+| 800x600 JPEG | Standard | 320x240 q70 15 KB, 640x480 q70 57 KB, 800x600 q70 101 KB | 800x600 q70 101 KB |
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,

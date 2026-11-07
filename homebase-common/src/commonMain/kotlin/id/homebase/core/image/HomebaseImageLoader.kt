@@ -130,11 +130,21 @@ class HomebaseImageLoader(
             return loadFullPayload(data, retryConfig)
         }
 
+        if (shouldStepUpToPayload(targetSize, data)) {
+            try {
+                loadFullPayload(data, retryConfig)?.let { return it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "Step up to payload failed; using the largest thumbnail" }
+            }
+        }
+
         // Snap the measured display size to the best native thumbnail the server
         // actually stores. Keying the request (and thus the disk cache) by the
         // native size deduplicates entries across measured sizes/devices and lets
         // the read hit what the sender seeded under the optimistic fileId.
-        val nativeSize = selectThumbSize(targetSize, data.availableThumbSizes)
+        val nativeSize = thumbSizeToRequest(targetSize, data)
 
         return withRetry(retryConfig, TAG) {
             val response = try {

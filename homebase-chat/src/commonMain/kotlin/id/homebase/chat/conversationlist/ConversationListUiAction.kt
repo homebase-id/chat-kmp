@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
@@ -351,7 +352,7 @@ sealed interface ConversationListUiAction {
      * preference, the way Signal's and Telegram's equivalents do — it is the setting, surfaced
      * a second time where it matters.
      */
-    data object ToggleMediaQuality : ConversationListUiAction
+    data class SetMediaQuality(val quality: MediaQuality) : ConversationListUiAction
 
     /** User toggled Send-as-sticker on an image attachment. */
     data class ToggleStickerAttachment(

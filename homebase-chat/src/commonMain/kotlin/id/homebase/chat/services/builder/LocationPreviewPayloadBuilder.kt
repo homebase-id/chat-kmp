@@ -4,7 +4,7 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.createThumbnails
+import id.homebase.api.image.createTinyPreview
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
@@ -55,7 +55,7 @@ object LocationPreviewPayloadBuilder {
 
         val tinyThumb: EmbeddedThumb? = if (actualHasImage) {
             try {
-                val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LOCATION)
+                val thumb = createTinyPreview(imageBytes, ChatProtocol.PAYLOAD_KEY_LOCATION)
                 thumb
             } catch (_: Exception) {
                 null

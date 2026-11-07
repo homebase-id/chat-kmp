@@ -54,6 +54,10 @@ data class HomebaseImageData(
     val payloadContentType: String? = null,
     /** KeyHeader for decryption of the payload */
     val keyHeader: KeyHeader,
+    /** The payload's size, which decides whether a bubble may step up to it. */
+    val payloadBytes: Long? = null,
+    /** A view that must never load past this, such as a grid of thousands. It also never steps up. */
+    val thumbSizeLimit: ImageSize? = null,
     /** Set with [globalTransitId] to fetch over peer; both null for local media. */
     val remoteOdinId: OdinId? = null,
     val globalTransitId: Uuid? = null,
@@ -88,6 +92,8 @@ data class HomebaseImageData(
             lastModified: Long? = descriptor.lastModified,
             pendingFileUri: String? = null,
             payloadContentType: String? = descriptor.contentType,
+            payloadBytes: Long? = descriptor.bytesWritten,
+            thumbSizeLimit: ImageSize? = null,
             remoteOdinId: OdinId? = null,
             globalTransitId: Uuid? = null,
         ): HomebaseImageData = HomebaseImageData(
@@ -103,6 +109,8 @@ data class HomebaseImageData(
             pendingFileUri = pendingFileUri,
             payloadContentType = payloadContentType,
             keyHeader = keyHeader,
+            payloadBytes = payloadBytes,
+            thumbSizeLimit = thumbSizeLimit,
             remoteOdinId = remoteOdinId,
             globalTransitId = globalTransitId,
         )
@@ -177,6 +185,33 @@ fun thumbSizesFrom(thumbnails: List<ThumbnailDescriptor>?): List<ImageSize> =
  * exceeds all of them. Returns [requested] unchanged when [available] is empty so
  * callers without a descriptor keep requesting an arbitrary size.
  */
+private val PAYLOAD_TYPES_EVERY_CLIENT_CAN_DECODE = setOf("image/jpeg", "image/png", "image/webp")
+
+// Well under PayloadSizePolicy.RENDER_LIMIT_BYTES: every bubble that asks pulls the payload, so a
+// large Original must never get pulled just to show a bubble.
+private const val STEP_UP_LIMIT_BYTES = 12L * 1024 * 1024
+
+/**
+ * Whether the display needs more than the largest thumbnail and the payload is safe to use instead.
+ * Thumbnail sizes plus the payload's byte size are enough to decide, with no new descriptor fields.
+ */
+fun shouldStepUpToPayload(requested: ImageSize, data: HomebaseImageData): Boolean {
+    if (data.thumbSizeLimit != null) return false
+    val largest = data.availableThumbSizes.maxOfOrNull { max(it.pixelWidth, it.pixelHeight) } ?: return false
+    val payloadBytes = data.payloadBytes ?: return false
+    return max(requested.pixelWidth, requested.pixelHeight) * 10 > largest * 11 &&
+        payloadBytes <= STEP_UP_LIMIT_BYTES &&
+        data.payloadContentType in PAYLOAD_TYPES_EVERY_CLIENT_CAN_DECODE
+}
+
+/** The native thumbnail for this display, never past [HomebaseImageData.thumbSizeLimit]. */
+fun thumbSizeToRequest(requested: ImageSize, data: HomebaseImageData): ImageSize {
+    val capped = data.thumbSizeLimit
+        ?.takeIf { max(it.pixelWidth, it.pixelHeight) < max(requested.pixelWidth, requested.pixelHeight) }
+        ?: requested
+    return selectThumbSize(capped, data.availableThumbSizes)
+}
+
 fun selectThumbSize(requested: ImageSize, available: List<ImageSize>): ImageSize {
     if (available.isEmpty()) return requested
     val reqMax = max(requested.pixelWidth, requested.pixelHeight)

@@ -242,10 +242,8 @@ class MomentComposeViewModel(
                 }
             }
 
-            MomentComposeUiAction.ToggleMediaQuality -> {
-                userPreferences.mediaQuality =
-                    if (userPreferences.mediaQuality == MediaQuality.HIGH) MediaQuality.STANDARD
-                    else MediaQuality.HIGH
+            is MomentComposeUiAction.SetMediaQuality -> {
+                userPreferences.mediaQuality = action.quality
                 _uiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
             }
         }

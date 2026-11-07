@@ -73,7 +73,6 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.isCopyChord
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
-import id.homebase.resources.chat_media_quality_hd
 import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
@@ -254,11 +253,10 @@ fun FullScreenMediaViewer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        val currentIsHighQuality = currentPayload?.isHighQualityImage() == true
-                        val hdLabel = stringResource(MR.string.chat_media_quality_hd)
+                        val qualityLabel = currentPayload?.badgedQuality()?.let { stringResource(it.badgeLabel) }
                         val timestamp = formatTimestamp(data.userDate)
                         Text(
-                            text = if (currentIsHighQuality) "$timestamp · $hdLabel" else timestamp,
+                            text = if (qualityLabel != null) "$timestamp · $qualityLabel" else timestamp,
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
