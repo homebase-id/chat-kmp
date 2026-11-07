@@ -32,9 +32,17 @@ data class PermissionExtensionConfig(
  */
 class AppInstall(
     val registration: AppRegistrationParams,
-    /** Throws when it can't tell. A wrong "no" re-registers an installed app, replacing its keys. */
-    val isInstalled: suspend () -> Boolean,
+    /** Throws when it can't tell. A wrong [AppInstallState.NotInstalled] re-registers an installed app, replacing its keys. */
+    val state: suspend (AppRegistrationParams) -> AppInstallState,
 )
+
+enum class AppInstallState {
+    NotInstalled,
+    Installed,
+
+    /** Something holds the app's slug but its drive doesn't exist, so neither installing nor a grant can work. */
+    SlugTaken,
+}
 
 /** Result of missing permission check. */
 data class MissingPermissionsResult(
@@ -57,6 +65,9 @@ sealed interface PermissionCheckResult {
     data object AllGranted : PermissionCheckResult
 
     data class Missing(val details: MissingPermissionsResult) : PermissionCheckResult
+
+    /** See [AppInstallState.SlugTaken]; only the owner can clear it. */
+    data class AppSlugTaken(val appName: String) : PermissionCheckResult
 }
 
 /**
@@ -78,15 +89,24 @@ class PermissionExtensionManager(
         }
         val result = getMissingPermissions(config, context)
         val install = config.install
-        if (result !is PermissionCheckResult.Missing || install == null || install.isInstalled()) return result
+        if (result !is PermissionCheckResult.Missing || install == null) return result
 
-        Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
-        return PermissionCheckResult.Missing(
-            result.details.copy(
-                buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.callbackUrl()) },
-                installs = install.registration.name,
-            )
-        )
+        return when (install.state(install.registration)) {
+            AppInstallState.Installed -> result
+            AppInstallState.SlugTaken -> {
+                Logger.w(tag = TAG) { "Slug ${install.registration.appSlug} is held without ${install.registration.name}'s drive" }
+                PermissionCheckResult.AppSlugTaken(install.registration.name)
+            }
+            AppInstallState.NotInstalled -> {
+                Logger.i(tag = TAG) { "${install.registration.name} isn't installed; installing it first" }
+                PermissionCheckResult.Missing(
+                    result.details.copy(
+                        buildExtendPermissionUrl = { install.registration.url(hostIdentity, config.callbackUrl()) },
+                        installs = install.registration.name,
+                    )
+                )
+            }
+        }
     }
 
     internal fun getMissingPermissions(

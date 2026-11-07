@@ -377,6 +377,8 @@
     <string name="permissions_install_title">Installer %1$s</string>
     <string name="permissions_install_body">%1$s er ikke installeret endnu. Installer den først, så kan %2$s bede om adgang til den.</string>
     <string name="permissions_install">Installer</string>
+    <string name="permissions_slug_taken_title">Kan ikke installere %1$s</string>
+    <string name="permissions_slug_taken_body">En anden app på din Homebase bruger det navn, som %1$s skal bruge. Fjern den app i din ejer konsol, og prøv igen.</string>
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>

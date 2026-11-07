@@ -196,6 +196,13 @@ class ExtendPermissionViewModel(
                     _permissionsChecked.value = true
                 }
 
+                is PermissionCheckResult.AppSlugTaken -> {
+                    lastMissingResult = null
+                    _permissionsGranted.value = false
+                    _uiState.value = ExtendPermissionUiState.AppSlugTaken(result.appName)
+                    _permissionsChecked.value = true
+                }
+
                 PermissionCheckResult.AllGranted -> {
                     Logger.d(tag = TAG) { "All permissions are granted" }
                     lastMissingResult = null
@@ -256,6 +263,9 @@ sealed interface ExtendPermissionUiState {
 
     /** Missing permissions detected, dialog should be shown. */
     data class ShowDialog(val appName: String, val installs: String? = null) : ExtendPermissionUiState
+
+    /** Another app holds [appName]'s slug: only the owner can clear it, so the dialog offers no link. */
+    data class AppSlugTaken(val appName: String) : ExtendPermissionUiState
 
     /** User dismissed the dialog. */
     data object Dismissed : ExtendPermissionUiState

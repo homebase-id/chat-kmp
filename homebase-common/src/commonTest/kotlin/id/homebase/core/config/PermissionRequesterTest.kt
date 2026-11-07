@@ -1,5 +1,6 @@
 package id.homebase.core.config
 
+import id.homebase.api.youauth.AppInstallState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -13,7 +14,7 @@ class PermissionRequesterTest {
             getMomentsPermissionExtensionConfig(),
             getVaultPermissionExtensionConfig(),
             getEmailPermissionExtensionConfig(),
-            getFilesyncPermissionExtensionConfig(isInstalled = { true }),
+            getFilesyncPermissionExtensionConfig(installState = { AppInstallState.Installed }),
             getWebDropPermissionExtensionConfig(),
             getLocationPermissionExtensionConfig(),
             getStickerPermissionExtensionConfig(),

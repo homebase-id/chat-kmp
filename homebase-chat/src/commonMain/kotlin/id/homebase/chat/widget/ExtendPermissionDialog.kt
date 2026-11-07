@@ -13,12 +13,15 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.ok
 import id.homebase.resources.permissions_extend
 import id.homebase.resources.permissions_install
 import id.homebase.resources.permissions_install_body
 import id.homebase.resources.permissions_install_title
 import id.homebase.resources.permissions_missing_body
 import id.homebase.resources.permissions_missing_title
+import id.homebase.resources.permissions_slug_taken_body
+import id.homebase.resources.permissions_slug_taken_title
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -87,6 +90,20 @@ fun ExtendPermissionDialog(
                         Text(stringResource(MR.string.cancel))
                     }
                 }
+            )
+        }
+
+        is ExtendPermissionUiState.AppSlugTaken -> {
+            val close = {
+                viewModel.cancelDialog()
+                onCancel?.invoke()
+                Unit
+            }
+            AlertDialog(
+                onDismissRequest = close,
+                title = { Text(stringResource(MR.string.permissions_slug_taken_title, state.appName)) },
+                text = { Text(stringResource(MR.string.permissions_slug_taken_body, state.appName)) },
+                confirmButton = { TextButton(onClick = close) { Text(stringResource(MR.string.ok)) } },
             )
         }
 

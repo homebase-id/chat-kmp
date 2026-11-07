@@ -1,6 +1,10 @@
 package id.homebase.api.client.drives.query
 
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.util.compareStringUuId
+import id.homebase.api.youauth.AppInstallState
+import id.homebase.api.youauth.AppRegistrationParams
+import id.homebase.api.youauth.TargetDriveAccessRequest
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.errorCodeEnumOrUnhandled
 import id.homebase.api.client.auth.CredentialsManager
@@ -54,20 +58,38 @@ class DriveQueryProvider(
         return deserialize(response.body)
     }
 
-    /** Whether an app holds [appSlug]: GET /apps/{appSlug}/drives answers for any app, even one with no drives. */
-    suspend fun isAppRegistered(appSlug: String): Boolean {
+    /**
+     * GET /apps/{appSlug}/drives answers for any app, even one with no drives. It can't say whose the slug
+     * is, so the drive decides, by whichever app owns it: an existing drive is one a grant can reach.
+     */
+    suspend fun appInstallState(registration: AppRegistrationParams): AppInstallState {
         val creds = requireCreds()
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "/apps/$appSlug/drives"),
+            url = apiUrl(creds.domain, "/apps/${registration.appSlug}/drives"),
             token = creds.accessToken,
             secret = creds.secret,
         )
         // The expected "no" is answered here, before throwForFailure logs every 400 as an error.
         if (response.status == 400 &&
             parseProblemOrNull(response.body)?.errorCodeEnumOrUnhandled() == OdinClientErrorCode.InvalidDrive
-        ) return false
+        ) return AppInstallState.NotInstalled
         throwForFailure(response)
-        return true
+        return if (registration.drives.all { driveExists(it) }) AppInstallState.Installed else AppInstallState.SlugTaken
+    }
+
+    private suspend fun driveExists(drive: TargetDriveAccessRequest): Boolean {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/drives"),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = "type=${drive.type}",
+        )
+        throwForFailure(response)
+        return deserialize<PagedResult<ClientDriveData>>(response.body).results.any {
+            compareStringUuId(it.targetDrive.alias.toString(), drive.alias) &&
+                compareStringUuId(it.targetDrive.type.toString(), drive.type)
+        }
     }
 
     /**
