@@ -49,7 +49,7 @@ actual fun ByteArray.toImageBitmap(): ImageBitmap? {
 
 actual object ImageUtils {
 
-    private fun decodeImage(bytes: ByteArray): Image {
+    internal fun decodeImage(bytes: ByteArray): Image {
         val inputBytes = if (ImageFormatDetector.isHeic(bytes)) {
             convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
         } else bytes

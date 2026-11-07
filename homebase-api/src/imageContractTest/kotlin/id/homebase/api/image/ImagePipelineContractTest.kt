@@ -100,6 +100,19 @@ class ImagePipelineContractTest {
     }
 
     @Test
+    fun aValidHeaderOverACorruptBodyThrowsInsteadOfMakingBlankImages() = runTest {
+        val good = ImageUtils.resizePreserveAspect(png(64, 64) { x, y -> opaque(x, y, 0) }, 64, 64, ImageFormat.JPEG, 90).bytes
+        val random = Random(3)
+        val corrupt = good.copyOf(400).also { for (i in 200 until it.size) it[i] = random.nextInt().toByte() }
+
+        val result = runCatching { renderImages(corrupt) { listOf(ImageOutput(32, 32, 90, Int.MAX_VALUE, ImageFormat.PNG)) } }
+
+        val image = result.getOrNull()?.images?.single() ?: return@runTest
+        val pixels = decoded(image.bytes).pixels
+        assertTrue(pixels.any { it.ushr(24) != 0 }, "A decoder may salvage a corrupt body, but never as a blank image")
+    }
+
+    @Test
     fun aVeryThinImageNeverGoesBelowOnePixel() = runTest {
         val thin = png(4000, 2) { x, _ -> opaque(x % 256, 0, 0) }
 

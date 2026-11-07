@@ -128,6 +128,8 @@ private fun ThumbnailInstruction.toOutput(source: ImageSize, isTiny: Boolean): I
         maxBytes = maxBytes,
         format = if (isTiny) ImageFormat.WEBP else type,
         minQuality = if (isTiny) 1 else ImageOutput.DEFAULT_MIN_QUALITY,
+        // A colour profile alone could use up most of the tiny's limit.
+        keepColorProfile = !isTiny,
     )
 }
 

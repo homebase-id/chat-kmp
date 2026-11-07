@@ -6,6 +6,21 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.IntVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.value
+import platform.CoreFoundation.CFDictionaryCreateMutable
+import platform.CoreFoundation.CFDictionaryGetValue
+import platform.CoreFoundation.CFDictionarySetValue
+import platform.CoreFoundation.CFNumberGetValue
+import platform.CoreFoundation.CFNumberRef
+import platform.CoreFoundation.kCFBooleanTrue
+import platform.CoreFoundation.kCFNumberIntType
+import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
+import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.ColorType
@@ -14,7 +29,6 @@ import org.jetbrains.skia.ImageInfo
 import platform.CoreFoundation.CFDataRef
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFRelease
-import platform.CoreFoundation.CFRetain
 import platform.CoreFoundation.CFStringRef
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGColorSpaceCreateWithName
@@ -32,10 +46,8 @@ import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.kCGBitmapByteOrder32Big
 import platform.CoreGraphics.kCGColorSpaceDisplayP3
 import platform.CoreGraphics.kCGColorSpaceSRGB
-import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
-import platform.Foundation.NSDictionary
 import platform.Foundation.NSNumber
 import platform.Foundation.dataWithBytes
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
@@ -55,23 +67,25 @@ import platform.ImageIO.kCGImageSourceThumbnailMaxPixelSize
  * bridge. It hands over to Skia's bitmap for scaling and encoding, so those match the other targets.
  * [SkiaImageSource] takes over for anything ImageIO can't read.
  */
-private class ImageIoSource(private val source: CGImageSourceRef, private val displayed: ImageSize) : ImageSource {
-    override val displayedSize get() = displayed
-
+private class ImageIoSource(
+    private val source: CGImageSourceRef,
+    private val bytes: ByteArray,
+    override val displayedSize: ImageSize,
+) : ImageSource {
     override fun decode(minLongEdge: Int): PipelineBitmap {
-        val options = mapOf<Any?, Any?>(
-            keyOf(kCGImageSourceCreateThumbnailFromImageAlways) to true,
-            keyOf(kCGImageSourceCreateThumbnailWithTransform) to true,
-            keyOf(kCGImageSourceShouldCacheImmediately) to true,
-            keyOf(kCGImageSourceThumbnailMaxPixelSize) to minLongEdge,
-        )
-        @Suppress("UNCHECKED_CAST")
-        val cfOptions = CFBridgingRetain(options) as CFDictionaryRef?
+        val options = CFDictionaryCreateMutable(null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
+            ?: throw IllegalStateException("Couldn't create decode options")
+        val maxSize = CFBridgingRetain(NSNumber(int = minLongEdge))
+        CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
+        CFDictionarySetValue(options, kCGImageSourceCreateThumbnailWithTransform, kCFBooleanTrue)
+        CFDictionarySetValue(options, kCGImageSourceShouldCacheImmediately, kCFBooleanTrue)
+        CFDictionarySetValue(options, kCGImageSourceThumbnailMaxPixelSize, maxSize)
         val cgImage = try {
-            CGImageSourceCreateThumbnailAtIndex(source, 0.convert(), cfOptions)
+            CGImageSourceCreateThumbnailAtIndex(source, 0.convert(), options)
         } finally {
-            cfOptions?.let { CFRelease(it) }
-        } ?: throw IllegalArgumentException("ImageIO couldn't decode the image")
+            CFRelease(maxSize)
+            CFRelease(options)
+        } ?: return SkiaImageSource(bytes).use { it.decode(minLongEdge) }
         try {
             return SkiaPipelineBitmap(cgImage.toSkiaImage())
         } finally {
@@ -82,14 +96,13 @@ private class ImageIoSource(private val source: CGImageSourceRef, private val di
     override fun close() = CFRelease(source)
 }
 
-private fun keyOf(key: CFStringRef?): Any? = CFBridgingRelease(CFRetain(key))
-
 // Drawing into a context of the matching colour space keeps P3 pixels P3 for Skia to carry on.
 private fun CGImageRef.toSkiaImage(): Image {
     val width = CGImageGetWidth(this).toInt()
     val height = CGImageGetHeight(this).toInt()
     val wide = CGImageGetColorSpace(this)?.let { CGColorSpaceIsWideGamutRGB(it) } == true
     val colorSpace = CGColorSpaceCreateWithName(if (wide) kCGColorSpaceDisplayP3 else kCGColorSpaceSRGB)
+    require(width.toLong() * 4 * height <= Int.MAX_VALUE) { "$width x $height is too large to decode" }
     val rowBytes = width * 4
     val pixels = ByteArray(rowBytes * height)
     try {
@@ -125,8 +138,7 @@ private fun CGImageRef.toSkiaImage(): Image {
 private fun openWithImageIo(bytes: ByteArray): ImageSource? {
     if (bytes.isEmpty()) return null
     val nsData = bytes.usePinned { NSData.dataWithBytes(it.addressOf(0), bytes.size.toULong()) }
-    @Suppress("UNCHECKED_CAST")
-    val cfData = CFBridgingRetain(nsData) as CFDataRef? ?: return null
+    val cfData: CFDataRef = CFBridgingRetain(nsData)?.reinterpret() ?: return null
     val source = try {
         CGImageSourceCreateWithData(cfData, null)
     } finally {
@@ -137,16 +149,26 @@ private fun openWithImageIo(bytes: ByteArray): ImageSource? {
         CFRelease(source)
         return null
     }
-    return ImageIoSource(source, displayed)
+    return ImageIoSource(source, bytes, displayed)
 }
 
+// CF lookups, not NSDictionary.objectForKey: a CFStringRef key doesn't bridge to NSString in K/N.
 private fun displayedSizeOf(source: CGImageSourceRef): ImageSize? {
-    val cfProps = CGImageSourceCopyPropertiesAtIndex(source, 0.convert(), null) ?: return null
-    val props = CFBridgingRelease(cfProps) as? NSDictionary ?: return null
-    val width = (props.objectForKey(kCGImagePropertyPixelWidth) as? NSNumber)?.intValue ?: return null
-    val height = (props.objectForKey(kCGImagePropertyPixelHeight) as? NSNumber)?.intValue ?: return null
-    val orientation = (props.objectForKey(kCGImagePropertyOrientation) as? NSNumber)?.intValue ?: 1
-    return if (orientation in 5..8) ImageSize(height, width) else ImageSize(width, height)
+    val props = CGImageSourceCopyPropertiesAtIndex(source, 0.convert(), null) ?: return null
+    try {
+        val width = cfInt(props, kCGImagePropertyPixelWidth) ?: return null
+        val height = cfInt(props, kCGImagePropertyPixelHeight) ?: return null
+        val swapped = jpegOrientationSwapsDimensions(cfInt(props, kCGImagePropertyOrientation) ?: 1)
+        return if (swapped) ImageSize(height, width) else ImageSize(width, height)
+    } finally {
+        CFRelease(props)
+    }
+}
+
+private fun cfInt(dict: CFDictionaryRef, key: CFStringRef?): Int? = memScoped {
+    val number: CFNumberRef = CFDictionaryGetValue(dict, key)?.reinterpret() ?: return null
+    val out = alloc<IntVar>()
+    if (CFNumberGetValue(number, kCFNumberIntType, out.ptr)) out.value else null
 }
 
 internal actual fun openImageSource(bytes: ByteArray): ImageSource =
