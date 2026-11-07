@@ -398,6 +398,8 @@
     <string name="permissions_install_title">Install %1$s</string>
     <string name="permissions_install_body">%1$s isn't installed yet. Install it first, then %2$s can ask for access to it.</string>
     <string name="permissions_install">Install</string>
+    <string name="permissions_slug_taken_title">Can't install %1$s</string>
+    <string name="permissions_slug_taken_body">Another app on your Homebase is using the name %1$s needs. Remove that app in your owner console, then try again.</string>
 
     <!-- Moments add-on -->
     <string name="moments_label">Moments</string>

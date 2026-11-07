@@ -7,6 +7,9 @@ import kotlinx.coroutines.delay
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.youauth.AppInstall
+import id.homebase.api.youauth.AppInstallState
+import id.homebase.api.youauth.AppRegistrationParams
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.SecurityContextProvider
@@ -84,7 +87,11 @@ class ExtendPermissionViewModelTest {
 
     private fun jsonEngine(body: String) = MockEngine { respondJson(body) }
 
-    private suspend fun viewModel(engine: MockEngine, eventBus: EventBus = EventBus()): ExtendPermissionViewModel {
+    private suspend fun viewModel(
+        engine: MockEngine,
+        eventBus: EventBus = EventBus(),
+        config: PermissionExtensionConfig = this.config,
+    ): ExtendPermissionViewModel {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(
             ApiCredentials.create(
@@ -138,6 +145,21 @@ class ExtendPermissionViewModelTest {
         assertFalse(vm.permissionsGranted.value)
         assertEquals(ExtendPermissionUiState.ShowDialog(config.appName), vm.uiState.value)
         assertNotNull(vm.buildExtendPermissionUrl(), "the missing drive must reach the extend URL")
+    }
+
+    @Test
+    fun aTakenSlug_reportsNotGranted_andOffersNoLink() = runBlocking<Unit> {
+        val registration = AppRegistrationParams("03ae1a49cdae483f9da7fedc0e8f20b9", "Owner", "owner", config.drives, emptyList())
+        val vm = viewModel(
+            jsonEngine(contextJson("")),
+            config = config.copy(install = AppInstall(registration) { AppInstallState.SlugTaken }),
+        )
+
+        withTimeout(10.seconds) { vm.permissionsChecked.first { it } }
+
+        assertFalse(vm.permissionsGranted.value)
+        assertEquals(ExtendPermissionUiState.AppSlugTaken("Owner"), vm.uiState.value)
+        assertNull(vm.buildExtendPermissionUrl())
     }
 
     @Test

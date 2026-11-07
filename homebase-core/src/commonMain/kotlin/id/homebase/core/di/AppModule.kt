@@ -209,7 +209,6 @@ import id.homebase.photobase.ui.BackupSettingsViewModel
 import id.homebase.photobase.PhotobaseConfigFile
 import id.homebase.photobase.ui.PhotobaseSettingsViewModel
 import id.homebase.photobase.ui.PhotobaseSetupViewModel
-import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -1453,9 +1452,7 @@ val appModule = module {
             get(),
             get(),
             get(),
-            getPhotobasePermissionExtensionConfig(
-                isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
-            ),
+            getPhotobasePermissionExtensionConfig(installState = drives::appInstallState),
         )
     }
     viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
@@ -1468,9 +1465,7 @@ val appModule = module {
             get(),
             get(),
             get(),
-            getFilesyncPermissionExtensionConfig(
-                isInstalled = { drives.isAppRegistered(FilesyncProtocol.AppSlug) },
-            ),
+            getFilesyncPermissionExtensionConfig(installState = drives::appInstallState),
         )
     }
     viewModel(EmailPermissionQualifier) {

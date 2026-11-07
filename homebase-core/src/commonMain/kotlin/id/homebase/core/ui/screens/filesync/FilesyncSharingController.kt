@@ -47,6 +47,7 @@ class FilesyncSharingSetup(
             PermissionCheckResult.AllGranted -> null
             is PermissionCheckResult.Missing -> result.details.buildExtendPermissionUrl()
             PermissionCheckResult.Unknown -> error("couldn't read Filesync's permissions")
+            is PermissionCheckResult.AppSlugTaken -> error("this config has no install step")
         }
     }
 }

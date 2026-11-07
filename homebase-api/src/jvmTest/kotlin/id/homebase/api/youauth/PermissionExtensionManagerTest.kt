@@ -116,9 +116,9 @@ class PermissionExtensionManagerTest {
 
     private val registration = AppRegistrationParams("03ae1a49cdae483f9da7fedc0e8f20b9", "Owner", "owner", config.drives, emptyList())
 
-    private suspend fun missing(isInstalled: suspend () -> Boolean): MissingPermissionsResult {
+    private suspend fun missing(state: AppInstallState): MissingPermissionsResult {
         val result = manager(jsonEngine(contextJson("", ""))).getMissingPermissions(
-            config.copy(install = AppInstall(registration, isInstalled)),
+            config.copy(install = AppInstall(registration) { state }),
         )
         assertTrue(result is PermissionCheckResult.Missing, "expected Missing, got $result")
         return result.details
@@ -126,18 +126,30 @@ class PermissionExtensionManagerTest {
 
     @Test
     fun theOwningAppIsInstalledBeforeAccessIsAskedFor() = runTest {
-        val install = missing { false }
+        val install = missing(AppInstallState.NotInstalled)
         assertTrue(install.buildExtendPermissionUrl().startsWith("https://$me/owner/appreg?appId=03ae1a49cdae483f9da7fedc0e8f20b9&"))
         assertEquals("Owner", install.installs)
 
-        val grant = missing { true }
+        val grant = missing(AppInstallState.Installed)
         assertTrue(grant.buildExtendPermissionUrl().startsWith("https://$me/owner/appupdate?appId=${config.appId}&"))
         assertEquals(null, grant.installs)
     }
 
     @Test
     fun whenItCantTellTheCheckFails() = runTest {
-        assertFailsWith<IllegalStateException> { missing { throw IllegalStateException("offline") } }
+        assertFailsWith<IllegalStateException> {
+            manager(jsonEngine(contextJson("", ""))).getMissingPermissions(
+                config.copy(install = AppInstall(registration) { throw IllegalStateException("offline") }),
+            )
+        }
+    }
+
+    @Test
+    fun aSlugHeldWithoutTheDriveOffersNoLink() = runTest {
+        val result = manager(jsonEngine(contextJson("", ""))).getMissingPermissions(
+            config.copy(install = AppInstall(registration) { AppInstallState.SlugTaken }),
+        )
+        assertEquals(PermissionCheckResult.AppSlugTaken("Owner"), result)
     }
 
     @Test

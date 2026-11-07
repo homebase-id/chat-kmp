@@ -6,6 +6,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.api.youauth.AppCircleDeclaration
 import id.homebase.api.youauth.AppInstall
+import id.homebase.api.youauth.AppInstallState
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.AppRegistrationParams
 import id.homebase.api.youauth.DrivePermission
@@ -603,7 +604,7 @@ val filesyncAppRegistration = AppRegistrationParams(
     ),
 )
 
-fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): PermissionExtensionConfig {
+fun getFilesyncPermissionExtensionConfig(installState: suspend (AppRegistrationParams) -> AppInstallState): PermissionExtensionConfig {
     return PermissionExtensionConfig(
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
@@ -611,7 +612,7 @@ fun getFilesyncPermissionExtensionConfig(isInstalled: suspend () -> Boolean): Pe
         permissions = emptyList(),
         returnUrl = ::returnUrl,
         requester = "filesync",
-        install = AppInstall(filesyncAppRegistration, isInstalled),
+        install = AppInstall(filesyncAppRegistration, installState),
     )
 }
 
@@ -648,7 +649,7 @@ val photobaseAppRegistration = AppRegistrationParams(
     ),
 )
 
-fun getPhotobasePermissionExtensionConfig(isInstalled: suspend () -> Boolean): PermissionExtensionConfig {
+fun getPhotobasePermissionExtensionConfig(installState: suspend (AppRegistrationParams) -> AppInstallState): PermissionExtensionConfig {
     return PermissionExtensionConfig(
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
@@ -656,7 +657,7 @@ fun getPhotobasePermissionExtensionConfig(isInstalled: suspend () -> Boolean): P
         permissions = emptyList(),
         returnUrl = ::returnUrl,
         requester = "photobase",
-        install = AppInstall(photobaseAppRegistration, isInstalled),
+        install = AppInstall(photobaseAppRegistration, installState),
     )
 }
 

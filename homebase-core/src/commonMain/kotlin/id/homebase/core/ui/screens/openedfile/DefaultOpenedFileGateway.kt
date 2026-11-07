@@ -45,7 +45,7 @@ class DefaultOpenedFileGateway(
     // The check Filesync itself runs: installed on the drive, and this token holds the drive grant.
     override suspend fun filesyncReady(): Boolean {
         val active = credentials.getActiveCredentials() ?: return false
-        val config = getFilesyncPermissionExtensionConfig(isInstalled = { drives.isAppRegistered(FilesyncProtocol.AppSlug) })
+        val config = getFilesyncPermissionExtensionConfig(installState = drives::appInstallState)
         return PermissionExtensionManager.create(securityContext, active.domain.domainName).getMissingPermissions(config) == PermissionCheckResult.AllGranted
     }
 
