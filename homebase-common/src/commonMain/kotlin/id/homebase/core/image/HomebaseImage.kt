@@ -18,7 +18,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,7 +30,9 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
@@ -99,10 +103,14 @@ fun HomebaseImage(
     // Pending (local, not-yet-uploaded) files have no server thumbnail to key
     // against, so they fall through to the raw data + embedded preview.
     val platformContext = LocalPlatformContext.current
-    val model: Any = remember(imageData, platformContext) {
+    // Starts false for every image: the thumbnail shows first, so a slow payload never holds it back.
+    var steppedUp by remember(imageData) { mutableStateOf(false) }
+    var stepUpFailed by remember(imageData) { mutableStateOf(false) }
+    var displaySize by remember(imageData) { mutableStateOf<ImageSize?>(null) }
+    val model: Any = remember(imageData, platformContext, steppedUp) {
         if (!imageData.isPending) {
             ImageRequest.Builder(platformContext)
-                .data(imageData)
+                .data(if (steppedUp) imageData.copy(loadFullPayload = true) else imageData)
                 .placeholderMemoryCacheKey(HomebaseImageKeyer.thumbnailCacheKey(imageData))
                 .build()
         } else {
@@ -160,12 +168,31 @@ fun HomebaseImage(
         model = model,
         imageLoader = imageLoader,
         contentDescription = contentDescription,
-        modifier = customModified,
+        modifier = customModified.onSizeChanged { displaySize = ImageSize(it.width, it.height) },
         contentScale = contentScale,
         colorFilter = colorFilter
     ) {
         val state by painter.state.collectAsStateWithLifecycle()
         if (onLoaded != null && state is AsyncImagePainter.State.Success) LaunchedEffect(Unit) { onLoaded() }
+
+        val measured = displaySize
+        val canStepUp = state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
+            !imageData.loadFullPayload && !imageData.isPending &&
+            measured != null && shouldStepUpToPayload(measured, imageData)
+        if (canStepUp) {
+            // The wait is what keeps a fling from downloading every payload it passes:
+            // scrolling away cancels this before it fires.
+            LaunchedEffect(Unit) {
+                delay(STEP_UP_SETTLE_MILLIS)
+                steppedUp = true
+            }
+        }
+        if (steppedUp && state is AsyncImagePainter.State.Error) {
+            LaunchedEffect(Unit) {
+                stepUpFailed = true
+                steppedUp = false
+            }
+        }
 
         // Blur only the low-res embedded preview; cached thumbnails and full
         // images are already sharp so the target is 0f for those states.
@@ -277,3 +304,5 @@ private fun Modifier.animatedBlur(radiusDp: State<Float>): Modifier = graphicsLa
         clip = false
     }
 }
+
+private const val STEP_UP_SETTLE_MILLIS = 600L

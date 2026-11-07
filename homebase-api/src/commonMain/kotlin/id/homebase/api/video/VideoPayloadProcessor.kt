@@ -151,24 +151,25 @@ class VideoPayloadProcessor(
         // PhaseProgress emit — the same EventBus flood the upload path had. See
         // WholePercentProgressGate.
         val compressGate = WholePercentProgressGate().also { it.admit(0f) }
-        val onCompressProgress: (Float) -> Unit = {
-            if (compressGate.admit(it * 100f) != null) {
-                onProgress?.invoke(VideoPayloadProgressPhase(payload.key, VideoProcessingPhase.COMPRESSING, it))
-            }
-        }
         val (compressedPath, compressElapsed) =
             measureTimedValue {
-                if (videoQuality == VideoQuality.ORIGINAL && trimStartMs == null && trimEndMs == null) {
-                    payload.filePath
-                } else {
-                    compressor.compress(
-                        inputPath = ffmpegInputPath,
-                        trimStartMs = trimStartMs,
-                        trimEndMs = trimEndMs,
-                        quality = videoQuality,
-                        onProgress = onCompressProgress,
-                    )
-                }
+                compressor.compress(
+                    inputPath = ffmpegInputPath,
+                    trimStartMs = trimStartMs,
+                    trimEndMs = trimEndMs,
+                    quality = videoQuality,
+                    onProgress = {
+                        if (compressGate.admit(it * 100f) != null) {
+                            onProgress?.invoke(
+                                VideoPayloadProgressPhase(
+                                    payload.key,
+                                    VideoProcessingPhase.COMPRESSING,
+                                    it
+                                )
+                            )
+                        }
+                    },
+                )
             }
 
         // Everything below consumes the compressed scratch — segmentation, encryption,

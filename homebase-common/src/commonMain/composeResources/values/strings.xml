@@ -3381,7 +3381,7 @@
     <string name="settings_media_quality_original">Original</string>
     <string name="settings_media_quality_standard_description">Photos up to 2048 pixels and video at 720p. Looks good, sends quickly and keeps screenshots readable.</string>
     <string name="settings_media_quality_hd_description">Photos up to 4096 pixels and video at 1080p. Stays sharp when zoomed.</string>
-    <string name="settings_media_quality_original_description">The exact file, photos and videos, with nothing compressed. Uses the most data.</string>
+    <string name="settings_media_quality_original_description">The exact photo file, with nothing compressed, and video at 1080p. Uses the most data.</string>
     <string name="cd_media_quality_choice">Media quality: %1$s. Tap to change.</string>
     <string name="cd_media_quality_hd_badge">Sent in HD</string>
     <string name="cd_media_quality_original_badge">Sent as the original file</string>
