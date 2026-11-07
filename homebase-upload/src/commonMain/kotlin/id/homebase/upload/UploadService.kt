@@ -48,12 +48,10 @@ class UploadService(
             return UploadOutcome.SourceMissing(listOf(e.path))
         }
         val metadata = spec.metadataFromBundle?.invoke(fullBundle) ?: spec.metadata
-        val encryptedBundle = fullBundle.let {
-            when {
-                spec.omitThumbnails -> it.withoutThumbnails()
-                spec.omitPlaintextPreviews -> it.withoutPlaintextPreviews()
-                else -> it
-            }
+        val encryptedBundle = when {
+            spec.omitThumbnails -> fullBundle.withoutThumbnails()
+            spec.omitPlaintextPreviews -> fullBundle.withoutPlaintextPreviews()
+            else -> fullBundle
         }
 
         // 2. Build the request with shared-secret-encrypted metadata content.
@@ -97,7 +95,7 @@ class UploadService(
                     optimisticWriter.writeNewFile(
                         driveId = spec.driveId,
                         keyHeader = spec.keyHeader,
-                        unecryptedMetadata = spec.metadata,
+                        unecryptedMetadata = metadata,
                         originalRecipientCount = spec.originalRecipientCount,
                         fileSystemType = spec.fileSystemType,
                         payloadDescriptors = payloadDescriptors,

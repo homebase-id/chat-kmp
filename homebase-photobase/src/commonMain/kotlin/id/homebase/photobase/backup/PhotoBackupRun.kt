@@ -186,8 +186,6 @@ class PhotoBackupRun(
 
     private enum class LostNetwork { Wifi, Videos }
 
-    suspend fun deviceState(): DeviceState = probe.state()
-
     private suspend fun runLocked(request: BackupRunRequest): BackupRunOutcome = coroutineScope {
         val interactive = request.isInteractive
         Logger.i(tag = TAG) { "start trigger=${request.trigger} budget=${request.budget.remaining}" }

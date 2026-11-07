@@ -1,5 +1,6 @@
 package id.homebase.api.file
 
+import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import co.touchlab.kermit.Logger
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -33,7 +34,7 @@ object CacheAudit {
         "homebase-payloads-v2",
         "homebase-thumbs-v2",
         // Dedicated thumbnails for one large drive; see DedicatedThumbCache.
-        "homebase-drive-thumbs-v1",
+        DedicatedThumbCache.DIRECTORY_NAME,
         "homebase-public-profiles-v2",
         "homebase-public-images-v2",
         // Dedicated HLS playback-chunk LRU (#845) — isolated so one long video

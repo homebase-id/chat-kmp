@@ -47,7 +47,7 @@ import okio.buffer
 import okio.use
 
 /** A drive whose thumbnails get their own disk cache, so a large library can't push out everything else. */
-data class DedicatedThumbCache(val driveId: Uuid, val maxSizeBytes: Long) {
+data class DedicatedThumbCache(val driveId: Uuid, val maxSizeBytes: Long, val statsId: String) {
     companion object {
         const val DIRECTORY_NAME = "homebase-drive-thumbs-v1"
     }
@@ -375,6 +375,20 @@ class DriveFileProviderCached(
         return readThrough(thumbCacheFor(driveId), cacheKey, thumbnailSemaphore, "ThumbIO") {
             delegate.getThumbBytesRawNetwork(driveId, fileId, payloadKey, width, height, lastModified)
         }
+    }
+
+    /** Brings a thumbnail into the cache if it isn't there, without reading one that already is. */
+    suspend fun ensureThumbCached(
+            driveId: Uuid,
+            fileId: Uuid,
+            payloadKey: String,
+            width: Int,
+            height: Int,
+            lastModified: Long? = null
+    ) {
+        val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
+        val held = thumbCacheFor(driveId).openSnapshot(cacheKey.toDiskKey())?.use { true } ?: false
+        if (!held) getThumbBytesRaw(driveId, fileId, payloadKey, width, height, lastModified)
     }
 
     /**
@@ -850,43 +864,20 @@ class DriveFileProviderCached(
     // must not hide the other row. Returns sentinel `sizeBytes = CacheStats.UNAVAILABLE`
     // (-1L) so the UI can render a visible "Unavailable" row when one cache is
     // unhealthy.
-    suspend fun getCacheStats(): List<CacheStats> {
-        val out = ArrayList<CacheStats>(2)
-        try {
-            out.add(CacheStats(id = "drive_payloads", sizeBytes = payloadDiskCache.size, maxBytes = payloadDiskCache.maxSize))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_payloads stats unavailable" }
-            out.add(CacheStats(id = "drive_payloads", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
-        }
-        try {
-            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = thumbDiskCache.size, maxBytes = thumbDiskCache.maxSize))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_thumbnails stats unavailable" }
-            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
-        }
-        dedicatedThumbDiskCache?.let { cache ->
-            try {
-                out.add(CacheStats(id = "drive_photo_thumbnails", sizeBytes = cache.size, maxBytes = cache.maxSize))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_photo_thumbnails stats unavailable" }
-                out.add(CacheStats(id = "drive_photo_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
-            }
-        }
-        try {
-            out.add(CacheStats(id = "hls_chunks", sizeBytes = hlsChunkDiskCache.size, maxBytes = hlsChunkDiskCache.maxSize))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "hls_chunks stats unavailable" }
-            out.add(CacheStats(id = "hls_chunks", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
-        }
-        return out
+    suspend fun getCacheStats(): List<CacheStats> = listOfNotNull(
+        statsOf("drive_payloads", payloadDiskCache),
+        statsOf("drive_thumbnails", thumbDiskCache),
+        dedicatedThumbDiskCache?.let { statsOf(dedicatedThumbCache!!.statsId, it) },
+        statsOf("hls_chunks", hlsChunkDiskCache),
+    )
+
+    private fun statsOf(id: String, cache: DiskCache): CacheStats = try {
+        CacheStats(id = id, sizeBytes = cache.size, maxBytes = cache.maxSize)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Logger.w(tag = "DriveFileProviderCached", throwable = e) { "$id stats unavailable" }
+        CacheStats(id = id, sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L)
     }
 }
 

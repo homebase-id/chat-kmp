@@ -93,13 +93,7 @@ class OutboxBackupUploader(
             PhotobaseProtocol.VideoDataType,
             row.createdAt,
             // Inside the encrypted content, because omitPlaintextPreviews keeps it out of the plaintext field.
-            PhotoContent(
-                name = exported.fileName.truncateToCodePoints(MAX_PHOTO_NAME_CODE_POINTS),
-                tiny = tiny?.content,
-                tinyWidth = tiny?.pixelWidth,
-                tinyHeight = tiny?.pixelHeight,
-                tinyType = tiny?.contentType,
-            ),
+            PhotoContent(name = exported.fileName.truncateToCodePoints(MAX_PHOTO_NAME_CODE_POINTS)).withTiny(tiny),
         )
         val spec = MediaUploadSpec(
             driveId = photosDriveId,

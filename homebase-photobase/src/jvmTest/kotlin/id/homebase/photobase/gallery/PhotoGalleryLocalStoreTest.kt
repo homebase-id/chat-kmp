@@ -25,7 +25,7 @@ class PhotoGalleryLocalStoreTest {
     private val backend = DrivePhotoGalleryBackend(
         db,
         { identity },
-        DriveQueryProvider(HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }), CredentialsManager()),
+        PhotoGalleryRepository(DriveQueryProvider(HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }), CredentialsManager())),
     )
 
     @AfterTest

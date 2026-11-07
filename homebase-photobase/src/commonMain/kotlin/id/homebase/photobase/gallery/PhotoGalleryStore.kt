@@ -1,14 +1,9 @@
 package id.homebase.photobase.gallery
 
-import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchRequest
-import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.query.DriveQueryProvider
-import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
@@ -23,6 +18,9 @@ import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlin.time.Duration.Companion.days
@@ -67,26 +65,25 @@ class PhotoGalleryStore internal constructor(
     private val oldestFirstSource: PhotoGalleryPageSource,
 ) : PhotoGalleryPageSource {
 
-    override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage {
-        if (!newestFirst) return oldestFirstSource.page(cursor, newestFirst = false)
-        return withContext(Dispatchers.Default) {
-            val limit = if (cursor == null) FIRST_PAGE_SIZE else PAGE_SIZE
-            var coverage = backend.coverage()
-            while (true) {
+    override suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage =
+        if (newestFirst) withContext(Dispatchers.Default) { newestFirstPage(cursor) } else oldestFirstSource.page(cursor, newestFirst = false)
+
+    private suspend fun newestFirstPage(cursor: String?): PhotoGalleryPage {
+        val limit = galleryPageSize(cursor)
+        var coverage = backend.coverage()
+        while (true) {
+            if (coverage.floorMs != null || coverage.reachedTheEnd) {
                 val floor = if (coverage.reachedTheEnd) null else coverage.floorMs
-                val local = if (coverage.floorMs == null && !coverage.reachedTheEnd) null else backend.localPage(cursor, floor, limit)
-                if (local != null && local.files.isNotEmpty()) {
-                    val items = local.files.mapNotNull { it.toGalleryItem() }
-                    return@withContext PhotoGalleryPage(
-                        items,
+                val local = backend.localPage(cursor, floor, limit)
+                if (local.files.isNotEmpty()) {
+                    return PhotoGalleryPage(
+                        local.files.mapNotNull { it.toGalleryItem() },
                         nextCursor = local.cursor.takeIf { local.hasMore || !coverage.reachedTheEnd },
                     )
                 }
-                if (coverage.reachedTheEnd) return@withContext PhotoGalleryPage(emptyList(), null)
-                coverage = fetchOlder(coverage, limit)
             }
-            @Suppress("UNREACHABLE_CODE")
-            PhotoGalleryPage(emptyList(), null)
+            if (coverage.reachedTheEnd) return PhotoGalleryPage(emptyList(), null)
+            coverage = fetchOlder(coverage, limit)
         }
     }
 
@@ -103,28 +100,22 @@ class PhotoGalleryStore internal constructor(
         backend.saveCoverage(updated)
         return updated
     }
-
-    private companion object {
-        const val FIRST_PAGE_SIZE = 40
-        const val PAGE_SIZE = 100
-    }
 }
 
 fun photoGalleryStore(
     db: DatabaseManager,
     credentials: CredentialsManager,
-    queryProvider: DriveQueryProvider,
-    oldestFirstSource: PhotoGalleryPageSource,
+    repository: PhotoGalleryRepository,
 ) = PhotoGalleryStore(
-    DrivePhotoGalleryBackend(db, { credentials.requireActiveCredentials().getIdentityId() }, queryProvider),
-    oldestFirstSource,
+    DrivePhotoGalleryBackend(db, { credentials.requireActiveCredentials().getIdentityId() }, repository),
+    repository,
 )
 
 /** The real backend: the local index, the drive's server query, and coverage in the key-value store. */
 internal class DrivePhotoGalleryBackend(
     private val db: DatabaseManager,
     private val identityId: suspend () -> Uuid,
-    private val queryProvider: DriveQueryProvider,
+    private val repository: PhotoGalleryRepository,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGalleryBackend {
     private val fileProcessor = MainIndexMetaHelpers.HomebaseFileProcessor(db)
@@ -155,22 +146,7 @@ internal class DrivePhotoGalleryBackend(
     }
 
     override suspend fun serverPage(cursor: String?, limit: Int): ServerPhotoPage {
-        val response = queryProvider.queryBatch(
-            photosDriveId,
-            QueryBatchRequest(
-                queryParams = FileQueryParams(
-                    fileType = listOf(PhotobaseProtocol.PhotoFileType),
-                    fileState = listOf(FileState.Active),
-                ),
-                resultOptionsRequest = QueryBatchResultOptionsRequest(
-                    cursorState = cursor,
-                    maxRecords = limit,
-                    includeMetadataHeader = true,
-                    ordering = QueryBatchSortOrder.NewestFirst,
-                    sorting = QueryBatchSortField.UserDate,
-                ),
-            ),
-        )
+        val response = repository.query(cursor, limit, QueryBatchSortOrder.NewestFirst)
         return ServerPhotoPage(response.searchResults, response.hasMoreRows, response.cursorState)
     }
 
@@ -196,19 +172,26 @@ class PhotoGallerySync(
     private val eventBus: EventBus,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) {
+    private val mutex = Mutex()
+    private var running: Job? = null
+
+    // A second caller joins the round in flight: cancelling a join leaves the round running, so a
+    // new DriveSync here would crawl from the same saved cursor alongside it.
     suspend fun syncNow() {
-        val sync = DriveSync(
-            identityId = credentials.requireActiveCredentials().getIdentityId(),
-            driveId = photosDriveId,
-            driveQueryProvider = queryProvider,
-            databaseManager = db,
-            eventBus = eventBus,
-            // Only changes from now on: older photos arrive by fetching pages. A day's overlap
-            // covers a device clock running ahead of the server's.
-            policy = DriveSyncPolicy(fullSyncWindow = 1.days),
-        )
-        val job = sync.sync()
-        if (job == null) Logger.i(tag = "PhotoGallerySync") { "sync already running" }
+        val job = mutex.withLock {
+            running?.takeIf { it.isActive } ?: withContext(Dispatchers.Default) {
+                DriveSync(
+                    identityId = credentials.requireActiveCredentials().getIdentityId(),
+                    driveId = photosDriveId,
+                    driveQueryProvider = queryProvider,
+                    databaseManager = db,
+                    eventBus = eventBus,
+                    // Only changes from now on: older photos arrive by fetching pages. A day's overlap
+                    // covers a device clock running ahead of the server's.
+                    policy = DriveSyncPolicy(fullSyncWindow = 1.days),
+                ).sync()
+            }.also { running = it }
+        }
         job?.join()
     }
 }

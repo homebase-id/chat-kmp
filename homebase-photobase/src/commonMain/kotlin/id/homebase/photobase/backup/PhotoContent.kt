@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.serialization.Base64Bytes
 import kotlinx.datetime.TimeZone
@@ -31,6 +32,13 @@ data class PhotoContent(
         const val CURRENT_VERSION = 1
     }
 }
+
+fun PhotoContent.withTiny(tiny: EmbeddedThumb?) = copy(
+    tiny = tiny?.content,
+    tinyWidth = tiny?.pixelWidth,
+    tinyHeight = tiny?.pixelHeight,
+    tinyType = tiny?.contentType,
+)
 
 /** EXIF wall-clock without an offset is read in the phone's zone, the same guess the camera made. */
 fun captureTimeMs(metadata: ImageMetadata?, fallbackMs: Long, zone: TimeZone = TimeZone.currentSystemDefault()): Long {

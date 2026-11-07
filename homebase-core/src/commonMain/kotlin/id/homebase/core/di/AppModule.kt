@@ -190,6 +190,8 @@ import id.homebase.core.photobase.PhotoBackupTrigger
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.PhotoGalleryRepository
+import id.homebase.core.util.NetworkMonitor
+import id.homebase.core.util.isWeb
 import id.homebase.photobase.gallery.photoGalleryStore
 import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
 import id.homebase.photobase.gallery.PhotoGalleryStore
@@ -1088,17 +1090,25 @@ val appModule = module {
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }
-    // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB (OPTIMIZE.md), about 50,000 photos.
-    single { DedicatedThumbCache(PhotobaseProtocol.DriveAlias, maxSizeBytes = 1024L * 1024L * 1024L) }
-    single { photoGalleryStore(get(), get(), get(), get<PhotoGalleryRepository>()) }
+    // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB
+    // (OPTIMIZE.md), about 50,000 photos. Web's cache lives in memory and doesn't survive a reload.
+    single {
+        DedicatedThumbCache(
+            PhotobaseProtocol.DriveAlias,
+            maxSizeBytes = (if (isWeb()) 100L else 1024L) * 1024L * 1024L,
+            statsId = "drive_photo_thumbnails",
+        )
+    }
+    single { photoGalleryStore(get(), get(), get()) }
     single { PhotoGallerySync(get(), get(), get(), get()) }
     single {
         val files = get<DriveFileProviderCached>()
         PhotoThumbnailPrefetcher(
+            store = get<PhotoGalleryStore>(),
             // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
-            mayDownload = { get<PhotoBackupController>().deviceState()?.isUnmetered != false },
-            fetchThumbnail = { item, size ->
-                files.getThumbBytesRaw(item.driveId, item.fileId, item.payload.key, size.pixelWidth, size.pixelHeight, item.payload.lastModified)
+            mayDownload = { get<NetworkMonitor>().isUnmetered() },
+            ensureThumbnail = { item, size ->
+                files.ensureThumbCached(item.driveId, item.fileId, item.payload.key, size.pixelWidth, size.pixelHeight, item.payload.lastModified)
             },
         )
     }

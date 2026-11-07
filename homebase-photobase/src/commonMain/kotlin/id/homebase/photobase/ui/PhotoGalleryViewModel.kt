@@ -48,7 +48,7 @@ class PhotoGalleryViewModel(
     private val source: PhotoGalleryPageSource,
     private val grouping: CoroutineDispatcher = Dispatchers.Default,
     private val catchUp: (suspend () -> Unit)? = null,
-    private val warm: suspend (List<PhotoGalleryItem>) -> Unit = {},
+    private val warm: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
@@ -56,6 +56,7 @@ class PhotoGalleryViewModel(
     private var items: List<PhotoGalleryItem> = emptyList()
     private var cursor: String? = null
     private var loadJob: Job? = null
+    private var catchUpJob: Job? = null
     private val opened = TimeSource.Monotonic.markNow()
     private var firstPageLogged = false
     private var pagedPastFirst = false
@@ -72,7 +73,7 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> {
                 _uiState.update { it.copy(newestFirst = !it.newestFirst) }
-                refresh()
+                reload()
             }
             is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(viewer = viewerFor(action.item)) }
             PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(viewer = null) }
@@ -87,29 +88,35 @@ class PhotoGalleryViewModel(
     }
 
     private fun refresh() {
+        reload()
+        catchUpJob?.cancel()
+        catchUpJob = viewModelScope.launch { catchUpThenReload() }
+    }
+
+    private fun reload() {
         loadJob?.cancel()
         _uiState.update { it.copy(isLoading = true, isLoadingMore = false, loadFailed = false) }
-        loadJob = viewModelScope.launch {
-            load(cursorToLoad = null)
-            catchUpThenReload()
-        }
+        loadJob = viewModelScope.launch { load(cursorToLoad = null) }
     }
 
     // Offline is normal here: what's on screen stays, and the next open or refresh tries again.
     private suspend fun catchUpThenReload() {
-        // Oldest first reads the server already, so a catch-up has nothing to add to it.
-        if (catchUp == null || !_uiState.value.newestFirst) return
+        // Waits for the first page, so the grid shows what's held before any of this runs.
+        loadJob?.join()
+        val catchUp = catchUp ?: return
         try {
-            catchUp.invoke()
+            catchUp()
+            // Past the first page, or oldest first, a reload would change what's on screen for nothing.
+            if (!pagedPastFirst && _uiState.value.newestFirst) {
+                loadJob?.join()
+                load(cursorToLoad = null)
+            }
+            warm()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "gallery catch-up failed" }
-            return
         }
-        // Past the first page the reload would pull the grid out from under whoever's scrolled there.
-        if (!pagedPastFirst) load(cursorToLoad = null)
-        warm(items)
     }
 
     private fun loadMore() {

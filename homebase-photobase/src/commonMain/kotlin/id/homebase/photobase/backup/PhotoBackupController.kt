@@ -56,9 +56,6 @@ class PhotoBackupController(
         }
     }
 
-    /** Null where the platform doesn't report it, like desktop and web. */
-    suspend fun deviceState(): DeviceState? = run?.deviceState()
-
     suspend fun freshStatus(): BackupStatus? {
         run?.refreshStatus()
         return status?.value
