@@ -23,12 +23,12 @@ class ImagePipelineContractTest {
 
     @Test
     fun aOnePixelCheckerboardAveragesToGrey() = runTest {
-        val checkerboard = png(2000, 2000) { x, y -> if ((x + y) % 2 == 0) BLACK else WHITE }
+        val checkerboard = png(400, 400) { x, y -> if ((x + y) % 2 == 0) BLACK else WHITE }
 
-        val image = renderImages(checkerboard) { listOf(ImageOutput(200, 200, 100, Int.MAX_VALUE, ImageFormat.PNG)) }
+        val image = renderImages(checkerboard) { listOf(ImageOutput(40, 40, 100, Int.MAX_VALUE, ImageFormat.PNG)) }
             .images.single()
 
-        val centre = decoded(image.bytes).let { it.pixels[it.width * 100 + 100] }
+        val centre = decoded(image.bytes).let { it.pixels[it.width * 20 + 20] }
         for (shift in listOf(16, 8, 0)) {
             val channel = (centre shr shift) and 0xFF
             assertTrue(abs(channel - 128) <= 12, "Expected mid-grey, got channel $channel")
@@ -113,12 +113,12 @@ class ImagePipelineContractTest {
 
     @Test
     fun resizeUsesTheSameFilteredPath() {
-        val checkerboard = png(1000, 1000) { x, y -> if ((x + y) % 2 == 0) BLACK else WHITE }
+        val checkerboard = png(400, 400) { x, y -> if ((x + y) % 2 == 0) BLACK else WHITE }
 
-        val result = ImageUtils.resizePreserveAspect(checkerboard, 100, 100, ImageFormat.PNG, 100)
+        val result = ImageUtils.resizePreserveAspect(checkerboard, 40, 40, ImageFormat.PNG, 100)
 
-        assertEquals(ImageSize(100, 100), result.size)
-        val centre = decoded(result.bytes).let { it.pixels[it.width * 50 + 50] }
+        assertEquals(ImageSize(40, 40), result.size)
+        val centre = decoded(result.bytes).let { it.pixels[it.width * 20 + 20] }
         val channel = (centre shr 8) and 0xFF
         assertTrue(abs(channel - 128) <= 12, "Expected mid-grey, got channel $channel")
     }
