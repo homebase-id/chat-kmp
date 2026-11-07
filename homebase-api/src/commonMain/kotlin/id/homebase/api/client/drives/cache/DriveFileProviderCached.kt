@@ -46,6 +46,13 @@ import okio.Path.Companion.toPath
 import okio.buffer
 import okio.use
 
+/** A drive whose thumbnails get their own disk cache, so a large library can't push out everything else. */
+data class DedicatedThumbCache(val driveId: Uuid, val maxSizeBytes: Long) {
+    companion object {
+        const val DIRECTORY_NAME = "homebase-drive-thumbs-v1"
+    }
+}
+
 /**
  * Disk-backed, encrypted cache for authenticated drive file bytes. Wraps
  * [DriveFileHttpProvider] so callers get transparent read-through caching
@@ -92,7 +99,8 @@ import okio.use
 class DriveFileProviderCached(
         httpClient: HttpClient,
         credentialsManager: CredentialsManager,
-        private val fileOperationsProvider: FileOperationsProvider
+        private val fileOperationsProvider: FileOperationsProvider,
+        private val dedicatedThumbCache: DedicatedThumbCache? = null,
 ) {
     private val delegate: DriveFileHttpProvider =
             DriveFileHttpProvider(httpClient, credentialsManager)
@@ -138,6 +146,17 @@ class DriveFileProviderCached(
             .fileSystem(fileSystem)
             .maxSizeBytes(300L * 1024L * 1024L) // 300MB
             .build()
+
+    private val dedicatedThumbDiskCache: DiskCache? = dedicatedThumbCache?.let {
+        DiskCache.Builder()
+            .directory("$directory/${DedicatedThumbCache.DIRECTORY_NAME}".toPath())
+            .fileSystem(fileSystem)
+            .maxSizeBytes(it.maxSizeBytes)
+            .build()
+    }
+
+    private fun thumbCacheFor(driveId: Uuid): DiskCache =
+        dedicatedThumbDiskCache?.takeIf { driveId == dedicatedThumbCache?.driveId } ?: thumbDiskCache
 
     // HLS playback range-chunks get their OWN cache (#845): every byte-range a
     // player requests is an independent LRU entry, so one long video used to
@@ -353,7 +372,7 @@ class DriveFileProviderCached(
             lastModified: Long? = null
     ): ByteApiResponse {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        return readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO") {
+        return readThrough(thumbCacheFor(driveId), cacheKey, thumbnailSemaphore, "ThumbIO") {
             delegate.getThumbBytesRawNetwork(driveId, fileId, payloadKey, width, height, lastModified)
         }
     }
@@ -646,7 +665,7 @@ class DriveFileProviderCached(
             lastModified: Long? = null
     ) {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        seedCache(thumbDiskCache, cacheKey, "ThumbIO", bytes, contentType)
+        seedCache(thumbCacheFor(driveId), cacheKey, "ThumbIO", bytes, contentType)
     }
 
     private suspend fun seedCache(
@@ -709,7 +728,7 @@ class DriveFileProviderCached(
                 val w = thumb.pixelWidth ?: continue
                 val h = thumb.pixelHeight ?: continue
                 moveCacheEntry(
-                        cache = thumbDiskCache,
+                        cache = thumbCacheFor(driveId),
                         // Seeds are written with lastModified = null; the synced
                         // descriptor's lastModified is what readers use from now on.
                         oldKey = buildThumbCacheKey(driveId, oldFileId, descriptor.key, w, h, null),
@@ -810,6 +829,7 @@ class DriveFileProviderCached(
         }
         try {
             thumbDiskCache.clear()
+            dedicatedThumbDiskCache?.clear()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -847,6 +867,16 @@ class DriveFileProviderCached(
         } catch (e: Throwable) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_thumbnails stats unavailable" }
             out.add(CacheStats(id = "drive_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        dedicatedThumbDiskCache?.let { cache ->
+            try {
+                out.add(CacheStats(id = "drive_photo_thumbnails", sizeBytes = cache.size, maxBytes = cache.maxSize))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_photo_thumbnails stats unavailable" }
+                out.add(CacheStats(id = "drive_photo_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+            }
         }
         try {
             out.add(CacheStats(id = "hls_chunks", sizeBytes = hlsChunkDiskCache.size, maxBytes = hlsChunkDiskCache.maxSize))

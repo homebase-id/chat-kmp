@@ -171,6 +171,12 @@ included.
 | waterhouse.jpg | Original | 427x240 q80 20 KB, 853x480 q80 69 KB, 1439x810 q80 170 KB, 2048x1153 q76 288 KB | The file |
 | 800x600 JPEG | Standard | 320x240 q70 15 KB, 640x480 q70 57 KB, 800x600 q70 101 KB | 800x600 q70 101 KB |
 
+### 2026-11-07, Photobase thumbnail cache size, from the media table measurements above
+
+Small on Original was 14-20 KB across these fixtures, so a 1 GiB cache holds about 50,000 photos. The
+fixtures are small and already compressed, so real photos will probably cost more and hold fewer.
+Measure on a real library before trusting this.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,

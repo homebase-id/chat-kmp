@@ -82,6 +82,7 @@ import id.homebase.resources.storage_cache_hls_chunks
 import id.homebase.resources.storage_cache_profiles
 import id.homebase.resources.storage_cache_ram_badge
 import id.homebase.resources.storage_cache_size_format
+import id.homebase.resources.storage_cache_photo_thumbnails
 import id.homebase.resources.storage_cache_thumbnails
 import id.homebase.resources.storage_cache_unavailable
 import id.homebase.resources.storage_cache_unhealthy_body
@@ -488,6 +489,7 @@ private fun cacheColor(id: String): Color = when (id) {
     "public_images"    -> MaterialTheme.colorScheme.tertiary
     "drive_payloads"   -> MaterialTheme.colorScheme.secondary
     "drive_thumbnails" -> MaterialTheme.colorScheme.errorContainer
+    "drive_photo_thumbnails" -> MaterialTheme.colorScheme.secondaryContainer
     "hls_chunks"       -> MaterialTheme.colorScheme.tertiaryContainer
     else               -> MaterialTheme.colorScheme.outline
 }
@@ -673,6 +675,7 @@ private fun cacheLabelRes(id: String): StringResource = when (id) {
     "public_images" -> MR.string.storage_cache_profile_images
     "drive_payloads" -> MR.string.storage_cache_payloads
     "drive_thumbnails" -> MR.string.storage_cache_thumbnails
+    "drive_photo_thumbnails" -> MR.string.storage_cache_photo_thumbnails
     "hls_chunks" -> MR.string.storage_cache_hls_chunks
     StorageSettingsViewModel.COIL_MEMORY_ID -> MR.string.storage_cache_coil_memory
     else -> MR.string.storage_cache_unknown

@@ -2180,4 +2180,5 @@
     <string name="cd_media_quality_choice">Mediekvalitet: %1$s. Tryk for at ændre.</string>
     <string name="cd_media_quality_hd_badge">Sendt i HD</string>
     <string name="cd_media_quality_original_badge">Sendt som den originale fil</string>
+    <string name="storage_cache_photo_thumbnails">Miniaturer af billeder</string>
 </resources>

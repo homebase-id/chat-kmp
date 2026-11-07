@@ -3387,4 +3387,5 @@
     <string name="cd_media_quality_choice">Media quality: %1$s. Tap to change.</string>
     <string name="cd_media_quality_hd_badge">Sent in HD</string>
     <string name="cd_media_quality_original_badge">Sent as the original file</string>
+    <string name="storage_cache_photo_thumbnails">Photo thumbnails</string>
 </resources>

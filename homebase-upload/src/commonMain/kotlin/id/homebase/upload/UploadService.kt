@@ -42,11 +42,13 @@ class UploadService(
     suspend fun upload(spec: MediaUploadSpec, scope: CoroutineScope): UploadOutcome {
         // 1. Encrypt the payloads. Fail soft: a swept/evicted/revoked source throws here, BEFORE
         //    the enqueue below, so no doomed outbox row is ever created — the caller re-picks.
-        val encryptedBundle = try {
+        val fullBundle = try {
             encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
         } catch (e: SourceUnavailableException) {
             return UploadOutcome.SourceMissing(listOf(e.path))
-        }.let {
+        }
+        val metadata = spec.metadataFromBundle?.invoke(fullBundle) ?: spec.metadata
+        val encryptedBundle = fullBundle.let {
             when {
                 spec.omitThumbnails -> it.withoutThumbnails()
                 spec.omitPlaintextPreviews -> it.withoutPlaintextPreviews()
@@ -58,7 +60,7 @@ class UploadService(
         val request = UploadFileRequest(
             driveId = spec.driveId,
             keyHeader = spec.keyHeader,
-            metadata = spec.metadata.encryptContent(spec.keyHeader),
+            metadata = metadata.encryptContent(spec.keyHeader),
             transitOptions = spec.transit,
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails,

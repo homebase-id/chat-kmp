@@ -37,7 +37,7 @@ fun interface PhotoGalleryPageSource {
     suspend fun page(cursor: String?, newestFirst: Boolean): PhotoGalleryPage
 }
 
-/** Network only: the Photos drive is never synced, so a page is what the server says right now. */
+/** Network only, for the order the device can't serve: oldest first, from the far end of the library. */
 class PhotoGalleryRepository(
     private val queryProvider: DriveQueryProvider,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,

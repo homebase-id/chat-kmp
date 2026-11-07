@@ -97,7 +97,7 @@ val apiModule = module {
     single { ServerIpCapture(get(), get(), get()) }
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
-    singleOf(::DriveFileProviderCached)
+    single { DriveFileProviderCached(get(), get(), get(), getOrNull()) }
     // Composite outbox uploader: drive transit + the scheduled-push shim (offline-durable
     // schedule/cancel of reminder pushes, reconciled against the server via tagId; see
     // ScheduledPushOutboxUploader).

@@ -190,6 +190,12 @@ import id.homebase.core.photobase.PhotoBackupTrigger
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.PhotoGalleryRepository
+import id.homebase.photobase.gallery.photoGalleryStore
+import id.homebase.photobase.gallery.PhotoThumbnailPrefetcher
+import id.homebase.photobase.gallery.PhotoGalleryStore
+import id.homebase.photobase.gallery.PhotoGallerySync
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.photobase.ui.PhotoGalleryViewModel
 import id.homebase.photobase.backup.AssetHasher
 import id.homebase.photobase.backup.BackgroundUploaderContext
@@ -1082,6 +1088,20 @@ val appModule = module {
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
     single { PhotoGalleryRepository(get()) }
+    // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB (OPTIMIZE.md), about 50,000 photos.
+    single { DedicatedThumbCache(PhotobaseProtocol.DriveAlias, maxSizeBytes = 1024L * 1024L * 1024L) }
+    single { photoGalleryStore(get(), get(), get(), get<PhotoGalleryRepository>()) }
+    single { PhotoGallerySync(get(), get(), get(), get()) }
+    single {
+        val files = get<DriveFileProviderCached>()
+        PhotoThumbnailPrefetcher(
+            // Not on mobile data: this is a convenience, and a tile fetches its own when shown.
+            mayDownload = { get<PhotoBackupController>().deviceState()?.isUnmetered != false },
+            fetchThumbnail = { item, size ->
+                files.getThumbBytesRaw(item.driveId, item.fileId, item.payload.key, size.pixelWidth, size.pixelHeight, item.payload.lastModified)
+            },
+        )
+    }
     single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
@@ -1461,7 +1481,15 @@ val appModule = module {
     viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
-    viewModel { PhotoGalleryViewModel(get<PhotoGalleryRepository>()) }
+    viewModel {
+        val sync = get<PhotoGallerySync>()
+        val prefetcher = get<PhotoThumbnailPrefetcher>()
+        PhotoGalleryViewModel(
+            source = get<PhotoGalleryStore>(),
+            catchUp = sync::syncNow,
+            warm = prefetcher::prefetch,
+        )
+    }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(

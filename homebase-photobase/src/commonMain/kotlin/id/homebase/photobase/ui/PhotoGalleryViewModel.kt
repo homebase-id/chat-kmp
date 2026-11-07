@@ -40,8 +40,16 @@ sealed interface PhotoGalleryUiAction {
     data object CloseViewer : PhotoGalleryUiAction
 }
 
-/** Queries when it opens and when asked: with no sync or WebSocket, that's how other devices' photos appear. */
-class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private val grouping: CoroutineDispatcher = Dispatchers.Default) : ViewModel() {
+/**
+ * Shows what the device holds straight away, then catches up when it opens and when asked: with no
+ * WebSocket, that's how other devices' photos appear. [catchUp] returning fetches the first page again.
+ */
+class PhotoGalleryViewModel(
+    private val source: PhotoGalleryPageSource,
+    private val grouping: CoroutineDispatcher = Dispatchers.Default,
+    private val catchUp: (suspend () -> Unit)? = null,
+    private val warm: suspend (List<PhotoGalleryItem>) -> Unit = {},
+) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
 
@@ -50,6 +58,7 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
     private var loadJob: Job? = null
     private val opened = TimeSource.Monotonic.markNow()
     private var firstPageLogged = false
+    private var pagedPastFirst = false
     private var thumbnailsShown = 0
 
     init {
@@ -80,7 +89,27 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
     private fun refresh() {
         loadJob?.cancel()
         _uiState.update { it.copy(isLoading = true, isLoadingMore = false, loadFailed = false) }
-        loadJob = viewModelScope.launch { load(cursorToLoad = null) }
+        loadJob = viewModelScope.launch {
+            load(cursorToLoad = null)
+            catchUpThenReload()
+        }
+    }
+
+    // Offline is normal here: what's on screen stays, and the next open or refresh tries again.
+    private suspend fun catchUpThenReload() {
+        // Oldest first reads the server already, so a catch-up has nothing to add to it.
+        if (catchUp == null || !_uiState.value.newestFirst) return
+        try {
+            catchUp.invoke()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "gallery catch-up failed" }
+            return
+        }
+        // Past the first page the reload would pull the grid out from under whoever's scrolled there.
+        if (!pagedPastFirst) load(cursorToLoad = null)
+        warm(items)
     }
 
     private fun loadMore() {
@@ -102,6 +131,7 @@ class PhotoGalleryViewModel(private val source: PhotoGalleryPageSource, private 
             return
         }
         items = if (cursorToLoad == null) page.items else items + page.items
+        pagedPastFirst = cursorToLoad != null
         cursor = page.nextCursor
         val days = withContext(grouping) { groupByCaptureDay(items, newestFirst = newestFirst) }
         _uiState.update {

@@ -71,6 +71,44 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun itShowsWhatsHeldThenCatchesUpAndWarmsTheCache() = runTest {
+        val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
+        var caughtUp = 0
+        var warmed = 0
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(
+            source,
+            StandardTestDispatcher(testScheduler),
+            catchUp = {
+                assertEquals(1, source.asked.size, "The grid must not wait on the catch-up")
+                caughtUp++
+            },
+            warm = { warmed += it.size },
+        )
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(1, caughtUp)
+        assertEquals(1, warmed)
+        assertEquals(2, source.asked.size, "It reloads once caught up")
+        assertEquals(1, viewModel.uiState.value.days.flatMap { it.items }.size)
+    }
+
+    @Test
+    fun aFailedCatchUpLeavesTheGridAlone() = runTest {
+        val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(
+            source,
+            StandardTestDispatcher(testScheduler),
+            catchUp = { error("offline") },
+        )
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(1, viewModel.uiState.value.days.flatMap { it.items }.size)
+        assertEquals(false, viewModel.uiState.value.loadFailed)
+    }
+
+    @Test
     fun itQueriesOnOpenAndPagesForward() = runTest {
         val source = Pages(
             mapOf(

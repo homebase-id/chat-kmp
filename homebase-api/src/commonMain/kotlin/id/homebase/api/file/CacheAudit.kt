@@ -32,6 +32,8 @@ object CacheAudit {
     val KNOWN_CACHE_DIRS: Set<String> = setOf(
         "homebase-payloads-v2",
         "homebase-thumbs-v2",
+        // Dedicated thumbnails for one large drive; see DedicatedThumbCache.
+        "homebase-drive-thumbs-v1",
         "homebase-public-profiles-v2",
         "homebase-public-images-v2",
         // Dedicated HLS playback-chunk LRU (#845) — isolated so one long video
