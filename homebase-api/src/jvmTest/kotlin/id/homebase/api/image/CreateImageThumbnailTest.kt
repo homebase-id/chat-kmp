@@ -174,13 +174,13 @@ class CreateImageThumbnailTest {
     // =========================================================
 
     @Test
-    fun createThumbnail_exactSizeOptimization_bypassesReencoding() = runTest {
-        // basn6a08.png is 32x32, 184 bytes. Instruction: maxPixelDimension=32, maxBytes=1024.
-        // Since naturalMax == maxDim and size <= maxBytes and not tiny, should return original bytes.
+    fun createThumbnail_exactSizeSource_isReallyWebp() = runTest {
+        // A PNG already at the target size used to come back as-is, labelled image/webp.
         val bytes = ImageTestHelper.loadImage("pngsuite/basn6a08.png")
         val instr = ThumbnailInstruction(quality = 84, maxPixelDimension = 32, maxBytes = 1024)
         val result = createImageThumbnail(bytes, "key", instr, isTinyThumb = false)
-        assertTrue(result.thumbnailBytes.contentEquals(bytes), "Should return original bytes as-is")
+        assertEquals("image/webp", result.contentType)
+        assertEquals("RIFF", result.thumbnailBytes.copyOf(4).decodeToString())
     }
 
     @Test

@@ -142,6 +142,22 @@ Still needs the iPhone: the share of the 400–700 ms conversation open spent in
 `parseChatMarkdown` versus layout, cold and warm, and the one-time SQLCipher in-place encryption
 of a large database on an old device.
 
+### 2026-11-07, image pipeline (#2221), desktop JVM (macOS), test fixtures, not phone photos
+
+`IMAGE_BENCH=1 ./gradlew :homebase-api:jvmTest --tests '*ThumbnailPerfBench*' --rerun -i`, median of
+5 runs of `createThumbnails`, run back to back against unmodified main.
+
+| Fixture | Time before | Time after | 320px before | 320px after | 640px before | 640px after | Tiny before | Tiny after |
+|---|---|---|---|---|---|---|---|---|
+| 5760x4320 JPEG | 270 ms | 215 ms | 1 KB | 1 KB | 2 KB | 3 KB | 62 B | 550 B |
+| waterhouse.jpg | 256 ms | 204 ms | 18 KB | 14 KB | 59 KB | 48 KB | 240 B | 654 B |
+| 800x600 JPEG | 80 ms | 73 ms | 16 KB (q44) | 22 KB (q84) | 97 KB | 82 KB | 286 B | 678 B |
+| dice.png | 111 ms | 115 ms | 14 KB | 15 KB | 37 KB | 36 KB | 368 B | 764 B |
+
+Tiny previews grew because proper filtering keeps detail that nearest-neighbour threw away, and they
+land closer to the 768-byte limit, so its loop runs more often. No phone numbers yet: time, memory and
+bytes on a real iPhone and Android phone for 12 MP and 48 MP HEIC and JPEG are still open in #2221.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,

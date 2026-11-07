@@ -110,7 +110,7 @@ actual object ImageUtils {
         return if (isHeic) bitmap else applyExifOrientation(bitmap, inputBytes)
     }
 
-    private fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {
+    internal fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {
         val exif = ExifInterface(ByteArrayInputStream(imageBytes))
         val orientation = exif.getAttributeInt(
             ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
@@ -160,7 +160,7 @@ actual object ImageUtils {
             Bitmap.CompressFormat.WEBP
         }
 
-    private fun encodeBitmap(bitmap: Bitmap, format: ImageFormat, quality: Int): ByteArray {
+    internal fun encodeBitmap(bitmap: Bitmap, format: ImageFormat, quality: Int): ByteArray {
         val compressFormat = when (format) {
             ImageFormat.JPEG -> Bitmap.CompressFormat.JPEG
             ImageFormat.PNG -> Bitmap.CompressFormat.PNG
@@ -180,37 +180,7 @@ actual object ImageUtils {
         maxHeight: Int,
         outputFormat: ImageFormat,
         quality: Int
-    ): ImageResult {
-        val srcBitmap = decodeBitmap(srcBytes)
-        val naturalW = srcBitmap.width
-        val naturalH = srcBitmap.height
-
-        val (targetW, targetH) = calculateTargetDimensions(naturalW, naturalH, maxWidth, maxHeight)
-
-        // If no resize needed
-        if (targetW == naturalW && targetH == naturalH) {
-            val encoded = encodeBitmap(srcBitmap, outputFormat, quality)
-            srcBitmap.recycle()
-            return ImageResult(
-                bytes = encoded,
-                naturalSize = ImageSize(naturalW, naturalH),
-                size = ImageSize(naturalW, naturalH)
-            )
-        }
-
-        // Resize the bitmap
-        val resized = srcBitmap.scale(targetW, targetH)
-        val encoded = encodeBitmap(resized, outputFormat, quality)
-
-        srcBitmap.recycle()
-        if (resized != srcBitmap) resized.recycle()
-
-        return ImageResult(
-            bytes = encoded,
-            naturalSize = ImageSize(naturalW, naturalH),
-            size = ImageSize(targetW, targetH)
-        )
-    }
+    ): ImageResult = resizeThroughPipeline(srcBytes, maxWidth, maxHeight, outputFormat, quality)
 
     actual fun compressOnly(
         srcBytes: ByteArray,
@@ -288,16 +258,8 @@ actual object ImageUtils {
         )
     }
 
-    actual fun getNaturalSize(srcBytes: ByteArray): ImageSize {
-        val inputBytes = if (ImageFormatDetector.isHeic(srcBytes)) {
-            convertHeicToJpeg(srcBytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG for size detection")
-        } else srcBytes
-        val options = BitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-        }
-        BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
-        return ImageSize(options.outWidth, options.outHeight)
-    }
+    actual fun getNaturalSize(srcBytes: ByteArray): ImageSize =
+        openImageSource(srcBytes).use { it.displayedSize }
 
     actual fun hasNonOpaquePixels(srcBytes: ByteArray): Boolean {
         var bitmap: Bitmap? = null

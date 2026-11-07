@@ -86,15 +86,11 @@ fun getRevisedThumbs(sourceSize: ImageSize, thumbs: List<ThumbnailInstruction>):
 }
 
 /**
- * Main entry — mirrors createThumbnails in JS
+ * Main entry. Everything comes from one decode through [renderImages].
  *
- * The second slot is nullable: SVG inputs return `null` (no embedded
- * thumb, no additional raster thumbs) because none of the per-platform
- * [ImageUtils] actuals can decode SVG today. Receivers gate the bubble
- * image block on a `hasImage` flag in the descriptor, so a missing
- * thumb cleanly renders as "no image" rather than a warning triangle.
- * A future SVG → bitmap rasterizer (in [ImageUtils]) would route SVG
- * through the regular raster path and restore real thumbs.
+ * The second slot is null only when an SVG can't be rendered: receivers gate the bubble image block
+ * on a `hasImage` flag in the descriptor, so a missing thumb renders as "no image" rather than a
+ * warning triangle.
  */
 suspend fun createThumbnails(
     imageBytes: ByteArray,
@@ -102,210 +98,94 @@ suspend fun createThumbnails(
     thumbSizes: List<ThumbnailInstruction>? = null
 ): Triple<ImageSize, EmbeddedThumb?, List<ThumbnailFile>> = withContext(Dispatchers.Default) {
 
-    // GIF and SVG handling: for SVG files we expect bytes to be svg xml; for GIFs we treat them specially
-    // Check these FIRST before trying to decode, as Skia can't decode SVG
+    // Checked before decoding, because the raster decoders can't read SVG.
     val header = imageBytes.take(16).toByteArray().decodeToString().lowercase()
     val isSvg = header.contains("<svg") || header.contains("<?xml")
     val isGif = imageBytes.size >= 3 && imageBytes[0] == 0x47.toByte() /* G */ && imageBytes[1] == 0x49.toByte() /* I */ && imageBytes[2] == 0x46.toByte() /* F */
 
+    val requestedSizes = thumbSizes ?: baseThumbSizes
+
     if (isSvg) {
-        // Rasterize SVG into the same shape of result the non-SVG path
-        // produces: a tiny embedded webp + the regular 320/640/1080/1600
-        // px webp set. The previous "drop everything" branch (Phase 1)
-        // stopped the URL-preview outbox stall but left link previews
-        // image-less; this restores real thumbs while keeping the safety
-        // net — if rasterization throws (malformed SVG, decoder gives
-        // up) we fall back to the Phase 1 no-thumb result so we never
-        // re-stall the outbox.
-        //
-        // Unlike rasters we don't filter through getRevisedThumbs:
-        // vector data is resolution-independent, so rendering above the
-        // SVG's declared intrinsic size is free quality (no pixel
-        // amplification artifacts). Producing the full ladder means a
-        // 192×192-declared Google Calendar logo or a 16×16 favicon-style
-        // SVG still gets a crisp 1600px thumb for hi-DPI viewers.
+        // Vector data is resolution-independent, so unlike rasters every size is rendered, however
+        // small the SVG declares itself: a 16x16 favicon still gets a crisp 1600px thumb.
         return@withContext try {
             val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
-
-            val tinyResult = ImageUtils.rasterizeSvg(
-                svgBytes = imageBytes,
-                maxDim = tinyThumbSize.maxPixelDimension,
-                outputFormat = ImageFormat.WEBP,
-                quality = tinyThumbSize.quality,
-            )
-            val embeddedTiny = EmbeddedThumb(
-                pixelWidth = tinyResult.size.pixelWidth,
-                pixelHeight = tinyResult.size.pixelHeight,
-                contentType = "image/webp",
-                content = Base64Bytes(tinyResult.bytes),
-            )
-
-            val instructions = thumbSizes ?: baseThumbSizes
-            val additional = instructions.map { instr ->
-                val r = ImageUtils.rasterizeSvg(
-                    svgBytes = imageBytes,
-                    maxDim = instr.maxPixelDimension,
-                    outputFormat = ImageFormat.WEBP,
-                    quality = instr.quality,
-                )
-                ThumbnailFile(
-                    pixelWidth = r.size.pixelWidth,
-                    pixelHeight = r.size.pixelHeight,
-                    thumbnailBytes = r.bytes,
-                    key = payloadKey,
-                    contentType = "image/webp",
-                    quality = instr.quality,
-                )
-            }
-
-            Triple(naturalSize, embeddedTiny, additional)
+            val largest = maxOf(tinyThumbSize.maxPixelDimension, requestedSizes.maxOfOrNull { it.maxPixelDimension } ?: 0)
+            val rasterized = ImageUtils.rasterizeSvg(imageBytes, largest, ImageFormat.PNG, 100)
+            val rendered = renderImages(rasterized.bytes) { raster ->
+                (requestedSizes + tinyThumbSize).map { it.toOutput(raster, isTiny = it === tinyThumbSize) }
+            }.images
+            Triple(naturalSize, rendered.last().toEmbedded(), rendered.dropLast(1).map { it.toThumbnailFile(payloadKey) })
         } catch (e: Exception) {
-            // Phase 1 safety net: no thumb is better than a stuck outbox.
-            // The receiver's LinkPreviewCard gates on hasImage (set false
-            // by LinkPreviewPayloadBuilder when previewThumbnail is null).
+            // No thumb is better than a stuck outbox.
             val naturalSize = getSvgDimensions(imageBytes) ?: ImageSize(320, 320)
             Triple(naturalSize, null, emptyList())
         }
     }
 
-    // Determine natural size using ImageUtils (for non-SVG images)
-    val naturalSize = ImageUtils.getNaturalSize(imageBytes)
-
-    if (isGif) {
-        // For GIF, create tiny thumb only (webp), no additional thumbnails
-        val tinyThumbFile = createImageThumbnail(imageBytes, payloadKey, tinyThumbSize, isTinyThumb = true)
-        val embeddedTiny = EmbeddedThumb(
-            pixelWidth = naturalSize.pixelWidth,
-            pixelHeight = naturalSize.pixelHeight,
-            contentType = "image/webp",
-            content = Base64Bytes(tinyThumbFile.thumbnailBytes)
-        )
-        return@withContext Triple(naturalSize, embeddedTiny, emptyList())
+    val result = renderImages(imageBytes) { natural ->
+        val thumbs = if (isGif) emptyList() else getRevisedThumbs(natural, requestedSizes)
+        (thumbs + tinyThumbSize).map { it.toOutput(natural, isTiny = it === tinyThumbSize) }
     }
+    val tiny = result.images.last()
+    val thumbnails = result.images.dropLast(1).map { it.toThumbnailFile(payloadKey) }
+    val natural = result.displayedSize
 
-    // general image case
-    val embeddedTiny = createTinyPreview(imageBytes, payloadKey)
-
-    val requestedSizes = thumbSizes ?: baseThumbSizes
-    val applicableThumbs = getRevisedThumbs(naturalSize, requestedSizes)
-
-    // Create additional thumbnails (NOT including tiny thumb - only the applicable thumbs)
-    val additional = applicableThumbs.map { instr ->
-        // create with no tiny flag
-        createImageThumbnail(imageBytes, payloadKey, instr, isTinyThumb = false)
+    // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
+    val embeddedTiny = if (isGif) {
+        EmbeddedThumb(natural.pixelWidth, natural.pixelHeight, "image/webp", Base64Bytes(tiny.bytes))
+    } else {
+        tiny.toEmbedded()
     }
-
-    return@withContext Triple(naturalSize, embeddedTiny, additional)
+    return@withContext Triple(natural, embeddedTiny, thumbnails)
 }
 
 /** The [tinyThumbSize] webp a file embeds in its metadata, sized as the tiny itself (unlike the GIF case above). */
-suspend fun createTinyPreview(imageBytes: ByteArray, payloadKey: String): EmbeddedThumb {
-    val tiny = createImageThumbnail(imageBytes, payloadKey, tinyThumbSize, isTinyThumb = true)
-    return EmbeddedThumb(tiny.pixelWidth, tiny.pixelHeight, "image/webp", Base64Bytes(tiny.thumbnailBytes))
-}
+suspend fun createTinyPreview(imageBytes: ByteArray, payloadKey: String): EmbeddedThumb =
+    renderImages(imageBytes) { listOf(tinyThumbSize.toOutput(it, isTiny = true)) }.images.single().toEmbedded()
 
 /**
- * Create a single thumbnail according to instruction.
- * - Resizes to fit inside maxPixelDimension x maxPixelDimension preserving aspect.
- * - Tries initial quality; if resulting size > maxBytes it reduces quality in a loop until satisfying or quality==1.
- * - Returns ThumbnailFile (payload bytes).
+ * Create a single thumbnail according to [instruction], fitting inside maxPixelDimension on both
+ * axes and within maxBytes. A caller making several from the same image should use [renderImages],
+ * so it decodes once.
  */
 suspend fun createImageThumbnail(
     imageBytes: ByteArray,
     payloadKey: String,
     instruction: ThumbnailInstruction,
     isTinyThumb: Boolean = false
-): ThumbnailFile = withContext(Dispatchers.Default) {
-    // Determine target format (tiny -> webp forced)
-    val targetFormat = if (isTinyThumb) ImageFormat.WEBP else instruction.type
+): ThumbnailFile = renderImages(imageBytes) { listOf(instruction.toOutput(it, isTinyThumb)) }
+    .images.single().toThumbnailFile(payloadKey)
 
-    val maxDim = instruction.maxPixelDimension
-
-    var quality = instruction.quality.coerceIn(1, 100)
-    var currentInputBytes = imageBytes
-
-    // Check if image is already at perfect size and doesn't need processing
-    val naturalSize = ImageUtils.getNaturalSize(imageBytes)
-    val naturalMax = max(naturalSize.pixelWidth, naturalSize.pixelHeight)
-
-    // If image is already at exact target size and within size limit, return as-is
-    // This optimization avoids unnecessary re-encoding
-    if (naturalMax == maxDim &&
-        imageBytes.size <= instruction.maxBytes &&
-        !isTinyThumb) {
-        return@withContext ThumbnailFile(
-            pixelWidth = naturalSize.pixelWidth,
-            pixelHeight = naturalSize.pixelHeight,
-            thumbnailBytes = imageBytes,
-            key = payloadKey,
-            contentType = "image/${targetFormat.name.lowercase()}",
-            quality = quality
-        )
-    }
-
-    // First resize attempt
-    var result = ImageUtils.resizePreserveAspect(
-        currentInputBytes,
-        maxWidth = maxDim,
-        maxHeight = maxDim,
-        outputFormat = targetFormat,
-        quality = quality
+private fun ThumbnailInstruction.toOutput(source: ImageSize, isTiny: Boolean): ImageOutput {
+    val (width, height) = calculateTargetDimensions(source.pixelWidth, source.pixelHeight, maxPixelDimension, maxPixelDimension)
+    return ImageOutput(
+        width = width,
+        height = height,
+        quality = quality,
+        maxBytes = maxBytes,
+        format = if (isTiny) ImageFormat.WEBP else type,
+        // No floor for the tiny: its limit is a hard one, because the server rejects the upload over it.
+        minQuality = if (isTiny) 1 else ImageOutput.DEFAULT_MIN_QUALITY,
     )
-
-    var safetyCounter = 0
-    while (result.bytes.size > instruction.maxBytes && quality > 1 && safetyCounter < 20) {
-        safetyCounter++
-
-        // Adjust quality drop proportional to excess
-        val excessRatio = result.bytes.size.toDouble() / instruction.maxBytes.toDouble()
-        val qualityDrop = minOf(40, maxOf(5, (quality * excessRatio * 0.5).roundToInt()))
-        quality = (quality - qualityDrop).coerceAtLeast(1)
-
-        // Use previous result as input for next compression attempt
-        currentInputBytes = result.bytes
-        result = ImageUtils.compressOnly(
-            currentInputBytes,
-            outputFormat = targetFormat,
-            quality = quality
-        )
-
-        // If still too big for tiny thumb and quality reached near 1, try shrinking pixel dimensions
-        if (result.bytes.size > instruction.maxBytes && quality <= 2 && isTinyThumb) {
-            val newDim = maxOf(1, maxDim - 5)
-            if (newDim < 1) {
-                throw IllegalStateException("Cannot shrink tiny thumb further")
-            }
-
-            // Try with smaller dimensions
-            result = ImageUtils.resizePreserveAspect(
-                imageBytes,
-                maxWidth = newDim,
-                maxHeight = newDim,
-                outputFormat = targetFormat,
-                quality = 2
-            )
-            break
-        }
-    }
-
-    val finalBytes = result.bytes
-    val thumb = ThumbnailFile(
-        pixelWidth = result.size.pixelWidth,
-        pixelHeight = result.size.pixelHeight,
-        thumbnailBytes = finalBytes,
-        key = payloadKey,
-        contentType = when (targetFormat) {
-            ImageFormat.WEBP -> "image/webp"
-            ImageFormat.JPEG -> "image/jpeg"
-            ImageFormat.PNG -> "image/png"
-            ImageFormat.BMP -> "image/bmp"
-            ImageFormat.GIF -> "image/gif"
-        },
-        quality = quality
-    )
-
-    return@withContext thumb
 }
+
+private fun RenderedImage.toEmbedded() = EmbeddedThumb(width, height, "image/webp", Base64Bytes(bytes))
+
+private fun RenderedImage.toThumbnailFile(payloadKey: String) = ThumbnailFile(
+    pixelWidth = width,
+    pixelHeight = height,
+    thumbnailBytes = bytes,
+    key = payloadKey,
+    contentType = when (format) {
+        ImageFormat.WEBP -> "image/webp"
+        ImageFormat.JPEG -> "image/jpeg"
+        ImageFormat.PNG -> "image/png"
+        ImageFormat.BMP -> "image/bmp"
+        ImageFormat.GIF -> "image/gif"
+    },
+    quality = quality,
+)
 
 /**
  * Attempts to extract dimensions from SVG data using basic string parsing
