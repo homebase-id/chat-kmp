@@ -6,6 +6,9 @@ import co.touchlab.kermit.Logger
  * Image format detection and validation utilities
  */
 object ImageFormatDetector {
+    /** What a file can stay as, or a bubble can load directly, on every client. */
+    val TYPES_EVERY_CLIENT_CAN_DECODE: Set<String> = setOf("image/jpeg", "image/png", "image/webp")
+
 
     /**
      * Detects the image format based on magic bytes

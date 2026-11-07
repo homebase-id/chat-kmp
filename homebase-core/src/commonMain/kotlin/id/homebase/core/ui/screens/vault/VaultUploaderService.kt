@@ -453,7 +453,7 @@ class VaultUploaderService(
                     val pdfResult = generatePdfThumbnailFromFile(filePath, PDF_CARD_RENDER_WIDTH)
                     val thumbBytes = pdfResult?.thumbnailBytes
                     if (thumbBytes != null) {
-                        previewThumbnail = createTinyPreview(thumbBytes, key)
+                        previewThumbnail = createTinyPreview(thumbBytes)
                         // Larger thumbnail for crisp card display
                         val naturalSize = ImageUtils.getNaturalSize(thumbBytes)
                         thumbnails = listOf(

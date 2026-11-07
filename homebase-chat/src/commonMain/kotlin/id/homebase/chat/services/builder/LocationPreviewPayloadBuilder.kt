@@ -55,8 +55,7 @@ object LocationPreviewPayloadBuilder {
 
         val tinyThumb: EmbeddedThumb? = if (actualHasImage) {
             try {
-                val thumb = createTinyPreview(imageBytes, ChatProtocol.PAYLOAD_KEY_LOCATION)
-                thumb
+                createTinyPreview(imageBytes)
             } catch (_: Exception) {
                 null
             }

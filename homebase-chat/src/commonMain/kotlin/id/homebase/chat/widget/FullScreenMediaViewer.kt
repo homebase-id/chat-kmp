@@ -71,6 +71,7 @@ import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.isCopyChord
+import id.homebase.core.settings.label
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
 import id.homebase.resources.chat_message_image_attachment
@@ -253,7 +254,7 @@ fun FullScreenMediaViewer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        val qualityLabel = currentPayload?.badgedQuality()?.let { stringResource(it.badgeLabel) }
+                        val qualityLabel = currentPayload?.badgedQuality()?.let { stringResource(it.label) }
                         val timestamp = formatTimestamp(data.userDate)
                         Text(
                             text = if (qualityLabel != null) "$timestamp · $qualityLabel" else timestamp,

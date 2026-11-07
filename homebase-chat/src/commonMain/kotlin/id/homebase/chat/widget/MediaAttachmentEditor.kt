@@ -208,7 +208,7 @@ fun MediaAttachmentEditor(
     onRemoveFile: ((attachmentId: Uuid) -> Unit)? = null,
     /**
      * Signal and Telegram both make this button the setting rather than a per-send override, so
-     * the toggle writes straight through to the global preference.
+     * the choice writes straight through to the global preference.
      */
     mediaQuality: MediaQuality = MediaQuality.STANDARD,
     onSetMediaQuality: ((MediaQuality) -> Unit)? = null,

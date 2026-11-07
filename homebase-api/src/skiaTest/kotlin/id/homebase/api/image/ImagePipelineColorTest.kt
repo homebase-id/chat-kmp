@@ -49,7 +49,7 @@ class ImagePipelineColorTest {
 
     @Test
     fun aDisplayP3TinyFitsItsLimitAndKeepsItsColour() = runTest {
-        val tiny = createTinyPreview(p3Png(), "key")
+        val tiny = createTinyPreview(p3Png())
 
         val bytes = tiny.content!!.bytes
         assertTrue(bytes.size <= tinyThumbSize.maxBytes, "Tiny was ${bytes.size} bytes")

@@ -3,6 +3,7 @@ package id.homebase.api.image
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,23 +42,15 @@ suspend fun createMediaImages(
     if (isSvg(imageBytes)) return@withContext createSvgImages(imageBytes, payloadKey, setting)
 
     val gif = isGif(imageBytes)
-    var plan: MediaImagePlan? = null
-    val result = renderImages(imageBytes) { size ->
-        val planned = planMediaImages(size, setting).let {
-            MediaImagePlan(it.tiny, if (gif) emptyList() else it.thumbnails, if (gif || !allowFinalImage) null else it.finalImage)
-        }
-        plan = planned
-        planned.toOutputs()
+    val keepsItsFile = gif || !allowFinalImage || ImageFormatDetector.isAnimated(imageBytes)
+    val media = renderPlanned(imageBytes, payloadKey, displayedSize = null) { size ->
+        val plan = planMediaImages(size, setting)
+        plan.copy(thumbnails = if (gif) emptyList() else plan.thumbnails, finalImage = if (keepsItsFile) null else plan.finalImage)
     }
-    val natural = result.displayedSize
-    assembled(result.images, plan!!, payloadKey, natural).let { media ->
-        // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
-        if (gif) {
-            MediaImages(natural, media.tiny?.copy(pixelWidth = natural.pixelWidth, pixelHeight = natural.pixelHeight), emptyList(), null)
-        } else {
-            media
-        }
-    }
+    if (!gif) return@withContext media
+    // Receivers lay a GIF out from the tiny's size, so it reports the natural one.
+    val natural = media.displayedSize
+    MediaImages(natural, media.tiny?.copy(pixelWidth = natural.pixelWidth, pixelHeight = natural.pixelHeight), media.thumbnails, null)
 }
 
 // Vector data is resolution-independent, so a 16x16 favicon still gets its full set of thumbnails:
@@ -65,32 +58,47 @@ suspend fun createMediaImages(
 private suspend fun createSvgImages(bytes: ByteArray, payloadKey: String, setting: MediaQuality): MediaImages {
     val natural = getSvgDimensions(bytes) ?: ImageSize(320, 320)
     return try {
-        val raster = ImageUtils.rasterizeSvg(bytes, SVG_RENDER_LONG_EDGE, ImageFormat.PNG, 100)
-        var plan: MediaImagePlan? = null
-        val result = renderImages(raster.bytes) { size ->
-            planMediaImages(size, setting).copy(finalImage = null).also { plan = it }.toOutputs()
-        }
-        assembled(result.images, plan!!, payloadKey, natural)
+        val raster = ImageUtils.rasterizeSvg(bytes, largestThumbnailLongEdge(setting), ImageFormat.PNG, 100)
+        renderPlanned(raster.bytes, payloadKey, natural) { planMediaImages(it, setting).copy(finalImage = null) }
     } catch (e: Exception) {
         if (e is CancellationException) throw e
         MediaImages(natural, null, emptyList(), null)
     }
 }
 
-private const val SVG_RENDER_LONG_EDGE = 2048
+private suspend fun renderPlanned(
+    bytes: ByteArray,
+    payloadKey: String,
+    displayedSize: ImageSize?,
+    planFor: (ImageSize) -> MediaImagePlan,
+): MediaImages {
+    var plan: MediaImagePlan? = null
+    val result = renderImages(bytes) { size -> planFor(size).also { plan = it }.toOutputs() }
+    val thumbnailCount = plan!!.thumbnails.size
+    return MediaImages(
+        displayedSize = displayedSize ?: result.displayedSize,
+        tiny = result.images.last().toEmbedded(),
+        thumbnails = result.images.take(thumbnailCount).map { it.toThumbnailFile(payloadKey) },
+        finalImage = result.images[thumbnailCount].takeIf { plan!!.finalImage != null },
+    )
+}
 
+// The plan's order, which renderPlanned reads back by position: thumbnails, final image, tiny.
 private fun MediaImagePlan.toOutputs(): List<ImageOutput> = buildList {
     thumbnails.forEach { add(ImageOutput(it.width, it.height, it.quality, MAX_THUMBNAIL_BYTES)) }
     finalImage?.let { add(ImageOutput(it.width, it.height, it.quality, Int.MAX_VALUE)) }
-    // No floor: the server rejects the whole upload over the tiny's limit, so the limit wins.
-    add(ImageOutput(tiny.width, tiny.height, tiny.quality, MAX_TINY_BYTES, minQuality = 1, keepColorProfile = false))
+    add(tinyOutput(tiny.width, tiny.height))
 }
 
-private fun assembled(rendered: List<RenderedImage>, plan: MediaImagePlan, payloadKey: String, natural: ImageSize) = MediaImages(
-    displayedSize = natural,
-    tiny = rendered.last().toEmbedded(),
-    thumbnails = rendered.take(plan.thumbnails.size).map { it.toThumbnailFile(payloadKey) },
-    finalImage = if (plan.finalImage != null) rendered[plan.thumbnails.size] else null,
+// No quality floor: the server rejects the whole upload over the limit, so the limit wins. And no
+// colour profile, because one alone could use up most of the limit.
+private fun tinyOutput(width: Int, height: Int) = ImageOutput(
+    width,
+    height,
+    tinyThumbSize.quality,
+    tinyThumbSize.maxBytes,
+    minQuality = 1,
+    keepColorProfile = false,
 )
 
 /** Thumbnails only, as Original's rows: for images that aren't the payload, or whose payload stays as it is. */
@@ -98,13 +106,16 @@ suspend fun createThumbnails(imageBytes: ByteArray, payloadKey: String): Triple<
     createMediaImages(imageBytes, payloadKey).let { Triple(it.displayedSize, it.tiny, it.thumbnails) }
 
 /** Only the file's embedded preview, sized as the tiny itself. Throws if it can't be made. */
-suspend fun createTinyPreview(imageBytes: ByteArray, payloadKey: String): EmbeddedThumb = withContext(Dispatchers.Default) {
+suspend fun createTinyPreview(imageBytes: ByteArray): EmbeddedThumb = withContext(Dispatchers.Default) {
     val source = if (isSvg(imageBytes)) {
         ImageUtils.rasterizeSvg(imageBytes, tinyThumbSize.maxPixelDimension, ImageFormat.PNG, 100).bytes
     } else {
         imageBytes
     }
-    renderImages(source) { listOf(tinyThumbSize.toOutput(it, isTiny = true)) }.images.single().toEmbedded()
+    renderImages(source) { size ->
+        val tiny = planMediaImages(size, MediaQuality.ORIGINAL).tiny
+        listOf(tinyOutput(tiny.width, tiny.height))
+    }.images.single().toEmbedded()
 }
 
 /**
@@ -121,16 +132,7 @@ suspend fun createImageThumbnail(
 
 private fun ThumbnailInstruction.toOutput(source: ImageSize, isTiny: Boolean): ImageOutput {
     val (width, height) = calculateTargetDimensions(source.pixelWidth, source.pixelHeight, maxPixelDimension, maxPixelDimension)
-    return ImageOutput(
-        width = width,
-        height = height,
-        quality = quality,
-        maxBytes = maxBytes,
-        format = if (isTiny) ImageFormat.WEBP else type,
-        minQuality = if (isTiny) 1 else ImageOutput.DEFAULT_MIN_QUALITY,
-        // A colour profile alone could use up most of the tiny's limit.
-        keepColorProfile = !isTiny,
-    )
+    return if (isTiny) tinyOutput(width, height) else ImageOutput(width, height, quality, maxBytes, type)
 }
 
 private fun RenderedImage.toEmbedded() = EmbeddedThumb(width, height, "image/webp", Base64Bytes(bytes))

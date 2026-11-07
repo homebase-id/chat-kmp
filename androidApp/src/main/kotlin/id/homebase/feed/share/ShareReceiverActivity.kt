@@ -55,7 +55,6 @@ import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.withResolvedFile
-import id.homebase.api.image.MediaQuality
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.contactcard.ContactCardDescriptor

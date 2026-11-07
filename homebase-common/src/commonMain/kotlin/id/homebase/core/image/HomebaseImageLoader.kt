@@ -132,7 +132,8 @@ class HomebaseImageLoader(
 
         if (shouldStepUpToPayload(targetSize, data)) {
             try {
-                loadFullPayload(data, retryConfig)?.let { return it }
+                // No retries, because a thumbnail is ready to take over if this fails.
+                loadFullPayload(data, RetryConfig(maxRetries = 0))?.let { return it }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -1657,7 +1657,6 @@
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
     <string name="settings_media_quality_standard">Standard</string>
     <string name="settings_media_quality_footer">Either way, what you save to your device is the version that was sent.</string>
-    <string name="chat_media_quality_hd">HD</string>
 
     <!-- Auto-save incoming media -->
     <string name="settings_media_autosave_header">Saving what you receive</string>
@@ -3383,7 +3382,6 @@
     <string name="settings_media_quality_standard_description">Photos up to 2048 pixels and video at 720p. Looks good, sends quickly and keeps screenshots readable.</string>
     <string name="settings_media_quality_hd_description">Photos up to 4096 pixels and video at 1080p. Stays sharp when zoomed.</string>
     <string name="settings_media_quality_original_description">The exact file, photos and videos, with nothing compressed. Uses the most data.</string>
-    <string name="chat_media_quality_original">Original</string>
     <string name="cd_media_quality_choice">Media quality: %1$s. Tap to change.</string>
     <string name="cd_media_quality_hd_badge">Sent in HD</string>
     <string name="cd_media_quality_original_badge">Sent as the original file</string>

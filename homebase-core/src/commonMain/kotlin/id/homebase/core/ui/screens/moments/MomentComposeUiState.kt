@@ -78,10 +78,10 @@ sealed interface MomentComposeUiAction {
         val metadata: ImageMetadata?,
     ) : MomentComposeUiAction
 
-    /** Flip the per-image GPS opt-in. No-op if the image has no GPS metadata. */
+    /** Sets the global media quality, the same preference chat and settings read. */
     data class ToggleIncludeLocation(val attachmentId: Uuid) : MomentComposeUiAction
 
-    /** Flips the same persisted quality preference the in-chat editor writes. */
+    /** Sets the global media quality, the same preference chat and settings read. */
     data class SetMediaQuality(val quality: MediaQuality) : MomentComposeUiAction
 
     /**

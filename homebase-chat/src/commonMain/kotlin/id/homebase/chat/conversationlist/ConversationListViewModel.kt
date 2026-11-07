@@ -83,7 +83,6 @@ import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.conversation_jump_message_after_exit
 import id.homebase.resources.conversation_jump_message_unavailable
 import id.homebase.resources.live_share_ended
-import id.homebase.api.image.MediaQuality
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
