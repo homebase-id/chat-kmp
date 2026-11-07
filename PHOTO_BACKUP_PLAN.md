@@ -534,7 +534,7 @@ and for "N items keep failing".
 - [ ] Consider how to handle edited photos
 - [ ] Live Photo and motion photo playback
 - [ ] Reconsider how videos are stored, including rotated-video quality and offering the original file
-- [ ] Reconsider syncing the Photos drive to the device instead of querying the server
+- [ ] Reconsider syncing the Photos drive to the device instead of querying the server (see `PHOTOBASE_GALLERY_PLAN.md`)
 
 ### Out of scope
 - Standalone Photobase app and SDK split
