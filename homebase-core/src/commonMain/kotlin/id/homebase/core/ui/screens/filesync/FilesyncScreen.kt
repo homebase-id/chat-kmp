@@ -161,6 +161,8 @@ internal class FilesyncBrowserActions(
 internal class FilesyncBrowserScope(
     val uiState: FilesyncUiState,
     val uploads: List<FilesyncUpload>,
+    /** On their way to the sharer shown. */
+    val sharedUploads: List<FilesyncUpload>,
     val search: TextFieldState,
     val commentDraft: TextFieldState,
     val snackbarHostState: SnackbarHostState,
@@ -197,7 +199,9 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         onOpenSignIn = signIn::open,
     ) { viewModel.onAction(FilesyncUiAction.SaveHandedOff(it)) }
 
-    BackHandler(enabled = uiState.path.size > 1) { viewModel.onAction(FilesyncUiAction.NavigateUp) }
+    // Where Up goes: in a share view, NavigateUp alone would move the path hidden under it.
+    val up = filesyncUp(uiState.path, uiState.sharing)
+    BackHandler(enabled = up != null) { up?.actions?.forEach(viewModel::onAction) }
 
     val onFilesChosen: (List<PlatformFile>) -> Unit = { viewModel.onAction(FilesyncUiAction.FilesPicked(it)) }
     val filePicker = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Multiple()) { files ->
@@ -240,7 +244,13 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     uiState.shareChooser?.let { FilesyncShareSheet(it, onShare = { target -> viewModel.onAction(FilesyncUiAction.ShareTo(target)) }, onDismiss = { viewModel.onAction(FilesyncUiAction.DismissShare) }, withPeople = true) }
     if (uiState.sharing.shareWith != null) FilesyncShareWithSheet(uiState.sharing, viewModel::onAction)
     // Wide windows show them in the browser's centre.
-    if (!isExpandedLayout()) FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, viewModel::onAction)
+    // Inside one of the sharer's folders, what goes there; at their top, everything on its way to them.
+    val sharer = uiState.sharing.sharer
+    val sharedFolder = uiState.sharing.sharerPath.lastOrNull()?.nodeId
+    val sharedUploads = remember(uploads, sharer, sharedFolder) {
+        if (sharer == null) emptyList() else uploads.filter { it.owner == sharer && (sharedFolder == null || it.parentId == sharedFolder) }
+    }
+    if (!isExpandedLayout()) FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, sharedUploads, viewModel::onAction)
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
         FilesyncConfirmDialog(
@@ -259,7 +269,8 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     val actions = remember(viewModel) { FilesyncBrowserActions(viewModel::onAction, { askRestore = it }, { viewModel.uiState.value }) }
     val scope = FilesyncBrowserScope(
         uiState = uiState,
-        uploads = uploads.filter { it.parentId == currentFolder },
+        uploads = uploads.filter { it.owner == null && it.parentId == currentFolder },
+        sharedUploads = sharedUploads,
         search = viewModel.search,
         commentDraft = viewModel.commentDraft,
         snackbarHostState = snackbarHostState,

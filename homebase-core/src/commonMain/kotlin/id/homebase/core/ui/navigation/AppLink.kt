@@ -11,11 +11,14 @@ enum class AppLink(val slug: String, val route: Route) {
     Vault("vault", Route.Vault),
     WebDrop("webdrop", Route.WebDrop),
     Filesync("filesync", Route.Filesync),
+    Photobase("photobase", Route.Photobase),
     Location("location", Route.Location),
     Contacts("contactbook", Route.ContactBook),
     Email("email", Route.Email),
     Home("home", Route.Home),
     Settings("settings", Route.Settings);
+
+    fun isAvailable(photobaseEnabled: Boolean): Boolean = this != Photobase || photobaseEnabled
 
     companion object {
         private val routes = entries.map { it.route }

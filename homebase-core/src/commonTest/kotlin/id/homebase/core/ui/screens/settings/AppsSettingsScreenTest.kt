@@ -44,10 +44,17 @@ class AppsSettingsScreenTest {
         onLocation = { fired += "location" },
         onContactBookSettings = { fired += "contactBook" },
         onCallsSettings = { fired += "calls" },
+        onPhotobaseSettings = { fired += "photobase" },
     )
 
-    private fun ComposeUiTest.apps() = setContent {
-        MaterialTheme { AppsSettingsScreen(actions) }
+    private fun ComposeUiTest.apps(screenActions: AppsSettingsActions = actions) = setContent {
+        MaterialTheme { AppsSettingsScreen(screenActions) }
+    }
+
+    @Test
+    fun aDarkPhotobaseHasNoRow() = runComposeUiTest {
+        apps(actions.copy(onPhotobaseSettings = null))
+        onNodeWithTag("photobaseSettingsButton").assertDoesNotExist()
     }
 
     private fun ComposeUiTest.tap(tag: String) {
@@ -55,17 +62,18 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun allNineRowsAreThereInOrder() = runComposeUiTest {
+    fun allTenRowsAreThereInOrder() = runComposeUiTest {
         apps()
         assertEquals(
             listOf(
-                "feedSettingsButton", "momentsSettingsButton", "vaultSettingsButton", "filesyncSettingsButton",
+                "feedSettingsButton", "momentsSettingsButton", "vaultSettingsButton", "filesyncSettingsButton", "photobaseSettingsButton",
                 "emailSettingsButton", "webDropButton", "locationSettingsButton", "contactBookSettingsButton",
                 "callsSettingsButton",
             ),
             AppsSettingsRowTags,
         )
-        val tops = AppsSettingsRowTags.map { onNodeWithTag(it).assertExists().fetchSemanticsNode().boundsInRoot.top }
+        // positionInRoot: the list now runs past the test window, where boundsInRoot clips to 0.
+        val tops = AppsSettingsRowTags.map { onNodeWithTag(it).assertExists().fetchSemanticsNode().positionInRoot.y }
         assertEquals(tops.sorted(), tops)
     }
 
@@ -118,13 +126,14 @@ class AppsSettingsScreenTest {
     }
 
     @Test
-    fun theNineNavigationRowsCallTheirActions() = runComposeUiTest {
+    fun theTenNavigationRowsCallTheirActions() = runComposeUiTest {
         apps()
         listOf(
             "feedSettingsButton" to "feed",
             "momentsSettingsButton" to "moments",
             "vaultSettingsButton" to "vault",
             "filesyncSettingsButton" to "filesync",
+            "photobaseSettingsButton" to "photobase",
             "emailSettingsButton" to "email",
             "webDropButton" to "webdrop",
             "locationSettingsButton" to "location",
@@ -134,7 +143,7 @@ class AppsSettingsScreenTest {
             tap(tag)
             assertEquals(route, fired.last(), tag)
         }
-        assertEquals(9, fired.size)
+        assertEquals(10, fired.size)
     }
 
     @Test

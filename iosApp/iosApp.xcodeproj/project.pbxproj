@@ -957,7 +957,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach images to chat messages and, if you turn it on, to back up your photos and videos";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -1055,7 +1055,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach images to chat messages and, if you turn it on, to back up your photos and videos";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -1244,7 +1244,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to take photos and videos for chats, Moments, events and your Vault.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow microphone access to record voice messages, the sound in videos you take, and to talk in calls.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving photos and videos from chat to your photo library";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach images to chat messages and, if you turn it on, to back up your photos and videos";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

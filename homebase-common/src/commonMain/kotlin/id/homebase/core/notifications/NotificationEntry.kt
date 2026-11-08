@@ -1,5 +1,9 @@
 package id.homebase.core.notifications
 
+import id.homebase.core.photobase.PUSH_WAKE_BUDGET
+import id.homebase.core.photobase.PhotoBackupTrigger
+import kotlin.time.TimeSource
+import kotlinx.coroutines.coroutineScope
 import co.touchlab.kermit.Logger
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.location.DEFAULT_PUSH_CAPTURE_BUDGET_MS
@@ -40,6 +44,7 @@ class NotificationEntry(
     private val orchestrator: BackgroundSyncOrchestrator,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val pushLocationCapture: PushLocationCapture,
+    private val photoBackupTrigger: PhotoBackupTrigger,
 ) {
 
     /**
@@ -56,6 +61,7 @@ class NotificationEntry(
         Logger.i(tag = "NotificationEntry") {
             "onPushArrived title=$title body=$body data.size=${data.size}"
         }
+        val wake = TimeSource.Monotonic.markNow()
         notificationService.onFcmMessageReceived(title, body, data)
         val outcome = orchestrator.syncIfAuthenticated()
         // A push briefly wakes the process — an opportunistic free moment to record a fresh point if
@@ -66,8 +72,17 @@ class NotificationEntry(
         // budget) so iOS's completionHandler fires after the upload attempt, not before.
         // Best-effort — never fail the push sync over it. The capture result + drain outcome
         // are logged under the PushCapture tag (#988).
-        runCatching { pushLocationCapture.captureAndUpload(DEFAULT_PUSH_CAPTURE_BUDGET_MS) }
-            .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "push capture+upload failed" } }
+        coroutineScope {
+            launch {
+                runCatching { pushLocationCapture.captureAndUpload(DEFAULT_PUSH_CAPTURE_BUDGET_MS) }
+                    .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "push capture+upload failed" } }
+            }
+            // After chat, so a message never waits on a photo; alongside location, which has its own budget.
+            launch {
+                runCatching { photoBackupTrigger.onWake(PUSH_WAKE_BUDGET - wake.elapsedNow(), isBackupPush = isSilentPush(data)) }
+                    .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "backup wake failed" } }
+            }
+        }
         return outcome
     }
 

@@ -167,6 +167,22 @@ sealed class Route {
     @SerialName("filesync")
     data object Filesync : Route()
 
+    @Serializable
+    @SerialName("photobase")
+    data object Photobase : Route()
+
+    @Serializable
+    @SerialName("photobase-settings")
+    data object PhotobaseSettings : Route()
+
+    @Serializable
+    @SerialName("photo-backup-keep-open")
+    data object PhotoBackupKeepOpen : Route()
+
+    @Serializable
+    @SerialName("photo-backup-status")
+    data object PhotoBackupStatus : Route()
+
     // Not a tab: pushed over the screen that needs Filesync, and pops back to it once set up.
     @Serializable
     @SerialName("filesync-setup")

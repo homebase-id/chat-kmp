@@ -29,6 +29,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       // Arm crash handling FIRST (no Koin/DB) and check for a crash from last run.
       // If there is one, DEFER heavy init until the user taps Continue (avoids an
       // init-time crash loop). Otherwise initialize normally.
+      // Before initializeApp(): its shared startup builds NotificationService, which listens through KMPNotifier.
+      // showPushNotification false: foreground pushes aren't shown; content still reaches the listener.
+      NotifierManager.shared.initialize(configuration: NotificationPlatformConfigurationIos(
+            showPushNotification: false,
+            askNotificationPermissionOnStart: true,
+            notificationSoundName: nil
+          )
+      )
+
       if let pending = MainViewControllerKt.armCrashHandlingAndCheckPending() {
           CrashRecoveryModel.shared.pendingReportPath = pending
       } else {
@@ -42,18 +51,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       IosGpuTextDiagnosticsKt.logLaunchTrace(
           note: "didFinishLaunching keys=[\(launchKeys)] prewarm=\(prewarm) appState=\(application.applicationState.rawValue)")
 
-      //By default showPushNotification value is true.
-      //When set showPushNotification to false foreground push  notification will not be shown.
-      //You can still get notification content using #onPushNotification listener method.C
-      NotifierManager.shared.initialize(configuration: NotificationPlatformConfigurationIos(
-            showPushNotification: false,
-            askNotificationPermissionOnStart: true,
-            notificationSoundName: nil
-          )
-      )
-
       // Register notification categories with reply and mark-as-read actions
       registerNotificationCategories()
+
+      // Always registered, before this method returns: iOS kills an app that registers later, or
+      // that launches for a task still pending from when Photobase was on, with no handler for it.
+      PhotoBackupBackgroundTasksKt.registerPhotoBackupBackgroundTasks()
+      // A relaunch for finished uploads starts the session itself, and so does the first upload.
+      if PhotoBackupBackgroundTasksKt.isPhotobaseEnabled() {
+          BackgroundUploadBridgeImpl.shared.start()
+      }
 
       // Set delegate for handling notification actions
       UNUserNotificationCenter.current().delegate = self
@@ -117,6 +124,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
   ) {
+      // Shut before the first unlock; nothing started behind the crash-recovery screen: act once it opens.
+      guard MainViewControllerKt.isDatabaseOpen() else {
+          MainViewControllerKt.whenStarted { self.handle(response) {} }
+          completionHandler()
+          return
+      }
+      handle(response, completionHandler: completionHandler)
+  }
+
+  private func handle(_ response: UNNotificationResponse, completionHandler: @escaping () -> Void) {
       let userInfo = response.notification.request.content.userInfo
       let conversationId = extractConversationId(from: userInfo)
 
@@ -193,6 +210,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       return UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
   }
 
+  func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+      PhotoBackupBackgroundTasksKt.startListeningForPhotoBackupUploads()
+      BackgroundUploadBridgeImpl.shared.handleEvents(identifier: identifier, completionHandler: completionHandler)
+  }
+
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
   }
@@ -245,6 +267,7 @@ struct iOSApp: App {
         CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
 
         ContinuedProcessingBridgeHolder.shared.bridge = ContinuedProcessingBridgeImpl()
+        BackgroundUploadBridgeHolder.shared.bridge = BackgroundUploadBridgeImpl.shared
 
         CallKitManager.shared.start()
     }

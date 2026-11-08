@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
+import id.homebase.core.photobase.PhotobasePreferences
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
@@ -36,6 +37,7 @@ class SettingsViewModel(
     private val contactInfo: ContactInfoGateway,
     private val driveFileProviderCached: DriveFileProviderCached,
     private val webPushService: WebPushService,
+    private val photobasePreferences: PhotobasePreferences,
 ) : ViewModel() {
 
     private companion object {
@@ -69,6 +71,11 @@ class SettingsViewModel(
         viewModelScope.launch {
             userPreferences.preferenceState.collect { prefs ->
                 _uiState.update { it.copy(theme = prefs.theme) }
+            }
+        }
+        viewModelScope.launch {
+            photobasePreferences.iconVisible.collect { visible ->
+                _uiState.update { it.copy(photobaseIconVisible = visible) }
             }
         }
     }
@@ -144,6 +151,9 @@ class SettingsViewModel(
             SettingsUiAction.DeleteAccount -> {
                 _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
             }
+
+            is SettingsUiAction.SetPhotobaseIconVisible ->
+                viewModelScope.launch { photobasePreferences.setIconVisible(action.visible) }
         }
     }
 

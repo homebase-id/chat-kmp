@@ -28,6 +28,7 @@ import id.homebase.core.ui.screens.location.model.LOCATION_TRACK_FILE_TYPE
 import id.homebase.core.ui.screens.location.model.LocationTrackCodec
 import id.homebase.core.util.isWeb
 import id.homebase.core.settings.DeveloperPreferences
+import id.homebase.photobase.backup.PhotoBackupEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +44,7 @@ class DeveloperMenuViewModel(
     private val serverIpStore: ServerIpStore,
     private val youAuthFlowManager: YouAuthFlowManager,
     private val developerPreferences: DeveloperPreferences,
+    private val photoBackup: PhotoBackupEntry,
 ) : ViewModel() {
 
     companion object {
@@ -66,9 +68,28 @@ class DeveloperMenuViewModel(
                 _uiState.update { it.copy(profileCardEnabled = enabled) }
             }
         }
+        viewModelScope.launch {
+            developerPreferences.photobaseEnabled.collect { enabled ->
+                _uiState.update { it.copy(photobaseEnabled = enabled) }
+            }
+        }
     }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
+        if (action is DeveloperMenuUiAction.SetPhotobaseEnabled) {
+            viewModelScope.launch {
+                if (action.enabled) {
+                    developerPreferences.setPhotobaseEnabled(true)
+                    photoBackup.onProcessStart()
+                    photoBackup.onAppForeground()
+                } else {
+                    // Before the switch flips: the entry ignores every call once it's off.
+                    photoBackup.onBeforeLogout()
+                    developerPreferences.setPhotobaseEnabled(false)
+                }
+            }
+            return
+        }
         if (action is DeveloperMenuUiAction.SetProfileCardEnabled) {
             viewModelScope.launch { developerPreferences.setProfileCardEnabled(action.enabled) }
             return
@@ -337,6 +358,7 @@ class DeveloperMenuViewModel(
 @Immutable
 data class DeveloperMenuUiState(
     val profileCardEnabled: Boolean = false,
+    val photobaseEnabled: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,
     val networkDiagnostics: NetworkDiagnostics? = null,
@@ -352,6 +374,7 @@ sealed interface DeveloperMenuUiEvent {
 sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
     data class SetProfileCardEnabled(val enabled: Boolean) : DeveloperMenuUiAction
+    data class SetPhotobaseEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction

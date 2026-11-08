@@ -53,6 +53,9 @@ import id.homebase.resources.settings_feed_desc
 import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_section_apps
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.resources.photobase_home_subtitle
+import id.homebase.resources.photobase_label
 import id.homebase.resources.settings_vault_desc
 import id.homebase.resources.vault_settings_section
 import id.homebase.resources.webdrop_home_subtitle
@@ -64,6 +67,7 @@ internal val AppsSettingsRowTags = listOf(
     "momentsSettingsButton",
     "vaultSettingsButton",
     "filesyncSettingsButton",
+    "photobaseSettingsButton",
     "emailSettingsButton",
     "webDropButton",
     "locationSettingsButton",
@@ -136,6 +140,16 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
                         containerColor = rowColor,
                         action = SettingsRowAction.Navigate(actions.onFilesyncSettings),
                     )
+                    actions.onPhotobaseSettings?.let { onPhotobaseSettings ->
+                        SettingsRow(
+                            modifier = Modifier.testTag("photobaseSettingsButton"),
+                            icon = Icons.Outlined.PhotoLibrary,
+                            title = stringResource(MR.string.photobase_label),
+                            supportingText = stringResource(MR.string.photobase_home_subtitle),
+                            containerColor = rowColor,
+                            action = SettingsRowAction.Navigate(onPhotobaseSettings),
+                        )
+                    }
                     SettingsRow(
                         modifier = Modifier.testTag("emailSettingsButton"),
                         icon = Icons.Outlined.MailOutline,
@@ -182,7 +196,7 @@ fun AppsSettingsScreen(actions: AppsSettingsActions) {
     }
 }
 
-private val AppsContentMaxWidth = 640.dp
+internal val AppsContentMaxWidth = 640.dp
 
 // The heading's top inset centres the first one on the pane sidebar's first row.
 @Composable

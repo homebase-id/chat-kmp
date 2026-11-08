@@ -8,45 +8,46 @@ import kotlinx.serialization.Serializable
  * enum.
  */
 @Serializable
-enum class TransferStatus(val value: String) {
-    @SerialName("none") None("none"),
-    @SerialName("delivered") Delivered("delivered"),
+enum class TransferStatus {
+    @SerialName("none") None,
+    @SerialName("delivered") Delivered,
     @SerialName("recipientidentityreturnedaccessdenied")
-    RecipientIdentityReturnedAccessDenied("recipientidentityreturnedaccessdenied"),
+    RecipientIdentityReturnedAccessDenied,
     @SerialName("sourcefiledoesnotallowdistribution")
-    SourceFileDoesNotAllowDistribution("sourcefiledoesnotallowdistribution"),
+    SourceFileDoesNotAllowDistribution,
     @SerialName("recipientservernotresponding")
-    RecipientServerNotResponding("recipientservernotresponding"),
+    RecipientServerNotResponding,
     @SerialName("recipientidentityreturnedservererror")
-    RecipientIdentityReturnedServerError("recipientidentityreturnedservererror"),
+    RecipientIdentityReturnedServerError,
     /** The recipient is out of storage: still in the outbox, delivered once they have room. Waiting, not failed. */
     @SerialName("recipientidentityoutofstorage")
-    RecipientIdentityOutOfStorage("recipientidentityoutofstorage"),
+    RecipientIdentityOutOfStorage,
     @SerialName("recipientidentityreturnedbadrequest")
-    RecipientIdentityReturnedBadRequest("recipientidentityreturnedbadrequest"),
-    @SerialName("unknownservererror") UnknownServerError("unknownservererror"),
+    RecipientIdentityReturnedBadRequest,
+    @SerialName("recipientidentityreturnedversiontagmismatch")
+    RecipientIdentityReturnedVersionTagMismatch,
+    @SerialName("recipientidentityreturnedinvalidkeyheader")
+    RecipientIdentityReturnedInvalidKeyHeader,
+    @SerialName("unknownservererror") UnknownServerError,
     @SerialName("sendingservertoomanyattempts")
-    SendingServerTooManyAttempts("sendingservertoomanyattempts");
+    SendingServerTooManyAttempts;
+
+    /** Every entry is listed, so a new one won't compile until it's decided. */
+    val isFailed: Boolean
+        get() = when (this) {
+            RecipientIdentityReturnedAccessDenied,
+            SourceFileDoesNotAllowDistribution,
+            RecipientServerNotResponding,
+            RecipientIdentityReturnedServerError,
+            RecipientIdentityReturnedBadRequest,
+            RecipientIdentityReturnedVersionTagMismatch,
+            RecipientIdentityReturnedInvalidKeyHeader,
+            UnknownServerError,
+            SendingServerTooManyAttempts -> true
+            None, Delivered, RecipientIdentityOutOfStorage -> false
+        }
 
     companion object {
-        fun fromString(value: String): TransferStatus {
-            return entries.firstOrNull { it.value.equals(value, ignoreCase = true) } ?: None
-        }
-
-        /** List of failed transfer statuses. */
-        val failedStatuses: List<TransferStatus> =
-                listOf(
-                        RecipientIdentityReturnedAccessDenied,
-                        SourceFileDoesNotAllowDistribution,
-                        RecipientServerNotResponding,
-                        RecipientIdentityReturnedServerError,
-                        RecipientIdentityReturnedBadRequest,
-                        UnknownServerError,
-                        SendingServerTooManyAttempts
-                )
-
-        fun isFailedStatus(status: TransferStatus): Boolean {
-            return status in failedStatuses
-        }
+        fun isFailedStatus(status: TransferStatus): Boolean = status.isFailed
     }
 }

@@ -1,5 +1,6 @@
 package id.homebase.feed
 
+import id.homebase.photobase.backup.PhotoBackupEntry
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
@@ -20,17 +21,13 @@ import id.homebase.api.file.sweepShareOutbound
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.core.di.allModules
+import id.homebase.core.AppStartup
 import id.homebase.core.ui.screens.card.resetCardNfcService
 import id.homebase.core.diagnostics.MainThreadWatchdog
-import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.feed.crash.GlobalCrashHandler
-import id.homebase.core.util.PlatformInfo
 import chat_kmp.homebase_common.BuildConfig
-import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
 import id.homebase.chat.services.convo.ConversationStream
@@ -44,7 +41,6 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
-import org.koin.core.context.GlobalContext.startKoin
 
 class MainApplication : Application(), KoinComponent {
     override fun onCreate() {
@@ -52,9 +48,8 @@ class MainApplication : Application(), KoinComponent {
 
         if (getProcessName() != packageName) return
 
-        // Earliest app-code mark. The existing "APP STARTUP" header is logged late (after
-        // DB + Koin), so these checkpoints are what actually size the cold-start phases —
-        // diff their log timestamps. See StartupLogger.
+        // Earliest app-code mark; the "APP STARTUP" header follows Koin. Diff the checkpoints'
+        // timestamps to size the cold-start phases. See StartupLogger.
         StartupLogger.checkpoint("onCreate start")
 
         // Register the application Context up-front so components that only
@@ -74,25 +69,6 @@ class MainApplication : Application(), KoinComponent {
         SecureStorage.initialize(this)
         SharedPreferences.initialize(this) // TODO: Maybe we should use injectable UserPreferences
 
-        runBlocking {
-            DatabaseManager.initializeWithRecovery(DatabaseDriverFactory(applicationContext))
-        }
-        StartupLogger.checkpoint("db init done")
-
-        startKoin {
-            // Log Koin into Android logger
-            androidLogger()
-            // Reference Android context
-            androidContext(this@MainApplication)
-            // Load modules
-            modules(allModules)
-        }
-        StartupLogger.checkpoint("koin started")
-
-        // Configure Crashlytics based on user preference
-        val userPreferences = get<UserPreferences>()
-        Firebase.crashlytics.isCrashlyticsCollectionEnabled = userPreferences.errorCollectionEnabled
-
         try {
             val logsDir = filesDir.resolve("logs")
             if (!logsDir.exists()) {
@@ -103,8 +79,18 @@ class MainApplication : Application(), KoinComponent {
             Logger.e("MainApplication", e, "Failed to initialize file logging")
         }
 
-        val platformInfo = get<PlatformInfo>()
-        StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
+        AppStartup.startKoin {
+            androidLogger()
+            androidContext(this@MainApplication)
+        }
+        StartupLogger.checkpoint("koin started")
+
+        runBlocking { AppStartup.openDatabaseNow(DatabaseDriverFactory(applicationContext)) }
+        StartupLogger.checkpoint("db init done")
+
+        // Configure Crashlytics based on user preference
+        val userPreferences = get<UserPreferences>()
+        Firebase.crashlytics.isCrashlyticsCollectionEnabled = userPreferences.errorCollectionEnabled
 
         // Detect main-thread stalls before Android ANRs. Logs the main-thread stack to
         // homebase.log when a frame budget is exceeded by >4s — gives us a usable trace
@@ -131,18 +117,12 @@ class MainApplication : Application(), KoinComponent {
                 )
         )
 
-        // Register notification listener immediately so tokens/pushes arriving
-        // before the UI composes are not lost
-        val notificationService: NotificationService = get()
-        notificationService.startListening()
         // Brackets createNotificationChannels + NotifierManager.initialize() (KMPNotifier/
         // Firebase) — a prime suspect for cold-process stalls on the FCM boot.
         StartupLogger.checkpoint("notifications init done")
 
         // Publish share shortcuts when conversations change
         initShareShortcuts()
-
-        AndroidCallCoordinator(this, get(), get(), appScope).start()
 
         // Reap cleartext share-OUT temps every time the app reaches the
         // foreground. The chat "Share to other app" flow writes decrypted
@@ -155,10 +135,10 @@ class MainApplication : Application(), KoinComponent {
         // a same-process share's on-disk lifetime.
         registerShareOutboundForegroundSweep()
 
-        // Re-arm Location tracking on every process start (incl. boot-receiver
-        // and background-location wakes — onPostAuthenticated never runs on
-        // headless cold starts, so this cannot live there).
-        get<LocationTrackingCoordinator>().onProcessStart()
+        AppStartup.afterDatabase {
+            AndroidCallCoordinator(this, get(), get(), appScope).start()
+            get<PhotoBackupEntry>().onProcessStart()
+        }
 
         StartupLogger.checkpoint("onCreate end")
     }
@@ -219,6 +199,5 @@ class MainApplication : Application(), KoinComponent {
             )
         }
     }
-
 
 }
