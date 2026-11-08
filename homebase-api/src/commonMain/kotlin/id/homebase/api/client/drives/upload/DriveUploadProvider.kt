@@ -19,6 +19,8 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.shares.ShareRequest
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
@@ -76,6 +78,8 @@ data class UploadFileRequest(
     val sealedTo: ByteArray? = null,
     /** The file's uniqueId is its content, so a 4105 means it's already there: sent, nothing to convert to an update. */
     val existingFileIsSuccess: Boolean = false,
+    val shares: List<ShareRequest>? = null,
+    val globalTransitId: Uuid? = null,
 )
 
 @Serializable
@@ -194,6 +198,8 @@ class DriveUploadProvider(
             request.metadata,
             sharedSecret,
             transferIv = transferIv,
+            shares = request.shares,
+            globalTransitId = request.globalTransitId,
         )
 
         val instructions =
@@ -349,6 +355,39 @@ class DriveUploadProvider(
         }
 
         return result;
+    }
+
+    /**
+     * Changes the file with [globalTransitId] on [owner]'s [driveId] through this identity's server, which sends it from
+     * its outbox: the answer says only that it was queued; how it went comes as a
+     * [id.homebase.api.client.eventbus.BackendEvent.PeerSendResult]. A member keeps the file's key, so
+     * [encryptedKeyHeader] goes as it is; the payloads are already encrypted, each under its own new IV.
+     */
+    suspend fun updateFileOverPeerByGlobalTransitId(
+        owner: OdinId,
+        driveId: Uuid,
+        globalTransitId: Uuid,
+        encryptedKeyHeader: EncryptedKeyHeader,
+        metadata: UploadFileMetadata,
+        payloads: List<PayloadFile>,
+        onProgress: UploadProgress? = null,
+    ): UpdateFileResult {
+        preflightStagedPayloads(payloads, "updateFileOverPeerByGlobalTransitId gtid=$globalTransitId")
+        val sharedSecret = requireCreds().secret.unsafeBytes
+        val transferIv = ByteArrayUtil.getRndByteArray(16)
+        val descriptor = buildSharedSecretEncryptedUpdateDescriptor(encryptedKeyHeader, metadata, sharedSecret, transferIv)
+        val instructions = FileUpdateInstructionSet(
+            transferIv = transferIv,
+            locale = UpdateLocale.Peer,
+            recipients = listOf(owner),
+            manifest = UpdateManifest.build(payloads),
+        )
+        val data = buildUpdateFormData(instructions, descriptor, payloads, fileOperationsProvider = fileOperationsProvider)
+        val total = calculateUploadSize(payloads, emptyList(), descriptor, fileOperationsProvider)
+        val progress = onProgress?.let { report -> suspend { sent: Long, _: Long? -> report(sent, total) } }
+        val result = requireNotNull(pureUpdate(data, "/peer/$owner/drives/$driveId/files/by-gtid/$globalTransitId", progress))
+        cleanupPayloadTempFiles(payloads)
+        return result
     }
 
     // ==================== LOCAL METADATA METHODS ====================
@@ -514,21 +553,8 @@ class DriveUploadProvider(
         sharedSecret: ByteArray,
         transferIv: ByteArray,
         driveId: Uuid
-    ): ByteArray {
-        val descriptor =
-            UpdateFileDescriptor(
-                encryptedKeyHeader = lockKeyHeader(keyHeader, driveId, sharedSecret, transferIv),
-                fileMetadata = metadata
-            )
-
-        // Serialize to JSON (matches TypeScript jsonStringify64)
-        val descriptorJson = OdinSystemSerializer.json.encodeToString(descriptor)
-        val descriptorBytes = descriptorJson.encodeToByteArray()
-
-        // Encrypt the entire descriptor with sharedSecret using transferIv (matches TypeScript
-        // encryptWithSharedSecret)
-        return AesCbc.encrypt(descriptorBytes, sharedSecret, transferIv)
-    }
+    ): ByteArray =
+        buildSharedSecretEncryptedUpdateDescriptor(lockKeyHeader(keyHeader, driveId, sharedSecret, transferIv), metadata, sharedSecret, transferIv)
 
     private suspend fun <T> handleErrorResponse(
         response: ApiResponse,

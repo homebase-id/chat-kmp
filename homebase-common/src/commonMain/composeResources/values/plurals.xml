@@ -108,4 +108,36 @@
         <item quantity="one">You have connection requests from %1$s and %2$d more</item>
         <item quantity="other">You have connection requests from %1$s and %2$d more</item>
     </plurals>
+    <plurals name="filesync_peer_added_many">
+        <item quantity="one">%1$d files are in %2$s's folder now.</item>
+        <item quantity="other">%1$d files are in %2$s's folder now.</item>
+    </plurals>
+    <plurals name="filesync_peer_replaced_many">
+        <item quantity="one">%2$s has your new versions of %1$d files.</item>
+        <item quantity="other">%2$s has your new versions of %1$d files.</item>
+    </plurals>
+    <plurals name="filesync_peer_retrying_many">
+        <item quantity="one">%2$s's server isn't answering. %1$d files go when it does.</item>
+        <item quantity="other">%2$s's server isn't answering. %1$d files go when it does.</item>
+    </plurals>
+    <plurals name="filesync_peer_waiting_storage_many">
+        <item quantity="one">%2$s is out of storage. %1$d files go when there's room.</item>
+        <item quantity="other">%2$s is out of storage. %1$d files go when there's room.</item>
+    </plurals>
+    <plurals name="filesync_peer_changed_first_many">
+        <item quantity="one">Someone changed %1$d files first, so your versions weren't saved in %2$s's folder.</item>
+        <item quantity="other">Someone changed %1$d files first, so your versions weren't saved in %2$s's folder.</item>
+    </plurals>
+    <plurals name="filesync_peer_denied_many">
+        <item quantity="one">%2$s's folder no longer takes your changes. %1$d files weren't sent.</item>
+        <item quantity="other">%2$s's folder no longer takes your changes. %1$d files weren't sent.</item>
+    </plurals>
+    <plurals name="filesync_peer_failed_many">
+        <item quantity="one">%1$d files couldn't be sent to %2$s's folder.</item>
+        <item quantity="other">%1$d files couldn't be sent to %2$s's folder.</item>
+    </plurals>
+    <plurals name="filesync_peer_not_confirmed_many">
+        <item quantity="one">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
+        <item quantity="other">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
+    </plurals>
 </resources>

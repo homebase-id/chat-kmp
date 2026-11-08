@@ -40,7 +40,6 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -119,7 +118,6 @@ import id.homebase.resources.filesync_selected_size
 import id.homebase.resources.filesync_tags_here
 import id.homebase.resources.filesync_totals
 import id.homebase.resources.filesync_trash
-import id.homebase.resources.filesync_upload
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -332,11 +330,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(MR.string.filesync_new_folder))
                 }
-                Button(onClick = scope.onUpload) {
-                    Icon(Icons.Outlined.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(MR.string.filesync_upload))
-                }
+                FilesyncUploadButton(scope.onUpload)
             }
             IconButton(onClick = { scope.onAction(FilesyncUiAction.Refresh) }) {
                 Icon(Icons.Default.Refresh, contentDescription = stringResource(MR.string.filesync_refresh))
@@ -374,7 +368,7 @@ internal fun FilesyncWideBrowser(scope: FilesyncBrowserScope) {
                 Breadcrumbs(crumbs, onCrumb = onCrumb, heading = true)
             }
             if (viewing) {
-                FilesyncShareView(uiState.sharing, uiState.transfer, scope.onAction)
+                FilesyncShareView(uiState.sharing, uiState.transfer, scope.sharedUploads, scope.onAction)
                 return@Column
             }
             BoxWithConstraints(

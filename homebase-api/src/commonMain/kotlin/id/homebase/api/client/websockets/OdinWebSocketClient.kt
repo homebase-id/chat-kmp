@@ -622,6 +622,10 @@ class OdinWebSocketClient(
             ClientNotificationType.appNotificationAdded -> {
             }
 
+            ClientNotificationType.peerSendResult -> {
+                eventBus.emit(BackendEvent.PeerSendResult(OdinSystemSerializer.deserialize<PeerSendResultNotification>(notification.data)))
+            }
+
 
             ClientNotificationType.deviceConnected -> {
                 // just means another device was connected

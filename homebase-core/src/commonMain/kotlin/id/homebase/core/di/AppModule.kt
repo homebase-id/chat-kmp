@@ -184,6 +184,8 @@ import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
 import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
+import id.homebase.core.ui.screens.filesync.FilesyncMemberWrites
+import id.homebase.core.ui.screens.filesync.FilesyncPeerSends
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.config.getPhotobasePermissionExtensionConfig
 import id.homebase.core.photobase.PhotoBackupTrigger
@@ -1090,7 +1092,9 @@ val appModule = module {
     single { FilesyncShareMessages(get(), get()) }
     single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
-    single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit) }
+    single { FilesyncMemberWrites(get<FilesyncSharing>(), get(), get()) }
+    single { FilesyncPeerSends(get(), get<FilesyncSharing>(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit, get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
@@ -1523,6 +1527,7 @@ val appModule = module {
             filesyncSharing = get(),
             sharingSetup = get(),
             shareMessages = get(),
+            peerSends = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }

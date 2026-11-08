@@ -3100,6 +3100,15 @@
     <string name="filesync_move_title">Move %1$s to</string>
     <string name="filesync_move_here">Move here</string>
     <string name="filesync_moved">Moved to %1$s</string>
+    <string name="filesync_replace">Replace %1$s with another file</string>
+    <string name="filesync_peer_added">%1$s is in %2$s's folder now.</string>
+    <string name="filesync_peer_replaced">%2$s has your new version of %1$s.</string>
+    <string name="filesync_peer_retrying">%2$s's server isn't answering. %1$s goes when it does.</string>
+    <string name="filesync_peer_waiting_storage">%2$s is out of storage. %1$s goes when there's room.</string>
+    <string name="filesync_peer_changed_first">Someone changed %1$s first, so your version wasn't saved.</string>
+    <string name="filesync_peer_denied">%2$s's folder no longer takes your changes. %1$s wasn't sent.</string>
+    <string name="filesync_peer_failed">%1$s couldn't be sent to %2$s's folder.</string>
+    <string name="filesync_peer_not_confirmed">Couldn't confirm that %1$s reached %2$s's folder. If it isn't there, send it again.</string>
     <string name="filesync_move_failed">Couldn't move it.</string>
     <string name="filesync_no_folders">No folders here.</string>
     <string name="filesync_archive_listing">Gathering files…</string>
