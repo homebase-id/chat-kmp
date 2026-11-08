@@ -247,7 +247,7 @@ class ZkDriveFilesTest {
         """
         val serverFile = OdinSystemSerializer.deserialize<ServerFile>(json)
 
-        assertEquals("""{"body":"nice"}""", serverFile.asHomebaseFile(SecureByteArray(sharedSecret), { _, _, _ -> file.aesKey }).fileMetadata.appData.content)
+        assertEquals("""{"body":"nice"}""", serverFile.asHomebaseFile(SecureByteArray(sharedSecret), { _, _, _, _ -> file.aesKey }).fileMetadata.appData.content)
         assertFailsWith<FileDecryptionException.KeyHeaderDecryptionFailed> { serverFile.asHomebaseFile(SecureByteArray(sharedSecret)) }
     }
 
@@ -283,8 +283,8 @@ class ZkDriveFilesTest {
               "shares": [{ "circleId": "$circleId", "permissions": "read", "created": 1, "modified": 1 }]
             }
         """
-        val byShare = ExternalFileKey { id, shares, lockedFileKey ->
-            ShareKeys.openFileKey(circleKey, lockedFileKey, owner, id, shares.single().circleId).toSecureByteArray()
+        val byShare = ExternalFileKey { id, globalTransitId, shares, lockedFileKey ->
+            ShareKeys.openFileKey(circleKey, lockedFileKey, owner, id, globalTransitId, shares.single().circleId).toSecureByteArray()
         }
         val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
 
@@ -307,7 +307,7 @@ class ZkDriveFilesTest {
             }
         """
         val opens = Uuid.random()
-        val byShare = ExternalFileKey { id, _, _ -> if (id == opens) file.aesKey else null }
+        val byShare = ExternalFileKey { id, _, _, _ -> if (id == opens) file.aesKey else null }
         val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
 
         val page = queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")},${json(Uuid.random(), "other.pdf")}]}""", SecureByteArray(sharedSecret), byShare)
@@ -315,7 +315,7 @@ class ZkDriveFilesTest {
         assertEquals(listOf("plan.pdf"), page.searchResults.map { it.fileMetadata.appData.content })
 
         // Only a withheld key leaves a file out; any other failure still fails the page.
-        val broken = ExternalFileKey { _, _, _ -> error("the owner's server is down") }
+        val broken = ExternalFileKey { _, _, _, _ -> error("the owner's server is down") }
         assertFailsWith<FileDecryptionException> {
             queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")}]}""", SecureByteArray(sharedSecret), broken)
         }

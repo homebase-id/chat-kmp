@@ -24,6 +24,14 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.UploadFile
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import id.homebase.resources.filesync_replace
+import id.homebase.resources.filesync_upload
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Groups
@@ -427,9 +435,15 @@ internal fun ColumnScope.FilesyncRecipientsSidebar(sharing: FilesyncSharingState
 
 /** The wide browser's centre while a person is picked in the sidebar: their files shared with this identity, or the reverse. */
 @Composable
-internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
+internal fun FilesyncShareView(
+    sharing: FilesyncSharingState,
+    transfer: FilesyncTransfer?,
+    uploads: List<FilesyncUpload>,
+    onAction: (FilesyncUiAction) -> Unit,
+) {
     val shown = sharing.sharer?.let { FilesyncAudience.Person(it) } ?: sharing.recipient ?: return
     val incoming = sharing.sharer != null
+    val writes = rememberSharedWrites(onAction)
     var editingMembers by rememberSaveable { mutableStateOf(false) }
     if (editingMembers && shown is FilesyncAudience.Group) {
         GroupMembersSheet(shown, onDismiss = { editingMembers = false }) { members ->
@@ -456,13 +470,12 @@ internal fun FilesyncShareView(sharing: FilesyncSharingState, transfer: Filesync
                         TextButton(onClick = { editingMembers = true }) { Text(stringResource(MR.string.filesync_group_edit_members)) }
                     }
                 }
+                if (incoming && sharing.canAddHere) FilesyncUploadButton(writes.pickToAdd)
                 TextButton(onClick = { onAction(FilesyncUiAction.CloseShareView) }) { Text(stringResource(MR.string.filesync_view_close)) }
             }
         }
-        if (incoming) SharedFilesBody(sharing.sharedFilesFailed, sharing.sharedFiles?.size, MR.string.filesync_shared_by_none) {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-                items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node -> IncomingRow(node, sharing.sharerPath, transfer, onAction) }
-            }
+        if (incoming) {
+            IncomingFiles(sharing, transfer, uploads, writes, onAction, gutter = 16.dp, listModifier = Modifier.fillMaxSize().padding(horizontal = 8.dp))
         } else SharedFilesBody(sharing.recipientFilesFailed, sharing.recipientFiles?.size, MR.string.filesync_view_to_none) {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                 items(sharing.recipientFiles.orEmpty(), key = { it.node.nodeId }) { share ->
@@ -551,7 +564,13 @@ private fun GroupMembersSheet(group: FilesyncAudience.Group, onDismiss: () -> Un
 
 // A shared folder opens in place; a shared file saves.
 @Composable
-private fun IncomingRow(node: FilesyncNode, path: List<FilesyncCrumb>, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
+private fun IncomingRow(
+    node: FilesyncNode,
+    path: List<FilesyncCrumb>,
+    transfer: FilesyncTransfer?,
+    onAction: (FilesyncUiAction) -> Unit,
+    onReplace: ((FilesyncNode) -> Unit)? = null,
+) {
     if (node.isFolder) {
         FilesyncNodeRow(
             node = node,
@@ -564,6 +583,11 @@ private fun IncomingRow(node: FilesyncNode, path: List<FilesyncCrumb>, transfer:
         node = node,
         details = node.sharedDetails(),
         trailing = {
+            if (onReplace != null) {
+                IconButton(onClick = { onReplace(node) }) {
+                    Icon(Icons.Outlined.UploadFile, contentDescription = stringResource(MR.string.filesync_replace, node.name))
+                }
+            }
             SaveButton(
                 progress = transfer.progressOf(node.nodeId),
                 onSave = { onAction(FilesyncUiAction.SaveShared(node)) },
@@ -571,6 +595,58 @@ private fun IncomingRow(node: FilesyncNode, path: List<FilesyncCrumb>, transfer:
             )
         },
     )
+}
+
+/** What the sharer shows, below any of this identity's files on their way there. */
+@Composable
+private fun IncomingFiles(
+    sharing: FilesyncSharingState,
+    transfer: FilesyncTransfer?,
+    uploads: List<FilesyncUpload>,
+    writes: SharedWrites,
+    onAction: (FilesyncUiAction) -> Unit,
+    gutter: Dp,
+    listModifier: Modifier,
+) {
+    if (uploads.isNotEmpty()) UploadStrip(uploads, onAction, Modifier.padding(horizontal = gutter).padding(bottom = 8.dp))
+    SharedFilesBody(sharing.sharedFilesFailed, sharing.sharedFiles?.size, MR.string.filesync_shared_by_none) {
+        LazyColumn(modifier = listModifier) {
+            items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node ->
+                IncomingRow(node, sharing.sharerPath, transfer, onAction, onReplace = writes.pickToReplace.takeIf { node.nodeId in sharing.editableIds })
+            }
+        }
+    }
+}
+
+/** The pickers for adding files to the sharer's folder shown and replacing one of theirs. */
+private class SharedWrites(val pickToAdd: () -> Unit, val pickToReplace: (FilesyncNode) -> Unit)
+
+@Composable
+private fun rememberSharedWrites(onAction: (FilesyncUiAction) -> Unit): SharedWrites {
+    val add = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Multiple()) { files ->
+        if (!files.isNullOrEmpty()) onAction(FilesyncUiAction.AddToShared(files))
+    }
+    var replacing by remember { mutableStateOf<FilesyncNode?>(null) }
+    val replace = rememberFilePickerLauncher(type = FileKitType.File(), mode = FileKitMode.Single) { file ->
+        val node = replacing
+        replacing = null
+        if (file != null && node != null) onAction(FilesyncUiAction.ReplaceShared(node, file))
+    }
+    return remember(add, replace) {
+        SharedWrites(pickToAdd = { add.launch() }, pickToReplace = { node ->
+            replacing = node
+            replace.launch()
+        })
+    }
+}
+
+@Composable
+internal fun FilesyncUploadButton(onClick: () -> Unit) {
+    Button(onClick = onClick) {
+        Icon(Icons.Outlined.UploadFile, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(MR.string.filesync_upload))
+    }
 }
 
 @Composable
@@ -597,8 +673,14 @@ private fun FilesyncNode.sharedDetails(): String =
 
 /** What [FilesyncSharingState.sharer] shares with this identity, each file to save. */
 @Composable
-internal fun FilesyncSharedFilesSheet(sharing: FilesyncSharingState, transfer: FilesyncTransfer?, onAction: (FilesyncUiAction) -> Unit) {
+internal fun FilesyncSharedFilesSheet(
+    sharing: FilesyncSharingState,
+    transfer: FilesyncTransfer?,
+    uploads: List<FilesyncUpload>,
+    onAction: (FilesyncUiAction) -> Unit,
+) {
     val sharer = sharing.sharer ?: return
+    val writes = rememberSharedWrites(onAction)
     AdaptiveSheet(onDismiss = { onAction(FilesyncUiAction.CloseShareView) }, maxWidth = 520.dp) {
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
@@ -609,13 +691,10 @@ internal fun FilesyncSharedFilesSheet(sharing: FilesyncSharingState, transfer: F
                     }
                 }
                 IdentityAvatar(sharer, AvatarOptions(size = 36.dp))
-                Text(path.lastOrNull()?.name ?: sharer.domainName, style = MaterialTheme.typography.titleMedium)
+                Text(path.lastOrNull()?.name ?: sharer.domainName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (sharing.canAddHere) FilesyncUploadButton(writes.pickToAdd)
             }
-            SharedFilesBody(sharing.sharedFilesFailed, sharing.sharedFiles?.size, MR.string.filesync_shared_by_none) {
-                LazyColumn(modifier = Modifier.heightIn(max = 480.dp)) {
-                    items(sharing.sharedFiles.orEmpty(), key = { it.nodeId }) { node -> IncomingRow(node, sharing.sharerPath, transfer, onAction) }
-                }
-            }
+            IncomingFiles(sharing, transfer, uploads, writes, onAction, gutter = 24.dp, listModifier = Modifier.heightIn(max = 480.dp))
         }
     }
 }

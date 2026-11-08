@@ -14,6 +14,7 @@ import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
+import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.CancellationException
@@ -342,8 +343,7 @@ class FilesyncEditor(
 
 /** [content] (everything read, unknown keys too) as a live node in [parentId]: the node's own key with a new IV, guarded by its versionTag. */
 internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid): UpdateFileByFileIdRequest {
-    val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), handle.keyHeader.aesKey)
-    val metadata = filesyncMetadata(nodeId, parentId, handle.fileType, content.toString(), ArchivalStatus.None, handle.versionTag)
+    val keyHeader = handle.keyWithNewIv()
     return UpdateFileByFileIdRequest(
         driveId = FilesyncProtocol.DriveAlias,
         fileId = handle.fileId,
@@ -354,9 +354,15 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
             recipients = emptyList(),
             manifest = UpdateManifest.build(),
         ),
-        metadata = metadata.encryptContent(keyHeader),
+        metadata = liveNodeMetadata(nodeId, handle, content, parentId, keyHeader),
     )
 }
+
+internal fun FilesyncHandle.keyWithNewIv() = KeyHeader(ByteArrayUtil.getRndByteArray(16), keyHeader.aesKey)
+
+/** The whole header of a node as it is read, with [content], under [keyHeader]: guarded by the version it was read at. */
+internal suspend fun liveNodeMetadata(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid, keyHeader: KeyHeader): UploadFileMetadata =
+    filesyncMetadata(nodeId, parentId, handle.fileType, content.toString(), ArchivalStatus.None, handle.versionTag).encryptContent(keyHeader)
 
 
 // The legacy removal key goes with any write of the content (node schema, `rm`).

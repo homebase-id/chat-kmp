@@ -139,7 +139,7 @@ class FilesyncDiscussions(
                 resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = COMMENT_LIMIT, includeMetadataHeader = true),
             ),
             fileSystemType = FileSystemType.Comment,
-            externalFileKey = { _, _, _ -> handle.keyHeader.aesKey },
+            externalFileKey = { _, _, _, _ -> handle.keyHeader.aesKey },
         )
         return page.searchResults.mapNotNull { it.toComment(self) }.sortedBy { it.createdMs }
     }

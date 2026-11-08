@@ -148,6 +148,7 @@ enum class OdinClientErrorCode(val value: Int) {
     PayloadHashMismatch(4175),
     InvalidPayloadHash(4176),
     PayloadHashRequired(4177),
+    ExistingFileWithGlobalTransitId(4180),
 
     // Connection errors 50xx
     NotAnAutoConnection(5001),

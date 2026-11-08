@@ -7,6 +7,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.shares.ShareRequest
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
 import id.homebase.api.serialization.Base64Bytes
@@ -87,7 +88,11 @@ data class UploadFileMetadata(
 @Serializable
 data class UploadFileDescriptor(
         val encryptedKeyHeader: EncryptedKeyHeader? = null,
-        val fileMetadata: UploadFileMetadata
+        val fileMetadata: UploadFileMetadata,
+        /** A new file's shares on a Selective Share drive; they name no file id, being this one's. */
+        val shares: List<ShareRequest>? = null,
+        /** Picked by the client so key material can be bound to it before the file exists. */
+        @Serializable(with = UuidSerializer::class) val globalTransitId: Uuid? = null,
 )
 
 
