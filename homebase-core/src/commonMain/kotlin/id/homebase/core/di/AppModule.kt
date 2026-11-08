@@ -246,6 +246,7 @@ import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
+import id.homebase.api.sync.database.KeyHeaderTransformQueue
 import id.homebase.core.config.chatLabeledDrive
 import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.config.momentsLabeledDrive
@@ -803,6 +804,8 @@ val appModule = module {
                 // An event collector with no UI referent, so nothing else constructs it. Resolved
                 // here and NOT createdAtStart: Koin starts before the database (AppStartup).
                 get<ChatMediaAutoSaveService>()
+                // Likewise: it takes the sealed key headers files arrive with, so it's in place before the first sync.
+                get<KeyHeaderTransformQueue>()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->

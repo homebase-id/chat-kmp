@@ -11,7 +11,7 @@ enum class EncryptionType {
     @SerialName("aes")
     Aes,
 
-    /** Sealed to a drive's write-only key by a depositor; nothing in this app opens one yet. */
+    /** Sealed to a drive's write-only key by a depositor; this app re-locks it as [ZkDrive] and tells the server. */
     @SerialName("sealed")
     Sealed,
 
