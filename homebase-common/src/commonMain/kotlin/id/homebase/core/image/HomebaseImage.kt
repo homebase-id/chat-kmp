@@ -110,23 +110,6 @@ fun HomebaseImage(
             }
         }
 
-    if (deferLoad && !imageData.isPending &&
-        imageLoader.memoryCache?.get(MemoryCache.Key(HomebaseImageKeyer.thumbnailCacheKey(imageData))) == null
-    ) {
-        if (previewBitmap != null) {
-            Image(
-                bitmap = previewBitmap,
-                contentDescription = contentDescription,
-                contentScale = contentScale,
-                alignment = alignment,
-                modifier = modifier.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }),
-            )
-        } else {
-            placeholder?.invoke()
-        }
-        return
-    }
-
     // Paint the already-decoded thumbnail synchronously on the first frame
     // instead of the tiny embedded preview. The thumbnail cache key is
     // size-independent (see HomebaseImageKeyer), so whatever thumbnail is in
@@ -187,6 +170,24 @@ fun HomebaseImage(
                     resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
                 )
         }
+    }
+
+    if (deferLoad && !imageData.isPending &&
+        imageLoader.memoryCache?.get(MemoryCache.Key(HomebaseImageKeyer.thumbnailCacheKey(imageData))) == null
+    ) {
+        if (previewBitmap != null) {
+            Image(
+                bitmap = previewBitmap,
+                contentDescription = contentDescription,
+                contentScale = contentScale,
+                alignment = alignment,
+                colorFilter = colorFilter,
+                modifier = customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }),
+            )
+        } else {
+            placeholder?.invoke()
+        }
+        return
     }
 
     SubcomposeAsyncImage(

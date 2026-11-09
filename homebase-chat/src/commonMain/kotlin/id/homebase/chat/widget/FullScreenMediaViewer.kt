@@ -40,6 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -104,12 +105,16 @@ fun FullScreenMediaViewer(
     onDelete: ((messageId: Uuid) -> Unit)? = null,
     onDismiss: () -> Unit,
     onNavigateToMessage: (() -> Unit)? = null,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    // A host paging several viewers shares one, so hidden chrome stays hidden across a swipe.
+    showUIState: MutableState<Boolean> = remember { mutableStateOf(true) },
+    // False for a neighbouring page a host composes off screen: it mustn't take the keyboard.
+    isFocused: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
-    var showUI by remember { mutableStateOf(true) }
+    var showUI by showUIState
     var showMenu by remember { mutableStateOf(false) }
 
     val initialPage = remember(data) {
@@ -132,7 +137,7 @@ fun FullScreenMediaViewer(
         })
     val copyAction = currentImageAction(onCopyImage)
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(focusRequester) { focusRequester.requestFocus() }
+    LaunchedEffect(focusRequester, isFocused) { if (isFocused) focusRequester.requestFocus() }
 
     BoxWithConstraints(
         // Deliberate divergence from the chat bubble: the bubble renders stickers

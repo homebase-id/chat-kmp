@@ -1,6 +1,8 @@
 package id.homebase.photobase.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
@@ -22,7 +24,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -44,6 +48,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
@@ -62,6 +69,7 @@ import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.photobase.gallery.PhotoGalleryDay
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
@@ -78,11 +86,15 @@ import id.homebase.resources.photobase_gallery_retry
 import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 // Under what's left of the first page after a screenful, or opening would fetch the next one straight away.
 private const val LOAD_MORE_WHEN_WITHIN = 15
 
 private const val SETTLE_MILLIS = 150L
+
+// A few swipes' warning, so the next page is usually there before the last photo is reached.
+private const val VIEWER_LOAD_MORE_WHEN_WITHIN = 5
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -92,29 +104,140 @@ fun PhotoGalleryScreen(
     backupIndicator: @Composable () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val onAction = viewModel::onAction
+    val memory = remember { GridMemory(LazyGridState()) }
+    val onAction: (PhotoGalleryUiAction) -> Unit = remember(viewModel) {
+        { action ->
+            if (action is PhotoGalleryUiAction.CloseViewer) memory.returnTo = viewModel.uiState.value.openedFileId
+            viewModel.onAction(action)
+        }
+    }
     val fadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
-            targetState = uiState.viewer,
-            contentKey = { it?.let { overlay -> overlay::class } },
+            targetState = uiState.openedFileId != null,
             transitionSpec = { fadeIn(fadeSpec) togetherWith fadeOut(fadeSpec) },
-        ) { viewer ->
-            when (viewer) {
-                is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
-                    data = viewer,
-                    onDismiss = { onAction(PhotoGalleryUiAction.CloseViewer) },
-                    sharedTransitionScope = this@SharedTransitionLayout,
-                    animatedVisibilityScope = this@AnimatedContent,
-                )
-                is FullScreenOverlay.VideoPlayerData -> FullScreenVideoPlayer(
-                    data = viewer,
-                    onDismiss = { onAction(PhotoGalleryUiAction.CloseViewer) },
-                )
-                else -> GalleryGrid(uiState, onAction, onOpenBackupSettings, backupIndicator)
+        ) { viewing ->
+            if (viewing) {
+                GalleryViewer(uiState, onAction, this@SharedTransitionLayout, this@AnimatedContent)
+            } else {
+                GalleryGrid(uiState, onAction, onOpenBackupSettings, backupIndicator, memory, this@SharedTransitionLayout, this@AnimatedContent)
             }
         }
     }
+}
+
+/** Outlives the grid while the viewer covers it: where it was, what it last had on top, and where to come back to. */
+private class GridMemory(val state: LazyGridState) {
+    var newestFirst: Boolean? = null
+    var topId: Uuid? = null
+    var returnTo: Uuid? = null
+}
+
+private fun gridIndexOf(days: List<PhotoGalleryDay>, fileId: Uuid): Int? {
+    var index = 0
+    for (day in days) {
+        index++
+        for (item in day.items) {
+            if (item.fileId == fileId) return index
+            index++
+        }
+    }
+    return null
+}
+
+/** Every photo loaded so far, in the grid's order, one per page; nearing the end loads the next page. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun GalleryViewer(
+    uiState: PhotoGalleryUiState,
+    onAction: (PhotoGalleryUiAction) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+) {
+    val items = remember(uiState.days) { uiState.days.flatMap { it.items } }
+    val openedFileId by rememberUpdatedState(uiState.openedFileId)
+    val pagerState = rememberPagerState(
+        initialPage = items.indexOfFirst { it.fileId == uiState.openedFileId }.coerceAtLeast(0),
+    ) { items.size }
+    val close = { onAction(PhotoGalleryUiAction.CloseViewer) }
+    BackHandler(onBack = close)
+    val showUI = remember { mutableStateOf(true) }
+    LaunchedEffect(items) {
+        // Photos arriving above the open one would otherwise leave the pager on a different photo.
+        // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
+        val opened = items.indexOfFirst { it.fileId == openedFileId }
+        if (opened < 0) {
+            close()
+            return@LaunchedEffect
+        }
+        if (opened != pagerState.settledPage) pagerState.scrollToPage(opened)
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            val item = items.getOrNull(page) ?: return@collect
+            if (item.fileId != openedFileId) onAction(PhotoGalleryUiAction.ViewerMovedTo(item))
+            if (page >= items.size - VIEWER_LOAD_MORE_WHEN_WITHIN) onAction(PhotoGalleryUiAction.LoadMore)
+        }
+    }
+    HorizontalPager(
+        state = pagerState,
+        key = { items[it].fileId.toString() },
+        beyondViewportPageCount = 1,
+        pageSpacing = 24.dp,
+        modifier = Modifier.fillMaxSize(),
+    ) { page ->
+        val item = items[page]
+        val settled = page == pagerState.settledPage
+        when (val viewer = remember(item) { item.toViewer() }) {
+            is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
+                data = viewer,
+                onDismiss = close,
+                // Only the open photo: a neighbour would fly in from its grid tile too.
+                sharedTransitionScope = sharedTransitionScope.takeIf { settled },
+                animatedVisibilityScope = animatedVisibilityScope.takeIf { settled },
+                showUIState = showUI,
+                isFocused = settled,
+            )
+            // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
+            is FullScreenOverlay.VideoPlayerData -> if (settled) {
+                FullScreenVideoPlayer(data = viewer, onDismiss = close)
+            } else {
+                VideoStill(item)
+            }
+            else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun VideoStill(item: PhotoGalleryItem) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+        item.tileImageData()?.let { imageData ->
+            HomebaseImage(
+                imageData = imageData,
+                contentDescription = stringResource(MR.string.photobase_gallery_video),
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.PlayCircle,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.inverseOnSurface,
+            modifier = Modifier.size(64.dp),
+        )
+    }
+}
+
+private fun PhotoGalleryItem.tileImageData(): HomebaseImageData? {
+    val iv = payload.iv?.bytes ?: return null
+    return HomebaseImageData.from(
+        driveId = driveId,
+        fileId = fileId,
+        descriptor = payload,
+        previewThumbnail = tinyPreview ?: payload.previewThumbnail?.toEmbeddedThumb(),
+        requestedSize = ImageSize.THUMB_SMALL,
+        thumbSizeLimit = ImageSize.THUMB_SMALL,
+        keyHeader = KeyHeader(iv = iv, aesKey = keyHeader.aesKey),
+    )
 }
 
 @Composable
@@ -123,6 +246,9 @@ private fun GalleryGrid(
     onAction: (PhotoGalleryUiAction) -> Unit,
     onOpenBackupSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
+    memory: GridMemory,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     Scaffold(
         topBar = {
@@ -157,7 +283,7 @@ private fun GalleryGrid(
                 .padding(innerPadding),
         ) {
             when {
-                uiState.days.isNotEmpty() -> PhotoGrid(uiState, onAction)
+                uiState.days.isNotEmpty() -> PhotoGrid(uiState, onAction, memory, sharedTransitionScope, animatedVisibilityScope)
                 // While the server is still being asked, "nothing backed up" may not be true.
                 uiState.isLoading || uiState.isSyncing -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 uiState.loadFailed -> Column(
@@ -199,10 +325,29 @@ private fun GalleryGrid(
 }
 
 @Composable
-private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAction) -> Unit) {
-    val gridState = rememberLazyGridState()
-    // Keyed on the top photo too: the grid would otherwise follow the photo it was on to its new place.
-    LaunchedEffect(uiState.newestFirst, uiState.days.firstOrNull()?.items?.firstOrNull()?.fileId) { gridState.scrollToItem(0) }
+private fun PhotoGrid(
+    uiState: PhotoGalleryUiState,
+    onAction: (PhotoGalleryUiAction) -> Unit,
+    memory: GridMemory,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+) {
+    val gridState = memory.state
+    val topId = uiState.days.firstOrNull()?.items?.firstOrNull()?.fileId
+    LaunchedEffect(uiState.newestFirst, topId) {
+        val sortChanged = memory.newestFirst.let { it != null && it != uiState.newestFirst }
+        // A new photo on top is brought into view only for someone already at the top; further down stays put.
+        val newOnTop = memory.topId.let { it != null && it != topId } && gridState.firstVisibleItemIndex <= 1
+        memory.newestFirst = uiState.newestFirst
+        memory.topId = topId
+        if (sortChanged || newOnTop) gridState.scrollToItem(0)
+    }
+    LaunchedEffect(Unit) {
+        val viewed = memory.returnTo ?: return@LaunchedEffect
+        memory.returnTo = null
+        val index = gridIndexOf(uiState.days, viewed) ?: return@LaunchedEffect
+        if (gridState.layoutInfo.visibleItemsInfo.none { it.index == index }) gridState.scrollToItem(index)
+    }
     LaunchedEffect(gridState) {
         snapshotFlow {
             val info = gridState.layoutInfo
@@ -244,7 +389,9 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
                 )
             }
             items(day.items, key = { it.fileId.toString() }, contentType = { "photo" }) { item ->
-                PhotoCell(item, settled, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) { onAction(PhotoGalleryUiAction.Open(item)) }
+                PhotoCell(item, settled, sharedTransitionScope, animatedVisibilityScope, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) {
+                    onAction(PhotoGalleryUiAction.Open(item))
+                }
             }
         }
         if (uiState.isLoadingMore) {
@@ -258,11 +405,17 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
 }
 
 @Composable
-private fun PhotoCell(item: PhotoGalleryItem, settled: Boolean, onShown: () -> Unit, onClick: () -> Unit) {
+private fun PhotoCell(
+    item: PhotoGalleryItem,
+    settled: Boolean,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    onShown: () -> Unit,
+    onClick: () -> Unit,
+) {
     // Once started a tile keeps loading through the next scroll; only leaving the screen cancels it.
     var started by remember(item.fileId) { mutableStateOf(settled) }
     LaunchedEffect(settled) { if (settled) started = true }
-    val iv = item.payload.iv?.bytes
     val isVideo = item.payload.isVideo()
     val description = stringResource(if (isVideo) MR.string.photobase_gallery_video else MR.string.photobase_gallery_photo)
     Box(
@@ -271,18 +424,8 @@ private fun PhotoCell(item: PhotoGalleryItem, settled: Boolean, onShown: () -> U
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick),
     ) {
-        if (iv != null) {
-            val imageData = remember(item.fileId, item.payload.key) {
-                HomebaseImageData.from(
-                    driveId = item.driveId,
-                    fileId = item.fileId,
-                    descriptor = item.payload,
-                    previewThumbnail = item.tinyPreview ?: item.payload.previewThumbnail?.toEmbeddedThumb(),
-                    requestedSize = ImageSize.THUMB_SMALL,
-                    thumbSizeLimit = ImageSize.THUMB_SMALL,
-                    keyHeader = KeyHeader(iv = iv, aesKey = item.keyHeader.aesKey),
-                )
-            }
+        val imageData = remember(item.fileId, item.payload.key) { item.tileImageData() }
+        if (imageData != null) {
             HomebaseImage(
                 imageData = imageData,
                 contentDescription = description,
@@ -290,6 +433,8 @@ private fun PhotoCell(item: PhotoGalleryItem, settled: Boolean, onShown: () -> U
                 modifier = Modifier.fillMaxSize(),
                 onLoaded = onShown,
                 deferLoad = !started,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
         }
         if (isVideo) {

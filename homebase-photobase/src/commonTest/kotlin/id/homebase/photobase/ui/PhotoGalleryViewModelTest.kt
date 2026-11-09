@@ -132,6 +132,26 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun aCatchUpWhileAPhotoIsOpenWaitsForTheViewerToClose() = runTest {
+        val photo = item(1_000)
+        val source = Pages(mapOf(null to PhotoGalleryPage(listOf(photo), null)))
+        val backedUp = MutableStateFlow(0L)
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), catchUp = {}, backedUpCount = backedUp)
+        testScheduler.advanceUntilIdle()
+        val beforeOpen = source.asked.size
+
+        viewModel.onAction(PhotoGalleryUiAction.Open(photo))
+        backedUp.value = 1
+        testScheduler.advanceUntilIdle()
+        assertEquals(beforeOpen, source.asked.size, "Replacing the first page could drop the open photo")
+
+        viewModel.onAction(PhotoGalleryUiAction.CloseViewer)
+        testScheduler.advanceUntilIdle()
+        assertEquals(beforeOpen + 1, source.asked.size)
+    }
+
+    @Test
     fun scrollingPausesTheWarmUntilItStops() = runTest {
         val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
         val paused = mutableListOf<Boolean>()
@@ -234,24 +254,34 @@ class PhotoGalleryViewModelTest {
         advanceUntilIdle()
 
         viewModel.onAction(PhotoGalleryUiAction.Open(photo))
+        assertEquals(photo.fileId, viewModel.uiState.value.openedFileId)
 
-        val viewer = assertIs<FullScreenOverlay.ViewMessageData>(viewModel.uiState.value.viewer)
+        val viewer = assertIs<FullScreenOverlay.ViewMessageData>(photo.toViewer())
         assertEquals(photo.fileId, viewer.messageId)
         assertEquals(photo.fileId, viewer.fileId)
         assertEquals(photo.payload.key, viewer.selectedPayloadKey)
 
         viewModel.onAction(PhotoGalleryUiAction.CloseViewer)
-        assertNull(viewModel.uiState.value.viewer)
+        assertNull(viewModel.uiState.value.openedFileId)
     }
 
     @Test
-    fun openingAVideoUsesTheVideoPlayer() = runTest {
-        val video = item(1, contentType = "video/mp4")
-        val viewModel = viewModel(Pages(mapOf(null to PhotoGalleryPage(listOf(video), null))))
+    fun swipingInTheViewerMovesWhatsOpen() = runTest {
+        val first = item(2)
+        val second = item(1)
+        val viewModel = viewModel(Pages(mapOf(null to PhotoGalleryPage(listOf(first, second), null))))
         advanceUntilIdle()
 
-        viewModel.onAction(PhotoGalleryUiAction.Open(video))
+        viewModel.onAction(PhotoGalleryUiAction.Open(first))
+        viewModel.onAction(PhotoGalleryUiAction.ViewerMovedTo(second))
 
-        assertEquals(video.payload.key, assertIs<FullScreenOverlay.VideoPlayerData>(viewModel.uiState.value.viewer).payloadKey)
+        assertEquals(second.fileId, viewModel.uiState.value.openedFileId)
+    }
+
+    @Test
+    fun aVideoOpensInTheVideoPlayer() {
+        val video = item(1, contentType = "video/mp4")
+
+        assertEquals(video.payload.key, assertIs<FullScreenOverlay.VideoPlayerData>(video.toViewer()).payloadKey)
     }
 }

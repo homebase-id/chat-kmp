@@ -22,10 +22,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 data class PhotoGalleryUiState(
     val days: List<PhotoGalleryDay> = emptyList(),
@@ -36,7 +39,8 @@ data class PhotoGalleryUiState(
     val loadFailed: Boolean = false,
     val endReached: Boolean = false,
     val newestFirst: Boolean = true,
-    val viewer: FullScreenOverlay? = null,
+    /** The photo open full screen; by id, so a reload while it's open doesn't move to another photo. */
+    val openedFileId: Uuid? = null,
 )
 
 sealed interface PhotoGalleryUiAction {
@@ -46,6 +50,8 @@ sealed interface PhotoGalleryUiAction {
     data object ToggleSort : PhotoGalleryUiAction
     data class Scrolling(val scrolling: Boolean) : PhotoGalleryUiAction
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
+    /** Swiped to [item] in the full-screen viewer. */
+    data class ViewerMovedTo(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
 }
 
@@ -70,6 +76,7 @@ class PhotoGalleryViewModel(
     private var loadJob: Job? = null
     private var catchUpJob: Job? = null
     private var warmJob: Job? = null
+    private var reloadOnClose = false
     private val opened = TimeSource.Monotonic.markNow()
     private var firstPageLogged = false
     private var pagedPastFirst = false
@@ -83,6 +90,8 @@ class PhotoGalleryViewModel(
                 backedUpCount.distinctUntilChanged().drop(1).conflate().collect {
                     catchUpJob?.join()
                     startCatchUp(showProgress = false).join()
+                    // A long first backup ticks every few seconds; one round trip per gap is plenty.
+                    delay(AUTO_CATCH_UP_GAP)
                 }
             }
         }
@@ -102,8 +111,15 @@ class PhotoGalleryViewModel(
                 _uiState.update { it.copy(newestFirst = !it.newestFirst) }
                 reload()
             }
-            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(viewer = viewerFor(action.item)) }
-            PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(viewer = null) }
+            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
+            is PhotoGalleryUiAction.ViewerMovedTo -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
+            PhotoGalleryUiAction.CloseViewer -> {
+                _uiState.update { it.copy(openedFileId = null) }
+                if (reloadOnClose) {
+                    reloadOnClose = false
+                    if (!pagedPastFirst && _uiState.value.newestFirst) reload()
+                }
+            }
         }
     }
 
@@ -144,7 +160,10 @@ class PhotoGalleryViewModel(
             // Past the first page, or oldest first, a reload would change what's on screen for nothing.
             // It goes in loadJob so a sort toggle can cancel it, and a load-more can't run alongside it.
             loadJob?.join()
-            if (!pagedPastFirst && _uiState.value.newestFirst) {
+            // Replacing the first page under an open viewer could drop the photo being looked at.
+            if (_uiState.value.openedFileId != null) {
+                reloadOnClose = true
+            } else if (!pagedPastFirst && _uiState.value.newestFirst) {
                 val reload = viewModelScope.launch { load(cursorToLoad = null) }
                 loadJob = reload
                 reload.join()
@@ -209,31 +228,32 @@ class PhotoGalleryViewModel(
         }
     }
 
-    private fun viewerFor(item: PhotoGalleryItem): FullScreenOverlay =
-        if (item.payload.isVideo()) {
-            FullScreenOverlay.VideoPlayerData(
-                fileId = item.fileId,
-                driveId = item.driveId,
-                payloadKey = item.payload.key,
-                keyHeader = item.keyHeader,
-                payload = item.payload,
-            )
-        } else {
-            FullScreenOverlay.ViewMessageData(
-                messageId = item.fileId,
-                title = item.name.orEmpty(),
-                userDate = Instant.fromEpochMilliseconds(item.capturedAtMs),
-                content = "",
-                fileId = item.fileId,
-                driveId = item.driveId,
-                payloads = listOf(item.payload),
-                keyHeader = item.keyHeader,
-                selectedPayloadKey = item.payload.key,
-            )
-        }
-
     private companion object {
         const val TAG = "PhotoGalleryViewModel"
         const val FIRST_SCREEN_THUMBNAILS = 12
+        val AUTO_CATCH_UP_GAP = 10.seconds
     }
 }
+
+internal fun PhotoGalleryItem.toViewer(): FullScreenOverlay =
+    if (payload.isVideo()) {
+        FullScreenOverlay.VideoPlayerData(
+            fileId = fileId,
+            driveId = driveId,
+            payloadKey = payload.key,
+            keyHeader = keyHeader,
+            payload = payload,
+        )
+    } else {
+        FullScreenOverlay.ViewMessageData(
+            messageId = fileId,
+            title = name.orEmpty(),
+            userDate = Instant.fromEpochMilliseconds(capturedAtMs),
+            content = "",
+            fileId = fileId,
+            driveId = driveId,
+            payloads = listOf(payload),
+            keyHeader = keyHeader,
+            selectedPayloadKey = payload.key,
+        )
+    }
