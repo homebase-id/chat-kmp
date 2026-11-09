@@ -104,6 +104,7 @@ which loads the full payload and pages through the card's images only, with no c
 | `toggle` | `label`, `value`, `action?` (fires on change) |
 | `textInput` | `label`, `value`, `multiline`, `maxLength`, `action?` (single-line only: fires on the keyboard's send key) |
 | `select` | `label`, `options` `[{id,label}]`, `value?`, `action?` (fires on pick) |
+| `multiSelect` | `label`, `options` `[{id,label}]` (ids without `,`), `value?` (array of ids), `min?` (0), `max?` (option count); no `action`: sent only via `include`, and an including button is disabled while the count is outside `min..max` |
 
 `action` = `{ "id": "[a-z0-9_.-]{1,64}", "include": [nodeIds] }`. An invalid id drops the action
 (the button is disabled). The acting node's own value is always sent; `include` adds other input
@@ -128,6 +129,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 | labels, table cells, alt | 200 code points | clamped |
 | table | 20 rows x 8 columns | clamped |
 | options | 50 | clamped |
+| multiSelect `min`/`max` | 0 to option count, `min` <= `max` | clamped |
 | `include` | 19 ids (the acting node makes 20) | clamped |
 | input value | 1000 code points (`maxLength` 1 to 1000) | clamped |
 
@@ -140,11 +142,13 @@ is pure, common and never throws, so the agent can use it to validate before sen
 {"schemaVersion":1,"target":"<AgentUi message uniqueId>","rev":2,"actionId":"approve","label":"Approve","values":{"caption":"..."}}
 ```
 
-- `values`: node id to string. Toggles `"true"`/`"false"`, selects the option id, inputs the text.
+- `values`: node id to string. Toggles `"true"`/`"false"`, selects the option id, multiSelects the picked ids
+  joined by `,` in option order (`""` for none), inputs the text.
   At most 20 entries, each at most 1000 code points; the values serialized at most 2796 bytes
   (`AgentUiActionDescriptor.valuesFit`) and the whole descriptor at most 4096 bytes. The app stops a
   text input growing past the budget but never cuts what it already holds; the agent refuses a tree
-  whose defaults already overflow an action (`AgentUiTree.overBudgetActions`).
+  whose defaults already overflow an action (`AgentUiTree.overBudgetActions`), counting each
+  included multiSelect at its longest possible value.
 - `target` points at another message. Who acted is the server-set sender of this message
   (`originalAuthor`), never a field here. The agent identity itself cannot act.
 - Push: none (`pushesToRecipient = false`). Older apps show the Unknown chip for each action.

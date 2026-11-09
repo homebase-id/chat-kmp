@@ -37,6 +37,7 @@ Every number below comes from `AgentUiLimits`, `AgentUiDescriptor`, `AgentUiActi
 | `toggle` | An on/off setting, sent with a button (`include`) or on its own (`action`). | A toggle with an `action` for something the person will flip twice: it can be sent once per `rev`. |
 | `textInput` | Short free text (`multiline` for a few lines). Set `maxLength` to what you will accept. | Long documents. A single-line input with an `action` sends on the keyboard's send key. |
 | `select` | One choice out of a few options, shown as chips. With an `action` the pick is sent at once; picking the current option again sends nothing. | Dozens of options (50 is the cap; ten is already a lot of chips). |
+| `multiSelect` | Several choices out of a few options ("Post to: X, LinkedIn"), shown as chips that toggle. `value` is the preselected ids; `min`/`max` bound the count, and a button that `include`s it stays disabled outside that range. Sent only through a button's `include`, as the picked ids joined by `,` in option order. | An `action` on it (ignored: taps never send). Commas in option ids (the option is dropped). |
 
 Unknown node types render their `fallback` (or nothing). Give every node you add from a newer
 schema a `fallback`.
@@ -51,6 +52,17 @@ schema a `fallback`.
   buttons, and reject actions whose `rev` is older than the card's.
 - The reply holds at most 2796 bytes of serialized values. Do not prefill inputs so that an action
   is already over that budget: `AgentUiTree.overBudgetActions()` lists such actions; refuse the tree.
+  A `multiSelect` counts at its longest possible value (its `max` longest ids), so set `max` or keep
+  ids short when many options share a reply.
+
+```json
+{"id":"nets","type":"multiSelect","label":"Post to","min":1,
+ "options":[{"id":"x","label":"X"},{"id":"li","label":"LinkedIn"},{"id":"ig","label":"Instagram"}],
+ "value":["x","li"]},
+{"id":"post","type":"button","label":"Post","style":"filled","action":{"id":"post","include":["nets"]}}
+```
+
+Tapping Post sends `{"nets":"x,li"}`; with no network picked the button is disabled.
 
 ## Limits
 
@@ -68,7 +80,8 @@ schema a `fallback`.
 | Text, node `fallback` | 2000 code points | clamped |
 | Labels, alt, table cells | 200 code points | clamped |
 | Table | 20 rows x 8 columns | clamped |
-| Select options | 50 | clamped |
+| Select and multiSelect options | 50 | clamped |
+| multiSelect `min`/`max` | 0 to the option count, `min` at most `max` | clamped |
 | Input value, `maxLength` | 1000 code points | clamped |
 
 Inline is better: the card renders on the first frame with no fetch. A short card with a title,

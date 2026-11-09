@@ -209,6 +209,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
         is AgentUiNode.Toggle -> ToggleView(node, env, modifier)
         is AgentUiNode.TextInput -> TextInputView(node, env, modifier)
         is AgentUiNode.Select -> SelectView(node, env, modifier)
+        is AgentUiNode.MultiSelect -> MultiSelectView(node, env, modifier)
         is AgentUiNode.Unknown -> node.fallback?.let {
             Text(it, modifier, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -249,13 +250,14 @@ private fun CardView(node: AgentUiNode.Card, env: Env, modifier: Modifier) {
 /** The container the current card draws, so a selected chip can pick a colour that stands out from it. */
 internal val LocalAgentUiContainer = compositionLocalOf { Color.Unspecified }
 
-/** One chip for display chips and select options. */
+/** One chip for display chips and select and multiSelect options. */
 @Composable
 private fun AgentChip(
     label: String,
     selected: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    role: Role = Role.RadioButton,
     onClick: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -293,7 +295,7 @@ private fun AgentChip(
             selected = selected,
             onClick = onClick,
             label = text,
-            modifier = modifier.trimTouchTarget(ChipHeight).semantics { role = Role.RadioButton },
+            modifier = modifier.trimTouchTarget(ChipHeight).semantics { this.role = role },
             enabled = enabled,
             leadingIcon = check,
             colors = FilterChipDefaults.filterChipColors(
@@ -398,7 +400,7 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
     val busy = node.action?.id in env.pending
-    val enabled = node.action != null && env.usable(node.action)
+    val enabled = node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action) { env.inputs[it] }
     val onClick = { node.action?.let { env.fire(it, node.id, node.label) }; Unit }
     val shapes = ButtonDefaults.shapes()
     val m = modifier.trimTouchTarget(ButtonDefaults.MinHeight)
@@ -471,16 +473,35 @@ private fun TextInputView(node: AgentUiNode.TextInput, env: Env, modifier: Modif
 private fun SelectView(node: AgentUiNode.Select, env: Env, modifier: Modifier) {
     val enabled = env.usable(node.action)
     val current = env.inputs[node.id] ?: node.value
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(node.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (option in node.options) key(option.id) {
-                AgentChip(option.label, current == option.id, enabled = enabled) {
-                    if (current == option.id) return@AgentChip
-                    env.inputs[node.id] = option.id
-                    node.action?.let { env.fire(it, node.id, option.label, mapOf(node.id to current)) }
-                }
+    ChipGroup(node.label, modifier) {
+        for (option in node.options) key(option.id) {
+            AgentChip(option.label, current == option.id, enabled = enabled) {
+                if (current == option.id) return@AgentChip
+                env.inputs[node.id] = option.id
+                node.action?.let { env.fire(it, node.id, option.label, mapOf(node.id to current)) }
             }
         }
+    }
+}
+
+@Composable
+private fun MultiSelectView(node: AgentUiNode.MultiSelect, env: Env, modifier: Modifier) {
+    val raw = env.inputs[node.id] ?: env.tree.inputs.getValue(node.id)
+    val picked = remember(raw) { raw.split(MULTI_SELECT_SEPARATOR).toSet() }
+    ChipGroup(node.label, modifier) {
+        for (option in node.options) key(option.id) {
+            val selected = option.id in picked
+            AgentChip(option.label, selected, enabled = env.enabled, role = Role.Checkbox) {
+                env.inputs[node.id] = node.join(if (selected) picked - option.id else picked + option.id)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChipGroup(label: String, modifier: Modifier, chips: @Composable () -> Unit) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { chips() }
     }
 }

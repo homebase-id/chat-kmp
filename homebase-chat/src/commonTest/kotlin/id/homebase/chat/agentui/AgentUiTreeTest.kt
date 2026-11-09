@@ -297,4 +297,67 @@ class AgentUiTreeTest {
         val go = (t.root as AgentUiNode.Column).children.last() as AgentUiNode.Button
         assertTrue(AgentUiActionDescriptor.valuesFit(t.collectValues(go.action!!, "go", t.inputs + ("b" to pasted))))
     }
+
+    private fun ms(extra: String = "", options: String = """{"id":"x","label":"X"},{"id":"li","label":"LinkedIn"},{"id":"ig"}""") =
+        """{"id":"nets","type":"multiSelect","label":"Post to","options":[$options]$extra}"""
+
+    @Test fun multi_select_decodes_options_like_select() {
+        val m = assertIs<AgentUiNode.MultiSelect>(valid(tree(ms(options = """{"id":"x","label":"X"},{"id":"x","label":"dup"},{"id":""},{"id":"a,b"},{"id":"ig"}"""), root = "nets")).root)
+        assertEquals(listOf(SelectOption("x", "X"), SelectOption("ig", "ig")), m.options)
+        assertEquals(0, m.min)
+        assertEquals(2, m.max)
+    }
+
+    @Test fun multi_select_options_are_clamped() {
+        val opts = (0 until AgentUiLimits.MAX_OPTIONS + 5).joinToString(",") { """{"id":"o$it"}""" }
+        val m = assertIs<AgentUiNode.MultiSelect>(valid(tree(ms(options = opts), root = "nets")).root)
+        assertEquals(AgentUiLimits.MAX_OPTIONS, m.options.size)
+    }
+
+    @Test fun multi_select_value_drops_unknown_ids_and_joins_in_option_order() {
+        val t = valid(tree(ms(""","value":["ig","nope","x",5]"""), root = "nets"))
+        assertEquals(listOf("x", "ig"), assertIs<AgentUiNode.MultiSelect>(t.root).value)
+        assertEquals("x,ig", t.inputs["nets"])
+    }
+
+    @Test fun multi_select_min_and_max_are_clamped() {
+        fun bounds(extra: String) = assertIs<AgentUiNode.MultiSelect>(valid(tree(ms(extra), root = "nets")).root).let { it.min to it.max }
+        assertEquals(1 to 2, bounds(""","min":1,"max":2"""))
+        assertEquals(0 to 3, bounds(""","min":-4,"max":99"""))
+        assertEquals(0 to 0, bounds(""","max":-1"""))
+        assertEquals(2 to 2, bounds(""","min":5,"max":2"""))
+        assertEquals(3 to 3, bounds(""","min":7"""))
+    }
+
+    @Test fun multi_select_ignores_an_action_of_its_own() {
+        val t = valid(tree(ms(""","action":{"id":"go"}"""), root = "nets"))
+        assertIs<AgentUiNode.MultiSelect>(t.root)
+        assertTrue(t.overBudgetActions().isEmpty())
+    }
+
+    private fun countTree(extra: String = "", options: String? = null) = valid(
+        tree(
+            """{"id":"root","type":"column","children":["nets","go"]}""",
+            if (options == null) ms(extra) else ms(extra, options),
+            """{"id":"go","type":"button","label":"Go","action":{"id":"send","include":["nets"]}}""",
+        ),
+    )
+
+    @Test fun selection_counts_respect_min_and_max() {
+        val t = countTree(""","min":1,"max":2""")
+        val go = ((t.root as AgentUiNode.Column).children.last() as AgentUiNode.Button).action!!
+        assertEquals(false, t.selectionCountsOk(go) { null })
+        assertTrue(t.selectionCountsOk(go) { "x" })
+        assertTrue(t.selectionCountsOk(go) { "x,li" })
+        assertEquals(false, t.selectionCountsOk(go) { "x,li,ig" })
+        assertEquals(mapOf("nets" to "x,li"), t.collectValues(go, "go", mapOf("nets" to "x,li")))
+    }
+
+    @Test fun over_budget_counts_a_multi_select_at_its_longest() {
+        val opts = (0 until AgentUiLimits.MAX_OPTIONS).joinToString(",") { """{"id":"${"o$it".padEnd(60, 'z')}"}""" }
+        val wide = countTree(options = opts)
+        assertEquals("", wide.inputs["nets"])
+        assertEquals(listOf("send"), wide.overBudgetActions())
+        assertTrue(countTree(""","max":3""", opts).overBudgetActions().isEmpty())
+    }
 }
