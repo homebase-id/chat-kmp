@@ -38,6 +38,23 @@ class AgentUiTreeTest {
         assertEquals("A hologram", u.fallback)
     }
 
+    // The tree an agent sent as a card edit: "text" instead of "markdown" left a valid card that showed nothing.
+    @Test fun a_tree_that_shows_nothing_is_invalid() {
+        invalid(
+            tree(
+                col("root", "t1"),
+                """{"id":"t1","type":"text","text":"Networks picked: LinkedIn and Instagram."}""",
+            ),
+        )
+        invalid(tree(col("root", "d", "u"), """{"id":"d","type":"divider"}""", """{"id":"u","type":"hologram"}"""))
+        invalid(tree("""{"id":"root","type":"card","children":[]}"""))
+    }
+
+    @Test fun one_visible_node_is_enough() {
+        valid(tree(col("root", "t1", "c"), """{"id":"t1","type":"text","text":"x"}""", """{"id":"c","type":"chip","label":"Done"}"""))
+        valid(tree(col("root", "u"), """{"id":"u","type":"hologram","fallback":"A hologram"}"""))
+    }
+
     @Test fun unknown_enum_values_use_defaults() {
         val t = valid(tree("""{"id":"root","type":"text","markdown":"hi","style":"neon","tone":"rainbow"}"""))
         val text = assertIs<AgentUiNode.Text>(t.root)
@@ -46,8 +63,8 @@ class AgentUiTreeTest {
     }
 
     @Test fun wrong_field_types_do_not_throw() {
-        val t = valid(tree("""{"id":"root","type":"text","markdown":5,"style":[],"tone":{}}"""))
-        assertEquals("", assertIs<AgentUiNode.Text>(t.root).markdown)
+        val t = valid(tree(col("root", "t", "c"), """{"id":"t","type":"text","markdown":5,"style":[],"tone":{}}""", """{"id":"c","type":"chip","label":"x"}"""))
+        assertEquals("", assertIs<AgentUiNode.Text>(assertIs<AgentUiNode.Column>(t.root).children.first()).markdown)
     }
 
     @Test fun cycle_is_invalid() {
@@ -66,14 +83,14 @@ class AgentUiTreeTest {
         invalid(tree(col("root", "a"), """{"id":"a","type":"divider"}""", """{"id":"a","type":"divider"}"""))
 
     @Test fun missing_child_is_dropped() {
-        val t = valid(tree(col("root", "ghost", "a"), """{"id":"a","type":"divider"}"""))
+        val t = valid(tree(col("root", "ghost", "a"), """{"id":"a","type":"chip","label":"x"}"""))
         assertEquals(1, assertIs<AgentUiNode.Column>(t.root).children.size)
     }
 
     @Test fun depth_limit() {
         fun chain(n: Int): ByteArray {
             val nodes = (1..n).map { i ->
-                if (i < n) col(if (i == 1) "root" else "n$i", "n${i + 1}") else """{"id":"n$i","type":"divider"}"""
+                if (i < n) col(if (i == 1) "root" else "n$i", "n${i + 1}") else """{"id":"n$i","type":"chip","label":"x"}"""
             }
             return tree(*nodes.toTypedArray())
         }
@@ -85,7 +102,7 @@ class AgentUiTreeTest {
         fun flat(n: Int): ByteArray {
             val kids = (1 until n).map { "n$it" }
             val nodes = mutableListOf(col("root", *kids.take(50).toTypedArray()))
-            (1 until n).forEach { nodes += """{"id":"n$it","type":"divider"}""" }
+            (1 until n).forEach { nodes += """{"id":"n$it","type":"chip","label":"x"}""" }
             return tree(*nodes.toTypedArray())
         }
         valid(flat(200))
@@ -95,7 +112,7 @@ class AgentUiTreeTest {
     @Test fun children_per_node_limit() {
         fun wide(n: Int): ByteArray {
             val kids = (1..n).map { "n$it" }
-            return tree(col("root", *kids.toTypedArray()), *kids.map { """{"id":"$it","type":"divider"}""" }.toTypedArray())
+            return tree(col("root", *kids.toTypedArray()), *kids.map { """{"id":"$it","type":"chip","label":"x"}""" }.toTypedArray())
         }
         valid(wide(50))
         invalid(wide(51))
@@ -142,8 +159,8 @@ class AgentUiTreeTest {
     }
 
     @Test fun image_without_alt_becomes_unknown() {
-        val t = valid(tree("""{"id":"root","type":"image","payloadKey":"chat_web0"}"""))
-        assertIs<AgentUiNode.Unknown>(t.root)
+        val t = valid(tree(col("root", "i", "c"), """{"id":"i","type":"image","payloadKey":"chat_web0"}""", """{"id":"c","type":"chip","label":"x"}"""))
+        assertIs<AgentUiNode.Unknown>(assertIs<AgentUiNode.Column>(t.root).children.first())
     }
 
     @Test fun more_than_ten_images_is_invalid() {
