@@ -1,6 +1,5 @@
 package id.homebase.feed
 
-import id.homebase.api.youauth.PermissionCallback
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -17,19 +16,17 @@ import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.ActivityProvider
-import id.homebase.api.client.eventbus.BackendEvent
-import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.chat.services.calling.CallPhase
 import id.homebase.chat.services.calling.CallService
 import id.homebase.core.App
 import id.homebase.core.AppStartup
+import id.homebase.core.share.IncomingLinks
 import id.homebase.core.config.AppConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
-import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
@@ -53,9 +50,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
-    private val notificationService: NotificationService by inject()
     private val notificationEntry: NotificationEntry by inject()
-    private val eventBus: EventBus by inject()
+    private val incomingLinks: IncomingLinks by inject()
     private val callService: CallService by inject()
     private var micRequestFor: String? = null
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -192,63 +188,18 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(intent: Intent) {
         val data = intent.data
         if (data != null && data.scheme == "homebase-fchat") {
-            // Deep link: homebase-fchat://conversation/{conversationId}
-            if (data.host == "conversation" && data.pathSegments.isNotEmpty()) {
-                val conversationId = data.pathSegments.first()
-                val fromShareShortcut = intent.getBooleanExtra(
-                    ShareShortcutPublisher.EXTRA_FROM_SHARE_SHORTCUT, false
-                )
-                val source = if (fromShareShortcut) {
-                    NotificationNavigationEvent.OpenConversation.Source.ShareIntent
-                } else {
-                    NotificationNavigationEvent.OpenConversation.Source.NotificationTap
-                }
-                Logger.i(tag = "MainActivity") {
-                    "Deep link: navigating to conversation $conversationId source=$source"
-                }
-                notificationService.navigateToConversation(conversationId, source = source)
-                // Clear the deep link so it's not re-processed on config changes
-                intent.data = null
-                return
+            val fromShareShortcut = intent.getBooleanExtra(
+                ShareShortcutPublisher.EXTRA_FROM_SHARE_SHORTCUT, false
+            )
+            val source = if (fromShareShortcut) {
+                NotificationNavigationEvent.OpenConversation.Source.ShareIntent
+            } else {
+                NotificationNavigationEvent.OpenConversation.Source.NotificationTap
             }
-
-            // Share-into-"New Moment" deep link: homebase-fchat://moment-compose
-            // The share flow already seeded MomentCreateFlowState with the chosen
-            // media; this only steers the nav stack into the composer.
-            if (data.host == "moment-compose") {
-                Logger.i(tag = "MainActivity") { "Deep link: navigating to moment compose" }
-                notificationService.navigateToMomentCompose()
-                intent.data = null
-                return
-            }
-
-            // Share-into-"New WebDrop" deep link: homebase-fchat://web-drop-compose
-            // The share flow already seeded WebDropShareFlowState with the chosen
-            // files; this only steers the nav stack onto the WebDrop screen.
-            if (data.host == "web-drop-compose") {
-                Logger.i(tag = "MainActivity") { "Deep link: navigating to WebDrop compose" }
-                notificationService.navigateToWebDropCompose()
-                intent.data = null
-                return
-            }
-
-            // Owner-console "Extend Permissions" return URL.
-            // Path: homebase-fchat://permission-callback?status=[canceled|...]&for=[mini-app]
-            if (data.host == "permission-callback") {
-                val callback = PermissionCallback.parse(data.toString())
-                Logger.i(tag = "MainActivity") { "Permission-extend deep link ($callback)" }
-                lifecycleScope.launch { eventBus.emit(callback.event) }
-                intent.data = null
-                return
-            }
-
-            // Owner-console "Data Upgrade" return URL.
-            // Path: homebase-fchat://data-upgrade-callback
-            if (data.host == "data-upgrade-callback") {
-                Logger.i(tag = "MainActivity") { "Data-upgrade deep link return" }
-                lifecycleScope.launch {
-                    eventBus.emit(BackendEvent.DataUpgradeReturned)
-                }
+            val url = data.toString()
+            if (IncomingLinks.parse(url) != null) {
+                AppStartup.whenStarted { incomingLinks.handle(url, source) }
+                // Cleared synchronously: a config change would otherwise replay the link.
                 intent.data = null
                 return
             }

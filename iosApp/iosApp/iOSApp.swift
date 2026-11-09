@@ -290,21 +290,12 @@ struct iOSApp: App {
         // Accept both the prod scheme and the dev build's variant (see SHARE_URL_SCHEME /
         // ShareViewController.shareUrlScheme) — the app only ever receives its own.
         case "homebase-share", "homebase-share-dev":
-            if url.host == "moment" {
-                ShareHandlerBridge.shared.handleIncomingMomentShare()
-            } else {
-                handleShareURL(url)
-            }
+            MainViewControllerKt.handleIncomingLink(url: url.absoluteString)
         case "homebase-fchat":
-            switch url.host {
-            case "permission-callback":
-                handlePermissionCallbackURL(url)
-            case "data-upgrade-callback":
-                handleDataUpgradeCallbackURL()
-            case "create-account-callback":
+            if url.host == "create-account-callback" {
                 handleCreateAccountCallbackURL(url)
-            default:
-                break
+            } else {
+                MainViewControllerKt.handleIncomingLink(url: url.absoluteString)
             }
         default:
             break
@@ -328,22 +319,6 @@ struct iOSApp: App {
                 try? FileManager.default.removeItem(at: url)
             }
         }
-    }
-
-    /// Handles `homebase-share://send?conversationId=X` URLs from the share extension.
-    private func handleShareURL(_ url: URL) {
-        guard url.host == "send",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let conversationId = components.queryItems?.first(where: { $0.name == "conversationIds" })?.value
-        else { return }
-
-        ShareHandlerBridge.shared.handleIncomingShare(conversationId: conversationId)
-    }
-
-    /// Handles `homebase-fchat://data-upgrade-callback` URLs returned from the
-    /// owner-console data-upgrade page. Triggers an immediate upgrade status re-check.
-    private func handleDataUpgradeCallbackURL() {
-        DataUpgradeCallbackBridge.shared.handleDataUpgradeCallback()
     }
 
     /// Handles `homebase-fchat://create-account-callback?domain=...`, the return leg of the
@@ -371,11 +346,5 @@ struct iOSApp: App {
         if top is SFSafariViewController {
             top.dismiss(animated: true)
         }
-    }
-
-    /// Hands the owner-console permission-callback URL to Kotlin.
-    private func handlePermissionCallbackURL(_ url: URL) {
-        guard url.host == "permission-callback" else { return }
-        PermissionCallbackBridge.shared.handlePermissionCallback(url: url.absoluteString)
     }
 }

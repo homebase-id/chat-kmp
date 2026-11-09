@@ -40,12 +40,13 @@ struct SharedContentSaver {
         let fileNames: [String]
         let mimeTypes: [String]
         let targetConversationId: String
+        let targetConversationIds: [String]
     }
 
     /// Tests pass `containerURL` to redirect the writes into a directory they can make unwritable.
     static func save(
         extensionContext: NSExtensionContext,
-        conversationId: String,
+        conversationIds: [String],
         containerURL: URL? = nil,
         completion: @escaping (Bool) -> Void
     ) {
@@ -220,7 +221,8 @@ struct SharedContentSaver {
                 url: url,
                 fileNames: fileNames,
                 mimeTypes: mimeTypes,
-                targetConversationId: conversationId
+                targetConversationId: conversationIds.first ?? momentTargetId,
+                targetConversationIds: conversationIds
             )
 
             let descriptorURL = containerURL.appendingPathComponent(sharedContentFile)
