@@ -27,7 +27,6 @@ import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
-import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
@@ -51,7 +50,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
-    private val notificationService: NotificationService by inject()
     private val notificationEntry: NotificationEntry by inject()
     private val incomingLinks: IncomingLinks by inject()
     private val callService: CallService by inject()
