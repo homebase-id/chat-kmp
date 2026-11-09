@@ -72,13 +72,20 @@ fun planMediaImages(source: ImageSize, setting: MediaQuality): MediaImagePlan {
         }
     }
     return MediaImagePlan(
-        tiny = sized(source, tinyThumbSize.maxPixelDimension, 0, tinyThumbSize.maxPixelDimension, tinyThumbSize.quality),
+        tiny = sized(source, tinyThumbSize.maxPixelDimension, 0, tinyThumbSize.maxPixelDimension, tinyThumbSize.quality, keepSourceWhenNear = false),
         thumbnails = thumbnails,
         finalImage = finalImage,
     )
 }
 
-private fun sized(source: ImageSize, rowLong: Int, rowMinShort: Int, rowLimit: Int, quality: Int): PlannedImage {
+private fun sized(
+    source: ImageSize,
+    rowLong: Int,
+    rowMinShort: Int,
+    rowLimit: Int,
+    quality: Int,
+    keepSourceWhenNear: Boolean = true,
+): PlannedImage {
     val long = max(source.pixelWidth, source.pixelHeight).toLong()
     val short = min(source.pixelWidth, source.pixelHeight).toLong()
     var outLong = rowLong.toLong()
@@ -86,6 +93,8 @@ private fun sized(source: ImageSize, rowLong: Int, rowMinShort: Int, rowLimit: I
         outLong = (rowMinShort * long + short - 1) / short
     }
     outLong = min(min(outLong, rowLimit.toLong()), long)
+    // A 2-10% reduction resamples every pixel, softening the image, to save few of them.
+    if (keepSourceWhenNear && outLong * 10 >= long * 9) outLong = long
     val outShort = max(1L, (short * outLong * 2 + long) / (long * 2))
     return if (source.pixelWidth >= source.pixelHeight) {
         PlannedImage(outLong.toInt(), outShort.toInt(), quality)
