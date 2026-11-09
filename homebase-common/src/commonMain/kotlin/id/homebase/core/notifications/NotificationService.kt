@@ -371,7 +371,7 @@ class NotificationService(
     fun onVoipToken(token: String) {
         voipToken = token
         Logger.i(tag = "NotificationService") { "VoIP token received (${token.length} chars)" }
-        scope.launch { notificationBackend.getPushToken()?.let { registerToken(it) } }
+        scope.launch { getToken()?.let { registerToken(it) } }
     }
 
     /**
