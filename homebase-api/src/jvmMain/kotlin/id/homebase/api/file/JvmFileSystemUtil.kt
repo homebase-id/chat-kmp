@@ -7,7 +7,10 @@ object JvmFileSystemUtil {
     val appName = if (isProductionVersion()) "HomebaseChat" else "HomebaseChatDev"
     val appNameLinux = if (isProductionVersion()) "homebase-chat" else "homebase-chat-dev"
 
+    const val DATA_DIR_OVERRIDE_PROPERTY = "homebase.data.dir"
+
     fun getAppDataDirectory(): File {
+        System.getProperty(DATA_DIR_OVERRIDE_PROPERTY)?.let { return File(it).also { dir -> dir.mkdirs() } }
         val osName = System.getProperty("os.name").lowercase()
         val userHome = System.getProperty("user.home")
 
