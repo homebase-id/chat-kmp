@@ -278,6 +278,20 @@ class PeerFileByGlobalTransitProviderTest {
     }
 
     @Test
+    fun streamPayloadDecrypted_plaintextPayload_isPassedThrough() = runTest {
+        val plaintext = ByteArray(5_003) { (it % 251).toByte() }
+        val engine = MockEngine { respond(plaintext, HttpStatusCode.OK, headersOf("payloadencrypted", listOf("false"))) }
+        val out = java.io.ByteArrayOutputStream()
+
+        val found = provider(engine).streamPayloadDecrypted(peer, driveId, Uuid.random(), key, KeyHeader.empty()) { flow ->
+            flow.collect { out.write(it) }
+        }
+
+        assertTrue(found)
+        assertTrue(plaintext.contentEquals(out.toByteArray()), "a public post's payload is not decrypted")
+    }
+
+    @Test
     fun streamPayloadDecrypted_404_isFalse_andConsumesNothing() = runTest {
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
         var consumed = false
