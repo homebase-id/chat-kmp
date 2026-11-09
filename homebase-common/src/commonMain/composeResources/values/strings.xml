@@ -2507,6 +2507,7 @@
     <string name="profile_card_field_move_up">Move %1$s up</string>
     <string name="profile_card_field_move_down">Move %1$s down</string>
     <string name="profile_card_content_on_card_desc_reorder">Drag to reorder links or accounts, or switch one off.</string>
+    <string name="profile_card_content_on_card_desc_blank">Switch on what this circle should see.</string>
     <string name="profile_card_content_not_on_card_desc_public">Still public on your profile.</string>
     <string name="profile_card_content_hidden_public">Not visible to everyone (%1$d)</string>
     <string name="profile_card_content_hidden_circle">Not visible to this circle (%1$d)</string>

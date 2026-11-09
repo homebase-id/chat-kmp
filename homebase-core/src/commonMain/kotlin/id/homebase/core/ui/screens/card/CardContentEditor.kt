@@ -47,6 +47,7 @@ import id.homebase.resources.profile_card_content_not_on_card_desc_public
 import id.homebase.resources.profile_card_content_on_card_desc_reorder
 import id.homebase.resources.profile_card_content_saving
 import id.homebase.resources.profile_card_content_add_new
+import id.homebase.resources.profile_card_content_on_card_desc_blank
 import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_field_reorder
 import androidx.compose.foundation.shape.CircleShape
@@ -287,6 +288,7 @@ internal fun CardContentEditor(
                 stringResource(MR.string.profile_card_content_on_card),
                 when {
                     onCard.isEmpty() -> null
+                    card is CardAudience.Circle && items.onlyNameOnCard() -> stringResource(MR.string.profile_card_content_on_card_desc_blank)
                     canReorder -> stringResource(MR.string.profile_card_content_on_card_desc_reorder)
                     else -> stringResource(MR.string.profile_card_content_on_card_desc)
                 },

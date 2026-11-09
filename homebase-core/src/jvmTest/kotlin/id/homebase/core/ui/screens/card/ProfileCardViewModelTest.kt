@@ -1413,6 +1413,38 @@ class ProfileCardViewModelTest {
     }
 
     @Test
+    fun aNewCircleCardStartsWithOnlyThePhotoAndNameAndLeavesTheOtherCardsAlone() = runTest(dispatcher) {
+        val status = ProfileAttribute(
+            id = Uuid.random(),
+            type = ProfileAttributeTypes.STATUS,
+            versionTag = Uuid.random(),
+            visibility = ProfileVisibility.ANONYMOUS,
+            data = JsonObject(mapOf(ProfileAttributeTypes.KEY_STATUS to JsonPrimitive("Off to the mountains"))),
+        )
+        val store = FakeCardStore(keepWrites = true, attributes = listOf(publicCardAttribute))
+        val source = FakeSource(profile + status, cardRepository = CardRepository(store)).apply {
+            liveCards = { store.attributes }
+            circleList = listOf(friendsCircle, family)
+        }
+        val vm = viewModel(FakeHost(), source)
+        val made = CardCircle("9e22b42952f74d2580e11250b651d343", "Climbing")
+
+        source.circleList = source.circleList + made
+        vm.onCircleCreated(made.id, openCard = false)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        val items = state.contentItems
+        assertEquals(listOf(ProfileAttributeTypes.NAME), items.filter { it.onCard }.map { it.type }.distinct())
+        assertTrue(items.single { it.id == status.id }.let { it.shown && it.hidden })
+        assertTrue(items.onlyNameOnCard())
+        assertEquals(listOf(status.id.toString()), state.selectedCard?.overrides?.fields?.hidden)
+        assertEquals(1, store.writes.size)
+        assertNull(state.cards.first { it.audience.isSameAs(CardAudience.Circle(FAMILY_CIRCLE_ID, "")) }.overrides.fields)
+        assertNull(state.cards.first { it.audience == CardAudience.Public }.overrides.fields)
+    }
+
+    @Test
     fun theRealContactsCircleFilterLeavesExactlyPublicFamilyFriendsAndWork() = runTest(dispatcher) {
         val other = "11111111-2222-4333-8444-555555555555"
         val all = listOf(

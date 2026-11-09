@@ -706,7 +706,7 @@ class ProfileCardViewModel(
 
     fun onCirclesChanged() = load(force = true)
 
-    /** Reloads so the new circle's card exists, then lands on it; every circle gets a card, borrowing the public design until saved. */
+    /** Reloads so the new circle's card exists, then lands on it and saves it with only the photo and name showing. */
     fun onCircleCreated(id: String, openCard: Boolean) {
         viewModelScope.launch {
             load(force = true)
@@ -714,6 +714,7 @@ class ProfileCardViewModel(
             val card = _uiState.value.cards.firstOrNull { it.audience.isSameAs(CardAudience.Circle(id, "")) }
                 ?: return@launch
             selectAudience(card.audience)
+            if (card.isDefault && !_uiState.value.isCircleReadOnly) editFields { it.startingBlank(_uiState.value.contentItems) }
             if (openCard) _uiState.update { it.copy(viewing = true) }
         }
     }

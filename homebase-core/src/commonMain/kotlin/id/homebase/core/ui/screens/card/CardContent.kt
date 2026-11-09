@@ -59,6 +59,17 @@ internal fun CardFields?.withOrder(ids: List<String>, known: Set<String>): CardF
     return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).orNull()
 }
 
+// A new circle's card starts with only the photo and name; the rest stays listed, switched off.
+internal fun CardFields?.startingBlank(items: List<CardContentItem>): CardFields? {
+    val off = items.filter { it.onCard && it.type != ProfileAttributeTypes.NAME }.map { it.id.toString() }
+    return CardFields(order = this?.order, hidden = (hiddenIds() + off).toList().takeIf { it.isNotEmpty() }).orNull()
+}
+
+internal fun List<CardContentItem>.onlyNameOnCard(): Boolean {
+    val onCard = filter { it.onCard }
+    return onCard.isNotEmpty() && onCard.all { it.type == ProfileAttributeTypes.NAME } && any { it.shown && it.renderable && it.hidden }
+}
+
 private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hidden == null }
 
 internal fun isOrderableType(type: String): Boolean = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
