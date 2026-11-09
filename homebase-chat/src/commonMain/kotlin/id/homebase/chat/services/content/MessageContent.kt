@@ -234,7 +234,7 @@ sealed interface MessageContent {
 
     /**
      * An agent-composed interactive card (AGENT_UI.md). [descriptor] follows the [Event.descriptor]
-     * nullability contract. [inlineTree] is the decoded header tree; null when the tree rides in the payload.
+     * nullability contract. [inlineTree] is the decoded header tree; null when it rides in the payload or is still raw.
      */
     data class AgentUi(val descriptor: AgentUiDescriptor?, val inlineTree: AgentUiTreeResult? = null) : MessageContent {
         override val actions: ActionPolicy = ActionPolicy(
