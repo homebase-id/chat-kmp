@@ -1,12 +1,12 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.util.strictDouble
+import id.homebase.api.util.strictLong
+import id.homebase.api.util.strictString
 import kotlin.math.roundToLong
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.longOrNull
 
 object CardDesign {
     const val POSTER = "poster"
@@ -117,22 +117,22 @@ fun parseCardEvent(json: String): CardEvent? {
     } catch (e: IllegalArgumentException) {
         null
     } ?: return null
-    return when (event.string("type")) {
+    return when (event.strictString("type")) {
         "loaded" -> CardEvent.Loaded
         "ready" -> CardEvent.Ready(
-            layout = event.string("layout") ?: return null,
+            layout = event.strictString("layout") ?: return null,
             ms = event.long("ms") ?: return null,
         )
-        "link" -> CardEvent.Link(event.string("href") ?: return null)
+        "link" -> CardEvent.Link(event.strictString("href") ?: return null)
         "png" -> CardEvent.Png(
-            base64 = event.string("base64") ?: return null,
+            base64 = event.strictString("base64") ?: return null,
             width = event.long("width")?.toInt() ?: return null,
             height = event.long("height")?.toInt() ?: return null,
         )
-        "error" -> CardEvent.Error(event.string("message") ?: return null)
+        "error" -> CardEvent.Error(event.strictString("message") ?: return null)
         "hostEdges" -> CardEvent.Edges(
-            topArgb = event.string("top")?.let(::parseCssColor),
-            bottomArgb = event.string("bottom")?.let(::parseCssColor),
+            topArgb = event.strictString("top")?.let(::parseCssColor),
+            bottomArgb = event.strictString("bottom")?.let(::parseCssColor),
         )
         "hostPainted" -> CardEvent.Painted
         else -> null
@@ -175,11 +175,5 @@ internal fun parseCssColor(css: String): Int? {
 internal fun bridgeShim(postMessageFunction: String): String =
     "window.homebaseCardHost=window.homebaseCardHost||{post:function(m){$postMessageFunction(m)}};"
 
-internal fun JsonObject.string(key: String): String? =
-    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
-
 // performance.now() deltas arrive fractional.
-private fun JsonObject.long(key: String): Long? {
-    val primitive = (this[key] as? JsonPrimitive)?.takeUnless { it.isString } ?: return null
-    return primitive.longOrNull ?: primitive.doubleOrNull?.roundToLong()
-}
+private fun JsonObject.long(key: String): Long? = strictLong(key) ?: strictDouble(key)?.roundToLong()
