@@ -26,11 +26,36 @@ internal data class CardContentItem(
     val locked: Boolean,
     // The Public card can't render without a name, so it can't be switched off there.
     val required: Boolean = false,
+    // Switched off for this card only: whoever can see it still can, it just isn't on this card.
+    val hidden: Boolean = false,
     val data: Map<String, String> = emptyMap(),
     // Older records of the same type with other data; the editor shows them so the user can remove them.
     val conflicts: List<ProfileAttribute> = emptyList(),
 ) {
     val everyCard: Boolean get() = audience == ProfileAudience.Public
+    val onCard: Boolean get() = shown && !hidden
+}
+
+/** The Public card can't render without a name, so nothing hides it there. */
+internal fun CardFields?.hides(attribute: ProfileAttribute, card: CardAudience): Boolean =
+    attribute.id.toString() in hiddenIds() && !(card == CardAudience.Public && attribute.type == ProfileAttributeTypes.NAME)
+
+private fun CardFields?.hiddenIds(): Set<String> = this?.hidden.orEmpty().toSet()
+
+/** Stable: listed ids first in their listed order, anything not listed after them in its own order. */
+internal fun <T> List<T>.inCardOrder(fields: CardFields?, id: (T) -> String): List<T> {
+    val rank = fields?.order.orEmpty().withIndex().associate { (index, key) -> key to index }
+    return if (rank.isEmpty()) this else sortedBy { rank[id(it)] ?: Int.MAX_VALUE }
+}
+
+internal fun CardFields?.withHidden(id: String, hidden: Boolean, known: Set<String>): CardFields? {
+    val next = (hiddenIds().let { if (hidden) it + id else it - id }).filter { it in known }
+    return CardFields(order = this?.order, hidden = next.takeIf { it.isNotEmpty() }).takeUnless { it.order == null && it.hidden == null }
+}
+
+internal fun CardFields?.withOrder(ids: List<String>, known: Set<String>): CardFields? {
+    val next = ids.filter { it in known }.distinct()
+    return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).takeUnless { it.order == null && it.hidden == null }
 }
 
 internal val CARD_SOCIAL_TYPES = listOf(
@@ -93,7 +118,12 @@ internal fun ProfileAudience.shownOn(
     }
 }
 
-internal fun cardContentItems(attributes: List<ProfileAttribute>, circles: List<CardCircle>, card: CardAudience): List<CardContentItem> {
+internal fun cardContentItems(
+    attributes: List<ProfileAttribute>,
+    circles: List<CardCircle>,
+    card: CardAudience,
+    fields: CardFields? = null,
+): List<CardContentItem> {
     val loaded = LoadedProfileAttributes.from(attributes)
     fun item(attribute: ProfileAttribute, text: String?): CardContentItem? {
         if (text.isNullOrBlank()) return null
@@ -108,15 +138,18 @@ internal fun cardContentItems(attributes: List<ProfileAttribute>, circles: List<
             shown = card.shows(audience),
             locked = card is CardAudience.Circle && audience == ProfileAudience.Public,
             required = card == CardAudience.Public && attribute.type == ProfileAttributeTypes.NAME && card.shows(audience),
+            hidden = fields.hides(attribute, card),
         )
     }
     fun recordsOf(type: String) =
         if (type in REPEATABLE_TYPES) attributes.filter { it.type == type }.sortedBy { it.priority } else listOfNotNull(loaded.byType[type])
-    return LEADING_TYPES.flatMap(::recordsOf).mapNotNull { item(it, contentText(it)) } +
-        loaded.links.mapNotNull { link ->
-            item(link, link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.ifBlank { null } ?: link.string(ProfileAttributeTypes.KEY_LINK_TARGET))
-        } +
-        CARD_SOCIAL_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
+    return (
+        LEADING_TYPES.flatMap(::recordsOf).mapNotNull { item(it, contentText(it)) } +
+            loaded.links.mapNotNull { link ->
+                item(link, link.string(ProfileAttributeTypes.KEY_LINK_TEXT)?.ifBlank { null } ?: link.string(ProfileAttributeTypes.KEY_LINK_TARGET))
+            } +
+            CARD_SOCIAL_TYPES.mapNotNull { type -> loaded.byType[type]?.let { item(it, contentText(it)) } }
+        ).inCardOrder(fields) { it.id.toString() }
 }
 
 private val LINK_KEYS = listOf(ProfileAttributeTypes.KEY_LINK_TEXT, ProfileAttributeTypes.KEY_LINK_TARGET)

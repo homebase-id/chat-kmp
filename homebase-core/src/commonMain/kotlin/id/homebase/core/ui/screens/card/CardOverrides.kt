@@ -20,6 +20,7 @@ data class CardOverrides(
     val portraits: List<CardPortrait>? = null,
     val blocks: List<CardBlock>? = null,
     val socials: String? = null,
+    val fields: CardFields? = null,
 ) {
     fun isEmpty(): Boolean = this == EMPTY
 
@@ -56,10 +57,14 @@ data class CardOverrides(
                     o?.text("kind")?.let { CardBlock(it, o.text("presentation")) }
                 },
                 socials = json.text("socials"),
+                fields = json.field("fields") { o -> CardFields(order = o.texts("order"), hidden = o.texts("hidden")) },
             )
 
         private fun <T> JsonObject.field(key: String, read: (JsonObject) -> T): T? =
             (this[key] as? JsonObject)?.let(read)
+
+        private fun JsonObject.texts(key: String): List<String>? =
+            (this[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
 
         private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
         private fun JsonObject.flag(key: String): Boolean? = (this[key] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
@@ -108,3 +113,7 @@ data class CardPortrait(
 
 @Serializable
 data class CardBlock(val kind: String, val presentation: String? = null)
+
+/** Which profile fields one card puts on show, by attribute id: [order] is the display order, [hidden] are switched off; neither changes who can see a field. */
+@Serializable
+data class CardFields(val order: List<String>? = null, val hidden: List<String>? = null)

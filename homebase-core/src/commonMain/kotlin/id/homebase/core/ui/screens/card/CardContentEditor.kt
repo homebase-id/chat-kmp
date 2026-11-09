@@ -98,6 +98,25 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.outlined.DragHandle
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import id.homebase.resources.profile_card_content_circle_also_sees
+import id.homebase.resources.profile_card_content_not_on_card
+import id.homebase.resources.profile_card_content_not_on_card_desc
+import id.homebase.resources.profile_card_content_on_card_desc
+import id.homebase.resources.profile_card_field_hide
+import id.homebase.resources.profile_card_field_move_down
+import id.homebase.resources.profile_card_field_move_up
+import id.homebase.resources.profile_card_field_show
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
@@ -143,6 +162,8 @@ internal fun CardContentEditor(
     onImport: (CardAudience) -> Unit,
     modifier: Modifier = Modifier,
     onCirclesChanged: (() -> Unit)? = null,
+    onFieldShown: (Uuid, Boolean) -> Unit = { _, _ -> },
+    onFieldsReordered: (List<Uuid>) -> Unit = {},
 ) {
     var editingId by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<String?>(null) }
@@ -150,13 +171,13 @@ internal fun CardContentEditor(
     var copying by remember { mutableStateOf(false) }
     var pendingId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(enabled) { if (enabled) pendingId = null }
-    val everyCard = items.filter { it.everyCard }
-    val onlyHere = items.filter { it.shown && !it.everyCard }
-    val couldAdd = items.filterNot { it.shown || it.everyCard }
+    val onCard = items.filter { it.onCard }
+    val notOnCard = items.filter { it.shown && it.hidden }
+    val couldAdd = items.filterNot { it.shown }
     val present = items.map { it.type }.toSet()
     val missingSocials = CARD_SOCIAL_TYPES.filter { it !in present }
     val missingMore = ATTRIBUTE_SPECS.filter { it.type in MORE_TYPES && it.type !in present }
-    val row: @Composable (CardContentItem, Int, Int) -> Unit = { item, index, count ->
+    val row: @Composable (CardContentItem, Int, Int, FieldDisplay?) -> Unit = { item, index, count, display ->
         key(item.id) { EditorRow(
             item = item,
             circles = circles,
@@ -164,6 +185,7 @@ internal fun CardContentEditor(
             enabled = enabled,
             pending = !enabled && pendingId == item.id,
             showCardsButton = showCardsButton,
+            display = display,
             onApply = {
                 pendingId = item.id
                 onAudience(item.id, it)
@@ -186,29 +208,53 @@ internal fun CardContentEditor(
                 Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
             }
         }
-        if (everyCard.isNotEmpty()) {
-            Spacer(Modifier.height(24.dp))
-            SectionLabel(
-                stringResource(MR.string.profile_card_content_every_card),
-                stringResource(if (card is CardAudience.Circle) MR.string.profile_card_content_every_card_circle else MR.string.profile_card_content_every_card_desc),
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                everyCard.forEachIndexed { index, item -> row(item, index, everyCard.size) }
+        Spacer(Modifier.height(24.dp))
+        SectionLabel(
+            stringResource(MR.string.profile_card_content_on_card),
+            if (onCard.size > 1) stringResource(MR.string.profile_card_content_on_card_desc) else null,
+        )
+        if (onCard.isEmpty()) {
+            EmptyContent()
+        } else {
+            ReorderableRows(items = onCard, gap = ROW_GAP, onReorder = onFieldsReordered) { item, index, count, move, handle ->
+                row(
+                    item, index, count,
+                    FieldDisplay(
+                        onCard = true,
+                        onToggle = { onFieldShown(item.id, false) },
+                        moveUp = { move(-1) }.takeIf { count > 1 && index > 0 },
+                        moveDown = { move(1) }.takeIf { count > 1 && index < count - 1 },
+                        handle = handle.takeIf { count > 1 },
+                    ),
+                )
             }
         }
-        if (card is CardAudience.Circle) {
+        if (card is CardAudience.Circle && notOnCard.isNotEmpty()) {
+            val labels = notOnCard.map { stringResource(typeLabel(it.type)) }.distinct().joinToString()
+            Text(
+                text = stringResource(MR.string.profile_card_content_circle_also_sees, audienceLabel(card), labels),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp).testTag("circle_also_sees"),
+            )
+        }
+        if (notOnCard.isNotEmpty()) {
             Spacer(Modifier.height(24.dp))
-            SectionLabel(stringResource(MR.string.profile_card_content_on_card))
+            SectionLabel(
+                stringResource(MR.string.profile_card_content_not_on_card),
+                stringResource(MR.string.profile_card_content_not_on_card_desc),
+            )
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                if (onlyHere.isEmpty()) EmptyContent()
-                onlyHere.forEachIndexed { index, item -> row(item, index, onlyHere.size) }
+                notOnCard.forEachIndexed { index, item ->
+                    row(item, index, notOnCard.size, FieldDisplay(onCard = false, onToggle = { onFieldShown(item.id, true) }))
+                }
             }
         }
         if (couldAdd.isNotEmpty()) {
             Spacer(Modifier.height(24.dp))
             SectionLabel(stringResource(MR.string.profile_card_content_could_add))
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                couldAdd.forEachIndexed { index, item -> row(item, index, couldAdd.size) }
+                couldAdd.forEachIndexed { index, item -> row(item, index, couldAdd.size, null) }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -365,9 +411,13 @@ private fun EditorRow(
     showCardsButton: Boolean,
     onApply: (ProfileAudience) -> Unit,
     onOpen: () -> Unit,
+    display: FieldDisplay? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val label = stringResource(typeLabel(item.type))
+    val moveUpLabel = stringResource(MR.string.profile_card_field_move_up, label)
+    val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
+    val toggleLabel = stringResource(if (display?.onCard == false) MR.string.profile_card_field_show else MR.string.profile_card_field_hide, label)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
     val chooseCards = stringResource(MR.string.profile_card_content_choose_cards, item.text)
     val edit = stringResource(MR.string.profile_card_content_edit_this, label)
@@ -376,9 +426,28 @@ private fun EditorRow(
         enabled = enabled,
         color = colors.surfaceContainerHigh,
         shape = shape,
-        modifier = Modifier.fillMaxWidth().semantics {
-            onClick(label = edit) { onOpen(); true }
-        },
+        modifier = Modifier.fillMaxWidth()
+            .onPreviewKeyEvent { event ->
+                val move = if (event.type == KeyEventType.KeyDown && event.isAltPressed) {
+                    when (event.key) {
+                        Key.DirectionUp -> display?.moveUp
+                        Key.DirectionDown -> display?.moveDown
+                        else -> null
+                    }
+                } else {
+                    null
+                }
+                move?.invoke() != null
+            }
+            .semantics {
+                onClick(label = edit) { onOpen(); true }
+                val actions = listOfNotNull(
+                    display?.moveUp?.let { up -> CustomAccessibilityAction(moveUpLabel) { up(); true } },
+                    display?.moveDown?.let { down -> CustomAccessibilityAction(moveDownLabel) { down(); true } },
+                    display?.takeUnless { item.required }?.let { d -> CustomAccessibilityAction(toggleLabel) { d.onToggle(); true } },
+                )
+                if (actions.isNotEmpty()) customActions = actions
+            },
     ) {
         Row(
             modifier = Modifier.heightIn(min = 64.dp).padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
@@ -409,14 +478,24 @@ private fun EditorRow(
                         color = colors.onSurfaceVariant,
                     )
                 }
-                // The section already says who sees an item on every card.
-                if (!item.everyCard) {
-                    Spacer(Modifier.height(2.dp))
-                    AudienceBadge(audience = item.audience, circles = circles)
-                }
+                Spacer(Modifier.height(2.dp))
+                AudienceBadge(audience = item.audience, circles = circles)
             }
             Spacer(Modifier.width(8.dp))
             var choosing by remember { mutableStateOf(false) }
+            if (display != null && !item.required) {
+                IconButton(onClick = display.onToggle, enabled = enabled, modifier = Modifier.testTag("field_toggle")) {
+                    Icon(if (display.onCard) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, contentDescription = toggleLabel)
+                }
+            }
+            if (display?.handle != null) {
+                Icon(
+                    Icons.Outlined.DragHandle,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(40.dp).padding(8.dp).testTag("field_handle").then(display.handle),
+                )
+            }
             when {
                 pending -> LoadingIndicator(modifier = Modifier.size(40.dp).padding(8.dp))
                 showCardsButton -> {

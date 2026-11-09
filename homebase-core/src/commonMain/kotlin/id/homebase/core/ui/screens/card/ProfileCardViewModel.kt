@@ -96,7 +96,7 @@ data class ProfileCardUiState(
     val pendingPublic: ContentWrite? = null,
     val pendingNameless: ContentWrite? = null,
 ) {
-    internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience)
+    internal val contentItems: List<CardContentItem> get() = cardContentItems(attributes, circles, selectedAudience, selectedCard?.overrides?.fields)
 
     internal val importSources: List<CardImportSource>
         get() = cards.map { it.audience }
@@ -331,6 +331,7 @@ class ProfileCardViewModel(
     private var importUndo: List<ProfileAttribute>? = null
     private var audienceUndo: ProfileAttribute? = null
     private val templateLock = Mutex()
+    private val fieldsLock = Mutex()
     private var shownBefore = false
     private var shownAt: TimeMark? = null
     private val tilesLogged = mutableSetOf<String>()
@@ -497,6 +498,59 @@ class ProfileCardViewModel(
         designSwitchJob = viewModelScope.launch {
             if (!_uiState.value.isExporting) coverOutgoingDesign()
             render()
+        }
+    }
+
+    fun onFieldShown(id: Uuid, shown: Boolean) {
+        val state = _uiState.value
+        val item = state.contentItems.firstOrNull { it.id == id } ?: return
+        if (item.required) return
+        val known = state.attributes.mapTo(mutableSetOf()) { it.id.toString() }
+        editFields { it.withHidden(id.toString(), hidden = !shown, known = known) }
+    }
+
+    /** [ids] is the new order of the fields on the card; fields off the card keep no place of their own. */
+    fun onFieldsReordered(ids: List<Uuid>) {
+        val known = _uiState.value.attributes.mapTo(mutableSetOf()) { it.id.toString() }
+        editFields { it.withOrder(ids.map(Uuid::toString), known) }
+    }
+
+    // Saved at once, like a content change: it belongs to the card, not to the design being tried out.
+    private fun editFields(edit: (CardFields?) -> CardFields?) {
+        val state = _uiState.value
+        val card = state.selectedCard ?: return
+        if (state.isCircleReadOnly || state.isCardBusy) return
+        val fields = edit(card.overrides.fields)
+        if (fields == card.overrides.fields) return
+        val audience = card.audience
+        _uiState.update {
+            it.copy(
+                cards = it.cards.map { c -> if (c.audience == audience) c.copy(overrides = c.overrides.copy(fields = fields)) else c },
+                previewOverrides = it.previewOverrides?.copy(fields = fields),
+            )
+        }
+        render()
+        viewModelScope.launch { fieldsLock.withLock { writeFields(audience) } }
+    }
+
+    private suspend fun writeFields(audience: CardAudience) {
+        if (audience is CardAudience.Circle) persistTemplateIfUnsaved(audience)
+        val card = _uiState.value.cards.firstOrNull { it.audience == audience } ?: return
+        val stored = attempt("saving the fields of the ${audience.logName()} card") {
+            when (audience) {
+                CardAudience.Public -> source.savePublicCard(card.design, card.overrides).let { card }
+                is CardAudience.Circle -> source.saveCircleCard(card)
+            }
+        }
+        if (stored == null) {
+            _events.tryEmit(if (audience is CardAudience.Circle && !source.supportsCircleCards) ProfileCardEvent.CircleCardsUnsupported else ProfileCardEvent.DesignSaveFailed)
+            load(force = true)
+            return
+        }
+        if (audience is CardAudience.Circle) {
+            _uiState.update { state ->
+                state.copy(cards = state.cards.map { c -> if (c.audience == audience) c.copy(id = stored.id, versionTag = stored.versionTag) else c })
+            }
         }
     }
 

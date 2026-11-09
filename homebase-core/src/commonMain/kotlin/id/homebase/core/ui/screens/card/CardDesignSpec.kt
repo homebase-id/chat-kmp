@@ -166,7 +166,7 @@ object CardDesignSpecs {
 
 /** Keeps only what [design] exposes; an unknown design keeps nothing. */
 fun CardOverrides.prunedFor(design: String): CardOverrides {
-    val spec = CardDesignSpecs.of(design) ?: return CardOverrides.EMPTY
+    val spec = CardDesignSpecs.of(design) ?: return CardOverrides(fields = fields)
     fun has(option: CardOption) = option in spec.options
     val shape = portraits?.firstOrNull()?.shape
     // Colours only travel as one of this design's schemes, so another design's ink can never land on a ground it wasn't checked against.
@@ -185,6 +185,7 @@ fun CardOverrides.prunedFor(design: String): CardOverrides {
         blocks = blocks?.takeIf { has(CardOption.BLOCK_ORDER) }?.let { withBlockOrder(blockOrder()).blocks }
             ?.map { if (has(CardOption.BLOCK_STYLE)) it else it.copy(presentation = null) },
         socials = socials?.takeIf { has(CardOption.SOCIALS_STYLE) },
+        fields = fields,
     )
 }
 

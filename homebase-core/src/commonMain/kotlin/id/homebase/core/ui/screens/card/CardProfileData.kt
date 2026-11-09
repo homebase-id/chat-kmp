@@ -48,7 +48,9 @@ fun buildCardPayload(
     visitorPreview: Boolean = false,
 ): CardPayload {
     val canSee = audience.aclFilter()
-    val values = attributes.visibleValues(canSee)
+    val fields = overrides.fields
+    val onCard = attributes.filterNot { fields.hides(it, audience) }
+    val values = onCard.visibleValues(canSee)
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
@@ -62,16 +64,26 @@ fun buildCardPayload(
             displayName = profileNameValue(values)?.trim(),
             headline = tagLine?.trim()?.ifEmpty { null } ?: text(ProfileField.STATUS),
             // The public site's card shows the summary, never the full bio.
-            bio = attributes.visibleBio(canSee)?.trim()?.ifEmpty { null },
+            bio = onCard.visibleBio(canSee)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),
             header = headerSrc?.ifBlank { null }?.let(::CardImage),
-            links = cardLinks(attributes.visibleLinks(canSee)),
+            links = cardLinks(onCard.visibleLinks(canSee).inCardOrder(fields) { it.id.toString() }),
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
-            },
+            }.inCardOrder(socialRanks(onCard, fields)) { it.type },
             posts = posts,
         ),
     )
+}
+
+// The page lists socials in the order it is sent them; a social with no record to rank it keeps its place.
+private fun socialRanks(attributes: List<ProfileAttribute>, fields: CardFields?): CardFields? {
+    if (fields?.order.isNullOrEmpty()) return null
+    val keys = cardSocialFields.keys.toList()
+    val ordered = CARD_SOCIAL_TYPES.zip(keys).mapNotNull { (attributeType, key) ->
+        attributes.firstOrNull { it.type == attributeType }?.let { key to it.id.toString() }
+    }.inCardOrder(fields) { it.second }
+    return CardFields(order = ordered.map { it.first })
 }
 
 private fun cardLinks(links: List<ProfileAttribute>): List<CardLink> =
