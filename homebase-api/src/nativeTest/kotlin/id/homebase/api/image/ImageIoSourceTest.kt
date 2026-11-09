@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
  * pass either way. This is what proves iOS decodes through ImageIO at all.
  */
 class ImageIoSourceTest {
-    private val png = ImageUtils.encodeArgbToPng(ArgbImage(IntArray(30 * 20) { 0xFF336699.toInt() }, 30, 20))
+    private val png = ImageUtils.encodeArgbToPng(ArgbImage(IntArray(300 * 200) { 0xFF336699.toInt() }, 300, 200))
 
     @Test
     fun aReadableImageGoesThroughImageIo() {
@@ -17,10 +17,10 @@ class ImageIoSourceTest {
     }
 
     @Test
-    fun imageIoReportsTheSizeAndDecodesAsAsked() {
+    fun imageIoReportsTheSizeAndOnlyDoesTheCoarseScaling() {
         openImageSource(png).use { source ->
-            assertEquals(ImageSize(30, 20), source.displayedSize)
-            source.decode(15).use { bitmap -> assertEquals(15 to 10, bitmap.width to bitmap.height) }
+            assertEquals(ImageSize(300, 200), source.displayedSize)
+            source.decode(15).use { bitmap -> assertEquals(30 to 20, bitmap.width to bitmap.height) }
         }
     }
 }
