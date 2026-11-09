@@ -37,6 +37,7 @@ import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.core.clipboard.copyImageToClipboard
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /** Server-enforced cap on reactions per user per message. The client mirrors
@@ -207,13 +208,17 @@ class ChatMessageActionService(
      * lastRead is already at or past the latest message.
      */
     suspend fun markAllAsRead(conversationId: Uuid) {
-        val convo = participantLookup.getConversationById(conversationId)
-            ?: run {
-                // Cold process (notification action): the in-memory list isn't loaded yet.
-                conversationLoader.loadConversation(conversationId)
-                participantLookup.getConversationById(conversationId)
+        var convo = participantLookup.getConversationById(conversationId)
+        if (convo == null) {
+            // Cold process (notification action): the loaded row carries a possibly stale stamp, so read the newest message from the DB.
+            conversationLoader.loadConversation(conversationId)
+            convo = participantLookup.getConversationById(conversationId) ?: return
+            val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+            val newestMs = dbm.chatReadCount.selectLatestMessageUserDateMs(identityId, conversationId)
+            if (newestMs != null && newestMs > convo.latestMessageTimestamp.toEpochMilliseconds()) {
+                convo = convo.copy(latestMessageTimestamp = Instant.fromEpochMilliseconds(newestMs))
             }
-            ?: return
+        }
         val newReadTime = convo.resolveLastReadAdvance(convo.latestMessageTimestamp) ?: return
 
         Logger.d(tag = TAG) {
