@@ -1437,7 +1437,6 @@ class ProfileCardViewModelTest {
         val items = state.contentItems
         assertEquals(listOf(ProfileAttributeTypes.NAME), items.filter { it.onCard }.map { it.type }.distinct())
         assertTrue(items.single { it.id == status.id }.let { it.shown && it.hidden })
-        assertTrue(items.onlyNameOnCard())
         assertEquals(listOf(status.id.toString()), state.selectedCard?.overrides?.fields?.hidden)
         assertEquals(1, store.writes.size)
         assertNull(state.cards.first { it.audience.isSameAs(CardAudience.Circle(FAMILY_CIRCLE_ID, "")) }.overrides.fields)

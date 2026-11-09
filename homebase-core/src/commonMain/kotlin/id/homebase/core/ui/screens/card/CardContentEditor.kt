@@ -42,17 +42,11 @@ import id.homebase.resources.profile_card_content_hidden_public
 import id.homebase.resources.profile_card_content_not_on_card_desc_public
 import id.homebase.resources.profile_card_content_on_card_desc_reorder
 import id.homebase.resources.profile_card_content_saving
-import id.homebase.resources.profile_card_content_on_card_desc_blank
 import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_field_reorder
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material.icons.outlined.RemoveCircleOutline
-import id.homebase.resources.profile_card_content_add_to_card
-import id.homebase.resources.profile_card_content_on_card_desc_drag
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -145,6 +139,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.key
@@ -161,6 +156,17 @@ import id.homebase.resources.profile_card_field_hide
 import id.homebase.resources.profile_card_field_move_down
 import id.homebase.resources.profile_card_field_move_up
 import id.homebase.resources.profile_card_field_show
+import id.homebase.resources.profile_card_field_to_back
+import id.homebase.resources.profile_card_field_to_front
+import id.homebase.resources.profile_card_content_front
+import id.homebase.resources.profile_card_content_front_desc
+import id.homebase.resources.profile_card_content_front_empty
+import id.homebase.resources.profile_card_content_back
+import id.homebase.resources.profile_card_content_back_desc
+import id.homebase.resources.profile_card_content_unavailable
+import id.homebase.resources.profile_card_content_unavailable_desc
+import id.homebase.resources.profile_card_content_add_new
+import id.homebase.resources.profile_card_content_empty
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
@@ -217,15 +223,16 @@ internal fun CardContentEditor(
     var editingId by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<String?>(null) }
     var choosingMore by remember { mutableStateOf(false) }
-    var addingToCard by remember { mutableStateOf(false) }
+    var choosingKind by remember { mutableStateOf(false) }
     var copying by remember { mutableStateOf(false) }
     var pendingId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(enabled) { if (enabled) pendingId = null }
-    // A circle's card lists only what it shows; with cards off this is the profile editor, so it keeps every field.
+    // A circle's card splits into front, back and not available; with cards off this is the profile editor, so it keeps every field.
     val circleCard = card is CardAudience.Circle && showCardsButton
     val onCard = items.filter { it.onCard }
-    val hiddenFromCard = items.hiddenFromCard()
-    val notOnCard = if (circleCard) emptyList() else hiddenFromCard
+    val back = if (circleCard) items.filter { it.shown && !it.onCard } else emptyList()
+    val unavailable = if (circleCard) items.filterNot { it.shown } else emptyList()
+    val notOnCard = if (circleCard) emptyList() else items.filter { it.shown && it.renderable && it.hidden }
     val unrenderable = if (circleCard) emptyList() else items.filter { it.shown && !it.renderable }
     val couldAdd = if (circleCard) emptyList() else items.filterNot { it.shown }
     val present = items.map { it.type }.toSet()
@@ -250,16 +257,16 @@ internal fun CardContentEditor(
     val addAction: @Composable () -> Unit = {
         if (!circleCard) {
             AddGroup(isAvailable = isAvailable, enabled = enabled, onAdd = startAdding)
-        } else if (hiddenFromCard.isNotEmpty() || AddKind.entries.any(isAvailable)) {
+        } else if (AddKind.entries.any(isAvailable)) {
             FilledTonalButton(
-                onClick = { addingToCard = true },
+                onClick = { choosingKind = true },
                 enabled = enabled,
                 shapes = ButtonDefaults.shapes(),
                 modifier = Modifier.testTag("content_add"),
             ) {
                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                 Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(MR.string.profile_card_content_add_to_card), maxLines = 1)
+                Text(stringResource(MR.string.profile_card_content_add_new), maxLines = 1)
             }
         }
     }
@@ -272,7 +279,6 @@ internal fun CardContentEditor(
             enabled = enabled,
             pending = !enabled && pendingId == item.id,
             showCardsButton = showCardsButton,
-            cardOnly = circleCard,
             display = display,
             onApply = {
                 pendingId = item.id
@@ -280,6 +286,24 @@ internal fun CardContentEditor(
             },
             onOpen = { editingId = item.id },
         ) }
+    }
+    val frontRow: @Composable (CardContentItem, Int, Int, FieldDisplay) -> Unit = { item, index, count, display ->
+        if (!circleCard) {
+            row(item, index, count, display)
+        } else {
+            key(item.id) {
+                CardFieldRow(
+                    item = item,
+                    index = index,
+                    count = count,
+                    enabled = enabled,
+                    tag = "field_front",
+                    onClickLabel = stringResource(MR.string.profile_card_field_to_back),
+                    onClick = display.onToggle,
+                    display = display,
+                )
+            }
+        }
     }
 
     Column(
@@ -318,30 +342,36 @@ internal fun CardContentEditor(
         }
         Spacer(Modifier.height(24.dp))
         SectionLabel(
-            stringResource(MR.string.profile_card_content_on_card),
+            stringResource(if (circleCard) MR.string.profile_card_content_front else MR.string.profile_card_content_on_card),
             when {
+                circleCard -> stringResource(MR.string.profile_card_content_front_desc)
                 onCard.isEmpty() -> null
-                card is CardAudience.Circle && items.onlyNameOnCard() -> stringResource(MR.string.profile_card_content_on_card_desc_blank)
-                circleCard -> if (canReorder) stringResource(MR.string.profile_card_content_on_card_desc_drag) else null
                 canReorder -> stringResource(MR.string.profile_card_content_on_card_desc_reorder)
                 else -> stringResource(MR.string.profile_card_content_on_card_desc)
             },
         )
-        if (onCard.isEmpty()) {
+        if (onCard.isEmpty() && circleCard) {
+            Text(
+                text = stringResource(if (back.any { it.renderable }) MR.string.profile_card_content_front_empty else MR.string.profile_card_content_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        } else if (onCard.isEmpty()) {
             EmptyContent { addAction() }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                 val fixed = onCard.filterNot { it.orderable }
                 val total = onCard.size
                 fixed.forEachIndexed { index, item ->
-                    row(item, index, total, FieldDisplay(onCard = true, onToggle = { onFieldShown(item.id, false) }))
+                    frontRow(item, index, total, FieldDisplay(onCard = true, onToggle = { onFieldShown(item.id, false) }))
                 }
                 var offset = fixed.size
                 linkGroups.forEach { group ->
                     if (group.isNotEmpty()) {
                         val start = offset
                         ReorderableRows(items = group, gap = ROW_GAP, onReorder = onFieldsReordered) { item, index, count, move, handle, lifted ->
-                            row(
+                            frontRow(
                                 item, start + index, total,
                                 FieldDisplay(
                                     onCard = true,
@@ -355,6 +385,39 @@ internal fun CardContentEditor(
                         }
                         offset += group.size
                     }
+                }
+            }
+        }
+        if (back.isNotEmpty()) {
+            Spacer(Modifier.height(28.dp))
+            SectionLabel(stringResource(MR.string.profile_card_content_back), stringResource(MR.string.profile_card_content_back_desc))
+            val toFront = stringResource(MR.string.profile_card_field_to_front)
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                back.forEachIndexed { index, item ->
+                    key(item.id) {
+                        CardFieldRow(
+                            item = item,
+                            index = index,
+                            count = back.size,
+                            enabled = enabled,
+                            tag = "field_back",
+                            onClickLabel = toFront.takeIf { item.renderable },
+                            onClick = { onFieldShown(item.id, true) }.takeIf { item.renderable },
+                        )
+                    }
+                }
+            }
+        }
+        if (circleCard) {
+            Spacer(Modifier.height(24.dp))
+            addAction()
+        }
+        if (unavailable.isNotEmpty()) {
+            Spacer(Modifier.height(28.dp))
+            SectionLabel(stringResource(MR.string.profile_card_content_unavailable), stringResource(MR.string.profile_card_content_unavailable_desc))
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                unavailable.forEachIndexed { index, item ->
+                    key(item.id) { CardFieldRow(item = item, index = index, count = unavailable.size, enabled = enabled, tag = "field_unavailable", muted = true) }
                 }
             }
         }
@@ -395,7 +458,7 @@ internal fun CardContentEditor(
                 couldAdd.forEachIndexed { index, item -> row(item, index + 1, couldAdd.size + 1, null) }
             }
         }
-        if (onCard.isNotEmpty()) {
+        if (onCard.isNotEmpty() && !circleCard) {
             Spacer(Modifier.height(24.dp))
             addAction()
         }
@@ -419,14 +482,8 @@ internal fun CardContentEditor(
             onDismiss = { editingId = null },
         )
     }
-    if (addingToCard) {
-        AddToCardSheet(
-            hidden = hiddenFromCard,
-            isAvailable = isAvailable,
-            onShow = { onFieldShown(it.id, true) },
-            onAdd = startAdding,
-            onDismiss = { addingToCard = false },
-        )
+    if (choosingKind) {
+        AddSheet(isAvailable = isAvailable, onAdd = startAdding, onDismiss = { choosingKind = false })
     }
     adding?.let { type ->
         ContentSheet(
@@ -594,7 +651,7 @@ private fun PhotoRow(card: CardAudience, photo: CardPhotoUi, onChange: () -> Uni
     }
 }
 
-// Tapping a row edits the item everywhere; its trailing switch (or a circle card's remove button) only changes this card.
+// Tapping a row edits the item everywhere; its trailing switch only hides it from, or shows it on, this card.
 @Composable
 private fun EditorRow(
     item: CardContentItem,
@@ -607,14 +664,12 @@ private fun EditorRow(
     onApply: (ProfileAudience) -> Unit,
     onOpen: () -> Unit,
     display: FieldDisplay? = null,
-    cardOnly: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     val label = stringResource(typeLabel(item.type))
     val moveUpLabel = stringResource(MR.string.profile_card_field_move_up, label)
     val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
-    val reorderLabel = stringResource(MR.string.profile_card_field_reorder, label)
     val toggleLabel = stringResource(if (display?.onCard == false) MR.string.profile_card_field_show else MR.string.profile_card_field_hide, label)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
     val chooseCards = stringResource(MR.string.profile_card_content_choose_cards, item.text)
@@ -622,7 +677,6 @@ private fun EditorRow(
     val off = display?.onCard == false
     val stacked = LocalDensity.current.fontScale >= STACKED_FONT_SCALE
     var choosing by remember { mutableStateOf(false) }
-    var menu by remember { mutableStateOf(false) }
     val lift by animateFloatAsState(if (display?.lifted == true) 1f else 0f, motion.fastSpatialSpec())
     val container by animateColorAsState(if (off) colors.surfaceContainer else colors.surfaceContainerHigh, motion.defaultEffectsSpec())
     Surface(
@@ -632,30 +686,16 @@ private fun EditorRow(
         shape = groupedShape(index, count, lift),
         shadowElevation = LIFT_ELEVATION * lift,
         modifier = Modifier.fillMaxWidth()
-            .onPreviewKeyEvent { event ->
-                val move = if (event.type == KeyEventType.KeyDown && event.isAltPressed) {
-                    when (event.key) {
-                        Key.DirectionUp -> display?.moveUp
-                        Key.DirectionDown -> display?.moveDown
-                        else -> null
-                    }
-                } else {
-                    null
-                }
-                move?.invoke() != null
-            }
+            .onPreviewKeyEvent { display.keyMove(it)?.invoke() != null }
             .semantics {
                 onClick(label = edit) { onOpen(); true }
-                val actions = listOfNotNull(
-                    display?.moveUp?.let { up -> CustomAccessibilityAction(moveUpLabel) { up(); true } },
-                    display?.moveDown?.let { down -> CustomAccessibilityAction(moveDownLabel) { down(); true } },
+                val actions = display.moveActions(moveUpLabel, moveDownLabel) + listOfNotNull(
                     display?.takeUnless { item.required }?.let { d -> CustomAccessibilityAction(toggleLabel) { d.onToggle(); true } },
                 )
                 if (actions.isNotEmpty()) customActions = actions
             },
     ) {
-        val audience: @Composable () -> Unit = audience@{
-            if (cardOnly) return@audience
+        val audience: @Composable () -> Unit = {
             if (showCardsButton && !pending) {
                 Surface(
                     onClick = { choosing = true },
@@ -706,46 +746,8 @@ private fun EditorRow(
             }
         }
         val controls: @Composable () -> Unit = {
-            if (display?.handle != null) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .testTag("field_handle")
-                        .then(display.handle)
-                        .clickable(enabled = enabled, role = Role.Button, onClickLabel = reorderLabel) { menu = true }
-                        .semantics { contentDescription = reorderLabel },
-                ) {
-                    Icon(Icons.Rounded.DragHandle, contentDescription = null, tint = colors.onSurfaceVariant)
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        display.moveUp?.let { up ->
-                            DropdownMenuItem(
-                                text = { Text(moveUpLabel) },
-                                leadingIcon = { Icon(Icons.Outlined.ArrowUpward, contentDescription = null) },
-                                onClick = { menu = false; up() },
-                            )
-                        }
-                        display.moveDown?.let { down ->
-                            DropdownMenuItem(
-                                text = { Text(moveDownLabel) },
-                                leadingIcon = { Icon(Icons.Outlined.ArrowDownward, contentDescription = null) },
-                                onClick = { menu = false; down() },
-                            )
-                        }
-                    }
-                }
-            }
-            if (display != null && !item.required && !pending && cardOnly) {
-                IconButton(
-                    onClick = display.onToggle,
-                    enabled = enabled,
-                    shapes = IconButtonDefaults.shapes(),
-                    modifier = Modifier.testTag("field_remove"),
-                ) {
-                    Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = toggleLabel, tint = colors.onSurfaceVariant)
-                }
-            } else if (display != null && !item.required && !pending) {
+            if (display != null) ReorderHandle(display, enabled, label)
+            if (display != null && !item.required && !pending) {
                 Switch(
                     checked = display.onCard,
                     onCheckedChange = { display.onToggle() },
@@ -796,6 +798,127 @@ private fun EditorRow(
         CardsSheet(item = item, circles = circles, onApply = onApply, onDismiss = { choosing = false })
     }
 }
+
+// A circle card's row says only which side of the card a field is on; tapping it moves it to the other side.
+@Composable
+private fun CardFieldRow(
+    item: CardContentItem,
+    index: Int,
+    count: Int,
+    enabled: Boolean,
+    tag: String,
+    onClickLabel: String? = null,
+    onClick: (() -> Unit)? = null,
+    display: FieldDisplay? = null,
+    muted: Boolean = false,
+) {
+    val colors = MaterialTheme.colorScheme
+    val label = stringResource(typeLabel(item.type))
+    val moveUpLabel = stringResource(MR.string.profile_card_field_move_up, label)
+    val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
+    val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
+    val lift by animateFloatAsState(if (display?.lifted == true) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
+    Surface(
+        color = if (muted) colors.surfaceContainer else colors.surfaceContainerHigh,
+        shape = groupedShape(index, count, lift),
+        shadowElevation = LIFT_ELEVATION * lift,
+        modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { display.keyMove(it)?.invoke() != null },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable(enabled = enabled, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
+                    } else {
+                        Modifier.semantics(mergeDescendants = true) {}
+                    },
+                )
+                .testTag(tag)
+                .semantics {
+                    val actions = display.moveActions(moveUpLabel, moveDownLabel)
+                    if (actions.isNotEmpty()) customActions = actions
+                }
+                .heightIn(min = 56.dp)
+                .padding(start = 16.dp, end = if (display?.handle != null) 4.dp else 16.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = item.text,
+                    style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
+                    color = if (muted) colors.onSurfaceVariant else colors.onSurface,
+                    maxLines = if (prose) 2 else 1,
+                    softWrap = prose,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (display != null) ReorderHandle(display, enabled, label)
+        }
+    }
+}
+
+// Its own clickable takes the tap, so tapping the handle never also taps the row under it.
+@Composable
+private fun ReorderHandle(display: FieldDisplay, enabled: Boolean, label: String) {
+    val handle = display.handle ?: return
+    val colors = MaterialTheme.colorScheme
+    val moveUpLabel = stringResource(MR.string.profile_card_field_move_up, label)
+    val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
+    val reorderLabel = stringResource(MR.string.profile_card_field_reorder, label)
+    var menu by remember { mutableStateOf(false) }
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .testTag("field_handle")
+            .then(handle)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = reorderLabel) { menu = true }
+            .semantics { contentDescription = reorderLabel },
+    ) {
+        Icon(Icons.Rounded.DragHandle, contentDescription = null, tint = colors.onSurfaceVariant)
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            display.moveUp?.let { up ->
+                DropdownMenuItem(
+                    text = { Text(moveUpLabel) },
+                    leadingIcon = { Icon(Icons.Outlined.ArrowUpward, contentDescription = null) },
+                    onClick = { menu = false; up() },
+                )
+            }
+            display.moveDown?.let { down ->
+                DropdownMenuItem(
+                    text = { Text(moveDownLabel) },
+                    leadingIcon = { Icon(Icons.Outlined.ArrowDownward, contentDescription = null) },
+                    onClick = { menu = false; down() },
+                )
+            }
+        }
+    }
+}
+
+private fun FieldDisplay?.keyMove(event: KeyEvent): (() -> Unit)? =
+    if (this == null || event.type != KeyEventType.KeyDown || !event.isAltPressed) {
+        null
+    } else {
+        when (event.key) {
+            Key.DirectionUp -> moveUp
+            Key.DirectionDown -> moveDown
+            else -> null
+        }
+    }
+
+private fun FieldDisplay?.moveActions(upLabel: String, downLabel: String): List<CustomAccessibilityAction> = listOfNotNull(
+    this?.moveUp?.let { up -> CustomAccessibilityAction(upLabel) { up(); true } },
+    this?.moveDown?.let { down -> CustomAccessibilityAction(downLabel) { down(); true } },
+)
 
 private val LIFT_ELEVATION = 8.dp
 private const val STACKED_FONT_SCALE = 1.5f

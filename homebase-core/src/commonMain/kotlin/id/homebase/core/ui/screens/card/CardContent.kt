@@ -59,18 +59,10 @@ internal fun CardFields?.withOrder(ids: List<String>, known: Set<String>): CardF
     return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).orNull()
 }
 
-// A new circle's card starts with only the photo and name; the rest waits in the add picker.
+// A new circle's card starts with only the photo and name on the front; the rest starts on the back.
 internal fun CardFields?.startingBlank(items: List<CardContentItem>): CardFields? {
     val off = items.filter { it.onCard && it.type != ProfileAttributeTypes.NAME }.map { it.id.toString() }
     return CardFields(order = this?.order, hidden = (hiddenIds() + off).toList().takeIf { it.isNotEmpty() }).orNull()
-}
-
-// What a circle card's add picker offers back: fields this circle can see that the card hides.
-internal fun List<CardContentItem>.hiddenFromCard(): List<CardContentItem> = filter { it.shown && it.renderable && it.hidden }
-
-internal fun List<CardContentItem>.onlyNameOnCard(): Boolean {
-    val onCard = filter { it.onCard }
-    return onCard.isNotEmpty() && onCard.all { it.type == ProfileAttributeTypes.NAME } && hiddenFromCard().isNotEmpty()
 }
 
 private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hidden == null }

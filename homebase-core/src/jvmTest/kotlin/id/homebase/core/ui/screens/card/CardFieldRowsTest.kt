@@ -7,7 +7,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -70,28 +72,37 @@ class CardFieldRowsTest {
         reordered: MutableList<List<Uuid>> = mutableListOf(),
         audiences: MutableList<Uuid> = mutableListOf(),
         attributes: List<ProfileAttribute> = this@CardFieldRowsTest.attributes,
-    ) = setContent {
-        MaterialTheme {
-            CardContentEditor(
-                card = friends,
-                items = cardContentItems(attributes, circles, friends, fields),
-                circles = circles,
-                photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
-                enabled = true,
-                importSources = emptyList(),
-                showCardsButton = true,
-                onAudience = { id, _ -> audiences += id },
-                onEdit = { _, _, _ -> },
-                onDelete = {},
-                onAdd = { _, _ -> },
-                onChangePhoto = {},
-                onRemovePhoto = {},
-                onImport = {},
-                onFieldShown = { id, on -> shown += id to on },
-                onFieldsReordered = { reordered += it },
-            )
+    ) {
+        var current by mutableStateOf(fields)
+        val known = attributes.map { it.id.toString() }.toSet()
+        setContent {
+            MaterialTheme {
+                CardContentEditor(
+                    card = friends,
+                    items = cardContentItems(attributes, circles, friends, current),
+                    circles = circles,
+                    photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
+                    enabled = true,
+                    importSources = emptyList(),
+                    showCardsButton = true,
+                    onAudience = { id, _ -> audiences += id },
+                    onEdit = { _, _, _ -> },
+                    onDelete = {},
+                    onAdd = { _, _ -> },
+                    onChangePhoto = {},
+                    onRemovePhoto = {},
+                    onImport = {},
+                    onFieldShown = { id, on ->
+                        shown += id to on
+                        current = current.withHidden(id.toString(), !on, known)
+                    },
+                    onFieldsReordered = { reordered += it },
+                )
+            }
         }
     }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.row(section: String, text: String) = onNode(hasTestTag(section) and hasText(text))
 
     private fun androidx.compose.ui.test.ComposeUiTest.moveActions() =
         onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions)).fetchSemanticsNodes()
@@ -99,49 +110,108 @@ class CardFieldRowsTest {
             .filter { it.label.startsWith("Move") }
 
     @Test
-    fun aCircleCardListsOnlyWhatItShowsWithNoAudienceChips() = runComposeUiTest {
-        editor(CardFields(hidden = listOf(status.id.toString())))
-
-        onNodeWithText("Second breakfast").assertIsDisplayed()
-        assertEquals(0, onAllNodesWithText("Elevenses").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithText("Not on this card").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithTag("never_on_card").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithTag("not_visible").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithTag("cards_button").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithTag("field_toggle").fetchSemanticsNodes().size)
-        assertEquals(1, onAllNodesWithTag("field_remove").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithTag("field_handle").fetchSemanticsNodes().size)
-    }
-
-    @Test
-    fun addingAHiddenFieldBackShowsItOnThisCard() = runComposeUiTest {
-        val shown = mutableListOf<Pair<Uuid, Boolean>>()
-        editor(CardFields(hidden = listOf(status.id.toString())), shown)
-
-        onNodeWithTag("content_add").performClick()
-        waitForIdle()
-        onNodeWithContentDescription("Add new: Link").assertExists()
-        onNodeWithContentDescription("Show Status on this card").performClick()
-        waitForIdle()
-
-        assertEquals(listOf(status.id to true), shown)
-    }
-
-    @Test
-    fun theAddPickerOffersOnlyFieldsThisCircleSeesButTheCardHides() {
+    fun aCircleCardListsFrontBackAndNotAvailableAsPlainRows() = runComposeUiTest {
         val hiddenLink = link("hidden")
         val ownerOnly = link("private").copy(
             visibility = ProfileVisibility.OWNER,
             acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.OWNER.wireValue),
         )
-        val items = cardContentItems(
-            listOf(bio, status, phone, hiddenLink, ownerOnly),
-            circles,
-            friends,
-            CardFields(hidden = listOf(status.id, hiddenLink.id, phone.id, ownerOnly.id).map { it.toString() }),
-        )
+        editor(CardFields(hidden = listOf(status.id, hiddenLink.id).map { it.toString() }), attributes = listOf(bio, status, phone, hiddenLink, ownerOnly))
 
-        assertEquals(setOf(status.id, hiddenLink.id), items.hiddenFromCard().map { it.id }.toSet())
+        row("field_front", "Second breakfast").assertExists()
+        row("field_back", "Elevenses").assertExists()
+        row("field_back", "hidden").assertExists()
+        row("field_back", "Phone").assertExists()
+        row("field_unavailable", "private").assertExists()
+        assertEquals(1, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
+        assertEquals(3, onAllNodesWithTag("field_back").fetchSemanticsNodes().size)
+        assertEquals(1, onAllNodesWithTag("field_unavailable").fetchSemanticsNodes().size)
+        listOf("Front", "Back", "Not available").forEach { onNodeWithText(it).assertExists() }
+        listOf("cards_button", "field_toggle", "field_handle", "never_on_card", "not_visible").forEach {
+            assertEquals(0, onAllNodesWithTag(it, useUnmergedTree = true).fetchSemanticsNodes().size)
+        }
+    }
+
+    @Test
+    fun tappingAFrontRowMovesItToTheBackAndTappingItThereBringsItBack() = runComposeUiTest {
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        val audiences = mutableListOf<Uuid>()
+        editor(null, shown, audiences = audiences)
+
+        row("field_front", "Elevenses").performClick()
+        waitForIdle()
+        row("field_front", "Elevenses").assertDoesNotExist()
+        row("field_back", "Elevenses").performClick()
+        waitForIdle()
+
+        row("field_front", "Elevenses").assertExists()
+        row("field_back", "Elevenses").assertDoesNotExist()
+        assertEquals(listOf(status.id to false, status.id to true), shown)
+        assertEquals(emptyList(), audiences)
+    }
+
+    @Test
+    fun aTapOnTheDragHandleNeverMovesTheRowToTheBack() = runComposeUiTest {
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        editor(null, shown, attributes = listOf(link("one"), link("two")))
+
+        onAllNodesWithTag("field_handle", useUnmergedTree = true)[0].performClick()
+        waitForIdle()
+
+        assertEquals(emptyList(), shown)
+        assertEquals(2, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun aFieldTheCircleCantSeeIsOnlyUnderNotAvailableAndATapDoesNothing() = runComposeUiTest {
+        val ownerOnly = link("private").copy(
+            visibility = ProfileVisibility.OWNER,
+            acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.OWNER.wireValue),
+        )
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        val audiences = mutableListOf<Uuid>()
+        editor(null, shown, audiences = audiences, attributes = listOf(bio, ownerOnly))
+
+        row("field_front", "private").assertDoesNotExist()
+        row("field_back", "private").assertDoesNotExist()
+        row("field_unavailable", "private")
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+            .performClick()
+        waitForIdle()
+
+        row("field_unavailable", "private").assertExists()
+        assertEquals(emptyList(), shown)
+        assertEquals(emptyList(), audiences)
+    }
+
+    @Test
+    fun aFieldTheCardCantDrawSitsOnTheBackWithNothingToTap() = runComposeUiTest {
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        editor(null, shown)
+
+        row("field_back", "Phone").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick)).performClick()
+        waitForIdle()
+
+        assertEquals(emptyList(), shown)
+    }
+
+    @Test
+    fun theAddButtonOffersOnlyNewFields() = runComposeUiTest {
+        editor(CardFields(hidden = listOf(status.id.toString())))
+
+        onNodeWithTag("content_add").performClick()
+        waitForIdle()
+
+        onNodeWithContentDescription("Add new: Link").assertExists()
+        assertEquals(0, onAllNodesWithContentDescription("Show Status on this card").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun anEmptyFrontPointsAtTheBack() = runComposeUiTest {
+        editor(CardFields(hidden = listOf(bio.id, status.id).map { it.toString() }))
+
+        onNodeWithText("Tap a field on the Back to show it on the card").assertExists()
+        assertEquals(0, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
     }
 
     @Test
@@ -150,6 +220,7 @@ class CardFieldRowsTest {
 
         assertEquals(0, onAllNodesWithText("Not on this card").fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithTag("never_on_card").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithText("Back").fetchSemanticsNodes().size)
     }
 
     @Test
@@ -158,7 +229,7 @@ class CardFieldRowsTest {
         val audiences = mutableListOf<Uuid>()
         editor(null, shown, audiences = audiences)
 
-        onAllNodesWithTag("field_remove")[0].performClick()
+        row("field_front", "Elevenses").performClick()
 
         assertEquals(listOf(status.id to false), shown)
         assertEquals(emptyList(), audiences)
