@@ -2512,7 +2512,10 @@
     <string name="profile_card_content_front_empty">Use the add button on a Back field to show it on the card</string>
     <string name="profile_card_content_back">Back</string>
     <string name="profile_card_content_back_desc">They get it, but it isn't shown on the card</string>
-    <string name="profile_card_content_unavailable">Not available</string>
+    <string name="profile_card_content_unavailable_count">Not available (%1$d)</string>
+    <string name="profile_card_content_unavailable_only_me">Only you</string>
+    <string name="profile_card_content_unavailable_only">Only %1$s</string>
+    <string name="profile_card_content_unavailable_names_more">%1$s and %2$d more</string>
     <string name="profile_card_content_unavailable_desc">People with this card can't see these</string>
     <string name="profile_card_field_to_back">Move %1$s to the back</string>
     <string name="profile_card_field_to_front">Show %1$s on the front</string>

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Palette
@@ -168,8 +169,14 @@ import id.homebase.resources.profile_card_content_front_desc
 import id.homebase.resources.profile_card_content_front_empty
 import id.homebase.resources.profile_card_content_back
 import id.homebase.resources.profile_card_content_back_desc
-import id.homebase.resources.profile_card_content_unavailable
+import id.homebase.resources.collapse
+import id.homebase.resources.expand
+import id.homebase.resources.profile_card_content_unavailable_count
 import id.homebase.resources.profile_card_content_unavailable_desc
+import id.homebase.resources.profile_card_content_unavailable_names_more
+import id.homebase.resources.profile_card_content_unavailable_only
+import id.homebase.resources.profile_card_content_unavailable_only_me
+import id.homebase.resources.profile_edit_audience_other_circle
 import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_empty
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
@@ -226,6 +233,7 @@ internal fun CardContentEditor(
     edge: Dp = 16.dp,
 ) {
     var editingId by remember { mutableStateOf<Uuid?>(null) }
+    var unavailableOpen by rememberSaveable { mutableStateOf(false) }
     var adding by remember { mutableStateOf<String?>(null) }
     var choosingMore by remember { mutableStateOf(false) }
     var choosingKind by remember { mutableStateOf(false) }
@@ -418,10 +426,23 @@ internal fun CardContentEditor(
         }
         if (unavailable.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
-            SectionLabel(stringResource(MR.string.profile_card_content_unavailable), stringResource(MR.string.profile_card_content_unavailable_desc))
-            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                unavailable.forEachIndexed { index, item ->
-                    key(item.id) { CardFieldRow(item = item, index = index, count = unavailable.size, enabled = enabled, tag = "field_unavailable", muted = true) }
+            UnavailableHeader(count = unavailable.size, open = unavailableOpen, onToggle = { unavailableOpen = it })
+            if (unavailableOpen) {
+                Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                    unavailable.forEachIndexed { index, item ->
+                        key(item.id) {
+                            CardFieldRow(
+                                item = item,
+                                index = index,
+                                count = unavailable.size,
+                                enabled = enabled,
+                                tag = "field_unavailable",
+                                onOpen = { editingId = item.id },
+                                supporting = unavailableReason(item.audience, circles),
+                                muted = true,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -477,6 +498,7 @@ internal fun CardContentEditor(
             onEdit = { updates, audience ->
                 pendingId = item.id
                 onEdit(item.id, updates, audience)
+                if (circleCard && !item.shown && !item.hidden && item.renderable && card.shows(audience)) onFieldShown(item.id, false)
             },
             onDelete = { id ->
                 pendingId = item.id
@@ -803,6 +825,52 @@ private fun EditorRow(
     }
 }
 
+@Composable
+private fun UnavailableHeader(count: Int, open: Boolean, onToggle: (Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    ListItem(
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier
+            .testTag("unavailable_toggle")
+            .toggleable(value = open, role = Role.Button, onValueChange = onToggle),
+        headlineContent = {
+            Text(
+                text = stringResource(MR.string.profile_card_content_unavailable_count, count),
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.semantics { heading() },
+            )
+        },
+        supportingContent = if (open) {
+            { Text(text = stringResource(MR.string.profile_card_content_unavailable_desc), style = MaterialTheme.typography.bodySmall) }
+        } else {
+            null
+        },
+        trailingContent = {
+            Icon(
+                imageVector = if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = stringResource(if (open) MR.string.collapse else MR.string.expand),
+                tint = colors.onSurfaceVariant,
+            )
+        },
+    )
+}
+
+// Names the circles that can still see the field, so the owner knows what to change to bring it to this card.
+@Composable
+private fun unavailableReason(audience: ProfileAudience, circles: List<CardCircle>): String {
+    val other = stringResource(MR.string.profile_edit_audience_other_circle)
+    val circleAudience = audience as? ProfileAudience.Circles
+    val names = circleAudience?.let { circles.filter { c -> c.id in it.ids }.map { c -> c.name } + it.otherIds.map { other } }.orEmpty()
+    val listed = when {
+        names.size > UNAVAILABLE_NAMES -> stringResource(MR.string.profile_card_content_unavailable_names_more, names.first(), names.size - 1)
+        else -> names.joinToString(", ")
+    }
+    return if (names.isEmpty()) stringResource(MR.string.profile_card_content_unavailable_only_me) else stringResource(MR.string.profile_card_content_unavailable_only, listed)
+}
+
+private const val UNAVAILABLE_NAMES = 2
+
 // Front rows lead with a remove button and Back rows with an add button; the row body edits the field.
 @Composable
 private fun CardFieldRow(
@@ -813,6 +881,7 @@ private fun CardFieldRow(
     tag: String,
     onOpen: (() -> Unit)? = null,
     onMove: (() -> Unit)? = null,
+    supporting: String? = null,
     display: FieldDisplay? = null,
     muted: Boolean = false,
 ) {
@@ -859,6 +928,7 @@ private fun CardFieldRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             },
+            supportingContent = supporting?.let { { Text(text = it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant) } },
             leadingContent = onMove?.let { move ->
                 {
                     val onFront = display?.onCard == true
