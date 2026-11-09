@@ -53,8 +53,7 @@ bytes. That allows at most 5247 bytes of descriptor JSON. The agent minifies the
 otherwise the header has no `tree` and the tree goes in the payload. With a typical 100-byte
 fallback and title that leaves about 5.1 KB of tree, which holds every showcase card except long
 reports and big tables. The inline tree is decoded off the main thread when the message is mapped
-(`MessageContentParser.parseForDisplay`; plain `parse`, used by the defrag probe and forward, leaves it
-raw), and rides on `MessageContent.AgentUi.inlineTree`, so the card has its
+(`MessageContentParser.parseForDisplay`; plain `parse` leaves it raw), and rides on `MessageContent.AgentUi.inlineTree`, so the card has its
 full height on the first frame and does no fetch.
 
 Payload key `agent_ui` (`ChatProtocol.PAYLOAD_KEY_AGENT_UI`; the server requires `^[a-z0-9_]{8,10}$`),

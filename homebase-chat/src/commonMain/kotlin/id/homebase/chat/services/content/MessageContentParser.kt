@@ -45,10 +45,7 @@ object MessageContentParser {
 
     private const val TAG = "MessageContentParser"
 
-    /**
-     * [parse] plus the [MessageContent.AgentUi] inline tree decoded against the message's [payloads].
-     * Only a message that is rendered needs the tree.
-     */
+    /** [parse] plus the AgentUi inline tree decoded against [payloads]; only a shown message needs it. */
     fun parseForDisplay(dataType: Int?, content: String?, payloads: List<PayloadDescriptor>?): MessageContent? =
         when (val parsed = parse(dataType, content)) {
             is MessageContent.AgentUi -> parsed.withDecodedTree(payloads)
@@ -242,7 +239,7 @@ object MessageContentParser {
     private fun MessageContent.AgentUi.withDecodedTree(payloads: List<PayloadDescriptor>?): MessageContent.AgentUi {
         val d = descriptor ?: return this
         val tree = d.tree ?: return this
-        return MessageContent.AgentUi(d.copy(tree = null), AgentUiTree.decodeParsed(tree, agentUiImageKeys(payloads)))
+        return copy(descriptor = d.copy(tree = null), inlineTree = AgentUiTree.decodeParsed(tree, agentUiImageKeys(payloads)))
     }
 
     private fun parseAgentUiAction(content: String): MessageContent.AgentUiAction = try {
