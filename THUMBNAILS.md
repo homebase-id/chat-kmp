@@ -234,7 +234,7 @@ Then put `long` and `short` back as width and height in the source's orientation
 **Other animated images:**
 
 - **Animated WebP** keeps its file as the final image in every setting, because the still encoder would freeze it. It gets the normal still thumbnails from its first frame, so today it shows still in a bubble and only animates where the full file loads.
-- **APNG, animated HEIC and animated AVIF** aren't detected today: `ImageFormatDetector.isAnimated` only knows GIF and WebP. Standard would re-encode them as a still image.
+- **APNG, animated HEIC and animated AVIF** keep their file as the final image too, detected by `ImageFormatDetector.isAnimated`.
 
 **Cost.** A GIF has no small version, so every place that shows it downloads the whole file. That includes Photobase's grid, which otherwise never loads more than Small. See [To do](#to-do-and-what-isnt-settled).
 
@@ -566,21 +566,14 @@ for src, dst in [(4032, 2048), (1080, 640), (3000, 2048), (2560, 2048)]:
 
 | What | Issue |
 |---|---|
-| The proper resampler: native on iOS and Android, shared code on desktop and web | #2236 |
-| The contract tests for aliasing and sharpness | #2236 |
+| A native resampler on iOS and Android, if phone measurements beat the shared Kotlin Lanczos all platforms use now | #2236 |
 | iOS: hand pixels from ImageIO over without extra copies | #2236 |
-| Tiny and sRGB images without a colour profile | #2235 |
-| Android: memory guard for large HEIC, PNG and WebP sources | #2235 |
-| Shrink-first behaviour over 1 MiB, replacing #2232's q40 floor | #2235 |
-| The 10% rule in the planner, and its tests | #2235, #2230 |
-| Final image size in the descriptor; step-up only when it gains pixels, remembered, per surface, with no error flash | #2235 |
 | iOS: check ImageIO's sizes match the plan for odd shapes | #2235 |
 | A required keep-or-strip metadata parameter on the image API, covering re-encoded and kept final images; Photos passes `Keep` | #2235 |
 | Original video untouched, with chat's copy stripped by a remux | #2235 |
 | Time, memory and battery measured on a real iPhone and Android phone | #2221, #2236 |
 | RAW: thumbnails from the embedded preview when it's large enough, rendering otherwise | – |
 | RAW: verify on real phones which formats decode (ProRAW and DNG on iOS; DNG on Android) | – |
-| Detect APNG, animated HEIC and animated AVIF, so Standard never freezes them | – |
 
 ### Not settled
 
