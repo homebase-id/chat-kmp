@@ -510,7 +510,7 @@ class ProfileCardViewModel(
     }
 
     fun onFieldsReordered(ids: List<Uuid>) {
-        val known = _uiState.value.attributes.filter { it.type == ProfileAttributeTypes.LINK || it.type in CARD_SOCIAL_TYPES }.mapTo(mutableSetOf()) { it.id.toString() }
+        val known = _uiState.value.attributes.filter { isOrderableType(it.type) }.mapTo(mutableSetOf()) { it.id.toString() }
         editFields { it.withOrder(ids.map(Uuid::toString), known) }
     }
 

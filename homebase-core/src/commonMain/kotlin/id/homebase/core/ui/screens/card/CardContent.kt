@@ -31,7 +31,7 @@ internal data class CardContentItem(
     val conflicts: List<ProfileAttribute> = emptyList(),
 ) {
     val renderable: Boolean get() = type in CARD_RENDERED_TYPES
-    val orderable: Boolean get() = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
+    val orderable: Boolean get() = isOrderableType(type)
     val onCard: Boolean get() = shown && renderable && !hidden
 }
 
@@ -49,15 +49,19 @@ internal fun <T> List<T>.inCardOrder(fields: CardFields?, id: (T) -> String): Li
 
 internal fun CardFields?.withHidden(id: String, hidden: Boolean, known: Set<String>): CardFields? {
     val next = (hiddenIds().let { if (hidden) it + id else it - id }).filter { it in known }
-    return CardFields(order = this?.order, hidden = next.takeIf { it.isNotEmpty() }).takeUnless { it.order == null && it.hidden == null }
+    return CardFields(order = this?.order, hidden = next.takeIf { it.isNotEmpty() }).orNull()
 }
 
 // [ids] is one group's new order; the other groups keep their places after it.
 internal fun CardFields?.withOrder(ids: List<String>, known: Set<String>): CardFields? {
     val moved = ids.filter { it in known }.distinct()
     val next = moved + this?.order.orEmpty().filter { it in known && it !in moved }
-    return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).takeUnless { it.order == null && it.hidden == null }
+    return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).orNull()
 }
+
+private fun CardFields.orNull(): CardFields? = takeUnless { order == null && hidden == null }
+
+internal fun isOrderableType(type: String): Boolean = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
 
 internal val CARD_SOCIAL_TYPES = listOf(
     ProfileAttributeTypes.TWITTER,
