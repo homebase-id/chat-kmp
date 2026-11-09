@@ -1620,4 +1620,16 @@ class OutboxSyncTest {
         collectorJob.cancel()
         sync.clearCheckout(timeoutMs = 5_000)
     }
+    @Test
+    fun nextScheduledReturnsEarliestWaitingRowNotMostUrgent() = runOutboxSyncTest { db, _ ->
+        val driveId = Uuid.random()
+        val urgent = Uuid.random()
+        val lowPriority = Uuid.random()
+        db.outbox.insert(driveId, urgent, null, 1L, 0L, byteArrayOf(1), null)
+        db.outbox.insert(driveId, lowPriority, null, 100L, 0L, byteArrayOf(2), null)
+        db.outbox.setNextRunTime(driveId, urgent, 4_000_000L)
+        db.outbox.setNextRunTime(driveId, lowPriority, 30_000L)
+
+        assertEquals(30_000L, db.outbox.nextScheduled()!!.milliseconds)
+    }
 }
