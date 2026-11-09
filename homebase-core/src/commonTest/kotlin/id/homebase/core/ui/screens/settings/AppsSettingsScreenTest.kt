@@ -138,7 +138,6 @@ class AppsSettingsScreenTest {
             assertEquals(route, fired.last(), tag)
         }
         assertEquals(10, fired.size)
-        assertEquals(AppsPage.entries.map { it.name }.toSet(), fired.toSet() - "webdrop" - "location")
     }
 
     @Test

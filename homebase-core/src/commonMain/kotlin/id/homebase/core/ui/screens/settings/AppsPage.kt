@@ -14,7 +14,6 @@ import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import org.koin.compose.viewmodel.koinViewModel
 
-/** An app's own settings page under Settings > Apps, shown by both the pane and the nav graph. */
 internal enum class AppsPage { Feed, Moments, Vault, Filesync, Email, Contacts, Calls, Photobase }
 
 // The route carries the name: enum route arguments have no NavType on iOS and wasmJs.
