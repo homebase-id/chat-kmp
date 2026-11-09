@@ -60,6 +60,7 @@ class CardRowKeyingTest {
             }
         }
 
+        onNodeWithTag("not_visible_toggle").performClick()
         onAllNodesWithTag("cards_button")[0].performClick()
         onNodeWithTag("cards_sheet_done").assertExists()
 

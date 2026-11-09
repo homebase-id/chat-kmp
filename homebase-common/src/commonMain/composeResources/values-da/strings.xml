@@ -1863,7 +1863,6 @@
     <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
     <string name="profile_card_design_action">Design</string>
     <string name="profile_card_content_on_card">På dette kort</string>
-    <string name="profile_card_content_could_add">Også på din profil</string>
     <string name="profile_card_content_edit_this">Redigér %1$s</string>
     <string name="profile_card_content_edit_title">Redigér</string>
     <string name="profile_card_content_delete">Slet fra alle kort</string>

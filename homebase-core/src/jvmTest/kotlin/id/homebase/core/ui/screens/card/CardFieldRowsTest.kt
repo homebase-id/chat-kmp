@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.SemanticsMatcher
@@ -101,8 +102,10 @@ class CardFieldRowsTest {
         editor(CardFields(hidden = listOf(status.id.toString())))
 
         onNodeWithText("Not on this card").assertIsDisplayed()
-        onNodeWithText("Not shown on cards").assertIsDisplayed()
-        onNodeWithTag("circle_also_sees").assert(hasText("Friends can also see: Status, Phone"))
+        onNodeWithText("This circle can still see these on your profile.").assertIsDisplayed()
+        onNodeWithText("Elevenses").assertIsDisplayed()
+        onNodeWithTag("never_on_card").assertExists()
+        onNodeWithText("Phone").assertIsDisplayed()
         assertEquals(2, onAllNodesWithTag("field_toggle").fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithTag("field_handle").fetchSemanticsNodes().size)
     }
@@ -111,7 +114,8 @@ class CardFieldRowsTest {
     fun theCircleLineIsAbsentWhenTheCardShowsEverythingThatCanBeShown() = runComposeUiTest {
         editor(null, attributes = listOf(bio, status))
 
-        assertEquals(0, onAllNodesWithTag("circle_also_sees").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithText("Not on this card").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithTag("never_on_card").fetchSemanticsNodes().size)
     }
 
     @Test

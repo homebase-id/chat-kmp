@@ -30,6 +30,7 @@ internal class FieldDisplay(
     val moveUp: (() -> Unit)? = null,
     val moveDown: (() -> Unit)? = null,
     val handle: Modifier? = null,
+    val lifted: Boolean = false,
 )
 
 internal fun <T> List<T>.moved(from: Int, to: Int): List<T> =
@@ -41,7 +42,7 @@ internal fun ReorderableRows(
     items: List<CardContentItem>,
     gap: Dp,
     onReorder: (List<Uuid>) -> Unit,
-    row: @Composable (item: CardContentItem, index: Int, count: Int, move: (Int) -> Unit, handle: Modifier) -> Unit,
+    row: @Composable (item: CardContentItem, index: Int, count: Int, move: (Int) -> Unit, handle: Modifier, lifted: Boolean) -> Unit,
 ) {
     val ids = items.map { it.id }
     var order by remember(ids) { mutableStateOf(ids) }
@@ -86,7 +87,7 @@ internal fun ReorderableRows(
                         .zIndex(if (dragging == id) 1f else 0f)
                         .graphicsLayer { translationY = if (dragging == id) offset else 0f },
                 ) {
-                    row(item, index, order.size, { delta -> onReorder(ids.moved(ids.indexOf(id), ids.indexOf(id) + delta)) }, handle)
+                    row(item, index, order.size, { delta -> onReorder(ids.moved(ids.indexOf(id), ids.indexOf(id) + delta)) }, handle, dragging == id)
                 }
             }
         }
