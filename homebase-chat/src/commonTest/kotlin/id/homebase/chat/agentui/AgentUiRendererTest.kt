@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -150,6 +152,35 @@ class AgentUiRendererTest {
         onNodeWithText("1.2k").assertExists()
         onNodeWithText("Rendering slides").assertExists()
         onNodeWithText("In list").assertExists()
+    }
+
+    @Test fun root_card_tone_is_ignored() = runComposeUiTest {
+        show(valid(tree(
+            """{"id":"root","type":"card","tone":"error","children":["t"]}""",
+            """{"id":"t","type":"text","markdown":"Root body"}""",
+        )))
+        onNodeWithText("Root body").assertExists()
+        onNodeWithTag(ErrorIconTag).assertDoesNotExist()
+    }
+
+    @Test fun nested_card_tone_is_applied() = runComposeUiTest {
+        show(valid(tree(
+            """{"id":"root","type":"card","children":["inner"]}""",
+            """{"id":"inner","type":"card","tone":"error","children":["t"]}""",
+            """{"id":"t","type":"text","markdown":"Inner body"}""",
+        )))
+        onNodeWithText("Inner body").assertExists()
+        onNodeWithTag(ErrorIconTag).assertExists()
+    }
+
+    @Test fun display_chips_have_no_click_action() = runComposeUiTest {
+        show(valid(tree(
+            """{"id":"root","type":"row","children":["on","off"]}""",
+            """{"id":"on","type":"chip","label":"Picked","selected":true}""",
+            """{"id":"off","type":"chip","label":"Plain","selected":false}""",
+        )))
+        onNodeWithText("Picked").assertHasNoClickAction()
+        onNodeWithText("Plain").assertHasNoClickAction()
     }
 
     @Test fun new_tree_re_renders() = runComposeUiTest {

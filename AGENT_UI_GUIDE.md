@@ -9,8 +9,11 @@ Every number below comes from `AgentUiLimits`, `AgentUiDescriptor`, `AgentUiActi
 
 - The card is at most **360 dp wide** (520 dp on windows 600 dp and wider), with 16 dp padding and
   a 24 dp corner. Plan for a phone: about 330 dp of content width.
-- A root `card` does not draw a second box: its `tone` becomes the bubble colour. Nest a `card` only
-  to set a block apart.
+- A root `card` does not draw a second box, and its `tone` is ignored: the bubble always has the
+  normal incoming or outgoing message colour, like a text message. For a highlighted or error block,
+  nest a `card` with a `tone` inside the root.
+- A display `chip` is a label, not a button: selected shows as a filled tag with a check, unselected
+  as plain muted text. Neither takes taps; use `select` for choices.
 - Colours and type come from the reader's Material 3 theme. You pick a role (`tone`, `style`), never
   a colour or size. Light and dark mode both work without you doing anything.
 - Until the tree is ready, and whenever it is invalid, the reader sees `fallback`. Write it as a
@@ -20,7 +23,7 @@ Every number below comes from `AgentUiLimits`, `AgentUiDescriptor`, `AgentUiActi
 
 | Node | Use it for | Avoid |
 |---|---|---|
-| `card` | The root, or one highlighted block inside it. `tone: error` adds an error icon and is for failures only. | Cards inside cards inside cards. One level of nesting is enough. |
+| `card` | The root (its `tone` is ignored), or one highlighted block inside it, where `tone` applies. `tone: error` adds an error icon and is for failures only. | Cards inside cards inside cards. One level of nesting is enough. |
 | `column` | Stacking blocks. `spacing` small (8 dp) is the default; medium (16 dp) separates sections. | A column with one child. |
 | `row` | A few short items side by side: chips, buttons. It wraps onto new lines when it runs out of width. | Long text in a row; it wraps unpredictably. |
 | `text` | All prose. `title` once at the top, `body` for content, `label` for small headings, `caption` for metadata. Chat markdown works (bold, italic, links, lists). | Several `title`s. Markdown images (they render as link text). Tones for decoration: `primary` and `error` mean something. |
@@ -128,8 +131,9 @@ Fallback: `"Draft post for X and LinkedIn, waiting for your approval"`.
 
 What is wrong with it:
 
-- The root is a `column`, so the card has no tone of its own, and two `title`s compete; the
-  `error` tone says something failed when nothing did.
+- The root is a `column` rather than a `card`, and two `title`s compete; the `error` tone on a title
+  says something failed when nothing did. (A root `card`'s tone would not colour the bubble anyway;
+  put a highlighted or error block in a nested `card`.)
 - `alt: "image"` tells a screen-reader user nothing.
 - A card in a card in a card for one paragraph. The remote image in the markdown never loads.
 - Four buttons stacked one per line, two of them `filled`. "Edit" has no `action`, so it is

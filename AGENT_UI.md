@@ -92,7 +92,7 @@ which loads the full payload and pages through the card's images only, with no c
 | type | props |
 |---|---|
 | `column`, `row` | `children` (ids), `spacing`: none, small, medium |
-| `card` | `children`, `tone`: default, primary, secondary, error |
+| `card` | `children`, `tone`: default, primary, secondary, error (applies to nested cards only; the root card always uses the normal message bubble colour) |
 | `text` | `markdown` (chat markdown subset, links open on tap), `style`: title, body, label, caption; `tone`: default, primary, secondary, error |
 | `image` | `payloadKey`, `alt` |
 | `chip` | `label`, `selected?` (display only) |

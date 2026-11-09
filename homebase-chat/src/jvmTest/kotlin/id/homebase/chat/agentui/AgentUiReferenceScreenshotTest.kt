@@ -63,7 +63,7 @@ class AgentUiReferenceScreenshotTest {
 
     @Composable
     private fun Card(tree: AgentUiTree, pending: Set<String> = emptySet()) {
-        AgentUiFrame(tree.frameTone) {
+        AgentUiFrame(sentByYou = false) {
             val inputs = remember { AgentUiInputState(tree.inputs) }
             AgentUiTreeView(tree, inputs, { null }, true, pending, {})
         }
