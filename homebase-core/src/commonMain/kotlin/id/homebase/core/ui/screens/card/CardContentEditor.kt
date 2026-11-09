@@ -260,14 +260,19 @@ internal fun CardContentEditor(
         ) }
     }
 
-    Box(modifier = modifier.fillMaxWidth()) {
+    // The toolbar takes its own space below the scrolling list, so no row or dragged row can pass under it.
+    Column(
+        modifier = modifier.fillMaxWidth().navigationBarsPadding(),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Column(
             modifier = Modifier
+                .weight(1f, fill = false)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
                 .padding(horizontal = SECTION_INSET)
-                .padding(top = edge, bottom = TOOLBAR_CLEARANCE),
+                .padding(top = edge, bottom = 16.dp),
         ) {
             AudienceHeading(card, emoji = circles.emojiOf(card))
             AnimatedVisibility(
@@ -361,7 +366,7 @@ internal fun CardContentEditor(
             onAdd = { choosingKind = true },
             onCopy = { copying = true }.takeIf { importSources.isNotEmpty() },
             onDesign = onDesign,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp),
+            modifier = Modifier.padding(bottom = 16.dp),
         )
     }
 
@@ -421,7 +426,6 @@ internal fun CardContentEditor(
     }
 }
 
-private val TOOLBAR_CLEARANCE = 112.dp
 private val SWITCHER_LABEL_MAX = 160.dp
 
 // Content is the job here, so Add is the toolbar's one filled action; the design and copying sit beside it, a tap away.
