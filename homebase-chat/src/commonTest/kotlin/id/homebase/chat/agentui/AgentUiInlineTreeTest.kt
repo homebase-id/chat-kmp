@@ -101,7 +101,7 @@ class AgentUiInlineTreeTest {
             """{"root":"root","nodes":[{"id":"root","type":"column","children":["t1"]},{"id":"t1","type":"text","text":"Networks picked"}]}""",
         ).jsonObject
         val d = assertNotNull(AgentUiDescriptor(fallback = "Test 4 done", rev = 1).withInlineTree(blank))
-        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(219, header(d), null))
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parseForDisplay(219, header(d), null))
         assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
         assertEquals("Test 4 done", content.descriptor?.fallback)
     }
