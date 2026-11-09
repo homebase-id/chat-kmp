@@ -1109,6 +1109,8 @@ val appModule = module {
             PhotobaseProtocol.DriveAlias,
             maxSizeBytes = (if (isWeb()) 100L else 1024L) * 1024L * 1024L,
             statsId = "drive_photo_thumbnails",
+            // A grid flung past would otherwise queue ahead of the tiles it stops on.
+            cancelWhenUnwatched = true,
         )
     }
     single { photoGalleryStore(get(), get(), get()) }
@@ -1514,6 +1516,8 @@ val appModule = module {
             source = get<PhotoGalleryStore>(),
             catchUp = sync::syncNow,
             warm = prefetcher::prefetch,
+            pauseWarm = prefetcher::pause,
+            backedUpCount = get<PhotoBackupController>().status?.map { it.backedUpCount },
         )
     }
     viewModel(FilesyncPermissionQualifier) {

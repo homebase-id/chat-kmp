@@ -32,16 +32,23 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -74,6 +81,8 @@ import org.jetbrains.compose.resources.stringResource
 
 // Under what's left of the first page after a screenful, or opening would fetch the next one straight away.
 private const val LOAD_MORE_WHEN_WITHIN = 15
+
+private const val SETTLE_MILLIS = 150L
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -129,7 +138,7 @@ private fun GalleryGrid(
                             ),
                         )
                     }
-                    IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isLoading) {
+                    IconButton(onClick = { onAction(PhotoGalleryUiAction.Refresh) }, enabled = !uiState.isLoading && !uiState.isSyncing) {
                         Icon(Icons.Outlined.Refresh, contentDescription = stringResource(MR.string.photobase_gallery_refresh))
                     }
                     if (onOpenBackupSettings != null) {
@@ -149,7 +158,8 @@ private fun GalleryGrid(
         ) {
             when {
                 uiState.days.isNotEmpty() -> PhotoGrid(uiState, onAction)
-                uiState.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                // While the server is still being asked, "nothing backed up" may not be true.
+                uiState.isLoading || uiState.isSyncing -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 uiState.loadFailed -> Column(
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -181,6 +191,9 @@ private fun GalleryGrid(
                     )
                 }
             }
+            if (uiState.isSyncing && uiState.days.isNotEmpty()) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
+            }
         }
     }
 }
@@ -197,6 +210,23 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
             info.totalItemsCount to ((info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - LOAD_MORE_WHEN_WITHIN)
         }.collect { (_, nearEnd) -> if (nearEnd) onAction(PhotoGalleryUiAction.LoadMore) }
     }
+    // Settled rather than isScrollInProgress: a finger held still mid-drag is a pause too.
+    var settled by remember { mutableStateOf(true) }
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+            .drop(1)
+            .collectLatest {
+                if (settled) {
+                    settled = false
+                    onAction(PhotoGalleryUiAction.Scrolling(true))
+                }
+                delay(SETTLE_MILLIS)
+                settled = true
+                onAction(PhotoGalleryUiAction.Scrolling(false))
+            }
+    }
+    // Opening a photo mid-fling disposes the grid before it settles, which would leave the prefetch paused.
+    DisposableEffect(Unit) { onDispose { onAction(PhotoGalleryUiAction.Scrolling(false)) } }
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = 96.dp),
@@ -214,7 +244,7 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
                 )
             }
             items(day.items, key = { it.fileId.toString() }, contentType = { "photo" }) { item ->
-                PhotoCell(item, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) { onAction(PhotoGalleryUiAction.Open(item)) }
+                PhotoCell(item, settled, onShown = { onAction(PhotoGalleryUiAction.ThumbnailShown) }) { onAction(PhotoGalleryUiAction.Open(item)) }
             }
         }
         if (uiState.isLoadingMore) {
@@ -228,7 +258,10 @@ private fun PhotoGrid(uiState: PhotoGalleryUiState, onAction: (PhotoGalleryUiAct
 }
 
 @Composable
-private fun PhotoCell(item: PhotoGalleryItem, onShown: () -> Unit, onClick: () -> Unit) {
+private fun PhotoCell(item: PhotoGalleryItem, settled: Boolean, onShown: () -> Unit, onClick: () -> Unit) {
+    // Once started a tile keeps loading through the next scroll; only leaving the screen cancels it.
+    var started by remember(item.fileId) { mutableStateOf(settled) }
+    LaunchedEffect(settled) { if (settled) started = true }
     val iv = item.payload.iv?.bytes
     val isVideo = item.payload.isVideo()
     val description = stringResource(if (isVideo) MR.string.photobase_gallery_video else MR.string.photobase_gallery_photo)
@@ -256,6 +289,7 @@ private fun PhotoCell(item: PhotoGalleryItem, onShown: () -> Unit, onClick: () -
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
                 onLoaded = onShown,
+                deferLoad = !started,
             )
         }
         if (isVideo) {

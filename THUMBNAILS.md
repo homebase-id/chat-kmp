@@ -432,6 +432,8 @@ HEIC keeps its metadata in HEIF items rather than JPEG segments. Read it from th
   - is opted into per surface, such as chat bubbles, not applied everywhere;
   - on failure, keeps the thumbnail on screen without flashing an error.
 - **Photobase's album grid always uses Small,** and never steps up. The album in chat-kmp is meant to stay simple; a separate app handles fast album viewing.
+- **The album grid loads what you stop on first.** While the grid moves, a tile that isn't already in memory shows only its tiny and starts no download (`HomebaseImage`'s `deferLoad`). About 150 ms after it stops, the tiles in view start. The background prefetch of the newest 500 waits out each scroll.
+- **On the Photos drive, a thumbnail download nobody waits for is cancelled.** `DriveFileProviderCached` shares one download per thumbnail between everyone asking for it. Photos' `DedicatedThumbCache` sets `cancelWhenUnwatched`, so the download stops when the last of them leaves, and a tile scrolled off the screen stops queueing ahead of the ones on it. Every other drive keeps the download going, so a contact row's avatar still lands in the cache after it scrolls away.
 - **The tiny** is decoded off the main thread and kept in memory, so the placeholder is there on the first frame.
 
 ## Wire format and older clients

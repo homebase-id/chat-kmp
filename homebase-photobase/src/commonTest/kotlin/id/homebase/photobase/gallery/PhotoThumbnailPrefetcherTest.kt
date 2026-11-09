@@ -3,7 +3,11 @@ package id.homebase.photobase.gallery
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
@@ -78,6 +82,22 @@ class PhotoThumbnailPrefetcherTest {
         PhotoThumbnailPrefetcher(pages, { ++checks <= 2 }) { _, _ -> }.prefetch()
 
         assertEquals(2, pages.asked.size)
+    }
+
+    @Test
+    fun itWaitsWhileTheGridScrollsAndCarriesOnAfter() = runTest {
+        val pages = EndlessPages().also { it.pageItem = { item() } }
+        var fetched = 0
+        val prefetcher = PhotoThumbnailPrefetcher(pages, { true }) { _, _ -> fetched++ }
+
+        prefetcher.pause(true)
+        val walk = async(Dispatchers.Default) { prefetcher.prefetch() }
+        withContext(Dispatchers.Default) { delay(100) }
+        assertEquals(0, fetched)
+
+        prefetcher.pause(false)
+        walk.await()
+        assertEquals(500, fetched)
     }
 
     @Test

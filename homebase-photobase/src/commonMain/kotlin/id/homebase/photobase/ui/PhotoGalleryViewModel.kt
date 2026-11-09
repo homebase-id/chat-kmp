@@ -11,11 +11,17 @@ import id.homebase.photobase.gallery.groupByCaptureDay
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -25,6 +31,8 @@ data class PhotoGalleryUiState(
     val days: List<PhotoGalleryDay> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
+    /** Fetching from the server after an open or a refresh; the grid may already show what's held. */
+    val isSyncing: Boolean = false,
     val loadFailed: Boolean = false,
     val endReached: Boolean = false,
     val newestFirst: Boolean = true,
@@ -36,19 +44,23 @@ sealed interface PhotoGalleryUiAction {
     data object LoadMore : PhotoGalleryUiAction
     data object ThumbnailShown : PhotoGalleryUiAction
     data object ToggleSort : PhotoGalleryUiAction
+    data class Scrolling(val scrolling: Boolean) : PhotoGalleryUiAction
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
 }
 
 /**
- * Shows what the device holds straight away, then catches up when it opens and when asked: with no
- * WebSocket, that's how other devices' photos appear. [catchUp] returning fetches the first page again.
+ * Shows what the device holds straight away, then catches up when it opens, when asked, and when this
+ * phone backs up more: with no WebSocket, that's how new photos appear. [catchUp] returning fetches
+ * the first page again.
  */
 class PhotoGalleryViewModel(
     private val source: PhotoGalleryPageSource,
     private val grouping: CoroutineDispatcher = Dispatchers.Default,
     private val catchUp: (suspend () -> Unit)? = null,
     private val warm: suspend () -> Unit = {},
+    private val pauseWarm: (Boolean) -> Unit = {},
+    backedUpCount: Flow<Long>? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoGalleryUiState())
     val uiState: StateFlow<PhotoGalleryUiState> = _uiState.asStateFlow()
@@ -57,6 +69,7 @@ class PhotoGalleryViewModel(
     private var cursor: String? = null
     private var loadJob: Job? = null
     private var catchUpJob: Job? = null
+    private var warmJob: Job? = null
     private val opened = TimeSource.Monotonic.markNow()
     private var firstPageLogged = false
     private var pagedPastFirst = false
@@ -64,6 +77,19 @@ class PhotoGalleryViewModel(
 
     init {
         refresh()
+        if (backedUpCount != null) {
+            viewModelScope.launch {
+                // Conflated: a backup ticking per photo queues one more catch-up, not one per photo.
+                backedUpCount.distinctUntilChanged().drop(1).conflate().collect {
+                    catchUpJob?.join()
+                    startCatchUp(showProgress = false).join()
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        pauseWarm(false)
     }
 
     fun onAction(action: PhotoGalleryUiAction) {
@@ -71,6 +97,7 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.Refresh -> refresh()
             PhotoGalleryUiAction.LoadMore -> loadMore()
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
+            is PhotoGalleryUiAction.Scrolling -> pauseWarm(action.scrolling)
             PhotoGalleryUiAction.ToggleSort -> {
                 _uiState.update { it.copy(newestFirst = !it.newestFirst) }
                 reload()
@@ -89,8 +116,14 @@ class PhotoGalleryViewModel(
 
     private fun refresh() {
         reload()
+        startCatchUp(showProgress = true)
+    }
+
+    private fun startCatchUp(showProgress: Boolean): Job {
         catchUpJob?.cancel()
-        catchUpJob = viewModelScope.launch { catchUpThenReload() }
+        // Lazy so catchUpJob is set before the body runs: Main.immediate would otherwise run it first.
+        return viewModelScope.launch(start = CoroutineStart.LAZY) { catchUpThenReload(showProgress) }
+            .also { catchUpJob = it; it.start() }
     }
 
     private fun reload() {
@@ -100,10 +133,12 @@ class PhotoGalleryViewModel(
     }
 
     // Offline is normal here: what's on screen stays, and the next open or refresh tries again.
-    private suspend fun catchUpThenReload() {
+    private suspend fun catchUpThenReload(showProgress: Boolean) {
         // Waits for the first page, so the grid shows what's held before any of this runs.
         loadJob?.join()
         val catchUp = catchUp ?: return
+        val self = currentCoroutineContext()[Job]
+        if (showProgress) _uiState.update { it.copy(isSyncing = true) }
         try {
             catchUp()
             // Past the first page, or oldest first, a reload would change what's on screen for nothing.
@@ -114,11 +149,25 @@ class PhotoGalleryViewModel(
                 loadJob = reload
                 reload.join()
             }
-            warm()
+            // Its own job: a prefetch that waits out a scroll mustn't hold up the next catch-up.
+            if (warmJob?.isActive != true) warmJob = viewModelScope.launch { runCatchingWarm() }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "gallery catch-up failed" }
+        } finally {
+            // A refresh that replaced this one owns the flag now.
+            if (showProgress && catchUpJob === self) _uiState.update { it.copy(isSyncing = false) }
+        }
+    }
+
+    private suspend fun runCatchingWarm() {
+        try {
+            warm()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "gallery prefetch failed" }
         }
     }
 

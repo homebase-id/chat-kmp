@@ -41,6 +41,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -90,10 +91,41 @@ fun HomebaseImage(
     colorFilter: ColorFilter? = null,  // ← Add this par
     onLoaded: (() -> Unit)? = null,
     stepUpToPayload: Boolean = false,
+    /** Shows only the embedded preview and fetches nothing, unless the thumbnail is already in memory. */
+    deferLoad: Boolean = false,
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
     val koin = getKoin()
+
+    // Decode preview thumbnail for immediate display
+    val previewBitmap =
+        remember(imageData.previewThumbnail) {
+            imageData.previewThumbnail?.content?.let {
+                try {
+                    it.bytes.decodeToImageBitmap()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+
+    if (deferLoad && !imageData.isPending &&
+        imageLoader.memoryCache?.get(MemoryCache.Key(HomebaseImageKeyer.thumbnailCacheKey(imageData))) == null
+    ) {
+        if (previewBitmap != null) {
+            Image(
+                bitmap = previewBitmap,
+                contentDescription = contentDescription,
+                contentScale = contentScale,
+                alignment = alignment,
+                modifier = modifier.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }),
+            )
+        } else {
+            placeholder?.invoke()
+        }
+        return
+    }
 
     // Paint the already-decoded thumbnail synchronously on the first frame
     // instead of the tiny embedded preview. The thumbnail cache key is
@@ -122,18 +154,6 @@ fun HomebaseImage(
             imageData
         }
     }
-
-    // Decode preview thumbnail for immediate display
-    val previewBitmap =
-        remember(imageData.previewThumbnail) {
-            imageData.previewThumbnail?.content?.let {
-                try {
-                    it.bytes.decodeToImageBitmap()
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        }
 
     // Gesture modifier
     var customModified =
@@ -214,7 +234,7 @@ fun HomebaseImage(
                 (state as AsyncImagePainter.State.Loading).painter != null)
 
         val blurRadius = animateFloatAsState(
-            targetValue = if (hasSharpImage) 0f else 10f,
+            targetValue = if (hasSharpImage) 0f else PREVIEW_BLUR_DP,
             animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
             label = "blur"
         )
@@ -331,3 +351,4 @@ private fun Modifier.animatedBlur(radiusDp: State<Float>): Modifier = graphicsLa
 }
 
 private const val STEP_UP_SETTLE_MILLIS = 600L
+private const val PREVIEW_BLUR_DP = 10f

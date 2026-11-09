@@ -6,7 +6,9 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.PhotoGalleryPage
 import id.homebase.photobase.gallery.PhotoGalleryPageSource
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -91,6 +93,55 @@ class PhotoGalleryViewModelTest {
         assertEquals(1, warmed)
         assertEquals(2, source.asked.size, "It reloads once caught up")
         assertEquals(1, viewModel.uiState.value.days.flatMap { it.items }.size)
+    }
+
+    @Test
+    fun itSaysItsSyncingUntilTheCatchUpReturns() = runTest {
+        val source = Pages(mapOf(null to PhotoGalleryPage(emptyList(), null)))
+        val server = CompletableDeferred<Unit>()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), catchUp = { server.await() })
+        testScheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isSyncing, "An empty grid must not read as nothing backed up yet")
+
+        server.complete(Unit)
+        testScheduler.advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isSyncing)
+    }
+
+    @Test
+    fun backingUpMoreCatchesUpAgainWithoutTheProgressBar() = runTest {
+        val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
+        val backedUp = MutableStateFlow(0L)
+        val syncingDuringCatchUp = mutableListOf<Boolean>()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        lateinit var viewModel: PhotoGalleryViewModel
+        viewModel = PhotoGalleryViewModel(
+            source,
+            StandardTestDispatcher(testScheduler),
+            catchUp = { syncingDuringCatchUp += viewModel.uiState.value.isSyncing },
+            backedUpCount = backedUp,
+        )
+        testScheduler.advanceUntilIdle()
+
+        backedUp.value = 1
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(true, false), syncingDuringCatchUp)
+        assertEquals(3, source.asked.size, "The first page, then a reload after each catch-up")
+    }
+
+    @Test
+    fun scrollingPausesTheWarmUntilItStops() = runTest {
+        val source = Pages(mapOf(null to PhotoGalleryPage(listOf(item(1_000)), null)))
+        val paused = mutableListOf<Boolean>()
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = PhotoGalleryViewModel(source, StandardTestDispatcher(testScheduler), pauseWarm = { paused += it })
+
+        viewModel.onAction(PhotoGalleryUiAction.Scrolling(true))
+        viewModel.onAction(PhotoGalleryUiAction.Scrolling(false))
+
+        assertEquals(listOf(true, false), paused)
     }
 
     @Test
