@@ -50,6 +50,7 @@ import id.homebase.resources.error
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.getKoin
 import org.koin.compose.koinInject
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -92,7 +93,7 @@ fun HomebaseImage(
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
-    val payloadLoader: HomebaseImageLoader = koinInject()
+    val koin = getKoin()
 
     // Paint the already-decoded thumbnail synchronously on the first frame
     // instead of the tiny embedded preview. The thumbnail cache key is
@@ -188,7 +189,8 @@ fun HomebaseImage(
             // The wait is what keeps a fling from downloading every payload it passes:
             // scrolling away cancels this before it fires.
             LaunchedEffect(Unit) {
-                if (!payloadLoader.isFullPayloadCached(imageData.copy(loadFullPayload = true))) delay(STEP_UP_SETTLE_MILLIS)
+                val cached = koin.getOrNull<HomebaseImageLoader>()?.isFullPayloadCached(imageData.copy(loadFullPayload = true)) == true
+                if (!cached) delay(STEP_UP_SETTLE_MILLIS)
                 steppedUp = true
             }
         }
