@@ -65,7 +65,3 @@ include(":desktopApp")
 include(":androidApp")
 include(":webApp")
 
-// Tools
-include(":chat-agent")
-project(":chat-agent").projectDir = file("tools/chat-agent")
-
