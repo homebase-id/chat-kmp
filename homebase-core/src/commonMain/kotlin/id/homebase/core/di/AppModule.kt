@@ -125,7 +125,9 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.core.ChatNotificationActions
 import id.homebase.core.NotificationActionBridge
+import id.homebase.core.NotificationActions
 import id.homebase.core.audio.DefaultVoiceNotePlayback
 import id.homebase.core.audio.ProximityAudioRouter
 import id.homebase.core.audio.VoiceNotePlayback
@@ -1069,15 +1071,8 @@ val appModule = module {
         )
     }
     singleOf(::ConnectionRequestService)
-    single {
-        NotificationActionBridge(
-            senderService = get(),
-            actionService = get(),
-            conversationService = get(),
-            notificationService = get(),
-            scope = get(),
-        )
-    }
+    single<NotificationActions> { ChatNotificationActions(get(), get(), get(), get()) }
+    singleOf(::NotificationActionBridge)
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)

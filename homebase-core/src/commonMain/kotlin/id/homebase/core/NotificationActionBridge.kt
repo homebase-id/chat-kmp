@@ -12,40 +12,49 @@ import org.koin.mp.KoinPlatformTools
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/** What a notification's Reply and Mark as read actions do; a seam so [NotificationActionBridge] is testable. */
+interface NotificationActions {
+    suspend fun sendMessage(conversationId: Uuid, text: String)
+    suspend fun markAllAsRead(conversationId: Uuid)
+    suspend fun flushLastRead()
+    fun clearNotifications(conversationId: String)
+}
+
+@OptIn(ExperimentalUuidApi::class)
+class ChatNotificationActions(
+    private val senderService: ChatMessageSenderService,
+    private val actionService: ChatMessageActionService,
+    private val conversationService: ConversationService,
+    private val notificationService: NotificationService,
+) : NotificationActions {
+    override suspend fun sendMessage(conversationId: Uuid, text: String) {
+        senderService.sendNewMessage(
+            messageUniqueId = Uuid.random(),
+            conversationId = conversationId,
+            messageText = text,
+            previousMessageUniqueId = null,
+            payloadBundle = null,
+        )
+    }
+
+    override suspend fun markAllAsRead(conversationId: Uuid) = actionService.markAllAsRead(conversationId)
+
+    override suspend fun flushLastRead() = conversationService.flushLastReadNow()
+
+    override fun clearNotifications(conversationId: String) =
+        notificationService.clearConversationNotifications(conversationId, ClearReason.MarkRead)
+}
+
 /**
- * Bridge for iOS notification actions (reply, mark-as-read).
+ * Bridge for notification actions (reply, mark-as-read) on Android and iOS.
  * Provides callback-based wrappers around suspend functions
  * so they can be called from Swift.
  */
 @OptIn(ExperimentalUuidApi::class)
 class NotificationActionBridge(
-    private val sendMessage: suspend (conversationId: Uuid, text: String) -> Unit,
-    private val markAllAsRead: suspend (conversationId: Uuid) -> Unit,
-    private val flushLastRead: suspend () -> Unit,
-    private val clearNotifications: (conversationId: String) -> Unit,
+    private val actions: NotificationActions,
     private val scope: CoroutineScope,
 ) {
-    constructor(
-        senderService: ChatMessageSenderService,
-        actionService: ChatMessageActionService,
-        conversationService: ConversationService,
-        notificationService: NotificationService,
-        scope: CoroutineScope,
-    ) : this(
-        sendMessage = { conversationId, text ->
-            senderService.sendNewMessage(
-                messageUniqueId = Uuid.random(),
-                conversationId = conversationId,
-                messageText = text,
-                previousMessageUniqueId = null,
-                payloadBundle = null,
-            )
-        },
-        markAllAsRead = actionService::markAllAsRead,
-        flushLastRead = conversationService::flushLastReadNow,
-        clearNotifications = { notificationService.clearConversationNotifications(it, ClearReason.MarkRead) },
-        scope = scope,
-    )
 
     /**
      * Sends a reply message to a conversation.
@@ -56,7 +65,7 @@ class NotificationActionBridge(
     fun sendReply(conversationId: String, text: String, onComplete: (Boolean) -> Unit) {
         scope.launch {
             try {
-                sendMessage(Uuid.parse(conversationId), text)
+                actions.sendMessage(Uuid.parse(conversationId), text)
                 Logger.i(tag = "NotificationActionBridge") {
                     "Reply sent to $conversationId"
                 }
@@ -78,10 +87,10 @@ class NotificationActionBridge(
     fun markAsRead(conversationId: String, onComplete: (Boolean) -> Unit) {
         scope.launch {
             try {
-                markAllAsRead(Uuid.parse(conversationId))
+                actions.markAllAsRead(Uuid.parse(conversationId))
                 // The writeback is debounced in memory; the process may not outlive it.
-                flushLastRead()
-                clearNotifications(conversationId)
+                actions.flushLastRead()
+                actions.clearNotifications(conversationId)
                 Logger.i(tag = "NotificationActionBridge") {
                     "Marked $conversationId as read"
                 }

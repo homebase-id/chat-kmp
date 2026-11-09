@@ -11,13 +11,21 @@ import kotlin.uuid.Uuid
 class NotificationActionBridgeTest {
     private val calls = mutableListOf<String>()
 
-    private fun TestScope.bridge(failOn: String? = null) = NotificationActionBridge(
-        sendMessage = { _, _ -> },
-        markAllAsRead = { calls += "read:$it"; if (failOn == "read") error("boom") },
-        flushLastRead = { calls += "flush" },
-        clearNotifications = { calls += "clear:$it" },
-        scope = this,
-    )
+    private inner class FakeActions(private val failOn: String?) : NotificationActions {
+        override suspend fun sendMessage(conversationId: Uuid, text: String) {}
+        override suspend fun markAllAsRead(conversationId: Uuid) {
+            calls += "read:$conversationId"
+            if (failOn == "read") error("boom")
+        }
+        override suspend fun flushLastRead() {
+            calls += "flush"
+        }
+        override fun clearNotifications(conversationId: String) {
+            calls += "clear:$conversationId"
+        }
+    }
+
+    private fun TestScope.bridge(failOn: String? = null) = NotificationActionBridge(FakeActions(failOn), this)
 
     @Test
     fun markAsReadMarksFlushesThenClears() = runTest {
