@@ -652,6 +652,8 @@ internal class MessageActionsHandler(
                     targetConversationIds = conversationIds
                 )
                 sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.e("Failed to send forward message", e)
                 sendEvent(

@@ -1420,6 +1420,7 @@ val appModule = module {
             driveFileProvider = get(),
             fileOperationsProvider = get(),
             recipientLookup = get(),
+            payloadDownloadService = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {

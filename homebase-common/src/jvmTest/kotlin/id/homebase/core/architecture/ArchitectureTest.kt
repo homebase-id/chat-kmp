@@ -37,6 +37,24 @@ class ArchitectureTest {
     }
 
     @Test
+    fun `Forward and moment share stream the payload to disk instead of reading it whole`() {
+        val wholeFileRead = Regex("""\.\s*getPayloadBytesDecrypted\s*\(""")
+        val guarded = Konsist.scopeFromProject()
+            .files
+            .filter {
+                val path = it.path.replace('\\', '/')
+                path.contains("/homebase-chat/src/commonMain/") && it.hasNameEndingWith("ChatMessageSenderService") ||
+                    path.contains("/homebase-core/src/commonMain/") && it.hasNameEndingWith("MomentDetailViewModel")
+            }
+        assertTrue(guarded.size >= 2, "guard matched no files; update the path filter")
+        guarded.assertFalse(
+            additionalMessage = "getPayloadBytesDecrypted reads the whole payload and throws " +
+                "PayloadTooLargeException over the render limit. Use PayloadDownloadService.exportToTemp " +
+                "(or renderBytes for small JSON)."
+        ) { it.text.contains(wholeFileRead) }
+    }
+
+    @Test
     fun `No hardcoded strings in Composables`() {
         Konsist.scopeFromProject()
             .files
