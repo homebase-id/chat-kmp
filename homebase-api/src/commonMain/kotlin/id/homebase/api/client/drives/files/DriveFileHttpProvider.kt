@@ -77,14 +77,18 @@ public class DriveFileHttpProvider(
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
         require(key.isNotBlank()) { "Key must be defined" }
+        return streamDecrypted("/drives/$driveId/files/$fileId/payload/$key", keyHeader, onProgress, consume)
+    }
 
+    /** The whole body at [path] to [consume], decrypted unless the server flags it plaintext; false on 404. */
+    internal suspend fun streamDecrypted(
+        path: String,
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)?,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean {
         val creds = requireCreds()
-
-        val url =
-            apiUrl(
-                creds.domain,
-                "/drives/$driveId/files/$fileId/payload/$key"
-            )
+        val url = apiUrl(creds.domain, path)
 
         // Streamed, not buffered: get() would read the whole body into memory, and a large file outlasts any request timeout.
         return httpClient.prepareGet(url) {
@@ -92,11 +96,11 @@ public class DriveFileHttpProvider(
             timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
         }.execute { response ->
             if (response.status.value == 404) {
-                Logger.w(tag = TAG) { "streamPayloadDecrypted 404 file=$fileId key=$key" }
+                Logger.w(tag = TAG) { "streamDecrypted 404 url=$url" }
                 return@execute false
             }
 
-            if (response.status.value !in listOf(200, 206)) {
+            if (response.status.value !in 200..299) {
                 throwForFailure(
                     ByteApiResponse(
                         status = response.status.value,
@@ -107,12 +111,9 @@ public class DriveFileHttpProvider(
                 )
             }
 
-            // Progress from a bytes-read counter over Content-Length (when present) —
-            // needed by the rerouted MP4 render path (#845), which showed real download
-            // progress back when it buffered the whole payload.
             val totalBytes = response.contentLength()
             var readSoFar = 0L
-            val encryptedFlow =
+            val body =
                 response.bodyAsChannel().asFlow().let { upstream ->
                     if (onProgress == null || totalBytes == null || totalBytes <= 0L) upstream
                     else flow {
@@ -124,14 +125,9 @@ public class DriveFileHttpProvider(
                     }
                 }
 
-            val decryptedFlow =
-                AesCbc.streamDecryptWithCbc(
-                    encryptedFlow,
-                    keyHeader.aesKey,
-                    keyHeader.iv
-                )
-
-            consume(decryptedFlow)
+            // A public post's payload is plaintext with an empty keyHeader, and the server says so.
+            val plaintext = response.headers["payloadencrypted"]?.equals("false", ignoreCase = true) == true
+            consume(if (plaintext) body else AesCbc.streamDecryptWithCbc(body, keyHeader.aesKey, keyHeader.iv))
             onProgress?.invoke(1f)
 
             true

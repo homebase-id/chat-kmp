@@ -14,6 +14,7 @@ import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
+import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.CancellationException
@@ -189,21 +190,21 @@ class FilesyncEditor(
     }
 
     /** Moves [nodes] into the last folder of [folderPath] as [planMove] plans it; one changed since stays where it is. */
-    suspend fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, folderPath: List<Uuid>): FilesyncWriteResult =
+    /** [moved] gets each node as it moves, so a move that fails partway still says which did. */
+    suspend fun move(nodes: List<FilesyncNode>, handles: Map<Uuid, FilesyncHandle>, folderPath: List<Uuid>, moved: MutableList<Uuid> = mutableListOf()): FilesyncWriteResult =
         writeLock.withLock {
             val folderId = folderPath.last()
             val plan = planMove(nodes, handles, folderPath, repository.takenNames(folderId))
-            var moved = 0
             var skipped = plan.skipped
             try {
                 for ((node, name) in plan.moves) {
                     val handle = handles.getValue(node.nodeId)
-                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved++ else skipped++
+                    if (write(node.nodeId, handle, renamedContent(handle.content, name), folderId)) moved += node.nodeId else skipped++
                 }
             } finally {
                 if (plan.moves.isNotEmpty()) _changed.tryEmit(Unit)
             }
-            FilesyncWriteResult(moved, skipped)
+            FilesyncWriteResult(moved.size, skipped)
         }
 
     /** Empties [items], each with everything removed below it; one not in [seen], or changed since, stays. */
@@ -342,8 +343,7 @@ class FilesyncEditor(
 
 /** [content] (everything read, unknown keys too) as a live node in [parentId]: the node's own key with a new IV, guarded by its versionTag. */
 internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid): UpdateFileByFileIdRequest {
-    val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), handle.keyHeader.aesKey)
-    val metadata = filesyncMetadata(nodeId, parentId, handle.fileType, content.toString(), ArchivalStatus.None, handle.versionTag)
+    val keyHeader = handle.keyWithNewIv()
     return UpdateFileByFileIdRequest(
         driveId = FilesyncProtocol.DriveAlias,
         fileId = handle.fileId,
@@ -354,9 +354,15 @@ internal suspend fun liveNodeUpdate(nodeId: Uuid, handle: FilesyncHandle, conten
             recipients = emptyList(),
             manifest = UpdateManifest.build(),
         ),
-        metadata = metadata.encryptContent(keyHeader),
+        metadata = liveNodeMetadata(nodeId, handle, content, parentId, keyHeader),
     )
 }
+
+internal fun FilesyncHandle.keyWithNewIv() = KeyHeader(ByteArrayUtil.getRndByteArray(16), keyHeader.aesKey)
+
+/** The whole header of a node as it is read, with [content], under [keyHeader]: guarded by the version it was read at. */
+internal suspend fun liveNodeMetadata(nodeId: Uuid, handle: FilesyncHandle, content: JsonObject, parentId: Uuid, keyHeader: KeyHeader): UploadFileMetadata =
+    filesyncMetadata(nodeId, parentId, handle.fileType, content.toString(), ArchivalStatus.None, handle.versionTag).encryptContent(keyHeader)
 
 
 // The legacy removal key goes with any write of the content (node schema, `rm`).

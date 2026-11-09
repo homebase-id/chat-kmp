@@ -27,14 +27,15 @@ class OutboxWrapper(
         }
     }
 
-    suspend fun checkout(): Outbox?
-    {
-        return databaseManager.withWriteValue { delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds).executeAsOneOrNull() }
+    suspend fun checkout(belowPriority: Long = Long.MAX_VALUE): Outbox? {
+        return databaseManager.withWriteValue {
+            delegate.checkout(getUniqueId(), UnixTimeUtc.now().milliseconds, belowPriority).executeAsOneOrNull()
+        }
     }
 
-    suspend fun nextScheduled(): UnixTimeUtc? {
+    suspend fun nextScheduled(belowPriority: Long = Long.MAX_VALUE): UnixTimeUtc? {
         val n = databaseManager.readValue("outbox.nextScheduled") {
-            delegate.nextScheduled().executeAsOneOrNull()
+            delegate.nextScheduled(belowPriority).executeAsOneOrNull()
         }
         return if (n == null) null else UnixTimeUtc(n)
     }
@@ -49,6 +50,12 @@ class OutboxWrapper(
     suspend fun selectByDriveAndUnique(driveId: Uuid, uniqueId: Uuid): Outbox? =
         databaseManager.readValue("outbox.selectByDriveAndUnique") {
             delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
+        }
+
+    /** Rows of [uploadType] for [driveId] that no worker holds and none has tried yet (an offline retry counts no attempt but moves nextRunTime). */
+    suspend fun selectUntriedByDriveAndType(driveId: Uuid, uploadType: Long): List<Outbox> =
+        databaseManager.readValue("outbox.selectUntriedByDriveAndType") {
+            delegate.selectUntriedByDriveAndType(driveId, uploadType).executeAsList()
         }
 
     /** True when any outbox row still exists for [uniqueId] (across drives) —

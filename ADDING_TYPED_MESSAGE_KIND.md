@@ -516,7 +516,7 @@ Three kinds do:
   `chat_web0`, rendered above the card.
 - **ViewOnce** (`dataType = 216`, `viewonce/`): exactly one photo or video under
   `chat_web0`, which only the viewer may ever load.
-- **AgentUi** (`dataType = 218`, `agentui/`): an agent-sent JSON tree under `agent_ui` plus images
+- **AgentUi** (`dataType = 219`, `agentui/`): an agent-sent JSON tree under `agent_ui` plus images
   under `chat_web0..9`; see `AGENT_UI.md`. It has no composer or attachment entry.
 
 A kind whose content is usually small but can outgrow the header (AgentUi) can carry it either

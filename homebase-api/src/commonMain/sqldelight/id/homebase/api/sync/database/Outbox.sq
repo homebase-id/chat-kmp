@@ -23,7 +23,7 @@ INSERT INTO Outbox(driveId, uniqueId, dependencyUniqueId, priority, lastAttempt,
 VALUES (?,?, ?, ?, ?, ?, ?, ?,?, ?, ?);
 
 
--- Checkout for sending
+-- Checkout for sending. :belowPriority leaves bulk rows queued while their upload slots are taken (OutboxSync)
 checkout:
 UPDATE Outbox
 SET checkOutStamp=:checkOutStamp
@@ -33,6 +33,7 @@ WHERE checkOutStamp IS NULL AND
     FROM Outbox AS o
     WHERE o.checkOutStamp IS NULL
         AND o.nextRunTime <= :now
+        AND o.priority < :belowPriority
         AND ((o.dependencyUniqueId IS NULL)
             OR (NOT EXISTS (
                   SELECT 1
@@ -53,11 +54,12 @@ WHERE dependencyUniqueId = :heldUniqueId
     AND uniqueId != :heldUniqueId
     AND uploadType = :uploadNewFile;
 
--- What's the lowest timestamp of the next item to process in the outbox?
+-- Earliest nextRunTime among waiting rows (not the most urgent row's): the retry timer must wake for whichever row is due first.
 nextScheduled:
 SELECT nextRunTime
 FROM Outbox AS o
 WHERE o.checkOutStamp IS NULL
+    AND o.priority < :belowPriority
     AND (
         (o.dependencyUniqueId IS NULL)
         OR (NOT EXISTS (
@@ -66,7 +68,7 @@ WHERE o.checkOutStamp IS NULL
               WHERE ib.uniqueId = o.dependencyUniqueId
         ))
     )
-ORDER BY o.priority ASC, o.nextRunTime ASC
+ORDER BY o.nextRunTime ASC
 LIMIT 1;
 
 
@@ -132,6 +134,12 @@ selectByDriveAndUnique:
 SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
 FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
+
+selectUntriedByDriveAndType:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE driveId = ? AND uploadType = ? AND checkOutStamp IS NULL AND checkOutCount = 0 AND nextRunTime = 0
+ORDER BY rowId;
 
 -- Does ANY outbox row still exist for this uniqueId (across drives)? Message
 -- Info uses it to tell whether a queued message is still waiting on an earlier

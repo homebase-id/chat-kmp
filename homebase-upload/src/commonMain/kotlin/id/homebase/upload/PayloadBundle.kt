@@ -36,6 +36,11 @@ fun PayloadBundle.thumbnailDescriptorsFor(payloadKey: String): List<ThumbnailDes
         }
         .ifEmpty { null }
 
+fun PayloadBundle.withoutPlaintextPreviews(): PayloadBundle = copy(
+    payloads = payloads.map { it.copy(previewThumbnail = null) },
+    previewThumbs = emptyList(),
+)
+
 fun PayloadBundle.withoutThumbnails(): PayloadBundle = PayloadBundle(
     payloads = payloads.map { it.copy(previewThumbnail = null) },
     thumbnails = emptyList(),

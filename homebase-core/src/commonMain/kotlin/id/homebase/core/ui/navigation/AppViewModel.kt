@@ -1,5 +1,6 @@
 package id.homebase.core.ui.navigation
 
+import id.homebase.photobase.backup.PhotoBackupEntry
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,23 +15,10 @@ import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
-import id.homebase.core.permission.registerPermissionCallbackHandler
-import id.homebase.core.permission.unregisterPermissionCallbackHandler
-import id.homebase.core.moments.services.MomentCreateFlowState
-import id.homebase.core.share.ShareContentProcessor
-import id.homebase.core.share.registerMomentShareHandler
-import id.homebase.core.share.registerShareHandler
-import id.homebase.core.share.sharedMediaAttachment
-import id.homebase.core.share.unregisterMomentShareHandler
-import id.homebase.core.share.unregisterShareHandler
 import id.homebase.core.updater.AppUpdates
 import id.homebase.core.updater.canOfferUpdate
 import id.homebase.core.upgrade.PendingUpgradeManager
 import id.homebase.core.upgrade.PendingUpgradeState
-import id.homebase.core.upgrade.registerDataUpgradeCallbackHandler
-import id.homebase.core.upgrade.unregisterDataUpgradeCallbackHandler
-import id.homebase.core.session.IdentitySessionScope
-import id.homebase.core.session.get
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -46,17 +34,12 @@ import kotlin.time.measureTime
 class AppViewModel(
     private val credentialsManager: CredentialsManager,
     private val notificationService: NotificationService,
-    private val shareContentProcessor: ShareContentProcessor,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val appUpdates: AppUpdates,
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
     private val conversationStream: ConversationStream,
-    // Not the MomentCreateFlowState itself: that is identity-scoped and this ViewModel is
-    // app-lifetime (it exists before login), so holding a direct reference would pin one
-    // identity's draft for the life of the process. Resolved on demand instead — the share
-    // hand-off below only happens while logged in.
-    private val identitySession: IdentitySessionScope,
+    private val photoBackup: PhotoBackupEntry,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -91,11 +74,6 @@ class AppViewModel(
         collectNotificationEvents()
         collectUpdateAvailability()
         syncIconBadge()
-        registerShareHandler { conversationId -> handleShareIntent(conversationId) }
-        registerMomentShareHandler { handleMomentShareIntent() }
-        registerPermissionCallbackHandler { callback ->
-            viewModelScope.launch { eventBus.emit(callback.event) }
-        }
         viewModelScope.launch {
             pendingUpgradeManager.state.collect { upgradeState ->
                 _uiState.update { it.copy(pendingUpgrade = upgradeState) }
@@ -106,20 +84,11 @@ class AppViewModel(
                 checkPendingUpgrade()
             }
         }
-        registerDataUpgradeCallbackHandler {
-            viewModelScope.launch {
-                eventBus.emit(BackendEvent.DataUpgradeReturned)
-            }
-        }
     }
 
     override fun onCleared() {
         super.onCleared()
         liveInstances--
-        unregisterShareHandler()
-        unregisterMomentShareHandler()
-        unregisterPermissionCallbackHandler()
-        unregisterDataUpgradeCallbackHandler()
     }
 
     fun refreshData() {
@@ -139,6 +108,7 @@ class AppViewModel(
         val took = measureTime {
             notificationService.isAppInForeground = true
             authConnectionCoordinator.setForeground(true)
+            photoBackup.onAppForeground()
             refreshData()
             checkForUpdate()
             // Re-assert the real total rather than zeroing: the iOS extension has been counting
@@ -152,6 +122,7 @@ class AppViewModel(
     fun onPaused() {
         notificationService.isAppInForeground = false
         authConnectionCoordinator.setForeground(false)
+        photoBackup.onAppBackground()
     }
 
     /** Keeps the app-icon badge in lock-step with the real unread total. */
@@ -220,57 +191,6 @@ class AppViewModel(
     fun onInAppBannerTapped(payloadData: Map<String, String>) {
         dismissInAppBanner()
         notificationService.handleNotificationClicked(payloadData)
-    }
-
-    /**
-     * Called when the app receives a share intent (iOS: via homebase-share:// URL scheme).
-     * Navigates to the target conversation. The conversation screen picks up
-     * pending shared content from [ShareContentProcessor].
-     */
-    fun handleShareIntent(conversationId: String) {
-        Logger.i(tag = "AppViewModel") { "Handling share intent for conversation: $conversationId" }
-        val pending = shareContentProcessor.readPendingContent()
-        if (pending != null) {
-            _navigationEvents.trySend(
-                NotificationNavigationEvent.OpenConversation(
-                    conversationId = conversationId,
-                    source = NotificationNavigationEvent.OpenConversation.Source.ShareIntent,
-                )
-            )
-        } else {
-            Logger.w(tag = "AppViewModel") { "No pending shared content found for conversation: $conversationId" }
-        }
-    }
-
-    /**
-     * Called when the app receives a "New Moment" share (iOS: via the
-     * `homebase-share://moment` URL scheme). Reads the media the share extension
-     * staged in the App Group, seeds the moments composer draft (the same
-     * [MomentCreateFlowState] the Android share path seeds), and navigates to
-     * the composer via [NotificationNavigationEvent.OpenMomentCompose].
-     *
-     * Deliberately does NOT call [ShareContentProcessor.cleanup] — that deletes
-     * the staged files, which the composer/upload still needs. As on Android,
-     * the composer owns the files from here; the next share overwrites the
-     * staging area.
-     */
-    fun handleMomentShareIntent() {
-        val descriptor = shareContentProcessor.readPendingContent()
-        if (descriptor == null || descriptor.fileNames.isEmpty()) {
-            Logger.w(tag = "AppViewModel") { "Moment share: no pending media to compose" }
-            return
-        }
-        val attachments = descriptor.fileNames.zip(descriptor.mimeTypes).map { (name, mime) ->
-            sharedMediaAttachment(shareContentProcessor.resolveFilePath(name), mime)
-        }
-        Logger.i(tag = "AppViewModel") { "Moment share: seeding draft with ${attachments.size} attachments" }
-        identitySession.get<MomentCreateFlowState>().setDraft(
-            MomentCreateFlowState.Draft(
-                attachments = attachments,
-                description = descriptor.text ?: "",
-            )
-        )
-        _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
     }
 
     private companion object {

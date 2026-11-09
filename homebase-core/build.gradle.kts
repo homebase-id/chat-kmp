@@ -108,6 +108,7 @@ kotlin {
             api(project(":homebase-upload"))
             implementation(project(":homebase-auth"))
             implementation(project(":homebase-chat"))
+            implementation(project(":homebase-photobase"))
 
             implementation(libs.ktor.client.core)
             implementation(libs.jetbrains.compose.runtime)

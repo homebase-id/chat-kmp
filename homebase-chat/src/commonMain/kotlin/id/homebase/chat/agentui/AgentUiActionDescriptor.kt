@@ -7,7 +7,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Wire format of a person's action on an agent card (dataType 219). The actor is the envelope's
+ * Wire format of a person's action on an agent card (dataType 220). The actor is the envelope's
  * server-set sender, never a field here.
  */
 @OptIn(ExperimentalUuidApi::class)

@@ -33,9 +33,8 @@ class MomentDraftSurvivesLogoutTest {
 
     @BeforeTest
     fun setUp() {
-        // createEagerInstances = false: the real graph has createdAtStart singletons (the
-        // desktop notification bridge among them) that cannot construct headless. We only
-        // need the definitions, and Koin resolves the rest lazily.
+        // createEagerInstances = false: only the definitions are needed, and the eager ones (the cache
+        // audit, the image loader) do real work on start. Koin resolves the rest lazily.
         koin = koinApplication(createEagerInstances = false) { modules(allModules) }.koin
         session = IdentitySessionScope(koin)
     }

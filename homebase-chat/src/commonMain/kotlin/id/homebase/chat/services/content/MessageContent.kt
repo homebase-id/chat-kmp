@@ -6,6 +6,7 @@ import id.homebase.chat.agentui.AgentUiTreeResult
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
@@ -208,6 +209,22 @@ sealed interface MessageContent {
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_VIEW_ONCE_LABEL
     }
 
+    /** Files the sender shared from their Filesync drive. [descriptor] follows the [Event.descriptor] nullability contract. */
+    data class FileShare(val descriptor: FileShareDescriptor?) : MessageContent {
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,            // it describes a share made in Filesync, not text
+            allowReply = true,            // "thanks, got them"
+            allowForward = false,         // the share reaches only the people it was made with
+            allowShare = false,
+            allowInlineReactions = true,
+            allowReactionDetails = true,  // reactions are on, so who-reacted must be too
+        )
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_FILE_SHARE_LABEL
+
+        // File and folder names stay off the push provider.
+        override val notificationLabel: String get() = UNPARSEABLE_FILE_SHARE_LABEL
+    }
+
     /**
      * An agent-composed interactive card (AGENT_UI.md). [descriptor] follows the [Event.descriptor]
      * nullability contract. [inlineTree] is the decoded header tree; null when the tree rides in the payload.
@@ -265,6 +282,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_VIEW_ONCE_LABEL = "Media"
         const val UNPARSEABLE_AGENT_UI_LABEL = "Agent card"
         const val UNPARSEABLE_AGENT_ACTION_LABEL = "Action"
+        const val UNPARSEABLE_FILE_SHARE_LABEL = "Shared files"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 

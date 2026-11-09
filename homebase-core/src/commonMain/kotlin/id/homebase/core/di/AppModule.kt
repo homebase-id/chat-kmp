@@ -2,6 +2,19 @@
 
 package id.homebase.core.di
 
+import org.koin.core.scope.Scope
+import id.homebase.api.client.storage.StorageQuota
+import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.coroutines.supervisedScope
+import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import kotlin.time.Duration.Companion.seconds
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
@@ -165,9 +178,41 @@ import id.homebase.core.ui.screens.openedfile.OpenedFileViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncEditor
 import id.homebase.core.ui.screens.filesync.FilesyncRecentViewModel
 import id.homebase.core.ui.screens.filesync.FilesyncTrashViewModel
+import id.homebase.core.ui.screens.filesync.FilesyncDiscussions
+import id.homebase.api.client.connections.CircleShareKeyProvider
+import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
+import id.homebase.core.ui.screens.filesync.FilesyncSharing
+import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
+import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
+import id.homebase.core.ui.screens.filesync.FilesyncMemberWrites
+import id.homebase.core.ui.screens.filesync.FilesyncPeerSends
 import id.homebase.core.filesync.FilesyncPreferences
+import id.homebase.core.config.getPhotobasePermissionExtensionConfig
+import id.homebase.core.photobase.PhotoBackupTrigger
+import id.homebase.core.photobase.PhotobasePreferences
+import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.photobase.gallery.PhotoGalleryRepository
+import id.homebase.photobase.ui.PhotoGalleryViewModel
+import id.homebase.photobase.backup.AssetHasher
+import id.homebase.photobase.backup.BackgroundUploaderContext
+import id.homebase.photobase.backup.BackupLedger
+import id.homebase.photobase.backup.BackupRequestBuilder
+import id.homebase.photobase.backup.BackupOutboxResults
+import id.homebase.photobase.backup.BackupPushSchedule
+import id.homebase.photobase.backup.BackupSettingsStore
+import id.homebase.photobase.backup.HashedExports
+import id.homebase.photobase.backup.OutboxBackupUploader
+import id.homebase.photobase.backup.PhotoBackupController
+import id.homebase.photobase.backup.PhotoBackupEntry
+import id.homebase.photobase.backup.PhotoBackupRun
+import id.homebase.photobase.backup.ServerBackupDedupe
+import id.homebase.photobase.backup.createPhotoBackupPlatform
+import id.homebase.photobase.ui.BackupSettingsViewModel
+import id.homebase.photobase.PhotobaseConfigFile
+import id.homebase.photobase.ui.PhotobaseSettingsViewModel
+import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
@@ -203,6 +248,7 @@ import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
+import id.homebase.api.sync.database.KeyHeaderTransformQueue
 import id.homebase.core.config.chatLabeledDrive
 import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.config.momentsLabeledDrive
@@ -298,12 +344,14 @@ import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 import id.homebase.core.session.IdentitySessionScope
+import id.homebase.core.share.IncomingLinks
 import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val WebDropPermissionQualifier = named("webDropPermission")
 val CirclePermissionQualifier = named("circlePermission")
 val FilesyncPermissionQualifier = named("filesyncPermission")
+val PhotobasePermissionQualifier = named("photobasePermission")
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -608,6 +656,7 @@ val appModule = module {
             httpClient = get(),
             driveFileProviderCached = get(),
             contactInfo = get(),
+            beforeLogout = { hasSession -> get<PhotoBackupEntry>().onBeforeLogout(hasSession) },
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -747,6 +796,7 @@ val appModule = module {
                 get<MomentGroupService>().start()
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
+                get<FilesyncShareUpkeep>().start()
 
                 get<FeedTimelineService>().reset()
                 get<PostCommentsService>().reset()
@@ -755,9 +805,10 @@ val appModule = module {
                 get<FeedTimelineService>().start()
 
                 // An event collector with no UI referent, so nothing else constructs it. Resolved
-                // here and NOT createdAtStart: iOS starts Koin before the database, so its DB edge
-                // would kill every launch.
+                // here and NOT createdAtStart: Koin starts before the database (AppStartup).
                 get<ChatMediaAutoSaveService>()
+                // Likewise: it takes the sealed key headers files arrive with, so it's in place before the first sync.
+                get<KeyHeaderTransformQueue>()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -806,6 +857,9 @@ val appModule = module {
                 get<WebDropStream>().apply { reset(); start() }
                 get<WebDropShareFlowState>().clear()
                 get<FilesyncPreferences>().reset()
+                get<DeveloperPreferences>().reload()
+                get<PhotoBackupEntry>().onPostAuthenticated()
+                get<PhotobasePreferences>().reset()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -1006,6 +1060,7 @@ val appModule = module {
             httpClient = get(),
         )
     }
+    single { IncomingLinks(get<NotificationService>(), get(), get(), get(), get()) }
     single<NotificationMessageResolver> {
         ChatNotificationMessageResolver(
             messageLookup = get<MessageLookup>(),
@@ -1042,9 +1097,22 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { FilesyncPreferences(get()) }
-    single { FilesyncRepository(get(), get(), get(), get()) }
+    single { photoBackupController() }
+    single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
+    single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
+    single { PhotobasePreferences(get()) }
+    single { PhotoGalleryRepository(get()) }
+    single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
-    single { FilesyncUploadQueue(get(), get(), get(), get()) }
+    single { FilesyncDiscussions(get(), get(), get(), get()) }
+    single { CircleShareKeyProvider(get(), get()) }
+    single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
+    single { FilesyncShareMessages(get(), get()) }
+    single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
+    single { FilesyncSharingSetup(get(), get(), get()) }
+    single { FilesyncMemberWrites(get<FilesyncSharing>(), get(), get()) }
+    single { FilesyncPeerSends(get(), get<FilesyncSharing>(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit, get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
@@ -1367,6 +1435,7 @@ val appModule = module {
             driveFileProvider = get(),
             fileOperationsProvider = get(),
             recipientLookup = get(),
+            payloadDownloadService = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {
@@ -1401,6 +1470,21 @@ val appModule = module {
         )
     }
     // Checked on open, unlike the other add-ons: with no drive to mount, the grant is what says "set up".
+    viewModel(PhotobasePermissionQualifier) {
+        val drives = get<DriveQueryProvider>()
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getPhotobasePermissionExtensionConfig(
+                isInstalled = { drives.isAppRegistered(PhotobaseProtocol.AppSlug) },
+            ),
+        )
+    }
+    viewModel { PhotobaseSetupViewModel(get(PhotobasePermissionQualifier)) }
+    viewModel { BackupSettingsViewModel(get()) }
+    viewModel { PhotobaseSettingsViewModel(get()) }
+    viewModel { PhotoGalleryViewModel(get<PhotoGalleryRepository>()) }
     viewModel(FilesyncPermissionQualifier) {
         val drives = get<DriveQueryProvider>()
         ExtendPermissionViewModel(
@@ -1458,6 +1542,11 @@ val appModule = module {
             extendPermissionViewModel = get(FilesyncPermissionQualifier),
             webDropShareFlowState = get(),
             privateDriveOptIn = get(),
+            discussions = get(),
+            filesyncSharing = get(),
+            sharingSetup = get(),
+            shareMessages = get(),
+            peerSends = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }
@@ -1548,3 +1637,63 @@ private suspend fun recordCallEvent(
         previousMessageUniqueId = null,
     )
 }
+
+private fun Scope.photoBackupController(): PhotoBackupController {
+    val now = { UnixTimeUtc.now().milliseconds }
+    val scope = supervisedScope("photo-backup", ioDispatcher)
+    val ledger = BackupLedger(get<DatabaseManager>().deviceBackup, now)
+    val settings = BackupSettingsStore(get())
+    val results = BackupOutboxResults(ledger, get(), PhotobaseProtocol.DriveAlias, scope)
+    val platform = createPhotoBackupPlatform(get())
+    val run = platform?.let { backup ->
+        backup.listenForUploadResults?.invoke(ledger, get(), scope)
+        get<OutboxSync>().holdBulkSends = {
+            // Runs inside chat's send loop, which a backup problem must not take down.
+            try {
+                settings.settings.value.wifiOnly && !backup.probe.state().isUnmetered
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = "PhotoBackup", throwable = e) { "could not read the network for held sends" }
+                false
+            }
+        }
+        val exports = HashedExports(backup.source, get())
+        val hasher = AssetHasher(exports, get())
+        val requests = BackupRequestBuilder(get())
+        val outbox = OutboxBackupUploader(get(), exports, hasher, requests, get(), get(), scope)
+        val uploader = backup.uploader?.invoke(BackgroundUploaderContext(outbox, requests, exports, get(), get()) { settings.settings.value.wifiOnly }) ?: outbox
+        val storageQuota = get<StorageQuota>()
+        PhotoBackupRun(
+            settings = { settings.settings.value },
+            ledger = ledger,
+            source = backup.source,
+            hasher = hasher,
+            dedupe = ServerBackupDedupe(get()),
+            uploader = uploader,
+            results = results,
+            probe = backup.probe,
+            auth = {
+                withTimeoutOrNull(BACKUP_AUTH_RESTORE_TIMEOUT) {
+                    get<YouAuthFlowManager>().authState.first { state -> state !is YouAuthState.Initializing }
+                }
+                get<CredentialsManager>().hasActiveCredentials()
+            },
+            scheduler = backup.triggers,
+            isStorageFull = { refresh ->
+                if (refresh) storageQuota.refresh()
+                storageQuota.state.value.isFull
+            },
+        )
+    }
+    val files = get<DriveFileProvider>()
+    val fileUploader = get<DriveUploadProvider>()
+    val configFile = PhotobaseConfigFile(
+        getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
+        uploadFile = { request -> fileUploader.uploadFile(request) },
+        updateFileByUniqueId = { request -> fileUploader.updateFileByUniqueId(request) },
+    )
+    return PhotoBackupController(run, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
+}
+
+private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds

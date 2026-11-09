@@ -3,6 +3,7 @@ package id.homebase.upload
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.upload.TransitOptions
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import kotlin.uuid.Uuid
 
@@ -43,4 +44,8 @@ data class MediaUploadSpec(
     val seedCache: Boolean = true,
     /** Drop every thumbnail and preview, including the ones video processing generates during encryption. */
     val omitThumbnails: Boolean = false,
+    /** Drop the plaintext previews video processing embeds and keep the encrypted thumbnails: the drive stays zero knowledge. */
+    val omitPlaintextPreviews: Boolean = false,
+    /** See [UploadFileRequest.existingFileIsSuccess]. */
+    val existingFileIsSuccess: Boolean = false,
 )

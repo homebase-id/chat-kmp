@@ -10,6 +10,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
+import id.homebase.api.client.drives.KeyHeaderTransform
 
 @Serializable
 data class SendReadReceiptByEndTimeRequestV2(
@@ -78,6 +79,25 @@ enum class SendReadReceiptResultStatus {
     CannotSendReadReceiptToSelf
 }
 
+@Serializable
+data class TransformKeyHeadersOutboxRequest(
+    val driveId: Uuid,
+    val files: List<KeyHeaderTransform>,
+)
+
+@Serializable
+data class TransformKeyHeadersRequest(val files: List<KeyHeaderTransform>)
+
+@Serializable
+data class TransformKeyHeadersResult(val results: List<TransformKeyHeaderResult>)
+
+/** One per file, in request order; [errorCode] says why the server kept the sealed header (e.g. versionTagMismatch). */
+@Serializable
+data class TransformKeyHeaderResult(
+    val fileId: Uuid,
+    val errorCode: String? = null,
+)
+
 @OptIn(ExperimentalEncodingApi::class)
 public class DriveFileOperationsProvider(
     httpClient: HttpClient,
@@ -86,6 +106,19 @@ public class DriveFileOperationsProvider(
 
     companion object {
         private const val TAG = "DriveFileOperationsProvider"
+    }
+
+    /** Stores each file's drive-key header in place of its sealed one; one file's refusal never fails the others. */
+    suspend fun transformKeyHeaders(driveId: Uuid, files: List<KeyHeaderTransform>): TransformKeyHeadersResult {
+        val creds = requireCreds()
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, "/drives/$driveId/files/transform-key-headers"),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(TransformKeyHeadersRequest(files)),
+            secret = creds.secret
+        )
+        throwForFailure(response)
+        return deserialize(response.body)
     }
 
     suspend fun sendReadReceiptBatch(

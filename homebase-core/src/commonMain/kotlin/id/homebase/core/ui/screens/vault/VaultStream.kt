@@ -218,6 +218,12 @@ class VaultStream(
         }
     }
 
+    /** Whether an outbox row with [uniqueId] is one of Vault's own: a section, an entry, or an entry being deleted. */
+    fun owns(uniqueId: Uuid): Boolean =
+        uniqueId in deletedEntryIds ||
+            _sections.value.any { it.sectionId == uniqueId } ||
+            _entriesBySection.value.values.any { entries -> entries.any { it.uniqueId == uniqueId } }
+
     private fun markEntryFailed(uniqueId: Uuid) {
         _entriesBySection.update { current ->
             current.mapValues { (_, entries) ->

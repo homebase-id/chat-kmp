@@ -51,6 +51,7 @@ actual fun createPermissionsManager(
 
 private fun String.toPermissionType(): PermissionType? {
     if (this == Manifest.permission.CAMERA) return PermissionType.CAMERA
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && this == Manifest.permission.ACCESS_MEDIA_LOCATION) return PermissionType.MEDIA_LOCATION
 
     if (this == Manifest.permission.RECORD_AUDIO) return PermissionType.RECORD_AUDIO
 
@@ -80,6 +81,12 @@ class AndroidPermissionsManager(
 
             PermissionType.RECORD_AUDIO -> {
                 genericPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+            }
+
+            PermissionType.MEDIA_LOCATION -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    genericPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_MEDIA_LOCATION))
+                }
             }
 
             PermissionType.GALLERY -> {
@@ -159,6 +166,12 @@ class AndroidPermissionsManager(
 
     override suspend fun isPermissionGranted(permission: PermissionType): Boolean {
         return when (permission) {
+            PermissionType.MEDIA_LOCATION -> {
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_MEDIA_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+
             PermissionType.CAMERA -> {
                 ContextCompat.checkSelfPermission(
                     context, Manifest.permission.CAMERA

@@ -62,7 +62,7 @@ import id.homebase.core.ui.screens.filesync.NodeName
 import id.homebase.core.ui.screens.filesync.message
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
-import id.homebase.resources.filesync_label
+import id.homebase.resources.filesync_root
 import id.homebase.resources.filesync_load_failed
 import id.homebase.resources.filesync_no_folders
 import id.homebase.resources.filesync_too_large
@@ -109,7 +109,7 @@ fun OpenedFileScreen(
                 is OpenedFileEvent.Error -> scope.launch { snackbar.showSnackbar(getString(event.error.message())) }
                 OpenedFileEvent.SaveFailed -> scope.launch { snackbar.showSnackbar(getString(MR.string.openedfile_save_failed)) }
                 is OpenedFileEvent.Saved -> scope.launch {
-                    val folder = event.folderName ?: getString(MR.string.filesync_label)
+                    val folder = event.folderName ?: getString(MR.string.filesync_root)
                     val result = snackbar.showSnackbar(
                         message = getString(MR.string.openedfile_saved, folder),
                         actionLabel = getString(MR.string.openedfile_show),

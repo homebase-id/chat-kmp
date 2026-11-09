@@ -23,4 +23,7 @@ enum class PermissionType {
      * iOS Core Motion. Best-effort — denial just omits step counts.
      */
     ACTIVITY,
+
+    /** Android `ACCESS_MEDIA_LOCATION`, without which GPS is redacted from photos read from MediaStore. Granted elsewhere. */
+    MEDIA_LOCATION,
 }

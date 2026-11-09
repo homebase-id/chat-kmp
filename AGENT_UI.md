@@ -1,8 +1,8 @@
 # AgentUi: agent-composed interactive cards
 
-A typed message kind (dataType 218) where an agent composes a card from a fixed set of native
+A typed message kind (dataType 219) where an agent composes a card from a fixed set of native
 blocks, and people act on it (approve, pick, fill in) without leaving the chat. Actions come back
-as typed messages (dataType 219). Follows `ADDING_TYPED_MESSAGE_KIND.md`; it is the third
+as typed messages (dataType 220). Follows `ADDING_TYPED_MESSAGE_KIND.md`; it is the third
 payload-bearing kind, and has no composer or attachment entry (only agents send it).
 
 ## A2UI decision
@@ -25,7 +25,7 @@ Re-check against A2UI when bumping `schemaVersion`.
 
 ## Wire format
 
-### 1. Header (`appData.content`, dataType 218): `AgentUiDescriptor`
+### 1. Header (`appData.content`, dataType 219): `AgentUiDescriptor`
 
 ```json
 {"schemaVersion":1,"fallback":"Draft post for X and LinkedIn","title":"Draft post","rev":0}
@@ -130,7 +130,7 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 An invalid tree shows the header `fallback`. Missing child ids are dropped. `AgentUiTree.decode`
 is pure, common and never throws, so the agent can use it to validate before sending.
 
-### 6. Action reply (dataType 219): `AgentUiActionDescriptor`
+### 6. Action reply (dataType 220): `AgentUiActionDescriptor`
 
 ```json
 {"schemaVersion":1,"target":"<AgentUi message uniqueId>","rev":2,"actionId":"approve","label":"Approve","values":{"caption":"..."}}

@@ -68,6 +68,8 @@ internal data class SettingsPaneActions(
     val onOpenEmail: () -> Unit,
     val onOpenEmailModeSwitch: () -> Unit,
     val onOpenContacts: () -> Unit,
+    val photobaseAvailable: Boolean = false,
+    val photoBackup: PhotoBackupLinks?,
     val onNavigateToCropper: (Uuid) -> Unit,
     val onNavigateToDeveloperMenu: () -> Unit,
     val onNavigateToDefragmenter: () -> Unit,
@@ -281,6 +283,7 @@ private fun CategoryPage(
                         onLocation = actions.onLocation,
                         onContactBookSettings = { onSelectAppsPage(AppsPage.Contacts) },
                         onCallsSettings = { onSelectAppsPage(AppsPage.Calls) },
+                        onPhotobaseSettings = { onSelectAppsPage(AppsPage.Photobase) }.takeIf { actions.photobaseAvailable },
                     ),
                 )
             },
@@ -318,6 +321,11 @@ private fun CategoryPage(
                     )
 
                     AppsPage.Calls -> CallsSettingsScreen(viewModel = koinViewModel(), onBackClick = back)
+                    AppsPage.Photobase -> PhotobaseSettingsScreen(
+                        viewModel = koinViewModel(),
+                        onBack = back,
+                        backup = actions.photoBackup,
+                    )
                 }
             },
         )

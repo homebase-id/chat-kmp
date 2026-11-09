@@ -34,7 +34,7 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. ViewOnce is 216 and CallEvent is 217;
+     * off `appData.dataType` to choose a renderer. ViewOnce is 216, CallEvent 217, FileShare 218, AgentUi 219 and AgentUiAction 220;
      * pick the next free integer when adding one.
      */
     const val ChatEventMessageDataType = 210
@@ -93,11 +93,14 @@ object ChatProtocol {
      */
     const val ChatViewOnceMessageDataType = TombstoneRetention.VIEW_ONCE_DATA_TYPE
 
+    /** Files shared from the sender's Filesync drive; see [id.homebase.chat.fileshare.FileShareDescriptor]. */
+    const val ChatFileShareMessageDataType = 218
+
     /** Agent-composed interactive card: header descriptor plus a tree payload under [PAYLOAD_KEY_AGENT_UI]. See AGENT_UI.md. */
-    const val ChatAgentUiMessageDataType = 218
+    const val ChatAgentUiMessageDataType = 219
 
     /** A person's action on an [ChatAgentUiMessageDataType] card, sent back to the agent. See AGENT_UI.md. */
-    const val ChatAgentUiActionMessageDataType = 219
+    const val ChatAgentUiActionMessageDataType = 220
 
     const val MessageFileType = 7878
 

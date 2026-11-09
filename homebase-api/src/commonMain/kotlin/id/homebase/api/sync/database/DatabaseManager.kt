@@ -229,9 +229,11 @@ class DatabaseManager(
         internal val TABLE_NAMES = listOf(
             "AppNotifications",
             "AutoSavedMedia",
+            "BackupCheckpoint",
             "ChatReadCount",
             "CircleMembershipCache",
             "ConnectionCache",
+            "DeviceBackupAsset",
             "DriveLocalTagIndex",
             "DriveMainIndex",
             "DriveTagIndex",
@@ -330,6 +332,9 @@ class DatabaseManager(
         }
     }
 
+    val deviceBackup: DeviceBackupWrapper by lazy {
+        DeviceBackupWrapper(driver, this)
+    }
     val autoSavedMedia: AutoSavedMediaWrapper by lazy {
         AutoSavedMediaWrapper(driver, this)
     }

@@ -182,6 +182,10 @@ class ConversationService(
         dbm = dbm
     )
 
+    /** The one-to-one chat with [person]: the existing one, revived if it was deleted, or a new one. */
+    suspend fun oneOnOneConversationId(person: OdinId): Uuid =
+        createConversation(listOf(person), title = "", payloadBundle = null).conversationId
+
     suspend fun createConversation(
         recipients: List<OdinId>,
         title: String?,

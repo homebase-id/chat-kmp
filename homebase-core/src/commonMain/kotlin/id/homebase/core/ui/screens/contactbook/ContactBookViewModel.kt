@@ -324,8 +324,9 @@ class ContactBookViewModel(
             pendingRequestDirection(statusByDomain[d], d in incomingDomains, d in outgoingDomains)?.let { d to it }
         }.toMap()
         fun isLive(domain: String, direction: RequestDirection) = requestDirections[domain.lowercase()] == direction
-        val incomingRequests = requestsData.incoming
+        val liveIncoming = requestsData.incoming
             .filter { isLive(it.senderOdinId.domainName, RequestDirection.INCOMING) }
+        val incomingRequests = liveIncoming
             .map { req ->
                 PendingRequestEntry(
                     entry = pendingEntry(req.senderOdinId.domainName),
@@ -362,6 +363,9 @@ class ContactBookViewModel(
             requests = requests,
             requestDirections = requestDirections,
             incomingRequestCount = incomingRequests.size,
+            newestIncomingRequestOdinId = liveIncoming
+                .maxByOrNull { it.receivedTimestampMilliseconds.milliseconds }
+                ?.senderOdinId?.domainName,
             reviewCircleGroups = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
                 .reviewCircleGroups(),
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },

@@ -25,8 +25,8 @@ class AgentUiDescriptorTest {
     ) = AgentUiActionDescriptor(target = Uuid.random(), rev = 1, actionId = actionId, label = label, values = values)
 
     @Test fun dataTypes_are_218_and_219() {
-        assertEquals(218, ChatProtocol.ChatAgentUiMessageDataType)
-        assertEquals(219, ChatProtocol.ChatAgentUiActionMessageDataType)
+        assertEquals(219, ChatProtocol.ChatAgentUiMessageDataType)
+        assertEquals(220, ChatProtocol.ChatAgentUiActionMessageDataType)
         assertEquals(8, ChatProtocol.PAYLOAD_KEY_AGENT_UI.length)
     }
 
@@ -68,7 +68,7 @@ class AgentUiDescriptorTest {
         val content = MessageContent.AgentUi(d)
         val json = MessageContentParser.serialize(content)
         assertEquals(ChatProtocol.ChatAgentUiMessageDataType, MessageContentParser.dataTypeFor(content))
-        assertEquals(content, MessageContentParser.parse(218, json))
+        assertEquals(content, MessageContentParser.parse(219, json))
         assertTrue(MessageContentParser.usesRawHeaderContent(content))
     }
 
@@ -77,21 +77,21 @@ class AgentUiDescriptorTest {
         val content = MessageContent.AgentUiAction(d)
         val json = MessageContentParser.serialize(content)
         assertEquals(ChatProtocol.ChatAgentUiActionMessageDataType, MessageContentParser.dataTypeFor(content))
-        assertEquals(content, MessageContentParser.parse(219, json))
+        assertEquals(content, MessageContentParser.parse(220, json))
         assertTrue(MessageContentParser.usesRawHeaderContent(content))
     }
 
     @Test fun malformed_headers_keep_the_kind_with_null_descriptor() {
-        val ui = MessageContentParser.parse(218, "not json")
+        val ui = MessageContentParser.parse(219, "not json")
         assertIs<MessageContent.AgentUi>(ui)
         assertNull(ui.descriptor)
         assertEquals(MessageContent.UNPARSEABLE_AGENT_UI_LABEL, ui.displayLabel)
 
-        val invalid = MessageContentParser.parse(218, """{"schemaVersion":1,"fallback":"","rev":0}""")
+        val invalid = MessageContentParser.parse(219, """{"schemaVersion":1,"fallback":"","rev":0}""")
         assertIs<MessageContent.AgentUi>(invalid)
         assertNull(invalid.descriptor)
 
-        val act = MessageContentParser.parse(219, """{"target":"nope"}""")
+        val act = MessageContentParser.parse(220, """{"target":"nope"}""")
         assertIs<MessageContent.AgentUiAction>(act)
         assertNull(act.descriptor)
         assertEquals(MessageContent.UNPARSEABLE_AGENT_ACTION_LABEL, act.displayLabel)

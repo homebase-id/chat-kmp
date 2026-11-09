@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <plurals name="filesync_expires_in_days">
+        <item quantity="one">Expires in %1$d day</item>
+        <item quantity="other">Expires in %1$d days</item>
+    </plurals>
     <plurals name="chat_group_selected_members">
         <item quantity="one">%1$d member</item>
         <item quantity="other">%1$d members</item>
@@ -87,5 +91,53 @@
     <plurals name="profile_card_import_count">
         <item quantity="one">%1$d new item</item>
         <item quantity="other">%1$d new items</item>
+    </plurals>
+    <plurals name="photobase_backup_albums_some">
+        <item quantity="one">%1$d album</item>
+        <item quantity="other">%1$d albums</item>
+    </plurals>
+    <plurals name="photobase_backup_interval_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <plurals name="photobase_backup_interval_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <plurals name="contactbook_requests_banner_more">
+        <item quantity="one">You have connection requests from %1$s and %2$d more</item>
+        <item quantity="other">You have connection requests from %1$s and %2$d more</item>
+    </plurals>
+    <plurals name="filesync_peer_added_many">
+        <item quantity="one">%1$d files are in %2$s's folder now.</item>
+        <item quantity="other">%1$d files are in %2$s's folder now.</item>
+    </plurals>
+    <plurals name="filesync_peer_replaced_many">
+        <item quantity="one">%2$s has your new versions of %1$d files.</item>
+        <item quantity="other">%2$s has your new versions of %1$d files.</item>
+    </plurals>
+    <plurals name="filesync_peer_retrying_many">
+        <item quantity="one">%2$s's server isn't answering. %1$d files go when it does.</item>
+        <item quantity="other">%2$s's server isn't answering. %1$d files go when it does.</item>
+    </plurals>
+    <plurals name="filesync_peer_waiting_storage_many">
+        <item quantity="one">%2$s is out of storage. %1$d files go when there's room.</item>
+        <item quantity="other">%2$s is out of storage. %1$d files go when there's room.</item>
+    </plurals>
+    <plurals name="filesync_peer_changed_first_many">
+        <item quantity="one">Someone changed %1$d files first, so your versions weren't saved in %2$s's folder.</item>
+        <item quantity="other">Someone changed %1$d files first, so your versions weren't saved in %2$s's folder.</item>
+    </plurals>
+    <plurals name="filesync_peer_denied_many">
+        <item quantity="one">%2$s's folder no longer takes your changes. %1$d files weren't sent.</item>
+        <item quantity="other">%2$s's folder no longer takes your changes. %1$d files weren't sent.</item>
+    </plurals>
+    <plurals name="filesync_peer_failed_many">
+        <item quantity="one">%1$d files couldn't be sent to %2$s's folder.</item>
+        <item quantity="other">%1$d files couldn't be sent to %2$s's folder.</item>
+    </plurals>
+    <plurals name="filesync_peer_not_confirmed_many">
+        <item quantity="one">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
+        <item quantity="other">Couldn't confirm that %1$d files reached %2$s's folder. If they aren't there, send them again.</item>
     </plurals>
 </resources>

@@ -1,11 +1,8 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
-import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OutboxSerializer
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -14,19 +11,7 @@ import kotlin.uuid.Uuid
 
 class OutboxEnqueueLatestTest {
 
-    private fun run(body: suspend TestScope.(DatabaseManager, OutboxSync) -> Unit) = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val db = DatabaseManager(
-            { createInMemoryDatabase() },
-            dispatcher = dispatcher,
-            readDispatcher = dispatcher,
-        )
-        try {
-            body(db, OutboxSync(db, TestUploader(), EventBus(), backgroundScope))
-        } finally {
-            db.close()
-        }
-    }
+    private fun run(body: suspend TestScope.(DatabaseManager, OutboxSync) -> Unit) = runOutboxSyncTest(body)
 
     private val drive = Uuid.random()
     private val file = Uuid.random()

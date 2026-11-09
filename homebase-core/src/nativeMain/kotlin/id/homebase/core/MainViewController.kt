@@ -20,8 +20,6 @@ import androidx.compose.ui.window.ComposeUIViewController
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseDriverFactory
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.diagnostics.ProcessHeartbeat
 import id.homebase.core.diagnostics.installGpuTextDiagnostics
@@ -29,16 +27,16 @@ import id.homebase.core.diagnostics.installIosMemoryDiagnostics
 import id.homebase.core.crash.CrashMetadata
 import id.homebase.core.crash.CrashReporting
 import id.homebase.core.logging.LoggerConfig
-import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.logging.setupIOSCrashHandler
 import id.homebase.core.location.tracking.observeAppForeground
 import id.homebase.core.settings.UserPreferencesHelper
+import id.homebase.core.share.IncomingLinks
+import org.koin.mp.KoinPlatformTools
 import kotlinx.cinterop.ExperimentalForeignApi
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
-import org.koin.core.context.startKoin
 import platform.Foundation.NSBundle
 import platform.UIKit.UIDevice
 import platform.Foundation.NSDocumentDirectory
@@ -51,7 +49,6 @@ import platform.darwin.NSObjectProtocol
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
-private var koinInitialized = false
 private var appInitialized = false
 private var crashHandlingInstalled = false
 
@@ -95,13 +92,6 @@ fun clearPendingCrash() {
     CrashReporting.clearPending()
 }
 
-/** Start Koin early so it's available before any Compose UI renders (e.g. on background push). */
-fun initKoin() {
-    if (koinInitialized) return
-    koinInitialized = true
-    startKoin { modules(allModules) }
-}
-
 /**
  * Run all heavy initialization (Koin, logging, crash reporting, database) outside
  * [MainViewController] so the main-thread run-loop is free to process CoreText / Metal
@@ -116,18 +106,18 @@ fun initializeApp() {
         appInitialized = true
         initializeBeforeDatabase()
     }
-    if (!databaseGate.tryOpen()) retryWhenProtectedDataAvailable()
+    if (!runBlocking { AppStartup.openDatabase(DatabaseDriverFactory()) }) retryWhenProtectedDataAvailable()
 }
 
 /** Swift skips background work that needs the database while this is false. */
-fun isDatabaseOpen(): Boolean = databaseGate.isOpen
+fun isDatabaseOpen(): Boolean = AppStartup.isDatabaseOpen
 
-private val databaseGate = DatabaseStartGate {
-    val dbMark = kotlin.time.TimeSource.Monotonic.markNow()
-    runBlocking {
-        DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
-    }
-    Logger.i(tag = "TextRendering") { "DB init (runBlocking): ${dbMark.elapsedNow().inWholeMilliseconds}ms" }
+/** For Swift: runs [block] once startup's after-database work is done (at once if it is). Main thread. */
+fun whenStarted(block: () -> Unit) = AppStartup.whenStarted(block)
+
+// Koin is resolved inside the block: with a crash report pending, Swift defers initializeApp.
+fun handleIncomingLink(url: String) = AppStartup.whenStarted {
+    KoinPlatformTools.defaultContext().get().get<IncomingLinks>().handle(url)
 }
 
 private var protectedDataObserver: NSObjectProtocol? = null
@@ -151,22 +141,17 @@ private fun initializeBeforeDatabase() {
     installCrashReportingAndHandlers()
 
     val startMark = kotlin.time.TimeSource.Monotonic.markNow()
-    Logger.i(tag = "TextRendering") { "initializeApp() started" }
 
-    initKoin()
-    Logger.i(tag = "TextRendering") { "Koin init: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
-
-    // Initialize file logging first
     try {
-        val logDir = getLogDirectory()
-        LoggerConfig.initialize(logDirectory = logDir)
-
-        val versionName = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String ?: "Unknown"
-        val versionCode = (NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String)?.toIntOrNull() ?: 0
-        StartupLogger.logAppStartupInfo(versionName, versionCode, BuildConfig.APP_BUILD_TIME)
+        LoggerConfig.initialize(logDirectory = getLogDirectory())
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = "MainViewController") { "Failed to initialize file logging" }
     }
+    Logger.i(tag = "TextRendering") { "initializeApp() started" }
+
+    val koinMark = kotlin.time.TimeSource.Monotonic.markNow()
+    AppStartup.startKoin()
+    Logger.i(tag = "TextRendering") { "Koin init: ${koinMark.elapsedNow().inWholeMilliseconds}ms" }
 
     // Configure Crashlytics based on user preference
     // Note: Koin must be initialized before accessing UserPreferences
@@ -190,26 +175,15 @@ private fun initializeBeforeDatabase() {
     // GpuTextDiagnostics / BLANK_TEXT_INVESTIGATION.md.
     installGpuTextDiagnostics()
 
-    databaseGate.whenOpen { initializeAfterDatabase(startMark) }
+    AppStartup.afterDatabase { initializeAfterDatabase(startMark) }
 }
 
 private fun initializeAfterDatabase(startMark: kotlin.time.TimeSource.Monotonic.ValueTimeMark) {
     protectedDataObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
     protectedDataObserver = null
 
-    // Re-arm Location tracking on every process start — including the
-    // UIApplicationLaunchOptionsLocationKey relaunch after the OS terminated
-    // the app (AppDelegate calls initializeApp() before the launch runloop
-    // drains, so the CLLocationManager is re-created in time to receive the
-    // pending significant-location-change delivery). Must run after DB init:
-    // the coordinator's preferences read the encrypted keyValue store.
-    org.koin.mp.KoinPlatformTools.defaultContext().get()
-        .get<id.homebase.core.location.tracking.LocationTrackingCoordinator>()
-        .onProcessStart()
-
     id.homebase.core.calling.startAppleCallCoordinator()
 
-    CrashReporting.markStartupComplete()
     Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }
 
@@ -225,12 +199,8 @@ fun MainViewController(): UIViewController {
     // here, so headless work stays headless. Idempotent. See
     // AuthConnectionCoordinator.promoteToForeground.
     val databaseOpen = mutableStateOf(false)
-    databaseGate.whenOpen {
-        org.koin.mp.KoinPlatformTools.defaultContext().get()
-            .get<id.homebase.core.auth.AuthConnectionCoordinator>()
-            .promoteToForeground()
-        databaseOpen.value = true
-    }
+    AppStartup.promoteToForeground()
+    AppStartup.whenDatabaseOpen { databaseOpen.value = true }
     val controller = ComposeUIViewController { if (databaseOpen.value) App() }
     MainViewControllerRef.instance = controller
     return controller
