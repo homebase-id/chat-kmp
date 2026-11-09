@@ -25,14 +25,14 @@ private const val TAG = "CardData"
 internal const val CARD_IMAGE_MAX_EDGE = 1080
 private const val CARD_IMAGE_JPEG_QUALITY = 85
 
-private class CardSocialField(val field: ProfileField, val hosts: Set<String>)
+private class CardSocialField(val attributeType: String, val field: ProfileField, val hosts: Set<String>)
 
 private val cardSocialFields = mapOf(
-    ProfileAttributeTypes.KEY_TWITTER to CardSocialField(ProfileField.TWITTER, setOf("twitter.com", "x.com")),
-    ProfileAttributeTypes.KEY_FACEBOOK to CardSocialField(ProfileField.FACEBOOK, setOf("facebook.com", "fb.com")),
-    ProfileAttributeTypes.KEY_INSTAGRAM to CardSocialField(ProfileField.INSTAGRAM, setOf("instagram.com")),
-    ProfileAttributeTypes.KEY_TIKTOK to CardSocialField(ProfileField.TIKTOK, setOf("tiktok.com")),
-    ProfileAttributeTypes.KEY_LINKEDIN to CardSocialField(ProfileField.LINKEDIN, setOf("linkedin.com")),
+    ProfileAttributeTypes.KEY_TWITTER to CardSocialField(ProfileAttributeTypes.TWITTER, ProfileField.TWITTER, setOf("twitter.com", "x.com")),
+    ProfileAttributeTypes.KEY_FACEBOOK to CardSocialField(ProfileAttributeTypes.FACEBOOK, ProfileField.FACEBOOK, setOf("facebook.com", "fb.com")),
+    ProfileAttributeTypes.KEY_INSTAGRAM to CardSocialField(ProfileAttributeTypes.INSTAGRAM, ProfileField.INSTAGRAM, setOf("instagram.com")),
+    ProfileAttributeTypes.KEY_TIKTOK to CardSocialField(ProfileAttributeTypes.TIKTOK, ProfileField.TIKTOK, setOf("tiktok.com")),
+    ProfileAttributeTypes.KEY_LINKEDIN to CardSocialField(ProfileAttributeTypes.LINKEDIN, ProfileField.LINKEDIN, setOf("linkedin.com")),
 )
 
 fun buildCardPayload(
@@ -48,7 +48,10 @@ fun buildCardPayload(
     visitorPreview: Boolean = false,
 ): CardPayload {
     val canSee = audience.aclFilter()
-    val values = attributes.visibleValues(canSee)
+    val fields = overrides.fields
+    val onCard = attributes.filterNot { fields.hides(it, audience) }
+    val values = onCard.visibleValues(canSee)
+    val socialIds = cardSocialFields.mapValues { (_, social) -> onCard.firstOrNull { it.type == social.attributeType }?.id?.toString() }
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
@@ -62,13 +65,13 @@ fun buildCardPayload(
             displayName = profileNameValue(values)?.trim(),
             headline = tagLine?.trim()?.ifEmpty { null } ?: text(ProfileField.STATUS),
             // The public site's card shows the summary, never the full bio.
-            bio = attributes.visibleBio(canSee)?.trim()?.ifEmpty { null },
+            bio = onCard.visibleBio(canSee)?.trim()?.ifEmpty { null },
             photo = photoSrc?.ifBlank { null }?.let(::CardImage),
             header = headerSrc?.ifBlank { null }?.let(::CardImage),
-            links = cardLinks(attributes.visibleLinks(canSee)),
+            links = cardLinks(onCard.visibleLinks(canSee).inCardOrder(fields) { it.id.toString() }),
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
-            },
+            }.inCardOrder(fields) { socialIds[it.type].orEmpty() },
             posts = posts,
         ),
     )
