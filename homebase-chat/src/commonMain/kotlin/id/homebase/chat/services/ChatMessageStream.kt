@@ -77,10 +77,6 @@ class ChatMessageStream(
     private val surfacedListeners: List<SurfacedListener> =
         listOf(SurfacedListener(::autoPinNewTypedMessages)) + surfacedListeners
 
-    private suspend fun onMessagesSurfaced(messages: List<MessageUiModel>) {
-        surfacedListeners.runAll(messages)
-    }
-
     private val paginatedState = PaginatedConversationState()
     private val chatDrive = chatTargetDrive.alias
 
@@ -290,7 +286,7 @@ class ChatMessageStream(
         // Read the finalized window so a merged raced write is included; runs on both the
         // raced and common paths. Dismissed messages carry AutoPinDismissedTag and are skipped.
         val windowMessages = paginatedState.getWindow(conversationId)?.messages ?: return
-        onMessagesSurfaced(windowMessages)
+        surfacedListeners.runAll(windowMessages)
         refreshPinnedFor(conversationId)
     }
 
@@ -538,7 +534,7 @@ class ChatMessageStream(
         // (the common case) leaves the bar empty until a live BatchReceived arrives.
         // Runs on both the initial seed and the raced merge=true re-seed
         // (autoPinNewTypedMessages/refreshPinnedFor are idempotent).
-        onMessagesSurfaced(combined)
+        surfacedListeners.runAll(combined)
         refreshPinnedFor(conversationId)
     }
 
@@ -584,7 +580,7 @@ class ChatMessageStream(
                     // silent DriveSync (this path), and must still pin. Safe against
                     // re-pinning a dismissed message because the gate is now the durable
                     // AutoPinDismissedTag, not the per-session in-memory set.
-                    onMessagesSurfaced(result.records)
+                    surfacedListeners.runAll(result.records)
                     refreshPinnedFor(conversationId)
                 } catch (t: Throwable) {
                     Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
@@ -632,7 +628,7 @@ class ChatMessageStream(
             paginatedState.upsert(conversationId, msgs)
         }
 
-        onMessagesSurfaced(messages)
+        surfacedListeners.runAll(messages)
 
         // Refresh the pinned bar for every affected OPEN conversation. Done off the
         // window gate above (which defers history-paged windows) because a pin/unpin
