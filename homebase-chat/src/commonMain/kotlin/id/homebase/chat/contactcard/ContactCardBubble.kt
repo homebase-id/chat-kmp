@@ -1,5 +1,6 @@
 package id.homebase.chat.contactcard
 
+import id.homebase.chat.widget.UnparseableTypedChip
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -87,7 +88,16 @@ fun ContactCardBubble(
     footer: (@Composable () -> Unit)? = null,
 ) {
     if (descriptor == null || !descriptor.isValid()) {
-        UnparseableContactCardBubble(modifier = modifier, footer = footer)
+        UnparseableTypedChip(
+            Icons.Outlined.ContactPage,
+            stringResource(MR.string.chat_contact_unparseable),
+            modifier,
+            footer = footer?.let { f ->
+                {
+                    Row(Modifier.fillMaxWidth().padding(end = 12.dp, bottom = 6.dp), horizontalArrangement = Arrangement.End) { f() }
+                }
+            },
+        )
         return
     }
 
@@ -379,48 +389,3 @@ internal fun saveActionIcon(alreadySaved: Boolean): ImageVector =
 internal fun saveActionLabel(alreadySaved: Boolean): StringResource =
     if (alreadySaved) MR.string.chat_contact_card_update else MR.string.chat_contact_card_save
 
-@Composable
-private fun UnparseableContactCardBubble(
-    modifier: Modifier,
-    footer: (@Composable () -> Unit)? = null,
-) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.padding(
-                    start = 14.dp,
-                    top = 10.dp,
-                    end = 14.dp,
-                    bottom = if (footer != null) 2.dp else 10.dp,
-                ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.ContactPage,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(MR.string.chat_contact_unparseable),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            if (footer != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(end = 12.dp, bottom = 6.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    footer()
-                }
-            }
-        }
-    }
-}

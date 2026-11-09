@@ -87,6 +87,8 @@ import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.viewonce.ViewOnceActions
+import id.homebase.chat.agentui.AgentUiTreeLoader
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.chat.viewonce.ViewOncePayloadLoader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.services.ChatMessageSenderService
@@ -997,6 +999,7 @@ val appModule = module {
                 get<ChatMessageActionService>().pinMessage(messageId, dependencyUniqueId)
             }
             stream.sweepViewOnce = { messages, nowMs -> get<ViewOnceActions>().sweep(messages, nowMs) }
+            stream.warmAgentUi = { messages -> get<AgentUiTreeLoader>().warm(messages) }
         }
     }
     single<MessageLookup> { get<ChatMessageStream>() }
@@ -1010,6 +1013,16 @@ val appModule = module {
     singleOf(::CardTapShare)
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
+    single {
+        val cache = get<DriveFileProviderCached>()
+        AgentUiTreeLoader(
+            fetch = { fileId, keyHeader, lastModified ->
+                cache.getPayloadBytesDecrypted(chatTargetDrive.alias, fileId, ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, lastModified = lastModified)?.bytes
+            },
+            scope = get(),
+            events = get(),
+        )
+    }
     single {
         ViewOncePayloadLoader(
             driveFileProvider = get(),

@@ -95,6 +95,9 @@ fun collectConversationOverview(
         // A card's photo is the subject's avatar, not a picture shared into the conversation.
         if (message.messageContent is MessageContent.ContactCard) continue
 
+        // The card's tree and images belong to the card, not to the conversation's files.
+        if (message.messageContent is MessageContent.AgentUi) continue
+
         // View-once media is viewer-only, and an unknown kind's payload is not something this build can vouch for.
         if (message.messageContent.isProtectedMedia()) continue
 
