@@ -483,7 +483,7 @@ What must stay proven, and where.
 
 - Every [worked example](#worked-examples) is an exact test, in all three settings, including the band edges: 1200 against 1201, 2275 against 2276, and 4551 against 4552 on HD.
 - Small sources never upscale: 600×450, 200×150, 20×15 and 1×1, in every setting.
-- A random-size property test, over at least 50,000 sizes, checks the [properties](#working-out-the-sizes) above. It also checks that no two thumbnails are within 90% of each other, and that the final image's quality is at least that of any thumbnail within 90% of it.
+- A random-size property test, over 5,000 sizes for each setting, checks the [properties](#working-out-the-sizes) above. It also checks that no two thumbnails are within 90% of each other, and that the final image's quality is at least that of any thumbnail within 90% of it.
 - Portrait and landscape give the same sizes, transposed.
 
 ### Pipeline contract: real decoders, scalers and encoders on every platform

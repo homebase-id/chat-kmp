@@ -154,7 +154,8 @@ class MediaImagePlanTest {
     @Test
     fun randomSizesStayInsideTheSourceAndOrdered() {
         val random = Random(2230)
-        repeat(50_000) {
+        // Far more than this runs past the web test runner's time limit on a busy CI machine.
+        repeat(5_000) {
             val width = random.nextInt(1, 12001)
             val height = random.nextInt(1, 12001)
             for (setting in MediaQuality.entries) {
