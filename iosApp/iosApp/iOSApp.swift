@@ -158,10 +158,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           }
       case "MARK_READ_ACTION":
           if let convoId = conversationId {
-              let notificationId = response.notification.request.identifier
-              UNUserNotificationCenter.current().removeDeliveredNotifications(
-                  withIdentifiers: [notificationId]
-              )
               let bridge = NotificationActionBridge.companion.fromKoin()
               bridge.markAsRead(conversationId: convoId) { success in
                   if !success.boolValue {

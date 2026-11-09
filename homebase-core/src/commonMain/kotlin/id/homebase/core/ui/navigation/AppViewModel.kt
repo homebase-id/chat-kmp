@@ -12,7 +12,9 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.BadgeManager
+import id.homebase.core.notifications.ClearReason
 import id.homebase.core.notifications.NotificationNavigationEvent
+import id.homebase.core.notifications.ReadNotificationClearer
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.permission.registerPermissionCallbackHandler
@@ -93,6 +95,7 @@ class AppViewModel(
         collectNotificationEvents()
         collectUpdateAvailability()
         syncIconBadge()
+        clearNotificationsOfReadChats()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
         registerMomentShareHandler { handleMomentShareIntent() }
         registerPermissionCallbackHandler { callback ->
@@ -163,6 +166,13 @@ class AppViewModel(
         viewModelScope.launch {
             conversationStream.totalUnreadCount.collect { BadgeManager.setCount(it) }
         }
+    }
+
+    private fun clearNotificationsOfReadChats() {
+        val clearer = ReadNotificationClearer(conversationStream.conversations) {
+            notificationService.clearConversationNotifications(it, ClearReason.Read)
+        }
+        viewModelScope.launch { clearer.run() }
     }
 
     /** Collects notification events from NotificationService and forwards to UI. */

@@ -1067,7 +1067,15 @@ val appModule = module {
         )
     }
     singleOf(::ConnectionRequestService)
-    singleOf(::NotificationActionBridge)
+    single {
+        NotificationActionBridge(
+            senderService = get(),
+            actionService = get(),
+            conversationService = get(),
+            notificationService = get(),
+            scope = get(),
+        )
+    }
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
