@@ -54,7 +54,7 @@ WHERE dependencyUniqueId = :heldUniqueId
     AND uniqueId != :heldUniqueId
     AND uploadType = :uploadNewFile;
 
--- What's the lowest timestamp of the next item to process in the outbox?
+-- Earliest nextRunTime among waiting rows (not the most urgent row's): the retry timer must wake for whichever row is due first.
 nextScheduled:
 SELECT nextRunTime
 FROM Outbox AS o
@@ -68,7 +68,7 @@ WHERE o.checkOutStamp IS NULL
               WHERE ib.uniqueId = o.dependencyUniqueId
         ))
     )
-ORDER BY o.priority ASC, o.nextRunTime ASC
+ORDER BY o.nextRunTime ASC
 LIMIT 1;
 
 
