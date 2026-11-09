@@ -27,10 +27,6 @@ import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.HorizontalFloatingToolbar
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.graphicsLayer
@@ -46,12 +42,17 @@ import id.homebase.resources.profile_card_content_hidden_public
 import id.homebase.resources.profile_card_content_not_on_card_desc_public
 import id.homebase.resources.profile_card_content_on_card_desc_reorder
 import id.homebase.resources.profile_card_content_saving
-import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_on_card_desc_blank
 import id.homebase.resources.profile_card_design_action
 import id.homebase.resources.profile_card_field_reorder
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import id.homebase.resources.profile_card_content_add_to_card
+import id.homebase.resources.profile_card_content_on_card_desc_drag
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -216,14 +217,17 @@ internal fun CardContentEditor(
     var editingId by remember { mutableStateOf<Uuid?>(null) }
     var adding by remember { mutableStateOf<String?>(null) }
     var choosingMore by remember { mutableStateOf(false) }
-    var choosingKind by remember { mutableStateOf(false) }
+    var addingToCard by remember { mutableStateOf(false) }
     var copying by remember { mutableStateOf(false) }
     var pendingId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(enabled) { if (enabled) pendingId = null }
+    // A circle's card lists only what it shows; with cards off this is the profile editor, so it keeps every field.
+    val circleCard = card is CardAudience.Circle && showCardsButton
     val onCard = items.filter { it.onCard }
-    val notOnCard = items.filter { it.shown && it.renderable && it.hidden }
-    val unrenderable = items.filter { it.shown && !it.renderable }
-    val couldAdd = items.filterNot { it.shown }
+    val hiddenFromCard = items.hiddenFromCard()
+    val notOnCard = if (circleCard) emptyList() else hiddenFromCard
+    val unrenderable = if (circleCard) emptyList() else items.filter { it.shown && !it.renderable }
+    val couldAdd = if (circleCard) emptyList() else items.filterNot { it.shown }
     val present = items.map { it.type }.toSet()
     val missingSocials = CARD_SOCIAL_TYPES.filter { it !in present }
     val missingMore = ATTRIBUTE_SPECS.filter { it.type in MORE_TYPES && it.type !in present }
@@ -243,6 +247,22 @@ internal fun CardContentEditor(
             else -> adding = kind.type
         }
     }
+    val addAction: @Composable () -> Unit = {
+        if (!circleCard) {
+            AddGroup(isAvailable = isAvailable, enabled = enabled, onAdd = startAdding)
+        } else if (hiddenFromCard.isNotEmpty() || AddKind.entries.any(isAvailable)) {
+            FilledTonalButton(
+                onClick = { addingToCard = true },
+                enabled = enabled,
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.testTag("content_add"),
+            ) {
+                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                Text(stringResource(MR.string.profile_card_content_add_to_card), maxLines = 1)
+            }
+        }
+    }
     val row: @Composable (CardContentItem, Int, Int, FieldDisplay?) -> Unit = { item, index, count, display ->
         key(item.id) { EditorRow(
             item = item,
@@ -252,6 +272,7 @@ internal fun CardContentEditor(
             enabled = enabled,
             pending = !enabled && pendingId == item.id,
             showCardsButton = showCardsButton,
+            cardOnly = circleCard,
             display = display,
             onApply = {
                 pendingId = item.id
@@ -261,115 +282,123 @@ internal fun CardContentEditor(
         ) }
     }
 
-    // The toolbar takes its own space below the scrolling list, so no row or dragged row can pass under it.
     Column(
-        modifier = modifier.fillMaxWidth().navigationBarsPadding(),
-        verticalArrangement = Arrangement.SpaceBetween,
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = SECTION_INSET)
+            .padding(top = edge, bottom = 16.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SECTION_INSET)
-                .padding(top = edge, bottom = 16.dp),
-        ) {
-            AudienceHeading(card, emoji = circles.emojiOf(card))
-            AnimatedVisibility(
-                visible = busy,
-                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-                exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
-            ) { SavingLine(Modifier.padding(top = 12.dp)) }
+        AudienceHeading(card, emoji = circles.emojiOf(card))
+        AnimatedVisibility(
+            visible = busy,
+            enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) { SavingLine(Modifier.padding(top = 12.dp)) }
+        Spacer(Modifier.height(16.dp))
+        PhotoRow(card = card, photo = photo, onChange = onChangePhoto, onRemove = onRemovePhoto)
+        if (importSources.isNotEmpty() || onDesign != null) {
             Spacer(Modifier.height(16.dp))
-            PhotoRow(card = card, photo = photo, onChange = onChangePhoto, onRemove = onRemovePhoto)
-            Spacer(Modifier.height(24.dp))
-            SectionLabel(
-                stringResource(MR.string.profile_card_content_on_card),
-                when {
-                    onCard.isEmpty() -> null
-                    card is CardAudience.Circle && items.onlyNameOnCard() -> stringResource(MR.string.profile_card_content_on_card_desc_blank)
-                    canReorder -> stringResource(MR.string.profile_card_content_on_card_desc_reorder)
-                    else -> stringResource(MR.string.profile_card_content_on_card_desc)
-                },
-            )
-            if (onCard.isEmpty()) {
-                EmptyContent { AddGroup(isAvailable = isAvailable, enabled = enabled, onAdd = startAdding) }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                    val fixed = onCard.filterNot { it.orderable }
-                    val total = onCard.size
-                    fixed.forEachIndexed { index, item ->
-                        row(item, index, total, FieldDisplay(onCard = true, onToggle = { onFieldShown(item.id, false) }))
-                    }
-                    var offset = fixed.size
-                    linkGroups.forEach { group ->
-                        if (group.isNotEmpty()) {
-                            val start = offset
-                            ReorderableRows(items = group, gap = ROW_GAP, onReorder = onFieldsReordered) { item, index, count, move, handle, lifted ->
-                                row(
-                                    item, start + index, total,
-                                    FieldDisplay(
-                                        onCard = true,
-                                        onToggle = { onFieldShown(item.id, false) },
-                                        moveUp = { move(-1) }.takeIf { count > 1 && index > 0 },
-                                        moveDown = { move(1) }.takeIf { count > 1 && index < count - 1 },
-                                        handle = handle.takeIf { count > 1 },
-                                        lifted = lifted,
-                                    ),
-                                )
-                            }
-                            offset += group.size
-                        }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (importSources.isNotEmpty()) {
+                    OutlinedButton(onClick = { copying = true }, enabled = enabled, shapes = ButtonDefaults.shapes()) {
+                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(MR.string.profile_card_import_action), maxLines = 1)
                     }
                 }
-            }
-            if (notOnCard.isNotEmpty()) {
-                Spacer(Modifier.height(28.dp))
-                SectionLabel(
-                    stringResource(MR.string.profile_card_content_not_on_card),
-                    stringResource(if (card is CardAudience.Circle) MR.string.profile_card_content_not_on_card_desc else MR.string.profile_card_content_not_on_card_desc_public),
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                    notOnCard.forEachIndexed { index, item ->
-                        row(item, index, notOnCard.size, FieldDisplay(onCard = false, onToggle = { onFieldShown(item.id, true) }))
+                if (onDesign != null) {
+                    OutlinedButton(onClick = onDesign, enabled = enabled, shapes = ButtonDefaults.shapes()) {
+                        Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(MR.string.profile_card_design_action), maxLines = 1)
                     }
-                }
-            }
-            if (unrenderable.isNotEmpty()) {
-                Spacer(Modifier.height(if (notOnCard.isEmpty()) 28.dp else 12.dp))
-                CollapsedGroup(
-                    title = unrenderable.map { stringResource(typeLabel(it.type)) }.distinct().joinToString(),
-                    description = stringResource(MR.string.profile_card_content_never_on_card_desc),
-                    icon = Icons.Outlined.Block,
-                    tag = "never_on_card",
-                ) {
-                    unrenderable.forEachIndexed { index, item -> row(item, index + 1, unrenderable.size + 1, null) }
-                }
-            }
-            if (couldAdd.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                CollapsedGroup(
-                    title = stringResource(
-                        if (card is CardAudience.Circle) MR.string.profile_card_content_hidden_circle else MR.string.profile_card_content_hidden_public,
-                        couldAdd.size,
-                    ),
-                    description = stringResource(MR.string.profile_card_content_hidden_desc),
-                    icon = Icons.Outlined.VisibilityOff,
-                    tag = "not_visible",
-                ) {
-                    couldAdd.forEachIndexed { index, item -> row(item, index + 1, couldAdd.size + 1, null) }
                 }
             }
         }
-        ContentToolbar(
-            enabled = enabled,
-            canAdd = AddKind.entries.any(isAvailable),
-            onAdd = { choosingKind = true },
-            onCopy = { copying = true }.takeIf { importSources.isNotEmpty() },
-            onDesign = onDesign,
-            modifier = Modifier.padding(bottom = 16.dp),
+        Spacer(Modifier.height(24.dp))
+        SectionLabel(
+            stringResource(MR.string.profile_card_content_on_card),
+            when {
+                onCard.isEmpty() -> null
+                card is CardAudience.Circle && items.onlyNameOnCard() -> stringResource(MR.string.profile_card_content_on_card_desc_blank)
+                circleCard -> if (canReorder) stringResource(MR.string.profile_card_content_on_card_desc_drag) else null
+                canReorder -> stringResource(MR.string.profile_card_content_on_card_desc_reorder)
+                else -> stringResource(MR.string.profile_card_content_on_card_desc)
+            },
         )
+        if (onCard.isEmpty()) {
+            EmptyContent { addAction() }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                val fixed = onCard.filterNot { it.orderable }
+                val total = onCard.size
+                fixed.forEachIndexed { index, item ->
+                    row(item, index, total, FieldDisplay(onCard = true, onToggle = { onFieldShown(item.id, false) }))
+                }
+                var offset = fixed.size
+                linkGroups.forEach { group ->
+                    if (group.isNotEmpty()) {
+                        val start = offset
+                        ReorderableRows(items = group, gap = ROW_GAP, onReorder = onFieldsReordered) { item, index, count, move, handle, lifted ->
+                            row(
+                                item, start + index, total,
+                                FieldDisplay(
+                                    onCard = true,
+                                    onToggle = { onFieldShown(item.id, false) },
+                                    moveUp = { move(-1) }.takeIf { count > 1 && index > 0 },
+                                    moveDown = { move(1) }.takeIf { count > 1 && index < count - 1 },
+                                    handle = handle.takeIf { count > 1 },
+                                    lifted = lifted,
+                                ),
+                            )
+                        }
+                        offset += group.size
+                    }
+                }
+            }
+        }
+        if (notOnCard.isNotEmpty()) {
+            Spacer(Modifier.height(28.dp))
+            SectionLabel(
+                stringResource(MR.string.profile_card_content_not_on_card),
+                stringResource(if (card is CardAudience.Circle) MR.string.profile_card_content_not_on_card_desc else MR.string.profile_card_content_not_on_card_desc_public),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                notOnCard.forEachIndexed { index, item ->
+                    row(item, index, notOnCard.size, FieldDisplay(onCard = false, onToggle = { onFieldShown(item.id, true) }))
+                }
+            }
+        }
+        if (unrenderable.isNotEmpty()) {
+            Spacer(Modifier.height(if (notOnCard.isEmpty()) 28.dp else 12.dp))
+            CollapsedGroup(
+                title = unrenderable.map { stringResource(typeLabel(it.type)) }.distinct().joinToString(),
+                description = stringResource(MR.string.profile_card_content_never_on_card_desc),
+                icon = Icons.Outlined.Block,
+                tag = "never_on_card",
+            ) {
+                unrenderable.forEachIndexed { index, item -> row(item, index + 1, unrenderable.size + 1, null) }
+            }
+        }
+        if (couldAdd.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            CollapsedGroup(
+                title = stringResource(
+                    if (card is CardAudience.Circle) MR.string.profile_card_content_hidden_circle else MR.string.profile_card_content_hidden_public,
+                    couldAdd.size,
+                ),
+                description = stringResource(MR.string.profile_card_content_hidden_desc),
+                icon = Icons.Outlined.VisibilityOff,
+                tag = "not_visible",
+            ) {
+                couldAdd.forEachIndexed { index, item -> row(item, index + 1, couldAdd.size + 1, null) }
+            }
+        }
+        if (onCard.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            addAction()
+        }
     }
 
     items.firstOrNull { it.id == editingId }?.let { item ->
@@ -390,8 +419,14 @@ internal fun CardContentEditor(
             onDismiss = { editingId = null },
         )
     }
-    if (choosingKind) {
-        AddSheet(isAvailable = isAvailable, onAdd = startAdding, onDismiss = { choosingKind = false })
+    if (addingToCard) {
+        AddToCardSheet(
+            hidden = hiddenFromCard,
+            isAvailable = isAvailable,
+            onShow = { onFieldShown(it.id, true) },
+            onAdd = startAdding,
+            onDismiss = { addingToCard = false },
+        )
     }
     adding?.let { type ->
         ContentSheet(
@@ -429,52 +464,6 @@ internal fun CardContentEditor(
 }
 
 private val SWITCHER_LABEL_MAX = 160.dp
-
-// Content is the job here, so Add is the toolbar's one filled action; the design and copying sit beside it, a tap away.
-@Composable
-private fun ContentToolbar(
-    enabled: Boolean,
-    canAdd: Boolean,
-    onAdd: () -> Unit,
-    onCopy: (() -> Unit)?,
-    onDesign: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-) {
-    val add = stringResource(MR.string.profile_card_content_add_new)
-    val copy = stringResource(MR.string.profile_card_import_action)
-    HorizontalFloatingToolbar(
-        expanded = true,
-        modifier = modifier,
-        colors = FloatingToolbarDefaults.standardFloatingToolbarColors(),
-        floatingActionButton = {
-            if (canAdd) {
-                WithTooltip(add) {
-                    FloatingToolbarDefaults.VibrantFloatingActionButton(
-                        onClick = { if (enabled) onAdd() },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.testTag("content_add").semantics { contentDescription = add },
-                    ) { Icon(Icons.Outlined.Add, contentDescription = null) }
-                }
-            }
-        },
-    ) {
-        if (onDesign != null) {
-            TextButton(onClick = onDesign, enabled = enabled, shapes = ButtonDefaults.shapes()) {
-                Icon(Icons.Outlined.Palette, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(MR.string.profile_card_design_action), maxLines = 1)
-            }
-        }
-        if (onCopy != null) {
-            WithTooltip(copy) {
-                IconButton(onClick = onCopy, enabled = enabled, shapes = IconButtonDefaults.shapes()) {
-                    Icon(Icons.Outlined.ContentCopy, contentDescription = copy)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun SavingLine(modifier: Modifier = Modifier) {
@@ -605,7 +594,7 @@ private fun PhotoRow(card: CardAudience, photo: CardPhotoUi, onChange: () -> Uni
     }
 }
 
-// Tapping a row edits the item everywhere; its trailing switch only hides it from, or shows it on, this card.
+// Tapping a row edits the item everywhere; its trailing switch (or a circle card's remove button) only changes this card.
 @Composable
 private fun EditorRow(
     item: CardContentItem,
@@ -618,6 +607,7 @@ private fun EditorRow(
     onApply: (ProfileAudience) -> Unit,
     onOpen: () -> Unit,
     display: FieldDisplay? = null,
+    cardOnly: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
@@ -664,7 +654,8 @@ private fun EditorRow(
                 if (actions.isNotEmpty()) customActions = actions
             },
     ) {
-        val audience: @Composable () -> Unit = {
+        val audience: @Composable () -> Unit = audience@{
+            if (cardOnly) return@audience
             if (showCardsButton && !pending) {
                 Surface(
                     onClick = { choosing = true },
@@ -745,7 +736,16 @@ private fun EditorRow(
                     }
                 }
             }
-            if (display != null && !item.required && !pending) {
+            if (display != null && !item.required && !pending && cardOnly) {
+                IconButton(
+                    onClick = display.onToggle,
+                    enabled = enabled,
+                    shapes = IconButtonDefaults.shapes(),
+                    modifier = Modifier.testTag("field_remove"),
+                ) {
+                    Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = toggleLabel, tint = colors.onSurfaceVariant)
+                }
+            } else if (display != null && !item.required && !pending) {
                 Switch(
                     checked = display.onCard,
                     onCheckedChange = { display.onToggle() },

@@ -25,8 +25,6 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.profile.ProfileRepository
@@ -202,10 +200,8 @@ class ProfileCardScreenFlowTest {
             onAllNodesWithText("Design").assertCountEquals(0)
             onNodeWithText("Edit profile").assertExists()
             onNodeWithContentDescription("Card to edit").assertExists()
-            assertTrue(onAllNodes(hasContentDescription("Choose which cards show ", substring = true)).fetchSemanticsNodes().isNotEmpty())
-            listOf("never_on_card_toggle", "not_visible_toggle").forEach { tag -> onAllNodesWithTag(tag).fetchSemanticsNodes().forEach { _ -> onNodeWithTag(tag).performClick() } }
-            waitForIdle()
-            onNodeWithContentDescription("Choose which cards show frodo@shire.me").assertExists()
+            onAllNodes(hasContentDescription("Choose which cards show ", substring = true)).assertCountEquals(0)
+            onAllNodesWithText("frodo@shire.me").assertCountEquals(0)
 
             onNodeWithContentDescription("Back").performClick()
             waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Design").fetchSemanticsNodes().isNotEmpty() }

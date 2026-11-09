@@ -334,7 +334,7 @@ class ProfileCardEditorShotsTest {
         editor("k12-editor-photo-busy", editorBase, photo = CardPhotoUi(null, true, true, true)),
         editor("k12-editor-busy", editorBase.copy(isContentBusy = true)),
         editor("k13-editor-copy-from", editorBase, act = {
-            onNodeWithContentDescription("Copy from…").performClick()
+            onNodeWithText("Copy from…").performClick()
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
         editor("k16-profile-cards-off", editorPublic, showCard = false),
@@ -346,8 +346,6 @@ class ProfileCardEditorShotsTest {
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
         editor("k16-profile-add-more", editorBase, showCard = false, act = {
-            onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
-            mainClock.advanceTimeBy(SETTLE_MS)
             onNodeWithContentDescription("Add new: More").performSemanticsAction(SemanticsActions.OnClick)
             mainClock.advanceTimeBy(SETTLE_MS)
         }),

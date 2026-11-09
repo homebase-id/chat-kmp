@@ -8,8 +8,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
@@ -53,10 +51,6 @@ class CardAddGroupTest {
                     onImport = {},
                 )
             }
-        }
-        if (attributes.isNotEmpty()) {
-            onNodeWithTag("content_add").performClick()
-            waitForIdle()
         }
     }
 

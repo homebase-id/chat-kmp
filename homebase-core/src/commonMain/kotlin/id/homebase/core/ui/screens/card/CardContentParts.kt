@@ -79,6 +79,10 @@ import id.homebase.core.widget.connectedButtonShapes
 import id.homebase.resources.MR
 import id.homebase.resources.profile_card_content_add_new
 import id.homebase.resources.profile_card_content_add_title
+import id.homebase.resources.profile_card_content_add_to_card
+import id.homebase.resources.profile_card_field_show
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.style.TextDirection
 import id.homebase.resources.profile_card_content_add_visible
 import id.homebase.resources.profile_card_content_empty
 import id.homebase.resources.profile_card_content_public_off_note
@@ -235,36 +239,80 @@ internal fun AddGroup(
     }
 }
 
+// A circle card lists only what it shows, so this is the way back on: a hidden field, or a new one.
 @Composable
-internal fun AddSheet(
+internal fun AddToCardSheet(
+    hidden: List<CardContentItem>,
     isAvailable: (AddKind) -> Boolean,
+    onShow: (CardContentItem) -> Unit,
     onAdd: (AddKind) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val kinds = AddKind.entries.filter(isAvailable)
-    val title = stringResource(MR.string.profile_card_content_add_new)
+    val addNew = stringResource(MR.string.profile_card_content_add_new)
     AdaptiveSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(ROW_GAP),
         ) {
-            PanelHeader(icon = Icons.Outlined.Add, title = stringResource(MR.string.profile_card_content_add_title), modifier = Modifier.padding(bottom = 12.dp))
+            PanelHeader(icon = Icons.Outlined.Add, title = stringResource(MR.string.profile_card_content_add_to_card), modifier = Modifier.padding(bottom = 12.dp))
+            hidden.forEachIndexed { index, item ->
+                val label = stringResource(typeLabel(item.type))
+                PickRow(
+                    icon = typeIcon(item.type),
+                    label = label,
+                    value = item.text,
+                    shape = groupedShape(index, hidden.size),
+                    description = stringResource(MR.string.profile_card_field_show, label),
+                    onClick = { dismiss { onDismiss(); onShow(item) } },
+                )
+            }
+            if (kinds.isNotEmpty() && hidden.isNotEmpty()) {
+                Text(
+                    text = addNew,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp).semantics { heading() },
+                )
+            }
             kinds.forEachIndexed { index, kind ->
                 val label = stringResource(addLabel(kind))
-                androidx.compose.material3.Surface(
-                    onClick = { dismiss { onDismiss(); onAdd(kind) } },
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                PickRow(
+                    icon = addIcon(kind),
+                    label = label,
+                    value = null,
                     shape = groupedShape(index, kinds.size),
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$title: $label" },
-                ) {
-                    Row(
-                        modifier = Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(BADGE_GAP),
-                    ) {
-                        Icon(addIcon(kind), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(label, style = MaterialTheme.typography.bodyLarge)
-                    }
+                    description = "$addNew: $label",
+                    onClick = { dismiss { onDismiss(); onAdd(kind) } },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickRow(icon: ImageVector, label: String, value: String?, shape: Shape, description: String, onClick: () -> Unit) {
+    androidx.compose.material3.Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = shape,
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = description },
+    ) {
+        Row(
+            modifier = Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(BADGE_GAP),
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f)) {
+                Text(label, style = if (value == null) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelLarge)
+                if (value != null) {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

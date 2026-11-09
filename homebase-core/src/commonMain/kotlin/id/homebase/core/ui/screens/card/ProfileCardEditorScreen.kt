@@ -631,10 +631,9 @@ internal fun ProfileCardEditorContent(
                     )
                 }
                 if (!showCard || (contentOpen && contentLayout == ContentLayout.PanelOnly)) {
-                    panel(
-                        Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
-                        cardSheetShape(),
-                    )
+                    ContentPage(Modifier.weight(1f).fillMaxWidth()) {
+                        panel(it.widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(), cardSheetShape())
+                    }
                 } else if (contentOpen && contentLayout == ContentLayout.CompactHeader) {
                     val selectedCard = uiState.cards.firstOrNull { it.audience == uiState.selectedAudience }
                     val capturing = host != null && uiState.cards.isNotEmpty() && !isDesktopOrWeb()
@@ -650,30 +649,29 @@ internal fun ProfileCardEditorContent(
                                 layoutWidth = CAPTURE_LAYOUT_WIDTH,
                             )
                         }
-                        Column(
+                        ContentPage(
                             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer),
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                            above = if (selectedCard != null) COMPACT_TILE_WIDTH / CARD_THUMB_ASPECT + metrics.gap else 0.dp,
+                            header = {
+                                if (selectedCard != null) {
+                                    val shape = RoundedCornerShape(COMPACT_TILE_CORNER)
+                                    val previewLabel = stringResource(MR.string.profile_card_preview)
+                                    CardStill(
+                                        card = selectedCard,
+                                        still = tiles[audienceKey(selectedCard.audience)],
+                                        modifier = Modifier
+                                            .padding(bottom = metrics.gap)
+                                            .width(COMPACT_TILE_WIDTH)
+                                            .aspectRatio(CARD_THUMB_ASPECT)
+                                            .clip(shape)
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                                            .clickable(role = Role.Button) { previewOpen = true }
+                                            .semantics { contentDescription = previewLabel },
+                                    )
+                                }
+                            },
                         ) {
-                            if (selectedCard != null) {
-                                val shape = RoundedCornerShape(COMPACT_TILE_CORNER)
-                                val previewLabel = stringResource(MR.string.profile_card_preview)
-                                CardStill(
-                                    card = selectedCard,
-                                    still = tiles[audienceKey(selectedCard.audience)],
-                                    modifier = Modifier
-                                        .padding(bottom = metrics.gap)
-                                        .width(COMPACT_TILE_WIDTH)
-                                        .aspectRatio(CARD_THUMB_ASPECT)
-                                        .clip(shape)
-                                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                                        .clickable(role = Role.Button) { previewOpen = true }
-                                        .semantics { contentDescription = previewLabel },
-                                )
-                            }
-                            panel(
-                                Modifier.weight(1f).widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(),
-                                cardSheetShape(),
-                            )
+                            panel(it.widthIn(max = WIDE_SHEET_MAX_WIDTH).fillMaxWidth(), cardSheetShape())
                         }
                     }
                 } else if (wide) {
@@ -710,7 +708,7 @@ internal fun ProfileCardEditorContent(
                             ) { preview(cardWidth) }
                         }
                         panel(
-                            Modifier.width(widePanelWidth),
+                            Modifier.width(widePanelWidth).then(if (contentOpen) Modifier.verticalScroll(rememberScrollState()) else Modifier),
                             MaterialTheme.shapes.extraLargeIncreased,
                         )
                     }
@@ -739,6 +737,26 @@ internal fun ProfileCardEditorContent(
                 hostState = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
             )
+        }
+    }
+}
+
+// The bar and card tabs above stay put; the panel and whatever sits over it scroll as one page, the panel filling what's left.
+@Composable
+private fun ContentPage(
+    modifier: Modifier,
+    above: Dp = 0.dp,
+    header: @Composable () -> Unit = {},
+    panel: @Composable (Modifier) -> Unit,
+) {
+    BoxWithConstraints(modifier) {
+        val rest = (maxHeight - above).coerceAtLeast(0.dp)
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            header()
+            panel(Modifier.heightIn(min = rest))
         }
     }
 }
@@ -918,8 +936,14 @@ private fun EditorPanel(
         shape = shape,
         modifier = modifier,
     ) {
-        // The content editor scrolls itself, so its floating toolbar stays put over the list.
-        if (mode == EditorMode.Content && uiState.cards.isNotEmpty()) {
+        // Content scrolls with the page around the panel, so nothing in here scrolls on its own.
+        if (mode == EditorMode.Content && uiState.cards.isEmpty()) {
+            Box(Modifier.navigationBarsPadding().padding(vertical = metrics.edge)) {
+                ContentLoading(failed = uiState.loadFailed, onRetry = onRetry)
+            }
+            return@Surface
+        }
+        if (mode == EditorMode.Content) {
             CardContentEditor(
                 card = uiState.selectedAudience,
                 items = items,
@@ -951,10 +975,6 @@ private fun EditorPanel(
                 .padding(top = metrics.edge, bottom = metrics.edge),
             verticalArrangement = Arrangement.spacedBy(metrics.gap),
         ) {
-            if (mode == EditorMode.Content) {
-                ContentLoading(failed = uiState.loadFailed, onRetry = onRetry)
-                return@Column
-            }
             if (uiState.isCircleReadOnly) {
                 ReadOnlyCard(designName = stringResource(designLabel(design)), modifier = Modifier.padding(horizontal = 16.dp))
                 return@Column

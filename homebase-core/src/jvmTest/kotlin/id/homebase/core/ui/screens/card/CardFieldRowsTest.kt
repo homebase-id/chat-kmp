@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performClick
@@ -98,16 +99,49 @@ class CardFieldRowsTest {
             .filter { it.label.startsWith("Move") }
 
     @Test
-    fun aFieldSwitchedOffMovesToNotOnThisCardAndTheCircleListsWhatItCanStillSee() = runComposeUiTest {
+    fun aCircleCardListsOnlyWhatItShowsWithNoAudienceChips() = runComposeUiTest {
         editor(CardFields(hidden = listOf(status.id.toString())))
 
-        onNodeWithText("Not on this card").assertIsDisplayed()
-        onNodeWithText("This circle can still see these on your profile.").assertIsDisplayed()
-        onNodeWithText("Elevenses").assertIsDisplayed()
-        onNodeWithTag("never_on_card").assertExists()
-        onNodeWithText("Phone").assertIsDisplayed()
-        assertEquals(2, onAllNodesWithTag("field_toggle").fetchSemanticsNodes().size)
+        onNodeWithText("Second breakfast").assertIsDisplayed()
+        assertEquals(0, onAllNodesWithText("Elevenses").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithText("Not on this card").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithTag("never_on_card").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithTag("not_visible").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithTag("cards_button").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithTag("field_toggle").fetchSemanticsNodes().size)
+        assertEquals(1, onAllNodesWithTag("field_remove").fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithTag("field_handle").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun addingAHiddenFieldBackShowsItOnThisCard() = runComposeUiTest {
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        editor(CardFields(hidden = listOf(status.id.toString())), shown)
+
+        onNodeWithTag("content_add").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Add new: Link").assertExists()
+        onNodeWithContentDescription("Show Status on this card").performClick()
+        waitForIdle()
+
+        assertEquals(listOf(status.id to true), shown)
+    }
+
+    @Test
+    fun theAddPickerOffersOnlyFieldsThisCircleSeesButTheCardHides() {
+        val hiddenLink = link("hidden")
+        val ownerOnly = link("private").copy(
+            visibility = ProfileVisibility.OWNER,
+            acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.OWNER.wireValue),
+        )
+        val items = cardContentItems(
+            listOf(bio, status, phone, hiddenLink, ownerOnly),
+            circles,
+            friends,
+            CardFields(hidden = listOf(status.id, hiddenLink.id, phone.id, ownerOnly.id).map { it.toString() }),
+        )
+
+        assertEquals(setOf(status.id, hiddenLink.id), items.hiddenFromCard().map { it.id }.toSet())
     }
 
     @Test
@@ -124,7 +158,7 @@ class CardFieldRowsTest {
         val audiences = mutableListOf<Uuid>()
         editor(null, shown, audiences = audiences)
 
-        onAllNodesWithTag("field_toggle")[0].performClick()
+        onAllNodesWithTag("field_remove")[0].performClick()
 
         assertEquals(listOf(status.id to false), shown)
         assertEquals(emptyList(), audiences)
