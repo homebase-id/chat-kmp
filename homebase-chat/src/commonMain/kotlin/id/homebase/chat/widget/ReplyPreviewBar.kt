@@ -72,8 +72,8 @@ fun ReplyPreviewBar(
 ) {
     val currentOdinId = LocalCurrentOdinId.current
     val quotesProtectedMedia = message.messageContent.isProtectedMedia()
-    val mediaPayloads = remember(message.payloads, quotesProtectedMedia) {
-        if (quotesProtectedMedia) emptyList() else message.payloads.replyQuoteMediaPayloads()
+    val mediaPayloads = remember(message.payloads, message.messageContent) {
+        message.replyQuoteConversationMediaPayloads()
     }
 
     val firstPayload = mediaPayloads.firstOrNull()

@@ -63,6 +63,9 @@ sealed interface MessageContent {
     /** False for messages the recipient should receive without a push, e.g. a log entry for a call they took. */
     val pushesToRecipient: Boolean get() = true
 
+    /** False when the payloads belong to the message itself (card art, viewer-only media), so no conversation-level surface may list or quote them. */
+    val payloadsAreConversationMedia: Boolean get() = true
+
     /**
      * A scheduled event with optional location, meeting URL, and RSVP via reactions.
      *
@@ -166,6 +169,9 @@ sealed interface MessageContent {
         // A contact's name is somebody else's PII; it must not reach the recipient's push
         // provider. Generic wire label — the real card renders from the decrypted header.
         override val notificationLabel: String get() = UNPARSEABLE_CONTACT_LABEL
+
+        // A card's photo is the subject's avatar, not a picture shared into the conversation.
+        override val payloadsAreConversationMedia: Boolean get() = false
     }
 
     /**
@@ -206,6 +212,7 @@ sealed interface MessageContent {
             allowReactionDetails = true,
             allowCopy = false,
         )
+        override val payloadsAreConversationMedia: Boolean get() = false
         override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_VIEW_ONCE_LABEL
     }
 
@@ -242,6 +249,9 @@ sealed interface MessageContent {
 
         // The card text is agent-authored content; it must not reach the recipient's push provider.
         override val notificationLabel: String get() = UNPARSEABLE_AGENT_UI_LABEL
+
+        // The card's tree and chat_web images belong to the card.
+        override val payloadsAreConversationMedia: Boolean get() = false
     }
 
     /** A person's action on an [AgentUi] card, read by the agent. [descriptor] follows the [Event.descriptor] nullability contract. */
@@ -264,6 +274,9 @@ sealed interface MessageContent {
      */
     data class Unknown(val dataType: Int) : MessageContent {
         override val displayLabel: String get() = UNKNOWN_LABEL
+
+        // This build cannot vouch for what an unknown kind's payload is.
+        override val payloadsAreConversationMedia: Boolean get() = false
     }
 
     companion object {
