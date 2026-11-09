@@ -189,6 +189,7 @@ class CardsSheetTest {
         }
         runComposeUiTest {
             editor(showCardsButton = true)
+            onNodeWithTag("not_visible_toggle").performClick()
             onNodeWithTag("cards_button").assertExists()
         }
     }

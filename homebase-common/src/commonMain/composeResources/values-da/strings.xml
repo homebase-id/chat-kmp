@@ -1863,13 +1863,9 @@
     <string name="profile_card_unsupported">Din Homebase-server understøtter ikke profilkort endnu.</string>
     <string name="profile_card_design_action">Design</string>
     <string name="profile_card_content_on_card">På dette kort</string>
-    <string name="profile_card_content_could_add">Også på din profil</string>
-    <string name="profile_card_content_every_card">På alle kort</string>
-    <string name="profile_card_content_every_card_desc">Offentlige, så alle ser dem på alle kort.</string>
     <string name="profile_card_content_edit_this">Redigér %1$s</string>
     <string name="profile_card_content_edit_title">Redigér</string>
     <string name="profile_card_content_delete">Slet fra alle kort</string>
-    <string name="profile_card_content_every_card_circle">Offentlige, så alle ser dem. Tryk på en og skift hvem der kan se den for at skjule den på dette kort.</string>
     <string name="profile_card_content_more">Mere</string>
     <string name="profile_card_switcher">Kort, der redigeres</string>
     <string name="profile_card_content_add_new">Tilføj nyt</string>
