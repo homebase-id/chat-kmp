@@ -509,9 +509,8 @@ class ProfileCardViewModel(
         editFields { it.withHidden(id.toString(), hidden = !shown, known = known) }
     }
 
-    /** [ids] is the new order of the fields on the card; fields off the card keep no place of their own. */
     fun onFieldsReordered(ids: List<Uuid>) {
-        val known = _uiState.value.attributes.mapTo(mutableSetOf()) { it.id.toString() }
+        val known = _uiState.value.attributes.filter { it.type == ProfileAttributeTypes.LINK || it.type in CARD_SOCIAL_TYPES }.mapTo(mutableSetOf()) { it.id.toString() }
         editFields { it.withOrder(ids.map(Uuid::toString), known) }
     }
 

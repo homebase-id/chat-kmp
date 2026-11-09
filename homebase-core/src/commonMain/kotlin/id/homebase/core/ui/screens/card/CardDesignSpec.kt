@@ -164,7 +164,7 @@ object CardDesignSpecs {
         ground?.let { g -> specs.values.firstNotNullOfOrNull { spec -> spec.schemes.firstOrNull { it.ground.equals(g, ignoreCase = true) } } }
 }
 
-/** Keeps only what [design] exposes; an unknown design keeps nothing. */
+/** Keeps only what [design] exposes; an unknown design keeps nothing but [CardOverrides.fields], which are not part of a design. */
 fun CardOverrides.prunedFor(design: String): CardOverrides {
     val spec = CardDesignSpecs.of(design) ?: return CardOverrides(fields = fields)
     fun has(option: CardOption) = option in spec.options

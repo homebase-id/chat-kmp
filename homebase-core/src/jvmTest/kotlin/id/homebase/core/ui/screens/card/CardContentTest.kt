@@ -1104,6 +1104,51 @@ class CardContentTest {
     }
 
     @Test
+    fun reorderingTwoSocialsChangesTheRenderedSocialsAndIsStoredByAttributeId() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val twitter = wire.seed(ProfileAttributeTypes.TWITTER, "anonymous", data(ProfileAttributeTypes.KEY_TWITTER, "frodo"))
+        val instagram = wire.seed(ProfileAttributeTypes.INSTAGRAM, "anonymous", data(ProfileAttributeTypes.KEY_INSTAGRAM, "frodo.b"))
+        val rig = rig(wire, withCards = true)
+        rig.open(friends)
+        assertEquals(
+            listOf(ProfileAttributeTypes.KEY_TWITTER, ProfileAttributeTypes.KEY_INSTAGRAM),
+            rig.rendered { it.data.socials.size == 2 }.data.socials.map { it.type },
+        )
+
+        rig.vm.onFieldsReordered(listOf(instagram, twitter))
+        settle { rig.cardPuts().any { it.fieldIds("data", "overrides", "fields", "order") == listOf(instagram.toString(), twitter.toString()) } }
+
+        assertEquals(
+            listOf(ProfileAttributeTypes.KEY_INSTAGRAM, ProfileAttributeTypes.KEY_TWITTER),
+            rig.rendered { p -> p.data.socials.firstOrNull()?.type == ProfileAttributeTypes.KEY_INSTAGRAM }.data.socials.map { it.type },
+        )
+
+        rig.open(CardAudience.Public)
+        assertEquals(
+            listOf(ProfileAttributeTypes.KEY_TWITTER, ProfileAttributeTypes.KEY_INSTAGRAM),
+            rig.rendered { it.data.socials.size == 2 }.data.socials.map { it.type },
+        )
+    }
+
+    @Test
+    fun theNameStatusAndBioHaveNoOrderOfTheirOwn() = runTest(dispatcher) {
+        val wire = CardWireHarness()
+        val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
+        val status = wire.seed(ProfileAttributeTypes.STATUS, "anonymous", data(ProfileAttributeTypes.KEY_STATUS, "Elevenses"))
+        val rig = rig(wire, withCards = true)
+        rig.open(friends)
+        val before = rig.rendered { it.data.bio != null && it.data.headline != null }
+        val puts = wire.puts
+
+        rig.vm.onFieldsReordered(listOf(bio, status))
+        settle { true }
+
+        assertEquals(puts, wire.puts)
+        assertNull(rig.vm.uiState.value.selectedCard!!.overrides.fields)
+        assertEquals(before.data, rig.host.rendered.last().data)
+    }
+
+    @Test
     fun aFieldAddedAfterTheOrderWasSetAppearsAtTheEnd() {
         val first = Uuid.random()
         val second = Uuid.random()

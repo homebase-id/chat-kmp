@@ -18,11 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
+import kotlin.math.abs
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-/** What a row needs to be switched off a card and moved within it. [handle] is the drag gesture for the row's grip. */
 internal class FieldDisplay(
     val onCard: Boolean,
     val onToggle: () -> Unit,
@@ -34,14 +35,11 @@ internal class FieldDisplay(
 internal fun <T> List<T>.moved(from: Int, to: Int): List<T> =
     if (from == to || from !in indices || to !in indices) this else toMutableList().also { it.add(to, it.removeAt(from)) }
 
-/**
- * The fields on a card, in order. Dragging a grip reorders them locally and commits once on release,
- * so a drag is one write; [FieldDisplay.moveUp] and [FieldDisplay.moveDown] commit at once for keyboards and screen readers.
- */
+// A drag reorders locally and commits once on release, so it is one write.
 @Composable
 internal fun ReorderableRows(
     items: List<CardContentItem>,
-    gap: androidx.compose.ui.unit.Dp,
+    gap: Dp,
     onReorder: (List<Uuid>) -> Unit,
     row: @Composable (item: CardContentItem, index: Int, count: Int, move: (Int) -> Unit, handle: Modifier) -> Unit,
 ) {
@@ -74,7 +72,7 @@ internal fun ReorderableRows(
                             val at = order.indexOf(id)
                             val neighbour = if (offset > 0) order.getOrNull(at + 1) else order.getOrNull(at - 1)
                             val size = neighbour?.let { heights[it] }
-                            if (neighbour != null && size != null && kotlin.math.abs(offset) > size / 2f) {
+                            if (neighbour != null && size != null && abs(offset) > size / 2f) {
                                 val down = offset > 0
                                 order = order.moved(at, if (down) at + 1 else at - 1)
                                 offset += if (down) -size else size

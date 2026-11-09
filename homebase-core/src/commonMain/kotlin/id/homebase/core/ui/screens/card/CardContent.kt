@@ -24,16 +24,16 @@ internal data class CardContentItem(
     val audience: ProfileAudience,
     val shown: Boolean,
     val locked: Boolean,
-    // The Public card can't render without a name, so it can't be switched off there.
     val required: Boolean = false,
-    // Switched off for this card only: whoever can see it still can, it just isn't on this card.
     val hidden: Boolean = false,
     val data: Map<String, String> = emptyMap(),
     // Older records of the same type with other data; the editor shows them so the user can remove them.
     val conflicts: List<ProfileAttribute> = emptyList(),
 ) {
     val everyCard: Boolean get() = audience == ProfileAudience.Public
-    val onCard: Boolean get() = shown && !hidden
+    val renderable: Boolean get() = type in CARD_RENDERED_TYPES
+    val orderable: Boolean get() = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
+    val onCard: Boolean get() = shown && renderable && !hidden
 }
 
 /** The Public card can't render without a name, so nothing hides it there. */
@@ -53,8 +53,10 @@ internal fun CardFields?.withHidden(id: String, hidden: Boolean, known: Set<Stri
     return CardFields(order = this?.order, hidden = next.takeIf { it.isNotEmpty() }).takeUnless { it.order == null && it.hidden == null }
 }
 
+// [ids] is one group's new order; the other groups keep their places after it.
 internal fun CardFields?.withOrder(ids: List<String>, known: Set<String>): CardFields? {
-    val next = ids.filter { it in known }.distinct()
+    val moved = ids.filter { it in known }.distinct()
+    val next = moved + this?.order.orEmpty().filter { it in known && it !in moved }
     return CardFields(order = next.takeIf { it.size > 1 }, hidden = this?.hidden).takeUnless { it.order == null && it.hidden == null }
 }
 
@@ -65,6 +67,14 @@ internal val CARD_SOCIAL_TYPES = listOf(
     ProfileAttributeTypes.TIKTOK,
     ProfileAttributeTypes.LINKEDIN,
 )
+
+// The page draws these and nothing else; the card orders only links and socials, as one block each.
+internal val CARD_RENDERED_TYPES = setOf(
+    ProfileAttributeTypes.NAME,
+    ProfileAttributeTypes.STATUS,
+    ProfileAttributeTypes.BIO_SUMMARY,
+    ProfileAttributeTypes.LINK,
+) + CARD_SOCIAL_TYPES
 
 // Each add makes a new record, so the profile can hold several.
 internal val REPEATABLE_TYPES = setOf(ProfileAttributeTypes.LINK, ProfileAttributeTypes.PHONE, ProfileAttributeTypes.EMAIL)

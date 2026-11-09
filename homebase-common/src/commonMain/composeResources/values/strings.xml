@@ -2497,9 +2497,11 @@
     <string name="profile_card_unsupported">Your Homebase server doesn't support profile cards yet.</string>
     <string name="profile_card_design_action">Design</string>
     <string name="profile_card_content_on_card">On this card</string>
-    <string name="profile_card_content_on_card_desc">In this order. Drag the handle to reorder, or switch one off to leave it off this card.</string>
+    <string name="profile_card_content_on_card_desc">In this order. Drag the handle to reorder links and accounts, or switch one off to leave it off this card.</string>
     <string name="profile_card_content_not_on_card">Not on this card</string>
     <string name="profile_card_content_not_on_card_desc">Still on your profile for whoever can see them. They just aren't shown on this card.</string>
+    <string name="profile_card_content_never_on_card">Not shown on cards</string>
+    <string name="profile_card_content_never_on_card_desc">A card can't show these. They stay on your profile for whoever can see them.</string>
     <string name="profile_card_content_circle_also_sees">%1$s can also see: %2$s</string>
     <string name="profile_card_field_hide">Hide %1$s from this card</string>
     <string name="profile_card_field_show">Show %1$s on this card</string>

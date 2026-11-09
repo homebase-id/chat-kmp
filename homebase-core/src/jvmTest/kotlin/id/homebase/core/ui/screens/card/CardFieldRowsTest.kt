@@ -18,6 +18,7 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.core.ui.screens.profile.ProfileAudience
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.ExperimentalUuidApi
@@ -39,14 +40,29 @@ class CardFieldRowsTest {
         acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.ANONYMOUS.wireValue),
     )
 
+    private fun link(text: String) = ProfileAttribute(
+        id = Uuid.random(),
+        type = ProfileAttributeTypes.LINK,
+        versionTag = Uuid.random(),
+        visibility = ProfileVisibility.ANONYMOUS,
+        data = JsonObject(mapOf(
+            ProfileAttributeTypes.KEY_LINK_TEXT to JsonPrimitive(text),
+            ProfileAttributeTypes.KEY_LINK_TARGET to JsonPrimitive("https://shire.example/$text"),
+        )),
+        acl = AccessControlList(requiredSecurityGroup = ProfileVisibility.ANONYMOUS.wireValue),
+    )
+
     private val bio = field(ProfileAttributeTypes.BIO_SUMMARY, ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast")
     private val status = field(ProfileAttributeTypes.STATUS, ProfileAttributeTypes.KEY_STATUS, "Elevenses")
-    private val attributes = listOf(bio, status)
+    private val phone = field(ProfileAttributeTypes.PHONE, ProfileAttributeTypes.KEY_PHONE, "+14155550123")
+    private val attributes = listOf(bio, status, phone)
 
     private fun androidx.compose.ui.test.ComposeUiTest.editor(
         fields: CardFields?,
         shown: MutableList<Pair<Uuid, Boolean>> = mutableListOf(),
         reordered: MutableList<List<Uuid>> = mutableListOf(),
+        audiences: MutableList<Uuid> = mutableListOf(),
+        attributes: List<ProfileAttribute> = this@CardFieldRowsTest.attributes,
     ) = setContent {
         MaterialTheme {
             CardContentEditor(
@@ -57,7 +73,7 @@ class CardFieldRowsTest {
                 enabled = true,
                 importSources = emptyList(),
                 showCardsButton = true,
-                onAudience = { _, _ -> },
+                onAudience = { id, _ -> audiences += id },
                 onEdit = { _, _, _ -> },
                 onDelete = {},
                 onAdd = { _, _ -> },
@@ -70,41 +86,62 @@ class CardFieldRowsTest {
         }
     }
 
+    private fun androidx.compose.ui.test.ComposeUiTest.moveActions() =
+        onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions)).fetchSemanticsNodes()
+            .flatMap { it.config[SemanticsActions.CustomActions] }
+            .filter { it.label.startsWith("Move") }
+
     @Test
-    fun aFieldSwitchedOffMovesToNotOnThisCardAndTheCircleSaysItCanStillSeeIt() = runComposeUiTest {
+    fun aFieldSwitchedOffMovesToNotOnThisCardAndTheCircleListsWhatItCanStillSee() = runComposeUiTest {
         editor(CardFields(hidden = listOf(status.id.toString())))
 
         onNodeWithText("Not on this card").assertIsDisplayed()
-        onNodeWithTag("circle_also_sees").assertIsDisplayed()
-        onNodeWithTag("circle_also_sees").assert(hasText("Friends can also see:", substring = true))
+        onNodeWithText("Not shown on cards").assertIsDisplayed()
+        onNodeWithTag("circle_also_sees").assert(hasText("Friends can also see: Status, Phone"))
         assertEquals(2, onAllNodesWithTag("field_toggle").fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithTag("field_handle").fetchSemanticsNodes().size)
     }
 
     @Test
-    fun switchingAFieldOffAndOnReportsItWithoutTouchingAccess() = runComposeUiTest {
-        val shown = mutableListOf<Pair<Uuid, Boolean>>()
-        editor(null, shown)
+    fun theCircleLineIsAbsentWhenTheCardShowsEverythingThatCanBeShown() = runComposeUiTest {
+        editor(null, attributes = listOf(bio, status))
 
-        onAllNodesWithTag("field_toggle")[0].performClick()
-
-        assertEquals(1, shown.size)
-        assertEquals(false, shown.single().second)
+        assertEquals(0, onAllNodesWithTag("circle_also_sees").fetchSemanticsNodes().size)
     }
 
     @Test
-    fun aRowOffersMoveDownToScreenReadersAndKeyboardsAndReportsTheNewOrder() = runComposeUiTest {
-        val reordered = mutableListOf<List<Uuid>>()
-        editor(null, reordered = reordered)
-        val first = cardContentItems(attributes, circles, friends, null).filter { it.onCard }.map { it.id }
+    fun switchingAFieldOffReportsItAndNeverTouchesWhoCanSeeIt() = runComposeUiTest {
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        val audiences = mutableListOf<Uuid>()
+        editor(null, shown, audiences = audiences)
 
-        val rows = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions)).fetchSemanticsNodes()
-        val custom = rows.first().config[SemanticsActions.CustomActions]
-        assertEquals(true, custom.any { it.label.startsWith("Move") && it.label.endsWith("down") })
-        assertEquals(false, custom.any { it.label.endsWith("up") })
-        custom.first { it.label.endsWith("down") }.action()
+        onAllNodesWithTag("field_toggle")[0].performClick()
+
+        assertEquals(listOf(status.id to false), shown)
+        assertEquals(emptyList(), audiences)
+        assertEquals(ProfileAudience.Public, cardContentItems(attributes, circles, friends, null).single { it.id == status.id }.audience)
+    }
+
+    @Test
+    fun theNameStatusAndBioAreNotReorderable() = runComposeUiTest {
+        editor(null)
+
+        assertEquals(0, onAllNodesWithTag("field_handle").fetchSemanticsNodes().size)
+        assertEquals(emptyList(), moveActions())
+    }
+
+    @Test
+    fun aLinkOffersMoveDownToScreenReadersAndKeyboardsAndReportsTheNewOrder() = runComposeUiTest {
+        val one = link("one")
+        val two = link("two")
+        val reordered = mutableListOf<List<Uuid>>()
+        editor(null, reordered = reordered, attributes = listOf(one, two))
+
+        val actions = moveActions()
+        assertEquals(listOf("down", "up"), actions.map { it.label.substringAfterLast(' ') })
+        actions.first { it.label.endsWith("down") }.action()
         waitForIdle()
 
-        assertEquals(listOf(first.reversed()), reordered)
+        assertEquals(listOf(listOf(two.id, one.id)), reordered)
     }
 }

@@ -110,6 +110,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import id.homebase.resources.profile_card_content_circle_also_sees
+import id.homebase.resources.profile_card_content_never_on_card
+import id.homebase.resources.profile_card_content_never_on_card_desc
 import id.homebase.resources.profile_card_content_not_on_card
 import id.homebase.resources.profile_card_content_not_on_card_desc
 import id.homebase.resources.profile_card_content_on_card_desc
@@ -172,7 +174,8 @@ internal fun CardContentEditor(
     var pendingId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(enabled) { if (enabled) pendingId = null }
     val onCard = items.filter { it.onCard }
-    val notOnCard = items.filter { it.shown && it.hidden }
+    val notOnCard = items.filter { it.shown && it.renderable && it.hidden }
+    val unrenderable = items.filter { it.shown && !it.renderable }
     val couldAdd = items.filterNot { it.shown }
     val present = items.map { it.type }.toSet()
     val missingSocials = CARD_SOCIAL_TYPES.filter { it !in present }
@@ -216,21 +219,31 @@ internal fun CardContentEditor(
         if (onCard.isEmpty()) {
             EmptyContent()
         } else {
-            ReorderableRows(items = onCard, gap = ROW_GAP, onReorder = onFieldsReordered) { item, index, count, move, handle ->
-                row(
-                    item, index, count,
-                    FieldDisplay(
-                        onCard = true,
-                        onToggle = { onFieldShown(item.id, false) },
-                        moveUp = { move(-1) }.takeIf { count > 1 && index > 0 },
-                        moveDown = { move(1) }.takeIf { count > 1 && index < count - 1 },
-                        handle = handle.takeIf { count > 1 },
-                    ),
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                val fixed = onCard.filterNot { it.orderable }
+                fixed.forEachIndexed { index, item ->
+                    row(item, index, fixed.size, FieldDisplay(onCard = true, onToggle = { onFieldShown(item.id, false) }))
+                }
+                listOf(onCard.filter { it.type == ProfileAttributeTypes.LINK }, onCard.filter { it.type in CARD_SOCIAL_TYPES }).forEach { group ->
+                    if (group.isNotEmpty()) {
+                        ReorderableRows(items = group, gap = ROW_GAP, onReorder = onFieldsReordered) { item, index, count, move, handle ->
+                            row(
+                                item, index, count,
+                                FieldDisplay(
+                                    onCard = true,
+                                    onToggle = { onFieldShown(item.id, false) },
+                                    moveUp = { move(-1) }.takeIf { count > 1 && index > 0 },
+                                    moveDown = { move(1) }.takeIf { count > 1 && index < count - 1 },
+                                    handle = handle.takeIf { count > 1 },
+                                ),
+                            )
+                        }
+                    }
+                }
             }
         }
-        if (card is CardAudience.Circle && notOnCard.isNotEmpty()) {
-            val labels = notOnCard.map { stringResource(typeLabel(it.type)) }.distinct().joinToString()
+        if (card is CardAudience.Circle && (notOnCard.isNotEmpty() || unrenderable.isNotEmpty())) {
+            val labels = (notOnCard + unrenderable).map { stringResource(typeLabel(it.type)) }.distinct().joinToString()
             Text(
                 text = stringResource(MR.string.profile_card_content_circle_also_sees, audienceLabel(card), labels),
                 style = MaterialTheme.typography.bodySmall,
@@ -248,6 +261,16 @@ internal fun CardContentEditor(
                 notOnCard.forEachIndexed { index, item ->
                     row(item, index, notOnCard.size, FieldDisplay(onCard = false, onToggle = { onFieldShown(item.id, true) }))
                 }
+            }
+        }
+        if (unrenderable.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            SectionLabel(
+                stringResource(MR.string.profile_card_content_never_on_card),
+                stringResource(MR.string.profile_card_content_never_on_card_desc),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                unrenderable.forEachIndexed { index, item -> row(item, index, unrenderable.size, null) }
             }
         }
         if (couldAdd.isNotEmpty()) {

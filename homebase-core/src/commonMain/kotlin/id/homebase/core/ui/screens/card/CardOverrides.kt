@@ -114,6 +114,5 @@ data class CardPortrait(
 @Serializable
 data class CardBlock(val kind: String, val presentation: String? = null)
 
-/** Which profile fields one card puts on show, by attribute id: [order] is the display order, [hidden] are switched off; neither changes who can see a field. */
 @Serializable
 data class CardFields(val order: List<String>? = null, val hidden: List<String>? = null)

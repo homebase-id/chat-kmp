@@ -25,14 +25,14 @@ private const val TAG = "CardData"
 internal const val CARD_IMAGE_MAX_EDGE = 1080
 private const val CARD_IMAGE_JPEG_QUALITY = 85
 
-private class CardSocialField(val field: ProfileField, val hosts: Set<String>)
+private class CardSocialField(val attributeType: String, val field: ProfileField, val hosts: Set<String>)
 
 private val cardSocialFields = mapOf(
-    ProfileAttributeTypes.KEY_TWITTER to CardSocialField(ProfileField.TWITTER, setOf("twitter.com", "x.com")),
-    ProfileAttributeTypes.KEY_FACEBOOK to CardSocialField(ProfileField.FACEBOOK, setOf("facebook.com", "fb.com")),
-    ProfileAttributeTypes.KEY_INSTAGRAM to CardSocialField(ProfileField.INSTAGRAM, setOf("instagram.com")),
-    ProfileAttributeTypes.KEY_TIKTOK to CardSocialField(ProfileField.TIKTOK, setOf("tiktok.com")),
-    ProfileAttributeTypes.KEY_LINKEDIN to CardSocialField(ProfileField.LINKEDIN, setOf("linkedin.com")),
+    ProfileAttributeTypes.KEY_TWITTER to CardSocialField(ProfileAttributeTypes.TWITTER, ProfileField.TWITTER, setOf("twitter.com", "x.com")),
+    ProfileAttributeTypes.KEY_FACEBOOK to CardSocialField(ProfileAttributeTypes.FACEBOOK, ProfileField.FACEBOOK, setOf("facebook.com", "fb.com")),
+    ProfileAttributeTypes.KEY_INSTAGRAM to CardSocialField(ProfileAttributeTypes.INSTAGRAM, ProfileField.INSTAGRAM, setOf("instagram.com")),
+    ProfileAttributeTypes.KEY_TIKTOK to CardSocialField(ProfileAttributeTypes.TIKTOK, ProfileField.TIKTOK, setOf("tiktok.com")),
+    ProfileAttributeTypes.KEY_LINKEDIN to CardSocialField(ProfileAttributeTypes.LINKEDIN, ProfileField.LINKEDIN, setOf("linkedin.com")),
 )
 
 fun buildCardPayload(
@@ -51,6 +51,7 @@ fun buildCardPayload(
     val fields = overrides.fields
     val onCard = attributes.filterNot { fields.hides(it, audience) }
     val values = onCard.visibleValues(canSee)
+    val socialIds = cardSocialFields.mapValues { (_, social) -> onCard.firstOrNull { it.type == social.attributeType }?.id?.toString() }
     fun text(field: ProfileField) = values[field]?.trim()?.ifEmpty { null }
     return CardPayload(
         design = design,
@@ -70,20 +71,10 @@ fun buildCardPayload(
             links = cardLinks(onCard.visibleLinks(canSee).inCardOrder(fields) { it.id.toString() }),
             socials = cardSocialFields.mapNotNull { (type, social) ->
                 text(social.field)?.let { socialUsername(type, it) }?.let { CardSocial(type = type, username = it) }
-            }.inCardOrder(socialRanks(onCard, fields)) { it.type },
+            }.inCardOrder(fields) { socialIds[it.type].orEmpty() },
             posts = posts,
         ),
     )
-}
-
-// The page lists socials in the order it is sent them; a social with no record to rank it keeps its place.
-private fun socialRanks(attributes: List<ProfileAttribute>, fields: CardFields?): CardFields? {
-    if (fields?.order.isNullOrEmpty()) return null
-    val keys = cardSocialFields.keys.toList()
-    val ordered = CARD_SOCIAL_TYPES.zip(keys).mapNotNull { (attributeType, key) ->
-        attributes.firstOrNull { it.type == attributeType }?.let { key to it.id.toString() }
-    }.inCardOrder(fields) { it.second }
-    return CardFields(order = ordered.map { it.first })
 }
 
 private fun cardLinks(links: List<ProfileAttribute>): List<CardLink> =
