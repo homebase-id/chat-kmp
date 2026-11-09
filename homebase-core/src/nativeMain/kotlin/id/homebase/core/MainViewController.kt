@@ -29,6 +29,7 @@ import id.homebase.core.crash.CrashReporting
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.logging.setupIOSCrashHandler
+import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.location.tracking.observeAppForeground
 import id.homebase.core.settings.UserPreferencesHelper
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -112,6 +113,10 @@ fun isDatabaseOpen(): Boolean = AppStartup.isDatabaseOpen
 
 /** For Swift: runs [block] once startup's after-database work is done (at once if it is). Main thread. */
 fun whenStarted(block: () -> Unit) = AppStartup.whenStarted(block)
+
+/** For Swift: a push that arrived while the database was shut is shown and synced once startup has run. Main thread. */
+fun onPushArrivedBeforeDatabase(title: String?, body: String?, data: Map<String, String>) =
+    AppStartup.whenStarted { NotificationEntry.fromKoin().onPushArrivedAsync(title, body, data) {} }
 
 private var protectedDataObserver: NSObjectProtocol? = null
 

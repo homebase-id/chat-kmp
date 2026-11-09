@@ -362,6 +362,7 @@ class NotificationService(
         })
 
         notificationBackend.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
+        scope.launch { registerTokenDeliveredEarlier(::getToken, ::registerToken) }
     }
 
     @kotlin.concurrent.Volatile
