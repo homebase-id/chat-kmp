@@ -3,6 +3,7 @@ package id.homebase.chat.services.builder
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageSize
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.video.toVideoQuality
@@ -63,16 +64,20 @@ object MessageAttachmentBuilder {
                         // Quality is recorded only for an HD or Original ordinary photo: STANDARD
                         // keeps the legacy "" (absent reads as standard), and a sticker's bytes
                         // are bounded at 512px regardless of the setting, so a badge would lie.
+                        // A kept source is only ever the final image's size, so this holds either way.
+                        val finalSize = thumbs.finalImage?.let { ImageSize(it.width, it.height) } ?: thumbs.displayedSize
                         val descriptorContent =
                             if (attachment.forceSticker) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = true,
                                     format = ImageFormatDetector.detectFormat(thumbs.sourceBytes),
                                 )
-                            } else if (mediaQuality != MediaQuality.STANDARD) {
+                            } else if (mediaQuality != MediaQuality.STANDARD || finalSize != null) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = false,
-                                    quality = mediaQuality,
+                                    quality = mediaQuality.takeIf { it != MediaQuality.STANDARD },
+                                    pixelWidth = finalSize?.pixelWidth,
+                                    pixelHeight = finalSize?.pixelHeight,
                                 )
                             } else {
                                 ""

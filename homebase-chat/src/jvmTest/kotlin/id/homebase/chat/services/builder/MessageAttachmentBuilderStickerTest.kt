@@ -100,8 +100,7 @@ class MessageAttachmentBuilderStickerTest {
 
     @Test
     fun transparentPng_withoutForceSticker_isNotASticker() = runTest {
-        // #854: transparency alone must NOT auto-sticker. A shared/normal transparent PNG
-        // keeps the legacy "" descriptor and sends as a normal image.
+        // #854: transparency alone must NOT auto-sticker.
         val path = "/tmp/cutout.png"
         val bundle = MessageAttachmentBuilder.buildSingle(
             attachment = AttachmentInput(filePath = path, contentType = "image/png"),
@@ -109,12 +108,11 @@ class MessageAttachmentBuilderStickerTest {
             payloadKey = "chat_web0",
         )
         val payload = bundle.payloads.single()
-        assertEquals("", payload.descriptorContent)
         assertEquals(false, stickerOf(payload.descriptorContent))
     }
 
     @Test
-    fun opaqueJpeg_keepsEmptyDescriptor() = runTest {
+    fun opaqueJpeg_isNotASticker() = runTest {
         val path = "/tmp/photo.jpg"
         val bundle = MessageAttachmentBuilder.buildSingle(
             attachment = AttachmentInput(filePath = path, contentType = "image/jpeg"),
@@ -122,8 +120,6 @@ class MessageAttachmentBuilderStickerTest {
             payloadKey = "chat_web0",
         )
         val payload = bundle.payloads.single()
-        // Legacy empty descriptor → non-sticker; nothing changes for ordinary photos.
-        assertEquals("", payload.descriptorContent)
         assertEquals(false, stickerOf(payload.descriptorContent))
     }
 

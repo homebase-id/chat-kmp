@@ -173,6 +173,9 @@ sealed interface DescriptorContent {
         val isSticker: Boolean = false,
         val format: String? = null,
         val quality: MediaQuality? = null,
+        /** The payload's pixel size; null on anything sent before this field shipped. */
+        val pixelWidth: Int? = null,
+        val pixelHeight: Int? = null,
     ) : DescriptorContent {
         /**
          * Filename extension for a downloaded sticker, derived from [format]. Defaults to
@@ -217,8 +220,10 @@ sealed interface DescriptorContent {
             isSticker: Boolean,
             format: String? = null,
             quality: MediaQuality? = null,
+            pixelWidth: Int? = null,
+            pixelHeight: Int? = null,
         ): String {
-            return OdinSystemSerializer.serialize(ImageFile(isSticker, format, quality))
+            return OdinSystemSerializer.serialize(ImageFile(isSticker, format, quality, pixelWidth, pixelHeight))
         }
     }
 }

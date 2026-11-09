@@ -18,6 +18,7 @@ import org.jetbrains.skia.ImageInfo
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -112,12 +113,10 @@ class MessageAttachmentBuilderQualityTest {
     fun standardQualityPhoto_recordsNothing_andIsNotBadged() = runTest {
         val descriptorContent = sendPhoto(MediaQuality.STANDARD)
 
-        // STANDARD keeps the legacy blank descriptor, so it is indistinguishable on the
-        // wire from a photo sent before the flag existed — both render no badge.
-        assertEquals("", descriptorContent)
         val info = received(descriptorContent).descriptorInfo()
         assertTrue(info is DescriptorContent.ImageFile)
         assertNull(info.quality)
+        assertNotNull(info.pixelWidth, "A step-up needs the final image's size")
         assertNull(received(descriptorContent).badgedQuality())
     }
 

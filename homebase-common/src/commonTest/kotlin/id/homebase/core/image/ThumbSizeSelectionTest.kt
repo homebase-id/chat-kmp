@@ -95,6 +95,7 @@ class ThumbSizeSelectionTest {
         contentType: String? = "image/webp",
         bytes: Long? = 400_000,
         limit: ImageSize? = null,
+        finalSize: ImageSize? = null,
     ) = HomebaseImageData(
         driveId = Uuid.NIL,
         fileId = Uuid.NIL,
@@ -103,12 +104,30 @@ class ThumbSizeSelectionTest {
         payloadContentType = contentType,
         payloadBytes = bytes,
         thumbSizeLimit = limit,
+        finalImageSize = finalSize,
         keyHeader = KeyHeader.newRandom16(),
     )
 
     @Test
     fun stepsUpWhenTheDisplayOutgrowsTheLargestThumbnail() {
         assertTrue(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData()))
+    }
+
+    @Test
+    fun aFinalImageNoBiggerThanTheThumbnailIsNeverPulled() {
+        val thumbs = listOf(ImageSize(320, 240), ImageSize(600, 450))
+        assertFalse(shouldStepUpToPayload(ImageSize(880, 660), stepUpData(thumbs = thumbs, finalSize = ImageSize(600, 450))))
+    }
+
+    @Test
+    fun aFinalImageBiggerThanTheThumbnailIsPulled() {
+        val thumbs = listOf(ImageSize(1080, 810), ImageSize(2048, 1536))
+        assertTrue(shouldStepUpToPayload(ImageSize(3000, 2250), stepUpData(thumbs = thumbs, finalSize = ImageSize(4000, 3000))))
+    }
+
+    @Test
+    fun anOldDescriptorWithoutASizeKeepsTheOldRule() {
+        assertTrue(shouldStepUpToPayload(ImageSize(1060, 800), stepUpData(finalSize = null)))
     }
 
     @Test

@@ -50,6 +50,8 @@ internal class FullPayloadByteCache(
     // write-back slips past a clear.
     private var generation = 0
 
+    suspend fun contains(key: String): Boolean = mutex.withLock { key in entries }
+
     /**
      * Returns the cached image for [key], or loads it via [loader] exactly once
      * (coalescing concurrent callers) and caches a non-null result.

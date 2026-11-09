@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -87,9 +88,11 @@ fun HomebaseImage(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     colorFilter: ColorFilter? = null,  // ← Add this par
     onLoaded: (() -> Unit)? = null,
+    stepUpToPayload: Boolean = false,
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
+    val payloadLoader: HomebaseImageLoader = koinInject()
 
     // Paint the already-decoded thumbnail synchronously on the first frame
     // instead of the tiny embedded preview. The thumbnail cache key is
@@ -107,6 +110,7 @@ fun HomebaseImage(
     var steppedUp by remember(imageData) { mutableStateOf(false) }
     var stepUpFailed by remember(imageData) { mutableStateOf(false) }
     var displaySize by remember(imageData) { mutableStateOf<ImageSize?>(null) }
+    var lastSharpPainter by remember(imageData) { mutableStateOf<Painter?>(null) }
     val model: Any = remember(imageData, platformContext, steppedUp) {
         if (!imageData.isPending) {
             ImageRequest.Builder(platformContext)
@@ -176,14 +180,15 @@ fun HomebaseImage(
         if (onLoaded != null && state is AsyncImagePainter.State.Success) LaunchedEffect(Unit) { onLoaded() }
 
         val measured = displaySize
-        val canStepUp = state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
+        (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
+        val canStepUp = stepUpToPayload && state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
             !imageData.loadFullPayload && !imageData.isPending &&
             measured != null && shouldStepUpToPayload(measured, imageData)
         if (canStepUp) {
             // The wait is what keeps a fling from downloading every payload it passes:
             // scrolling away cancels this before it fires.
             LaunchedEffect(Unit) {
-                delay(STEP_UP_SETTLE_MILLIS)
+                if (!payloadLoader.isFullPayloadCached(imageData.copy(loadFullPayload = true))) delay(STEP_UP_SETTLE_MILLIS)
                 steppedUp = true
             }
         }
@@ -209,6 +214,18 @@ fun HomebaseImage(
         // Applied to every branch so the animation transitions smoothly
         // across state changes (e.g. blurred preview → sharp full image).
         val blurMod = Modifier.animatedBlur(blurRadius)
+
+        val failedStepUpFallback = lastSharpPainter.takeIf { steppedUp && state is AsyncImagePainter.State.Error }
+        if (failedStepUpFallback != null) {
+            Image(
+                painter = failedStepUpFallback,
+                contentDescription = contentDescription,
+                contentScale = contentScale,
+                alignment = alignment,
+                modifier = Modifier.fillMaxSize(),
+            )
+            return@SubcomposeAsyncImage
+        }
 
         when (state) {
             is AsyncImagePainter.State.Loading -> {

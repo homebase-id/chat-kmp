@@ -57,6 +57,8 @@ data class HomebaseImageData(
     val keyHeader: KeyHeader,
     /** The payload's size, which decides whether a bubble may step up to it. */
     val payloadBytes: Long? = null,
+    /** The payload's pixels, when the sender recorded them. Without it a step-up has to guess. */
+    val finalImageSize: ImageSize? = null,
     /** A view that must never load past this, such as a grid of thousands. It also never steps up. */
     val thumbSizeLimit: ImageSize? = null,
     /** Set with [globalTransitId] to fetch over peer; both null for local media. */
@@ -182,6 +184,7 @@ fun shouldStepUpToPayload(requested: ImageSize, data: HomebaseImageData): Boolea
     if (data.thumbSizeLimit != null) return false
     val largest = data.availableThumbSizes.maxOfOrNull { max(it.pixelWidth, it.pixelHeight) } ?: return false
     val payloadBytes = data.payloadBytes ?: return false
+    if (data.finalImageSize != null && max(data.finalImageSize.pixelWidth, data.finalImageSize.pixelHeight) <= largest) return false
     return max(requested.pixelWidth, requested.pixelHeight) * 10 > largest * 11 &&
         payloadBytes <= STEP_UP_LIMIT_BYTES &&
         data.payloadContentType in ImageFormatDetector.TYPES_EVERY_CLIENT_CAN_DECODE

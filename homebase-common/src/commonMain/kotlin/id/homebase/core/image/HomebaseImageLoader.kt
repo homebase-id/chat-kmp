@@ -207,6 +207,9 @@ class HomebaseImageLoader(
         }
     }
 
+    suspend fun isFullPayloadCached(data: HomebaseImageData): Boolean =
+        fullPayloadCache.contains(fullPayloadCacheKey(data))
+
     /**
      * Drop all cached decrypted full-payload bytes. Wire to the same triggers as
      * the Coil memory cache (manual "Clear cache", logout/account switch).
