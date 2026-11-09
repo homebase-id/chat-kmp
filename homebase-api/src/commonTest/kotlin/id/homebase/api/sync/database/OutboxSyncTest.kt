@@ -1620,6 +1620,7 @@ class OutboxSyncTest {
         collectorJob.cancel()
         sync.clearCheckout(timeoutMs = 5_000)
     }
+
     @Test
     fun nextScheduledReturnsEarliestWaitingRowNotMostUrgent() = runOutboxSyncTest { db, _ ->
         val driveId = Uuid.random()
