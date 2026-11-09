@@ -10,6 +10,8 @@ import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -196,5 +198,40 @@ class AgentUiRendererTest {
         waitForIdle()
         onNodeWithText("Posted").assertExists()
         assertIs<AgentUiNode.Text>(current.root)
+    }
+
+    private val multiSelectForm = valid(
+        tree(
+            """{"id":"root","type":"column","children":["nets","go"]}""",
+            """{"id":"nets","type":"multiSelect","label":"Post to","options":[{"id":"x","label":"X"},{"id":"li","label":"LinkedIn"},{"id":"ig","label":"Instagram"}],"value":["li"],"min":1,"max":2,"action":{"id":"ignored"}}""",
+            """{"id":"go","type":"button","label":"Post","action":{"id":"post","include":["nets"]}}""",
+        ),
+    )
+
+    @Test fun multi_select_chip_taps_toggle_without_firing() = runComposeUiTest {
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(multiSelectForm, onAction = { seen += it })
+        onNodeWithText("Post to").assertExists()
+        onNodeWithText("LinkedIn").assertIsSelected()
+        onNodeWithText("X").assertIsNotSelected()
+        onNodeWithText("Instagram").performClick()
+        onNodeWithText("Instagram").assertIsSelected()
+        onNodeWithText("X").performClick()
+        onNodeWithText("Instagram").performClick()
+        assertEquals(emptyList(), seen)
+        onNodeWithText("Post").performClick()
+        assertEquals(mapOf("nets" to "x,li"), seen.single().values)
+    }
+
+    @Test fun button_is_disabled_while_multi_select_count_is_out_of_range() = runComposeUiTest {
+        show(multiSelectForm)
+        onNodeWithText("Post").assertIsEnabled()
+        onNodeWithText("LinkedIn").performClick()
+        onNodeWithText("Post").assertIsNotEnabled()
+        onNodeWithText("X").performClick()
+        onNodeWithText("Instagram").performClick()
+        onNodeWithText("Post").assertIsEnabled()
+        onNodeWithText("LinkedIn").performClick()
+        onNodeWithText("Post").assertIsNotEnabled()
     }
 }

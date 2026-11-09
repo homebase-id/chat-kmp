@@ -49,6 +49,8 @@ data class AgentUiNodeAction(val id: String, val include: List<String>)
 
 data class SelectOption(val id: String, val label: String)
 
+const val MULTI_SELECT_SEPARATOR = ","
+
 sealed interface AgentUiNode {
     val id: String
 
@@ -79,6 +81,21 @@ sealed interface AgentUiNode {
         val value: String,
         val action: AgentUiNodeAction?,
     ) : AgentUiNode
+    /** Takes no `action` of its own (one in the JSON is ignored); its value reaches the agent only through another node's `include`. */
+    data class MultiSelect(
+        override val id: String,
+        val label: String,
+        val options: List<SelectOption>,
+        val value: List<String>,
+        val min: Int,
+        val max: Int,
+    ) : AgentUiNode {
+        fun join(selected: Collection<String>): String = options.filter { it.id in selected }.joinToString(MULTI_SELECT_SEPARATOR) { it.id }
+
+        internal fun countOk(joined: String): Boolean = joined.split(MULTI_SELECT_SEPARATOR).count { it.isNotEmpty() } in min..max
+
+        internal fun worstCase(): String = options.sortedByDescending { it.id.length }.take(max).joinToString(MULTI_SELECT_SEPARATOR) { it.id }
+    }
     data class Unknown(override val id: String, val fallback: String?) : AgentUiNode
 }
 
@@ -89,8 +106,9 @@ sealed interface AgentUiTreeResult {
 
 data class AgentUiTree(
     val root: AgentUiNode,
-    /** Default value of every input node (toggle "true"/"false", text, select option id), by node id. */
+    /** Default value of every input node (toggle "true"/"false", text, select option id, multiSelect ids joined by ","), by node id. */
     val inputs: Map<String, String>,
+    val multiSelects: Map<String, AgentUiNode.MultiSelect> = emptyMap(),
 ) {
     /** The acting node's own value plus every `include`d input node; ids that are not inputs are ignored. */
     fun collectValues(action: AgentUiNodeAction, actingNodeId: String, current: Map<String, String>): Map<String, String> {
@@ -101,6 +119,17 @@ data class AgentUiTree(
         return out
     }
 
+    /** False while an `include`d multiSelect holds fewer than its `min` or more than its `max` options. */
+    fun selectionCountsOk(action: AgentUiNodeAction, current: Map<String, String>): Boolean =
+        action.include.all { id -> multiSelects[id]?.let { it.countOk(current[id] ?: inputs.getValue(id)) } ?: true }
+
+    // A multiSelect counts at its longest possible value, so ticking more chips can never push a reply over budget.
+    private fun budgetFits(action: AgentUiNodeAction, actingNodeId: String, current: Map<String, String>): Boolean {
+        val worst = action.include.mapNotNull { id -> multiSelects[id]?.let { id to it.worstCase() } }
+        if (worst.any { it.second.codePointCount() > AgentUiLimits.MAX_VALUE_CP }) return false
+        return AgentUiActionDescriptor.valuesFit(collectValues(action, actingNodeId, current + worst))
+    }
+
     /**
      * [candidate] when every action touching [nodeId] still fits its reply. Otherwise the edit is clamped,
      * never below what the field already holds: a shrinking edit is kept, an append is cut to fit, and any
@@ -108,7 +137,7 @@ data class AgentUiTree(
      */
     fun fitText(nodeId: String, candidate: String, current: Map<String, String>): String {
         val actions = actionsTouching(nodeId)
-        fun fits(text: String) = actions.all { (a, actor) -> AgentUiActionDescriptor.valuesFit(collectValues(a, actor, current + (nodeId to text))) }
+        fun fits(text: String) = actions.all { (a, actor) -> budgetFits(a, actor, current + (nodeId to text)) }
         val before = current[nodeId] ?: inputs[nodeId].orEmpty()
         if (fits(candidate) || jsonBytes(candidate) <= jsonBytes(before)) return candidate
         if (!candidate.startsWith(before)) return before
@@ -125,7 +154,7 @@ data class AgentUiTree(
     fun overBudgetActions(): List<String> {
         val out = ArrayList<String>()
         fun walk(n: AgentUiNode) {
-            n.action()?.let { a -> if (!AgentUiActionDescriptor.valuesFit(collectValues(a, n.id, inputs))) out += a.id }
+            n.action()?.let { a -> if (!budgetFits(a, n.id, inputs)) out += a.id }
             n.children()?.forEach(::walk)
         }
         walk(root)
@@ -185,6 +214,7 @@ data class AgentUiTree(
         private val nodes = HashMap<String, JsonObject>()
         private val visited = HashSet<String>()
         private val inputs = LinkedHashMap<String, String>()
+        private val multiSelects = HashMap<String, AgentUiNode.MultiSelect>()
         private var images = 0
         private var failure: String? = null
 
@@ -200,7 +230,7 @@ data class AgentUiTree(
             }
             val root = build(rootId, 1)
             failure?.let { return AgentUiTreeResult.Invalid(it) }
-            return if (root == null) AgentUiTreeResult.Invalid("root missing") else AgentUiTreeResult.Valid(AgentUiTree(root, inputs))
+            return if (root == null) AgentUiTreeResult.Invalid("root missing") else AgentUiTreeResult.Valid(AgentUiTree(root, inputs, multiSelects))
         }
 
         private fun fail(reason: String): AgentUiNode? {
@@ -240,6 +270,7 @@ data class AgentUiTree(
                     AgentUiNode.TextInput(id, obj.label("label") ?: "", v, obj.bool("multiline") ?: false, max, action(obj["action"]))
                 }
                 "select" -> select(id, obj)
+                "multiSelect" -> multiSelect(id, obj)
                 else -> AgentUiNode.Unknown(id, fallback)
             }
         }
@@ -277,16 +308,32 @@ data class AgentUiTree(
             return AgentUiNode.Table(id, cells(obj["header"]), rows)
         }
 
-        private fun select(id: String, obj: JsonObject): AgentUiNode {
+        private fun options(obj: JsonObject, idOk: (String) -> Boolean = { true }): List<SelectOption> {
             val seen = HashSet<String>()
-            val options = (obj["options"] as? JsonArray).orEmpty().mapNotNull { e ->
+            return (obj["options"] as? JsonArray).orEmpty().mapNotNull { e ->
                 val o = e as? JsonObject ?: return@mapNotNull null
-                val oid = o.str("id")?.takeIf { it.isNotBlank() && it.length <= AgentUiLimits.MAX_ID_LENGTH && seen.add(it) } ?: return@mapNotNull null
+                val oid = o.str("id")?.takeIf { it.isNotBlank() && it.length <= AgentUiLimits.MAX_ID_LENGTH && idOk(it) && seen.add(it) } ?: return@mapNotNull null
                 SelectOption(oid, o.label("label") ?: oid)
             }.take(AgentUiLimits.MAX_OPTIONS)
+        }
+
+        private fun select(id: String, obj: JsonObject): AgentUiNode {
+            val options = options(obj)
             val value = obj.str("value")?.takeIf { v -> options.any { it.id == v } } ?: ""
             inputs[id] = value
             return AgentUiNode.Select(id, obj.label("label") ?: "", options, value, action(obj["action"]))
+        }
+
+        private fun multiSelect(id: String, obj: JsonObject): AgentUiNode {
+            val options = options(obj) { MULTI_SELECT_SEPARATOR !in it }
+            val picked = (obj["value"] as? JsonArray).orEmpty().mapNotNullTo(HashSet()) { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            val max = (obj.int("max") ?: options.size).coerceIn(0, options.size)
+            val min = (obj.int("min") ?: 0).coerceIn(0, max)
+            val value = options.filter { it.id in picked }.map { it.id }
+            val node = AgentUiNode.MultiSelect(id, obj.label("label") ?: "", options, value, min, max)
+            inputs[id] = value.joinToString(MULTI_SELECT_SEPARATOR)
+            multiSelects[id] = node
+            return node
         }
 
         private fun action(e: JsonElement?): AgentUiNodeAction? {
