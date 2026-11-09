@@ -23,7 +23,7 @@ import io.ktor.http.HttpHeaders
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
-import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import id.homebase.api.client.withIdleTimeout
 
 import kotlinx.coroutines.Dispatchers
@@ -39,10 +39,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.IOException
 
 // The web engine has no socket timeout, and a download has no request timeout: only these end a stalled download.
-private const val DOWNLOAD_STALL_MILLIS = 5 * 60_000L
+private val DOWNLOAD_STALL = 5.minutes
 
 // Timed on Dispatchers.Default so it counts real time, not the caller's (a test's virtual time skips ahead).
-private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = DOWNLOAD_STALL_MILLIS): Flow<ByteArray> = flow {
+private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = DOWNLOAD_STALL.inWholeMilliseconds): Flow<ByteArray> = flow {
     val buffer = ByteArray(chunkSize)
 
     while (!isClosedForRead) {
@@ -95,8 +95,8 @@ public class DriveFileHttpProvider(
         val url = apiUrl(creds.domain, path)
 
         // Streamed, not buffered: get() would read the whole body into memory, and a large file outlasts any request timeout.
-        val noResponse = { IOException("no response for $DOWNLOAD_STALL_MILLIS ms") }
-        return withIdleTimeout(DOWNLOAD_STALL_MILLIS.milliseconds, noResponse) { progress ->
+        val noResponse = { IOException("no response for $DOWNLOAD_STALL") }
+        return withIdleTimeout(DOWNLOAD_STALL, noResponse) { progress ->
             progress(false)
             httpClient.prepareGet(url) {
                 bearerAuth(creds.accessToken)

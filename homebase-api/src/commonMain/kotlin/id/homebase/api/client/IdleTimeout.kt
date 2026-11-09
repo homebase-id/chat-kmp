@@ -8,11 +8,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 
 /**
- * Runs [block], failing with [stalled] when more than [idle] passes between two calls of the
- * `progress` it hands [block]: the clock starts at the first call and stops at `progress(true)`.
- *
- * Engine socket timeouts can't be relied on for this: the web engine has none, and an iPhone upload to an
- * HTTP/2 server sat stalled for 30+ minutes with Darwin's 5-minute one set.
+ * Fails with [stalled] when more than [idle] passes between two `progress` calls, from the first until `progress(true)`.
+ * Engine socket timeouts can't be relied on: the web engine has none, and Darwin's let an HTTP/2 upload sit for 30+ minutes.
  */
 internal suspend fun <T> withIdleTimeout(
     idle: Duration,

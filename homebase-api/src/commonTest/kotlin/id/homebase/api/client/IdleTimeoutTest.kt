@@ -3,6 +3,9 @@ package id.homebase.api.client
 import id.homebase.api.client.auth.CredentialsManager
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
+import io.ktor.client.request.HttpResponseData
+import io.ktor.utils.io.ByteReadChannel
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
@@ -23,39 +26,31 @@ import kotlin.time.Duration.Companion.seconds
 
 private class StallProbe : Exception()
 
-private class MockUploadProvider(client: HttpClient) : OdinApiProviderBase(client, CredentialsManager()) {
-    override val uploadStallTimeout: Duration = 300.milliseconds
-    suspend fun upload() = plainPostMultipart(
-        "https://example.test/api/v2/drives/x/files",
-        "token",
-        MultiPartFormDataContent(formData { append("payload", ByteArray(8 * 1024 * 1024)) }),
+internal class UploadTestProvider(client: HttpClient, override val uploadStallTimeout: Duration) :
+    OdinApiProviderBase(client, CredentialsManager()) {
+    suspend fun upload(url: String, bytes: Int, onProgress: UploadProgress? = null) = plainPostMultipart(
+        url, "token", MultiPartFormDataContent(formData { append("payload", ByteArray(bytes)) }), onProgress,
     )
 }
 
 class IdleTimeoutTest {
 
     // The body is larger than the 1 MiB Ktor buffers between the progress listener and the engine.
-
-    private fun engine(readBytes: Long?) = HttpClient(MockEngine { request ->
-        val body = (request.body as OutgoingContent.ReadChannelContent).readFrom()
-        if (readBytes == null) {
-            body.discard()
-            respond("{}", HttpStatusCode.OK)
-        } else {
-            body.discard(readBytes)
-            awaitCancellation()
-        }
-    })
+    private suspend fun upload(handler: suspend MockRequestHandleScope.(ByteReadChannel) -> HttpResponseData) =
+        UploadTestProvider(
+            HttpClient(MockEngine { handler((it.body as OutgoingContent.ReadChannelContent).readFrom()) }),
+            uploadStallTimeout = 300.milliseconds,
+        ).upload("https://example.test/api/v2/drives/x/files", bytes = 8 * 1024 * 1024)
 
     @Test
     fun uploadWhoseBodyStopsMoving_failsAsStalled() = runTest(timeout = 30.seconds) {
-        val e = assertFailsWith<UploadStalledException> { MockUploadProvider(engine(readBytes = 64 * 1024)).upload() }
+        val e = assertFailsWith<UploadStalledException> { upload { body -> body.discard(64 * 1024); awaitCancellation() } }
         assertEquals(300.milliseconds, e.idle)
     }
 
     @Test
     fun uploadThatFinishes_isNotTimedOut() = runTest(timeout = 30.seconds) {
-        assertEquals(200, MockUploadProvider(engine(readBytes = null)).upload().status)
+        assertEquals(200, upload { body -> body.discard(); respond("{}", HttpStatusCode.OK) }.status)
     }
 
     @Test
