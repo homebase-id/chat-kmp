@@ -30,7 +30,6 @@ internal data class CardContentItem(
     // Older records of the same type with other data; the editor shows them so the user can remove them.
     val conflicts: List<ProfileAttribute> = emptyList(),
 ) {
-    val everyCard: Boolean get() = audience == ProfileAudience.Public
     val renderable: Boolean get() = type in CARD_RENDERED_TYPES
     val orderable: Boolean get() = type == ProfileAttributeTypes.LINK || type in CARD_SOCIAL_TYPES
     val onCard: Boolean get() = shown && renderable && !hidden

@@ -2508,12 +2508,9 @@
     <string name="profile_card_field_move_up">Move %1$s up</string>
     <string name="profile_card_field_move_down">Move %1$s down</string>
     <string name="profile_card_content_could_add">Also on your profile</string>
-    <string name="profile_card_content_every_card">On every card</string>
-    <string name="profile_card_content_every_card_desc">Public, so everyone sees these on every card.</string>
     <string name="profile_card_content_edit_this">Edit %1$s</string>
     <string name="profile_card_content_edit_title">Edit</string>
     <string name="profile_card_content_delete">Delete from every card</string>
-    <string name="profile_card_content_every_card_circle">Public, so everyone sees these. To hide one from this card, tap it and change who can see it.</string>
     <string name="profile_card_content_more">More</string>
     <string name="profile_card_switcher">Card to edit</string>
     <string name="profile_card_content_add_new">Add new</string>

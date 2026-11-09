@@ -13,6 +13,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.profile.ProfileAttribute
@@ -143,5 +148,99 @@ class CardFieldRowsTest {
         waitForIdle()
 
         assertEquals(listOf(listOf(two.id, one.id)), reordered)
+    }
+
+    @Test
+    fun aDragAfterAMoveActionStartsFromTheOrderTheMoveSaved() = runComposeUiTest {
+        val a = link("a")
+        val b = link("b")
+        val c = link("c")
+        val reordered = mutableListOf<List<Uuid>>()
+        var fields by mutableStateOf<CardFields?>(null)
+        setContent {
+            MaterialTheme {
+                CardContentEditor(
+                    card = friends,
+                    items = cardContentItems(listOf(a, b, c), circles, friends, fields),
+                    circles = circles,
+                    photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
+                    enabled = true,
+                    importSources = emptyList(),
+                    showCardsButton = true,
+                    onAudience = { _, _ -> },
+                    onEdit = { _, _, _ -> },
+                    onDelete = {},
+                    onAdd = { _, _ -> },
+                    onChangePhoto = {},
+                    onRemovePhoto = {},
+                    onImport = {},
+                    onFieldShown = { _, _ -> },
+                    onFieldsReordered = { reordered += it; fields = CardFields(order = it.map { id -> id.toString() }) },
+                )
+            }
+        }
+
+        moveActions().first { it.label.endsWith("down") }.action()
+        waitForIdle()
+        assertEquals(listOf(listOf(b.id, a.id, c.id)), reordered)
+
+        val handles = onAllNodesWithTag("field_handle", useUnmergedTree = true)
+        val pitch = with(density) { (handles[2].getBoundsInRoot().top - handles[1].getBoundsInRoot().top).toPx() }
+        handles[2].performTouchInput {
+            down(center)
+            repeat(8) { moveBy(androidx.compose.ui.geometry.Offset(0f, -pitch * 0.1f)) }
+            up()
+        }
+        waitForIdle()
+
+        assertEquals(listOf(b.id, a.id, c.id), reordered[0])
+        assertEquals(listOf(b.id, c.id, a.id), reordered.last())
+    }
+
+    @Test
+    fun aDragBackToTheOriginalOrderAfterAMoveIsStillSaved() = runComposeUiTest {
+        val a = link("a")
+        val b = link("b")
+        val c = link("c")
+        val reordered = mutableListOf<List<Uuid>>()
+        var fields by mutableStateOf<CardFields?>(null)
+        setContent {
+            MaterialTheme {
+                CardContentEditor(
+                    card = friends,
+                    items = cardContentItems(listOf(a, b, c), circles, friends, fields),
+                    circles = circles,
+                    photo = CardPhotoUi(photo = null, own = false, canChange = true, busy = false),
+                    enabled = true,
+                    importSources = emptyList(),
+                    showCardsButton = true,
+                    onAudience = { _, _ -> },
+                    onEdit = { _, _, _ -> },
+                    onDelete = {},
+                    onAdd = { _, _ -> },
+                    onChangePhoto = {},
+                    onRemovePhoto = {},
+                    onImport = {},
+                    onFieldShown = { _, _ -> },
+                    onFieldsReordered = { reordered += it; fields = CardFields(order = it.map { id -> id.toString() }) },
+                )
+            }
+        }
+
+        moveActions().first { it.label.endsWith("down") }.action()
+        waitForIdle()
+        assertEquals(listOf(listOf(b.id, a.id, c.id)), reordered)
+
+        val handles = onAllNodesWithTag("field_handle", useUnmergedTree = true)
+        val pitch = with(density) { (handles[1].getBoundsInRoot().top - handles[0].getBoundsInRoot().top).toPx() }
+        handles[1].performTouchInput {
+            down(center)
+            repeat(8) { moveBy(androidx.compose.ui.geometry.Offset(0f, -pitch * 0.1f)) }
+            up()
+        }
+        waitForIdle()
+
+        assertEquals(listOf(b.id, a.id, c.id), reordered[0])
+        assertEquals(listOf(a.id, b.id, c.id), reordered.last())
     }
 }

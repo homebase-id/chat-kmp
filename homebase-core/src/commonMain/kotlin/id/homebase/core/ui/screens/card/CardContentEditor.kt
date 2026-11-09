@@ -122,15 +122,12 @@ import id.homebase.resources.profile_card_field_show
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
-import id.homebase.resources.profile_card_content_every_card
-import id.homebase.resources.profile_card_content_every_card_desc
 import id.homebase.resources.cancel
 import id.homebase.resources.done
 import id.homebase.resources.profile_card_cards_public
 import id.homebase.resources.profile_card_content_choose_cards
 import id.homebase.resources.profile_edit_audience_only_me_hint
 import id.homebase.resources.profile_card_content_edit_this
-import id.homebase.resources.profile_card_content_every_card_circle
 import id.homebase.resources.profile_card_switcher
 import id.homebase.resources.profile_edit_load_failed
 import id.homebase.resources.profile_edit_load_failed_desc

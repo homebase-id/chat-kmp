@@ -755,7 +755,7 @@ class CardContentTest {
         val bio = wire.seed(ProfileAttributeTypes.BIO_SUMMARY, "anonymous", data(ProfileAttributeTypes.KEY_SHORT_BIO, "Second breakfast"))
         val rig = rig(wire)
         rig.open(CardAudience.Public)
-        assertTrue(rig.item(ProfileAttributeTypes.BIO_SUMMARY).everyCard)
+        assertEquals(ProfileAudience.Public, rig.item(ProfileAttributeTypes.BIO_SUMMARY).audience)
 
         rig.write { rig.vm.toggle(bio, false) }
 
@@ -872,7 +872,7 @@ class CardContentTest {
         assertEquals(ProfileAudience.OnlyMe, birthday.audience)
         assertFalse(birthday.shown)
         val nickname = rig.item(ProfileAttributeTypes.NICKNAME)
-        assertTrue(nickname.shown && !nickname.everyCard)
+        assertTrue(nickname.shown && nickname.audience != ProfileAudience.Public)
         assertEquals("Mr. Underhill", nickname.text)
     }
 
