@@ -219,7 +219,7 @@ suspend fun mapToMessageData(
         // New kinds plug in via MessageContentParser — zero mapper edits.
         val messageContent: MessageContent? =
             if (isStatusMessage) null
-            else MessageContentParser.parse(appData.dataType, content, metadata.payloads)
+            else MessageContentParser.parseForDisplay(appData.dataType, content, metadata.payloads)
 
         when {
             isStatusMessage -> {

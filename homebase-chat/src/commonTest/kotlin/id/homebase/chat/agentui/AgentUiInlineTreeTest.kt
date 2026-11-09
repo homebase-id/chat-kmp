@@ -64,7 +64,7 @@ class AgentUiInlineTreeTest {
         versionTag = Uuid.random(),
         isPendingSend = false,
         hasMore = false,
-        messageContent = MessageContentParser.parse(ChatProtocol.ChatAgentUiMessageDataType, content, payloads),
+        messageContent = MessageContentParser.parseForDisplay(ChatProtocol.ChatAgentUiMessageDataType, content, payloads),
     )
 
     private fun TestScope.loader(fetches: MutableList<Uuid>, bytes: () -> ByteArray? = { AgentUiFixtures.draftPostCardBytes() }) =
@@ -72,14 +72,14 @@ class AgentUiInlineTreeTest {
 
     @Test fun small_tree_rides_inline_and_decodes_with_the_header() {
         val d = assertNotNull(AgentUiDescriptor(fallback = "Draft post").withInlineTree(draft))
-        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(219, header(d), images))
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parseForDisplay(219, header(d), images))
         val tree = assertIs<AgentUiTreeResult.Valid>(content.inlineTree).tree
         assertEquals(AgentUiFixtures.decodeDraftPostCard(), tree)
     }
 
     @Test fun inline_image_keys_come_from_the_message_payloads() {
         val d = assertNotNull(AgentUiDescriptor(fallback = "Draft post").withInlineTree(draft))
-        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(219, header(d), emptyList()))
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parseForDisplay(219, header(d), emptyList()))
         assertNotEquals(AgentUiFixtures.decodeDraftPostCard(), assertIs<AgentUiTreeResult.Valid>(content.inlineTree).tree)
     }
 
@@ -96,16 +96,26 @@ class AgentUiInlineTreeTest {
     }
 
     @Test fun a_header_without_a_tree_has_no_inline_tree() {
-        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(219, header(AgentUiDescriptor(fallback = "x")), null))
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parseForDisplay(219, header(AgentUiDescriptor(fallback = "x")), null))
         assertNull(content.inlineTree)
         assertEquals(false, header(AgentUiDescriptor(fallback = "x")).contains("tree"))
     }
 
     @Test fun a_deeply_nested_inline_tree_shows_the_fallback() {
         val deep = """{"schemaVersion":1,"fallback":"x","tree":""" + "[".repeat(5000) + "]".repeat(5000) + "}"
-        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(219, deep, null))
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(219, deep))
         assertEquals("x", assertNotNull(content.descriptor).fallback)
         assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
+    }
+
+    @Test fun parse_without_display_leaves_the_inline_tree_undecoded() {
+        val content = assertIs<MessageContent.AgentUi>(MessageContentParser.parse(219, """{"fallback":"Draft post","tree":[]}"""))
+        assertNull(content.inlineTree)
+        val d = assertNotNull(content.descriptor)
+        assertEquals(Json.parseToJsonElement("[]"), d.tree)
+        val shown = assertIs<MessageContent.AgentUi>(MessageContentParser.parseForDisplay(219, header(d), null))
+        assertNull(assertNotNull(shown.descriptor).tree)
+        assertIs<AgentUiTreeResult.Invalid>(shown.inlineTree)
     }
 
     @Test fun inline_card_is_ready_on_the_first_frame_and_never_fetches() = runTest {
@@ -189,7 +199,7 @@ class AgentUiInlineTreeTest {
 
     @Test fun an_inline_tree_that_is_not_an_object_keeps_the_descriptor() {
         val content = assertIs<MessageContent.AgentUi>(
-            MessageContentParser.parse(219, """{"fallback":"Draft post","tree":[]}""", null)
+            MessageContentParser.parseForDisplay(219, """{"fallback":"Draft post","tree":[]}""", null)
         )
         assertNotNull(content.descriptor)
         assertIs<AgentUiTreeResult.Invalid>(content.inlineTree)
@@ -232,7 +242,7 @@ class AgentUiInlineTreeTest {
         assertIs<TreeLoad.Ready>(firstFrameTree(inline.messageContent as MessageContent.AgentUi, 0, inline, loader))
         val edited = inline.copy(
             payloads = (images + treePayload).toImmutableList(),
-            messageContent = MessageContentParser.parse(219, header(AgentUiDescriptor(fallback = "v2", rev = 1)), images + treePayload),
+            messageContent = MessageContentParser.parseForDisplay(219, header(AgentUiDescriptor(fallback = "v2", rev = 1)), images + treePayload),
         )
         assertIs<TreeLoad.Loading>(firstFrameTree(edited.messageContent as MessageContent.AgentUi, 1, edited, loader))
         assertIs<AgentUiTreeResult.Valid>(loader.load(edited))
