@@ -38,7 +38,7 @@ import kotlinx.io.IOException
 
 // The web engine has no socket timeout, and a download has no request timeout: only this ends a stalled body.
 // Timed on Dispatchers.Default so it counts real time, not the caller's (a test's virtual time skips ahead).
-private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = 5 * 60_000L): Flow<ByteArray> = flow {
+internal fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = 5 * 60_000L): Flow<ByteArray> = flow {
     val buffer = ByteArray(chunkSize)
 
     while (!isClosedForRead) {

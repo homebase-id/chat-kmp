@@ -11,10 +11,19 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.drives.files.asFlow
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.plugins.HttpTimeoutConfig
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.contentLength
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -76,6 +85,59 @@ class PeerFileByGlobalTransitProvider(
             return null
         }
         return decrypted(response, keyHeader)
+    }
+
+    /**
+     * A whole payload, decrypted, to [consume] as it streams in; false on 404. Peer route only, and outside the
+     * payload and HLS chunk caches: a whole-file download must neither depend on the CDN nor evict video segments.
+     * The cipher's padding is stripped, so the plaintext is exactly the original bytes.
+     */
+    suspend fun streamPayloadDecrypted(
+        peer: OdinId,
+        driveId: Uuid,
+        globalTransitId: Uuid,
+        payloadKey: String,
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean {
+        require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
+        val creds = requireCreds()
+        val url = apiUrl(creds.domain, "/peer/$peer/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey")
+        return httpClient.prepareGet(url) {
+            bearerAuth(creds.accessToken)
+            timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
+        }.execute { response ->
+            if (response.status.value == 404) {
+                Logger.i(tag = TAG) { "404 (not shared / missing) url=$url" }
+                return@execute false
+            }
+            if (response.status.value !in 200..299) {
+                throwForFailure(
+                    ByteApiResponse(
+                        status = response.status.value,
+                        headers = response.headers,
+                        bytes = ByteArray(0),
+                        contentType = "application/octet-stream",
+                    ),
+                )
+            }
+            val total = response.contentLength()
+            var read = 0L
+            val encrypted = response.bodyAsChannel().asFlow().let { upstream ->
+                if (onProgress == null || total == null || total <= 0L) upstream
+                else flow {
+                    upstream.collect { chunk ->
+                        read += chunk.size
+                        onProgress((read.toFloat() / total).coerceAtMost(1f))
+                        emit(chunk)
+                    }
+                }
+            }
+            consume(AesCbc.streamDecryptWithCbc(encrypted, keyHeader.aesKey, keyHeader.iv))
+            onProgress?.invoke(1f)
+            true
+        }
     }
 
     /** Null on 404. */

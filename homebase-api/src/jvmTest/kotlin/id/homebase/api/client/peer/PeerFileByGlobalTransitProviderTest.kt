@@ -251,4 +251,40 @@ class PeerFileByGlobalTransitProviderTest {
             "every read is still served, over peer: $urls",
         )
     }
+
+    @Test
+    fun streamPayloadDecrypted_oddSizedPayload_returnsExactBytes_overPeerOnly() = runTest {
+        val gtid = Uuid.random()
+        val plaintext = ByteArray(5_003) { (it % 251).toByte() }
+        val cipher = keyHeader().encryptDataAes(plaintext)
+        val urls = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            urls += request.url.toString()
+            respond(cipher, HttpStatusCode.OK, headersOf("payloadencrypted", listOf("true")))
+        }
+        val out = java.io.ByteArrayOutputStream()
+
+        val found = provider(engine).streamPayloadDecrypted(peer, driveId, gtid, key, keyHeader()) { flow ->
+            flow.collect { out.write(it) }
+        }
+
+        assertTrue(found)
+        assertTrue(plaintext.contentEquals(out.toByteArray()), "exactly the original bytes, no padding")
+        assertEquals(
+            listOf("https://me.example.com/api/v2/peer/$peer/drives/$driveId/files/by-gtid/$gtid/payload/$key"),
+            urls,
+            "one whole-file peer read, no CDN",
+        )
+    }
+
+    @Test
+    fun streamPayloadDecrypted_404_isFalse_andConsumesNothing() = runTest {
+        val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
+        var consumed = false
+
+        val found = provider(engine).streamPayloadDecrypted(peer, driveId, Uuid.random(), key, keyHeader()) { consumed = true }
+
+        assertEquals(false, found)
+        assertEquals(false, consumed)
+    }
 }
