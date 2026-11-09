@@ -189,6 +189,25 @@ internal suspend fun MutableStateFlow<MessageListUiState>.sendSharedFilesToTarge
     failure?.let { throw it }
 }
 
+// The visible chat goes first; a failed target doesn't stop the rest, and the first failure is rethrown.
+internal suspend fun sendToEveryTarget(
+    targets: List<Uuid>,
+    visibleConversationId: Uuid,
+    send: suspend (conversationId: Uuid) -> Unit,
+) {
+    var failure: Throwable? = null
+    for (target in targets.sortedBy { it != visibleConversationId }) {
+        try {
+            send(target)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (failure == null) failure = e
+        }
+    }
+    failure?.let { throw it }
+}
+
 /**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
  * mark-as-read / forward / reply / battle-dice / reaction-details) extracted
@@ -998,20 +1017,33 @@ internal class MessageActionsHandler(
             )?.let { vCardDescriptorFactory.toDescriptor(it) }
 
             if (contactCard != null) {
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
-                chatMessageSenderService.sendNewTypedMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    content = MessageContent.ContactCard(contactCard),
-                    previousMessageUniqueId = null,
-                )
+                sendToEveryTarget(targets, conversationId) { targetId ->
+                    val newMessageId = Uuid.random()
+                    if (targetId == conversationId) pendingMessageId = newMessageId
+                    chatMessageSenderService.sendNewTypedMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = targetId,
+                        content = MessageContent.ContactCard(contactCard),
+                        previousMessageUniqueId = null,
+                    )
+                }
                 return
             }
 
             if (descriptor.fileNames.isEmpty()) {
-                // Text/URL only
-                addMessage(conversationId, text)
+                sendToEveryTarget(targets, conversationId) { targetId ->
+                    if (targetId == conversationId) {
+                        addMessage(targetId, text)
+                    } else {
+                        chatMessageSenderService.sendNewMessage(
+                            messageUniqueId = Uuid.random(),
+                            conversationId = targetId,
+                            messageText = text,
+                            previousMessageUniqueId = null,
+                            payloadBundle = null,
+                        )
+                    }
+                }
             } else {
                 // Build AttachmentInput list from shared files
                 val attachments =

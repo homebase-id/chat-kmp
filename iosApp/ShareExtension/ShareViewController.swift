@@ -95,7 +95,7 @@ class ShareViewController: UIViewController {
         // Save shared content to App Group
         SharedContentSaver.save(
             extensionContext: extensionContext,
-            conversationId: joinedIds
+            conversationIds: conversationIds
         ) { [weak self] success in
             if success {
                 self?.openMainApp(conversationIds: joinedIds)
@@ -119,7 +119,7 @@ class ShareViewController: UIViewController {
 
         SharedContentSaver.save(
             extensionContext: extensionContext,
-            conversationId: SharedContentSaver.momentTargetId
+            conversationIds: []
         ) { [weak self] success in
             if success {
                 self?.openMainAppForMoment()
