@@ -8,6 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -132,22 +133,37 @@ class CardFieldRowsTest {
         }
     }
 
+    private fun androidx.compose.ui.test.ComposeUiTest.moveButton(tag: String, label: String) = onNode(
+        hasTestTag(tag) and hasContentDescription(if (tag == "field_to_back") "Move $label to the back" else "Show $label on the front"),
+    )
+
     @Test
-    fun tappingAFrontRowMovesItToTheBackAndTappingItThereBringsItBack() = runComposeUiTest {
+    fun theLeadingButtonMovesAFrontRowToTheBackAndBackAgain() = runComposeUiTest {
         val shown = mutableListOf<Pair<Uuid, Boolean>>()
         val audiences = mutableListOf<Uuid>()
         editor(null, shown, audiences = audiences)
 
-        row("field_front", "Elevenses").performClick()
+        moveButton("field_to_back", "Status").performClick()
         waitForIdle()
         row("field_front", "Elevenses").assertDoesNotExist()
-        row("field_back", "Elevenses").performClick()
+        moveButton("field_to_front", "Status").performClick()
         waitForIdle()
 
         row("field_front", "Elevenses").assertExists()
         row("field_back", "Elevenses").assertDoesNotExist()
         assertEquals(listOf(status.id to false, status.id to true), shown)
         assertEquals(emptyList(), audiences)
+    }
+
+    @Test
+    fun tappingARowOpensEditingAndDoesNotMoveIt() = runComposeUiTest {
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        editor(CardFields(hidden = listOf(status.id.toString())), shown)
+
+        row("field_front", "Second breakfast").performClick()
+        waitForIdle()
+        onNodeWithText("Edit").assertExists()
+        assertEquals(emptyList(), shown)
     }
 
     @Test
@@ -189,7 +205,8 @@ class CardFieldRowsTest {
         val shown = mutableListOf<Pair<Uuid, Boolean>>()
         editor(null, shown)
 
-        row("field_back", "Phone").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick)).performClick()
+        assertEquals(0, onAllNodesWithTag("field_to_front", useUnmergedTree = true).fetchSemanticsNodes().size)
+        row("field_back", "Phone").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)).performClick()
         waitForIdle()
 
         assertEquals(emptyList(), shown)
@@ -210,7 +227,7 @@ class CardFieldRowsTest {
     fun anEmptyFrontPointsAtTheBack() = runComposeUiTest {
         editor(CardFields(hidden = listOf(bio.id, status.id).map { it.toString() }))
 
-        onNodeWithText("Tap a field on the Back to show it on the card").assertExists()
+        onNodeWithText("Use the add button on a Back field to show it on the card").assertExists()
         assertEquals(0, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
     }
 
@@ -229,7 +246,7 @@ class CardFieldRowsTest {
         val audiences = mutableListOf<Uuid>()
         editor(null, shown, audiences = audiences)
 
-        row("field_front", "Elevenses").performClick()
+        moveButton("field_to_back", "Status").performClick()
 
         assertEquals(listOf(status.id to false), shown)
         assertEquals(emptyList(), audiences)

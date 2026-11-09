@@ -21,7 +21,11 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.ButtonGroupDefaults
@@ -73,6 +77,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -298,8 +303,8 @@ internal fun CardContentEditor(
                     count = count,
                     enabled = enabled,
                     tag = "field_front",
-                    onClickLabel = stringResource(MR.string.profile_card_field_to_back),
-                    onClick = display.onToggle,
+                    onOpen = { editingId = item.id },
+                    onMove = display.onToggle,
                     display = display,
                 )
             }
@@ -391,7 +396,6 @@ internal fun CardContentEditor(
         if (back.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
             SectionLabel(stringResource(MR.string.profile_card_content_back), stringResource(MR.string.profile_card_content_back_desc))
-            val toFront = stringResource(MR.string.profile_card_field_to_front)
             Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                 back.forEachIndexed { index, item ->
                     key(item.id) {
@@ -401,8 +405,8 @@ internal fun CardContentEditor(
                             count = back.size,
                             enabled = enabled,
                             tag = "field_back",
-                            onClickLabel = toFront.takeIf { item.renderable },
-                            onClick = { onFieldShown(item.id, true) }.takeIf { item.renderable },
+                            onOpen = { editingId = item.id },
+                            onMove = { onFieldShown(item.id, true) }.takeIf { item.renderable },
                         )
                     }
                 }
@@ -799,7 +803,7 @@ private fun EditorRow(
     }
 }
 
-// A circle card's row says only which side of the card a field is on; tapping it moves it to the other side.
+// Front rows lead with a remove button and Back rows with an add button; the row body edits the field.
 @Composable
 private fun CardFieldRow(
     item: CardContentItem,
@@ -807,8 +811,8 @@ private fun CardFieldRow(
     count: Int,
     enabled: Boolean,
     tag: String,
-    onClickLabel: String? = null,
-    onClick: (() -> Unit)? = null,
+    onOpen: (() -> Unit)? = null,
+    onMove: (() -> Unit)? = null,
     display: FieldDisplay? = null,
     muted: Boolean = false,
 ) {
@@ -816,6 +820,9 @@ private fun CardFieldRow(
     val label = stringResource(typeLabel(item.type))
     val moveUpLabel = stringResource(MR.string.profile_card_field_move_up, label)
     val moveDownLabel = stringResource(MR.string.profile_card_field_move_down, label)
+    val edit = stringResource(MR.string.profile_card_content_edit_this, label)
+    val toBack = stringResource(MR.string.profile_card_field_to_back, label)
+    val toFront = stringResource(MR.string.profile_card_field_to_front, label)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
     val lift by animateFloatAsState(if (display?.lifted == true) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
     Surface(
@@ -824,12 +831,12 @@ private fun CardFieldRow(
         shadowElevation = LIFT_ELEVATION * lift,
         modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { display.keyMove(it)?.invoke() != null },
     ) {
-        Row(
+        ListItem(
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             modifier = Modifier
-                .fillMaxWidth()
                 .then(
-                    if (onClick != null) {
-                        Modifier.clickable(enabled = enabled, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
+                    if (onOpen != null) {
+                        Modifier.clickable(enabled = enabled, role = Role.Button, onClickLabel = edit, onClick = onOpen)
                     } else {
                         Modifier.semantics(mergeDescendants = true) {}
                     },
@@ -838,19 +845,11 @@ private fun CardFieldRow(
                 .semantics {
                     val actions = display.moveActions(moveUpLabel, moveDownLabel)
                     if (actions.isNotEmpty()) customActions = actions
-                }
-                .heightIn(min = 56.dp)
-                .padding(start = 16.dp, end = if (display?.handle != null) 4.dp else 16.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                },
+            overlineContent = {
+                Text(text = label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            headlineContent = {
                 Text(
                     text = item.text,
                     style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
@@ -859,9 +858,25 @@ private fun CardFieldRow(
                     softWrap = prose,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            if (display != null) ReorderHandle(display, enabled, label)
-        }
+            },
+            leadingContent = onMove?.let { move ->
+                {
+                    val onFront = display?.onCard == true
+                    IconButton(
+                        onClick = move,
+                        enabled = enabled,
+                        modifier = Modifier.testTag(if (onFront) "field_to_back" else "field_to_front"),
+                    ) {
+                        Icon(
+                            imageVector = if (onFront) Icons.Outlined.RemoveCircleOutline else Icons.Outlined.AddCircleOutline,
+                            contentDescription = if (onFront) toBack else toFront,
+                            tint = if (onFront) colors.onSurfaceVariant else colors.primary,
+                        )
+                    }
+                }
+            },
+            trailingContent = display?.handle?.let { { ReorderHandle(display, enabled, label) } },
+        )
     }
 }
 
