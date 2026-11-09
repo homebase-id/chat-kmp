@@ -45,10 +45,7 @@ private fun validateMetadata(metadata: UploadFileMetadata) {
         validateEmbeddedThumb(thumb, where = "metadata.appData.previewThumbnail")
     }
     metadata.appData.content?.let { content ->
-        // appData.content is the header-level descriptor. Server caps it
-        // at MaxHeaderContentBytes — typed-message-kind authors are
-        // already warned about this in ADDING_TYPED_MESSAGE_KIND.md, but
-        // until now nothing actually enforced it on the client.
+        // Runs after encryptContent, so for an encrypted file this is the base64 ciphertext the server stores.
         val size = content.encodeToByteArray().size
         if (size > HomebaseProtocol.MaxHeaderContentBytes) {
             throw validationFailure(

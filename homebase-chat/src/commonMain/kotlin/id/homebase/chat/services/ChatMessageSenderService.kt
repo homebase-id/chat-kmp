@@ -877,9 +877,8 @@ class ChatMessageSenderService(
             // non-BMP phones and ten emails clear isValid() at roughly 11 KB of UTF-8. Without
             // this the forward throws out of validateMetadata inside a fire-and-forget send and
             // surfaces as a failed bubble with no reason.
-            val size = content.encodeToByteArray().size
-            require(size <= HomebaseProtocol.MaxHeaderContentBytes) {
-                "forwarded header content is $size bytes, over ${HomebaseProtocol.MaxHeaderContentBytes}"
+            require(HomebaseProtocol.fitsHeaderContent(content)) {
+                "forwarded header content is ${HomebaseProtocol.encryptedHeaderContentBytes(content)} bytes encrypted, over ${HomebaseProtocol.MaxHeaderContentBytes}"
             }
             MessageBuildResult(
                 headerContent = content,
@@ -1000,9 +999,7 @@ class ChatMessageSenderService(
 
         val fullJson = OdinSystemSerializer.serialize(messageData)
 
-        val canUseHeaderOnly = ChatMessageSizer.shouldEmbedInHeader(fullJson)
-
-        if (canUseHeaderOnly) {
+        if (HomebaseProtocol.fitsHeaderContent(fullJson)) {
             return MessageBuildResult(
                 headerContent = fullJson,
                 payloadBundle = payloadBundle
