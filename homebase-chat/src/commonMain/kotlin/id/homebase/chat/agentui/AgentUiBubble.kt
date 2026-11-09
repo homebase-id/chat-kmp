@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +47,8 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.chat_agent_ui_action_failed
 import id.homebase.resources.chat_agent_ui_action_other
@@ -177,7 +178,7 @@ fun AgentUiBubble(
         }
     }
 
-    AgentUiFrame(ready?.tree?.frameTone ?: Tone.Default, modifier, onLongClick.takeUnless { displayOnly }) {
+    AgentUiFrame(sentByYou, modifier, onLongClick.takeUnless { displayOnly }) {
         if (ready != null) {
             AgentUiTreeView(
                 tree = ready.tree,
@@ -217,17 +218,18 @@ private val LoadingPlaceholderHeight = 160.dp
 
 @Composable
 fun AgentUiFrame(
-    tone: Tone,
+    sentByYou: Boolean,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val container = agentUiContainerColor(tone)
-    CompositionLocalProvider(LocalContentColor provides contentColorFor(container)) {
+    val container = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
+    val onContainer = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
+    CompositionLocalProvider(LocalContentColor provides onContainer, LocalAgentUiContainer provides container) {
         Column(
             modifier
                 .agentUiFrameWidth()
-                .clip(RoundedCornerShape(24.dp))
+                .clip(RoundedCornerShape(Dimens.AgentUi.cardCornerRadius))
                 .background(container)
                 .onLongPress(onLongClick)
                 .padding(16.dp),
@@ -243,7 +245,7 @@ private fun Modifier.onLongPress(onLongClick: (() -> Unit)?): Modifier =
 
 /** Caps the card at a readable bubble width that grows on wide windows. */
 private fun Modifier.agentUiFrameWidth(): Modifier = layout { measurable, constraints ->
-    val cap = (if (constraints.maxWidth >= 600.dp.roundToPx()) 520.dp else 360.dp).roundToPx()
+    val cap = (if (constraints.maxWidth >= Dimens.AgentUi.wideBreakpoint.roundToPx()) Dimens.AgentUi.cardMaxWidthWide else Dimens.AgentUi.cardMaxWidth).roundToPx()
     val placeable = measurable.measure(constraints.copy(minWidth = minOf(constraints.minWidth, cap), maxWidth = minOf(constraints.maxWidth, cap)))
     layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
@@ -265,7 +267,7 @@ fun AgentUiActionBubble(
     val onContainer = MaterialTheme.colorScheme.onSecondaryContainer
     Row(
         modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(Dimens.AgentUi.actionCornerRadius))
             .background(MaterialTheme.colorScheme.secondaryContainer)
             .onLongPress(onLongClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
