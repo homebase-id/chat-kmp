@@ -4,12 +4,13 @@ package id.homebase.core.ui.screens.card
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -131,7 +132,7 @@ class CardFieldRowsTest {
         assertEquals(1, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
         assertEquals(3, onAllNodesWithTag("field_back").fetchSemanticsNodes().size)
         assertEquals(1, onAllNodesWithTag("field_unavailable").fetchSemanticsNodes().size)
-        listOf("Front", "Back", "Not on this card", "People with this card can't see these").forEach { onNodeWithText(it).assertExists() }
+        listOf("On the card", "Shared, not shown", "Not shared", "People with this card can't see these").forEach { onNodeWithText(it).assertExists() }
         listOf("cards_button", "field_toggle", "field_handle", "never_on_card", "not_visible", "unavailable_toggle").forEach {
             assertEquals(0, onAllNodesWithTag(it, useUnmergedTree = true).fetchSemanticsNodes().size)
         }
@@ -162,11 +163,11 @@ class CardFieldRowsTest {
     )
 
     private fun androidx.compose.ui.test.ComposeUiTest.moveButton(tag: String, label: String) = onNode(
-        hasTestTag(tag) and hasContentDescription(if (tag == "field_to_back") "Move $label to the back" else "Show $label on the front"),
+        hasTestTag(tag) and hasContentDescription(if (tag == "field_to_back") "Move $label to Shared, not shown" else "Show $label on the card"),
     )
 
     private fun androidx.compose.ui.test.ComposeUiTest.removeButton(label: String) =
-        onNode(hasTestTag("field_remove") and hasContentDescription("Remove $label from this card"))
+        onNode(hasTestTag("field_remove") and hasContentDescription("Stop sharing $label with this card"))
 
     @Test
     fun theArrowsMoveAFrontRowToTheBackAndBackAgainWithoutTouchingItsAudience() = runComposeUiTest {
@@ -251,7 +252,7 @@ class CardFieldRowsTest {
     }
 
     @Test
-    fun tappingANotOnThisCardRowAsksFrontOrBackAndPutsItThere() = runComposeUiTest {
+    fun tappingANotOnThisCardRowOffersOnTheFrontOrOnTheBackAndPutsItThere() = runComposeUiTest {
         val privateStatus = status.ownerOnly()
         val shown = mutableListOf<Pair<Uuid, Boolean>>()
         val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
@@ -259,13 +260,17 @@ class CardFieldRowsTest {
 
         row("field_unavailable", "private").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)).performClick()
         waitForIdle()
-        onNodeWithText("Show Link on…").assertExists()
+        onNodeWithText("Add Link to this card").assertExists()
+        onNodeWithTag("place_front").assert(hasText("Show on the card") and hasText("Shown on the card face"))
+        onNodeWithTag("place_back").assert(hasText("Share only") and hasText("They get it, but it isn't on the card face"))
+        assertEquals(0, onAllNodes(hasClickAction() and (hasText("Front") or hasText("Back"))).fetchSemanticsNodes().size)
         onNodeWithText("Edit").assertDoesNotExist()
         onNodeWithTag("place_front").performClick()
         waitForIdle()
 
         row("field_front", "private").assertExists()
         row("field_unavailable", "private").assertDoesNotExist()
+        onNodeWithText("Add Link to this card").assertDoesNotExist()
 
         row("field_unavailable", "Elevenses").performClick()
         waitForIdle()
@@ -283,31 +288,48 @@ class CardFieldRowsTest {
     @Test
     fun cancelLeavesTheFieldNotOnThisCard() = runComposeUiTest {
         val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
-        editor(null, audiences = audiences, attributes = listOf(bio, ownerOnly))
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        editor(null, shown, audiences = audiences, attributes = listOf(bio, ownerOnly))
 
         row("field_unavailable", "private").performClick()
         waitForIdle()
         onNodeWithText("Cancel").performClick()
         waitForIdle()
 
-        onNodeWithText("Show Link on…").assertDoesNotExist()
+        onNodeWithText("Add Link to this card").assertDoesNotExist()
         row("field_unavailable", "private").assertExists()
         assertEquals(emptyList(), audiences)
+        assertEquals(emptyList(), shown)
     }
 
     @Test
-    fun frontIsDisabledForAFieldTheCardCantDraw() = runComposeUiTest {
+    fun aFieldTheCardCantDrawSkipsTheDialogAndLandsOnTheBack() = runComposeUiTest {
         val privatePhone = phone.ownerOnly()
-        editor(null, attributes = listOf(bio, privatePhone))
+        val shown = mutableListOf<Pair<Uuid, Boolean>>()
+        val audiences = mutableListOf<Pair<Uuid, ProfileAudience>>()
+        editor(null, shown, audiences = audiences, attributes = listOf(bio, privatePhone))
 
         row("field_unavailable", "Phone").performClick()
         waitForIdle()
 
-        onNodeWithTag("place_front").assertIsNotEnabled()
-        onNodeWithText("The card can't show this on the front").assertExists()
-        onNodeWithTag("place_back").assertIsEnabled().performClick()
-        waitForIdle()
+        onNodeWithTag("place_back").assertDoesNotExist()
+        onNodeWithText("Add Phone to this card").assertDoesNotExist()
         row("field_back", "Phone").assertExists()
+        row("field_unavailable", "Phone").assertDoesNotExist()
+        assertEquals(listOf<Pair<Uuid, ProfileAudience>>(privatePhone.id to ProfileAudience.Circles(setOf(FRIENDS_CIRCLE_ID))), audiences)
+        assertEquals(listOf(privatePhone.id to false), shown)
+    }
+
+    @Test
+    fun noRowShowsAnAudienceIcon() = runComposeUiTest {
+        editor(null, attributes = listOf(bio, status, phone, ownerOnly, officeOnly), circles = circles + office)
+
+        row("field_unavailable", "private").assertExists()
+        val rowIcons = listOf("field_front", "field_back", "field_unavailable").flatMap { tag ->
+            onAllNodes(hasAnyAncestor(hasTestTag(tag)) and SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription), useUnmergedTree = true)
+                .fetchSemanticsNodes().flatMap { it.config[SemanticsProperties.ContentDescription] }
+        }
+        assertEquals(emptyList(), rowIcons.filterNot { it.startsWith("Stop sharing ") || it.startsWith("Move ") || it.startsWith("Show ") })
     }
 
     @Test
@@ -353,7 +375,7 @@ class CardFieldRowsTest {
     fun anEmptyFrontPointsAtTheBack() = runComposeUiTest {
         editor(CardFields(hidden = listOf(bio.id, status.id).map { it.toString() }))
 
-        onNodeWithText("Use the up arrow on a Back field to show it on the card").assertExists()
+        onNodeWithText("Use the up arrow on a shared field to show it on the card").assertExists()
         assertEquals(0, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
     }
 
@@ -361,9 +383,9 @@ class CardFieldRowsTest {
     fun theCircleLineIsAbsentWhenTheCardShowsEverythingThatCanBeShown() = runComposeUiTest {
         editor(null, attributes = listOf(bio, status))
 
-        assertEquals(0, onAllNodesWithText("Not on this card").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithText("Not shared").fetchSemanticsNodes().size)
         assertEquals(0, onAllNodesWithTag("never_on_card").fetchSemanticsNodes().size)
-        assertEquals(0, onAllNodesWithText("Back").fetchSemanticsNodes().size)
+        assertEquals(0, onAllNodesWithText("Shared, not shown").fetchSemanticsNodes().size)
     }
 
     @Test

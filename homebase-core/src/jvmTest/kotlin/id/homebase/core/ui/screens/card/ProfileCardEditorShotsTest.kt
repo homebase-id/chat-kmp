@@ -409,6 +409,10 @@ class ProfileCardEditorShotsTest {
             onNodeWithTag("content_add").performSemanticsAction(SemanticsActions.OnClick)
             mainClock.advanceTimeBy(SETTLE_MS)
         }),
+        editor("k15-place-dialog", k15Friends, act = {
+            onAllNodesWithTag("field_unavailable").onFirst().performSemanticsAction(SemanticsActions.OnClick)
+            mainClock.advanceTimeBy(SETTLE_MS)
+        }),
         editor("k15-loading", k15Friends.copy(cards = emptyList())),
         editor("k15-error", k15Friends.copy(cards = emptyList(), loadFailed = true)),
         editor("k15-empty-small", editorEmpty, w = 360, h = 640),

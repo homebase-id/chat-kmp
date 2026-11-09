@@ -72,6 +72,8 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -130,6 +132,7 @@ import id.homebase.resources.profile_edit_photo_public_caption
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectableGroup
@@ -161,11 +164,12 @@ import id.homebase.resources.profile_card_field_hide
 import id.homebase.resources.profile_card_field_move_down
 import id.homebase.resources.profile_card_field_move_up
 import id.homebase.resources.profile_card_field_show
-import id.homebase.resources.profile_card_field_front_unavailable
+import id.homebase.resources.profile_card_field_add_title
 import id.homebase.resources.profile_card_field_remove
 import id.homebase.resources.profile_card_field_to_back
 import id.homebase.resources.profile_card_field_to_front
-import id.homebase.resources.profile_card_field_show_on
+import id.homebase.resources.profile_card_field_place_back
+import id.homebase.resources.profile_card_field_place_front
 import id.homebase.resources.profile_card_content_front
 import id.homebase.resources.profile_card_content_front_desc
 import id.homebase.resources.profile_card_content_front_empty
@@ -182,8 +186,6 @@ import id.homebase.resources.profile_card_content_empty
 import id.homebase.core.ui.screens.profile.ATTRIBUTE_SPECS
 import id.homebase.core.ui.screens.profile.AddAttributeSheet
 import id.homebase.core.ui.screens.profile.AudienceBadge
-import id.homebase.core.ui.screens.profile.audienceSummary
-import id.homebase.core.ui.screens.profile.kind
 import id.homebase.resources.cancel
 import id.homebase.resources.done
 import id.homebase.resources.profile_card_cards_public
@@ -289,6 +291,10 @@ internal fun CardContentEditor(
         item.audience.shownOn(card, false, null)?.let { onAudience(item.id, it) }
         if (item.hidden) onFieldShown(item.id, true)
     }
+    val place: (CardContentItem, Boolean) -> Unit = { item, front ->
+        onFieldShown(item.id, front)
+        item.audience.shownOn(card, true, null)?.let { onAudience(item.id, it) }
+    }
     val row: @Composable (CardContentItem, Int, Int, FieldDisplay?) -> Unit = { item, index, count, display ->
         key(item.id) { EditorRow(
             item = item,
@@ -313,7 +319,6 @@ internal fun CardContentEditor(
             key(item.id) {
                 CardFieldRow(
                     item = item,
-                    circles = circles,
                     index = index,
                     count = count,
                     enabled = enabled,
@@ -418,7 +423,6 @@ internal fun CardContentEditor(
                     key(item.id) {
                         CardFieldRow(
                             item = item,
-                            circles = circles,
                             index = index,
                             count = back.size,
                             enabled = enabled,
@@ -443,12 +447,11 @@ internal fun CardContentEditor(
                     key(item.id) {
                         CardFieldRow(
                             item = item,
-                            circles = circles,
                             index = index,
                             count = unavailable.size,
                             enabled = enabled,
                             tag = "field_unavailable",
-                            onOpen = { placingId = item.id },
+                            onOpen = { if (item.renderable) placingId = item.id else place(item, false) },
                             supporting = unavailableReason(item.audience, circles),
                             muted = true,
                         )
@@ -522,8 +525,7 @@ internal fun CardContentEditor(
             item = item,
             onPlace = { front ->
                 placingId = null
-                onFieldShown(item.id, front)
-                item.audience.shownOn(card, true, null)?.let { onAudience(item.id, it) }
+                place(item, front)
             },
             onDismiss = { placingId = null },
         )
@@ -850,26 +852,29 @@ private fun EditorRow(
 private fun PlaceFieldDialog(item: CardContentItem, onPlace: (front: Boolean) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.string.profile_card_field_show_on, stringResource(typeLabel(item.type)))) },
-        text = if (item.renderable) null else {
-            { Text(stringResource(MR.string.profile_card_field_front_unavailable)) }
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onPlace(false) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.testTag("place_back")) {
-                    Text(stringResource(MR.string.profile_card_content_back))
-                }
-                TextButton(
-                    onClick = { onPlace(true) },
-                    enabled = item.renderable,
-                    shapes = ButtonDefaults.shapes(),
-                    modifier = Modifier.testTag("place_front"),
-                ) { Text(stringResource(MR.string.profile_card_content_front)) }
+        title = { Text(stringResource(MR.string.profile_card_field_add_title, stringResource(typeLabel(item.type)))) },
+        text = {
+            Column {
+                PlaceChoice(MR.string.profile_card_field_place_front, MR.string.profile_card_content_front_desc, "place_front") { onPlace(true) }
+                PlaceChoice(MR.string.profile_card_field_place_back, MR.string.profile_card_content_back_desc, "place_back") { onPlace(false) }
             }
         },
-        dismissButton = {
+        confirmButton = {
             TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text(stringResource(MR.string.cancel)) }
         },
+    )
+}
+
+@Composable
+private fun PlaceChoice(headline: StringResource, supporting: StringResource, tag: String, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(stringResource(headline), style = MaterialTheme.typography.bodyLarge) },
+        supportingContent = { Text(stringResource(supporting), style = MaterialTheme.typography.bodyMedium) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(tag),
     )
 }
 
@@ -888,11 +893,10 @@ private fun unavailableReason(audience: ProfileAudience, circles: List<CardCircl
 
 private const val UNAVAILABLE_NAMES = 2
 
-// Every row keeps the same leading slot, so values line up: the remove button, or who sees a field that can't be taken off one card.
+// Every row keeps the same leading slot, empty when there's no remove button, so values line up.
 @Composable
 private fun CardFieldRow(
     item: CardContentItem,
-    circles: List<CardCircle>,
     index: Int,
     count: Int,
     enabled: Boolean,
@@ -913,7 +917,6 @@ private fun CardFieldRow(
     val remove = stringResource(MR.string.profile_card_field_remove, label)
     val toBack = stringResource(MR.string.profile_card_field_to_back, label)
     val toFront = stringResource(MR.string.profile_card_field_to_front, label)
-    val audience = audienceSummary(item.audience, circles)
     val prose = item.type == ProfileAttributeTypes.NAME || item.type == ProfileAttributeTypes.BIO_SUMMARY
     val trailing = onMove != null || handleSlot || display?.handle != null
     val lift by animateFloatAsState(if (display?.lifted == true) 1f else 0f, MaterialTheme.motionScheme.fastSpatialSpec())
@@ -941,8 +944,6 @@ private fun CardFieldRow(
                     IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.testTag("field_remove")) {
                         Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = remove, tint = colors.onSurfaceVariant)
                     }
-                } else {
-                    Icon(item.audience.kind.icon, contentDescription = audience, tint = colors.onSurfaceVariant)
                 }
             }
             Column(Modifier.weight(1f).padding(start = ROW_SLOT_INSET, end = 8.dp)) {

@@ -201,7 +201,7 @@ class ProfileCardScreenFlowTest {
             onNodeWithText("Edit profile").assertExists()
             onNodeWithContentDescription("Card to edit").assertExists()
             onAllNodes(hasContentDescription("Choose which cards show ", substring = true)).assertCountEquals(0)
-            onNodeWithText("Not on this card").assertExists()
+            onNodeWithText("Not shared").assertExists()
             onNodeWithText("frodo@shire.me").assertExists()
 
             onNodeWithContentDescription("Back").performClick()
