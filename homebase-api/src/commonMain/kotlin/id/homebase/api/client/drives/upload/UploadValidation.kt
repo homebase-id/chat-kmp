@@ -45,8 +45,7 @@ private fun validateMetadata(metadata: UploadFileMetadata) {
         validateEmbeddedThumb(thumb, where = "metadata.appData.previewThumbnail")
     }
     metadata.appData.content?.let { content ->
-        // Already through encryptContent for an encrypted file, so this measures the base64 ciphertext the
-        // server stores. odin-core's own cap is 10 KiB (AppFileMetaData.MaxAppDataContentLength); 7000 is ours.
+        // Runs after encryptContent, so for an encrypted file this is the base64 ciphertext the server stores.
         val size = content.encodeToByteArray().size
         if (size > HomebaseProtocol.MaxHeaderContentBytes) {
             throw validationFailure(
