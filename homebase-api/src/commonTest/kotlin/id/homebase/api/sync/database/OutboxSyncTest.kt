@@ -16,6 +16,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -1422,6 +1424,35 @@ class OutboxSyncTest {
         // successful retry happened).
         assertEquals(0, uploader.uploaded.size, "no upload may succeed while offline + failing")
         sync.clearCheckout(timeoutMs = 5_000)
+    }
+
+    @Test
+    fun stalledUpload_isChargedAndBacksOffWithoutHoldingUpTheRest() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader().apply {
+            failureException = id.homebase.api.client.UploadStalledException(90.seconds, bytesSent = 1_500_000, totalBytes = 36_758_080)
+        }
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+
+        val failures = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().take(2).toList()
+        }
+        testScheduler.runCurrent()
+
+        val (driveA, uidA) = db.insertRow(priority = 0)
+        val (driveB, uidB) = db.insertRow(priority = 1)
+
+        assertTrue(sync.send(force = true))
+        // ItemFailed is what takes the bubble off its frozen percentage.
+        assertEquals(setOf(uidA, uidB), failures.await().map { it.uniqueId }.toSet())
+        sync.clearCheckout(timeoutMs = 5_000)
+
+        val rowA = db.outbox.selectByDriveAndUnique(driveA, uidA)
+        val rowB = db.outbox.selectByDriveAndUnique(driveB, uidB)
+        assertNotNull(rowA); assertNotNull(rowB)
+        assertEquals(1L, rowA.checkOutCount, "a stall is a charged attempt")
+        assertTrue(rowA.nextRunTime > 0, "and is retried after a backoff")
+        assertEquals(1L, rowB.checkOutCount, "the pass went on to the next row")
     }
 
     @Test

@@ -23,6 +23,8 @@ import io.ktor.http.HttpHeaders
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
+import kotlin.time.Duration.Companion.milliseconds
+import id.homebase.api.client.withIdleTimeout
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -36,9 +38,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.IOException
 
-// The web engine has no socket timeout, and a download has no request timeout: only this ends a stalled body.
+// The web engine has no socket timeout, and a download has no request timeout: only these end a stalled download.
+private const val DOWNLOAD_STALL_MILLIS = 5 * 60_000L
+
 // Timed on Dispatchers.Default so it counts real time, not the caller's (a test's virtual time skips ahead).
-private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = 5 * 60_000L): Flow<ByteArray> = flow {
+private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024, stallMillis: Long = DOWNLOAD_STALL_MILLIS): Flow<ByteArray> = flow {
     val buffer = ByteArray(chunkSize)
 
     while (!isClosedForRead) {
@@ -91,46 +95,51 @@ public class DriveFileHttpProvider(
         val url = apiUrl(creds.domain, path)
 
         // Streamed, not buffered: get() would read the whole body into memory, and a large file outlasts any request timeout.
-        return httpClient.prepareGet(url) {
-            bearerAuth(creds.accessToken)
-            timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
-        }.execute { response ->
-            if (response.status.value == 404) {
-                Logger.w(tag = TAG) { "streamDecrypted 404 url=$url" }
-                return@execute false
-            }
-
-            if (response.status.value !in 200..299) {
-                throwForFailure(
-                    ByteApiResponse(
-                        status = response.status.value,
-                        headers = response.headers,
-                        bytes = ByteArray(0),
-                        contentType = "application/octet-stream"
-                    )
-                )
-            }
-
-            val totalBytes = response.contentLength()
-            var readSoFar = 0L
-            val body =
-                response.bodyAsChannel().asFlow().let { upstream ->
-                    if (onProgress == null || totalBytes == null || totalBytes <= 0L) upstream
-                    else flow {
-                        upstream.collect { chunk ->
-                            readSoFar += chunk.size
-                            onProgress((readSoFar.toFloat() / totalBytes.toFloat()).coerceAtMost(1f))
-                            emit(chunk)
-                        }
-                    }
+        val noResponse = { IOException("no response for $DOWNLOAD_STALL_MILLIS ms") }
+        return withIdleTimeout(DOWNLOAD_STALL_MILLIS.milliseconds, noResponse) { progress ->
+            progress(false)
+            httpClient.prepareGet(url) {
+                bearerAuth(creds.accessToken)
+                timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
+            }.execute { response ->
+                progress(true)
+                if (response.status.value == 404) {
+                    Logger.w(tag = TAG) { "streamDecrypted 404 url=$url" }
+                    return@execute false
                 }
 
-            // A public post's payload is plaintext with an empty keyHeader, and the server says so.
-            val plaintext = response.headers["payloadencrypted"]?.equals("false", ignoreCase = true) == true
-            consume(if (plaintext) body else AesCbc.streamDecryptWithCbc(body, keyHeader.aesKey, keyHeader.iv))
-            onProgress?.invoke(1f)
+                if (response.status.value !in 200..299) {
+                    throwForFailure(
+                        ByteApiResponse(
+                            status = response.status.value,
+                            headers = response.headers,
+                            bytes = ByteArray(0),
+                            contentType = "application/octet-stream"
+                        )
+                    )
+                }
 
-            true
+                val totalBytes = response.contentLength()
+                var readSoFar = 0L
+                val body =
+                    response.bodyAsChannel().asFlow().let { upstream ->
+                        if (onProgress == null || totalBytes == null || totalBytes <= 0L) upstream
+                        else flow {
+                            upstream.collect { chunk ->
+                                readSoFar += chunk.size
+                                onProgress((readSoFar.toFloat() / totalBytes.toFloat()).coerceAtMost(1f))
+                                emit(chunk)
+                            }
+                        }
+                    }
+
+                // A public post's payload is plaintext with an empty keyHeader, and the server says so.
+                val plaintext = response.headers["payloadencrypted"]?.equals("false", ignoreCase = true) == true
+                consume(if (plaintext) body else AesCbc.streamDecryptWithCbc(body, keyHeader.aesKey, keyHeader.iv))
+                onProgress?.invoke(1f)
+
+                true
+            }
         }
     }
 
