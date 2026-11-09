@@ -56,6 +56,10 @@ class PeerDriveUploadProvider(
             "uploadFileOverPeer requires at least one recipient (the drive owner)"
         }
 
+        require(request.shares == null && request.globalTransitId == null && request.sealedTo == null) {
+            "uploadFileOverPeer sends no shares, picked global transit id or seal: a deposit goes from the transient drive"
+        }
+
         val creds = requireCreds()
         val sharedSecret = creds.secret.unsafeBytes
 

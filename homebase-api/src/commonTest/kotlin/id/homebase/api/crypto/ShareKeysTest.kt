@@ -19,10 +19,12 @@ class ShareKeysTest {
     private val appKeyNonce = Base64.decode("YGFiY2RlZmdoaWpr")
     private val driveId = Uuid.parse("11111111-2222-3333-4444-555555555555")
     private val fileId = Uuid.parse("66666666-7777-8888-9999-aaaaaaaaaaaa")
+    private val globalTransitId = Uuid.parse("12345678-9abc-def0-1234-56789abcdef0")
     private val circleId = Uuid.parse("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
     private val member = OdinId("Sam.DotYou.Cloud")
 
     private val lockedFileKey = Base64.decode("AlBRUlNUVVZXWFlaWyNALFXaUVoKLLDbDk0g5bIydyRsCSpKQjTVXgru8mq5")
+    private val lockedFileKeyByGlobalTransitId = Base64.decode("A1BRUlNUVVZXWFlaWyNALFXaUVoKLLDbDk0g5bID6/ZsXceCKma5R4GJLiTG")
     private val appKeyLockedShareKey = Base64.decode("AmBhYmNkZWZnaGlqa8AlHXzCApsgaEfKX1KFpSBA7DLsgycVGxPm/K9OaD6A")
     private val sealedShareKey = Base64.decode(
         "AhRSmXQE7NVFE2N+zrbujRavkL1z/E4GHalzavkps48544kxb1C5vlxaQZbfnbT2N+RRSjZob4zGxLf4jftVPwAgZq3c692FaLeGasq2pZGKZ1iIyxpJ7Fbilv77slwQlOIeKC7Rag3IKHq3cJUyfbDKapD3G1IWdxUh0JkipMakO1Wy1Um0cvyaU9IBa5FBFpM="
@@ -37,8 +39,22 @@ class ShareKeysTest {
     fun aLockedFileKeyIsTheFileKeyUnderTheCircleKeyBoundToItsRow() = runTest {
         val locked = ShareKeys.lock(circleKey, fileKey, ShareKeys.fileKeyAad(driveId, fileId, circleId), fileKeyNonce)
         assertContentEquals(lockedFileKey, locked)
-        assertContentEquals(fileKey, ShareKeys.openFileKey(circleKey, locked, driveId, fileId, circleId))
-        assertFailsWith<ZkOpenException>("on another file's row") { ShareKeys.openFileKey(circleKey, locked, driveId, Uuid.random(), circleId) }
+        assertContentEquals(fileKey, ShareKeys.openFileKey(circleKey, locked, driveId, fileId, null, circleId))
+        assertFailsWith<ZkOpenException>("on another file's row") { ShareKeys.openFileKey(circleKey, locked, driveId, Uuid.random(), null, circleId) }
+    }
+
+    @Test
+    fun aLockedFileKeyOfFormat3IsBoundToTheFilesGlobalTransitId() = runTest {
+        val locked = ShareKeys.lock(circleKey, fileKey, ShareKeys.fileKeyAad(driveId, globalTransitId, circleId), fileKeyNonce, format = 3)
+        assertContentEquals(lockedFileKeyByGlobalTransitId, locked)
+        assertContentEquals(fileKey, ShareKeys.openFileKey(circleKey, locked, driveId, fileId, globalTransitId, circleId))
+        assertFailsWith<ZkOpenException>("bound to the file id instead") {
+            ShareKeys.openFileKey(circleKey, locked, driveId, globalTransitId = fileId, fileId = fileId, circleId = circleId)
+        }
+        assertFailsWith<ZkOpenException>("on a file without a global transit id") { ShareKeys.openFileKey(circleKey, locked, driveId, fileId, null, circleId) }
+
+        val made = ShareKeys.lockFileKeyByGlobalTransitId(circleKey, fileKey, driveId, globalTransitId, circleId)
+        assertContentEquals(fileKey, ShareKeys.openFileKey(circleKey, made, driveId, Uuid.random(), globalTransitId, circleId))
     }
 
     @Test

@@ -121,6 +121,15 @@ jobs:
           restore-keys: |
             konan-${{ runner.os }}-
 
+      - name: Cache SQLCipher xcframework
+        if: matrix.os == 'macos-latest'
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/homebase-sqlcipher
+          key: sqlcipher-${{ hashFiles('homebase-api/build.gradle.kts') }}
+          restore-keys: |
+            sqlcipher-
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 

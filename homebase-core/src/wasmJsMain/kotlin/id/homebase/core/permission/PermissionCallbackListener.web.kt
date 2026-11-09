@@ -1,30 +1,18 @@
 package id.homebase.core.permission
 
-import id.homebase.api.youauth.PermissionCallback
 import id.homebase.api.browser.guardJsCallback
 import kotlinx.browser.window
 import org.w3c.dom.MessageEvent
-import org.w3c.dom.events.Event
 
-private var listener: ((Event) -> Unit)? = null
-
-actual fun registerPermissionCallbackHandler(handler: (PermissionCallback) -> Unit) {
-    unregisterPermissionCallbackHandler()
-    val onMessage: (Event) -> Unit = { event ->
+fun installPermissionCallbackListener(onUrl: (String) -> Unit) {
+    window.addEventListener("message") { event ->
         guardJsCallback("permission.message") {
             val msg = event as? MessageEvent ?: return@guardJsCallback
             if (msg.origin != window.location.origin) return@guardJsCallback
             val url = extractPermissionCallbackUrl(msg.data) ?: return@guardJsCallback
-            handler(PermissionCallback.parse(url))
+            onUrl(url)
         }
     }
-    listener = onMessage
-    window.addEventListener("message", onMessage)
-}
-
-actual fun unregisterPermissionCallbackHandler() {
-    listener?.let { window.removeEventListener("message", it) }
-    listener = null
 }
 
 private fun extractPermissionCallbackUrl(data: JsAny?): String? =

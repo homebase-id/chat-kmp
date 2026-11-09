@@ -34,6 +34,8 @@ data class PayloadFile(
     val inputBlobUrl: String? = null,
     /** Only with [isPreEncrypted] and [iv]: the hashes are bound to that ciphertext and IV. */
     val hash: PayloadHash? = null,
+    /** Video-only: the bytes are already a finished upload payload; encrypt as-is, never transcode. */
+    val skipVideoProcessing: Boolean = false,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

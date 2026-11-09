@@ -6,7 +6,7 @@ import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
 /**
@@ -70,10 +70,7 @@ class PeerVideoDriveAccess(
         )
     }
 
-    /**
-     * Non-segmented MP4 path. Pulled in [STREAM_CHUNK_BYTES] slices so RAM stays bounded at any video size
-     * — the whole-payload read is capped at the render limit and would refuse a real video outright.
-     */
+    /** Non-segmented MP4 path: the whole payload streamed to [outputPath], so RAM stays bounded at any video size. */
     override suspend fun streamPayloadDecryptedToPath(
         driveId: Uuid,
         fileId: Uuid,
@@ -83,37 +80,13 @@ class PeerVideoDriveAccess(
         onProgress: ((Float) -> Unit)?,
     ): Boolean {
         var wroteAnything = false
-        fileOps.writeDownload(
-            outputPath,
-            flow {
-                var offset = 0L
-                while (true) {
-                    val slice = peerProvider.getPayloadChunkOverPeerByGlobalTransitId(
-                        peer = peer,
-                        driveId = driveId,
-                        globalTransitId = globalTransitId,
-                        payloadKey = key,
-                        keyHeader = keyHeader,
-                        chunkStart = offset,
-                        chunkLength = STREAM_CHUNK_BYTES,
-                    ) ?: break
-                    if (slice.bytes.isEmpty()) break
-                    wroteAnything = true
-                    emit(slice.bytes)
-                    // A short read is the end of the file; the range routes clamp rather than 416.
-                    if (slice.bytes.size < STREAM_CHUNK_BYTES) break
-                    offset += slice.bytes.size
-                }
-            },
-        )
-        if (!wroteAnything) {
+        val found = peerProvider.streamPayloadDecrypted(peer, driveId, globalTransitId, key, keyHeader, onProgress) { bytes ->
+            fileOps.writeDownload(outputPath, bytes.onEach { if (it.isNotEmpty()) wroteAnything = true })
+        }
+        if (!found || !wroteAnything) {
             Logger.w(tag = "VideoIO") { "peer stream produced no bytes for $peer/$globalTransitId/$key" }
         }
-        return wroteAnything
-    }
-
-    private companion object {
-        const val STREAM_CHUNK_BYTES = 4L * 1024 * 1024
+        return found && wroteAnything
     }
 }
 

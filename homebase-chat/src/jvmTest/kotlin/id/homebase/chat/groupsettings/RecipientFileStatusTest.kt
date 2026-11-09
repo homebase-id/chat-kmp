@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.TransferStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 
 class RecipientFileStatusTest {
 
@@ -33,9 +34,16 @@ class RecipientFileStatusTest {
 
     @Test
     fun failedAndOutOfTheOutbox_isProblem() {
-        val status = entry(TransferStatus.RecipientIdentityReturnedAccessDenied, isInOutbox = false).toRecipientFileStatus()
-        assertIs<RecipientFileStatus.Problem>(status)
-        assertEquals(TransferStatus.RecipientIdentityReturnedAccessDenied, status.rawStatus)
+        for (raw in listOf(
+            TransferStatus.RecipientIdentityReturnedAccessDenied,
+            TransferStatus.RecipientIdentityReturnedVersionTagMismatch,
+            TransferStatus.RecipientIdentityReturnedInvalidKeyHeader,
+        )) {
+            val status = entry(raw, isInOutbox = false).toRecipientFileStatus()
+            assertIs<RecipientFileStatus.Problem>(status, "$raw")
+            assertEquals(raw, status.rawStatus)
+            assertNotNull(status.detailRes, "$raw")
+        }
     }
 
     private fun entry(status: TransferStatus, isInOutbox: Boolean) = RecipientTransferHistoryEntry(

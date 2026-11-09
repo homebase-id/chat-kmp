@@ -184,6 +184,8 @@ import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
 import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
+import id.homebase.core.ui.screens.filesync.FilesyncMemberWrites
+import id.homebase.core.ui.screens.filesync.FilesyncPeerSends
 import id.homebase.core.filesync.FilesyncPreferences
 import id.homebase.core.config.getPhotobasePermissionExtensionConfig
 import id.homebase.core.photobase.PhotoBackupTrigger
@@ -244,6 +246,7 @@ import id.homebase.core.ui.screens.feed.following.FollowGraph
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
+import id.homebase.api.sync.database.KeyHeaderTransformQueue
 import id.homebase.core.config.chatLabeledDrive
 import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.config.momentsLabeledDrive
@@ -339,6 +342,7 @@ import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 import id.homebase.core.session.IdentitySessionScope
+import id.homebase.core.share.IncomingLinks
 import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
@@ -801,6 +805,8 @@ val appModule = module {
                 // An event collector with no UI referent, so nothing else constructs it. Resolved
                 // here and NOT createdAtStart: Koin starts before the database (AppStartup).
                 get<ChatMediaAutoSaveService>()
+                // Likewise: it takes the sealed key headers files arrive with, so it's in place before the first sync.
+                get<KeyHeaderTransformQueue>()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -1041,6 +1047,7 @@ val appModule = module {
             httpClient = get(),
         )
     }
+    single { IncomingLinks(get<NotificationService>(), get(), get(), get(), get()) }
     single<NotificationMessageResolver> {
         ChatNotificationMessageResolver(
             messageLookup = get<MessageLookup>(),
@@ -1090,7 +1097,9 @@ val appModule = module {
     single { FilesyncShareMessages(get(), get()) }
     single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
-    single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit) }
+    single { FilesyncMemberWrites(get<FilesyncSharing>(), get(), get()) }
+    single { FilesyncPeerSends(get(), get<FilesyncSharing>(), get()) }
+    single { FilesyncUploadQueue(get(), get(), get(), get(), get<FilesyncSharing>()::inherit, get(), get()) }
     single { FilesyncEditor(get(), get(), get()) }
     single { WebDropService(get(), get(), get()) }
     single { WebDropShareFlowState() }
@@ -1413,6 +1422,7 @@ val appModule = module {
             driveFileProvider = get(),
             fileOperationsProvider = get(),
             recipientLookup = get(),
+            payloadDownloadService = get(),
         )
     }
     viewModel(VaultPermissionQualifier) {
@@ -1523,6 +1533,7 @@ val appModule = module {
             filesyncSharing = get(),
             sharingSetup = get(),
             shareMessages = get(),
+            peerSends = get(),
         )
     }
     single<OpenedFileGateway> { DefaultOpenedFileGateway(get(), get(), get(), get(), get(), get(), get()) }

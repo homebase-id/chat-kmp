@@ -163,6 +163,10 @@ class WebRtcJavaCallEngine(
         },
     ) ?: error("webrtc-java returned no peer connection")
 
+    // Declared before statsTimer: the init below can outlast STATS_PERIOD_MS, and the first tick reads it.
+    @Volatile
+    private var previousStats = emptyList<StatsEntry>()
+
     private val statsTimer = Timer("call-stats", true).apply {
         schedule(timerTask { logVideoStats() }, STATS_PERIOD_MS, STATS_PERIOD_MS)
     }
@@ -184,9 +188,6 @@ class WebRtcJavaCallEngine(
                 .onFailure { Logger.w(it, "WebRtcJava") { "device hot-plug unavailable, the pickers will not follow device changes" } }
         }
     }
-
-    @Volatile
-    private var previousStats = emptyList<StatsEntry>()
 
     // A hot-plug fires a burst of callbacks; one enumeration covers them all.
     private fun refreshDevices() {
