@@ -102,6 +102,18 @@ class CardContractGoldenTest {
     }
 
     @Test
+    fun saveCircleCardWithFieldChoices() = runTest {
+        val fields = CardFields(
+            order = listOf(FIELD_LINK_B, FIELD_LINK_A, FIELD_INSTAGRAM, FIELD_TWITTER),
+            hidden = listOf(FIELD_BIO, FIELD_STATUS),
+        )
+        val card = circleCard(friendsCircle, "Friends", "dossier", 0).copy(overrides = CardOverrides(socials = "bar", fields = fields))
+        golden("save-circle-card-fields.json", captured {
+            store(it).save(card.toData(), ProfileVisibility.CONNECTED, null, null, card.priority)
+        })
+    }
+
+    @Test
     fun storedSetIsWhatTheCardPickerReads() {
         val circles = listOf(
             circleCard(familyCircle, "Family", "collage", 5),
@@ -181,3 +193,10 @@ class CardContractGoldenTest {
         golden("render-payload-circle.json", builtPayload(CardAudience.Circle(friendsCircle, "Friends"), "dossier", overrides))
     }
 }
+
+private const val FIELD_BIO = "bbbbbbbb-0000-4000-8000-000000000001"
+private const val FIELD_STATUS = "bbbbbbbb-0000-4000-8000-000000000002"
+private const val FIELD_LINK_A = "bbbbbbbb-0000-4000-8000-000000000003"
+private const val FIELD_LINK_B = "bbbbbbbb-0000-4000-8000-000000000004"
+private const val FIELD_TWITTER = "bbbbbbbb-0000-4000-8000-000000000005"
+private const val FIELD_INSTAGRAM = "bbbbbbbb-0000-4000-8000-000000000006"
