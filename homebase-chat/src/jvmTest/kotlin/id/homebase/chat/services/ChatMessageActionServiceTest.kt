@@ -600,11 +600,9 @@ class ChatMessageActionServiceTest {
                 fixture.participantLookup.setLastRead(
                     conversationId = id,
                     lastRead = kotlin.time.Instant.fromEpochMilliseconds(1_000L),
-                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(1_000L),
+                    latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(5_000L),
                 )
             }
-            // the fixture writes userDate as ${'$'}{userDateMs}000, so 5 lands as 5_000 in the index
-            fixture.seedDeletableMessage(conversationId = convoId, userDateMs = 5L)
 
             service.markAllAsRead(convoId)
 

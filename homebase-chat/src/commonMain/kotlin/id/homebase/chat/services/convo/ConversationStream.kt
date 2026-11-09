@@ -743,7 +743,7 @@ class ConversationStream(
             c.getIdentityId(), chatDrive, conversationId
         ) ?: return
 
-        val incoming = mapper.mapToConversationUi(conversationFile, null)
+        val incoming = mapper.mapLoadedConversation(conversationFile)
         val existing = _conversations.value.items.find { it.id == conversationId }
         if (existing == null) {
             insertNewConversation(incoming)
@@ -817,11 +817,7 @@ class ConversationStream(
     }
 
     private fun insertNewConversation(conversation: ConversationUiModel) {
-        // We should optimize later to not copy the full list
-        val currentList = _conversations.value.items.toMutableList()
-        currentList.add(conversation)
-
-        _conversations.value = _conversations.value.copy(items = currentList)
+        _conversations.update { it.withInserted(conversation) }
     }
 
     private suspend fun updateConversation(
@@ -845,10 +841,9 @@ class ConversationStream(
                 ?.let { outboxSync.enqueueLatest(it) }
         }
 
-        // We should optimize later to not map the full list
-        _conversations.value = _conversations.value.copy(
-            items = _conversations.value.items.map { if (it.id == existing.id) result.merged else it }
-        )
+        _conversations.update { current ->
+            current.copy(items = current.items.map { if (it.id == existing.id) result.merged else it })
+        }
     }
 
     // region Cold-load pipeline — MANDATORY + ENRICHMENT phases
@@ -885,25 +880,10 @@ class ConversationStream(
         val startedAt = Clock.System.now().toEpochMilliseconds()
         val c = credentialsManager.requireActiveCredentials()
 
-        // Preserve any in-memory Left state across reloads — Left is sticky
-        // until an explicit rejoin.
-        val leftIds = _conversations.value.items
-            .filter { it.conversationState == ConversationState.Left }
-            .map { it.id }
-            .toSet()
-
-        // Snapshot the prior in-memory rows so the wholesale replace below stays
-        // non-destructive of derived state: an un-flushed local lastRead advance
-        // (+ its owe-push `dirty`) and the computed `unreadCount` live only in
-        // memory and would otherwise be reset to the disk row. We reconcile each
-        // reloaded row against its prior counterpart instead. Empty on cold
-        // start ⇒ no merge, rows come straight from disk.
-        val priorById = _conversations.value.items.associateBy { it.id }
-
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val basicWithSource = files
+        val diskWithSource = files
             // Locally-deleted conversations stay on disk (soft-deleted) until the
             // outbox processes the server-side delete; without this filter the
             // mapper would resurrect a "deleted conversation" placeholder for them
@@ -932,23 +912,20 @@ class ConversationStream(
                     }
                     return@mapNotNull null
                 }
-                val withLeft = if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
-                    ui.copy(conversationState = ConversationState.Left)
-                } else ui
-
-                // Reconcile the disk row against the prior in-memory row so the reload
-                // doesn't throw away state the disk row cannot carry — the message
-                // preview, the computed unreadCount, an un-flushed lastRead advance.
-                // See [mergeReloadedConversationRow].
-                val reload = mergeReloadedConversationRow(withLeft, priorById[withLeft.id])
-                if (reload.remoteLastReadAdvanced) markUnreadDirty(withLeft.id)
-                reload.merged to file
+                ui to file
             }
 
-        val basic = basicWithSource.map { it.first }
-
-        _conversations.value = initialLoad.loaded(basic, _conversations.value.dataReady)
+        // Reconcile against the list as it is at write time, not before the query: a row
+        // inserted or advanced while the query ran (a notification's Mark as read) must survive.
+        lateinit var reload: ReloadedRows
+        _conversations.update { current ->
+            reload = reloadedRows(current.items, diskWithSource.map { it.first })
+            initialLoad.loaded(reload.items, current.dataReady)
+        }
         _conversations.update(initialLoad::settle)
+        reload.remoteLastReadAdvancedIds.forEach(::markUnreadDirty)
+        val basic = reload.items
+        val basicWithSource = basic.zip(diskWithSource.map { it.second })
 
         Logger.i(tag = "ConvListPerf") {
             "loadBasicConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
@@ -1498,14 +1475,13 @@ class ConversationStream(
         conversationId: Uuid,
         transform: (ConversationUiModel) -> ConversationUiModel,
     ) {
-        val current = _conversations.value
-        val index = current.items.indexOfFirst { it.id == conversationId }
-        if (index < 0) return
-        val updated = transform(current.items[index])
-        if (updated == current.items[index]) return
-        _conversations.value = current.copy(
-            items = current.items.toMutableList().apply { this[index] = updated }
-        )
+        _conversations.update { current ->
+            val index = current.items.indexOfFirst { it.id == conversationId }
+            if (index < 0) return@update current
+            val updated = transform(current.items[index])
+            if (updated == current.items[index]) current
+            else current.copy(items = current.items.toMutableList().apply { this[index] = updated })
+        }
     }
     // endregion
 
