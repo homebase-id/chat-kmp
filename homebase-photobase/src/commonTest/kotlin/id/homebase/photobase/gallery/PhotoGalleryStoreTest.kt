@@ -74,7 +74,12 @@ class PhotoGalleryStoreTest {
 
     @Test
     fun stoppingCancelsAFetchSoItCantWriteAfterTheWipe() = runTest {
-        val backend = Backend(server = mapOf(null to ServerPhotoPage(listOf(photo(300)), hasMore = true, cursor = "c1")))
+        val backend = Backend(
+            server = mapOf(
+                null to ServerPhotoPage(listOf(photo(300)), hasMore = true, cursor = "c1"),
+                "c1" to ServerPhotoPage(emptyList(), hasMore = false, cursor = null),
+            ),
+        )
         backend.holdServer = true
         val store = store(backend)
         val fetch = launch(Dispatchers.Default) { runCatching { store.page(null, newestFirst = true) } }
