@@ -353,7 +353,7 @@ class CardFieldRowsTest {
     fun anEmptyFrontPointsAtTheBack() = runComposeUiTest {
         editor(CardFields(hidden = listOf(bio.id, status.id).map { it.toString() }))
 
-        onNodeWithText("Use the add button on a Back field to show it on the card").assertExists()
+        onNodeWithText("Use the up arrow on a Back field to show it on the card").assertExists()
         assertEquals(0, onAllNodesWithTag("field_front").fetchSemanticsNodes().size)
     }
 

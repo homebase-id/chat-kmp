@@ -2509,7 +2509,7 @@
     <string name="profile_card_content_on_card_desc_reorder">Drag to reorder links or accounts, or switch one off.</string>
     <string name="profile_card_content_front">Front</string>
     <string name="profile_card_content_front_desc">Shown on the card</string>
-    <string name="profile_card_content_front_empty">Use the add button on a Back field to show it on the card</string>
+    <string name="profile_card_content_front_empty">Use the up arrow on a Back field to show it on the card</string>
     <string name="profile_card_content_back">Back</string>
     <string name="profile_card_content_back_desc">They get it, but it isn't shown on the card</string>
     <string name="profile_card_content_unavailable">Not on this card</string>
